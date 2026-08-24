@@ -1,6 +1,6 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
-import type { SlackNotifications } from "./slack-integration-types.ts";
+import type { SlackIntegrationRecord, SlackNotifications } from "./slack-integration-types.ts";
 import { planSlackLifecycle } from "./slack-lifecycle.ts";
 import { enqueueSlackDeliveries } from "./slack-outbox.ts";
 import type {
@@ -43,6 +43,43 @@ export async function reconcileSlackSession(input: {
     existing += result.existing;
   }
   return { created, existing };
+}
+
+/**
+ * REST/WS/cron session writers enqueue here so a short-lived session is in the
+ * outbox even if another worker never observed it as queued/running.
+ */
+export async function enqueueSlackSessionLifecycle(
+  state: Pick<
+    ControlPlaneState,
+    "storage" | "slackIntegration" | "now" | "repositories" | "logs" | "publicBaseUrl"
+  >,
+  session: SessionRecord,
+): Promise<void> {
+  const storage = state.storage;
+  if (!storage || typeof storage.enqueue !== "function") return;
+  const record = await loadSlackRecord(state, storage);
+  if (!record?.enabled) return;
+  await reconcileSlackSession({
+    store: storage,
+    config: {
+      enabled: record.enabled,
+      defaultChannel: record.defaultChannel,
+      notifications: record.notifications,
+    },
+    session: slackSessionSnapshot(state, session),
+    now: state.now(),
+  });
+}
+
+async function loadSlackRecord(
+  state: Pick<ControlPlaneState, "slackIntegration">,
+  storage: NonNullable<ControlPlaneState["storage"]>,
+): Promise<SlackIntegrationRecord | null> {
+  if (typeof storage.getSlackIntegration === "function") {
+    return storage.getSlackIntegration();
+  }
+  return state.slackIntegration ?? null;
 }
 
 export function slackSessionSnapshot(

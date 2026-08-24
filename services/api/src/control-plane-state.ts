@@ -34,6 +34,7 @@ import type {
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
+import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
@@ -245,10 +246,20 @@ export function trackLogPersist(
 }
 
 export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
-  state.sessions.set(session.id, { ...session });
+  const stored = { ...session };
+  state.sessions.set(session.id, stored);
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.putSession({ ...session }));
+    queueWrite(state, async (storage) => {
+      await storage!.putSession(stored);
+      await enqueueSlackSessionLifecycle(state, stored);
+    });
   }
+}
+
+/** Durable writers that already persisted the row still enqueue Slack here. */
+export function noteSlackSessionLifecycle(state: ControlPlaneState, session: SessionRecord): void {
+  const stored = { ...session };
+  queueWrite(state, () => enqueueSlackSessionLifecycle(state, stored));
 }
 
 export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): void {

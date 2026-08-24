@@ -223,12 +223,13 @@ The delivery implementation must respect Slack API rate limits and batch updates
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
-The outbox stores one immutable operation ID per lifecycle action. The worker reconciles a
-bounded set each sweep (queued/running plus sessions that just left active, and in-memory
-terminals still inside a 9-day window), conditionally leases due rows, recovers expired
-leases after a restart, retries with bounded exponential backoff, and dead-letters exhausted
-operations. Failed session snapshots fetch stderr tails from durable logs when the process
-cache does not already have them. Replies depend on the sent root operation, while the final root update depends on the
+The outbox stores one immutable operation ID per lifecycle action. REST/WS/cron session
+writers enqueue those ids on create and status transitions so a session that is created and
+cancelled between ticks is still in the outbox. The worker then leases due rows, recovers
+expired leases after a restart, retries with bounded exponential backoff, and dead-letters
+exhausted operations. A same-process sweep of queued/running sessions remains a safety net;
+cron does not have to observe the session as active to deliver it. Failed snapshots fetch
+stderr tails from durable logs when the process cache does not already have them. Replies depend on the sent root operation, while the final root update depends on the
 terminal reply. The HTTP transport deduplicates ambiguous in-process retries with that operation
 ID, including overlapping `deliver()` calls. Across Lambda invocations, delivery is
 at-least-once: operators should treat a duplicate lifecycle post after a lost lease as

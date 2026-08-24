@@ -3,7 +3,12 @@ import { MAX_FALLBACKS, isValidUtcTimestamp, nextCronOccurrence } from "@auto-ha
 import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
+import {
+  hashString,
+  noteSlackSessionLifecycle,
+  queueWrite,
+  toPublic,
+} from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import {
@@ -149,6 +154,7 @@ export async function triggerScheduleDurable(
   }
   state.schedules.set(id, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
+  noteSlackSessionLifecycle(state, session);
   return { ok: true, session: toPublic(state, session), created: true };
 }
 
@@ -402,6 +408,7 @@ export async function tryClaimScheduleFireDurable(
   }
   state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
+  noteSlackSessionLifecycle(state, session);
   return toPublic(state, session);
 }
 

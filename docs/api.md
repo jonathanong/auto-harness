@@ -391,10 +391,13 @@ All create, update, delete, validation, and storage outcomes are audit events;
 the request body and secret values are never passed to audit metadata.
 
 Outbound session-thread delivery uses `chat.postMessage` / `chat.update` through
-the leased outbox. The local server starts the worker when storage plus an
-injected transport or secret encryptor exist; the deployed cron Lambda drains
-the same outbox. GET may decrypt the bot token as a capability probe for
-`deliveryAvailable`. Delivery is at-least-once across Lambda invocations.
+the leased outbox. Session create/cancel/complete writers enqueue lifecycle rows
+in the REST/WS/cron process that persisted the snapshot, so a session that is
+created and cancelled between ticks is still delivered. The local server starts
+the worker when storage plus an injected transport or secret encryptor exist;
+the deployed cron Lambda drains the same outbox. GET may decrypt the bot token
+as a capability probe for `deliveryAvailable`. Delivery is at-least-once across
+Lambda invocations.
 Retries use the existing attempt ceiling and dead-letter exhausted operations.
 This endpoint does not implement Slack OAuth or incoming event verification.
 

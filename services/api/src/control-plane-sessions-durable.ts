@@ -1,6 +1,6 @@
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { toPublic } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
 import { prepareResumedSession, type ResumeOptions } from "./control-plane-session-resume.ts";
 import {
@@ -78,6 +78,7 @@ export async function createSessionDurable(
     throw err;
   }
   state.sessions.set(result.session.id, { ...result.session });
+  noteSlackSessionLifecycle(state, result.session);
   return { ok: true, session: toPublic(state, result.session), created: result.created };
 }
 
@@ -121,6 +122,7 @@ export async function resumeSessionDurable(
     throw err;
   }
   state.sessions.set(result.session.id, { ...result.session });
+  noteSlackSessionLifecycle(state, result.session);
   return { ok: true, session: toPublic(state, result.session), created: result.created };
 }
 
@@ -175,6 +177,7 @@ export async function cloneSessionDurable(
       referenceMarkers(state.now(), prepared.session),
     );
     state.sessions.set(result.session.id, { ...result.session });
+    if (result.created) noteSlackSessionLifecycle(state, result.session);
     if (!result.created)
       return {
         ok: false,
