@@ -3,8 +3,10 @@ import {
   emptyHostInventory,
   EXEC_CONFIG_CAPABILITY,
   EXEC_CONFIG_REQUIRED_MESSAGE,
+  listExecConfigEdits,
   parseHostExecConfig,
   principalHas,
+  type HostInventory,
 } from "@auto-harness/shared";
 
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
@@ -21,23 +23,25 @@ function allowsExecConfig(ctx: RouteCtx): boolean {
   return !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY);
 }
 
-function execConfigChangedFields(patch: ReturnType<typeof parseHostExecConfig>): string[] {
-  const fields: string[] = [];
-  if (patch.setupScript !== undefined) fields.push("setupScript");
-  if (patch.allowedRoots !== undefined) fields.push("allowedRoots");
-  for (const repository of patch.repositories ?? []) {
-    if (repository.setupScript !== undefined)
-      fields.push(`repositories.${repository.id}.setupScript`);
-    if (repository.terminalHookScript !== undefined) {
-      fields.push(`repositories.${repository.id}.terminalHookScript`);
+/** Best-effort undo after a successful write whose success audit could not be persisted. */
+async function restoreInventory(
+  plane: RouteCtx["plane"],
+  hostId: string,
+  previous: HostInventory | null,
+  version: number | undefined,
+): Promise<void> {
+  try {
+    if (!previous) {
+      await plane.deleteHostInventoryDurable(hostId);
+      return;
     }
-    for (const worktree of repository.worktrees ?? []) {
-      if (worktree.setupScript !== undefined) {
-        fields.push(`repositories.${repository.id}.worktrees.${worktree.id}.setupScript`);
-      }
-    }
+    await plane.putHostInventoryDurable(hostId, {
+      ...previous,
+      ...(version !== undefined ? { version } : {}),
+    });
+  } catch {
+    // Handler already failed closed; a crash between write and undo can still publish.
   }
-  return fields;
 }
 
 /** Admin-only setup scripts, terminal hook paths, and host-local allowed roots. */
@@ -72,7 +76,8 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
   }
 
   try {
-    const existing = (await plane.getHostInventoryDurable(hostId)) ?? emptyHostInventory();
+    const stored = await plane.getHostInventoryDurable(hostId);
+    const existing = stored ?? emptyHostInventory();
     if (
       ctx.principal?.allowedRepositoryIds &&
       !existing.repositories.some((repository) => mayAccessRepository(ctx.principal, repository.id))
@@ -149,10 +154,12 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
         action: "host-exec-config:update",
         resourceType: "host-inventory",
         resourceId: hostId,
-        metadata: { changed: execConfigChangedFields(patch) },
+        metadata: { changed: listExecConfigEdits(existing, merged) },
       }))
-    )
+    ) {
+      await restoreInventory(plane, hostId, stored, result.config.version);
       return true;
+    }
     const config = result.config;
     send(res, 200, {
       setupScript: config.setupScript,

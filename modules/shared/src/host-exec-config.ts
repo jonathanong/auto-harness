@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- apply, preserve, and inventory-write policy share one module. */
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
 import {
   EXEC_CONFIG_REQUIRED_MESSAGE,
@@ -91,6 +92,19 @@ function sameRoots(left: string[] | undefined, right: string[] | undefined): boo
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/** True when deleting this inventory would erase admin-controlled executable paths. */
+export function inventoryHasExecConfig(inventory: HostInventory | null | undefined): boolean {
+  if (!inventory) return false;
+  if ((inventory.setupScript ?? "") !== "" || (inventory.allowedRoots ?? []).length > 0)
+    return true;
+  return inventory.repositories.some(
+    (repository) =>
+      (repository.setupScript ?? "") !== "" ||
+      (repository.terminalHookScript ?? "") !== "" ||
+      repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== ""),
+  );
+}
+
 /**
  * Field paths the incoming inventory document would change. Omitted keys are not edits;
  * they are preserved by ordinary inventory writes.
@@ -147,7 +161,10 @@ function restoreScript<T extends { setupScript?: string | undefined }>(
   else delete target.setupScript;
 }
 
-/** Copy stored exec-config onto an incoming inventory document so a maintainer PUT cannot wipe it. */
+/**
+ * Restore stored exec-config onto omitted keys of an incoming inventory document.
+ * Present keys stay as-is so a capable PUT can change them without wiping omitted fields.
+ */
 export function preserveHostExecConfig(
   incoming: HostInventory,
   existing: HostInventory | null | undefined,
@@ -164,22 +181,28 @@ export function preserveHostExecConfig(
     providerAccounts: incoming.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(incoming.capabilities ?? [])],
   };
-  restoreScript(next, existing ?? undefined);
-  if (existing?.allowedRoots?.length) next.allowedRoots = [...existing.allowedRoots];
-  else delete next.allowedRoots;
+  if (next.setupScript === undefined) restoreScript(next, existing ?? undefined);
+  if (next.allowedRoots === undefined) {
+    if (existing?.allowedRoots?.length) next.allowedRoots = [...existing.allowedRoots];
+    else delete next.allowedRoots;
+  }
   for (const repository of next.repositories) {
     const previous = existing?.repositories.find((entry) => entry.id === repository.id);
-    restoreScript(repository, previous);
-    if (previous?.terminalHookScript !== undefined) {
-      repository.terminalHookScript = previous.terminalHookScript;
-    } else {
-      delete repository.terminalHookScript;
+    if (repository.setupScript === undefined) restoreScript(repository, previous);
+    if (repository.terminalHookScript === undefined) {
+      if (previous?.terminalHookScript !== undefined) {
+        repository.terminalHookScript = previous.terminalHookScript;
+      } else {
+        delete repository.terminalHookScript;
+      }
     }
     for (const worktree of repository.worktrees) {
-      restoreScript(
-        worktree,
-        previous?.worktrees.find((entry) => entry.id === worktree.id),
-      );
+      if (worktree.setupScript === undefined) {
+        restoreScript(
+          worktree,
+          previous?.worktrees.find((entry) => entry.id === worktree.id),
+        );
+      }
     }
   }
   return next;
@@ -199,8 +222,6 @@ export function reconcileInventoryWrite(input: {
   return {
     ok: true,
     execEdits,
-    inventory: input.allowExecConfig
-      ? input.incoming
-      : preserveHostExecConfig(input.incoming, input.existing),
+    inventory: preserveHostExecConfig(input.incoming, input.existing),
   };
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyHostExecConfig,
+  inventoryHasExecConfig,
   isAbsolutePathString,
   listExecConfigEdits,
   parseAllowedRoots,
@@ -208,6 +209,53 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     ).toEqual([]);
   });
 
+  it("detects stored executable paths that inventory deletion would erase", () => {
+    expect(inventoryHasExecConfig(undefined)).toBe(false);
+    expect(inventoryHasExecConfig(emptyHostInventory())).toBe(false);
+    expect(
+      inventoryHasExecConfig({ repositories: [], providerAccounts: [], setupScript: "" }),
+    ).toBe(false);
+    expect(inventoryHasExecConfig(inventory())).toBe(true);
+    expect(
+      inventoryHasExecConfig({ repositories: [], providerAccounts: [], allowedRoots: ["/opt"] }),
+    ).toBe(true);
+    expect(
+      inventoryHasExecConfig({
+        repositories: [
+          {
+            id: "repo-1",
+            path: "/opt/harness/repo",
+            defaultBranch: "main",
+            terminalHookScript: "/opt/harness/hooks/done.sh",
+            worktrees: [],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).toBe(true);
+    expect(
+      inventoryHasExecConfig({
+        repositories: [
+          {
+            id: "repo-1",
+            path: "/opt/harness/repo",
+            defaultBranch: "main",
+            worktrees: [
+              {
+                id: "wt-1",
+                name: "wt-1",
+                path: "/opt/harness/repo/wt-1",
+                labels: [],
+                setupScript: "pnpm build",
+              },
+            ],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).toBe(true);
+  });
+
   it("names each changed exec-config field", () => {
     expect(
       listExecConfigEdits(inventory(), {
@@ -242,7 +290,7 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     ]);
   });
 
-  it("preserves stored exec-config across an ordinary inventory rewrite", () => {
+  it("restores omitted exec-config and keeps present keys", () => {
     const preserved = preserveHostExecConfig(
       {
         repositories: [
@@ -250,15 +298,12 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
             id: "repo-1",
             path: "/new",
             defaultBranch: "dev",
-            setupScript: "attacker",
-            terminalHookScript: "/tmp/evil.sh",
             worktrees: [
               {
                 id: "wt-1",
                 name: "wt-1",
                 path: "/new/wt",
                 labels: ["ci"],
-                setupScript: "attacker wt",
               },
             ],
           },
@@ -274,6 +319,12 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     expect(preserved.repositories[0]?.terminalHookScript).toBe("/opt/harness/hooks/done.sh");
     expect(preserved.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm build");
     expect(preserved.repositories[0]?.worktrees[0]?.path).toBe("/new/wt");
+    const overlay = preserveHostExecConfig(
+      { ...emptyHostInventory(), setupScript: "new host" },
+      inventory(),
+    );
+    expect(overlay.setupScript).toBe("new host");
+    expect(overlay.allowedRoots).toEqual(["/opt/harness"]);
     const withoutExec = preserveHostExecConfig(
       {
         repositories: [
@@ -291,7 +342,7 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     );
     expect(withoutExec).not.toHaveProperty("setupScript");
     expect(withoutExec).not.toHaveProperty("allowedRoots");
-    expect(withoutExec.repositories[0]).not.toHaveProperty("terminalHookScript");
+    expect(withoutExec.repositories[0]?.terminalHookScript).toBe("ignore");
     expect(withoutExec.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
   });
 
@@ -307,6 +358,39 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     expect(
       reconcileInventoryWrite({ existing: inventory(), incoming, allowExecConfig: true }),
     ).toMatchObject({ ok: true, inventory: incoming, execEdits: ["setupScript"] });
+    const omitted = reconcileInventoryWrite({
+      existing: inventory(),
+      incoming: {
+        repositories: [
+          {
+            id: "repo-1",
+            path: "/opt/harness/repo",
+            defaultBranch: "main",
+            worktrees: [
+              {
+                id: "wt-1",
+                name: "wt-1",
+                path: "/opt/harness/repo/.worktrees/wt-1",
+                labels: [],
+              },
+            ],
+          },
+        ],
+        providerAccounts: [],
+      },
+      allowExecConfig: true,
+    });
+    expect(omitted.ok).toBe(true);
+    if (omitted.ok) {
+      expect(omitted.execEdits).toEqual([]);
+      expect(omitted.inventory.setupScript).toBe("source ~/.zshrc");
+      expect(omitted.inventory.allowedRoots).toEqual(["/opt/harness"]);
+      expect(omitted.inventory.repositories[0]?.setupScript).toBe("pnpm install");
+      expect(omitted.inventory.repositories[0]?.terminalHookScript).toBe(
+        "/opt/harness/hooks/done.sh",
+      );
+      expect(omitted.inventory.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm build");
+    }
     const ordinary: HostInventory = {
       repositories: [
         {

@@ -136,6 +136,39 @@ describe("host exec-config isolation", () => {
     expect(stored?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm build");
   });
 
+  it("blocks inventory deletion that would erase exec-config without the capability", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    expect(
+      await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, maintainer),
+    ).toMatchObject({
+      status: 403,
+      json: { error: { code: "FORBIDDEN", message: expect.stringContaining("fleet:exec-config") } },
+    });
+    expect(await plane.getHostInventoryDurable("host-1")).toMatchObject({
+      setupScript: "source ~/.zshrc",
+    });
+    expect(
+      await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, admin),
+    ).toMatchObject({ status: 204 });
+    expect(await plane.getHostInventoryDurable("host-1")).toBeNull();
+    expect(
+      (
+        await plane.putHostInventoryDurable("host-plain", {
+          repositories: [],
+          providerAccounts: [],
+        })
+      ).ok,
+    ).toBe(true);
+    expect(
+      await invoke(plane, "DELETE", "/api/v1/hosts/host-plain/inventory", undefined, maintainer),
+    ).toMatchObject({ status: 204 });
+    expect((await plane.putHostInventoryDurable("host-open", inventory)).ok).toBe(true);
+    expect(await invoke(plane, "DELETE", "/api/v1/hosts/host-open/inventory")).toMatchObject({
+      status: 204,
+    });
+  });
+
   it("lets admin inventory writes change exec-config and records both audits", async () => {
     const plane = new ControlPlane();
     const actions: string[] = [];
@@ -157,6 +190,55 @@ describe("host exec-config isolation", () => {
     expect(actions).toContain("host-inventory:update");
     expect(actions).toContain("host-exec-config:update");
     expect((await plane.getHostInventoryDurable("host-1"))?.setupScript).toBe("echo host");
+  });
+
+  it("preserves omitted exec-config on capable inventory PUTs", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        {
+          repositories: [
+            {
+              id: "repo-1",
+              path: "/opt/harness/repo-new",
+              defaultBranch: "main",
+              worktrees: [
+                { id: "wt-1", name: "wt-1", path: "/opt/harness/repo-new/wt", labels: ["ci"] },
+              ],
+            },
+          ],
+          providerAccounts: [],
+        },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+    const stored = await plane.getHostInventoryDurable("host-1");
+    expect(stored?.setupScript).toBe("source ~/.zshrc");
+    expect(stored?.allowedRoots).toEqual(["/opt/harness"]);
+    expect(stored?.repositories[0]?.path).toBe("/opt/harness/repo-new");
+    expect(stored?.repositories[0]?.setupScript).toBe("pnpm install");
+    expect(stored?.repositories[0]?.terminalHookScript).toBe("/opt/harness/hook.sh");
+    expect(stored?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm build");
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [
+          {
+            id: "repo-1",
+            path: "/opt/harness/repo-new",
+            defaultBranch: "main",
+            worktrees: [
+              { id: "wt-1", name: "wt-1", path: "/opt/harness/repo-new/wt", labels: ["ci"] },
+            ],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).toMatchObject({ status: 200 });
+    expect((await plane.getHostInventoryDurable("host-1"))?.allowedRoots).toEqual(["/opt/harness"]);
   });
 
   it("updates exec-config through the dedicated route without touching inventory paths", async () => {
@@ -278,6 +360,37 @@ describe("host exec-config isolation", () => {
     ).toMatchObject({ status: 409 });
   });
 
+  it("audits only fields whose exec-config values actually changed", async () => {
+    const plane = new ControlPlane();
+    const metadata: unknown[] = [];
+    const original = plane.appendAuditLog.bind(plane);
+    plane.appendAuditLog = async (input) => {
+      if (input.action === "host-exec-config:update") metadata.push(input.metadata);
+      return original(input);
+    };
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "source ~/.zshrc", allowedRoots: ["/opt/harness"] },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+    expect(metadata.at(-1)).toEqual({ changed: [] });
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "echo host" },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+    expect(metadata.at(-1)).toEqual({ changed: ["setupScript"] });
+  });
+
   it("fails closed when durable writes or audits throw", async () => {
     const getFail = {
       getHostInventoryDurable: async () => {
@@ -300,12 +413,14 @@ describe("host exec-config isolation", () => {
       await invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", { setupScript: "x" }, admin),
     ).toMatchObject({ status: 500 });
 
+    let stored: Record<string, unknown> = { ...inventory, hostId: "host-1" };
     const auditFail = {
-      getHostInventoryDurable: async () => inventory,
-      putHostInventoryDurable: async () => ({
-        ok: true,
-        config: { ...inventory, hostId: "host-1" },
-      }),
+      getHostInventoryDurable: async () => stored,
+      putHostInventoryDurable: async (_hostId: string, body: Record<string, unknown>) => {
+        stored = { ...body, hostId: "host-1" };
+        return { ok: true, config: stored };
+      },
+      deleteHostInventoryDurable: async () => ({ ok: true }),
       appendAuditLog: async () => {
         throw new Error("audit unavailable");
       },
@@ -313,6 +428,76 @@ describe("host exec-config isolation", () => {
     expect(
       await invoke(
         auditFail,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "x" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+    expect(stored.setupScript).toBe("source ~/.zshrc");
+
+    let created: Record<string, unknown> | null = null;
+    const createAuditFail = {
+      getHostInventoryDurable: async () => created,
+      putHostInventoryDurable: async (_hostId: string, body: Record<string, unknown>) => {
+        created = { ...body, hostId: "host-new" };
+        return { ok: true, config: created };
+      },
+      deleteHostInventoryDurable: async () => {
+        created = null;
+        return { ok: true };
+      },
+      appendAuditLog: async () => {
+        throw new Error("audit unavailable");
+      },
+    } as unknown as ControlPlane;
+    expect(
+      await invoke(
+        createAuditFail,
+        "PUT",
+        "/api/v1/hosts/host-new/exec-config",
+        { setupScript: "x" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+    expect(created).toBeNull();
+
+    const deleteRestoreThrow = {
+      getHostInventoryDurable: async () => null,
+      putHostInventoryDurable: async () => ({
+        ok: true,
+        config: { repositories: [], providerAccounts: [], hostId: "host-new" },
+      }),
+      deleteHostInventoryDurable: async () => {
+        throw new Error("restore failed");
+      },
+      appendAuditLog: async () => {
+        throw new Error("audit unavailable");
+      },
+    } as unknown as ControlPlane;
+    expect(
+      await invoke(
+        deleteRestoreThrow,
+        "PUT",
+        "/api/v1/hosts/host-new/exec-config",
+        { setupScript: "x" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+
+    const restoreThrow = {
+      getHostInventoryDurable: async () => inventory,
+      putHostInventoryDurable: async (_hostId: string, body?: { setupScript?: string }) => {
+        if (body?.setupScript === "source ~/.zshrc") throw new Error("restore failed");
+        return { ok: true, config: { ...inventory, hostId: "host-1", setupScript: "x" } };
+      },
+      appendAuditLog: async () => {
+        throw new Error("audit unavailable");
+      },
+    } as unknown as ControlPlane;
+    expect(
+      await invoke(
+        restoreThrow,
         "PUT",
         "/api/v1/hosts/host-1/exec-config",
         { setupScript: "x" },
@@ -346,6 +531,9 @@ describe("host exec-config isolation", () => {
         { setupScript: "x" },
         maintainer,
       ),
+    ).toMatchObject({ status: 500 });
+    expect(
+      await invoke(deniedAudit, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, maintainer),
     ).toMatchObject({ status: 500 });
   });
 });

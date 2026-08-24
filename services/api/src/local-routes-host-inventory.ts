@@ -5,6 +5,8 @@ import type { Principal } from "./auth.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import {
   EXEC_CONFIG_CAPABILITY,
+  EXEC_CONFIG_REQUIRED_MESSAGE,
+  inventoryHasExecConfig,
   parseHostInventory,
   principalHas,
   reconcileInventoryWrite,
@@ -242,6 +244,26 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       return true;
     }
     try {
+      const existing = await plane.getHostInventoryDurable(hostId);
+      if (
+        inventoryHasExecConfig(existing) &&
+        ctx.principal &&
+        !principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY)
+      ) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "host-inventory:delete",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            outcome: "denied",
+          }))
+        )
+          return true;
+        send(res, 403, {
+          error: { code: "FORBIDDEN", message: EXEC_CONFIG_REQUIRED_MESSAGE },
+        });
+        return true;
+      }
       const result = await plane.deleteHostInventoryDurable(hostId);
       if (!result.ok) {
         if (

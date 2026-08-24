@@ -35,7 +35,14 @@ const inventory = {
 };
 
 function form(worktreeValue = worktree) {
-  return <EditWorktreeForm hostId="host/one" repositoryId="repo-1" worktree={worktreeValue} />;
+  return (
+    <EditWorktreeForm
+      hostId="host/one"
+      repositoryId="repo-1"
+      worktree={worktreeValue}
+      canWriteExecConfig
+    />
+  );
 }
 
 /**
@@ -130,19 +137,13 @@ describe("EditWorktreeForm", () => {
               name: "feature",
               path: "/new/feature",
               labels: ["fast", "ci", "fast"],
+              setupScript: "pnpm install",
             },
           ],
         },
       ],
     });
-    expect(putBody(fetch, "/exec-config")).toMatchObject({
-      repositories: [
-        {
-          id: "repo-1",
-          worktrees: [{ id: "worktree-1", setupScript: "pnpm install" }],
-        },
-      ],
-    });
+    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
@@ -155,22 +156,21 @@ describe("EditWorktreeForm", () => {
     setValue(field(document, "worktree-edit-setup-script"), "   ");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(putBody(fetch, "/exec-config")).toMatchObject({
+    expect(putBody(fetch)).toMatchObject({
       repositories: [{ worktrees: [{ id: "worktree-1", setupScript: "" }] }],
     });
+    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     view.unmount();
   });
 
-  it("surfaces exec-config save failures and hides setup without the capability", async () => {
+  it("surfaces inventory save failures and hides setup without the capability", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string, init?: RequestInit) =>
+      vi.fn((_url: string, init?: RequestInit) =>
         Promise.resolve(
-          String(url).includes("exec-config") && init?.method === "PUT"
+          init?.method === "PUT"
             ? new Response("denied", { status: 403 })
-            : init?.method === "PUT"
-              ? new Response(null, { status: 204 })
-              : new Response(JSON.stringify(inventory), { status: 200 }),
+            : new Response(JSON.stringify(inventory), { status: 200 }),
         ),
       ),
     );

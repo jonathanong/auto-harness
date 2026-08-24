@@ -30,6 +30,13 @@ type SessionOutcome = {
   usage?: SessionUsage;
 };
 
+type ClaimedHookTarget = {
+  worktree: { id: string };
+  cwd: string;
+  repository: { path: string; terminalHookScript?: string };
+  allowedRoots?: readonly string[];
+};
+
 export async function failSession(
   streamer: LogStreamer,
   logs: SessionLogChunk[],
@@ -59,6 +66,8 @@ export async function finishSession(
   hookScript: string | undefined,
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  allowedRoots: readonly string[] = [],
+  repositoryPath?: string,
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -69,6 +78,8 @@ export async function finishSession(
       status: outcome.status as SessionStatus,
       worktreePath,
       childEnvSource,
+      ...(allowedRoots.length ? { allowedRoots } : {}),
+      ...(repositoryPath !== undefined ? { repositoryPath } : {}),
       ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
       ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
       ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
@@ -85,4 +96,28 @@ export async function finishSession(
     ...(outcome.cliResumeRef !== undefined ? { cliResumeRef: outcome.cliResumeRef } : {}),
     ...(outcome.usage !== undefined ? { usage: outcome.usage } : {}),
   };
+}
+
+export async function finishClaimedSession(
+  processRunner: ProcessRunner,
+  streamer: LogStreamer,
+  logs: SessionLogChunk[],
+  assign: SessionAssign,
+  claimed: ClaimedHookTarget,
+  outcome: SessionOutcome,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
+): Promise<SessionRunResult> {
+  return finishSession(
+    processRunner,
+    streamer,
+    logs,
+    assign,
+    claimed.worktree.id,
+    claimed.cwd,
+    claimed.repository.terminalHookScript,
+    outcome,
+    childEnvSource,
+    claimed.allowedRoots ?? [],
+    claimed.repository.path,
+  );
 }

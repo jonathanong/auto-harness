@@ -51,7 +51,9 @@ export default async function RepositoryDetailPage({
 }) {
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
-  const canOperate = can(await loadPrincipal(), "repositories:operate");
+  const principal = await loadPrincipal();
+  const canOperate = can(principal, "repositories:operate");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
 
   let repository: RepositorySummary | undefined;
   try {
@@ -146,6 +148,7 @@ export default async function RepositoryDetailPage({
                   group={group}
                   attachedHosts={attachedHosts}
                   hostInventories={hostInventories}
+                  canWriteExecConfig={canWriteExecConfig}
                 />
               ),
             },

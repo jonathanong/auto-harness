@@ -1,8 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+
+const fixtures: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 function fakeGit(): GitClient & {
   checkouts: string[];
@@ -34,13 +44,13 @@ const config = parseDaemonConfig({
 });
 
 describe("WorktreeManager", () => {
-  it("claims and releases worktrees", () => {
+  it("claims and releases worktrees", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    const claimed = mgr.claim("repo-1", "wt-1");
+    const claimed = await mgr.claim("repo-1", "wt-1");
     expect(claimed.cwd).toBe("/repo/wt-1");
     expect(mgr.isBusy("wt-1")).toBe(true);
-    expect(() => mgr.claim("repo-1", "wt-1")).toThrow(/busy/);
+    await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/busy/);
     mgr.release("wt-1");
     expect(mgr.isBusy("wt-1")).toBe(false);
   });
@@ -48,7 +58,7 @@ describe("WorktreeManager", () => {
   it("checks out explicit ref or default branch", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    const claimed = mgr.claim("repo-1", "wt-1");
+    const claimed = await mgr.claim("repo-1", "wt-1");
     await mgr.prepareCheckout(claimed, "feature/x");
     await mgr.prepareCheckout(claimed, undefined);
     expect(git.checkouts).toEqual(["feature/x", "main"]);
@@ -63,16 +73,16 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
-  it("rejects unknown repo or worktree", () => {
+  it("rejects unknown repo or worktree", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    expect(() => mgr.claim("nope", "wt-1")).toThrow(/Unknown repository/);
-    expect(() => mgr.claim("repo-1", "nope")).toThrow(/Unknown worktree/);
+    await expect(mgr.claim("nope", "wt-1")).rejects.toThrow(/Unknown repository/);
+    await expect(mgr.claim("repo-1", "nope")).rejects.toThrow(/Unknown worktree/);
   });
 
   it("serializes main claims, removes aborted waiters, and tolerates idle release", async () => {
     const mgr = new WorktreeManager(config, fakeGit());
-    expect(mgr.mainClaim("repo-1").cwd).toBe("/repo");
+    expect((await mgr.mainClaim("repo-1")).cwd).toBe("/repo");
     expect(await mgr.acquireMain("repo-1")).toBe(true);
     const controller = new AbortController();
     const canceled = mgr.acquireMain("repo-1", controller.signal);
@@ -84,7 +94,7 @@ describe("WorktreeManager", () => {
     mgr.releaseMain("repo-1");
     mgr.releaseMain("repo-1");
     expect(await mgr.acquireMain("repo-1", AbortSignal.abort())).toBe(false);
-    expect(() => mgr.mainClaim("missing")).toThrow(/Unknown repository/);
+    await expect(mgr.mainClaim("missing")).rejects.toThrow(/Unknown repository/);
   });
 
   it("skips a stale aborted waiter when releasing a lock", async () => {
@@ -126,11 +136,33 @@ describe("WorktreeManager", () => {
     expect(await Promise.race([first, Promise.resolve("pending")])).toBe("pending");
     expect(await Promise.race([second, Promise.resolve("pending")])).toBe("pending");
 
-    const claimed = mgr.mainClaim("repo-1");
+    const claimed = await mgr.mainClaim("repo-1");
     const signal = new AbortController().signal;
     await mgr.prepareMainCheckout(claimed, undefined, signal);
     await mgr.prepareMainCheckout(claimed, "release", undefined);
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "main", signal });
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "release" });
+  });
+
+  it("refuses to claim a worktree outside allowed roots and does not mark it busy", async () => {
+    const root = join(tmpdir(), `ah-claim-root-${String(Date.now())}`);
+    fixtures.push(root);
+    await mkdir(root, { recursive: true });
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: join(root, "repo"),
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/etc", labels: [] }],
+        },
+      ],
+    });
+    const mgr = new WorktreeManager(jailed, fakeGit());
+    await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/outside allowed roots/);
+    expect(mgr.isBusy("wt-1")).toBe(false);
+    await expect(mgr.mainClaim("repo-1")).resolves.toMatchObject({ cwd: join(root, "repo") });
   });
 });

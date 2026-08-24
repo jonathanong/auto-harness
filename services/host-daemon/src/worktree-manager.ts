@@ -1,4 +1,4 @@
-import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
+import { assertClaimedPathsAllowed, assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 
@@ -7,6 +7,7 @@ type ClaimedWorktree = {
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
   cwd: string;
+  allowedRoots?: string[];
 };
 
 type MainWaiter = {
@@ -51,7 +52,32 @@ export class WorktreeManager {
     return this.busy.has(worktreeId);
   }
 
-  claim(repositoryId: string, worktreeId: string): ClaimedWorktree {
+  private claimedResult(
+    repository: RepositoryConfig,
+    worktree: WorktreeConfig,
+    cwd: string,
+  ): ClaimedWorktree {
+    return {
+      ...(this.config.setupScript !== undefined
+        ? { hostSetupScript: this.config.setupScript }
+        : {}),
+      ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
+      repository,
+      worktree,
+      cwd,
+    };
+  }
+
+  private async assertClaimPaths(repository: RepositoryConfig, cwd: string): Promise<void> {
+    await assertClaimedPathsAllowed({
+      cwd,
+      repositoryPath: repository.path,
+      terminalHookScript: repository.terminalHookScript,
+      allowedRoots: this.config.allowedRoots,
+    });
+  }
+
+  async claim(repositoryId: string, worktreeId: string): Promise<ClaimedWorktree> {
     if (this.busy.has(worktreeId)) {
       throw new Error(`Worktree already busy: ${worktreeId}`);
     }
@@ -64,29 +90,22 @@ export class WorktreeManager {
       throw new Error(`Unknown worktree: ${worktreeId}`);
     }
     this.busy.add(worktreeId);
-    return {
-      ...(this.config.setupScript !== undefined
-        ? { hostSetupScript: this.config.setupScript }
-        : {}),
-      repository,
-      worktree,
-      cwd: worktree.path,
-    };
+    try {
+      await this.assertClaimPaths(repository, worktree.path);
+    } catch (error) {
+      this.busy.delete(worktreeId);
+      throw error;
+    }
+    return this.claimedResult(repository, worktree, worktree.path);
   }
 
-  mainClaim(repositoryId: string): ClaimedWorktree {
+  async mainClaim(repositoryId: string): Promise<ClaimedWorktree> {
     const repository = this.config.repositories.find((r) => r.id === repositoryId);
     if (!repository) {
       throw new Error(`Unknown repository: ${repositoryId}`);
     }
-    return {
-      ...(this.config.setupScript !== undefined
-        ? { hostSetupScript: this.config.setupScript }
-        : {}),
-      repository,
-      worktree: mainWorktree(repository),
-      cwd: repository.path,
-    };
+    await this.assertClaimPaths(repository, repository.path);
+    return this.claimedResult(repository, mainWorktree(repository), repository.path);
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {

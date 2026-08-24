@@ -34,6 +34,8 @@ export default async function SettingsPage() {
   const initialJson = JSON.stringify(
     {
       setupScript: inventory.setupScript,
+      allowedRoots: inventory.allowedRoots,
+      requiredEnvironment: inventory.requiredEnvironment,
       repositories: inventory.repositories,
       providerAccounts: inventory.providerAccounts,
     },
@@ -85,6 +87,7 @@ export default async function SettingsPage() {
           setupScript={inventory.setupScript}
           allowedRoots={inventory.allowedRoots}
           requiredEnvironment={inventory.requiredEnvironment}
+          canWriteExecConfig
         />
       </div>
 

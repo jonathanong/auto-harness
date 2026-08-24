@@ -444,24 +444,28 @@ Adding a name to the service environment is insufficient unless it is also permi
 `HARNESS_CHILD_ENV_ALLOWLIST` (baseline child variables remain available automatically).
 
 Setup is opt-in: the daemon does **not** source `.zshrc`, `.bashrc`, or any other shell startup file
-by default. Configure a host-wide script at the inventory root when every repository on that host
-needs the same initialization, and/or a script on that host's repository attachment:
+by default. Configure a host-wide script, repository/worktree scripts, terminal hooks, and
+host-local `allowedRoots` with `PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`).
+Ordinary `PUT /inventory` preserves omitted exec-config fields.
 
 ```json
 {
   "setupScript": "source \"$HOME/.zshrc\"",
+  "allowedRoots": ["/home/harness"],
   "repositories": [
     {
       "id": "repo-abc",
-      "path": "/home/harness/repos/my-app",
-      "defaultBranch": "main",
       "setupScript": "pnpm install",
-      "worktrees": []
+      "terminalHookScript": "/home/harness/hooks/done.sh"
     }
-  ],
-  "providerAccounts": []
+  ]
 }
 ```
+
+When `allowedRoots` is set, the daemon `realpath`s inventory filesystem paths and terminal hook
+paths (including at worktree claim and hook spawn) and refuses anything outside those roots.
+Unset or empty roots apply no extra restriction. Catalog command argv is not checked against
+these roots.
 
 For a fresh session, the host script runs first, followed by one effective scoped script using the
 existing precedence `session assignment > worktree > host/repository attachment`. Both run in the
@@ -511,7 +515,7 @@ conversation's existing worktree.
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Setup scripts, terminal hooks, and `allowedRoots` use `PUT /api/v1/hosts/:hostId/exec-config`. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 

@@ -8,7 +8,7 @@ export function HostAdvancedTab({
   allowedRoots,
   requiredEnvironment,
   canWriteInventory = true,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
 }: Readonly<{
   hostId: string;
   initialJson: string;

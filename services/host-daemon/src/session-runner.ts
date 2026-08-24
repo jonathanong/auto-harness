@@ -3,7 +3,7 @@ import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
-import { failSession, finishSession, type SessionRunResult } from "./session-outcome.ts";
+import { failSession, finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 
@@ -77,9 +77,9 @@ export class SessionRunner {
     let mainClaimed = false;
     try {
       if (assign.worktreeId) {
-        claimed = this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId);
+        claimed = await this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId);
       } else {
-        claimed = this.deps.worktrees.mainClaim(assign.repositoryId);
+        claimed = await this.deps.worktrees.mainClaim(assign.repositoryId);
         if (!(await this.deps.worktrees.acquireMain(assign.repositoryId, signal))) {
           clearTimeout(timeoutTimer);
           const status = expired ? "timed_out" : "cancelled";
@@ -108,14 +108,12 @@ export class SessionRunner {
       );
 
       if (signal.aborted) {
-        return await finishSession(
+        return await finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           { status: expired ? "timed_out" : "cancelled", exitCode: null },
           this.deps.childEnvSource ?? process.env,
         );
@@ -136,26 +134,22 @@ export class SessionRunner {
         // requested terminal state instead of misreporting cancellation as a
         // checkout/setup failure.
         if (signal.aborted) {
-          return await finishSession(
+          return await finishClaimedSession(
             this.deps.processRunner,
             streamer,
             logs,
             assign,
-            claimed.worktree.id,
-            claimed.cwd,
-            claimed.repository.terminalHookScript,
+            claimed,
             { status: expired ? "timed_out" : "cancelled", exitCode: null },
             this.deps.childEnvSource ?? process.env,
           );
         }
-        return await finishSession(
+        return await finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           {
             status: "failed",
             exitCode: null,
@@ -167,14 +161,12 @@ export class SessionRunner {
       }
 
       if (signal.aborted) {
-        return await finishSession(
+        return await finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           { status: expired ? "timed_out" : "cancelled", exitCode: null },
           this.deps.childEnvSource ?? process.env,
         );
@@ -199,14 +191,12 @@ export class SessionRunner {
         // A runner error can include the original argv. Keep the transcript
         // useful without copying prompts or other opaque arguments into logs.
         streamer.write("system", "Process execution failed.");
-        return await finishSession(
+        return await finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
           this.deps.childEnvSource ?? process.env,
         );

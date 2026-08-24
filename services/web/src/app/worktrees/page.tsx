@@ -4,6 +4,7 @@ import type { HostRepository } from "@auto-harness/shared";
 import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
 import { apiGet, apiGetAllPages } from "../../lib/api.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ type Wt = {
 type Repo = { id: string; name: string };
 
 export default async function WorktreesPage() {
+  const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
   let items: Wt[] = [];
   let namesById: Record<string, string> = {};
   let inventories: Array<{ hostId: string; repositories?: HostRepository[] }> = [];
@@ -88,6 +90,7 @@ export default async function WorktreesPage() {
               repositoryId={group.repositoryId}
               repositoryName={group.repositoryName ?? group.repositoryId}
               attachments={attachmentsForRepo(inventories, group.repositoryId)}
+              canWriteExecConfig={canWriteExecConfig}
             />
           )
         }

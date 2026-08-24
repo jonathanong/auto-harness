@@ -11,10 +11,12 @@ export function AddWorktreeForRepo({
   repositoryId,
   repositoryName,
   attachments,
+  canWriteExecConfig = false,
 }: {
   repositoryId: string;
   repositoryName: string;
   attachments: WorktreeHostAttachment[];
+  canWriteExecConfig?: boolean;
 }) {
   const [hostId, setHostId] = useState(attachments[0]?.hostId ?? "");
   if (attachments.length === 0) {
@@ -62,6 +64,7 @@ export function AddWorktreeForRepo({
         hostId={selected.hostId}
         repo={selected.repo}
         repoName={repositoryName}
+        canWriteExecConfig={canWriteExecConfig}
       />
     </div>
   );

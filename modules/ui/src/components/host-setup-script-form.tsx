@@ -23,7 +23,7 @@ export function HostSetupScriptForm({
   requiredEnvironment,
   mutateExec = mutateExecConfig,
   mutateInv = mutateInventory,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
   canWriteInventory = true,
 }: Readonly<{
   hostId: string;

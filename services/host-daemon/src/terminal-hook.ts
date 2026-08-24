@@ -1,5 +1,6 @@
 import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 
+import { assertPathWithinAllowedRoots, resolveHookPath } from "./allowed-roots.ts";
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 
@@ -14,6 +15,8 @@ type TerminalHookInput = {
   worktreePath: string;
   timeoutMs?: number;
   childEnvSource?: NodeJS.ProcessEnv;
+  allowedRoots?: readonly string[];
+  repositoryPath?: string;
 };
 
 /**
@@ -38,6 +41,22 @@ export async function runTerminalHook(
   }
   if (input.metadata) {
     env.HARNESS_METADATA = JSON.stringify(input.metadata);
+  }
+
+  if (input.allowedRoots?.length) {
+    try {
+      await assertPathWithinAllowedRoots(
+        resolveHookPath(input.repositoryPath ?? input.cwd, input.scriptPath),
+        input.allowedRoots,
+      );
+    } catch (err) {
+      log(
+        `terminal hook blocked for session ${input.sessionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
   }
 
   try {

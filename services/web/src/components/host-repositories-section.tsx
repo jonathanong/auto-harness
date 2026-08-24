@@ -23,7 +23,7 @@ export function HostRepositoriesSection({
   catalogError,
   worktreesError,
   canWrite = true,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
 }: {
   hostId: string;
   inventory: HostInventory;

@@ -4,7 +4,6 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
-  mutateExecConfig,
   mutateInventory,
   parseRequiredEnvironment,
   upsertHostRepository,
@@ -28,7 +27,7 @@ import {
 export function HostRepoSettingsForm({
   hostId,
   repo,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
 }: {
   hostId: string;
   repo: HostRepository;
@@ -99,6 +98,7 @@ export function HostRepoSettingsForm({
                     path,
                     defaultBranch,
                     requiredEnvironment,
+                    ...(canWriteExecConfig ? { setupScript, terminalHookScript } : {}),
                   }),
                 );
                 if (!r.ok) {
@@ -107,24 +107,6 @@ export function HostRepoSettingsForm({
                     pw: `repo-settings-error-${repo.id}`,
                   });
                   return;
-                }
-                if (canWriteExecConfig) {
-                  const exec = await mutateExecConfig(hostId, () => ({
-                    repositories: [
-                      {
-                        id: repo.id,
-                        setupScript,
-                        terminalHookScript,
-                      },
-                    ],
-                  }));
-                  if (!exec.ok) {
-                    showToast(exec.error, {
-                      variant: "destructive",
-                      pw: `repo-settings-error-${repo.id}`,
-                    });
-                    return;
-                  }
                 }
                 setOpen(false);
                 router.refresh();

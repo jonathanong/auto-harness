@@ -2,12 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  mutateExecConfig,
-  mutateInventory,
-  updateHostWorktree,
-  type HostWorktree,
-} from "@auto-harness/shared";
+import { mutateInventory, updateHostWorktree, type HostWorktree } from "@auto-harness/shared";
 import {
   Button,
   Dialog,
@@ -27,7 +22,7 @@ export function EditWorktreeForm({
   hostId,
   repositoryId,
   worktree,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
 }: {
   hostId: string;
   repositoryId: string;
@@ -83,25 +78,12 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
+                  ...(canWriteExecConfig ? { setupScript: worktreeSetupScript ?? "" } : {}),
                 }),
               );
               if (!r.ok) {
                 showToast(r.error, { variant: "destructive", pw: "worktree-edit-error" });
                 return;
-              }
-              if (canWriteExecConfig) {
-                const exec = await mutateExecConfig(hostId, () => ({
-                  repositories: [
-                    {
-                      id: repositoryId,
-                      worktrees: [{ id: worktree.id, setupScript: worktreeSetupScript ?? "" }],
-                    },
-                  ],
-                }));
-                if (!exec.ok) {
-                  showToast(exec.error, { variant: "destructive", pw: "worktree-edit-error" });
-                  return;
-                }
               }
               setOpen(false);
               router.refresh();

@@ -11,12 +11,14 @@ export function RepositoryWorktreesTab({
   group,
   attachedHosts,
   hostInventories,
+  canWriteExecConfig = false,
 }: {
   repositoryId: string;
   repositoryName: string;
   group: WorktreeRepoGroup;
   attachedHosts: Array<{ hostId: string }>;
   hostInventories: Array<HostInventory | null>;
+  canWriteExecConfig?: boolean;
 }) {
   return (
     <WorktreesHierarchy
@@ -35,6 +37,7 @@ export function RepositoryWorktreesTab({
             })),
             repositoryId,
           )}
+          canWriteExecConfig={canWriteExecConfig}
         />
       )}
     />

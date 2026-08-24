@@ -51,8 +51,9 @@ export type HostInventory = {
   /** Optional host-wide setup run before the repository/worktree setup. */
   setupScript?: string | undefined;
   /**
-   * Host-local directories that executable paths (terminal hooks, absolute argv)
-   * and inventory filesystem paths must resolve under. Empty/absent = unrestricted.
+   * Host-local directories that inventory filesystem paths and terminal hook
+   * paths must resolve under. Empty/absent = unrestricted. Catalog argv is not
+   * checked against these roots.
    */
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;

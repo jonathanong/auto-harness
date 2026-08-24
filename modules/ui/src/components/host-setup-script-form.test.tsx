@@ -47,6 +47,7 @@ function RefreshHarness() {
         setupScript={script}
         mutateExec={successfulExec}
         mutateInv={successfulInv}
+        canWriteExecConfig
       />
     </>
   );
@@ -73,6 +74,7 @@ describe("HostSetupScriptForm", () => {
         allowedRoots={["/opt/harness"]}
         mutateExec={mutateExec}
         mutateInv={mutateInv}
+        canWriteExecConfig
       />,
     );
     expect(field(view.container, "host-exec-config-alert").textContent).toContain(
@@ -102,7 +104,12 @@ describe("HostSetupScriptForm", () => {
 
   it("surfaces mutation failures and invalid allowed roots", async () => {
     const view = mount(
-      <HostSetupScriptForm hostId="host" mutateExec={failedExec} mutateInv={successfulInv} />,
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={failedExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />,
     );
     await submit(field(view.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("cannot save");
@@ -110,14 +117,24 @@ describe("HostSetupScriptForm", () => {
     view.unmount();
 
     const rejected = mount(
-      <HostSetupScriptForm hostId="host" mutateExec={rejectedExec} mutateInv={successfulInv} />,
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={rejectedExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />,
     );
     await submit(field(rejected.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("offline");
     rejected.unmount();
 
     const invalid = mount(
-      <HostSetupScriptForm hostId="host" mutateExec={successfulExec} mutateInv={successfulInv} />,
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={successfulExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />,
     );
     setValue(field(invalid.container, "host-allowed-roots"), "relative");
     await submit(field(invalid.container, "form-host-setup-script"));
@@ -125,7 +142,12 @@ describe("HostSetupScriptForm", () => {
     invalid.unmount();
 
     const envFail = mount(
-      <HostSetupScriptForm hostId="host" mutateExec={successfulExec} mutateInv={failedInv} />,
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={successfulExec}
+        mutateInv={failedInv}
+        canWriteExecConfig
+      />,
     );
     await submit(field(envFail.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("env failed");
@@ -159,7 +181,12 @@ describe("HostSetupScriptForm", () => {
     ).toBe("");
 
     const execOnly = mount(
-      <HostSetupScriptForm hostId="host" canWriteInventory={false} mutateExec={successfulExec} />,
+      <HostSetupScriptForm
+        hostId="host"
+        canWriteInventory={false}
+        canWriteExecConfig
+        mutateExec={successfulExec}
+      />,
     );
     expect(execOnly.container.querySelector('[data-pw="host-required-environment"]')).toBeNull();
     execOnly.unmount();

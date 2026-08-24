@@ -11,7 +11,7 @@ import {
 } from "./execution-profiles.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
-import { finishSession, type SessionRunResult } from "./session-outcome.ts";
+import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { ResumeRefCaptureReader } from "./resume-ref-capture.ts";
 import { detectUsageLimit } from "./usage-limit.ts";
 
@@ -49,28 +49,24 @@ export async function runClaimedSession(
   if (setup.failure) return setup.failure;
 
   if (signal?.aborted) {
-    return await finishSession(
+    return await finishClaimedSession(
       processRunner,
       streamer,
       logs,
       assign,
-      claimed.worktree.id,
-      claimed.cwd,
-      claimed.repository.terminalHookScript,
+      claimed,
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
       childEnvSource,
     );
   }
 
   if (assign.resolvedArgv.length === 0) {
-    return await finishSession(
+    return await finishClaimedSession(
       processRunner,
       streamer,
       logs,
       assign,
-      claimed.worktree.id,
-      claimed.cwd,
-      claimed.repository.terminalHookScript,
+      claimed,
       {
         status: "failed",
         exitCode: null,
@@ -123,14 +119,12 @@ async function runProcessAndFinish(
   const resumeRef = new ResumeRefCaptureReader(capturePolicy);
   const profile = resolveExecutionProfile(executionProfiles, assign.providerAccountId);
   if (assign.providerAccountId && (!profile || !executionProfileReady(profile))) {
-    return await finishSession(
+    return await finishClaimedSession(
       processRunner,
       streamer,
       logs,
       assign,
-      claimed.worktree.id,
-      claimed.cwd,
-      claimed.repository.terminalHookScript,
+      claimed,
       {
         status: "failed",
         exitCode: null,
@@ -166,18 +160,8 @@ async function runProcessAndFinish(
       : `Process exited with code ${String(result.exitCode)}`,
   );
 
-  const finish = (outcome: Parameters<typeof finishSession>[7]) =>
-    finishSession(
-      processRunner,
-      streamer,
-      logs,
-      assign,
-      claimed.worktree.id,
-      claimed.cwd,
-      claimed.repository.terminalHookScript,
-      outcome,
-      environment,
-    );
+  const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
+    finishClaimedSession(processRunner, streamer, logs, assign, claimed, outcome, environment);
 
   if (result.timedOut || timedOut()) {
     return await finish({

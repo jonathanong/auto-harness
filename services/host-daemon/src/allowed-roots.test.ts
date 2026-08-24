@@ -1,12 +1,14 @@
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  assertClaimedPathsAllowed,
   assertDaemonPathsAllowed,
   assertPathWithinAllowedRoots,
+  isWithinRoot,
   resolvePathForRootCheck,
 } from "./allowed-roots.ts";
 import type { DaemonConfig } from "./config-types.ts";
@@ -86,17 +88,51 @@ describe("allowed roots realpath checks", () => {
   });
 
   it("does nothing when allowed roots are unset", async () => {
-    await assertDaemonPathsAllowed({
-      hostId: "host",
-      repositories: [
-        {
-          id: "repo",
-          path: "/etc",
-          defaultBranch: "main",
-          worktrees: [],
-        },
-      ],
-      providerAccounts: [],
+    await expect(
+      assertDaemonPathsAllowed({
+        hostId: "host",
+        repositories: [
+          {
+            id: "repo",
+            path: "/etc",
+            defaultBranch: "main",
+            worktrees: [],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails closed across Windows volumes and allows a ..hidden child", () => {
+    expect(isWithinRoot("C:\\harness", "D:\\secret", win32)).toBe(false);
+    expect(isWithinRoot("C:\\harness", "C:\\windows", win32)).toBe(false);
+    expect(isWithinRoot("C:\\harness", "C:\\harness", win32)).toBe(true);
+    expect(isWithinRoot("C:\\harness", "C:\\harness\\wt", win32)).toBe(true);
+    expect(isWithinRoot("C:\\harness", "C:\\harness\\..hidden", win32)).toBe(true);
+    expect(isWithinRoot("C:\\harness", "C:\\harness\\..", win32)).toBe(false);
+    expect(isWithinRoot("/root", "/etc")).toBe(false);
+    expect(isWithinRoot("/root", "/root/..hidden")).toBe(true);
+    expect(isWithinRoot("/root", "/root/..")).toBe(false);
+  });
+
+  it("re-checks claimed cwd and hooks before use", async () => {
+    const root = await tempDir("claim");
+    const repo = join(root, "repo");
+    await mkdir(repo);
+    await assertClaimedPathsAllowed({
+      cwd: join(repo, "wt"),
+      repositoryPath: repo,
+      terminalHookScript: join(root, "hook.sh"),
+      allowedRoots: [root],
     });
+    await expect(
+      assertClaimedPathsAllowed({
+        cwd: "/etc",
+        repositoryPath: repo,
+        allowedRoots: [root],
+      }),
+    ).rejects.toThrow("outside allowed roots");
+    await assertClaimedPathsAllowed({ cwd: "/etc", repositoryPath: "/etc" });
   });
 });

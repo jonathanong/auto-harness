@@ -96,7 +96,9 @@ describe("HostRepoSettingsForm", () => {
 
   it("saves trimmed settings with a main fallback and keeps worktrees", async () => {
     const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(<HostRepoSettingsForm hostId="host/one" repo={repo} />);
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host/one" repo={repo} canWriteExecConfig />,
+    );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-path-repo-1"), " /new/repo ");
     setValue(field(document, "repo-settings-branch-repo-1"), " ");
@@ -112,34 +114,26 @@ describe("HostRepoSettingsForm", () => {
           path: "/new/repo",
           defaultBranch: "main",
           requiredEnvironment: ["A_TOKEN", "Z_TOKEN"],
+          setupScript: "setup",
+          terminalHookScript: "hook",
           worktrees: [{ id: "worktree" }],
         },
       ],
     });
-    expect(putBody(fetch, "/exec-config")).toMatchObject({
-      repositories: [
-        {
-          id: "repo-1",
-          setupScript: "setup",
-          terminalHookScript: "hook",
-        },
-      ],
-    });
+    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
     view.unmount();
   });
 
-  it("surfaces exec-config save failures and hides scripts without the capability", async () => {
+  it("surfaces inventory save failures and hides scripts without the capability", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string, init?: RequestInit) =>
+      vi.fn((_url: string, init?: RequestInit) =>
         Promise.resolve(
-          String(url).includes("exec-config") && init?.method === "PUT"
+          init?.method === "PUT"
             ? new Response("denied", { status: 403 })
-            : init?.method === "PUT"
-              ? new Response(null, { status: 204 })
-              : new Response(JSON.stringify(inventory), { status: 200 }),
+            : new Response(JSON.stringify(inventory), { status: 200 }),
         ),
       ),
     );
@@ -195,7 +189,7 @@ describe("HostRepoSettingsForm", () => {
 
   it("uses absent field fallbacks and displays a pending save failure", async () => {
     const { finish } = stubDeferredPut(inventory);
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig />);
     press(field(view.container, "repo-settings-open-repo-1"));
     const form = field<HTMLFormElement>(document, "form-repo-settings-repo-1");
     field(document, "repo-settings-branch-repo-1").remove();

@@ -105,6 +105,7 @@ export default async function RepositoryDetailPage({
                 repo={repo}
                 repoName={repoName}
                 browseEndpoint="/api/browse"
+                canWriteExecConfig
               />
             ) : null}
             <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />

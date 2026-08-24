@@ -71,6 +71,21 @@ describe("AddWorktreeForRepo", () => {
     expect(view.container.querySelector('[data-pw="add-worktree-host-repo-1"]')).toBeNull();
     act(() => field<HTMLButtonElement>(view.container, "add-worktree-open-repo-1").click());
     expect(document.querySelector('[data-pw="add-worktree-dialog-repo-1"]')).not.toBeNull();
+    expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("shows the setup script field when exec-config writes are allowed", () => {
+    const view = mountForm(
+      <AddWorktreeForRepo
+        repositoryId="repo-1"
+        repositoryName="Repo"
+        attachments={[{ hostId: "host-a", repo: repoA }]}
+        canWriteExecConfig
+      />,
+    );
+    act(() => field<HTMLButtonElement>(view.container, "add-worktree-open-repo-1").click());
+    expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).not.toBeNull();
     view.unmount();
   });
 

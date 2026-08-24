@@ -1117,11 +1117,12 @@ scripts, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do n
 
 `PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md), `fleet:inventory`) attaches
 repositories and worktrees, labels, required environment, and provider-account attachments.
-It **does not accept** setup-script or executable-path edits: omitted exec-config fields are
-preserved from the stored document, and a body that would change `setupScript`,
+Omitted exec-config fields are **always** preserved from the stored document, including for
+admin / unauthenticated local callers. A body that would change `setupScript`,
 `terminalHookScript`, or `allowedRoots` returns `403 FORBIDDEN` unless the caller also has
-`fleet:exec-config`. Admin callers with that capability may still replace those fields as part
-of a full-document PUT (the raw JSON editor); those writes also append `host-exec-config:update`.
+`fleet:exec-config`. Callers with that capability may include those fields in a full-document
+PUT (the raw JSON editor) to change them; omitted keys still stay stored. Those writes also
+append `host-exec-config:update`.
 
 `PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`, admin only) is the structured write
 path for host-, repository-, and worktree-scoped setup scripts, repository `terminalHookScript`

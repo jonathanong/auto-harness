@@ -138,6 +138,7 @@ export {
   MAX_ALLOWED_ROOTS,
   MAX_EXEC_PATH_LENGTH,
   applyHostExecConfig,
+  inventoryHasExecConfig,
   isAbsolutePathString,
   listExecConfigEdits,
   parseAllowedRoots,

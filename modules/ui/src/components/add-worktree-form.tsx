@@ -6,7 +6,6 @@ import { useState, useTransition } from "react";
 import {
   addHostWorktree,
   defaultWorktreePath,
-  mutateExecConfig,
   mutateInventory,
   newId,
   type HostRepository,
@@ -27,8 +26,7 @@ export function AddWorktreeForm({
   repoName,
   browseEndpoint,
   mutate = mutateInventory,
-  mutateExec = mutateExecConfig,
-  canWriteExecConfig = true,
+  canWriteExecConfig = false,
 }: {
   hostId: string;
   repo: HostRepository;
@@ -37,7 +35,6 @@ export function AddWorktreeForm({
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
   mutate?: typeof mutateInventory;
-  mutateExec?: typeof mutateExecConfig;
   canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
@@ -99,22 +96,12 @@ export function AddWorktreeForm({
                     name: wtName,
                     path: wtPath,
                     labels: requestedLabels,
+                    ...(worktreeSetupScript ? { setupScript: worktreeSetupScript } : {}),
                   }),
                 );
                 if (!r.ok) {
                   showToast(r.error, { variant: "destructive" });
                   return;
-                }
-                if (worktreeSetupScript) {
-                  const exec = await mutateExec(hostId, () => ({
-                    repositories: [
-                      { id: repo.id, worktrees: [{ id, setupScript: worktreeSetupScript }] },
-                    ],
-                  }));
-                  if (!exec.ok) {
-                    showToast(exec.error, { variant: "destructive" });
-                    return;
-                  }
                 }
                 setOpen(false);
                 setName("");

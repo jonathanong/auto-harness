@@ -7,9 +7,32 @@ import type { DaemonConfig } from "./config-types.ts";
 
 export type RealpathFn = (path: string) => Promise<string>;
 
-function isWithinRoot(root: string, candidate: string): boolean {
-  const rel = relative(root, candidate);
-  return rel === "" || (!rel.startsWith("..") && !rel.includes(`..${sep}`));
+/** Path primitives used by containment so Windows-style fixtures can inject `path.win32`. */
+export type PathContainmentApi = {
+  relative(from: string, to: string): string;
+  isAbsolute(path: string): boolean;
+  readonly sep: string;
+};
+
+const defaultPathApi: PathContainmentApi = { relative, isAbsolute, sep };
+
+/**
+ * Fail closed when `relative(root, candidate)` is another volume (`D:\secret` on Windows),
+ * `..`, or a parent segment. A directory named `..hidden` under the root is inside.
+ */
+export function isWithinRoot(
+  root: string,
+  candidate: string,
+  pathApi: PathContainmentApi = defaultPathApi,
+): boolean {
+  const rel = pathApi.relative(root, candidate);
+  return (
+    rel === "" ||
+    (rel !== ".." &&
+      !rel.startsWith(`..${pathApi.sep}`) &&
+      !pathApi.isAbsolute(rel) &&
+      !isAbsolutePathString(rel))
+  );
 }
 
 /** Resolve a path that may not exist yet by realpath'ing the longest existing prefix. */
@@ -58,10 +81,33 @@ export async function assertPathWithinAllowedRoots(
   throw new Error(`path is outside allowed roots: ${path}`);
 }
 
-function hookPath(repositoryPath: string, terminalHookScript: string): string {
+export function resolveHookPath(repositoryPath: string, terminalHookScript: string): string {
   return isAbsolute(terminalHookScript) || isAbsolutePathString(terminalHookScript)
     ? terminalHookScript
     : join(repositoryPath, terminalHookScript);
+}
+
+/** Re-check claimed cwd, repo path, and terminal hook immediately before use. */
+export async function assertClaimedPathsAllowed(
+  input: {
+    cwd: string;
+    repositoryPath: string;
+    terminalHookScript?: string | undefined;
+    allowedRoots?: readonly string[] | undefined;
+  },
+  realpathFn: RealpathFn = realpath,
+): Promise<void> {
+  const roots = input.allowedRoots ?? [];
+  if (!roots.length) return;
+  await assertPathWithinAllowedRoots(input.cwd, roots, realpathFn);
+  await assertPathWithinAllowedRoots(input.repositoryPath, roots, realpathFn);
+  if (input.terminalHookScript) {
+    await assertPathWithinAllowedRoots(
+      resolveHookPath(input.repositoryPath, input.terminalHookScript),
+      roots,
+      realpathFn,
+    );
+  }
 }
 
 /** Fail closed when exec-config names allowed roots the host cannot honor. */
@@ -75,7 +121,7 @@ export async function assertDaemonPathsAllowed(
     await assertPathWithinAllowedRoots(repository.path, roots, realpathFn);
     if (repository.terminalHookScript) {
       await assertPathWithinAllowedRoots(
-        hookPath(repository.path, repository.terminalHookScript),
+        resolveHookPath(repository.path, repository.terminalHookScript),
         roots,
         realpathFn,
       );
