@@ -37,9 +37,15 @@ const WEBSOCKET_ACCESS_LOG_FORMAT = JSON.stringify({
   status: "$context.status",
 });
 
+/**
+ * RETAINed, not DESTROYed: toggling `accessLogsEnabled` off removes this construct
+ * from the synthesized stack, and a DESTROY policy would delete up to 14 days of
+ * retained access-log history along with it. RETAIN just orphans the log group
+ * instead, matching services/cdk/src/apigateway-account-stack.ts.
+ */
 function accessLogGroup(scope: Construct, id: string): logs.LogGroup {
   const logGroup = new logs.LogGroup(scope, id, {
-    removalPolicy: RemovalPolicy.DESTROY,
+    removalPolicy: RemovalPolicy.RETAIN,
     retention: logs.RetentionDays.TWO_WEEKS,
   });
   logGroup.addToResourcePolicy(

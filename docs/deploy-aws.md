@@ -228,12 +228,14 @@ pnpm bootstrap:apigateway-account
 
 This runs a separate, environment-independent CDK app
 (`services/cdk/src/apigateway-account-cli.ts` /
-`apigateway-account-stack.ts`) that creates only the IAM role and the
-`AWS::ApiGateway::Account` resource — nothing else in the account is touched.
-Both are deployed with `RemovalPolicy.RETAIN`, so destroying this bootstrap
-stack never clears the account-wide setting out from under an unrelated stack
-or repo running in the same account. Re-running the script is a harmless
-no-op.
+`apigateway-account-stack.ts`) that creates the IAM role and the
+`AWS::ApiGateway::Account` resource, and (via `cdk bootstrap`) the shared
+`CDKToolkit` stack if this account/region doesn't already have one. No
+application stack in the account is touched. Both the role and the account
+resource are deployed with `RemovalPolicy.RETAIN`, so destroying this
+bootstrap stack never clears the account-wide setting out from under an
+unrelated stack or repo running in the same account. Re-running the script is
+a harmless no-op.
 
 After that succeeds, opt individual environments into access logs:
 

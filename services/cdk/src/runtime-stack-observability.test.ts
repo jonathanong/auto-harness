@@ -79,6 +79,12 @@ describe("runtime observability", () => {
 
     template.resourceCountIs("AWS::Logs::LogGroup", 2);
     template.hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 14 });
+    // Disabling accessLogsEnabled later removes this construct from the stack; RETAIN
+    // orphans the log group instead of deleting up to 14 days of access-log history.
+    template.hasResource("AWS::Logs::LogGroup", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
     template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
       AccessLogSettings: Match.objectLike({
         Format: Match.stringLikeRegexp("requestId"),
