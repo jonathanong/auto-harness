@@ -158,6 +158,33 @@ describe("install-service linux", () => {
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
   });
 
+  it("refuses a relative execution profile path before mutating the service", () => {
+    const fs = seededFs();
+    const before = new Map(fs.files);
+    const spawn = recorder();
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_EXECUTION_PROFILES: "profiles.json",
+          },
+          error: (message) => errors.push(message),
+          run: spawn.run,
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/HARNESS_EXECUTION_PROFILES.*absolute path/s);
+    expect(fs.files).toEqual(before);
+    expect(spawn.calls).toEqual([]);
+  });
+
   it("reports split enable and restart failures for an existing root environment update", () => {
     const existing = {
       [LINUX_ENV_DEST]:

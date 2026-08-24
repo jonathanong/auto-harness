@@ -1,4 +1,5 @@
 import { LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
+import { isAbsolute, win32 } from "node:path";
 import { parseChildEnvAllowlist } from "./child-env.ts";
 
 export function parseEnvFile(contents: string): Record<string, string> {
@@ -49,6 +50,16 @@ function isPlaceholder(value: string): boolean {
     value.length === 0 ||
     /^(?:REPLACE_WITH|PLACEHOLDER|YOUR[_ -]|<[^>]+>|\$\{[^}]+\})/iu.test(value)
   );
+}
+
+/**
+ * Service files outlive the installer process, so their profile-file value
+ * cannot depend on the installer or supervisor working directory. Recognize
+ * both native and Windows absolute paths because platform service fixtures are
+ * exercised from one host OS.
+ */
+function isPersistableExecutionProfilesPath(value: string): boolean {
+  return isAbsolute(value) || win32.isAbsolute(value);
 }
 
 export function isProductionApiUrl(value: string): boolean {
@@ -109,6 +120,14 @@ export function validatePersistedEnvFile(contents: string): string[] {
   if (isPlaceholder(hostId) || hostId === LOCAL_HOST_ID) errors.push("HARNESS_HOST_ID");
   if (isPlaceholder(apiUrl) || !isProductionApiUrl(apiUrl)) errors.push("HARNESS_API_URL");
   if (isPlaceholder(apiKey)) errors.push("HARNESS_API_KEY");
+  const executionProfiles = env.HARNESS_EXECUTION_PROFILES;
+  if (
+    executionProfiles !== undefined &&
+    executionProfiles !== "" &&
+    !isPersistableExecutionProfilesPath(executionProfiles)
+  ) {
+    errors.push("HARNESS_EXECUTION_PROFILES");
+  }
   errors.push(...parseChildEnvAllowlist(env).errors);
   return errors;
 }
@@ -116,7 +135,10 @@ export function validatePersistedEnvFile(contents: string): string[] {
 export function persistedEnvError(errors: string[]): string {
   const remediation =
     "set each named variable to its real bound production value (HTTPS control-plane URL, bound host id, and bound service key)";
-  return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.`;
+  const profilePathRemediation = errors.includes("HARNESS_EXECUTION_PROFILES")
+    ? " HARNESS_EXECUTION_PROFILES must be an absolute path."
+    : "";
+  return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.${profilePathRemediation}`;
 }
 
 export const PERSISTED_DAEMON_ENV_KEYS = [

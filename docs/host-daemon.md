@@ -157,7 +157,9 @@ is durable local observability only: it neither restarts the host nor sends an e
   keyed by Provider Account ID and owns that account's CLI home and extra environment. Extra env
   may not set `HOME` or `USERPROFILE`; the isolated profile home always wins. `install-service`
   persists `HARNESS_EXECUTION_PROFILES` and `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` in the service
-  environment file. Registration advertises only `ready` plus an opaque SHA-256 fingerprint of
+  environment file. The profile JSON path must be absolute for `install-service`; relative paths
+  are rejected rather than being interpreted using a supervisor working directory. Registration
+  advertises only `ready` plus an opaque SHA-256 fingerprint of
   the home path and extra-env key names (values omitted) — never credentials, home paths, or env
   values. Assignment of a provider-backed session is refused (no ACK) when the exact account
   profile is missing or its home is not a directory.

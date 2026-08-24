@@ -87,5 +87,12 @@ export function preparePersistedEnv(opts: {
     contents = updatePersistedApiUrl(opts.existing, opts.apiUrl);
   }
   contents = updatePersistedDaemonEnv(contents, opts.env);
-  return { contents, errors: validatePersistedEnvFile(contents) };
+  const errors = validatePersistedEnvFile(contents);
+  // Keep an existing valid service file intact when a new relative profile
+  // path is rejected. Callers already avoid writes on errors, and returning
+  // the original contents makes that no-write guarantee explicit to them.
+  if (errors.includes("HARNESS_EXECUTION_PROFILES")) {
+    return { contents: opts.existing ?? "", errors };
+  }
+  return { contents, errors };
 }

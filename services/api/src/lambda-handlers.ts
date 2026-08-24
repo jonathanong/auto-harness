@@ -292,7 +292,9 @@ export async function createLambdaRuntime(
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
-        const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
+        const assignments = await assignQueuedAndScheduledDurable(created.plane.state, {
+          fullScan: true,
+        });
         const archivesRetried = await created.plane.retryPendingArchivesDurable(
           25,
           () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,

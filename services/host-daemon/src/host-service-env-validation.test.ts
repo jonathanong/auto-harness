@@ -137,11 +137,11 @@ describe("persisted service environment validation", () => {
     expect(updated).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
     expect(
       preparePersistedEnv({
-        existing: `${original}HARNESS_EXECUTION_PROFILES=old.json\n`,
+        existing: `${original}HARNESS_EXECUTION_PROFILES=/old/profiles.json\n`,
         example: "",
-        env: { HARNESS_EXECUTION_PROFILES: "new.json" },
+        env: { HARNESS_EXECUTION_PROFILES: "/new/profiles.json" },
       }).contents,
-    ).toContain("HARNESS_EXECUTION_PROFILES=new.json");
+    ).toContain("HARNESS_EXECUTION_PROFILES=/new/profiles.json");
     expect(preparePersistedEnv({ existing: original, example: "", env: {} }).contents).toBe(
       original,
     );

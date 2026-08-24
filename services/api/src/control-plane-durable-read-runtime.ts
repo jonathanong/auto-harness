@@ -46,15 +46,23 @@ export async function listSessionsForRepositoriesDurable(
 export async function listQueuedSessionsDurable(
   state: ControlPlaneState,
   type: SessionRecord["type"],
+  options: { limit?: number } = {},
 ): Promise<SessionRecord[]> {
   if (!state.storage) {
     return [...state.sessions.values()].filter(
       (session) => session.status === "queued" && session.type === type,
     );
   }
+  const bounded = options.limit !== undefined;
+  // Each shard may hold every globally highest-priority row, so take the full
+  // global allowance from each shard and merge/slice after the reads.
+  const perShardLimit = bounded ? Math.max(1, options.limit!) : undefined;
   const pages = await Promise.all(
     [...Array(state.shardCount).keys()].map((shard) =>
-      state.storage!.listSessionsByStatus("queued", shard),
+      bounded
+        ? (state.storage!.listSessionsByStatusPage?.("queued", shard, perShardLimit!) ??
+          Promise.resolve([]))
+        : state.storage!.listSessionsByStatus("queued", shard),
     ),
   );
   const pageSessions = pages.flat();
@@ -65,7 +73,7 @@ export async function listQueuedSessionsDurable(
     if (existing && existing.status !== "queued") continue;
     state.sessions.set(session.id, { ...session });
   }
-  if (typeof state.storage.getSession === "function") {
+  if (!bounded && typeof state.storage.getSession === "function") {
     const omitted = [...state.sessions.values()]
       .filter((session) => session.status === "queued" && session.type === type)
       .filter((session) => !pageIds.has(session.id));
@@ -80,9 +88,10 @@ export async function listQueuedSessionsDurable(
       else state.sessions.delete(id);
     }
   }
-  return [...state.sessions.values()].filter(
+  const queued = [...state.sessions.values()].filter(
     (session) => session.status === "queued" && session.type === type,
   );
+  return bounded ? queued.filter((session) => pageIds.has(session.id)) : queued;
 }
 
 export async function getLogsDurable(

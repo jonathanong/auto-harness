@@ -25,6 +25,7 @@ afterAll(async () => {
 
 describe("DynamoPlaneStorageBase", () => {
   it("delegates durable adapter calls through one real DynamoDB context", async () => {
+    await expect(storage.listSessionsByStatusPage("queued", 0, 1)).resolves.toEqual([]);
     const fence = { hostId: "base-host", connectionId: "base-connection" };
     const log = {
       sessionId: "base-session",

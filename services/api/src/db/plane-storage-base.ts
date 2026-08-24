@@ -173,6 +173,14 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
   }
 
+  listSessionsByStatusPage(
+    status: SessionStatus,
+    shard: number,
+    limit: number,
+  ): Promise<SessionRecord[]> {
+    return sessions.listSessionsByStatusPage(this.ctx, status, shard, limit);
+  }
+
   createOrGetSessionDrain(
     record: SessionDrainRecord,
     audit: import("../audit-types.ts").AuditLogRecord,

@@ -23,7 +23,7 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 
-function indexUnavailable(error: unknown): boolean {
+export function indexUnavailable(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -61,7 +61,7 @@ async function querySessionsByStatusIndex(
   return records;
 }
 
-async function repairQueuedQueueOrder(
+export async function repairQueuedQueueOrder(
   ctx: PlaneStorageCtx,
   item: Record<string, unknown>,
 ): Promise<void> {

@@ -187,7 +187,8 @@ export class DaemonLoop {
   async keepalive(): Promise<void> {
     if (
       JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
-      this.advertisedProviderAccountReadiness
+        this.advertisedProviderAccountReadiness &&
+      !this.hasPendingAcknowledgement()
     ) {
       await this.register();
       return;
@@ -310,6 +311,16 @@ export class DaemonLoop {
     for (const current of this.inflightFor(msg.sessionId, msg.attemptId)) {
       current.controller.abort();
     }
+  }
+
+  /**
+   * A readiness registration is also a reconciliation snapshot. Do not send
+   * one while an assignment's durable ACK is outstanding: `register()` only
+   * reports acknowledged attempts, so omitting the pending attempt could let
+   * the control plane requeue it before its acknowledgement arrives.
+   */
+  private hasPendingAcknowledgement(): boolean {
+    return [...this.inflight.values()].some((session) => !session.acknowledged);
   }
 
   private handleAcknowledged(
