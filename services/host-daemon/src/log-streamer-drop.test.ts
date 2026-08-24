@@ -135,6 +135,16 @@ describe("LogStreamer drop telemetry", () => {
     expect(byteStreamer.write("stdout", "b")).toBeNull();
     expect(byteStreamer.write("system", "failed")?.content).toBe("failed");
     expect(byBytes.map((chunk) => chunk.content)).toEqual(["a", "failed"]);
+    const quota: SessionLogChunk[] = [];
+    const quotaStreamer = createDropStreamer(quota, {
+      logBatchMaxWaitMs: 0,
+      maxMessagesPerSec: 10,
+      maxChunks: 2,
+    });
+    quotaStreamer.write("stdout", "a");
+    quotaStreamer.write("system", "notice");
+    expect(quotaStreamer.write("stdout", "b")?.content).toBe("b");
+    expect(quotaStreamer.write("stdout", "c")).toBeNull();
   });
 
   it("caps each drop notice at the wire limit and retains the remainder", () => {

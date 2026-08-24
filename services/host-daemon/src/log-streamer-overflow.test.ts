@@ -96,7 +96,8 @@ describe("LogStreamer overflow and split writes", () => {
     streamer.write("stdout", "more");
     streamer.write("stderr", "c");
     streamer.write("stdout", "d");
-    expect(streamer.droppedCount()).toBe(1);
+    streamer.write("stderr", "e");
+    expect(streamer.droppedCount()).toBe(2);
     expect(chunks.some((chunk) => chunk.content.includes("mored"))).toBe(false);
     clock.advance(1_000);
     expect(chunks.map((chunk) => chunk.content)).toEqual(["b", "more"]);
@@ -107,7 +108,37 @@ describe("LogStreamer overflow and split writes", () => {
       { stream: "stderr", content: "c" },
     ]);
     clock.advance(1_000);
-    expect(chunks.at(-1)).toEqual(expect.objectContaining({ stream: "system", dropped: 1 }));
+    expect(chunks.at(-1)).toEqual(expect.objectContaining({ stream: "system", dropped: 2 }));
+    expect(chunks.some((chunk) => chunk.content === "ce")).toBe(false);
+  });
+
+  it("coalesces onto a just-promoted overflow batch when the rate window reopens", () => {
+    const chunks: SessionLogChunk[] = [];
+    let nowMs = 0;
+    const streamer = new LogStreamer(
+      "sess-1",
+      "attempt-1",
+      (chunk) => chunks.push(chunk),
+      () => "2026-08-01T12:00:00.000Z",
+      0,
+      rateLimited,
+      {
+        nowMs: () => nowMs,
+        setTimeout: () => 1 as unknown as ReturnType<typeof setTimeout>,
+        clearTimeout: () => undefined,
+      },
+    );
+    streamer.write("stdout", "out");
+    streamer.write("stdout", "ab");
+    streamer.write("stderr", "xy");
+    nowMs = 1_000;
+    streamer.write("stderr", "z");
+    streamer.flush();
+    expect(chunks.map((chunk) => ({ stream: chunk.stream, content: chunk.content }))).toEqual([
+      { stream: "stdout", content: "out" },
+      { stream: "stdout", content: "ab" },
+      { stream: "stderr", content: "xyz" },
+    ]);
   });
 
   it("drops remaining pieces after a split prefix is rejected", () => {

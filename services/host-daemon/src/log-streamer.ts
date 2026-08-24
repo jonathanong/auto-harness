@@ -198,11 +198,25 @@ export class LogStreamer {
         dropped: false,
       };
     }
-    if (allowOverflow && this.overflow && this.fits(this.overflow, stream, piece)) {
+    if (!this.overflow && this.unsentDropped === 0 && this.fits(this.pending, stream, piece)) {
+      appendToBatch(this.pending, piece);
+      return { chunk: last, diverted: false, dropped: false };
+    }
+    if (
+      allowOverflow &&
+      this.unsentDropped === 0 &&
+      this.overflow &&
+      this.fits(this.overflow, stream, piece)
+    ) {
       appendToBatch(this.overflow, piece);
       return { chunk: last, diverted: true, dropped: false };
     }
-    if (allowOverflow && !this.overflow && this.emittedChunks + 1 < this.maxChunks) {
+    if (
+      allowOverflow &&
+      this.unsentDropped === 0 &&
+      !this.overflow &&
+      this.emittedChunks + 1 < this.maxChunks
+    ) {
       this.overflow = startBatch(stream, piece, timestamp);
       this.overflowSinceMs = this.nowMs();
       return { chunk: last, diverted: true, dropped: false };
@@ -321,8 +335,10 @@ export class LogStreamer {
       seq,
       ...(dropped !== undefined ? { dropped } : {}),
     };
-    this.emittedChunks += 1;
-    this.emittedBytes += Buffer.byteLength(content, "utf8");
+    if (stream !== "system") {
+      this.emittedChunks += 1;
+      this.emittedBytes += Buffer.byteLength(content, "utf8");
+    }
     this.rate.record();
     this.emit(chunk);
     return chunk;
