@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { persistedEnvError, validatePersistedEnvFile } from "./host-service-env.ts";
 import {
-  persistedEnvError,
+  preparePersistedEnv,
   serviceEnv,
   updatePersistedApiUrl,
-  validatePersistedEnvFile,
-} from "./host-service-env.ts";
-import { preparePersistedEnv } from "./host-service-env-persisted.ts";
+} from "./host-service-env-persisted.ts";
 
 describe("persisted service environment validation", () => {
   it("defaults missing persisted keys and preserves or overrides process environment", () => {
@@ -117,6 +116,34 @@ describe("persisted service environment validation", () => {
     expect(updated).toContain("OTHER=value");
     expect(updatePersistedApiUrl("HARNESS_HOST_ID=host-1\n", "https://new.example.com")).toContain(
       "HARNESS_API_URL=https://new.example.com",
+    );
+  });
+
+  it("merges exported execution settings without replacing unrelated persisted values", () => {
+    const original =
+      "# keep this\nHARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n";
+    const updated = preparePersistedEnv({
+      existing: original,
+      example: "",
+      env: {
+        HARNESS_EXECUTION_PROFILES: "/etc/auto-harness/profiles.json",
+        HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "3",
+      },
+    }).contents;
+    expect(updated).toContain("# keep this");
+    expect(updated).toContain("HARNESS_API_KEY=secret");
+    expect(updated).toContain("OTHER=value");
+    expect(updated).toContain("HARNESS_EXECUTION_PROFILES=/etc/auto-harness/profiles.json");
+    expect(updated).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
+    expect(
+      preparePersistedEnv({
+        existing: `${original}HARNESS_EXECUTION_PROFILES=old.json\n`,
+        example: "",
+        env: { HARNESS_EXECUTION_PROFILES: "new.json" },
+      }).contents,
+    ).toContain("HARNESS_EXECUTION_PROFILES=new.json");
+    expect(preparePersistedEnv({ existing: original, example: "", env: {} }).contents).toBe(
+      original,
     );
   });
 

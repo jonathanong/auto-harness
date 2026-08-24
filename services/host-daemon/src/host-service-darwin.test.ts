@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- macOS service install and status mappings share platform fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { installHostService, uninstallHostService } from "./host-service.ts";
@@ -72,6 +73,31 @@ describe("install-service darwin", () => {
       "kickstart",
       "print",
     ]);
+  });
+
+  it("merges exported execution settings into an existing env", () => {
+    const envPath = "/Users/op/Library/Application Support/auto-harness/host-daemon.env";
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\nOTHER=keep\n",
+    });
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "darwin",
+          fs,
+          env: {
+            HARNESS_EXECUTION_PROFILES: "/Users/op/profiles.json",
+            HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "4",
+          },
+          run: () => ({ status: 0, stdout: "state = running\n", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(envPath)).toContain("HARNESS_EXECUTION_PROFILES=/Users/op/profiles.json");
+    expect(fs.files.get(envPath)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=4");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
+    expect(fs.files.get(envPath)).toContain("OTHER=keep");
   });
 
   it("reports bootstrap/load failures", () => {

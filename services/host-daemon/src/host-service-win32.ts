@@ -68,7 +68,7 @@ export function installWin32(ctx: HostServiceContext): number {
     return 1;
   }
   ctx.fs.mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
-  if (envExists && ctx.apiUrl === undefined) {
+  if (envExists && ctx.apiUrl === undefined && preparedEnv.contents === existingEnv) {
     ctx.log(`Keeping existing env file ${paths.envFile}`);
   } else {
     writeMode(ctx.fs, paths.envFile, preparedEnv.contents, 0o600, !envExists);
