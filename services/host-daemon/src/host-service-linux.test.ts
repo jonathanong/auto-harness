@@ -39,13 +39,44 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_RELOAD_COMMAND}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_ENABLE_NOW_COMMAND}`);
-    expect(logs.join("\n")).toContain("sudo install -d -o root -g root -m 0755 /opt/auto-harness");
     expect(logs.join("\n")).toContain(
-      "sudo install -d -o harness -g harness -m 0700 /opt/auto-harness/incoming",
+      "sudo install -d -o root -g root -m 0755 '/opt/auto-harness'",
     );
     expect(logs.join("\n")).toContain(
-      "sudo install -d -o root -g root -m 0755 /usr/local/lib/auto-harness",
+      "sudo install -d -o harness -g harness -m 0700 '/opt/auto-harness/incoming'",
     );
+    expect(logs.join("\n")).toContain(
+      "sudo install -d -o root -g root -m 0755 '/usr/local/lib/auto-harness'",
+    );
+  });
+
+  it("shell-quotes every staged Linux installation path", () => {
+    const fs = seededFs();
+    const logs: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 501,
+          fs,
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_UPDATE_INSTALL_DIR: "/srv/auto harness's updates",
+          },
+          log: (message) => logs.push(message),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    const instructions = logs.join("\n");
+    expect(instructions).toContain("'/srv/auto harness'\"'\"'s updates'");
+    expect(instructions).toContain("'/srv/auto harness'\"'\"'s updates/incoming'");
+    expect(instructions).toContain(
+      "'/tmp/auto-harness-host-service-XXXXXX/auto-harness-host-daemon.service' '/etc/systemd/system/auto-harness-host-daemon.service'",
+    );
+    expect(instructions).not.toContain("-m 0755 /srv/auto harness");
   });
 
   it("keeps /opt working directory and existing env as root", () => {

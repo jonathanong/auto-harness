@@ -71,6 +71,11 @@ function stageRoot(ctx: HostServiceContext): string {
   return ctx.env.XDG_RUNTIME_DIR?.trim() || ctx.tmpDir;
 }
 
+/** Quote a single argv value for the copy-and-paste POSIX shell instructions. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
 export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
   const result = ctx.run(
     "systemctl",
@@ -128,18 +133,20 @@ function stageLinux(
   }
   ctx.log(`Staged in ephemeral directory ${stagedDir}`);
   ctx.log("Not running as root. Run:");
-  ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
-  ctx.log(`  sudo install -d -o root -g root -m 0755 ${paths.updateRoot}`);
+  ctx.log(`  sudo install -d -m 0755 ${shellQuote(LINUX_ENV_DIR)}`);
+  ctx.log(`  sudo install -d -o root -g root -m 0755 ${shellQuote(paths.updateRoot)}`);
   ctx.log(
-    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${join(paths.updateRoot, "incoming")}`,
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${shellQuote(join(paths.updateRoot, "incoming"))}`,
   );
-  ctx.log(`  sudo install -d -o root -g root -m 0755 ${dirname(paths.launcher)}`);
+  ctx.log(`  sudo install -d -o root -g root -m 0755 ${shellQuote(dirname(paths.launcher))}`);
   if (envContents !== undefined) {
-    ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
+    ctx.log(`  sudo install -m 0600 ${shellQuote(stagedEnv)} ${shellQuote(LINUX_ENV_DEST)}`);
   }
-  ctx.log(`  sudo install -m 0755 ${stagedLauncher} ${paths.launcher}`);
-  ctx.log(`  sudo install -m 0755 ${stagedHelper} ${LINUX_ACTIVATION_HELPER_DEST}`);
-  ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
+  ctx.log(`  sudo install -m 0755 ${shellQuote(stagedLauncher)} ${shellQuote(paths.launcher)}`);
+  ctx.log(
+    `  sudo install -m 0755 ${shellQuote(stagedHelper)} ${shellQuote(LINUX_ACTIVATION_HELPER_DEST)}`,
+  );
+  ctx.log(`  sudo install -m 0644 ${shellQuote(stagedUnit)} ${shellQuote(LINUX_UNIT_DEST)}`);
   ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
   ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
   return 0;
