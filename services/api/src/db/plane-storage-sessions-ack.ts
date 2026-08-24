@@ -3,6 +3,7 @@ import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { getHostLock } from "./plane-storage-locks.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
+import type { SessionRecord } from "./types.ts";
 
 type AckAttempt = {
   sessionId: string;
@@ -65,7 +66,7 @@ async function writeAck(
 }
 
 function assignmentMatchesFence(
-  current: { hostId?: string; assignmentConnectionId?: string } | null,
+  current: SessionRecord | null,
   fence: { hostId: string; connectionId: string },
 ): boolean {
   if (current?.hostId !== fence.hostId) return false;

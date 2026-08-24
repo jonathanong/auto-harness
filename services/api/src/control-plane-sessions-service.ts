@@ -21,7 +21,9 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
 
-function durableListRepositoryIds(requested: sessions.ListSessionsPageQuery): string[] | undefined {
+function durableListRepositoryIds(
+  requested: sessions.ListSessionsPageQuery,
+): readonly string[] | undefined {
   if (!requested.repositoryId) return requested.scope?.repositoryIds;
   if (!requested.scope?.repositoryIds) return [requested.repositoryId];
   return requested.scope.repositoryIds.includes(requested.repositoryId)
