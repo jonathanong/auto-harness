@@ -623,7 +623,6 @@ async function applySessionStatusDurable(
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
   const suppress = transitionEffect(plan, "suppress_target");
-  const finish = transitionEffect(plan, "finish");
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
@@ -689,11 +688,11 @@ async function applySessionStatusDurable(
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
       attemptId: msg.attemptId,
-      status: shouldRetry ? "queued" : (finish?.status ?? msg.status),
+      status: shouldRetry ? "queued" : msg.status,
       queueShard: session.queueShard,
       ...(requeue?.reason === "usage_limit_retry"
         ? { retryCount: requeue.retryCount, retryAfter: requeue.retryAfter }
-        : { completedAt: finish?.completedAt ?? state.now() }),
+        : { completedAt: state.now() }),
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
@@ -704,11 +703,11 @@ async function applySessionStatusDurable(
     releaseScheduledLeaseLocal(state, session);
     const { mainCheckoutLease: _, ...next } = {
       ...session,
-      status: shouldRetry ? ("queued" as const) : (finish?.status ?? msg.status),
+      status: shouldRetry ? ("queued" as const) : msg.status,
       worktreeId: null,
       ...(requeue?.reason === "usage_limit_retry"
         ? { hostId: null, retryCount: requeue.retryCount, retryAfter: requeue.retryAfter }
-        : { completedAt: finish?.completedAt ?? state.now() }),
+        : { completedAt: state.now() }),
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
@@ -734,10 +733,9 @@ async function applySessionStatusDurable(
     if (!committed) return { ok: true };
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
-    const account = loadedAccount ?? state.providerAccounts.get(cooldown.providerAccountId);
-    if (account) {
+    if (loadedAccount) {
       state.providerAccounts.set(cooldown.providerAccountId, {
-        ...account,
+        ...loadedAccount,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         lastUsageLimitedAt: now,
         updatedAt: now,
@@ -795,7 +793,7 @@ async function applySessionStatusDurable(
       });
     }
   }
-  const nextStatus = shouldSuppressTarget ? "queued" : (finish?.status ?? msg.status);
+  const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
   const nextSession = {
     ...session,
     status: nextStatus,
@@ -806,11 +804,11 @@ async function applySessionStatusDurable(
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-    ...(shouldSuppressTarget
+    ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
             ...(session.suppressedTargetIndexes ?? []),
-            session.resolvedRoute?.targetIndex ?? 0,
+            suppress.targetIndex,
           ],
         }
       : {}),
