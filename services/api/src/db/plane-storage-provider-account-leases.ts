@@ -10,7 +10,7 @@ export type ProviderAccountLeaseKey = {
 };
 
 /** Attempt-owned lock delete; missing rows succeed so a retry cannot stick the slot. */
-export function providerAccountLeaseDeleteItem(
+function providerAccountLeaseDeleteItem(
   tableName: string,
   opts: { concurrencyId: string; sessionId: string; attemptId: string },
 ) {
