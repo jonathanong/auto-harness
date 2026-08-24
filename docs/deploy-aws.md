@@ -421,17 +421,18 @@ environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is
 created by the Lambda service on first invocation, not by CDK**, so it is not a
 stack resource and `cdk destroy` never touches it. Runtime and web Lambdas now
 set 14-day CloudWatch log retention, so leftover
-`/aws/lambda/AutoHarness-<environment>*` groups expire after that window instead
-of living forever.
+`/aws/lambda/AutoHarness-<environment>*` groups stop accumulating events after
+that window — retention expires log *events*, not the log group resource
+itself, so the (now-empty) groups remain until deleted manually.
 
 Similarly, when access logs were ever enabled (`HARNESS_ACCESS_LOGS_ENABLED=1`),
 purge does not delete the two `HttpAccessLogs`/`WebSocketAccessLogs` CloudWatch
 log groups either: unlike the environment's tables, archive bucket, and KMS key,
 they are not retargeted to `DeletionPolicy: Delete` before the runtime stack is
 destroyed (see `services/cdk/src/runtime-observability.ts`), so `cdk destroy`
-orphans them instead of removing them. They carry the same 14-day retention as
-the Lambda log groups above, so they expire on their own instead of living
-forever.
+orphans them instead of removing them. Same as the Lambda log groups above,
+their 14-day retention only stops new events from accumulating — the empty
+group itself is not deleted and remains until removed manually.
 
 Purge also does not touch the account-level CDK bootstrap assets — the
 `cdk-hnb659fds-assets-*` S3 staging bucket and the

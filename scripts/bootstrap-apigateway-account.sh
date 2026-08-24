@@ -23,9 +23,12 @@ CDKToolkit stack in this account/region if one isn't already present or is
 out of date. That is the only other resource this script touches; no
 application stack in this account is modified.
 
-After this succeeds, opt individual deploys into API Gateway access logs
-with:
-  HARNESS_ACCESS_LOGS_ENABLED=1 pnpm deploy:aws
+After this succeeds, opt into API Gateway access logs:
+  - existing environment: HARNESS_ACCESS_LOGS_ENABLED=1 pnpm deploy:aws
+  - new environment's first deploy: pnpm deploy:aws runs the update flow,
+    which refuses to run without an existing foundation stack, so set
+    HARNESS_ACCESS_LOGS_ENABLED=1 before its
+    'pnpm --filter @auto-harness/cdk run deploy' instead
 EOF
 
 if [[ -t 0 ]]; then
