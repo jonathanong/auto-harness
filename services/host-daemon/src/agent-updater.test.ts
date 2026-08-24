@@ -51,7 +51,11 @@ describe("AgentUpdater", () => {
       onState: (state) => states.push(state.phase),
     });
     const [first, duplicate] = await Promise.all([updater.run(), updater.run()]);
-    expect(first).toEqual({ phase: "complete", currentVersion: "1.2.0" });
+    expect(first).toEqual({
+      phase: "restarting",
+      currentVersion: "1.1.9",
+      targetVersion: "1.2.0",
+    });
     expect(duplicate).toEqual(first);
     expect(calls).toEqual([
       "drain",
@@ -61,7 +65,7 @@ describe("AgentUpdater", () => {
       "activate:1.2.0",
       "restart",
     ]);
-    expect(states).toEqual(["draining", "downloading", "staged", "restarting", "complete"]);
+    expect(states).toEqual(["draining", "downloading", "staged", "restarting"]);
     await expect(updater.run()).resolves.toEqual(first);
     expect(calls).toHaveLength(6);
   });
@@ -134,8 +138,9 @@ describe("AgentUpdater", () => {
       },
     });
     await expect(largeVersionUpdater.run()).resolves.toEqual({
-      phase: "complete",
-      currentVersion: "9007199254740993.0.0",
+      phase: "restarting",
+      currentVersion: "9007199254740992.0.0",
+      targetVersion: "9007199254740993.0.0",
     });
   });
 

@@ -13,7 +13,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createFileUpdateInstaller, readInstalledVersion } from "./agent-updater-install.ts";
+import {
+  confirmPendingUpdateBoot,
+  createFileUpdateInstaller,
+  readInstalledVersion,
+  recoverPendingUpdateBoot,
+} from "./agent-updater-install.ts";
 
 function runnableExtract(_archivePath: string, destination: string): void {
   const launcher = join(destination, "services/host-daemon/bin");
@@ -159,6 +164,10 @@ describe("file update installer links", () => {
       expect(realpathSync(join(rootDir, "current"))).toBe(
         realpathSync(join(rootDir, "versions", "1.2.0")),
       );
+      await expect(recoverPendingUpdateBoot({ rootDir, platform: "win32" })).resolves.toBe(
+        "booting",
+      );
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
       await installer.stage({ version: "1.3.0", artifact: new Uint8Array() });
       rejectReplacement = true;
       await expect(installer.activate("1.3.0")).rejects.toThrow("replacement junction failed");

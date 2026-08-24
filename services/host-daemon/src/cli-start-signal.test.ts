@@ -1,10 +1,26 @@
+/* eslint-disable max-lines -- CLI preflight, boot-recovery, and signal paths share the real daemon harness. */
 import { createServer } from "node:http";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { emptyDaemonConfig } from "./bootstrap.ts";
+import {
+  createFileUpdateInstaller,
+  readInstalledVersion,
+  recoverPendingUpdateBoot,
+} from "./agent-updater-install.ts";
 import { runCli, type RunSessionDeps } from "./cli.ts";
+
+function runnableUpdateTree(_archivePath: string, destination: string): void {
+  const launcher = join(destination, "services/host-daemon/bin");
+  mkdirSync(launcher, { recursive: true });
+  writeFileSync(join(destination, "package.json"), "{}\n");
+  writeFileSync(join(launcher, "auto-harness-host-daemon.mjs"), "// launcher\n");
+}
 
 /**
  * `start`'s signal-handling path, exercised against a real startDaemon and a local WS
@@ -119,6 +135,37 @@ function minimalDeps(overrides: Partial<RunSessionDeps>): RunSessionDeps {
 }
 
 describe("runCli start signal handling", () => {
+  it("records a replacement boot before a config preflight failure", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "ah-cli-update-"));
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableUpdateTree });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      const errors: string[] = [];
+
+      await expect(
+        runCli(
+          ["node", "x", "start"],
+          { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          minimalDeps({
+            error: (message) => errors.push(message),
+            loadConfig: async () => {
+              throw new Error("config preflight failed");
+            },
+          }),
+        ),
+      ).resolves.toBe(1);
+      expect(errors).toEqual(["config preflight failed"]);
+
+      // The failed first replacement has consumed its boot attempt, so a
+      // supervisor relaunch restores the predecessor instead of crash-looping.
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("rolled-back");
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("registers real signal handlers and resolves once one fires", async () => {
     const server = await acceptingServer();
     const proc = fakeProcess();

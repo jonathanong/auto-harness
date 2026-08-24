@@ -442,7 +442,9 @@ time (all relative, full timestamp on hover). A daemon process keeps one opaque 
 WebSocket reconnects; the control plane counts a restart only when a later registration changes a
 previously known instance id. Legacy daemons establish no baseline. This is local API/UI
 observability. Stale/offline host reclaim also enqueues an external Slack **Host Offline**
-notification when that toggle is enabled. It is not permission to restart a host.
+notification when that toggle is enabled. Its retry candidate is retained with the released host
+lease until the durable Slack outbox accepts it, so independent WebSocket and cron Lambdas can
+resume delivery after a cold start. It is not permission to restart a host.
 
 An offline host's Overview tab also shows **Connect this host**: the quoted env +
 `pnpm local:daemon start` foreground command, plus the same quoted env with

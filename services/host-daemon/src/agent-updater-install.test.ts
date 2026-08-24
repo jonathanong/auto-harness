@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- installer staging, activation, rollback, and boot recovery share one tree helper. */
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,9 +7,10 @@ import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  confirmPendingUpdateBoot,
   createFileUpdateInstaller,
-  pruneConfirmedVersions,
   readInstalledVersion,
+  recoverPendingUpdateBoot,
   removeStagedVersion,
 } from "./agent-updater-install.ts";
 
@@ -33,6 +35,16 @@ describe("file update installer", () => {
       await installer.activate("1.2.0");
       expect(lstatSync(join(rootDir, "current")).isSymbolicLink()).toBe(true);
       expect(readInstalledVersion(rootDir)).toBe("1.2.0");
+      expect(() => confirmPendingUpdateBoot(rootDir)).toThrow("was not attempted");
+
+      // A second activation cannot overwrite the durable acknowledgement fence
+      // left by the first one.
+      await expect(installer.activate("1.3.0")).rejects.toThrow("awaiting health acknowledgement");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      writeFileSync(join(rootDir, "current", ".auto-harness-version"), "9.9.9\n");
+      expect(() => confirmPendingUpdateBoot(rootDir)).toThrow("does not match the active release");
+      writeFileSync(join(rootDir, "current", ".auto-harness-version"), "1.2.0\n");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
 
       await installer.stage({ version: "1.3.0", artifact: new Uint8Array([2]) });
       await installer.activate("1.3.0");
@@ -71,24 +83,78 @@ describe("file update installer", () => {
     }
   });
 
-  it("prunes only confirmed obsolete release trees while retaining active and rollback", async () => {
+  it("prunes obsolete release trees only after the replacement boot is confirmed", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
-      for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
+      for (const version of ["1.0.0", "1.1.0"]) {
         await installer.stage({ version, artifact: new Uint8Array() });
         await installer.activate(version);
+        await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+        expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
       }
-      const marker = join(rootDir, "current", ".auto-harness-version");
-      writeFileSync(marker, "9.9.9\n");
-      expect(pruneConfirmedVersions(rootDir)).toEqual([]);
+      await installer.stage({ version: "1.2.0", artifact: new Uint8Array() });
+      await installer.activate("1.2.0");
       expect(existsSync(join(rootDir, "versions", "1.0.0"))).toBe(true);
-
-      writeFileSync(marker, "1.2.0\n");
-      expect(pruneConfirmedVersions(rootDir)).toEqual(["1.0.0"]);
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
       expect(existsSync(join(rootDir, "versions", "1.0.0"))).toBe(false);
       expect(existsSync(join(rootDir, "versions", "1.1.0"))).toBe(true);
       expect(existsSync(join(rootDir, "versions", "1.2.0"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rolls back a replacement that starts twice without a health acknowledgement", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+
+      await installer.stage({ version: "1.1.0", artifact: new Uint8Array() });
+      await installer.activate("1.1.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("rolled-back");
+      expect(readInstalledVersion(rootDir)).toBe("1.0.0");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails closed for an unreadable boot marker and ignores one after a prior rollback", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+
+      const marker = join(rootDir, ".auto-harness-update-boot.json");
+      writeFileSync(marker, "not-json\n");
+      await expect(recoverPendingUpdateBoot({ rootDir })).rejects.toThrow(
+        "invalid pending update boot marker",
+      );
+      writeFileSync(marker, '{"version":"1.0.0"}\n');
+      await expect(recoverPendingUpdateBoot({ rootDir })).rejects.toThrow(
+        "invalid pending update boot marker",
+      );
+      writeFileSync(marker, '{"version":"not-a-version","attempted":true}\n');
+      await expect(recoverPendingUpdateBoot({ rootDir })).rejects.toThrow("invalid update version");
+
+      writeFileSync(marker, '{"version":"1.1.0","attempted":true}\n');
+      // A stale marker from a pointer that was already restored cannot roll
+      // back the healthy active release a second time.
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("none");
+      expect(existsSync(marker)).toBe(false);
+
+      mkdirSync(marker);
+      await expect(recoverPendingUpdateBoot({ rootDir })).rejects.toThrow();
     } finally {
       cleanup();
     }
@@ -102,6 +168,22 @@ describe("file update installer", () => {
       await installer.activate("1.0.0");
       await installer.rollback();
       expect(existsSync(join(rootDir, "current"))).toBe(false);
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails closed by removing an incomplete first-install pointer on the next boot", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      rmSync(join(rootDir, "current"), { recursive: true, force: true });
+
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("rolled-back");
+      expect(existsSync(join(rootDir, ".auto-harness-update-boot.json"))).toBe(false);
       expect(readInstalledVersion(rootDir)).toBeUndefined();
     } finally {
       cleanup();

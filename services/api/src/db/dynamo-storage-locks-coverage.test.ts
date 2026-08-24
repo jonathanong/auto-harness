@@ -1,13 +1,16 @@
+/* eslint-disable max-lines -- real Dynamo lock, retry-candidate, and paging cases share one table fixture. */
 import {
   ConditionalCheckFailedException,
   DeleteTableCommand,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
+  clearHostOfflineAlertCandidate,
   conditionalHostWriteOrThrow,
   connectionPageItems,
   deleteConnection,
@@ -15,10 +18,12 @@ import {
   getHostLock,
   heartbeatConnection,
   listConnections,
+  listHostOfflineAlertCandidates,
   markHostDraining,
   putConnection,
   releaseHostConnection,
   releaseHostLock,
+  recordHostOfflineAlertCandidate,
   tryAcquireHostLock,
   tryRegisterHost,
 } from "./plane-storage-locks.ts";
@@ -133,6 +138,105 @@ describe("DynamoDB Local host lock adapters", () => {
     );
     await deleteConnection(ctx, "standalone");
     expect(await getConnection(ctx, "standalone")).toBeNull();
+  });
+
+  it("durably records and conditionally clears offline-alert candidates", async () => {
+    await tryRegisterHost(ctx, {
+      hostId: "alert-host",
+      connection: connection("alert-connection", "alert-host"),
+      replaceExisting: false,
+    });
+    expect(
+      await releaseHostConnection(ctx, {
+        hostId: "alert-host",
+        connectionId: "alert-connection",
+        offlineAlert: {
+          reason: "agent disconnected; requeued",
+          lastHeartbeatAt: at,
+        },
+      }),
+    ).toBe(true);
+    await expect(listHostOfflineAlertCandidates(ctx)).resolves.toContainEqual({
+      hostId: "alert-host",
+      reason: "agent disconnected; requeued",
+      lastHeartbeatAt: at,
+    });
+    expect(
+      await clearHostOfflineAlertCandidate(ctx, {
+        hostId: "alert-host",
+        reason: "newer candidate",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(false);
+    expect(
+      await clearHostOfflineAlertCandidate(ctx, {
+        hostId: "alert-host",
+        reason: "agent disconnected; requeued",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(true);
+    expect(
+      await recordHostOfflineAlertCandidate(ctx, {
+        hostId: "alert-host",
+        reason: "agent disconnected; requeued",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(true);
+    // A replacement registration is a fresh liveness signal, so it removes a
+    // retry candidate that a concurrently warming cron Lambda might observe.
+    expect(
+      await tryRegisterHost(ctx, {
+        hostId: "alert-host",
+        connection: connection("alert-reconnected", "alert-host"),
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    await expect(listHostOfflineAlertCandidates(ctx)).resolves.not.toContainEqual(
+      expect.objectContaining({ hostId: "alert-host" }),
+    );
+    expect(
+      await recordHostOfflineAlertCandidate(ctx, {
+        hostId: "legacy-alert-host",
+        reason: "agent heartbeat stale; requeued",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(true);
+    // A partially-corrupt legacy row still satisfies the Dynamo filter, but
+    // must never become an alert payload.
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: "malformed-alert-host",
+          offlineAlertReason: 1,
+          offlineAlertLastHeartbeatAt: at,
+        },
+      }),
+    );
+    // A cold cron Lambda must not overwrite a newer durable observation with
+    // an older warm-process retry candidate.
+    expect(
+      await recordHostOfflineAlertCandidate(ctx, {
+        hostId: "legacy-alert-host",
+        reason: "older candidate",
+        lastHeartbeatAt: "2025-12-31T23:59:59.000Z",
+      }),
+    ).toBe(false);
+    await expect(listHostOfflineAlertCandidates(ctx)).resolves.toContainEqual({
+      hostId: "legacy-alert-host",
+      reason: "agent heartbeat stale; requeued",
+      lastHeartbeatAt: at,
+    });
+    await expect(listHostOfflineAlertCandidates(ctx)).resolves.not.toContainEqual(
+      expect.objectContaining({ hostId: "malformed-alert-host" }),
+    );
+    expect(
+      await clearHostOfflineAlertCandidate(ctx, {
+        hostId: "legacy-alert-host",
+        reason: "agent heartbeat stale; requeued",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(true);
   });
 
   it("continues a real DynamoDB scan past its one-megabyte page boundary", async () => {

@@ -624,8 +624,10 @@ install, and systemd/launchd/schtasks restart adapters are wired when
 `HARNESS_UPDATE_MANIFEST_URL` and `HARNESS_UPDATE_PUBLIC_KEY` are set; operators still have
 the manual runbook. Host registration carries one daemon-process identity across reconnects;
 durable inventory records count identity changes and expose API/UI restart observability.
-Stale/offline host reclaim enqueues an external Slack `onHostOffline` alert when that
-notification is enabled. Slack config CRUD and outbound session-thread delivery exist; OAuth
+Stale/offline host reclaim atomically records a retry candidate while it releases the host lease,
+then enqueues an external Slack `onHostOffline` alert when that notification is enabled. The
+candidate remains until the durable outbox accepts it, so independent WebSocket and cron Lambdas
+can retry after cold starts. Slack config CRUD and outbound session-thread delivery exist; OAuth
 and inbound verification do not. Provider-aware CLI usage adapters emit structured
 `SessionUsage` from Claude/Codex/Gemini/Grok results so session usage and configured-cost
 views reflect real executions. DynamoDB Local tests that share one endpoint run in a

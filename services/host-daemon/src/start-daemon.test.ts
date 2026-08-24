@@ -1,10 +1,32 @@
+/* eslint-disable max-lines -- startup, registration, and replacement-boot cases share one WebSocket harness. */
 import { createServer } from "node:http";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
+import {
+  confirmPendingUpdateBoot,
+  createFileUpdateInstaller,
+  readInstalledVersion,
+  recoverPendingUpdateBoot,
+} from "./agent-updater-install.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
-import { requestSupervisorRestart, startDaemon } from "./start-daemon.ts";
+import { prepareDaemonUpdateBoot, requestSupervisorRestart, startDaemon } from "./start-daemon.ts";
+
+function runnableExtract(_archivePath: string, destination: string): void {
+  const launcher = join(destination, "services/host-daemon/bin");
+  mkdirSync(launcher, { recursive: true });
+  writeFileSync(join(destination, "package.json"), "{}\n");
+  writeFileSync(join(launcher, "auto-harness-host-daemon.mjs"), "// launcher\n");
+}
+
+function updateRoot(): { rootDir: string; cleanup: () => void } {
+  const rootDir = mkdtempSync(join(tmpdir(), "ah-update-start-"));
+  return { rootDir, cleanup: () => rmSync(rootDir, { recursive: true, force: true }) };
+}
 
 describe("startDaemon", () => {
   it("queues the Linux supervisor handoff without invoking systemctl", async () => {
@@ -13,6 +35,205 @@ describe("startDaemon", () => {
     expect(signals).toEqual([]);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(signals).toEqual([[process.pid, "SIGTERM"]]);
+  });
+
+  it("rolls back a second unacknowledged replacement boot before daemon preflight", async () => {
+    const { rootDir, cleanup } = updateRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+      await installer.stage({ version: "1.1.0", artifact: new Uint8Array() });
+      await installer.activate("1.1.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+
+      let handoffs = 0;
+      await expect(
+        prepareDaemonUpdateBoot({
+          env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          log: () => undefined,
+          error: () => undefined,
+          service: {
+            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+            log: () => undefined,
+            error: () => undefined,
+            platform: "linux",
+            restartHandoff: () => {
+              handoffs += 1;
+            },
+          },
+        }),
+      ).rejects.toThrow("rolled back unacknowledged update boot");
+      expect(readInstalledVersion(rootDir)).toBe("1.0.0");
+      expect(handoffs).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails closed when a rollback cannot request its Linux supervisor handoff", async () => {
+    const { rootDir, cleanup } = updateRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+
+      await expect(
+        prepareDaemonUpdateBoot({
+          env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          log: () => undefined,
+          error: () => undefined,
+          service: {
+            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+            log: () => undefined,
+            error: () => undefined,
+            platform: "linux",
+          },
+        }),
+      ).rejects.toThrow("could not restart the supervisor");
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("acknowledges a replacement only after its registration barrier opens", async () => {
+    const { rootDir, cleanup: cleanupUpdate } = updateRoot();
+    const { config, cleanup } = await makeRepo();
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    wss.on("connection", (socket) => {
+      socket.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; hostId?: string };
+        if (message.type === "host:register") {
+          socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+        }
+        if (message.type === "host:status") {
+          socket.send(JSON.stringify({ type: "host:draining", hostId: message.hostId }));
+        }
+      });
+    });
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      await listen(server);
+      const lines: string[] = [];
+      const daemon = await startDaemon({
+        config,
+        wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
+        childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+        updateBootPrepared: true,
+        inventoryPollMs: 0,
+        log: (line) => lines.push(line),
+      });
+      expect(lines).toContain("updater replacement health acknowledged");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(false);
+      await daemon.stop();
+    } finally {
+      await close(wss, server);
+      cleanup();
+      cleanupUpdate();
+    }
+  });
+
+  it("fails closed if registration reaches an unattempted update marker", async () => {
+    const { rootDir, cleanup: cleanupUpdate } = updateRoot();
+    const { config, cleanup } = await makeRepo();
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    wss.on("connection", (socket) => {
+      socket.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; hostId?: string };
+        if (message.type === "host:register") {
+          socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+        }
+      });
+    });
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await listen(server);
+
+      await expect(
+        startDaemon({
+          config,
+          wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
+          childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          updateBootPrepared: true,
+          inventoryPollMs: 0,
+          log: () => undefined,
+          error: () => undefined,
+        }),
+      ).rejects.toThrow("pending update boot was not attempted");
+
+      // The failure path consumes the boot attempt instead of letting an
+      // invalid marker survive indefinitely; a successful later registration
+      // may acknowledge it.
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+    } finally {
+      await close(wss, server);
+      cleanup();
+      cleanupUpdate();
+    }
+  });
+
+  it("rolls back and reports a broken acknowledgement before the daemon can continue", async () => {
+    const { rootDir, cleanup: cleanupUpdate } = updateRoot();
+    const { config, cleanup } = await makeRepo();
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    const kill = vi.spyOn(process, "kill").mockReturnValue(true);
+    wss.on("connection", (socket) => {
+      socket.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; hostId?: string };
+        if (message.type === "host:register") {
+          // Simulate a release that becomes unreadable between first-boot
+          // preparation and its registration acknowledgement.
+          rmSync(join(rootDir, "current"), { recursive: true, force: true });
+          socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+        }
+      });
+    });
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      await listen(server);
+
+      await expect(
+        startDaemon({
+          config,
+          wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
+          childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          updateBootPrepared: true,
+          updateService: {
+            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+            log: () => undefined,
+            error: () => undefined,
+            platform: "linux",
+            restartHandoff: requestSupervisorRestart,
+          },
+          inventoryPollMs: 0,
+          log: () => undefined,
+          error: () => undefined,
+        }),
+      ).rejects.toThrow("updater health acknowledgement failed");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(kill).toHaveBeenCalledWith(process.pid, "SIGTERM");
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      kill.mockRestore();
+      await close(wss, server);
+      cleanup();
+      cleanupUpdate();
+    }
   });
 
   it("times out a server that never opens the registration barrier", async () => {

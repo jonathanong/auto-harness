@@ -58,6 +58,11 @@ export class AgentUpdater {
   }
 
   run(): Promise<UpdateState> {
+    // A successful supervisor handoff ends this process's part of the
+    // transaction. The replacement daemon confirms health from its own boot;
+    // do not start a second activation while that durable acknowledgement is
+    // still pending.
+    if (this.state.phase === "restarting") return Promise.resolve(this.getState());
     if (this.running) return this.running;
     this.running = this.runOnce().finally(() => {
       this.running = undefined;
@@ -108,7 +113,10 @@ export class AgentUpdater {
         targetVersion,
       });
       await this.options.installer.restart();
-      return this.transition({ phase: "complete", currentVersion: targetVersion });
+      // `restart()` only requests a supervisor handoff. A durable boot marker
+      // is acknowledged by the replacement daemon after it registers, so this
+      // old process must never declare the update complete on its behalf.
+      return this.getState();
     } catch (error) {
       let failure = error instanceof Error ? error.message : String(error);
       if (activated) {

@@ -118,6 +118,25 @@ describe("parseCliUsage", () => {
     ).toBe(true);
     expect(
       parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output:
+          '{"type":"result","subtype":"usage_limit","is_error":true,"error":{"type":"usage_limit"},"usage":{"input_tokens":6,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}',
+        observedAt,
+      }),
+    ).toEqual({
+      usage: {
+        kind: "cumulative",
+        sequence: 0,
+        source: "cli",
+        observedAt,
+        inputTokens: "6",
+        outputTokens: "2",
+        cachedInputTokens: "7",
+      },
+      usageLimit: true,
+    });
+    expect(
+      parseCliUsage({
         argv: ["codex", "exec", "--json"],
         output: '{"type":"turn.failed","error":{"type":"insufficient_quota"}}',
         observedAt,

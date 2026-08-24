@@ -177,6 +177,12 @@ sudo install -m 0644 \
 # This root-owned wrapper stays outside the activated tree; it reads the env-file's
 # HARNESS_UPDATE_INSTALL_DIR and then selects that tree's current pointer.
 sudo install -d -m 0755 /opt/auto-harness
+# The daemon switches UPDATE_ROOT/current and writes releases below versions/.
+# Provision both paths for the service user, including on a reinstall where
+# versions/ was previously root-owned. Keep this after the wrapper directory:
+# UPDATE_ROOT is /opt/auto-harness by default and must remain harness-writable.
+sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT"
+sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT/versions"
 sudo install -m 0755 \
   "$UPDATE_ROOT/current/services/host-daemon/systemd/run-host-daemon.sh" \
   /opt/auto-harness/run-host-daemon.sh
@@ -326,8 +332,12 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 
 `AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
 durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, activate, request
-supervisor restart, and roll back plus resume scheduling if activation or restart fails. Concurrent
-runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
+supervisor restart, and roll back plus resume scheduling if activation or restart fails. Activation
+also writes a durable pending-boot marker before switching `current`. The first replacement daemon
+marks that boot as attempted before preflight; it clears the marker only after the control plane
+accepts its registration. If that replacement crashes before acknowledgement, its next supervisor
+launch rolls `current` back to the saved release and restarts through the stable launcher. Obsolete
+release trees are pruned only after that acknowledgement. Concurrent runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
 `HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM; use literal `\\n` in a single-line EnvironmentFile),
 optional `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
 `~/Library/Application Support/auto-harness/updates` on macOS, and
@@ -344,9 +354,9 @@ restart does not reinstall the same release. Linux requests an asynchronous self
 updater transaction; its already-authorized systemd supervisor restarts it, rather than the
 unprivileged service user invoking `systemctl`. macOS and Windows supervisors invoke stable
 launcher files outside the activated tree, so their next start resolves the new `current` pointer.
-On Linux, the selected update root must be writable by `harness`; the dedicated-VPS bootstrap above
-already gives `harness` ownership of `/opt/auto-harness`. The stable launcher itself is root-owned
-and is not replaced by the updater.
+On Linux, the selected update root and its `versions/` directory must be writable by `harness`; the
+dedicated-VPS bootstrap above provisions both, including after a root-driven reinstall. The stable
+launcher itself is root-owned and is not replaced by the updater.
 The manual steps above remain valid when those variables are unset.
 
 ### Rollback

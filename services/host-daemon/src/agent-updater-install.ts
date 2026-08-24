@@ -18,6 +18,7 @@ import type { UpdateInstaller } from "./agent-updater.ts";
 import { assertRunnableTree } from "./agent-updater-install-tree.ts";
 
 const VERSION_FILE = ".auto-harness-version";
+const BOOT_MARKER_FILE = ".auto-harness-update-boot.json";
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 type ArchiveRun = (
@@ -60,6 +61,60 @@ function atomicWrite(path: string, value: string): void {
   const next = `${path}.next`;
   writeFileSync(next, value, "utf8");
   renameSync(next, path);
+}
+
+type PendingUpdateBoot = {
+  version: string;
+  attempted: boolean;
+};
+
+export type UpdateBootRecovery = "none" | "booting" | "rolled-back";
+
+function bootMarkerPath(rootDir: string): string {
+  return join(rootDir, BOOT_MARKER_FILE);
+}
+
+function readPendingUpdateBoot(rootDir: string): PendingUpdateBoot | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(bootMarkerPath(rootDir), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    // Treat an inaccessible or malformed marker path as a startup failure.
+    // Silently treating it as absent could let a crash-looping release bypass
+    // the durable rollback fence.
+    throw error;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("invalid pending update boot marker");
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !(
+      "version" in parsed &&
+      "attempted" in parsed &&
+      typeof parsed.version === "string" &&
+      typeof parsed.attempted === "boolean"
+    )
+  ) {
+    throw new Error("invalid pending update boot marker");
+  }
+  requireVersion(parsed.version);
+  return { version: parsed.version, attempted: parsed.attempted };
+}
+
+function writePendingUpdateBoot(rootDir: string, marker: PendingUpdateBoot): void {
+  requireVersion(marker.version);
+  mkdirSync(rootDir, { recursive: true });
+  atomicWrite(bootMarkerPath(rootDir), `${JSON.stringify(marker)}\n`);
+}
+
+function clearPendingUpdateBoot(rootDir: string): void {
+  rmSync(bootMarkerPath(rootDir), { force: true });
 }
 
 function linkTarget(version: string): string {
@@ -152,6 +207,59 @@ export function readInstalledVersion(rootDir: string): string | undefined {
   }
 }
 
+/**
+ * Recover an activation that crossed the stable `current` pointer but never
+ * reached a registered replacement daemon. The first replacement process
+ * records its boot attempt before any network work; a subsequent launch rolls
+ * back to the saved predecessor instead of trying the crashing release again.
+ */
+export async function recoverPendingUpdateBoot(options: {
+  rootDir: string;
+  platform?: NodeJS.Platform;
+  renamePath?: RenamePath;
+}): Promise<UpdateBootRecovery> {
+  const pending = readPendingUpdateBoot(options.rootDir);
+  if (!pending) return "none";
+  const activeVersion = readInstalledVersion(options.rootDir);
+  if (activeVersion !== pending.version) {
+    if (activeVersion === undefined) {
+      await createFileUpdateInstaller(options).rollback();
+      return "rolled-back";
+    }
+    // A failed activation never switched the pointer (or a prior rollback
+    // already did), so this marker cannot authorize a rollback of the active
+    // release.
+    clearPendingUpdateBoot(options.rootDir);
+    return "none";
+  }
+  if (pending.attempted) {
+    await createFileUpdateInstaller(options).rollback();
+    return "rolled-back";
+  }
+  writePendingUpdateBoot(options.rootDir, { ...pending, attempted: true });
+  return "booting";
+}
+
+/** A successful control-plane registration is the replacement daemon's health acknowledgement. */
+export function confirmPendingUpdateBoot(rootDir: string): boolean {
+  const pending = readPendingUpdateBoot(rootDir);
+  if (!pending) return false;
+  if (!pending.attempted) {
+    throw new Error("pending update boot was not attempted");
+  }
+  if (readInstalledVersion(rootDir) !== pending.version) {
+    throw new Error("pending update boot does not match the active release");
+  }
+  clearPendingUpdateBoot(rootDir);
+  try {
+    pruneConfirmedVersions(rootDir);
+  } catch {
+    // Health is already durable; a best-effort cleanup failure must not turn a
+    // registered release into an unacknowledged boot that rolls back later.
+  }
+  return true;
+}
+
 function versionAtPointer(rootDir: string, target: string): string | undefined {
   const versions = join(rootDir, "versions");
   const resolvedTarget = isAbsolute(target) ? target : resolve(rootDir, target);
@@ -164,7 +272,7 @@ function versionAtPointer(rootDir: string, target: string): string | undefined {
  * can execute through the activated `current` pointer. The active and rollback
  * trees are retained so a later supervisor or activation failure remains safe.
  */
-export function pruneConfirmedVersions(rootDir: string): string[] {
+function pruneConfirmedVersions(rootDir: string): string[] {
   const current = join(rootDir, "current");
   const activeVersion = readInstalledVersion(rootDir);
   if (!activeVersion || currentKind(current) !== "symlink") return [];
@@ -246,6 +354,9 @@ export function createFileUpdateInstaller(options: {
     },
     async activate(version) {
       requireVersion(version);
+      if (readPendingUpdateBoot(options.rootDir)) {
+        throw new Error("an update boot is still awaiting health acknowledgement");
+      }
       const target = join(versions, version);
       if (readFileSync(join(target, VERSION_FILE), "utf8").trim() !== version) {
         throw new Error("staged update version marker does not match");
@@ -268,18 +379,27 @@ export function createFileUpdateInstaller(options: {
         throw new Error("current update path is not a directory pointer");
       }
       atomicWrite(previous, oldTarget);
-      switchCurrent(
-        options.rootDir,
-        linkTarget(version),
-        "next",
-        options.platform ?? process.platform,
-        renamePath,
-      );
+      writePendingUpdateBoot(options.rootDir, { version, attempted: false });
+      try {
+        switchCurrent(
+          options.rootDir,
+          linkTarget(version),
+          "next",
+          options.platform ?? process.platform,
+          renamePath,
+        );
+      } catch (error) {
+        if (readInstalledVersion(options.rootDir) !== version) {
+          clearPendingUpdateBoot(options.rootDir);
+        }
+        throw error;
+      }
     },
     async rollback() {
       const oldTarget = readFileSync(previous, "utf8");
       if (!oldTarget) {
         rmSync(current, { recursive: true, force: true });
+        clearPendingUpdateBoot(options.rootDir);
         return;
       }
       switchCurrent(
@@ -289,6 +409,7 @@ export function createFileUpdateInstaller(options: {
         options.platform ?? process.platform,
         renamePath,
       );
+      clearPendingUpdateBoot(options.rootDir);
     },
     async restart() {
       throw new Error("supervisor restart adapter is required");

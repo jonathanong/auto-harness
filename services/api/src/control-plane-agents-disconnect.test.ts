@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable disconnect and cold-Lambda retry cases share one control-plane fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
@@ -44,6 +45,257 @@ describe("durable host disconnect", () => {
     ).resolves.toEqual([]);
     expect(enqueue).toHaveBeenCalledTimes(2);
     expect(state.disconnectedHosts.has("offline")).toBe(false);
+  });
+
+  it("persists a local stale candidate before retrying an unavailable outbox", async () => {
+    const candidates = new Map<
+      string,
+      { hostId: string; reason: string; lastHeartbeatAt: string }
+    >();
+    let canPersist = false;
+    const state = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(state, {
+      recordHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => {
+        if (!canPersist) throw new Error("host-lock write unavailable");
+        candidates.set(candidate.hostId, candidate);
+        return true;
+      },
+      clearHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => {
+        const current = candidates.get(candidate.hostId);
+        if (
+          current?.reason !== candidate.reason ||
+          current.lastHeartbeatAt !== candidate.lastHeartbeatAt
+        ) {
+          return false;
+        }
+        candidates.delete(candidate.hostId);
+        return true;
+      },
+      listHostOfflineAlertCandidates: async () => [],
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack" as const,
+        encryptedConfig: "x",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        signingSecretConfigured: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      enqueue: async () => "created" as const,
+    });
+    state.disconnectedHosts.set("offline", { lastHeartbeatAt: "2000-01-01T00:00:00.000Z" });
+
+    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(candidates.size).toBe(0);
+    expect(state.disconnectedHosts.has("offline")).toBe(true);
+
+    canPersist = true;
+    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(candidates.size).toBe(0);
+    expect(state.disconnectedHosts.has("offline")).toBe(false);
+  });
+
+  it("writes a stale live lease's retry candidate before clearing it after enqueue", async () => {
+    const candidates = new Map<
+      string,
+      { hostId: string; reason: string; lastHeartbeatAt: string }
+    >();
+    const released: Array<{ hostId: string; connectionId: string }> = [];
+    const state = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(state, {
+      listWorktreesByHost: async () => [],
+      releaseHostConnection: async (
+        hostId: string,
+        connectionId: string,
+        candidate?: { reason: string; lastHeartbeatAt: string },
+      ) => {
+        released.push({ hostId, connectionId });
+        if (candidate) candidates.set(hostId, { hostId, ...candidate });
+        return true;
+      },
+      recordHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => (candidates.set(candidate.hostId, candidate), true),
+      clearHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => {
+        const current = candidates.get(candidate.hostId);
+        if (
+          current?.reason !== candidate.reason ||
+          current.lastHeartbeatAt !== candidate.lastHeartbeatAt
+        ) {
+          return false;
+        }
+        candidates.delete(candidate.hostId);
+        return true;
+      },
+      listHostOfflineAlertCandidates: async () => [],
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack" as const,
+        encryptedConfig: "x",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        signingSecretConfigured: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      enqueue: async () => "created" as const,
+    });
+    state.connections.set("connection-1", {
+      connectionId: "connection-1",
+      type: "host",
+      hostId: "offline",
+      connectedAt: "2000-01-01T00:00:00.000Z",
+      lastHeartbeatAt: "2000-01-01T00:00:00.000Z",
+      commandProfiles: [],
+    });
+    state.hostConnection.set("offline", "connection-1");
+
+    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(released).toEqual([{ hostId: "offline", connectionId: "connection-1" }]);
+    expect(candidates.size).toBe(0);
+    expect(state.disconnectedHosts.has("offline")).toBe(false);
+  });
+
+  it("retries a lease-release alert from fresh WS and cron Lambda state", async () => {
+    const candidates = new Map<
+      string,
+      { hostId: string; reason: string; lastHeartbeatAt: string }
+    >();
+    let outboxAvailable = false;
+    const storage = {
+      getHostLock: async () => "connection-1",
+      listWorktreesByHost: async () => [],
+      releaseHostConnection: async (
+        hostId: string,
+        _connectionId: string,
+        candidate?: { reason: string; lastHeartbeatAt: string },
+      ) => {
+        if (candidate) candidates.set(hostId, { hostId, ...candidate });
+        return true;
+      },
+      deleteConnection: async () => undefined,
+      recordHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => (candidates.set(candidate.hostId, candidate), true),
+      clearHostOfflineAlertCandidate: async (candidate: {
+        hostId: string;
+        reason: string;
+        lastHeartbeatAt: string;
+      }) => {
+        const current = candidates.get(candidate.hostId);
+        if (
+          current?.reason !== candidate.reason ||
+          current.lastHeartbeatAt !== candidate.lastHeartbeatAt
+        ) {
+          return false;
+        }
+        candidates.delete(candidate.hostId);
+        return true;
+      },
+      listHostOfflineAlertCandidates: async () => [...candidates.values()],
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack" as const,
+        encryptedConfig: "x",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        signingSecretConfigured: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      enqueue: async () => {
+        if (!outboxAvailable) throw new Error("outbox unavailable");
+        return "created" as const;
+      },
+    };
+    const wsState = createControlPlaneState({ storage: storage as never });
+    wsState.connections.set("connection-1", {
+      connectionId: "connection-1",
+      type: "host",
+      hostId: "offline",
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      lastHeartbeatAt: "2026-01-01T00:00:01.000Z",
+      commandProfiles: [],
+    });
+    wsState.hostConnection.set("offline", "connection-1");
+
+    await expect(disconnectHostDurable(wsState, "connection-1")).resolves.toEqual([]);
+    expect(candidates.get("offline")).toEqual({
+      hostId: "offline",
+      reason: "agent disconnected; requeued",
+      lastHeartbeatAt: "2026-01-01T00:00:01.000Z",
+    });
+
+    const failedCronState = createControlPlaneState({
+      heartbeatStaleMs: 1,
+      storage: storage as never,
+    });
+    await expect(reclaimStaleHostsDurable(failedCronState, Date.now())).resolves.toEqual([]);
+    expect(candidates.has("offline")).toBe(true);
+
+    outboxAvailable = true;
+    const recoveredCronState = createControlPlaneState({
+      heartbeatStaleMs: 1,
+      storage: storage as never,
+    });
+    await expect(reclaimStaleHostsDurable(recoveredCronState, Date.now())).resolves.toEqual([]);
+    expect(candidates.has("offline")).toBe(false);
+  });
+
+  it("drops a warm-memory candidate when a fresh registration already cleared it", async () => {
+    const candidate = {
+      hostId: "online-again",
+      reason: "agent disconnected; requeued",
+      lastHeartbeatAt: "2000-01-01T00:00:00.000Z",
+    };
+    const state = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(state, {
+      recordHostOfflineAlertCandidate: async () => false,
+      clearHostOfflineAlertCandidate: async () => false,
+      listHostOfflineAlertCandidates: async () => [candidate],
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack" as const,
+        encryptedConfig: "x",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        signingSecretConfigured: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      enqueue: async () => "created" as const,
+    });
+    state.disconnectedHosts.set(candidate.hostId, {
+      lastHeartbeatAt: candidate.lastHeartbeatAt,
+    });
+
+    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(state.disconnectedHosts.has(candidate.hostId)).toBe(false);
   });
 
   it("drops stale local connections and reports requeues even when exact release loses", async () => {

@@ -38,6 +38,12 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_RELOAD_COMMAND}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_ENABLE_NOW_COMMAND}`);
+    expect(logs.join("\n")).toContain(
+      "sudo install -d -o harness -g harness -m 0755 /opt/auto-harness",
+    );
+    expect(logs.join("\n")).toContain(
+      "sudo install -d -o harness -g harness -m 0755 /opt/auto-harness/versions",
+    );
   });
 
   it("keeps /opt working directory and existing env as root", () => {
@@ -65,6 +71,8 @@ describe("install-service linux", () => {
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([
+      "install -d -o harness -g harness -m 0755 /opt/auto-harness",
+      "install -d -o harness -g harness -m 0755 /opt/auto-harness/versions",
       "systemctl daemon-reload",
       "systemctl enable auto-harness-host-daemon.service",
       "systemctl restart auto-harness-host-daemon.service",
@@ -97,6 +105,75 @@ describe("install-service linux", () => {
       `cd '${updateRoot}/current'`,
     );
     expect(fs.files.get(LINUX_ENV_DEST)).toContain(`HARNESS_UPDATE_INSTALL_DIR=${updateRoot}`);
+  });
+
+  it("provisions a custom update root for the unprivileged daemon before writing the root-owned launcher", () => {
+    const updateRoot = "/srv/auto-harness";
+    const spawn = recorder();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_UPDATE_INSTALL_DIR: updateRoot,
+          },
+          run: spawn.run,
+        }),
+      ),
+    ).toBe(0);
+    expect(spawn.calls.slice(0, 2)).toEqual([
+      {
+        command: "install",
+        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0755", updateRoot],
+      },
+      {
+        command: "install",
+        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0755", `${updateRoot}/versions`],
+      },
+    ]);
+  });
+
+  it("does not install a service when the update root cannot be made writable by harness", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (command) =>
+            command === "install"
+              ? { status: 1, stdout: "", stderr: "permission denied" }
+              : { status: 0, stdout: "", stderr: "" },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["install writable update root failed: permission denied"]);
+  });
+
+  it("does not install a service when an existing release directory cannot be made writable", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (_command, args) =>
+            args.at(-1) === "/opt/auto-harness/versions"
+              ? { status: 1, stdout: "", stderr: "permission denied" }
+              : { status: 0, stdout: "", stderr: "" },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["install writable update release directory failed: permission denied"]);
   });
 
   it("merges exported execution settings into an existing env", () => {
@@ -140,7 +217,10 @@ describe("install-service linux", () => {
             HARNESS_API_KEY: "secret",
             PATH: "/opt/homebrew/bin:/usr/bin",
           },
-          run: () => ({ status: 1, stdout: "", stderr: "reload failed" }),
+          run: (command, args) =>
+            command === "systemctl" && args[0] === "daemon-reload"
+              ? { status: 1, stdout: "", stderr: "reload failed" }
+              : { status: 0, stdout: "", stderr: "" },
         }),
       ),
     ).toBe(1);

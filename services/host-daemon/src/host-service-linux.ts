@@ -22,6 +22,10 @@ type LinuxPaths = {
   launcher: string;
 };
 
+// Keep this in sync with the checked-in systemd unit. The daemon runs as this
+// unprivileged account, so it must own the update root it mutates at runtime.
+const LINUX_SERVICE_USER = "harness";
+
 function linuxPaths(ctx: HostServiceContext): LinuxPaths {
   const updateRoot = resolveUpdateInstallDir(ctx.env, {
     platform: ctx.platform,
@@ -112,7 +116,12 @@ function stageLinux(
   ctx.log(`Staged in ephemeral directory ${stagedDir}`);
   ctx.log("Not running as root. Run:");
   ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
-  ctx.log(`  sudo install -d -m 0755 ${dirname(paths.launcher)}`);
+  ctx.log(
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${dirname(paths.launcher)}`,
+  );
+  ctx.log(
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${join(dirname(paths.launcher), "versions")}`,
+  );
   if (envContents !== undefined) {
     ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
   }
@@ -169,7 +178,32 @@ export function installLinux(ctx: HostServiceContext): number {
   }
 
   ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });
-  ctx.fs.mkdirSync(dirname(paths.launcher), { recursive: true, mode: 0o755 });
+  const updateRoot = ctx.run("install", [
+    "-d",
+    "-o",
+    LINUX_SERVICE_USER,
+    "-g",
+    LINUX_SERVICE_USER,
+    "-m",
+    "0755",
+    dirname(paths.launcher),
+  ]);
+  if (updateRoot.status !== 0) {
+    return failedCommand(ctx.error, "install writable update root", updateRoot);
+  }
+  const releaseRoot = ctx.run("install", [
+    "-d",
+    "-o",
+    LINUX_SERVICE_USER,
+    "-g",
+    LINUX_SERVICE_USER,
+    "-m",
+    "0755",
+    join(dirname(paths.launcher), "versions"),
+  ]);
+  if (releaseRoot.status !== 0) {
+    return failedCommand(ctx.error, "install writable update release directory", releaseRoot);
+  }
   if (writeEnv) {
     writeMode(ctx.fs, LINUX_ENV_DEST, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${LINUX_ENV_DEST} (mode 0600)`);

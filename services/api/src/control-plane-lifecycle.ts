@@ -14,6 +14,76 @@ export {
   retryPendingArchives,
 } from "./control-plane-archive.ts";
 
+type OfflineAlertCandidate = {
+  hostId: string;
+  reason: string;
+  lastHeartbeatAt: string;
+};
+
+type OfflineAlertCandidateStore = {
+  recordHostOfflineAlertCandidate(candidate: OfflineAlertCandidate): Promise<boolean>;
+  clearHostOfflineAlertCandidate(candidate: OfflineAlertCandidate): Promise<boolean>;
+  listHostOfflineAlertCandidates(): Promise<OfflineAlertCandidate[]>;
+};
+
+function offlineAlertCandidateStore(
+  state: ControlPlaneState,
+): OfflineAlertCandidateStore | undefined {
+  const storage = state.storage as unknown as Partial<OfflineAlertCandidateStore> | undefined;
+  if (
+    typeof storage?.recordHostOfflineAlertCandidate !== "function" ||
+    typeof storage.clearHostOfflineAlertCandidate !== "function" ||
+    typeof storage.listHostOfflineAlertCandidates !== "function"
+  ) {
+    return undefined;
+  }
+  return storage as OfflineAlertCandidateStore;
+}
+
+function clearLocalOfflineCandidate(
+  state: ControlPlaneState,
+  candidate: OfflineAlertCandidate,
+): void {
+  if (
+    state.disconnectedHosts.get(candidate.hostId)?.lastHeartbeatAt === candidate.lastHeartbeatAt
+  ) {
+    state.disconnectedHosts.delete(candidate.hostId);
+  }
+}
+
+async function enqueueOfflineAlertCandidate(
+  state: ControlPlaneState,
+  candidate: OfflineAlertCandidate,
+  store: OfflineAlertCandidateStore | undefined,
+): Promise<boolean> {
+  try {
+    await enqueueHostOfflineAlert(state, candidate);
+    if (store && !(await store.clearHostOfflineAlertCandidate(candidate))) {
+      // A fresh registration (or a newer disconnect) may have already
+      // replaced this candidate. Its durable record is authoritative, so do
+      // not retain this matching stale observation in a warm Lambda.
+      clearLocalOfflineCandidate(state, candidate);
+      return false;
+    }
+    clearLocalOfflineCandidate(state, candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function persistOfflineAlertCandidate(
+  store: OfflineAlertCandidateStore | undefined,
+  candidate: OfflineAlertCandidate,
+): Promise<boolean> {
+  if (!store) return true;
+  try {
+    return await store.recordHostOfflineAlertCandidate(candidate);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Heartbeat-based stale reclaim (Phase 3): free worktrees of agents whose
  * heartbeat is older than heartbeatStaleMs — faster than full session timeout.
@@ -78,6 +148,15 @@ export async function reclaimStaleHostsDurable(
   if (!state.storage) {
     return reclaimStaleHosts(state, nowMs);
   }
+  const alertStore = offlineAlertCandidateStore(state);
+  // This Lambda may have no warm-memory connection to the one that released
+  // the host lease. Deliver these durable candidates before considering the
+  // current process's stale-connection cache.
+  if (alertStore) {
+    for (const candidate of await alertStore.listHostOfflineAlertCandidates()) {
+      await enqueueOfflineAlertCandidate(state, candidate, alertStore);
+    }
+  }
   const reclaimed: string[] = [];
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
   for (const [hostId, connectionId] of state.hostConnection.entries()) {
@@ -97,15 +176,9 @@ export async function reclaimStaleHostsDurable(
     }
     const reason = "agent heartbeat stale; requeued";
     if (!meta.connectionId) {
-      try {
-        await enqueueHostOfflineAlert(state, {
-          hostId,
-          reason,
-          lastHeartbeatAt: meta.lastHeartbeatAt,
-        });
-        state.disconnectedHosts.delete(hostId);
-      } catch {
-        // Retain the disconnected candidate so a later sweep retries the alert.
+      const candidate = { hostId, reason, lastHeartbeatAt: meta.lastHeartbeatAt };
+      if (await persistOfflineAlertCandidate(alertStore, candidate)) {
+        await enqueueOfflineAlertCandidate(state, candidate, alertStore);
       }
       continue;
     }
@@ -113,7 +186,11 @@ export async function reclaimStaleHostsDurable(
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) reclaimed.push(sid);
     }
-    const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
+    const candidate = { hostId, reason, lastHeartbeatAt: meta.lastHeartbeatAt };
+    const released = await state.storage.releaseHostConnection(hostId, meta.connectionId, {
+      reason: candidate.reason,
+      lastHeartbeatAt: candidate.lastHeartbeatAt,
+    });
     if (!released) {
       state.connections.delete(meta.connectionId);
       if (state.hostConnection.get(hostId) === meta.connectionId) {
@@ -124,16 +201,9 @@ export async function reclaimStaleHostsDurable(
     state.connections.delete(meta.connectionId);
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.set(hostId, { lastHeartbeatAt: meta.lastHeartbeatAt });
-    try {
-      await enqueueHostOfflineAlert(state, {
-        hostId,
-        reason,
-        lastHeartbeatAt: meta.lastHeartbeatAt,
-      });
-      state.disconnectedHosts.delete(hostId);
-    } catch {
-      // The durable release already succeeded. Keep the candidate for alert retry.
-    }
+    // The candidate was written in the exact lease-release transaction, so a
+    // failed Slack lookup/enqueue remains visible to a cold cron Lambda.
+    await enqueueOfflineAlertCandidate(state, candidate, alertStore);
   }
   return reclaimed;
 }

@@ -1,9 +1,11 @@
 import { AgentUpdater } from "./agent-updater.ts";
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";
 import {
+  confirmPendingUpdateBoot,
   createFileUpdateInstaller,
-  pruneConfirmedVersions,
+  recoverPendingUpdateBoot,
   readInstalledVersion,
+  type UpdateBootRecovery,
 } from "./agent-updater-install.ts";
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
 import { resolveUpdateInstallDir } from "./update-install-dir.ts";
@@ -21,6 +23,38 @@ type DaemonUpdaterBindings = {
   fetchFn?: Parameters<typeof createHttpsUpdateFetcher>[1];
   now?: () => string;
 };
+
+type DaemonUpdateBootBindings = Pick<DaemonUpdaterBindings, "env" | "service">;
+
+function daemonUpdateInstallDir(bindings: DaemonUpdateBootBindings): string {
+  return resolveUpdateInstallDir(bindings.env, {
+    ...(bindings.service?.platform !== undefined ? { platform: bindings.service.platform } : {}),
+    ...(bindings.service?.home !== undefined ? { home: bindings.service.home } : {}),
+    ...(bindings.service?.appData !== undefined ? { appData: bindings.service.appData } : {}),
+  });
+}
+
+/**
+ * Record the first replacement boot or roll back an earlier replacement that
+ * crashed before it registered. This is intentionally available before the
+ * updater itself is configured so removing update settings cannot bypass an
+ * already-pending safety marker.
+ */
+export function recoverDaemonUpdateBoot(
+  bindings: DaemonUpdateBootBindings,
+): Promise<UpdateBootRecovery> {
+  return recoverPendingUpdateBoot({
+    rootDir: daemonUpdateInstallDir(bindings),
+    ...(bindings.service?.platform !== undefined
+      ? { platform: bindings.service.platform as NodeJS.Platform }
+      : {}),
+  });
+}
+
+/** A connected-and-registered daemon is the durable health acknowledgement for its release. */
+export function confirmDaemonUpdateBoot(bindings: DaemonUpdateBootBindings): boolean {
+  return confirmPendingUpdateBoot(daemonUpdateInstallDir(bindings));
+}
 
 export function parseUpdatePollMs(raw: string | undefined): number {
   if (raw === undefined || raw === "") return DEFAULT_POLL_MS;
@@ -45,21 +79,8 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
     throw new Error("HARNESS_UPDATE_MANIFEST_URL and HARNESS_UPDATE_PUBLIC_KEY are both required");
   }
   if (!bindings.service) throw new Error("supervisor restart adapter is required");
-  const installDir = resolveUpdateInstallDir(bindings.env, {
-    ...(bindings.service.platform !== undefined ? { platform: bindings.service.platform } : {}),
-    ...(bindings.service.home !== undefined ? { home: bindings.service.home } : {}),
-    ...(bindings.service.appData !== undefined ? { appData: bindings.service.appData } : {}),
-  });
+  const installDir = daemonUpdateInstallDir(bindings);
   const installedVersion = readInstalledVersion(installDir);
-  if (installedVersion) {
-    try {
-      pruneConfirmedVersions(installDir);
-    } catch (error) {
-      bindings.error(
-        `updater cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
   const configuredVersion = bindings.env.HARNESS_DAEMON_VERSION?.trim();
   const currentVersion = installedVersion ?? configuredVersion ?? "0.0.0";
   const files = createFileUpdateInstaller({

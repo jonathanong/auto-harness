@@ -45,8 +45,9 @@ it("keeps observer failures from interrupting activation and restart", async () 
   });
 
   await expect(updater.run()).resolves.toEqual({
-    phase: "complete",
-    currentVersion: "1.2.0",
+    phase: "restarting",
+    currentVersion: "1.0.0",
+    targetVersion: "1.2.0",
   });
   expect(calls).toEqual(["drain", "idle", "stage", "activate", "restart"]);
 });

@@ -211,6 +211,21 @@ export async function runCli(
     return 1;
   }
 
+  let updateBootPrepared = false;
+  if (command === "start") {
+    try {
+      const { prepareDaemonUpdateBoot } = await import("./start-daemon.ts");
+      // Do this before every daemon preflight, including child-environment and
+      // config validation, so a replacement that crashes during startup cannot
+      // loop forever without consuming its rollback attempt.
+      await prepareDaemonUpdateBoot({ env: resolvedEnv, log: deps.log, error: deps.error });
+      updateBootPrepared = true;
+    } catch (err) {
+      deps.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+  }
+
   if (command === "install-service") {
     const apiUrlIndex = args.indexOf("--api-url");
     const apiUrl = apiUrlIndex >= 0 ? args[apiUrlIndex + 1] : undefined;
@@ -334,11 +349,11 @@ export async function runCli(
   }
 
   if (command === "start") {
-    const config = await deps.loadConfig({ env: resolvedEnv });
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
       const { startDaemon } = await import("./start-daemon.ts");
+      const config = await deps.loadConfig({ env: resolvedEnv });
       const ready = await deps.ensureReady(config);
       const environmentNames = Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
         a.localeCompare(b),
@@ -364,6 +379,7 @@ export async function runCli(
         log: deps.log,
         error: deps.error,
         childEnvSource: resolvedEnv,
+        updateBootPrepared,
         ...(runtime ? { runtime } : {}),
       });
       // The previous handler ran stop() again on a second signal, had no catch — so a

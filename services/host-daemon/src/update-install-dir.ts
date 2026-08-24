@@ -3,8 +3,10 @@ import { join } from "node:path";
 
 /**
  * Select a writable, stable update root for the platform supervisor. The
- * service launchers live outside this directory and always resolve its
- * `current` pointer at process start.
+ * stable service launchers always resolve this directory's `current` pointer
+ * at process start. Linux keeps its root-owned launcher alongside the update
+ * tree; the installer separately grants the daemon user write access to the
+ * release root.
  */
 export function resolveUpdateInstallDir(
   env: NodeJS.ProcessEnv,

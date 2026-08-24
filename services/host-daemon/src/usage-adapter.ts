@@ -140,11 +140,11 @@ function parseClaudeRecord(value: JsonRecord, observedAt: string): ParsedCliUsag
   ) {
     return {};
   }
-  if (value.is_error) {
-    return claudeUsageLimit(value) ? { usageLimit: true } : {};
-  }
   const usage = record(value.usage);
-  return usage ? withUsage(usageFromRecord(usage, observedAt, "claude")) : {};
+  return {
+    ...(usage ? withUsage(usageFromRecord(usage, observedAt, "claude")) : {}),
+    ...(value.is_error && claudeUsageLimit(value) ? { usageLimit: true } : {}),
+  };
 }
 
 function parseCodexRecords(values: JsonRecord[], observedAt: string): ParsedCliUsage {

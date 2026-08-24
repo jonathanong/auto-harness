@@ -26,6 +26,13 @@ export function connectionPageItems(items: ConnectionRecord[] | undefined): Conn
   return items ?? [];
 }
 
+/** A disconnected-host alert that remains retryable after its lease is released. */
+export type HostOfflineAlertCandidate = {
+  hostId: string;
+  reason: string;
+  lastHeartbeatAt: string;
+};
+
 /**
  * Conditional agent lock (Invariant 3).
  * Returns false if hostId already locked and replace is false.
@@ -120,7 +127,7 @@ export async function tryRegisterHost(
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
               UpdateExpression:
-                "SET connectionId = :connectionId, draining = :draining, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty)",
+                "SET connectionId = :connectionId, draining = :draining, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty) REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
               ...(opts.replaceExisting
                 ? existingConnectionId
                   ? {
@@ -181,7 +188,11 @@ export async function tryRegisterHost(
 /** Release both the connection row and its host lease, guarded by ownership. */
 export async function releaseHostConnection(
   ctx: PlaneStorageCtx,
-  opts: { hostId: string; connectionId: string },
+  opts: {
+    hostId: string;
+    connectionId: string;
+    offlineAlert?: Omit<HostOfflineAlertCandidate, "hostId">;
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -197,9 +208,20 @@ export async function releaseHostConnection(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              UpdateExpression: "SET disconnected = :true REMOVE draining",
+              UpdateExpression: opts.offlineAlert
+                ? "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt REMOVE draining"
+                : "SET disconnected = :true REMOVE draining",
               ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":true": true },
+              ExpressionAttributeValues: {
+                ":connectionId": opts.connectionId,
+                ":true": true,
+                ...(opts.offlineAlert
+                  ? {
+                      ":reason": opts.offlineAlert.reason,
+                      ":lastHeartbeatAt": opts.offlineAlert.lastHeartbeatAt,
+                    }
+                  : {}),
+              },
             },
           },
         ],
@@ -209,6 +231,106 @@ export async function releaseHostConnection(
   } catch (err) {
     return conditionalHostWriteOrThrow(err);
   }
+}
+
+/**
+ * Record a retry candidate for an already-disconnected or unknown host without
+ * touching a replacement's live lease. This covers rows written before alert
+ * persistence was added and local-process disconnect observations.
+ */
+export async function recordHostOfflineAlertCandidate(
+  ctx: PlaneStorageCtx,
+  candidate: HostOfflineAlertCandidate,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: candidate.hostId },
+        UpdateExpression:
+          "SET disconnected = :true, offlineAlertReason = :reason, offlineAlertLastHeartbeatAt = :lastHeartbeatAt REMOVE draining",
+        // A stale warm Lambda may retry after a newer disconnect has already
+        // recorded its own candidate. Only create a missing candidate (or
+        // repeat this exact one); never replace a newer alert observation.
+        ConditionExpression:
+          "(attribute_not_exists(connectionId) OR disconnected = :true) AND (attribute_not_exists(offlineAlertReason) OR attribute_not_exists(offlineAlertLastHeartbeatAt) OR (offlineAlertReason = :reason AND offlineAlertLastHeartbeatAt = :lastHeartbeatAt))",
+        ExpressionAttributeValues: {
+          ":true": true,
+          ":reason": candidate.reason,
+          ":lastHeartbeatAt": candidate.lastHeartbeatAt,
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalHostWriteOrThrow(err);
+  }
+}
+
+/** A conditional clear cannot erase a newer disconnect candidate for the same host. */
+export async function clearHostOfflineAlertCandidate(
+  ctx: PlaneStorageCtx,
+  candidate: HostOfflineAlertCandidate,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: candidate.hostId },
+        UpdateExpression: "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
+        ConditionExpression:
+          "offlineAlertReason = :reason AND offlineAlertLastHeartbeatAt = :lastHeartbeatAt",
+        ExpressionAttributeValues: {
+          ":reason": candidate.reason,
+          ":lastHeartbeatAt": candidate.lastHeartbeatAt,
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalHostWriteOrThrow(err);
+  }
+}
+
+function hostOfflineAlertCandidate(
+  item: Record<string, unknown>,
+): HostOfflineAlertCandidate | undefined {
+  const hostId = item.hostId;
+  const reason = item.offlineAlertReason;
+  const lastHeartbeatAt = item.offlineAlertLastHeartbeatAt;
+  if (
+    typeof hostId !== "string" ||
+    typeof reason !== "string" ||
+    typeof lastHeartbeatAt !== "string"
+  ) {
+    return undefined;
+  }
+  return { hostId, reason, lastHeartbeatAt };
+}
+
+/** Scan only durable retry candidates; host locks are one row per known host. */
+export async function listHostOfflineAlertCandidates(
+  ctx: PlaneStorageCtx,
+): Promise<HostOfflineAlertCandidate[]> {
+  const candidates: HostOfflineAlertCandidate[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.hostLocks,
+        FilterExpression:
+          "attribute_exists(offlineAlertReason) AND attribute_exists(offlineAlertLastHeartbeatAt)",
+        ExclusiveStartKey: startKey,
+        ConsistentRead: true,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      const candidate = hostOfflineAlertCandidate(item as Record<string, unknown>);
+      if (candidate) candidates.push(candidate);
+    }
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
+  return candidates.toSorted((left, right) => left.hostId.localeCompare(right.hostId));
 }
 
 /** Update a heartbeat only while this connection still owns the host lease. */

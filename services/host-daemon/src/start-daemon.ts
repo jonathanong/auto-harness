@@ -6,10 +6,13 @@ import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import {
+  confirmDaemonUpdateBoot,
   createDaemonUpdater,
   parseUpdatePollMs,
+  recoverDaemonUpdateBoot,
   startUpdatePoll,
 } from "./agent-updater-runtime.ts";
+import { restartHostService, type HostServiceOpts } from "./host-service.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -31,6 +34,10 @@ type StartDaemonOptions = {
   runtime?: HostRuntimeReport;
   /** Daemon environment after loading the persisted service environment file. */
   childEnvSource?: NodeJS.ProcessEnv;
+  /** The CLI already recorded any pending update boot before its preflight. */
+  updateBootPrepared?: boolean;
+  /** Test seam for the platform-specific update supervisor adapter. */
+  updateService?: HostServiceOpts;
 };
 
 type InventoryPollOptions = {
@@ -63,6 +70,34 @@ export function requestSupervisorRestart(
 ): void {
   const handoff = setTimeout(() => signalSelf(process.pid, "SIGTERM"), 0);
   handoff.unref?.();
+}
+
+function daemonUpdateService(
+  env: NodeJS.ProcessEnv,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): HostServiceOpts {
+  return { env, log, error, restartHandoff: requestSupervisorRestart };
+}
+
+/**
+ * Handle a replacement boot before daemon preflight or network work begins.
+ * The second start before an acknowledgement has already rolled back its
+ * pointer, so immediately hand execution back to the stable supervisor.
+ */
+export async function prepareDaemonUpdateBoot(options: {
+  env: NodeJS.ProcessEnv;
+  log: (line: string) => void;
+  error: (line: string) => void;
+  service?: HostServiceOpts;
+}): Promise<void> {
+  const service = options.service ?? daemonUpdateService(options.env, options.log, options.error);
+  const recovery = await recoverDaemonUpdateBoot({ env: options.env, service });
+  if (recovery !== "rolled-back") return;
+  if (restartHostService(service) !== 0) {
+    throw new Error("rolled back unacknowledged update but could not restart the supervisor");
+  }
+  throw new Error("rolled back unacknowledged update boot; supervisor restart requested");
 }
 
 /**
@@ -125,6 +160,11 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
 }> {
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
+  const updaterEnv = options.childEnvSource ?? process.env;
+  const updaterService = options.updateService ?? daemonUpdateService(updaterEnv, log, error);
+  if (!options.updateBootPrepared) {
+    await prepareDaemonUpdateBoot({ env: updaterEnv, log, error, service: updaterService });
+  }
   const baseUrl = options.wsUrl ?? options.config.apiUrl;
   if (!baseUrl) {
     throw new Error("apiUrl (or --ws) is required for start; e.g. ws://127.0.0.1:7420/ws");
@@ -162,6 +202,24 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     loop.stop();
     throw reason;
   }
+  try {
+    if (confirmDaemonUpdateBoot({ env: updaterEnv, service: updaterService })) {
+      log("updater replacement health acknowledged");
+    }
+  } catch (reason) {
+    loop.stop();
+    try {
+      await prepareDaemonUpdateBoot({ env: updaterEnv, log, error, service: updaterService });
+    } catch (rollbackError) {
+      const failure = reason instanceof Error ? reason.message : String(reason);
+      const rollback =
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(`updater health acknowledgement failed: ${failure}; ${rollback}`, {
+        cause: rollbackError,
+      });
+    }
+    throw reason;
+  }
   log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
   log(
@@ -193,20 +251,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
 
   let stopUpdatePoll = noopUpdatePoll;
   try {
-    const updaterEnv = options.childEnvSource ?? process.env;
     const updater = createDaemonUpdater({
       loop,
       env: updaterEnv,
       log,
       error,
-      service: {
-        env: updaterEnv,
-        log,
-        error,
-        // Schedule after the updater transaction; the CLI signal handler then
-        // drains normal shutdown and systemd restarts this service.
-        restartHandoff: requestSupervisorRestart,
-      },
+      service: updaterService,
     });
     if (updater) {
       stopUpdatePoll = startUpdatePoll(updater, {
