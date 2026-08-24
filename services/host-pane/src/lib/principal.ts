@@ -2,7 +2,7 @@ import { principalHas, type AuthzPrincipal, type Capability } from "@auto-harnes
 
 import { ApiError, apiGet } from "./api.ts";
 
-export type HostPanePrincipal = AuthzPrincipal & {
+type HostPanePrincipal = AuthzPrincipal & {
   username: string;
   capabilities?: Capability[];
 };

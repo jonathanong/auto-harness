@@ -61,7 +61,7 @@ export async function failSession(
   };
 }
 
-export async function finishSession(
+async function finishSession(
   processRunner: ProcessRunner,
   streamer: LogStreamer,
   logs: SessionLogChunk[],

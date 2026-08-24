@@ -3,11 +3,11 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 
 import type { DaemonConfig } from "./config-types.ts";
 
-export type RealpathFn = (path: string) => Promise<string>;
-export type LstatFn = (path: string) => Promise<{ isSymbolicLink(): boolean }>;
+type RealpathFn = (path: string) => Promise<string>;
+type LstatFn = (path: string) => Promise<{ isSymbolicLink(): boolean }>;
 
 /** Path primitives used by containment so Windows-style fixtures can inject `path.win32`. */
-export type PathContainmentApi = {
+type PathContainmentApi = {
   relative(from: string, to: string): string;
   isAbsolute(path: string): boolean;
   readonly sep: string;
