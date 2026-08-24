@@ -65,6 +65,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
       providerId: "prov-1",
       label: "x@y.com",
       usageLimitCooldownSeconds: 3600,
+      maxConcurrentSessions: 1,
     });
     expect(acct.status).toBe(201);
     expect(acct.json).toMatchObject({ providerId: "prov-1", label: "x@y.com" });
@@ -80,6 +81,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
           providerId: "prov-1",
           label: "z@y.com",
           usageLimitCooldownSeconds: 7200,
+          maxConcurrentSessions: 1,
         })
       ).json,
     ).toMatchObject({ label: "z@y.com" });
@@ -93,6 +95,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
           providerId: 42,
           label: 42,
           usageLimitCooldownSeconds: "not-a-number",
+          maxConcurrentSessions: 1,
         })
       ).status,
     ).toBe(200);

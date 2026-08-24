@@ -38,6 +38,8 @@ describe("provider account lease storage", () => {
       providerAccountLeaseDeleteItems("Locks", "sess", {
         concurrencyId: "provider-account:acct:0",
         attemptId: "attempt",
+        providerAccountId: "acct",
+        slot: 0,
       }),
     ).toHaveLength(1);
   });

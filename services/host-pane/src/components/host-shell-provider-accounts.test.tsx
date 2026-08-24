@@ -133,6 +133,7 @@ const account: ProviderAccount = {
   providerId: provider.id,
   label: "operator@example.test",
   usageLimitCooldownSeconds: 300,
+  maxConcurrentSessions: 1,
   usageLimitedUntil: "2020-01-01T00:00:00.000Z",
   lastUsageLimitedAt: "2019-12-31T00:00:00.000Z",
   lastAssignedAt: null,

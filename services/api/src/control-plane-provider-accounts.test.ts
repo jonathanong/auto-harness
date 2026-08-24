@@ -20,6 +20,7 @@ describe("ControlPlane provider account CRUD", () => {
         providerId: "prov-1",
         label: "x@y.com",
         usageLimitCooldownSeconds: 0,
+        maxConcurrentSessions: 1,
       }).ok,
     ).toBe(false);
 
@@ -95,6 +96,7 @@ describe("ControlPlane provider account CRUD", () => {
         providerId: "prov-1",
         label: "b",
         usageLimitCooldownSeconds: 3600,
+        maxConcurrentSessions: 1,
       }).ok,
     ).toBe(true);
     expect(plane.updateProviderAccount("acct-1", { label: "c" }).ok).toBe(true);
@@ -124,6 +126,7 @@ describe("ControlPlane provider account CRUD", () => {
       providerId: "prov-1",
       label: "account",
       usageLimitCooldownSeconds: 3600,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: "2026-01-01T01:00:00.000Z",
       lastUsageLimitedAt: "2026-01-01T00:00:00.000Z",
       lastAssignedAt: null,
@@ -159,6 +162,7 @@ describe("ControlPlane provider account CRUD", () => {
       providerId: "prov-1",
       label: "account",
       usageLimitCooldownSeconds: 3600,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: "2026-01-01T01:00:00.000Z",
       lastUsageLimitedAt: null,
       lastAssignedAt: null,

@@ -461,7 +461,13 @@ export async function handleHostMessageDurable(
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
-      ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
+      ...(msg.capabilities
+        ? {
+            capabilities: Array.isArray(msg.capabilities)
+              ? msg.capabilities
+              : msg.capabilities.features,
+          }
+        : {}),
       ...(msg.maxConcurrentAssignments !== undefined
         ? { maxConcurrentAssignments: msg.maxConcurrentAssignments }
         : {}),

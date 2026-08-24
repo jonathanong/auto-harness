@@ -213,6 +213,7 @@ describe("scheduled terminal and retry message branches", () => {
       providerId: "p",
       label: "acct",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: null,
       lastUsageLimitedAt: null,
       lastAssignedAt: null,

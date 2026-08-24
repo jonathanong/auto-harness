@@ -2,7 +2,12 @@ import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { isConditionalFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
-export type ProviderAccountLeaseKey = { concurrencyId: string; attemptId: string };
+export type ProviderAccountLeaseKey = {
+  concurrencyId: string;
+  attemptId: string;
+  providerAccountId: string;
+  slot: number;
+};
 
 /** Attempt-owned lock delete; missing rows succeed so a retry cannot stick the slot. */
 export function providerAccountLeaseDeleteItem(

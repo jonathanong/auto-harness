@@ -62,6 +62,7 @@ describe("local provider catalog route coverage", () => {
       providerId: "provider",
       label: "account",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: null,
       lastUsageLimitedAt: null,
       lastAssignedAt: null,

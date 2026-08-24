@@ -165,6 +165,7 @@ describe("durable terminal message residual coverage", () => {
         providerId: "provider",
         label: "account",
         usageLimitCooldownSeconds: 60,
+        maxConcurrentSessions: 1,
       });
       setDurableReadStorage(state, {
         requeueMainCheckoutUsageLimitedSession: async () => won,

@@ -9,6 +9,7 @@ import { ProviderAccountCooldownForm } from "./provider-account-cooldown-form.ts
 const account = {
   id: "account/one",
   usageLimitCooldownSeconds: 60,
+  maxConcurrentSessions: 1,
   usageLimitedUntil: null,
   lastUsageLimitedAt: null,
 };

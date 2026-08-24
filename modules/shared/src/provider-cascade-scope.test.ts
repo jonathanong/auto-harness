@@ -40,6 +40,11 @@ const account: ProviderAccount = {
   id: "acct1",
   providerId: "prov1",
   label: "x@y.com",
+  usageLimitCooldownSeconds: 18_000,
+  maxConcurrentSessions: 1,
+  usageLimitedUntil: null,
+  lastUsageLimitedAt: null,
+  lastAssignedAt: null,
   createdAt: "t",
   updatedAt: "t",
 };

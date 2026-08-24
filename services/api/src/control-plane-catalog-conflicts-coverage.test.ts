@@ -9,6 +9,7 @@ const account = (label = "account"): ProviderAccountRecord => ({
   providerId: "provider",
   label,
   usageLimitCooldownSeconds: 60,
+  maxConcurrentSessions: 1,
   usageLimitedUntil: null,
   lastUsageLimitedAt: null,
   lastAssignedAt: null,
