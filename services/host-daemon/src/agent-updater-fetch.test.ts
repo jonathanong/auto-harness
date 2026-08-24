@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- streamed response limits and fallback paths share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";

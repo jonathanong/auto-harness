@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- route authorization, CAS, and audit failure paths share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
