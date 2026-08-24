@@ -239,6 +239,23 @@ describe("WorktreeManager", () => {
     await expect(manager.ensureAll()).rejects.toThrow("host inventory policy blocks execution");
   });
 
+  it("fails closed when an active empty policy is observed before its generation fence", async () => {
+    const manager = new WorktreeManager(config, fakeGit());
+    const claimed = await manager.claim("repo-1", "wt-1");
+    // The public policy mutators advance the generation atomically. Exercise the defensive
+    // branch as well: a pending execution must still fail closed if policy state is observed
+    // active before a concurrent inventory fence is recorded.
+    const internals = manager as unknown as {
+      allowedRootsPolicyActive: boolean;
+      policyAllowedRoots: string[];
+    };
+    internals.allowedRootsPolicyActive = true;
+    internals.policyAllowedRoots = [];
+    await expect(claimed.currentExecutionTarget?.()).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+  });
+
   it("stops claim retries when the session is already cancelled", async () => {
     const signal = AbortSignal.abort();
     const manager = new WorktreeManager(config, fakeGit());
@@ -403,5 +420,60 @@ describe("WorktreeManager", () => {
     ];
     manager.noteInventoryChange();
     await expect(pending).resolves.toMatchObject({ cwd: await realpath(newWorktree) });
+  });
+
+  it("rejects a claim when a refresh removes its repository during validation", async () => {
+    const root = join(tmpdir(), `ah-claim-removed-repository-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(refreshConfig, fakeGit());
+    const pending = manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [];
+    manager.noteInventoryChange();
+    await expect(pending).rejects.toThrow("Unknown repository: repo-1");
+    expect(manager.isBusy("wt-1")).toBe(false);
+  });
+
+  it("rejects a claimed execution when a refresh removes its worktree", async () => {
+    const root = join(tmpdir(), `ah-claim-removed-worktree-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(refreshConfig, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [{ ...refreshConfig.repositories[0]!, worktrees: [] }];
+    manager.noteInventoryChange();
+    await expect(manager.prepareCheckout(claimed, "main")).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+    expect(git.checkoutRef).not.toHaveBeenCalled();
   });
 });
