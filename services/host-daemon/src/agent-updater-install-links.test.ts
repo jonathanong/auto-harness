@@ -185,4 +185,70 @@ describe("file update installer links", () => {
       cleanup();
     }
   });
+
+  it("fails closed when Windows cannot move or restore the prior pointer", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const current = join(rootDir, "current");
+      let failMovePrevious = false;
+      const installer = createFileUpdateInstaller({
+        rootDir,
+        extract: runnableExtract,
+        platform: "win32",
+        renamePath: (source, destination) => {
+          if (failMovePrevious && destination.endsWith(".next.previous")) {
+            throw new Error("cannot save previous pointer");
+          }
+          renameSync(source, destination);
+        },
+      });
+      await installer.stage({ version: "2.0.0", artifact: new Uint8Array() });
+      await installer.activate("2.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir, platform: "win32" })).resolves.toBe(
+        "booting",
+      );
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+      await installer.stage({ version: "2.1.0", artifact: new Uint8Array() });
+      failMovePrevious = true;
+      await expect(installer.activate("2.1.0")).rejects.toThrow("cannot save previous pointer");
+
+      failMovePrevious = false;
+      let restoreAttempt = false;
+      const restoreFailure = createFileUpdateInstaller({
+        rootDir,
+        extract: runnableExtract,
+        platform: "win32",
+        renamePath: (source, destination) => {
+          if (source === `${current}.next` && destination === current) {
+            throw new Error("replacement pointer failed");
+          }
+          if (restoreAttempt && source === `${current}.next.previous`) {
+            throw new Error("restore pointer failed");
+          }
+          if (source === current && destination.endsWith(".next.previous")) restoreAttempt = true;
+          renameSync(source, destination);
+        },
+      });
+      await expect(restoreFailure.activate("2.1.0")).rejects.toThrow(
+        "failed to switch current update pointer and restore the prior pointer",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rejects Windows UNC archive entries independently of traversal entries", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({
+        rootDir,
+        run: () => ({ status: 0, stdout: "\\\\server\\share\\agent\\n", stderr: "" }),
+      });
+      await expect(
+        installer.stage({ version: "2.2.0", artifact: new Uint8Array() }),
+      ).rejects.toThrow("unsafe path");
+    } finally {
+      cleanup();
+    }
+  });
 });

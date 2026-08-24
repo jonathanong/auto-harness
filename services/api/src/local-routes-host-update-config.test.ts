@@ -228,5 +228,42 @@ describe("host update-config route", () => {
     ).resolves.toMatchObject({
       status: 500,
     });
+
+    const permissionAudit = new ControlPlane();
+    permissionAudit.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    await expect(
+      invoke(permissionAudit, { updateConfig: enabled }, maintainer),
+    ).resolves.toMatchObject({
+      status: 500,
+    });
+
+    const deniedHost = new ControlPlane();
+    await expect(
+      invoke(deniedHost, undefined, { ...admin, boundHostId: "other-host" }, "GET"),
+    ).resolves.toMatchObject({ status: 404 });
+
+    const failedCasAudit = new ControlPlane();
+    expect((await failedCasAudit.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    failedCasAudit.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      conflict: false as const,
+      error: "invalid update",
+    });
+    failedCasAudit.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    await expect(invoke(failedCasAudit, { updateConfig: enabled })).resolves.toMatchObject({
+      status: 500,
+    });
+
+    const validationAudit = new ControlPlane();
+    validationAudit.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    await expect(
+      invoke(validationAudit, { updateConfig: { enabled: false, pollMs: 1 } }),
+    ).resolves.toMatchObject({ status: 500 });
   });
 });

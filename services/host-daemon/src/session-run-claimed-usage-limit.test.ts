@@ -129,6 +129,23 @@ describe("claimed session usage-limit classification", () => {
     });
   });
 
+  it("retains adapter usage on a usage-limit outcome", async () => {
+    const usage = {
+      kind: "delta" as const,
+      sequence: 1,
+      inputTokens: "3",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      source: "cli" as const,
+    };
+    await expect(
+      runClaimed(baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }), {
+        async run() {
+          return { exitCode: 1, timedOut: false, signal: null, usageLimit: true, usage };
+        },
+      }),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "usage_limit", usage });
+  });
+
   it("does not attribute unmatched CLI output to an adapter usage limit", async () => {
     await expect(
       runClaimed(

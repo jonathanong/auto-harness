@@ -221,6 +221,14 @@ describe("local API rate limits", () => {
         } as never)
       ).status,
     ).toBe(404);
+
+    const updateConfig = createLocalApp({ rateLimitConfig: { enabled: false } }).handler;
+    expect(
+      (await invokeHandler(updateConfig, "GET", "/api/v1/hosts/host-1/update-config")).status,
+    ).toBe(404);
+    expect(
+      (await invokeHandler(updateConfig, "GET", "/api/v1/unmatched-handler-path")).status,
+    ).toBe(404);
   });
 });
 

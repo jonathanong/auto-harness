@@ -413,6 +413,13 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
         providerAccounts: [],
       }),
     ).toBe(true);
+    expect(
+      inventoryHasExecConfig({
+        repositories: [],
+        providerAccounts: [],
+        updateConfig: { enabled: false },
+      }),
+    ).toBe(true);
   });
 
   it("names each changed exec-config field", () => {
@@ -447,6 +454,8 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       "repositories.repo-1.terminalHookScript",
       "repositories.repo-1.worktrees.wt-1.setupScript",
     ]);
+    const updateConfig = { ...inventory(), updateConfig: { enabled: false } };
+    expect(listExecConfigEdits(inventory(), updateConfig)).toEqual(["updateConfig"]);
   });
 
   it("restores omitted exec-config and keeps present keys", () => {
@@ -503,6 +512,11 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     expect(withoutExec).not.toHaveProperty("allowedRoots");
     expect(withoutExec.repositories[0]?.terminalHookScript).toBe("ignore");
     expect(withoutExec.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    const withUpdateConfig = preserveHostExecConfig(
+      { repositories: [], providerAccounts: [] },
+      { repositories: [], providerAccounts: [], updateConfig: { enabled: false } },
+    );
+    expect(withUpdateConfig.updateConfig).toEqual({ enabled: false });
   });
 
   it("handles sparse inventories and explicit blank nested values", () => {
@@ -706,6 +720,25 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       kind: "validation",
       error: "repository.repo-1.terminalHookScript must be an absolute path",
     });
+    const attachedAbsolute: HostInventory = {
+      repositories: [
+        {
+          id: "repo-new",
+          path: "/new/repo",
+          defaultBranch: "main",
+          terminalHookScript: "/new/hook.sh",
+          worktrees: [],
+        },
+      ],
+      providerAccounts: [],
+    };
+    expect(
+      reconcileInventoryWrite({
+        existing: emptyHostInventory(),
+        incoming: attachedAbsolute,
+        allowExecConfig: true,
+      }),
+    ).toMatchObject({ ok: true });
   });
 
   it("fences unchanged legacy relative hooks when resolution paths move", () => {

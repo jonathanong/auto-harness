@@ -674,6 +674,99 @@ describe("host exec-config isolation", () => {
     ]);
   });
 
+  it("fails closed when validation, CAS, or outer error audits cannot persist", async () => {
+    const invalidAudit = new ControlPlane();
+    (invalidAudit as unknown as { appendAuditLog: () => Promise<never> }).appendAuditLog =
+      async () => {
+        throw new Error("audit unavailable");
+      };
+    expect(
+      await invoke(
+        invalidAudit,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: 1 },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+
+    const casAudit = new ControlPlane();
+    expect((await casAudit.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    casAudit.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      conflict: false as const,
+      error: "invalid exec-config",
+    });
+    (casAudit as unknown as { appendAuditLog: () => Promise<never> }).appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invoke(
+        casAudit,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "x" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+
+    const outerAudit = new ControlPlane();
+    (
+      outerAudit as unknown as { getHostInventoryDurable: () => Promise<never> }
+    ).getHostInventoryDurable = async () => {
+      throw new Error("storage unavailable");
+    };
+    (outerAudit as unknown as { appendAuditLog: () => Promise<never> }).appendAuditLog =
+      async () => {
+        throw new Error("audit unavailable");
+      };
+    expect(
+      await invoke(
+        outerAudit,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "x" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+
+    const unmatched = await invokeHandler(
+      async (req, res) => {
+        const handled = await handleHostExecConfigRoutes({
+          plane: new ControlPlane(),
+          req,
+          res,
+          url: new URL("/api/v1/hosts/host-1/exec-config-extra", "http://localhost"),
+          method: "PUT",
+          principal: admin,
+        });
+        if (!handled) {
+          (res as unknown as { writeHead(status: number): void }).writeHead(418);
+          (res as unknown as { end(): void }).end();
+        }
+      },
+      "PUT",
+      "/api/v1/hosts/host-1/exec-config-extra",
+      { setupScript: "x" },
+    );
+    expect(unmatched.status).toBe(418);
+  });
+
+  it("accepts an explicit nonnegative version for a valid exec-config patch", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const version = (await plane.getHostInventoryDurable("host-1"))?.version;
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "echo version", version },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+  });
+
   it("replaces a negative inventory version with the server-read version", async () => {
     const plane = new ControlPlane();
     expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);

@@ -417,4 +417,34 @@ describe("file update installer", () => {
       cleanup();
     }
   });
+
+  it("handles absent boot markers and non-pointer current paths during confirmation", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("none");
+      mkdirSync(join(rootDir, "current"), { recursive: true });
+      writeFileSync(join(rootDir, "current", ".auto-harness-version"), "2.5.0\n");
+      writeFileSync(
+        join(rootDir, ".auto-harness-update-boot.json"),
+        '{"version":"2.5.0","attempted":true}\n',
+      );
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("pins the active release when the rollback marker is absent", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "2.6.0", artifact: new Uint8Array() });
+      await installer.activate("2.6.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      rmSync(join(rootDir, "previous-version"), { force: true });
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
 });
