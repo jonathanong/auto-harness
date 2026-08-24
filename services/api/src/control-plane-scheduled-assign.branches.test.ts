@@ -422,4 +422,33 @@ describe("scheduled assignment branch coverage", () => {
     expect(await assignScheduledQueuedDurable(current)).toHaveLength(0);
     expect(slots).toEqual([0]);
   });
+
+  it("assigns a local scheduled provider session without durable storage", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    });
+    current.commands.set("cmd", { ...current.commands.get("cmd")!, providerId: "provider" });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    current.connections.set("c1", {
+      ...connection("h1", "c1"),
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(1);
+    expect(current.sessions.get("s")?.providerAccountLease?.slot).toBe(0);
+  });
 });
