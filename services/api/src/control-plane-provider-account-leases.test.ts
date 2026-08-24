@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import {
   accountHasLeaseCapacity,
   hostHasAssignmentCapacity,
@@ -92,6 +93,112 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
 }
 
 describe("provider account execution-profile leases", () => {
+  it("retries another slot after a concurrent legacy lease backfill", async () => {
+    const sessions = ["a", "b"].map((id) => ({
+      id,
+      status: "running",
+      hostId: "host",
+      attemptId: `${id}-attempt`,
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: `${id}-attempt`,
+      },
+    })) as never[];
+    sessions.push({
+      id: "invalid",
+      status: "running",
+      hostId: "host",
+      resolvedRoute: { providerAccountId: "acct", hostId: "host" },
+    } as never);
+    let calls = 0;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async (opts: { slot: number }) => {
+            calls += 1;
+            if (calls === 1) return { status: "lease_collision" };
+            return {
+              status: "migrated",
+              lease: {
+                concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
+                providerAccountId: "acct",
+                slot: opts.slot,
+                attemptId: "attempt",
+              },
+            };
+          },
+        },
+      } as never,
+      sessions,
+    );
+    expect(calls).toBe(3);
+    expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 1);
+    expect(sessions[1]).toHaveProperty("providerAccountLease.slot", 2);
+  });
+
+  it("handles a legacy session fenced by another hydrator", async () => {
+    const session = {
+      id: "changed",
+      status: "running",
+      hostId: "host",
+      attemptId: "attempt",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    } as never;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
+        },
+      } as never,
+      [session],
+    );
+    expect(session).not.toHaveProperty("providerAccountLease");
+  });
+
+  it("hydrates a lease observed after another hydrator wins", async () => {
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    const session = {
+      id: "changed",
+      status: "running",
+      hostId: "host",
+      attemptId: "attempt",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    } as never;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
+          getSession: async () => ({ providerAccountLease: lease }),
+        },
+      } as never,
+      [session],
+    );
+    expect(session.providerAccountLease).toEqual(lease);
+  });
+
   it("fails closed when the exact account profile is not advertised as ready", () => {
     const plane = seedAccountPlane({ ready: false });
     const created = plane.createSession({

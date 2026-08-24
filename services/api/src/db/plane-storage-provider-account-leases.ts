@@ -15,7 +15,7 @@ export type ProviderAccountLeaseKey = {
   slot: number;
 };
 
-export type ProviderAccountLeaseBackfillResult =
+type ProviderAccountLeaseBackfillResult =
   | { status: "migrated"; lease: ProviderAccountLeaseKey }
   | { status: "lease_collision" | "session_changed" };
 

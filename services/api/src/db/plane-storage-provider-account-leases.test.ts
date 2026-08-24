@@ -103,4 +103,45 @@ describe("provider account lease storage", () => {
       ),
     ).resolves.toEqual({ status: "lease_collision" });
   });
+
+  it("reports a fenced session when its condition loses", async () => {
+    const send = vi.fn().mockRejectedValue({
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }, { Code: "None" }],
+    });
+    await expect(
+      backfillProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+        } as never,
+        {
+          sessionId: "session",
+          attemptId: "attempt",
+          hostId: "host",
+          providerAccountId: "acct",
+          slot: 0,
+        },
+      ),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+
+  it("rethrows non-conditional transaction failures", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("capacity unavailable"));
+    await expect(
+      backfillProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+        } as never,
+        {
+          sessionId: "session",
+          attemptId: "attempt",
+          hostId: "host",
+          providerAccountId: "acct",
+          slot: 0,
+        },
+      ),
+    ).rejects.toThrow("capacity unavailable");
+  });
 });
