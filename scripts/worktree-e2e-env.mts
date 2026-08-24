@@ -164,7 +164,7 @@ function ensureDynamo(ports: WorktreePorts): void {
       ports.containerName,
       "-p",
       `${ports.dynamoPort}:8000`,
-      "amazon/dynamodb-local:2.5.2",
+      "amazon/dynamodb-local:3.3.1",
       "-jar",
       "DynamoDBLocal.jar",
       "-sharedDb",

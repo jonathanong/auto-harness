@@ -91,7 +91,7 @@ describe("required CI check contract", () => {
     // consistently with DEFAULT_DYNAMODB_ENDPOINT (services/api/src/db/dynamo.ts).
     const contents = job("vitest-shard");
     expect(contents).toContain(
-      "services:\n      dynamodb:\n        image: amazon/dynamodb-local:2.5.2",
+      "services:\n      dynamodb:\n        image: amazon/dynamodb-local:3.3.1",
     );
     expect(contents).toContain("- 7423:8000");
     expect(contents).not.toContain("name: Start DynamoDB Local");
