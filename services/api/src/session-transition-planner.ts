@@ -24,7 +24,6 @@ export type SessionTransitionIgnoreReason =
   | "stale_attempt"
   | "already_acked"
   | "not_running"
-  | "already_terminal"
   | "non_terminal"
   | "not_due"
   | "not_queued"
@@ -137,6 +136,7 @@ function releaseEffects(session: SessionRecord): SessionTransitionEffect[] {
   return session.worktreeId ? [{ type: "release_worktree" }] : [];
 }
 
+/** Only the first valid ACK is a state transition. Retried or stale frames stay idempotent. */
 function planAck(
   session: SessionRecord,
   event: Extract<SessionTransitionEvent, { type: "ack" }>,

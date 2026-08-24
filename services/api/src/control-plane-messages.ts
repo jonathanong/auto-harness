@@ -287,7 +287,8 @@ export function handleHostMessage(
       );
       const rejected = transitionEffect(plan, "reject");
       if (rejected) return { ok: false, error: rejected.error };
-      if (!session || !transitionEffect(plan, "ack")) return { ok: true };
+      if (!session) return { ok: false, error: "session not found" };
+      if (!transitionEffect(plan, "ack")) return { ok: true };
       session.ackReceivedAt = state.now();
       state.pendingAcks.delete(msg.sessionId);
       if (session.hostId) {

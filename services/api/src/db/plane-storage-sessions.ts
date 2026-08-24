@@ -1783,7 +1783,7 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   };
 }
 
-/** Map planner effects onto finishSession arguments without changing the write. */
+/** Build finishSession arguments from finish/requeue effects. */
 export function finishSessionOptsFromPlan(
   session: SessionRecord,
   plan: SessionTransitionPlan,
