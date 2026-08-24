@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- archive retry fencing and direct archive reads share one lifecycle. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 
@@ -5,12 +6,13 @@ export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
+  deferBody = false,
 ): Promise<ArchiveObject> {
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   // REST/WebSocket Lambdas do not have S3 credentials.  Persist only a bounded retry pointer;
   // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
   // do not materialize a potentially huge transcript in the short-lived WS invocation.
-  if (!state.archiveWriter) {
+  if (!state.archiveWriter && deferBody) {
     const pending: ArchiveMetadata = {
       key,
       contentType: "application/x-ndjson",
@@ -46,6 +48,7 @@ export async function archiveSessionLogs(
   };
   if (state.storage && !retryClaim) await state.storage.putArchive(pending);
   if (!retryClaim) state.archives.set(object.key, pending);
+  if (!state.archiveWriter) return object;
   if (state.archiveWriter) await state.archiveWriter.putArchive(object);
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
@@ -214,7 +217,9 @@ export async function retryPendingArchives(
 export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
   // pendingPersists only tracks completion (drain waits on it), never the resolved
   // ArchiveObject — void it explicitly rather than pushing the value-carrying promise.
-  state.pendingPersists.push(archiveSessionLogs(state, sessionId).then(() => undefined));
+  state.pendingPersists.push(
+    archiveSessionLogs(state, sessionId, undefined, true).then(() => undefined),
+  );
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {

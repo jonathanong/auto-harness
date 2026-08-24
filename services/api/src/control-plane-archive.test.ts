@@ -191,7 +191,7 @@ describe("archive retry state", () => {
     const state = createControlPlaneState({
       storage: { putArchive, listLogs } as never,
     });
-    const object = await archiveSessionLogs(state, "ws-only");
+    const object = await archiveSessionLogs(state, "ws-only", undefined, true);
     expect(object).toMatchObject({ key: "sessions/ws-only/logs.jsonl", body: "" });
     expect(listLogs).not.toHaveBeenCalled();
     expect(putArchive).toHaveBeenCalledWith(

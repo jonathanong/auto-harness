@@ -932,7 +932,7 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    await archiveSessionLogs(state, session.id);
+    await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignment(state);
     return { ok: true };
   }
@@ -1031,7 +1031,7 @@ async function applySessionStatusDurable(
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
   if (!shouldSuppressTarget) {
-    await archiveSessionLogs(state, msg.sessionId);
+    await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
   await requestAssignment(state);
