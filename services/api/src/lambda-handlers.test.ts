@@ -1089,6 +1089,39 @@ describe("Lambda runtime adapters", () => {
     consoleError.mockRestore();
   });
 
+  it("counts only failed session assignments as assignment failures", async () => {
+    const fixture = runtimeFixture();
+    await registerGatewayHost(fixture);
+    fixture.management.send.mockRejectedValue(new Error("management unavailable"));
+    process.env.HARNESS_METRIC_ENVIRONMENT = "test";
+    const metricLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const assignment = {
+      type: "session:assign" as const,
+      sessionId: "session-1",
+      repositoryId: "repo-1",
+      prompt: "run",
+      resolvedArgv: [],
+      timeout: 30,
+      worktreeId: "worktree-1",
+      assignedAt: "2026-08-12T00:00:00.000Z",
+      attemptId: "attempt-1",
+    };
+    try {
+      fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
+      fixture.plane.state.onHostMessage?.("host-1", assignment);
+      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(2));
+      const assignmentMetrics = metricLog.mock.calls.filter(([line]) =>
+        String(line).includes('"AssignmentFailures":1'),
+      );
+      expect(assignmentMetrics).toHaveLength(1);
+    } finally {
+      delete process.env.HARNESS_METRIC_ENVIRONMENT;
+      metricLog.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+
   it("requires the management endpoint only when constructing its AWS client", async () => {
     const fixture = runtimeFixture();
     const previous = process.env.WS_API_ENDPOINT;

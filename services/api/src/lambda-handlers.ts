@@ -166,7 +166,7 @@ async function postToHost(
       await plane.disconnectHostDurable(connectionId);
       return;
     }
-    emitAssignmentFailure();
+    if (message.type === "session:assign") emitAssignmentFailure();
     throw error;
   }
 }
