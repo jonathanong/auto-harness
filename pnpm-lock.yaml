@@ -44,7 +44,7 @@ importers:
         version: 20.11.6
       knip:
         specifier: ^5.61.3
-        version: 5.88.1(@types/node@22.20.1)(typescript@5.9.3)
+        version: 5.88.1(@types/node@22.20.1)(typescript@6.0.3)
       no-mistakes:
         specifier: ^0.48.0
         version: 0.48.0
@@ -55,8 +55,8 @@ importers:
         specifier: ^1.79.0
         version: 1.79.0
       typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)(happy-dom@20.11.6)(jiti@2.7.0)(tsx@4.23.4)(yaml@2.9.0)
@@ -130,8 +130,8 @@ importers:
         specifier: ^3.4.17
         version: 3.4.19(tsx@4.23.4)(yaml@2.9.0)
       typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   services/api:
     dependencies:
@@ -236,8 +236,8 @@ importers:
         specifier: ^3.4.17
         version: 3.4.19(tsx@4.23.4)(yaml@2.9.0)
       typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   services/web:
     dependencies:
@@ -279,8 +279,8 @@ importers:
         specifier: ^3.4.17
         version: 3.4.19(tsx@4.23.4)(yaml@2.9.0)
       typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
 
@@ -3022,8 +3022,8 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5326,7 +5326,7 @@ snapshots:
 
   kleur@3.0.3: {}
 
-  knip@5.88.1(@types/node@22.20.1)(typescript@5.9.3):
+  knip@5.88.1(@types/node@22.20.1)(typescript@6.0.3):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 22.20.1
@@ -5339,7 +5339,7 @@ snapshots:
       picomatch: 4.0.5
       smol-toml: 1.7.1
       strip-json-comments: 5.0.3
-      typescript: 5.9.3
+      typescript: 6.0.3
       unbash: 2.2.0
       yaml: 2.9.0
       zod: 4.4.3
@@ -5906,7 +5906,7 @@ snapshots:
       fsevents: 2.3.3
     optional: true
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}
 
   unbash@2.2.0: {}
 
