@@ -27,6 +27,7 @@ export function AddWorktreeForm({
   browseEndpoint,
   mutate = mutateInventory,
   canWriteExecConfig = false,
+  hasInheritedExecutionConfig = false,
 }: {
   hostId: string;
   repo: HostRepository;
@@ -36,6 +37,8 @@ export function AddWorktreeForm({
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
   mutate?: typeof mutateInventory;
   canWriteExecConfig?: boolean;
+  /** Host/repository setup or terminal hooks execute in the new worktree's checkout. */
+  hasInheritedExecutionConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -48,15 +51,23 @@ export function AddWorktreeForm({
   const [pathEdited, setPathEdited] = useState(false);
   const [labels, setLabels] = useState("");
   const [setupScript, setSetupScript] = useState("");
+  const pathEditingBlocked = !canWriteExecConfig && hasInheritedExecutionConfig;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <WithTooltip tip="Records the name and path on the control plane. Does not mkdir the worktree directory — the daemon runs git worktree add when online.">
+      <WithTooltip
+        tip={
+          pathEditingBlocked
+            ? "Adding a worktree requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+            : "Records the name and path on the control plane. Does not mkdir the worktree directory — the daemon runs git worktree add when online."
+        }
+      >
         <Button
           type="button"
           variant="outline"
           size="sm"
           data-pw={`add-worktree-open-${repo.id}`}
+          disabled={pathEditingBlocked}
           onClick={() => setOpen(true)}
         >
           + Add worktree

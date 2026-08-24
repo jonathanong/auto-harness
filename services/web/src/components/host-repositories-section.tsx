@@ -28,6 +28,17 @@ function hasWorktreeExecConfig(
   return (worktree?.setupScript ?? "") !== "";
 }
 
+function repositoryExecutionCwdIsTrusted(
+  hasHostSetupScript: boolean,
+  repository: HostInventory["repositories"][number],
+): boolean {
+  return (
+    hasHostSetupScript ||
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== ""
+  );
+}
+
 export function HostRepositoriesSection({
   hostId,
   inventory,
@@ -65,6 +76,8 @@ export function HostRepositoriesSection({
     })),
   }));
   const reposById = Object.fromEntries(inventory.repositories.map((r) => [r.id, r]));
+  const hasHostSetupScript = (inventory.setupScript ?? "") !== "";
+  const attachingRepositoryIsBlocked = hasHostSetupScript && !canWriteExecConfig;
 
   return (
     <div className="space-y-6" data-pw="host-repositories-section">
@@ -77,6 +90,11 @@ export function HostRepositoriesSection({
               message={catalogError}
               selector="host-repositories-catalog"
             />
+          ) : attachingRepositoryIsBlocked ? (
+            <p className="text-sm text-muted-foreground" data-pw="host-repositories-attach-blocked">
+              Attaching a repository requires <code>fleet:exec-config</code> because this host runs
+              setup in each repository checkout.
+            </p>
           ) : (
             <HostAddRepoForm hostId={hostId} catalog={unattachedCatalog} />
           )}
@@ -97,6 +115,10 @@ export function HostRepositoriesSection({
           emptyMessage="No repositories attached to this host yet."
           renderRepoActions={(g) => {
             const repo = reposById[g.repositoryId];
+            const pathRequiresExecConfig = repositoryExecutionCwdIsTrusted(
+              hasHostSetupScript,
+              repo,
+            );
             if (!canWrite) return null;
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
@@ -104,7 +126,7 @@ export function HostRepositoriesSection({
                   hostId={hostId}
                   repo={repo}
                   canWriteExecConfig={canWriteExecConfig}
-                  hasInheritedSetupScript={(inventory.setupScript ?? "") !== ""}
+                  hasInheritedSetupScript={hasHostSetupScript}
                 />
                 <div className="flex gap-2">
                   <AddWorktreeForm
@@ -112,6 +134,7 @@ export function HostRepositoriesSection({
                     repo={repo}
                     repoName={namesById[repo.id] ?? repo.id}
                     canWriteExecConfig={canWriteExecConfig}
+                    hasInheritedExecutionConfig={pathRequiresExecConfig}
                   />
                   {canWriteExecConfig || !hasRepositoryExecConfig(repo) ? (
                     <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />

@@ -37,6 +37,10 @@ export function AddWorktreeForRepo({
     (current, attachment) => (attachment.hostId === hostId ? attachment : current),
     attachments[0]!,
   );
+  const hasInheritedExecutionConfig =
+    selected.hasHostSetupScript === true ||
+    (selected.repo.setupScript ?? "") !== "" ||
+    (selected.repo.terminalHookScript ?? "") !== "";
   return (
     <div
       className="flex flex-wrap items-end gap-2"
@@ -65,6 +69,7 @@ export function AddWorktreeForRepo({
         repo={selected.repo}
         repoName={repositoryName}
         canWriteExecConfig={canWriteExecConfig}
+        hasInheritedExecutionConfig={hasInheritedExecutionConfig}
       />
     </div>
   );

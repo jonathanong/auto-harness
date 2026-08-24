@@ -121,6 +121,11 @@ export default async function RepositoryDetailPage({
                 repoName={repoName}
                 browseEndpoint="/api/browse"
                 canWriteExecConfig={canEditExecConfig}
+                hasInheritedExecutionConfig={
+                  (inventory.setupScript ?? "") !== "" ||
+                  (repo.setupScript ?? "") !== "" ||
+                  (repo.terminalHookScript ?? "") !== ""
+                }
               />
             ) : null}
             {canEditExecConfig || !hasRepositoryExecConfig(repo) ? (

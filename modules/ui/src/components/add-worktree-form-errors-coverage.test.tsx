@@ -164,4 +164,17 @@ describe("AddWorktreeForm errors", () => {
     expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).toBeNull();
     view.unmount();
   });
+
+  it("disables worktree creation when an inherited executable action uses its path", () => {
+    const view = mount(
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" hasInheritedExecutionConfig />,
+    );
+    const openButton = view.container.querySelector(
+      '[data-pw="add-worktree-open-repo-1"]',
+    ) as HTMLButtonElement;
+    expect(openButton.disabled).toBe(true);
+    act(() => openButton.click());
+    expect(document.querySelector('[data-pw="form-add-worktree-repo-1"]')).toBeNull();
+    view.unmount();
+  });
 });

@@ -24,7 +24,11 @@ export default async function WorktreesPage() {
   const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
   let items: Wt[] = [];
   let namesById: Record<string, string> = {};
-  let inventories: Array<{ hostId: string; repositories?: HostRepository[] }> = [];
+  let inventories: Array<{
+    hostId: string;
+    setupScript?: string;
+    repositories?: HostRepository[];
+  }> = [];
   let error: string | null = null;
   let inventoryError: string | null = null;
   try {
@@ -40,9 +44,9 @@ export default async function WorktreesPage() {
   try {
     inventories =
       (
-        await apiGet<{ items: Array<{ hostId: string; repositories?: HostRepository[] }> }>(
-          "/api/v1/host-inventories",
-        )
+        await apiGet<{
+          items: Array<{ hostId: string; setupScript?: string; repositories?: HostRepository[] }>;
+        }>("/api/v1/host-inventories")
       ).items ?? [];
   } catch (e) {
     inventoryError = e instanceof Error ? e.message : String(e);

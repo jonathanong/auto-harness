@@ -188,6 +188,13 @@ describe("HostRepositoriesSection", () => {
     );
     press(field(view.container, "repo-settings-open-repo-one"));
     expect(field<HTMLInputElement>(document, "repo-settings-path-repo-one").disabled).toBe(true);
+    expect(field<HTMLButtonElement>(view.container, "add-worktree-open-repo-one").disabled).toBe(
+      true,
+    );
+    expect(view.container.querySelector('[data-pw="form-add-local-repo"]')).toBeNull();
+    expect(field(view.container, "host-repositories-attach-blocked").textContent).toContain(
+      "fleet:exec-config",
+    );
     view.unmount();
   });
 });

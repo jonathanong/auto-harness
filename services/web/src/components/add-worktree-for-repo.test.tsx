@@ -46,6 +46,15 @@ describe("attachmentsForRepo", () => {
       { hostId: "host-d", repo: repoB },
     ]);
   });
+
+  it("retains host setup when collecting an attachment", () => {
+    expect(
+      attachmentsForRepo(
+        [{ hostId: "host-a", setupScript: "pnpm install", repositories: [repoA] }],
+        "repo-1",
+      ),
+    ).toEqual([{ hostId: "host-a", repo: repoA, hasHostSetupScript: true }]);
+  });
 });
 
 describe("AddWorktreeForRepo", () => {
@@ -86,6 +95,20 @@ describe("AddWorktreeForRepo", () => {
     );
     act(() => field<HTMLButtonElement>(view.container, "add-worktree-open-repo-1").click());
     expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).not.toBeNull();
+    view.unmount();
+  });
+
+  it("disables adding a worktree when the selected attachment runs setup", () => {
+    const view = mountForm(
+      <AddWorktreeForRepo
+        repositoryId="repo-1"
+        repositoryName="Repo"
+        attachments={[{ hostId: "host-a", repo: repoA, hasHostSetupScript: true }]}
+      />,
+    );
+    expect(field<HTMLButtonElement>(view.container, "add-worktree-open-repo-1").disabled).toBe(
+      true,
+    );
     view.unmount();
   });
 
