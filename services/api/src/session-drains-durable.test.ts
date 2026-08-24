@@ -728,7 +728,11 @@ describe("principal-scoped durable session drains", () => {
     ).resolves.toMatchObject({
       drain: { status: "draining", runningCount: 1, cancelledCount: 1 },
     });
-    expect(outbound).toContainEqual({ type: "session:cancel", sessionId: assigned.id });
+    expect(outbound).toContainEqual({
+      type: "session:cancel",
+      sessionId: assigned.id,
+      attemptId: assigned.attemptId,
+    });
     expect(await ctx.storage.getSession(assigned.id)).toMatchObject({
       cancelledByDrainOperationId: "operation-drain-main",
     });

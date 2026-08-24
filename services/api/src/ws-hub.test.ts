@@ -102,6 +102,7 @@ describe("createPlaneWsBridge", () => {
       parseHostMessage({
         type: "session:log",
         sessionId: "s",
+        attemptId: "a",
         stream: "stdout",
         content: "x",
         timestamp: new Date().toISOString(),
@@ -180,6 +181,7 @@ describe("createPlaneWsBridge", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "a1",
+            protocolVersion: 1,
             worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
             runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
@@ -232,7 +234,11 @@ describe("createPlaneWsBridge", () => {
     });
 
     expect(received.some((m) => (m as { type: string }).type === "session:assign")).toBe(true);
-    expect(received).toContainEqual({ type: "session:acknowledged", sessionId: "sess-1" });
+    expect(received).toContainEqual({
+      type: "session:acknowledged",
+      sessionId: "sess-1",
+      attemptId: expect.any(String),
+    });
     expect(
       received.filter(
         (m) =>

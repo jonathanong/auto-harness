@@ -150,6 +150,21 @@ function plannerContext(
   };
 }
 
+function ignoreStaleAttempt(
+  state: ControlPlaneState,
+  session: SessionRecord | null | undefined,
+  event: Extract<SessionTransitionEvent, { type: "log" | "reconnect_claim" }>,
+  source: SessionTransitionContext["source"],
+): boolean {
+  if (!session) return false;
+  return Boolean(
+    transitionEffect(
+      planSessionTransition(session, event, plannerContext(state, source)),
+      "ignore",
+    ),
+  );
+}
+
 function cachedProviderAccount(
   state: ControlPlaneState,
   session: SessionRecord | null | undefined,
@@ -229,21 +244,29 @@ export async function handleHostLogBatchDurable(
   }
   const storage = state.storage;
   let hostId: string | undefined;
+  const accepted: LogMessage[] = [];
   for (const message of messages) {
     if (Buffer.byteLength(message.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
     const session =
       state.sessions.get(message.sessionId) ?? (await storage.getSession(message.sessionId));
+    if (
+      ignoreStaleAttempt(state, session, { type: "log", attemptId: message.attemptId }, "durable")
+    ) {
+      continue;
+    }
     if (!session?.hostId || (hostId !== undefined && session.hostId !== hostId)) {
       return { ok: false, error: "stale host connection" };
     }
     hostId = session.hostId;
+    accepted.push(message);
   }
+  if (accepted.length === 0) return { ok: true };
   if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
     return { ok: false, error: "stale host connection" };
   }
-  const records = messages.map((message) => logRecord(message));
+  const records = accepted.map((message) => logRecord(message));
   if (!(await storage.putLogsFenced(records, { hostId, connectionId: sourceConnectionId }))) {
     return { ok: false, error: "stale host connection" };
   }
@@ -267,6 +290,8 @@ export function handleHostMessage(
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
         ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+        ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
+        ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
         ...(msg.daemonInstanceId && msg.daemonStartedAt
           ? {
               daemonIdentity: {
@@ -301,6 +326,7 @@ export function handleHostMessage(
         state.onHostMessage?.(session.hostId, {
           type: "session:acknowledged",
           sessionId: session.id,
+          attemptId: msg.attemptId,
         });
       }
       return { ok: true };
@@ -314,6 +340,16 @@ export function handleHostMessage(
     case "session:log": {
       if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
         return { ok: false, error: "log chunk exceeds 32 KiB" };
+      }
+      if (
+        ignoreStaleAttempt(
+          state,
+          state.sessions.get(msg.sessionId),
+          { type: "log", attemptId: msg.attemptId },
+          "local",
+        )
+      ) {
+        return { ok: true };
       }
       appendLog(state, {
         sessionId: msg.sessionId,
@@ -364,6 +400,8 @@ export async function handleHostMessageDurable(
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+      ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
+      ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
       ...(msg.daemonInstanceId && msg.daemonStartedAt
         ? {
             daemonIdentity: {
@@ -416,6 +454,11 @@ export async function handleHostMessageDurable(
   if (msg.type === "session:log") {
     if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
+    }
+    const session = state.sessions.get(msg.sessionId) ?? (await storage.getSession(msg.sessionId));
+    if (session) state.sessions.set(session.id, session);
+    if (ignoreStaleAttempt(state, session, { type: "log", attemptId: msg.attemptId }, "durable")) {
+      return { ok: true };
     }
     const log = logRecord(msg);
     if (fence) {

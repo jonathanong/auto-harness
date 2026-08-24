@@ -21,7 +21,9 @@ export type SessionTransitionEvent =
   | { type: "cancel" }
   | { type: "timeout" }
   | { type: "disconnect"; acknowledged: boolean }
-  | { type: "queue_expired" };
+  | { type: "queue_expired" }
+  | { type: "log"; attemptId: string }
+  | { type: "reconnect_claim"; attemptId: string };
 
 type SessionTransitionIgnoreReason =
   | "stale_attempt"
@@ -289,6 +291,13 @@ function planStatus(
   );
 }
 
+function planAttemptId(session: SessionRecord, attemptId: string): SessionTransitionPlan {
+  if (session.attemptId !== undefined && session.attemptId !== attemptId) {
+    return planOf({ type: "ignore", reason: "stale_attempt" });
+  }
+  return planOf();
+}
+
 function planCancel(session: SessionRecord): SessionTransitionPlan {
   if (isTerminalSessionStatus(session.status)) {
     return planOf({
@@ -382,5 +391,9 @@ export function planSessionTransition(
       return planDisconnect(session, event, ctx);
     case "queue_expired":
       return planQueueExpired(session, ctx);
+    case "log":
+      return planAttemptId(session, event.attemptId);
+    case "reconnect_claim":
+      return planAttemptId(session, event.attemptId);
   }
 }

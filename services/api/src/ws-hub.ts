@@ -6,6 +6,7 @@ import {
   HOST_CAPABILITIES,
   isHostRuntimeReport,
   isHostCapability,
+  isHostRunningAttempt,
   isValidCliResumeRef,
   isSessionStatus,
   principalHas,
@@ -154,7 +155,13 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             // The client must not equate a successful WebSocket write with a
             // server acknowledgement. This reply is emitted only after the
             // fenced, durable acknowledgement transaction has committed.
-            socket.send(JSON.stringify({ type: "session:acknowledged", sessionId: msg.sessionId }));
+            socket.send(
+              JSON.stringify({
+                type: "session:acknowledged",
+                sessionId: msg.sessionId,
+                attemptId: msg.attemptId,
+              }),
+            );
           } else if (
             msg.type === "host:status" &&
             result.hostDraining === msg.hostId &&
@@ -370,6 +377,25 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
             !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
+        (message.runningAttempts !== undefined &&
+          (!Array.isArray(message.runningAttempts) ||
+            message.runningAttempts.length > 1_000 ||
+            !message.runningAttempts.every(
+              (attempt) =>
+                isHostRunningAttempt(attempt) &&
+                boundedText(attempt.sessionId) &&
+                boundedText(attempt.attemptId),
+            ) ||
+            new Set(
+              message.runningAttempts.map((attempt) =>
+                isHostRunningAttempt(attempt) ? attempt.sessionId : "",
+              ),
+            ).size !== message.runningAttempts.length)) ||
+        (message.protocolVersion !== undefined &&
+          (typeof message.protocolVersion !== "number" ||
+            !Number.isSafeInteger(message.protocolVersion) ||
+            message.protocolVersion < 0 ||
+            message.protocolVersion > 1_024)) ||
         (message.daemonInstanceId === undefined) !== (message.daemonStartedAt === undefined) ||
         (message.daemonInstanceId !== undefined && !isUuid(message.daemonInstanceId)) ||
         (message.daemonStartedAt !== undefined &&
@@ -410,6 +436,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
       const timestamp = message.timestamp;
       const stream = message.stream;
       return boundedText(message.sessionId) &&
+        boundedText(message.attemptId) &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
         typeof message.content === "string" &&
         Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&

@@ -72,6 +72,15 @@ export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 /** Session:assign must be acked within this window (Invariant 2). */
 export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
+/** Current host control-channel protocol advertised by modern daemons. */
+export const HOST_PROTOCOL_VERSION = 1;
+
+/**
+ * Daemons below this version may finish `runningAttempts` but receive no new
+ * `session:assign` once attempt-fenced scheduling is enabled.
+ */
+export const ATTEMPT_FENCED_PROTOCOL_VERSION = 1;
+
 /**
  * Worktree reclaim if host heartbeat is older than this (Phase 3).
  * Must be materially smaller than typical session timeouts.

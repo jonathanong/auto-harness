@@ -1,9 +1,8 @@
-import type {
-  HostRepositoryRegistration,
-  HostCapability,
-  HostToServerMessage,
-  HostWireMessage,
-  SessionStatus,
+import {
+  HOST_PROTOCOL_VERSION,
+  type HostToServerMessage,
+  type HostWireMessage,
+  type SessionStatus,
 } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
@@ -100,22 +99,14 @@ export class ControlPlaneBase {
     return sessions.listSessionsPage(this.state, query ?? {});
   }
 
-  registerHost(opts: {
-    hostId: string;
-    worktrees: Array<{
-      id: string;
-      name: string;
-      repositoryId: string;
-      path: string;
-      labels: string[];
-    }>;
-    repositories?: HostRepositoryRegistration[];
-    capabilities?: HostCapability[];
-    runtime?: import("@auto-harness/shared").HostRuntimeReport;
-    daemonIdentity?: { instanceId: string; startedAt: string };
-    replaceExisting?: boolean;
-  }): { ok: true; connectionId: string } | { ok: false; error: string } {
-    return agents.registerHost(this.state, { ...opts, runtime: testHostRuntime(opts.runtime) });
+  registerHost(
+    opts: Parameters<typeof agents.registerHost>[1],
+  ): { ok: true; connectionId: string } | { ok: false; error: string } {
+    return agents.registerHost(this.state, {
+      ...opts,
+      runtime: testHostRuntime(opts.runtime),
+      protocolVersion: opts.protocolVersion ?? HOST_PROTOCOL_VERSION,
+    });
   }
 
   disconnectHost(connectionId: string): string[] {
@@ -185,6 +176,7 @@ export class ControlPlaneBase {
     return agents.registerHostDurable(this.state, {
       ...opts,
       runtime: testHostRuntime(opts.runtime),
+      protocolVersion: opts.protocolVersion ?? HOST_PROTOCOL_VERSION,
     });
   }
 

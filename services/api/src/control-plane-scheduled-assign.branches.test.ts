@@ -51,6 +51,7 @@ function connection(
     capabilities: ["scheduled-main-checkout"],
     repositoryIds,
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
   };
 }
 

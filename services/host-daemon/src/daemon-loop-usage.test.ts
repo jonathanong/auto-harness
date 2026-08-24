@@ -35,6 +35,7 @@ describe("DaemonLoop session usage", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "usage",
+        attemptId: "attempt-usage",
         repositoryId: "demo",
         prompt: "hello",
         resolvedArgv: ["printf", "%s", "hello"],

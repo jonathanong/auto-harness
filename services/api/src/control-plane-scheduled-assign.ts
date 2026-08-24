@@ -13,7 +13,10 @@ import {
   listQueuedSessionsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
-import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import {
+  hostAcceptsNewAssignments,
+  hostEnvironmentReady,
+} from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
@@ -31,6 +34,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
       state.hostConnection.get(connection.hostId) === connection.connectionId &&
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
       connection.runtime?.gitReady === true &&
+      hostAcceptsNewAssignments(state, connection.hostId) &&
       hostEnvironmentReady(state, connection.hostId, repositoryId) &&
       connection.repositoryIds?.includes(repositoryId)
     )

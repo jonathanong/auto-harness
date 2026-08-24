@@ -71,7 +71,15 @@ test.describe("live session logs", () => {
           attemptId: assignment.attemptId,
         }),
       );
-      host.socket.send(logFrame(session.id, "history from the real host socket", 1));
+      host.socket.send(
+        logFrame(
+          session.id,
+          "history from the real host socket",
+          1,
+          "stdout",
+          assignment.attemptId,
+        ),
+      );
 
       const ticketResponse = page.waitForResponse((response) =>
         response.url().endsWith("/api/v1/auth/viewer-ticket"),
@@ -189,6 +197,7 @@ async function connectHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
+          protocolVersion: 1,
           hostId,
           worktrees: [
             {
@@ -215,10 +224,12 @@ function logFrame(
   content: string,
   seq: number,
   stream: "stdout" | "system" = "stdout",
+  attemptId = "attempt",
 ): string {
   return JSON.stringify({
     type: "session:log",
     sessionId,
+    attemptId,
     stream,
     content: `${content}\r\n`,
     timestamp: new Date().toISOString(),

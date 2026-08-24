@@ -81,6 +81,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:log",
           sessionId: "sess-1",
+          attemptId: "a",
           stream: "stdout",
           content: "x",
           timestamp: "2026-01-01T00:00:00.000Z",
@@ -113,6 +114,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       plane.handleHostMessage({
         type: "session:log",
         sessionId: "sess-1",
+        attemptId: "a",
         stream: "stdout",
         content: "x",
         timestamp: "2026-01-01T00:00:00.000Z",

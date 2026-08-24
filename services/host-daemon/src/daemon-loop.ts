@@ -48,6 +48,8 @@ export type DaemonLoopOptions = {
   runtime?: HostRuntimeReport;
 };
 type InflightSession = {
+  sessionId: string;
+  attemptId: string;
   controller: AbortController;
   work: Promise<void>;
   /** Set only by a server `session:acknowledged` wire message. */
@@ -57,6 +59,10 @@ type InflightSession = {
   resolveAcknowledgement?: (() => void) | undefined;
 };
 const MAX_INFLIGHT_SESSIONS = 64;
+
+function inflightKey(sessionId: string, attemptId: string): string {
+  return `${sessionId}\0${attemptId}`;
+}
 export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
@@ -150,15 +156,17 @@ export class DaemonLoop {
     await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
   }
   async register(): Promise<void> {
+    const runningAttempts = [...this.inflight.values()]
+      .filter((session) => session.acknowledged)
+      .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
     await registerDaemon(
       this.config,
       this.transport,
-      [...this.inflight].flatMap(([sessionId, session]) =>
-        session.acknowledged ? [sessionId] : [],
-      ),
+      runningAttempts.map((attempt) => attempt.sessionId),
       this.drainRequested || this.draining,
       this.daemonIdentity,
       this.runtime,
+      runningAttempts,
     );
   }
   async keepalive(): Promise<void> {
@@ -226,36 +234,49 @@ export class DaemonLoop {
   }
 
   private async handleServerMessage(msg: HostWireMessage): Promise<void> {
-    if (msg.type === "host:drain") {
-      this.confirmDrain();
-      return;
+    switch (msg.type) {
+      case "host:drain":
+        this.confirmDrain();
+        return;
+      case "host:draining":
+        if (msg.hostId === this.config.hostId) this.confirmDrain();
+        return;
+      case "session:cancel":
+        this.handleCancel(msg);
+        return;
+      case "session:acknowledged":
+        this.handleAcknowledged(msg);
+        return;
+      case "session:assign":
+        await this.handleAssign(msg);
+        return;
+      default:
+        return;
     }
-    if (msg.type === "host:draining" && msg.hostId === this.config.hostId) {
-      this.confirmDrain();
-      return;
-    }
-    if (msg.type === "session:cancel") {
-      const current = this.inflight.get(msg.sessionId);
-      this.onLog?.(`cancel requested for ${msg.sessionId}`);
-      if (current) {
-        current.controller.abort();
-      }
-      return;
-    }
-    if (msg.type === "session:acknowledged") {
-      const current = this.inflight.get(msg.sessionId);
-      // Duplicate and late confirmations are harmless. The peer's durable
-      // confirmation—not the outgoing write callback—permits execution.
-      if (!current || current.acknowledged || current.controller.signal.aborted) return;
-      current.acknowledged = true;
-      const resolve = current.resolveAcknowledgement;
-      current.resolveAcknowledgement = undefined;
-      resolve?.();
-      return;
-    }
-    if (msg.type !== "session:assign") {
-      return;
-    }
+  }
+
+  private handleCancel(msg: Extract<HostWireMessage, { type: "session:cancel" }>): void {
+    const current = this.inflight.get(inflightKey(msg.sessionId, msg.attemptId));
+    this.onLog?.(`cancel requested for ${msg.sessionId} attempt ${msg.attemptId}`);
+    current?.controller.abort();
+  }
+
+  private handleAcknowledged(
+    msg: Extract<HostWireMessage, { type: "session:acknowledged" }>,
+  ): void {
+    const current = this.inflight.get(inflightKey(msg.sessionId, msg.attemptId));
+    // Duplicate and late confirmations are harmless. The peer's durable
+    // confirmation—not the outgoing write callback—permits execution.
+    if (!current || current.acknowledged || current.controller.signal.aborted) return;
+    current.acknowledged = true;
+    const resolve = current.resolveAcknowledgement;
+    current.resolveAcknowledgement = undefined;
+    resolve?.();
+  }
+
+  private async handleAssign(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+  ): Promise<void> {
     if (this.isDraining()) {
       this.onLog?.(`draining: refused assign ${msg.sessionId}`);
       return;
@@ -265,8 +286,9 @@ export class DaemonLoop {
       return;
     }
 
-    if (this.inflight.has(msg.sessionId)) {
-      this.onLog?.(`duplicate assign ignored for ${msg.sessionId}`);
+    const key = inflightKey(msg.sessionId, msg.attemptId);
+    if (this.inflight.has(key)) {
+      this.onLog?.(`duplicate assign ignored for ${msg.sessionId} attempt ${msg.attemptId}`);
       return;
     }
 
@@ -279,17 +301,19 @@ export class DaemonLoop {
     // Install the slot before the first await so an immediate peer reply is
     // tied to this exact assignment.
     const entry: InflightSession = {
+      sessionId: msg.sessionId,
+      attemptId: msg.attemptId,
       controller,
       work: Promise.resolve(),
       acknowledged: false,
     };
-    this.inflight.set(msg.sessionId, entry);
+    this.inflight.set(key, entry);
     const work = this.runAssign(msg, controller.signal);
     entry.work = work;
     try {
       await work;
     } finally {
-      if (this.inflight.get(msg.sessionId) === entry) this.inflight.delete(msg.sessionId);
+      if (this.inflight.get(key) === entry) this.inflight.delete(key);
     }
   }
 
@@ -349,7 +373,7 @@ export class DaemonLoop {
       },
       { signal },
     );
-    if (!(await this.waitForAcknowledgement(msg.sessionId, signal))) return;
+    if (!(await this.waitForAcknowledgement(msg.sessionId, msg.attemptId, signal))) return;
     const route = resolvedRouteMetadata(msg);
     if (route.targetIndex !== undefined || route.commandId || route.providerAccountId) {
       this.onLog?.(
@@ -363,11 +387,11 @@ export class DaemonLoop {
 
     const result: SessionRunResult = await this.runner.run(assign, {
       signal,
-      initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
+      initialLogSeq: this.nextLogSeq.get(inflightKey(msg.sessionId, msg.attemptId)) ?? 0,
     });
 
     if (result.logs.length > 0) {
-      this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
+      this.nextLogSeq.set(inflightKey(msg.sessionId, msg.attemptId), result.logs.at(-1)!.seq + 1);
     }
     await this.outbound.flush();
     await this.outbound.send({
@@ -388,8 +412,12 @@ export class DaemonLoop {
     await sendDaemonLog(this.outbound, this.onLog, chunk);
   }
 
-  private async waitForAcknowledgement(sessionId: string, signal: AbortSignal): Promise<boolean> {
-    const inflight = this.inflight.get(sessionId);
+  private async waitForAcknowledgement(
+    sessionId: string,
+    attemptId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const inflight = this.inflight.get(inflightKey(sessionId, attemptId));
     if (!inflight || inflight.controller.signal !== signal || signal.aborted) return false;
     if (inflight.acknowledged) return true;
     return new Promise<boolean>((resolve) => {

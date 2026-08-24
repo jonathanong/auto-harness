@@ -32,6 +32,7 @@ describe("durable session routes", () => {
       await writer.handleHostMessageDurable({
         type: "session:log",
         sessionId: "session",
+        attemptId: "a",
         stream,
         content,
         timestamp: "2026-01-01T00:00:00.000Z",

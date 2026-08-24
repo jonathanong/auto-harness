@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- delayed old-attempt cancel/ack races stay with ordering cases. */
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
@@ -21,6 +22,7 @@ describe("DaemonLoop outbound delivery", () => {
       const assign: HostWireMessage = {
         type: "session:assign",
         sessionId: "ordered",
+        attemptId: "attempt-ordered",
         repositoryId: "demo",
         prompt: "hello",
         resolvedArgv: ["printf", "%s", "hello"],
@@ -61,6 +63,7 @@ describe("DaemonLoop outbound delivery", () => {
       const assign: HostWireMessage = {
         type: "session:assign",
         sessionId: "once",
+        attemptId: "attempt-once",
         repositoryId: "demo",
         prompt: "hello",
         resolvedArgv: ["printf", "%s", "hello"],
@@ -92,6 +95,7 @@ describe("DaemonLoop outbound delivery", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "unacked",
+        attemptId: "attempt-unacked",
         repositoryId: "demo",
         prompt: "hello",
         resolvedArgv: ["printf", "%s", "hello"],
@@ -119,12 +123,92 @@ describe("DaemonLoop outbound delivery", () => {
         loop as unknown as {
           inflight: Map<
             string,
-            { controller: AbortController; work: Promise<void>; acknowledged: boolean }
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
           >;
         }
-      ).inflight.set("running", { controller, work: Promise.resolve(), acknowledged: true });
-      transport.deliver({ type: "session:cancel", sessionId: "running" });
+      ).inflight.set("running\0attempt-running", {
+        sessionId: "running",
+        attemptId: "attempt-running",
+        controller,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "running",
+        attemptId: "attempt-running",
+      });
       expect(controller.signal.aborted).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ignores a delayed cancel or acknowledgement from an old attempt", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const current = new AbortController();
+      const stale = new AbortController();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("running\0attempt-2", {
+        sessionId: "running",
+        attemptId: "attempt-2",
+        controller: current,
+        work: Promise.resolve(),
+        acknowledged: false,
+      });
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "running",
+        attemptId: "attempt-1",
+      });
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "running",
+        attemptId: "attempt-1",
+      });
+      expect(current.signal.aborted).toBe(false);
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "running",
+        attemptId: "attempt-2",
+      });
+      expect(
+        (
+          loop as unknown as {
+            inflight: Map<string, { acknowledged: boolean; controller: AbortController }>;
+          }
+        ).inflight.get("running\0attempt-2")?.acknowledged,
+      ).toBe(true);
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "running",
+        attemptId: "attempt-2",
+      });
+      expect(current.signal.aborted).toBe(true);
+      expect(stale.signal.aborted).toBe(false);
       loop.stop();
     } finally {
       cleanup();

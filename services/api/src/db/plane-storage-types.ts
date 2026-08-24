@@ -73,6 +73,8 @@ export type ConnectionRecord = {
   capabilities?: HostCapability[];
   /** Present only when this daemon has completed the checkout-recovery preflight. */
   runtime?: HostRuntimeReport;
+  /** Host control-channel protocol. Missing means a legacy daemon (version 0). */
+  protocolVersion?: number;
   /** False only for an authenticated API Gateway socket awaiting host:register. */
   registered?: false;
   /** Present only for a browser viewer connection. */

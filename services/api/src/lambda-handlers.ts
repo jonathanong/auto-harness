@@ -358,10 +358,11 @@ export async function createLambdaRuntime(
             hostId: message.hostId,
             connectionId: result.connectionId,
           });
-        } else if (result.sessionAcknowledged) {
+        } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",
             sessionId: result.sessionAcknowledged,
+            attemptId: message.attemptId,
           });
         } else if (result.hostDraining) {
           trackDelivery(authenticated.hostId, {

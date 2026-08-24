@@ -7,6 +7,7 @@ import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 const message = (sessionId: string, seq: number, content = "x") => ({
   type: "session:log" as const,
   sessionId,
+  attemptId: "a",
   stream: "stdout" as const,
   content,
   timestamp: "2026-01-01T00:00:00.000Z",
@@ -48,8 +49,8 @@ describe("durable host log batches", () => {
 
   it("validates chunk bounds and a single current host lease", async () => {
     const plane = new ControlPlane();
-    plane.state.sessions.set("one", { hostId: "host-one" } as never);
-    plane.state.sessions.set("two", { hostId: "host-two" } as never);
+    plane.state.sessions.set("one", { hostId: "host-one", attemptId: "a" } as never);
+    plane.state.sessions.set("two", { hostId: "host-two", attemptId: "a" } as never);
     plane.state.storage = {
       getSession: async () => null,
       getHostLock: async () => "other-connection",
@@ -72,7 +73,7 @@ describe("durable host log batches", () => {
 
   it("commits, retains, and publishes a fenced batch in sequence order", async () => {
     const plane = new ControlPlane();
-    plane.state.sessions.set("session", { hostId: "host" } as never);
+    plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
     plane.state.logs.set(
       "session",
       Array.from({ length: 10_000 }, (_, seq) => ({

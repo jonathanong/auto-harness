@@ -17,11 +17,14 @@ describe("package exports", () => {
     expect(shared.USER_ROLES).toContain("admin");
     expect(shared.WORKTREE_STATUSES).toContain("idle");
     expect(shared.PACKAGE_SCOPE).toBe("@auto-harness");
+    expect(shared.HOST_PROTOCOL_VERSION).toBe(1);
+    expect(typeof shared.isHostRunningAttempt).toBe("function");
   });
 
   it("exposes session assign typing at runtime via usage", () => {
     const assign: SessionAssign = {
       sessionId: "s1",
+      attemptId: "attempt-1",
       repositoryId: "r1",
       prompt: "p",
       resolvedArgv: ["codex", "fix"],

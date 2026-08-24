@@ -78,7 +78,11 @@ describe("DaemonLoop reconnect", () => {
       // `send()` completed, but the peer has not processed the frame. The
       // disconnect must abort unconfirmed work; a late reply cannot revive it.
       transport.disconnect();
-      transport.deliver({ type: "session:acknowledged", sessionId: "write-without-server-ack" });
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "write-without-server-ack",
+        attemptId: "attempt-write-without-server-ack",
+      });
       await loop.waitForIdle();
 
       expect(transport.sent.filter((message) => message.type === "session:status")).toEqual([]);
@@ -99,10 +103,22 @@ describe("DaemonLoop reconnect", () => {
       await settle();
       expect(transport.sent.some((message) => message.type === "session:ack")).toBe(true);
 
-      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
-      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "confirmed-once",
+        attemptId: "attempt-confirmed-once",
+      });
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "confirmed-once",
+        attemptId: "attempt-confirmed-once",
+      });
       await loop.waitForIdle();
-      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "confirmed-once",
+        attemptId: "attempt-confirmed-once",
+      });
 
       expect(
         transport.sent.filter(
@@ -219,7 +235,9 @@ describe("DaemonLoop reconnect", () => {
           outbound: { send(message: HostToServerMessage): Promise<void> };
         }
       ).outbound;
-      inflight.set("late-ack", {
+      inflight.set("late-ack\0attempt-late-ack", {
+        sessionId: "late-ack",
+        attemptId: "attempt-late-ack",
         controller: new AbortController(),
         work: Promise.resolve(),
         acknowledged: false,
@@ -231,6 +249,7 @@ describe("DaemonLoop reconnect", () => {
       const heldLog = outbound.send({
         type: "session:log",
         sessionId: "late-ack",
+        attemptId: "a",
         stream: "stdout",
         content: "offline backlog",
         timestamp: "2026-01-01T00:00:00.000Z",
@@ -238,7 +257,7 @@ describe("DaemonLoop reconnect", () => {
       });
       await settle();
       expect(transport.heldLog).toBe(true);
-      inflight.get("late-ack")!.acknowledged = true;
+      inflight.get("late-ack\0attempt-late-ack")!.acknowledged = true;
 
       transport.connect();
       await settle();
@@ -326,12 +345,16 @@ describe("DaemonLoop reconnect", () => {
       const acknowledged = new AbortController();
       const unacknowledged = new AbortController();
       const inflight = (loop as unknown as { inflight: Map<string, unknown> }).inflight;
-      inflight.set("ack", {
+      inflight.set("ack\0attempt-ack", {
+        sessionId: "ack",
+        attemptId: "attempt-ack",
         controller: acknowledged,
         work: Promise.resolve(),
         acknowledged: true,
       });
-      inflight.set("no-ack", {
+      inflight.set("no-ack\0attempt-no-ack", {
+        sessionId: "no-ack",
+        attemptId: "attempt-no-ack",
         controller: unacknowledged,
         work: Promise.resolve(),
         acknowledged: false,

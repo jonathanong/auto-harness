@@ -142,7 +142,11 @@ export function supersedeSession(
   session.errorMessage = reason;
   session.completedAt = state.now();
   if (wasRunning && hostId) {
-    state.onHostMessage?.(hostId, { type: "session:cancel", sessionId });
+    state.onHostMessage?.(hostId, {
+      type: "session:cancel",
+      sessionId,
+      attemptId: session.attemptId!,
+    });
     persistSession(state, session);
     return;
   }

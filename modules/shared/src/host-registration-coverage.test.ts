@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   isHostRepositoryRegistration,
+  isHostRunningAttempt,
   validateHostRepositoryRegistrations,
+  validateHostRunningAttempts,
 } from "./host-registration.ts";
 
 describe("host repository registration edge validation", () => {
@@ -16,6 +18,12 @@ describe("host repository registration edge validation", () => {
     );
     expect(validateHostRepositoryRegistrations([{ id: "", path: "/repo" }])).toBe(
       "invalid repository registration",
+    );
+    for (const value of [null, [], "attempt", { sessionId: "s" }, { attemptId: "a" }]) {
+      expect(isHostRunningAttempt(value)).toBe(false);
+    }
+    expect(validateHostRunningAttempts([{ sessionId: "s", attemptId: 1 } as never])).toBe(
+      "invalid running attempt",
     );
   });
 });

@@ -77,6 +77,7 @@ function splitUtf8(content: string, maxBytesPerPiece: number): string[] {
 export class LogStreamer {
   private seq = 0;
   private readonly sessionId: string;
+  private readonly attemptId: string;
   private readonly emit: LogEmit;
   private readonly now: () => string;
   private readonly maxChunks: number;
@@ -87,12 +88,14 @@ export class LogStreamer {
 
   constructor(
     sessionId: string,
+    attemptId: string,
     emit: LogEmit,
     now: () => string = () => new Date().toISOString(),
     initialSeq = 0,
     limits: LogLimits = {},
   ) {
     this.sessionId = sessionId;
+    this.attemptId = attemptId;
     this.emit = emit;
     this.now = now;
     this.seq = initialSeq;
@@ -130,6 +133,7 @@ export class LogStreamer {
       const seq = this.seq++;
       const chunk: SessionLogChunk = {
         sessionId: this.sessionId,
+        attemptId: this.attemptId,
         stream,
         content: piece,
         timestamp,

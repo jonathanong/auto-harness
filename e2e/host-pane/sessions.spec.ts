@@ -74,6 +74,7 @@ test.describe("host pane sessions", () => {
                 socket.send(
                   JSON.stringify({
                     type: "host:register",
+                    protocolVersion: 1,
                     hostId: "local-1",
                     worktrees: [
                       {

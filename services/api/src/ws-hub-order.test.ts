@@ -213,6 +213,7 @@ describe("createPlaneWsBridge message ordering", () => {
             JSON.stringify({
               type: "session:log",
               sessionId: "batched-session",
+              attemptId: "a",
               stream: "stdout",
               content: String(seq),
               timestamp: "2026-01-01T00:00:00.000Z",
