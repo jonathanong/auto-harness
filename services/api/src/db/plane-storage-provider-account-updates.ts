@@ -10,6 +10,14 @@ import {
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
+type LeaseFence = {
+  ConditionCheck: {
+    TableName: string;
+    Key: { concurrencyId: string };
+    ConditionExpression: string;
+  };
+};
+
 export async function updateProviderAccount(
   ctx: PlaneStorageCtx,
   opts: {
@@ -86,7 +94,7 @@ function providerAccountLeaseFenceItems(
   ctx: PlaneStorageCtx,
   providerAccountId: string,
   newCap: number,
-) {
+): LeaseFence[] {
   return Array.from({ length: MAX_CONCURRENT_SESSIONS_LIMIT - newCap }, (_, index) => ({
     ConditionCheck: {
       TableName: ctx.tables.concurrencyLocks,
@@ -169,7 +177,7 @@ async function updateWithLeaseFences(
     expression: string;
     values: Record<string, unknown>;
   },
-  leaseFences: Array<{ ConditionCheck: Record<string, unknown> }>,
+  leaseFences: LeaseFence[],
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -206,7 +214,7 @@ async function moveProviderAccount(
     expectedVersion: number;
     oldProviderId: string | undefined;
     newProviderId: string;
-    leaseFences: Array<{ ConditionCheck: Record<string, unknown> }>;
+    leaseFences: LeaseFence[];
     expression: string;
     values: Record<string, unknown>;
   },
