@@ -121,8 +121,6 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
     expect(created.status).toBe(201);
     const { id } = (await created.json()) as { id: string };
 
-    server.plane.assignQueued();
-
     let session = server.plane.getSession(id);
     for (let i = 0; i < 100; i++) {
       session = server.plane.getSession(id);
@@ -130,9 +128,6 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
         break;
       }
       await sleep(100);
-      if (session?.status === "queued") {
-        server.plane.assignQueued();
-      }
     }
     expect(session?.status).toBe("completed");
 

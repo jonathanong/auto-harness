@@ -331,12 +331,14 @@ UI connections store `type: "client"` and `userId` from the authenticated princi
 
 ## Scheduler
 
-The scheduler is a **shared service** (not only a free-standing Lambda) invoked when:
+The scheduler is a **shared service** (not only a free-standing Lambda) invoked immediately (best-effort) when:
 
-- A session is created
+- A session is created, resumed, or cloned
 - An agent registers / reconnects
-- A worktree becomes idle (`worktree:status` or session terminal status)
+- A session becomes terminal or a usage-limit/cooldown change frees capacity
 - Cron creates scheduled sessions
+
+The one-minute EventBridge rule is a **repair sweep** (ack deadlines, running timeouts, stale hosts, missed assigns), not the primary dispatcher.
 
 ### Assignment algorithm
 

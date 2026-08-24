@@ -6,6 +6,7 @@ import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
+import { requestAssignment } from "./request-assignment.ts";
 
 /** Schedule CRUD, cron fire, and scheduled assignment. */
 export class ControlPlaneSchedulingService {
@@ -64,7 +65,7 @@ export class ControlPlaneSchedulingService {
     | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
   > {
     const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
-    if (result.ok) await this.assignScheduledQueuedDurable();
+    if (result.ok) await requestAssignment(this.state);
     return result;
   }
 

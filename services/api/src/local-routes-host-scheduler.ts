@@ -137,6 +137,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         }))
       )
         return true;
+      if (body.type === "host:register") await plane.requestAssignment();
       send(res, 200, { ok: true });
       return true;
     } catch {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { RepositoryDetail, RepositoryDetailsCard } from "./repository-detail.tsx";
 import { SessionDetail } from "./session-detail.tsx";
+import { SESSION_QUEUED_WAIT_COPY } from "./session-status-cell.tsx";
 import { WorktreeDetail, WorktreeDetailsCard } from "./worktree-detail.tsx";
 
 function render(node: React.ReactNode) {
@@ -98,7 +99,7 @@ describe("shared detail views", () => {
       </SessionDetail>,
     );
     expect(linked).toContain('data-pw="session-detail-status"');
-    expect(linked).not.toContain("The scheduler runs about once a minute; waiting is expected.");
+    expect(linked).not.toContain(SESSION_QUEUED_WAIT_COPY);
     expect(linked).toContain('data-pw="session-detail-source"');
     expect(linked).toContain('data-pw="session-source-api"');
     expect(linked).toContain('href="/repositories/repo%2Fa"');
@@ -131,7 +132,7 @@ describe("shared detail views", () => {
     expect(plain).toContain('data-pw="session-source-unknown"');
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
-    expect(plain).toContain("The scheduler runs about once a minute; waiting is expected.");
+    expect(plain).toContain(SESSION_QUEUED_WAIT_COPY);
     expect(plain).toContain('data-pw="session-detail-queue-deadline"');
     expect(plain).toContain('dateTime="2026-08-14T12:30:00.000Z"');
     expect(plain).toContain('data-pw="session-detail-priority">—');

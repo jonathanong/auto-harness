@@ -37,8 +37,9 @@ export function hostProviderAccountReady(
   );
 }
 
-function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boolean {
-  if (session.hostId !== hostId) return false;
+/** True when the daemon still holds this session against advertised host capacity. */
+export function sessionOccupiesHostAssignment(session: SessionRecord): boolean {
+  if (!session.hostId) return false;
   return (
     session.status === "running" ||
     session.providerAccountLease !== undefined ||
@@ -47,14 +48,16 @@ function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boo
   );
 }
 
+function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boolean {
+  return session.hostId === hostId && sessionOccupiesHostAssignment(session);
+}
+
 export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
   const cap = connectionId
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
-  // Durable workers consult Dynamo assignment transactions, not this cache.
-  if (state.storage) return true;
   let used = 0;
   for (const session of state.sessions.values()) {
     if (sessionHoldsHostAssignment(session, hostId)) used += 1;
