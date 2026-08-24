@@ -21,6 +21,7 @@ type ReleaseMainCheckoutOptions = {
   cliResumeRef?: string | undefined;
   retryCount?: number;
   retryAfter?: string;
+  suppressedTargetIndex?: number;
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
   concurrencyId?: string | undefined;
@@ -123,6 +124,9 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
     (opts.retryCount !== undefined ? ", retryCount = :retryCount" : "") +
     (opts.retryAfter ? ", retryAfter = :retryAfter" : "") +
+    (opts.suppressedTargetIndex !== undefined
+      ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
+      : "") +
     " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
     (isQueued ? ", startedAt" : "")
   );
@@ -144,6 +148,9 @@ function expressionValues(opts: ReleaseMainCheckoutOptions): Record<string, unkn
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
     ...(opts.retryCount !== undefined ? { ":retryCount": opts.retryCount } : {}),
     ...(opts.retryAfter ? { ":retryAfter": opts.retryAfter } : {}),
+    ...(opts.suppressedTargetIndex !== undefined
+      ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
+      : {}),
     ...(opts.attemptId ? { ":attemptId": opts.attemptId } : {}),
   };
 }

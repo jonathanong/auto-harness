@@ -328,14 +328,14 @@ describe("session-transition planner", () => {
         providerlessLeased,
         ctx({ usageLimitRetryCeiling: 1 }),
       ),
-    ).toEqual(["release_lease", "requeue"]);
+    ).toEqual(["suppress_target", "release_lease", "requeue", "reschedule"]);
     expect(
       types(
         status({ worktreeId: null, status: "failed", errorCode: "usage_limit" }),
-        { ...providerlessLeased, retryCount: 1 },
+        { ...providerlessLeased, retryCount: 1, fallbacks: [{ commandId: "fallback" }] },
         ctx({ usageLimitRetryCeiling: 1 }),
       ),
-    ).toEqual(["release_lease", "finish", "archive"]);
+    ).toEqual(["suppress_target", "release_lease", "fallback", "requeue", "reschedule"]);
   });
 
   it("covers local patches, durable ignores, and late cancelled releases", () => {

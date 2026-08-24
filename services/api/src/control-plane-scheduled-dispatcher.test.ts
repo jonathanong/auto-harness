@@ -305,20 +305,17 @@ describe("scheduled main-checkout dispatcher", () => {
     expect(plane.getSession(session.id)?.status).toBe("running");
   });
 
-  it("retries usage-limit failures with backoff and stops at the ceiling", async () => {
-    let now = Date.parse(NOW);
-    const plane = new ControlPlane({
-      now: () => new Date(now).toISOString(),
+  it("advances providerless usage_limit onto the next fallback immediately", async () => {
+    const plane = makePlane({
       idFactory: (() => {
         let n = 0;
         return () => `session-${++n}`;
       })(),
-      shardCount: 1,
-      usageLimitRetryCeiling: 1,
     });
     seedCommand(plane);
+    seedCommand(plane, "fallback");
     register(plane, "host-1");
-    const first = trigger(plane);
+    const first = trigger(plane, { fallbacks: [{ commandId: "fallback" }] });
     await plane.assignScheduledQueuedDurable();
     plane.handleHostMessage({
       type: "session:status",
@@ -327,21 +324,14 @@ describe("scheduled main-checkout dispatcher", () => {
       errorCode: "usage_limit",
       ...scheduledFence(plane, first.id),
     });
-    expect(plane.getSession(first.id)).toMatchObject({ status: "queued", retryCount: 1 });
-    now += 2_000;
     await plane.assignScheduledQueuedDurable();
-    expect(plane.getSession(first.id)).toMatchObject({ status: "running" });
-    expect(plane.getSession(first.id)).not.toHaveProperty("errorCode");
-    expect(plane.getSession(first.id)).not.toHaveProperty("errorMessage");
-    expect(plane.getSession(first.id)).not.toHaveProperty("retryAfter");
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: first.id,
-      status: "completed",
-      ...scheduledFence(plane, first.id),
+    expect(plane.getSession(first.id)).toMatchObject({
+      status: "running",
+      suppressedTargetIndexes: [0],
+      resolvedRoute: { commandId: "fallback", targetIndex: 1 },
     });
-    expect(plane.getSession(first.id)).toMatchObject({ status: "completed" });
-    expect(plane.getSession(first.id)).not.toHaveProperty("errorCode");
+    expect(plane.getSession(first.id)).not.toHaveProperty("retryAfter");
+    expect(plane.getSession(first.id)).not.toHaveProperty("retryCount");
   });
 });
 

@@ -54,18 +54,11 @@ export type SessionTransitionEffect =
     }
   | {
       type: "requeue";
-      reason:
-        | "usage_limit"
-        | "usage_limit_retry"
-        | "missing_account"
-        | "providerless"
-        | "disconnect";
+      reason: "usage_limit" | "missing_account" | "providerless" | "disconnect";
       errorCode?: string;
       errorMessage?: string;
       exitCode?: number;
       cliResumeRef?: string;
-      retryCount?: number;
-      retryAfter?: string;
     }
   | { type: "cooldown"; providerAccountId: string; usageLimitedUntil: string }
   | { type: "suppress_target"; targetIndex: number }
@@ -199,28 +192,6 @@ function planUsageLimit(
         ...fields,
       },
       reschedule,
-    ];
-  }
-  if (leased) {
-    const retries = session.retryCount ?? 0;
-    if (retries < ctx.usageLimitRetryCeiling) {
-      return [
-        ...release,
-        {
-          type: "requeue",
-          reason: "usage_limit_retry",
-          errorCode: "usage_limit",
-          errorMessage: event.errorMessage ?? "provider usage limit; requeued",
-          retryCount: retries + 1,
-          retryAfter: new Date(Date.parse(ctx.now) + 1000 * 2 ** retries).toISOString(),
-          ...fields,
-        },
-      ];
-    }
-    return [
-      ...release,
-      { type: "finish", status: event.status, completedAt: ctx.now, ...fields },
-      { type: "archive" },
     ];
   }
   return [

@@ -12,7 +12,7 @@ import type { CommandRecord } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
-type ResolvedSessionRoute = {
+export type ResolvedSessionRoute = {
   targetIndex: number;
   providerAccountId?: string;
   commandId: string;

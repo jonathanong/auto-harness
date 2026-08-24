@@ -29,6 +29,7 @@ import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
+import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -37,6 +38,7 @@ import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-le
  */
 export class DynamoPlaneStorageBase {
   protected readonly ctx: PlaneStorageCtx;
+  private queueOrderBackfilled = false;
 
   constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
     this.ctx = { doc, tables };
@@ -45,6 +47,13 @@ export class DynamoPlaneStorageBase {
   /** Bounded deployment migration; scheduler callers run at most one page. */
   migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
     return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
+  }
+
+  /** Populate `queueOrder` on active queued rows before assignment reads the new GSI. */
+  async backfillQueuedSessionQueueOrder(shardCount?: number): Promise<void> {
+    if (this.queueOrderBackfilled) return;
+    await backfillQueuedSessionQueueOrder(this.ctx.doc, this.ctx.tables.sessions, shardCount);
+    this.queueOrderBackfilled = true;
   }
 
   putSession(session: SessionRecord): Promise<void> {
@@ -330,6 +339,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string | undefined;
     retryCount?: number;
     retryAfter?: string;
+    suppressedTargetIndex?: number;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
     concurrencyId?: string | undefined;
@@ -407,6 +417,7 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     queueExpiresAt: string;
     completedAt: string;
+    concurrencyId?: string;
   }): Promise<boolean> {
     return sessions.expireQueuedSession(this.ctx, opts);
   }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- assignment optional-field and queue-order cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
@@ -96,6 +97,21 @@ describe("assignment optional-field coverage", () => {
     expect(assignQueued(providerState())).toHaveLength(1);
   });
 
+  it("backfills queue order before reading the durable assignment queue", async () => {
+    const state = providerState();
+    let backfills = 0;
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+      backfillQueuedSessionQueueOrder: async () => {
+        backfills += 1;
+      },
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(backfills).toBe(1);
+  });
+
   it("durably publishes provider account route metadata", async () => {
     const state = providerState();
     setDurableReadStorage(state, {
@@ -125,6 +141,24 @@ describe("assignment optional-field coverage", () => {
     expect(assignedPrincipalId).toBe("principal-legacy");
   });
 
+  it("expires a durable queued session and passes its concurrency lock to storage", async () => {
+    const state = providerState();
+    state.sessions.set(
+      "s",
+      session({ queueExpiresAt: "2025-01-01T00:00:00.000Z", concurrencyId: "lock" }),
+    );
+    let expired: { concurrencyId?: string } | undefined;
+    setDurableReadStorage(state, {
+      expireQueuedSession: async (opts: { concurrencyId?: string }) => {
+        expired = opts;
+        return true;
+      },
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(expired).toMatchObject({ concurrencyId: "lock" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "failed", errorCode: "queue_expired" });
+  });
+
   it("keeps a future pin when durable clearing loses the fence", async () => {
     const state = providerState();
     state.sessions.set(
@@ -145,6 +179,25 @@ describe("assignment optional-field coverage", () => {
     expect(assignQueued(state)).toEqual([]);
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
+  });
+
+  it("releases a concurrency lock when local queue expiry persists through storage", async () => {
+    const state = providerState();
+    state.sessions.set(
+      "s",
+      session({ queueExpiresAt: "2025-01-01T00:00:00.000Z", concurrencyId: "lock" }),
+    );
+    const released: string[] = [];
+    state.storage = {
+      putSession: async () => {},
+      releaseConcurrencyLock: async (id: string) => {
+        released.push(id);
+      },
+    } as never;
+    expect(assignQueued(state)).toEqual([]);
+    await state.writeTail;
+    expect(released).toEqual(["lock"]);
+    expect(state.sessions.get("s")).toMatchObject({ status: "failed", errorCode: "queue_expired" });
   });
 
   it("expires queued work before a closed repository can suppress assignment", async () => {

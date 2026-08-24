@@ -10,6 +10,11 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { SessionStatus } from "@auto-harness/shared";
 
+import {
+  compareSessionsForQueue,
+  SESSIONS_QUEUE_ORDER_INDEX,
+  SESSIONS_STATUS_CREATED_INDEX,
+} from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { getHostLock } from "./plane-storage-locks.ts";
 import type { SessionRecord, WorktreeRecord } from "./types.ts";
@@ -454,8 +459,21 @@ async function listSessionsByRepositoryScan(
   return records;
 }
 
-export async function listSessionsByStatus(
+function indexUnavailable(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ValidationException" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    /index|backfill/i.test((error as { message: string }).message)
+  );
+}
+
+async function querySessionsByStatusIndex(
   ctx: PlaneStorageCtx,
+  indexName: string,
   status: SessionStatus,
   shard: number,
 ): Promise<SessionRecord[]> {
@@ -465,7 +483,7 @@ export async function listSessionsByStatus(
     const res = await ctx.doc.send(
       new QueryCommand({
         TableName: ctx.tables.sessions,
-        IndexName: "statusShard-createdAt",
+        IndexName: indexName,
         KeyConditionExpression: "statusShard = :ss",
         ExpressionAttributeValues: {
           ":ss": statusShardAttr(status, shard),
@@ -477,6 +495,21 @@ export async function listSessionsByStatus(
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
+}
+
+export async function listSessionsByStatus(
+  ctx: PlaneStorageCtx,
+  status: SessionStatus,
+  shard: number,
+): Promise<SessionRecord[]> {
+  try {
+    return await querySessionsByStatusIndex(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard);
+  } catch (error) {
+    if (!indexUnavailable(error)) throw error;
+    return (
+      await querySessionsByStatusIndex(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard)
+    ).toSorted(compareSessionsForQueue);
+  }
 }
 
 export async function putWorktree(ctx: PlaneStorageCtx, wt: WorktreeRecord): Promise<void> {
@@ -1500,7 +1533,13 @@ export async function finishSession(
 /** Conditionally expire a queued session without requiring a worktree lease. */
 export async function expireQueuedSession(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; queueShard: number; queueExpiresAt: string; completedAt: string },
+  opts: {
+    sessionId: string;
+    queueShard: number;
+    queueExpiresAt: string;
+    completedAt: string;
+    concurrencyId?: string;
+  },
 ): Promise<boolean> {
   const before = await readSessionDrainActivity(ctx, opts.sessionId);
   try {
@@ -1526,6 +1565,19 @@ export async function expireQueuedSession(
               },
             },
           },
+          ...(opts.concurrencyId
+            ? [
+                {
+                  Delete: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Key: { concurrencyId: opts.concurrencyId },
+                    ConditionExpression:
+                      "attribute_not_exists(concurrencyId) OR sessionId = :sessionId",
+                    ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+                  },
+                },
+              ]
+            : []),
           ...sessionDrainActivityDelete(ctx, before?.activity ?? null),
         ],
       }),

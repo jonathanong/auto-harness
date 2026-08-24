@@ -42,10 +42,16 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
     gsis: [
       {
-        // Sharded queue: status#shard → createdAt
+        // Sharded queue: status#shard → createdAt (legacy FIFO; keep until queueOrder is populated)
         name: "statusShard-createdAt",
         partitionKey: { name: "statusShard", type: "S" },
         sortKey: { name: "createdAt", type: "S" },
+      },
+      {
+        // Sharded queue: status#shard → inverted priority, createdAt, id
+        name: "statusShard-queueOrder",
+        partitionKey: { name: "statusShard", type: "S" },
+        sortKey: { name: "queueOrder", type: "S" },
       },
       {
         name: "repositoryId-createdAt",

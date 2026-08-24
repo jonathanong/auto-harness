@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -22,6 +23,11 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: ["cmd"],
     hostId: "host",
     assignmentConnectionId: "old",
     assignmentSentAt: NOW,
@@ -46,7 +52,7 @@ function storage(over: Record<string, unknown> = {}) {
 
 function durable(row: SessionRecord, methods: Record<string, unknown> = {}) {
   const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
-  state.storage = storage(methods) as never;
+  setDurableReadStorage(state, storage(methods));
   state.sessions.set(row.id, row);
   return state;
 }
@@ -65,9 +71,9 @@ const status = (
 });
 
 describe("scheduled terminal and retry message branches", () => {
-  it("persists a usage-limit retry for a leased run and clears its lease locally", async () => {
+  it("persists a providerless usage-limit fallback for a leased run and clears its lease locally", async () => {
     const calls: Record<string, unknown>[] = [];
-    const state = durable(session(), {
+    const state = durable(session({ fallbacks: [{ commandId: "fallback" }] }), {
       releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
         calls.push(input);
         return true;
@@ -84,18 +90,19 @@ describe("scheduled terminal and retry message branches", () => {
     );
     expect(calls[0]).toMatchObject({
       status: "queued",
-      retryCount: 1,
+      suppressedTargetIndex: 0,
       errorCode: "usage_limit",
       exitCode: 9,
       cliResumeRef: "ref",
     });
     expect(state.sessions.get("s")).toMatchObject({
       status: "queued",
-      retryCount: 1,
       hostId: null,
+      suppressedTargetIndexes: [0],
       errorMessage: "quota",
     });
     expect(state.sessions.get("s")).not.toHaveProperty("assignmentConnectionId");
+    expect(state.sessions.get("s")).not.toHaveProperty("retryAfter");
   });
 
   it("does not mutate when a leased terminal release loses its fence", async () => {
@@ -105,7 +112,7 @@ describe("scheduled terminal and retry message branches", () => {
     expect(state.sessions.get("s")).toEqual(row);
   });
 
-  it("finishes a leased run at the retry ceiling with complete metadata", async () => {
+  it("keeps a leased providerless usage_limit queued until the original deadline", async () => {
     const calls: Record<string, unknown>[] = [];
     const row = session({ retryCount: 1 });
     const state = durable(row, {
@@ -124,20 +131,21 @@ describe("scheduled terminal and retry message branches", () => {
       }),
     );
     expect(calls[0]).toMatchObject({
-      status: "failed",
-      completedAt: NOW,
+      status: "queued",
+      suppressedTargetIndex: 0,
       errorCode: "usage_limit",
       exitCode: 3,
       cliResumeRef: "r",
     });
     expect(state.sessions.get("s")).toMatchObject({
-      status: "failed",
-      completedAt: NOW,
+      status: "queued",
       errorCode: "usage_limit",
       errorMessage: "limit",
       exitCode: 3,
       cliResumeRef: "r",
+      suppressedTargetIndexes: [0],
     });
+    expect(state.sessions.get("s")).not.toHaveProperty("completedAt");
   });
 
   it("releases a cancelled leased run and carries late terminal metadata", async () => {

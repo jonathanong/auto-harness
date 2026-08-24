@@ -90,14 +90,23 @@ describe("scheduled assignment branch coverage", () => {
     addHost(state, "leased", "leased-connection");
     state.mainCheckoutLeases.set("leased\0repo", { sessionId: "old", connectionId: "old" });
     addHost(state, "good", "good-connection");
-    state.sessions.set("future", queued("future", { retryAfter: "2027-01-01T00:00:00.000Z" }));
+    state.sessions.set(
+      "expired",
+      queued("expired", {
+        queueExpiresAt: "2025-01-01T00:00:00.000Z",
+        concurrencyId: "expired-lock",
+      }),
+    );
     state.sessions.set("missing", queued("missing", { target: { commandId: "missing" } }));
     state.sessions.set("run", queued("run", { ref: "main", metadata: { source: "test" } }));
 
     await expect(assignScheduledQueuedDurable(state)).resolves.toMatchObject([
       { hostId: "good", worktreeId: null, session: { id: "run", status: "running" } },
     ]);
-    expect(state.sessions.get("future")?.status).toBe("queued");
+    expect(state.sessions.get("expired")).toMatchObject({
+      status: "failed",
+      errorCode: "queue_expired",
+    });
     expect(state.sessions.get("missing")?.status).toBe("queued");
     expect(state.mainCheckoutLeases.get("good\0repo")).toMatchObject({ sessionId: "run" });
   });

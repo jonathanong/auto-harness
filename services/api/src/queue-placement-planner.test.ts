@@ -1,0 +1,275 @@
+/* eslint-disable max-lines -- starvation, expiry, and D8 placement cases share one fixture. */
+import { describe, expect, it } from "vitest";
+
+import { ControlPlane } from "./control-plane.ts";
+import { assignQueued } from "./control-plane-assign.ts";
+import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
+import { buildProviderCatalog } from "./control-plane-session-target.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import type { SessionRecord } from "./db/types.ts";
+import {
+  explainPromptPlacement,
+  planPromptPlacement,
+  planScheduledPlacement,
+  targetIsAvailable,
+} from "./queue-placement-planner.ts";
+
+const NOW = "2026-01-01T00:00:00.000Z";
+
+function session(over: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    id: "s",
+    repositoryId: "repo-1",
+    prompt: "p",
+    target: { commandId: BASE_COMMAND_ID },
+    fallbacks: [],
+    targetLabels: [BASE_COMMAND_ID],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    timeout: 1,
+    priority: 0,
+    requiredLabels: [],
+    status: "queued",
+    queueShard: 0,
+    createdAt: NOW,
+    type: "prompt",
+    ...over,
+  };
+}
+
+function markHostReady(plane: ControlPlane, hostId: string, repositoryId = "repo-1"): void {
+  const connectionId = `${hostId}-connection`;
+  plane.state.connections.set(connectionId, {
+    connectionId,
+    type: "host",
+    hostId,
+    connectedAt: NOW,
+    lastHeartbeatAt: NOW,
+    capabilities: ["scheduled-main-checkout"],
+    repositoryIds: [repositoryId],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  plane.state.hostConnection.set(hostId, connectionId);
+  plane.state.hostInventories.set(hostId, {
+    hostId,
+    repositories: [
+      { id: repositoryId, path: `/${repositoryId}`, defaultBranch: "main", worktrees: [] },
+    ],
+    providerAccounts: [],
+    commandProfiles: {},
+    updatedAt: NOW,
+  });
+}
+
+describe("queue placement planner", () => {
+  it("explains expired, closed, and unroutable prompt sessions", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    const catalog = buildProviderCatalog(plane.state);
+    expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }),
+        Date.parse(NOW),
+      ),
+    ).toBe("queue_expired");
+    plane.state.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "paused",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
+      "admission_closed",
+    );
+    plane.state.repositories.get("repo-1")!.admissionState = "active";
+    expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ hostId: "h", worktreeId: "w", ackReceivedAt: NOW }),
+        Date.parse(NOW),
+      ),
+    ).toBe("already_assigned");
+    expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
+      "no_idle_worktree",
+    );
+    markHostReady(plane, "host");
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ target: { commandId: "missing" }, targetLabels: ["missing"] }),
+        Date.parse(NOW),
+      ),
+    ).toBe("no_eligible_route");
+  });
+
+  it("clears an unusable resume pin and reports assignable capacity", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    const catalog = buildProviderCatalog(plane.state);
+    expect(
+      planPromptPlacement(
+        plane.state,
+        catalog,
+        session({ pinnedHostId: "missing", pinExpiresAt: "2025-01-01T00:00:00.000Z" }),
+        Date.parse(NOW),
+      ).action,
+    ).toBe("clear_pin");
+    expect(
+      planPromptPlacement(
+        plane.state,
+        catalog,
+        session({ pinnedHostId: "ghost", pinnedTargetIndex: 0 }),
+        Date.parse(NOW),
+      ).action,
+    ).toBe("clear_pin");
+    expect(planPromptPlacement(plane.state, catalog, session(), Date.parse(NOW)).action).toBe(
+      "assign",
+    );
+    expect(
+      targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
+    ).toBe(true);
+  });
+
+  it("assigns a later shard's higher-priority session before draining shard 0", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 2 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    plane.state.sessions.set(
+      "low",
+      session({ id: "low", queueShard: 0, priority: 0, createdAt: "2026-01-01T00:00:00.000Z" }),
+    );
+    plane.state.sessions.set(
+      "high",
+      session({ id: "high", queueShard: 1, priority: 20, createdAt: "2026-01-01T00:00:01.000Z" }),
+    );
+    const assigned = assignQueued(plane.state);
+    expect(assigned.map((item) => item.session.id)).toEqual(["high"]);
+    expect(plane.state.sessions.get("low")?.status).toBe("queued");
+  });
+
+  it("expires a scheduled queue lease and releases it like a prompt session", async () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    plane.state.sessions.set(
+      "due",
+      session({
+        id: "due",
+        type: "scheduled",
+        source: "schedule",
+        principalId: "system",
+        queueExpiresAt: "2025-12-31T00:00:00.000Z",
+        concurrencyId: "sched-lock",
+      }),
+    );
+    await expect(assignScheduledQueuedDurable(plane.state)).resolves.toEqual([]);
+    expect(plane.state.sessions.get("due")).toMatchObject({
+      status: "failed",
+      errorCode: "queue_expired",
+    });
+  });
+
+  it("cancels a draining scheduled occurrence and skips a host without a route", async () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    plane.state.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "draining",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const row = session({
+      id: "drain",
+      type: "scheduled",
+      source: "schedule",
+      principalId: "system",
+    });
+    expect(
+      planScheduledPlacement(plane.state, buildProviderCatalog(plane.state), row, [
+        { hostId: "host", connectionId: "host-connection" },
+      ]).action,
+    ).toBe("cancel");
+    plane.state.repositories.get("repo-1")!.admissionState = "active";
+    expect(
+      planScheduledPlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session({ id: "orphan", type: "scheduled", source: "schedule" }),
+        [],
+      ),
+    ).toMatchObject({ action: "cancel", reason: "missing_principal" });
+    expect(
+      planScheduledPlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session({ id: "stuck", type: "scheduled", source: "schedule", principalId: "system" }),
+        [],
+      ),
+    ).toMatchObject({ action: "skip", reason: "no_eligible_host" });
+    expect(
+      planScheduledPlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session({
+          id: "unroutable",
+          type: "scheduled",
+          source: "schedule",
+          principalId: "system",
+          target: { commandId: "missing" },
+        }),
+        [{ hostId: "host", connectionId: "host-connection" }],
+      ),
+    ).toMatchObject({ action: "skip", reason: "no_eligible_route" });
+    plane.state.repositories.get("repo-1")!.admissionState = "paused";
+    expect(
+      planScheduledPlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session({ id: "paused", type: "scheduled", source: "schedule", principalId: "system" }),
+        [{ hostId: "host", connectionId: "host-connection" }],
+      ),
+    ).toMatchObject({ action: "skip", reason: "admission_closed" });
+  });
+});

@@ -163,14 +163,14 @@ describe("scheduled assignment branch coverage", () => {
     });
   });
 
-  it("skips retry-delayed, wrong-shard, unresolved, and lease-lost candidates", async () => {
+  it("expires queued work and skips wrong-shard, unresolved, and lease-lost candidates", async () => {
     const current = state();
     const host = connection("h1", "c1");
     current.connections.set("c1", host);
     current.hostConnection.set("h1", "c1");
     current.sessions.set(
-      "delayed",
-      session({ id: "delayed", retryAfter: "2026-01-02T00:00:00.000Z" }),
+      "expired",
+      session({ id: "expired", queueExpiresAt: "2025-01-01T00:00:00.000Z" }),
     );
     current.sessions.set("wrong-shard", session({ id: "wrong-shard", queueShard: 1 }));
     current.sessions.set(
@@ -192,6 +192,35 @@ describe("scheduled assignment branch coverage", () => {
     });
     current.sessions.set("storage-lost", session({ id: "storage-lost" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
+  });
+
+  it("expires a durable scheduled queue row and releases its concurrency lock", async () => {
+    const current = state();
+    current.sessions.set(
+      "s",
+      session({ queueExpiresAt: "2025-01-01T00:00:00.000Z", concurrencyId: "lock" }),
+    );
+    const calls: unknown[] = [];
+    setDurableReadStorage(current, {
+      expireQueuedSession: async (opts: { concurrencyId?: string }) => {
+        calls.push(opts);
+        return true;
+      },
+    });
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(calls[0]).toMatchObject({ sessionId: "s", concurrencyId: "lock" });
+    expect(current.sessions.get("s")).toMatchObject({
+      status: "failed",
+      errorCode: "queue_expired",
+    });
+  });
+
+  it("leaves a scheduled row queued when durable expiry loses its fence", async () => {
+    const current = state();
+    current.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    setDurableReadStorage(current, { expireQueuedSession: async () => false });
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(current.sessions.get("s")?.status).toBe("queued");
   });
 
   it("rejects local lease release unless the exact fence still owns it", () => {

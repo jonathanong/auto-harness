@@ -11,6 +11,7 @@ import type {
   UserRole,
 } from "@auto-harness/shared";
 
+import { queueOrderKey } from "../control-plane-ordering.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import type { SessionRecord } from "./types.ts";
@@ -243,11 +244,12 @@ export function sessionToItem(session: SessionRecord): Record<string, unknown> {
   return {
     ...session,
     statusShard: statusShardAttr(session.status, session.queueShard),
+    queueOrder: queueOrderKey(session),
   };
 }
 
 export function itemToSession(item: Record<string, unknown>): SessionRecord {
-  const { statusShard: _ss, ...rest } = item;
+  const { statusShard: _ss, queueOrder: _qo, ...rest } = item;
   return rest as SessionRecord;
 }
 

@@ -46,6 +46,14 @@ describe("AutoHarnessFoundationStack", () => {
           Projection: { ProjectionType: "ALL" },
         },
         {
+          IndexName: "statusShard-queueOrder",
+          KeySchema: [
+            { AttributeName: "statusShard", KeyType: "HASH" },
+            { AttributeName: "queueOrder", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
           IndexName: "repositoryId-createdAt",
           KeySchema: [
             { AttributeName: "repositoryId", KeyType: "HASH" },

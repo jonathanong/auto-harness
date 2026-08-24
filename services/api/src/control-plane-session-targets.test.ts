@@ -5,6 +5,25 @@ import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { listSessionTargets } from "./control-plane-session-targets.ts";
 
+function markHostReady(
+  state: ReturnType<typeof createControlPlaneState>,
+  hostId: string,
+  repositoryId = "repo-1",
+): void {
+  const connectionId = `${hostId}-connection`;
+  state.connections.set(connectionId, {
+    connectionId,
+    type: "host",
+    hostId,
+    connectedAt: "t",
+    lastHeartbeatAt: "t",
+    capabilities: [],
+    repositoryIds: [repositoryId],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  state.hostConnection.set(hostId, connectionId);
+}
+
 describe("listSessionTargets", () => {
   it("lists providers and all commands, with availability hints", () => {
     const state = createControlPlaneState();
@@ -39,6 +58,7 @@ describe("listSessionTargets", () => {
       status: "idle",
       online: true,
     });
+    markHostReady(state, "host-1");
     state.commands.set("cmd-standalone", {
       id: "cmd-standalone",
       name: "aardvark",
@@ -214,6 +234,7 @@ describe("listSessionTargets", () => {
       status: "idle",
       online: true,
     });
+    markHostReady(state, "host-1");
 
     expect(listSessionTargets(state)).toEqual([
       { kind: "provider", id: "prov-1", label: "claude", available: false },

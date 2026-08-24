@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- optional release fields and D8 suppress share one Dynamo fixture. */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -109,6 +110,59 @@ describe("DynamoDB Local main-checkout release", () => {
       retryAfter: opts.retryAfter,
     });
     expect(await releaseMainCheckoutSession(ctx, opts)).toBe(false);
+  });
+
+  it("appends a suppressed target index when requeuing a providerless usage_limit", async () => {
+    const opts = {
+      sessionId: "suppress",
+      hostId: "suppress-host",
+      repositoryId: "repo",
+      connectionId: "connection",
+      status: "queued" as const,
+      queueShard: 0,
+      suppressedTargetIndex: 0,
+      attemptId: "attempt",
+      errorCode: "usage_limit",
+      reason: "providerless usage limit; trying fallback",
+    };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: opts.hostId,
+          mainCheckoutLeases: {
+            [opts.repositoryId]: { sessionId: opts.sessionId, connectionId: opts.connectionId },
+          },
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessions,
+        Item: {
+          id: opts.sessionId,
+          status: "running",
+          statusShard: "running#0",
+          hostId: opts.hostId,
+          assignmentConnectionId: opts.connectionId,
+          mainCheckoutLease: true,
+          attemptId: opts.attemptId,
+          worktreeId: null,
+        },
+      }),
+    );
+    expect(await releaseMainCheckoutSession(ctx, opts)).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      status: "queued",
+      suppressedTargetIndexes: [0],
+      errorCode: "usage_limit",
+    });
   });
 
   it("finishes a cancelled session, releases its concurrency lock, and rethrows outages", async () => {

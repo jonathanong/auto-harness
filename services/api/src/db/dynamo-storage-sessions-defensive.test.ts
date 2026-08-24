@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- defensive SDK outcomes and queue-order fallback share one mock. */
 import {
   GetCommand,
   QueryCommand,
@@ -41,6 +42,46 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
       expect.any(ScanCommand),
       expect.any(QueryCommand),
     ]);
+  });
+
+  it("falls back to the createdAt index while the queue-order GSI is backfilling", async () => {
+    const commands: unknown[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          commands.push(command);
+          if (commands.length === 1) {
+            throw Object.assign(new Error("Cannot read from backfilling global secondary index"), {
+              name: "ValidationException",
+            });
+          }
+          return {
+            Items: [
+              { id: "low", priority: 0, createdAt: "t1" },
+              { id: "high", priority: 5, createdAt: "t2" },
+            ],
+          };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatus(ctx, "queued", 0)).resolves.toMatchObject([
+      { id: "high" },
+      { id: "low" },
+    ]);
+    expect(commands).toHaveLength(2);
+  });
+
+  it("propagates unexpected queue-order index failures", async () => {
+    const ctx = {
+      doc: {
+        send: async () => {
+          throw new Error("boom");
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatus(ctx, "queued", 0)).rejects.toThrow("boom");
   });
 
   it("retries a transaction cancellation whose lock disappears before its read", async () => {
