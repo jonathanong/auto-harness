@@ -503,7 +503,14 @@ function isAllowedMessage(
   if (!hostId) return false;
   if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
-  return Boolean(session && session.hostId === hostId);
+  if (!session) return false;
+  if (session.hostId === hostId) return true;
+  return (
+    msg.type === "session:log" &&
+    msg.attemptId !== undefined &&
+    session.attemptId !== undefined &&
+    msg.attemptId !== session.attemptId
+  );
 }
 
 export function attachHostWsHub(server: HttpServer, plane: ControlPlane): WsHub {

@@ -470,6 +470,46 @@ export async function handleHostMessageDurable(
     return handleHostMessage(state, msg, sourceConnectionId);
   }
   const storage = state.storage;
+  if (msg.type === "session:log") {
+    if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
+      return { ok: false, error: "log chunk exceeds 32 KiB" };
+    }
+    const session = await loadDurableSession(state, storage, msg.sessionId);
+    const attemptId = resolvedLogAttemptId(session, msg);
+    if (
+      attemptId !== undefined &&
+      ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
+    ) {
+      return { ok: true };
+    }
+    const log = logRecord(msg);
+    if (sourceConnectionId) {
+      const hostId = session?.hostId;
+      if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
+        return { ok: false, error: "stale host connection" };
+      }
+      const attempts = logAttemptFence([
+        attemptId !== undefined
+          ? { sessionId: msg.sessionId, attemptId }
+          : { sessionId: msg.sessionId },
+      ]);
+      if (
+        !(await storage.putLogFenced(log, {
+          hostId,
+          connectionId: sourceConnectionId,
+          ...(attempts.length > 0 ? { attempts } : {}),
+        }))
+      ) {
+        return { ok: false, error: "stale host connection" };
+      }
+      const retained = retainLogs(state, log);
+      state.logs.set(log.sessionId, retained);
+      state.onLogCommitted?.(log);
+    } else {
+      await appendLogDurable(state, log);
+    }
+    return { ok: true };
+  }
   let fence: { hostId: string; connectionId: string } | undefined;
   if (sourceConnectionId) {
     const hostId =
@@ -492,41 +532,6 @@ export async function handleHostMessageDurable(
     return result.ok
       ? { ok: true, hostDraining: msg.hostId }
       : { ok: false, error: "stale host connection" };
-  }
-  if (msg.type === "session:log") {
-    if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
-      return { ok: false, error: "log chunk exceeds 32 KiB" };
-    }
-    const session = await loadDurableSession(state, storage, msg.sessionId);
-    const attemptId = resolvedLogAttemptId(session, msg);
-    if (
-      attemptId !== undefined &&
-      ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
-    ) {
-      return { ok: true };
-    }
-    const log = logRecord(msg);
-    if (fence) {
-      const attempts = logAttemptFence([
-        attemptId !== undefined
-          ? { sessionId: msg.sessionId, attemptId }
-          : { sessionId: msg.sessionId },
-      ]);
-      if (
-        !(await storage.putLogFenced(log, {
-          ...fence,
-          ...(attempts.length > 0 ? { attempts } : {}),
-        }))
-      ) {
-        return { ok: false, error: "stale host connection" };
-      }
-      const retained = retainLogs(state, log);
-      state.logs.set(log.sessionId, retained);
-      state.onLogCommitted?.(log);
-    } else {
-      await appendLogDurable(state, log);
-    }
-    return { ok: true };
   }
   if (msg.type === "session:ack") {
     // Any API node can receive this frame. The process map is only a cache;

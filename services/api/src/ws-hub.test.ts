@@ -471,4 +471,59 @@ describe("createPlaneWsBridge", () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
   });
+
+  it("does not disconnect a host that emits a delayed log for a reassigned session", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      socket.on("open", () => {
+        socket.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "old-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      socket.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "new-host",
+          attemptId: "attempt-2",
+          status: "running",
+        } as never);
+        socket.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "sess-1",
+            attemptId: "attempt-1",
+            stream: "stdout",
+            content: "stale",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+        resolve(socket);
+      });
+      socket.on("error", reject);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    expect(plane.getLogs("sess-1")).toEqual([]);
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
 });

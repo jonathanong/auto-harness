@@ -400,4 +400,44 @@ describe("ControlPlane assignment-attempt fencing", () => {
       },
     ]);
   });
+
+  it("ignores delayed logs from a previous host without treating them as a stale connection", async () => {
+    const { now, plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: "wt-1",
+      attemptId: first.session.attemptId!,
+    });
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      hostId: "host-2",
+      worktreeId: "wt-2",
+      attemptId: "attempt-2",
+    });
+    let writes = 0;
+    plane.state.storage = {
+      getSession: async () => plane.getSession("sess-1"),
+      getHostLock: async (hostId: string) =>
+        hostId === "host-2" ? "new-connection" : "old-connection",
+      putLogFenced: async () => (writes++, true),
+    } as never;
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          attemptId: first.session.attemptId!,
+          stream: "stdout",
+          content: "from-old-host",
+          timestamp: now,
+          seq: 1,
+        },
+        "old-connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(writes).toBe(0);
+    expect(plane.getLogs("sess-1")).toEqual([]);
+  });
 });
