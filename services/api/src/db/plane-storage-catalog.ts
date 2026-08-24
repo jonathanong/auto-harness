@@ -13,6 +13,7 @@ import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { sessionLogsTtlEpochSeconds } from "./dynamo.ts";
+import { ARCHIVE_RETRY_INDEX } from "./ensure-archive-retry-index.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
@@ -1338,6 +1339,102 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveMetadat
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
+}
+
+/** Return the oldest bounded page of archive rows that still need object storage. */
+export async function listPendingArchives(
+  ctx: PlaneStorageCtx,
+  limit: number,
+): Promise<ArchiveMetadata[]> {
+  const boundedLimit = Math.max(1, Math.min(limit, 25));
+  const pending = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.archives,
+      IndexName: ARCHIVE_RETRY_INDEX,
+      KeyConditionExpression: "retryState = :pending",
+      ExpressionAttributeValues: { ":pending": "pending" },
+      Limit: boundedLimit,
+      ScanIndexForward: true,
+    }),
+  );
+  const staleBefore = new Date(Date.now() - 55_000).toISOString();
+  const processing = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.archives,
+      IndexName: ARCHIVE_RETRY_INDEX,
+      KeyConditionExpression: "retryState = :processing AND retryOrder < :staleBefore",
+      ExpressionAttributeValues: { ":processing": "processing", ":staleBefore": staleBefore },
+      Limit: boundedLimit,
+      ScanIndexForward: true,
+    }),
+  );
+  return catalogPageItems([
+    ...(pending.Items ?? []),
+    ...(processing.Items ?? []),
+  ] as ArchiveMetadata[]).slice(0, boundedLimit);
+}
+
+/** Atomically move a pending archive out of the retry queue for one Cron worker. */
+export async function claimArchiveRetry(
+  ctx: PlaneStorageCtx,
+  key: string,
+  retryState: "pending" | "processing",
+  retryOrder: string,
+  claimedOrder: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.archives,
+        Key: { key },
+        UpdateExpression: "SET retryState = :processing, retryOrder = :claimed",
+        ConditionExpression:
+          "objectStored = :false AND retryState = :expectedState AND retryOrder = :expected",
+        ExpressionAttributeValues: {
+          ":false": false,
+          ":processing": "processing",
+          ":expectedState": retryState,
+          ":expected": retryOrder,
+          ":claimed": claimedOrder,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
+/** Return a failed or expired claim to the pending queue only if its fence matches. */
+export async function releaseArchiveRetry(
+  ctx: PlaneStorageCtx,
+  key: string,
+  claimedOrder: string,
+  retryOrder: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.archives,
+        Key: { key },
+        UpdateExpression: "SET retryState = :pending, retryOrder = :retryOrder",
+        ConditionExpression:
+          "objectStored = :false AND retryState = :processing AND retryOrder = :claimed",
+        ExpressionAttributeValues: {
+          ":false": false,
+          ":processing": "processing",
+          ":pending": "pending",
+          ":claimed": claimedOrder,
+          ":retryOrder": retryOrder,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
 }
 
 /**

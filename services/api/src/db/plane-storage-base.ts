@@ -34,6 +34,7 @@ import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
+import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
 import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 
 /**
@@ -51,6 +52,13 @@ export class DynamoPlaneStorageBase {
   /** Bounded deployment migration; scheduler callers run at most one page. */
   migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
     return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
+  }
+
+  migrateArchiveRetryIndexPage(): Promise<boolean> {
+    return backfillArchiveRetryIndexPage(this.ctx.doc, {
+      archives: this.ctx.tables.archives,
+      sessionDrains: this.ctx.tables.sessionDrains,
+    });
   }
 
   /** Repair queued rows missing `queueOrder`. Safe to repeat; later requeues are also written. */
@@ -902,6 +910,23 @@ export class DynamoPlaneStorageBase {
 
   listArchives(): Promise<ArchiveMetadata[]> {
     return catalog.listArchives(this.ctx);
+  }
+
+  listPendingArchives(limit: number): Promise<ArchiveMetadata[]> {
+    return catalog.listPendingArchives(this.ctx, limit);
+  }
+
+  claimArchiveRetry(
+    key: string,
+    retryState: "pending" | "processing",
+    retryOrder: string,
+    claimedOrder: string,
+  ): Promise<boolean> {
+    return catalog.claimArchiveRetry(this.ctx, key, retryState, retryOrder, claimedOrder);
+  }
+
+  releaseArchiveRetry(key: string, claimedOrder: string, retryOrder: string): Promise<boolean> {
+    return catalog.releaseArchiveRetry(this.ctx, key, claimedOrder, retryOrder);
   }
 
   /** Returns false when `expectedVersion` no longer matches the stored document. */

@@ -49,6 +49,7 @@ export type LambdaRuntime = {
 
 export type CronResult = {
   ackDeadlinesEnforced: number;
+  archivesRetried: number;
   runningTimeoutsEnforced: number;
   repositoriesReconciled: number;
   sessionDrainsReconciled: number;
@@ -275,6 +276,7 @@ export async function createLambdaRuntime(
       return runInvocation(async () => {
         // Bounded and resumable: never make Lambda initialization scan history.
         await created.plane.migrateSessionDrainActivityLedgerPage();
+        await created.plane.migrateArchiveRetryIndexPage();
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
@@ -283,6 +285,7 @@ export async function createLambdaRuntime(
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
+        const archivesRetried = await created.plane.retryPendingArchivesDurable(25);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
         emitCronSweepMetrics({
@@ -292,6 +295,7 @@ export async function createLambdaRuntime(
         });
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
+          archivesRetried,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: assignments.queuedAssigned.length,
           repositoriesReconciled: repositoriesReconciled.length,

@@ -46,6 +46,8 @@ export type ArchiveMetadata = {
   status: "pending" | "complete";
   objectStored: boolean;
   updatedAt: string;
+  retryState?: "pending" | "processing";
+  retryOrder?: string;
 };
 
 export type ControlPlaneOptions = {

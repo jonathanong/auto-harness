@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-archive.ts";
+import {
+  archiveSessionLogs,
+  retryPendingArchives,
+  retrySessionArchiveIfNeeded,
+} from "./control-plane-archive.ts";
 import { createControlPlaneState, trackLogPersist } from "./control-plane-state.ts";
 
 describe("archive retry state", () => {
@@ -62,5 +66,45 @@ describe("archive retry state", () => {
     releaseLog?.();
     await expect(archive).resolves.toMatchObject({ key: "sessions/later-session/logs.jsonl" });
     expect(uploaded).toEqual(["sessions/later-session/logs.jsonl"]);
+  });
+
+  it("sweeps a bounded page and isolates one failed upload from later archives", async () => {
+    const uploaded: string[] = [];
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async ({ key }) => {
+          if (key.includes("failed")) throw new Error("S3 unavailable");
+          uploaded.push(key);
+        },
+      },
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    for (const sessionId of ["failed", "later"]) {
+      state.archives.set(`sessions/${sessionId}/logs.jsonl`, {
+        key: `sessions/${sessionId}/logs.jsonl`,
+        contentType: "application/x-ndjson",
+        bodyBytes: 0,
+        status: "complete",
+        objectStored: false,
+        retryState: "pending",
+        retryOrder: `2026-01-01T00:00:00.000Z#sessions/${sessionId}/logs.jsonl`,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    }
+    state.archives.set("other-prefix/ignored", {
+      key: "other-prefix/ignored",
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "2026-01-01T00:00:00.000Z#other-prefix/ignored",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(retryPendingArchives(state, 25)).resolves.toBe(1);
+    expect(uploaded).toEqual(["sessions/later/logs.jsonl"]);
+    expect(state.archives.get("sessions/failed/logs.jsonl")?.objectStored).toBe(false);
+    expect(state.archives.get("sessions/later/logs.jsonl")?.objectStored).toBe(true);
   });
 });

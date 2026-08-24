@@ -197,9 +197,9 @@ timeout.
 | WS Connect         | `$connect`                                            | Validate token; store connection                                                 |
 | WS Disconnect      | `$disconnect`                                         | Cleanup + agent offline handling                                                 |
 | WS Message         | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                     |
-| Cron               | EventBridge rate(1 minute)                            | Due schedules → sessions; stale-host/ack sweeps; queued assignment; Slack outbox |
+| Cron               | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox |
 | Scheduler          | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                        |
-| Archival (planned) | On session terminal status (async invoke optional)    | DynamoDB SessionLogs → S3 JSONL                                                  |
+| Archival           | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                  |
 
 Handlers share:
 
@@ -427,6 +427,9 @@ Triggered every **60 seconds** by EventBridge.
      → mark timed_out, send session:cancel, archive logs, free the worktree or main-checkout lease
 5. Slack outbox drain: reconcile queued/running (and just-completed) sessions, then claim due
    NotificationDeliveries rows through chat.postMessage / chat.update (bounded per tick)
+6. Archive retry sweep: claim at most 25 durable `objectStored=false` archive rows and retry
+   their idempotent `sessions/{sessionId}/logs.jsonl` uploads; failures remain queued for a later
+   tick. Legacy archive rows are backfilled into the retry index one bounded page at a time.
 ```
 
 The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge on the next cron tick after `ackReceivedAt + timeout`.

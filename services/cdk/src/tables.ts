@@ -98,6 +98,13 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "Archives",
     partitionKey: { name: "key", type: "S" },
+    gsis: [
+      {
+        name: "retryState-retryOrder",
+        partitionKey: { name: "retryState", type: "S" },
+        sortKey: { name: "retryOrder", type: "S" },
+      },
+    ],
   },
   {
     name: "HostInventories",

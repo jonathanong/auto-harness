@@ -883,6 +883,7 @@ describe("Lambda runtime adapters", () => {
   it("lazily creates one shared runtime for all exported handler shapes", async () => {
     const cron = vi.fn(async () => ({
       ackDeadlinesEnforced: 0,
+      archivesRetried: 0,
       queuedAssigned: 0,
       scheduledAssigned: 0,
       schedulesFired: 0,
@@ -914,6 +915,7 @@ describe("Lambda runtime adapters", () => {
       .mockResolvedValueOnce({
         cron: vi.fn(async () => ({
           ackDeadlinesEnforced: 0,
+          archivesRetried: 0,
           queuedAssigned: 0,
           scheduledAssigned: 0,
           schedulesFired: 0,
@@ -955,6 +957,7 @@ describe("Lambda runtime adapters", () => {
       seedSchedulerSweep(fixture);
       await expect((await fixture.runtime).cron()).resolves.toEqual({
         ackDeadlinesEnforced: 1,
+        archivesRetried: 0,
         runningTimeoutsEnforced: 1,
         queuedAssigned: 0,
         repositoriesReconciled: 1,

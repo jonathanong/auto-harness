@@ -4,6 +4,7 @@ import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
+  retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
 ): Promise<ArchiveObject> {
   // Only this session's log writes. Awaiting every pending log write made archive cost
   // scale with total output since process start rather than with the session's own.
@@ -26,15 +27,23 @@ export async function archiveSessionLogs(
     status: "pending",
     objectStored: false,
     updatedAt: state.now(),
+    retryState: retryClaim?.retryState ?? "pending",
+    retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${object.key}`,
   };
   if (state.storage) await state.storage.putArchive(pending);
   state.archives.set(object.key, pending);
   if (state.archiveWriter) await state.archiveWriter.putArchive(object);
+  const storedMetadata = { ...pending };
+  delete storedMetadata.retryState;
+  delete storedMetadata.retryOrder;
   const complete: ArchiveMetadata = {
-    ...pending,
+    ...storedMetadata,
     status: "complete",
     objectStored: state.archiveWriter !== undefined,
     updatedAt: state.now(),
+    ...(state.archiveWriter
+      ? {}
+      : { retryState: "pending" as const, retryOrder: `${state.now()}#${object.key}` }),
   };
   if (state.storage) await state.storage.putArchive(complete);
   state.archives.set(object.key, complete);
@@ -45,12 +54,98 @@ export async function archiveSessionLogs(
 export async function retrySessionArchiveIfNeeded(
   state: ControlPlaneState,
   sessionId: string,
+  retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
 ): Promise<void> {
   if (!state.archiveWriter) return;
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata?.status === "complete" && metadata.objectStored) return;
-  await archiveSessionLogs(state, sessionId);
+  await archiveSessionLogs(state, sessionId, retryClaim);
+}
+
+function archiveSessionId(key: string): string | null {
+  const match = /^sessions\/([^/]+)\/logs\.jsonl$/.exec(key);
+  return match?.[1] ?? null;
+}
+
+/** Retry at most one bounded page of durable archive metadata, isolating failures per item. */
+export async function retryPendingArchives(state: ControlPlaneState, limit = 25): Promise<number> {
+  if (!state.archiveWriter) return 0;
+  const storage = state.storage;
+  const durableRetry = storage !== undefined && typeof storage.listPendingArchives === "function";
+  let candidates: ArchiveMetadata[];
+  try {
+    candidates = durableRetry
+      ? await storage.listPendingArchives(limit)
+      : [...state.archives.values()]
+          .filter(
+            (metadata) =>
+              !metadata.objectStored &&
+              (metadata.retryState === "pending" || metadata.retryState === "processing"),
+          )
+          .toSorted((left, right) =>
+            (left.retryOrder ?? left.key).localeCompare(right.retryOrder ?? right.key),
+          )
+          .slice(0, Math.min(limit, 25));
+  } catch (error) {
+    // A newly-created or still-backfilling GSI is temporarily unreadable; the next Cron tick
+    // will retry the bounded sweep after the migration/index becomes available.
+    console.error("archive retry sweep unavailable", error);
+    return 0;
+  }
+  let retried = 0;
+  for (const metadata of candidates) {
+    const sessionId = archiveSessionId(metadata.key);
+    if (!sessionId || !metadata.retryOrder) continue;
+    const claimedOrder = `${state.now()}#${metadata.key}`;
+    if (durableRetry && typeof storage.claimArchiveRetry === "function") {
+      const claimed = await storage.claimArchiveRetry(
+        metadata.key,
+        metadata.retryState ?? "pending",
+        metadata.retryOrder,
+        claimedOrder,
+      );
+      if (!claimed) continue;
+    } else {
+      const current = state.archives.get(metadata.key);
+      if (!current || current.objectStored || current.retryOrder !== metadata.retryOrder) continue;
+      state.archives.set(metadata.key, {
+        ...current,
+        retryState: "processing",
+        retryOrder: claimedOrder,
+      });
+    }
+    try {
+      await retrySessionArchiveIfNeeded(state, sessionId, {
+        retryState: "processing",
+        retryOrder: claimedOrder,
+      });
+      retried += 1;
+    } catch (error) {
+      try {
+        if (durableRetry && typeof storage.releaseArchiveRetry === "function") {
+          await storage.releaseArchiveRetry(
+            metadata.key,
+            claimedOrder,
+            `${state.now()}#${metadata.key}`,
+          );
+        } else {
+          const current = state.archives.get(metadata.key);
+          if (current?.retryState === "processing" && current.retryOrder === claimedOrder) {
+            state.archives.set(metadata.key, {
+              ...current,
+              retryState: "pending",
+              retryOrder: `${state.now()}#${metadata.key}`,
+            });
+          }
+        }
+      } catch (releaseError) {
+        console.error(`archive retry release failed for ${metadata.key}`, releaseError);
+      }
+      console.error(`archive retry failed for ${metadata.key}`, error);
+    }
+  }
+  return retried;
 }
 
 export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
