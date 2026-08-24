@@ -18,6 +18,7 @@ import { OutboundQueue } from "./outbound-queue.ts";
 import {
   emptyExecutionProfiles,
   executionProfileReady,
+  providerAccountReadiness,
   resolveExecutionProfile,
   type ExecutionProfiles,
 } from "./execution-profiles.ts";
@@ -96,6 +97,7 @@ export class DaemonLoop {
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly executionProfiles: ExecutionProfiles;
+  private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -166,6 +168,7 @@ export class DaemonLoop {
     await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
   }
   async register(): Promise<void> {
+    const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
@@ -179,8 +182,16 @@ export class DaemonLoop {
       runningAttempts,
       this.executionProfiles,
     );
+    this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {
+    if (
+      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+      this.advertisedProviderAccountReadiness
+    ) {
+      await this.register();
+      return;
+    }
     await this.outbound.send({
       type: "host:keepalive",
       hostId: this.config.hostId,

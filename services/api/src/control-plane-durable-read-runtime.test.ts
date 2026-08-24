@@ -267,6 +267,24 @@ describe("durable runtime read-through", () => {
     expect(state.sessions.get(session.id)).toEqual(session);
   });
 
+  it("revalidates cached queued sessions omitted from the status GSI", async () => {
+    const stale = { ...session, id: "stale-queue" };
+    const durable = { ...session, id: "durable-queue" };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatus: async () => [],
+        getSession: async (id: string) =>
+          id === durable.id ? durable : { ...stale, status: "running" },
+      } as never,
+    });
+    state.sessions.set(stale.id, stale);
+    state.sessions.set(durable.id, durable);
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([durable]);
+    expect(state.sessions.get(stale.id)?.status).toBe("running");
+  });
+
   it("does not revert a just-assigned session when the queued GSI still lists it", async () => {
     const assigned = {
       ...session,

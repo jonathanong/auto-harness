@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -115,6 +115,24 @@ describe("DaemonLoop execution profiles", () => {
       transport.deliver(assign({ sessionId: "s-b", attemptId: "a2", providerAccountId: "acct-b" }));
       await loop.waitForIdle();
       expect(homes).toEqual([homeA, homeB]);
+      rmSync(homeA, { recursive: true, force: true });
+      await loop.keepalive();
+      expect(serverMsgs.at(-1)).toMatchObject({
+        type: "host:register",
+        providerAccountReadiness: [
+          { providerAccountId: "acct-a", ready: false },
+          { providerAccountId: "acct-b", ready: true },
+        ],
+      });
+      mkdirSync(homeA);
+      await loop.keepalive();
+      expect(serverMsgs.at(-1)).toMatchObject({
+        type: "host:register",
+        providerAccountReadiness: [
+          { providerAccountId: "acct-a", ready: true },
+          { providerAccountId: "acct-b", ready: true },
+        ],
+      });
       loop.stop();
     } finally {
       cleanup();

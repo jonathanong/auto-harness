@@ -97,15 +97,13 @@ export async function backfillArchiveRetryIndexPage(
   doc: DynamoDBDocumentClient,
   tables: Pick<DynamoTableNames, "archives" | "sessionDrains">,
 ): Promise<boolean> {
-  const ready = await doc.send(
+  await doc.send(
     new GetCommand({
       TableName: tables.sessionDrains,
       Key: { scopeKey: MIGRATION_SCOPE_KEY, recordKey: MIGRATION_RECORD_KEY },
       ConsistentRead: true,
     }),
   );
-  if (ready.Item?.recordType === "archive-retry-v1") return true;
-
   const owner = randomUUID();
   const now = new Date();
   const leaseUntil = new Date(now.getTime() + MIGRATION_LEASE_MS).toISOString();
