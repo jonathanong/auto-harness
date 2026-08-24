@@ -20,6 +20,11 @@ import { assertRunnableTree } from "./agent-updater-install-tree.ts";
 const VERSION_FILE = ".auto-harness-version";
 const BOOT_MARKER_FILE = ".auto-harness-update-boot.json";
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+// Keep validation bounded even if an otherwise verified archive has an
+// unexpectedly large table of contents. This matches Node's default
+// spawnSync buffer, but making it explicit prevents a future runtime default
+// change from turning archive validation into an unbounded allocation.
+const MAX_ARCHIVE_LISTING_BYTES = 1024 * 1024;
 
 type ArchiveRun = (
   command: string,
@@ -30,7 +35,10 @@ type ExtractArchive = (archivePath: string, destination: string) => void;
 type RenamePath = (source: string, destination: string) => void;
 
 const defaultRun: ArchiveRun = (command, args) => {
-  const result = spawnSync(command, args, { encoding: "utf8" });
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    maxBuffer: MAX_ARCHIVE_LISTING_BYTES,
+  });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 };
 
@@ -48,6 +56,9 @@ function safeArchiveEntry(entry: string): boolean {
 function defaultExtract(archivePath: string, destination: string, run: ArchiveRun): void {
   const listing = run("tar", ["-tzf", archivePath]);
   if (listing.status !== 0) throw new Error(`update archive listing failed: ${listing.stderr}`);
+  if (Buffer.byteLength(listing.stdout, "utf8") > MAX_ARCHIVE_LISTING_BYTES) {
+    throw new Error("update archive listing exceeds the maximum size");
+  }
   if (!listing.stdout.split(/\r?\n/).filter(Boolean).every(safeArchiveEntry)) {
     throw new Error("update archive contains an unsafe path");
   }

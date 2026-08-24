@@ -243,6 +243,14 @@ describe("file update installer", () => {
         "listing failed",
       );
 
+      const oversizedList = createFileUpdateInstaller({
+        rootDir,
+        run: () => ({ status: 0, stdout: `${"package.json\\n".repeat(100_000)}`, stderr: "" }),
+      });
+      await expect(
+        oversizedList.stage({ version: "3.0.4", artifact: new Uint8Array() }),
+      ).rejects.toThrow("listing exceeds the maximum size");
+
       let callsCount = 0;
       const badExtract = createFileUpdateInstaller({
         rootDir,

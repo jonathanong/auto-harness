@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, win32 } from "node:path";
 
 /**
  * Select a writable, stable update root for the platform supervisor. The
@@ -13,9 +13,15 @@ export function resolveUpdateInstallDir(
   options: { platform?: string; home?: string; appData?: string } = {},
 ): string {
   const configured = env.HARNESS_UPDATE_INSTALL_DIR?.trim();
-  if (configured) return configured;
-
   const platform = options.platform ?? process.platform;
+  if (configured) {
+    const absolute = platform === "win32" ? win32.isAbsolute(configured) : isAbsolute(configured);
+    if (!absolute) {
+      throw new Error("HARNESS_UPDATE_INSTALL_DIR must be an absolute path");
+    }
+    return configured;
+  }
+
   const home = options.home ?? env.HOME ?? env.USERPROFILE ?? homedir();
   if (platform === "darwin") {
     return join(home, "Library", "Application Support", "auto-harness", "updates");

@@ -2,6 +2,7 @@ import {
   renderEnvFile,
   isProductionApiUrl,
   PERSISTED_DAEMON_ENV_KEYS,
+  formatPersistedEnvValue,
   validatePersistedEnvFile,
 } from "./host-service-env.ts";
 import { parseChildEnvAllowlist } from "./child-env.ts";
@@ -26,13 +27,13 @@ function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): str
     if (value === undefined) return line;
     assertSingleLine(key, value);
     seen.add(key);
-    return `${line.slice(0, eq + 1)}${value}`;
+    return `${line.slice(0, eq + 1)}${formatPersistedEnvValue(key, value)}`;
   });
   for (const [key, value] of updates) {
     if (seen.has(key)) continue;
     assertSingleLine(key, value);
     if (lines.at(-1) === "") lines.pop();
-    lines.push(`${key}=${value}`);
+    lines.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   const rendered = lines.join("\n");
   return rendered.endsWith("\n") ? rendered : `${rendered}\n`;

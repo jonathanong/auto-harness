@@ -162,6 +162,19 @@ describe("persisted service environment validation", () => {
     );
   });
 
+  it("escapes a persisted updater PEM for an EnvironmentFile", () => {
+    const original =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";
+    const updated = preparePersistedEnv({
+      existing: original,
+      example: "",
+      env: { HARNESS_UPDATE_PUBLIC_KEY: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----" },
+    }).contents;
+    expect(updated).toContain(
+      'HARNESS_UPDATE_PUBLIC_KEY="-----BEGIN KEY-----\\\\nabc\\\\n-----END KEY-----"',
+    );
+  });
+
   it("rejects multiline URL replacements before editing persisted contents", () => {
     const original =
       "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://old.example.com\nHARNESS_API_KEY=secret\n";

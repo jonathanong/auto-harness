@@ -12,6 +12,21 @@ describe("resolveUpdateInstallDir", () => {
     ).toBe("/custom/updates");
   });
 
+  it("rejects relative explicit update roots on every platform", () => {
+    expect(() =>
+      resolveUpdateInstallDir({ HARNESS_UPDATE_INSTALL_DIR: "updates" }, { platform: "linux" }),
+    ).toThrow("must be an absolute path");
+    expect(() =>
+      resolveUpdateInstallDir({ HARNESS_UPDATE_INSTALL_DIR: "updates" }, { platform: "darwin" }),
+    ).toThrow("must be an absolute path");
+    expect(() =>
+      resolveUpdateInstallDir({ HARNESS_UPDATE_INSTALL_DIR: "updates" }, { platform: "win32" }),
+    ).toThrow("must be an absolute path");
+    expect(
+      resolveUpdateInstallDir({ HARNESS_UPDATE_INSTALL_DIR: "C:\\updates" }, { platform: "win32" }),
+    ).toBe("C:\\updates");
+  });
+
   it("uses stable platform-specific user data defaults", () => {
     expect(resolveUpdateInstallDir({}, { platform: "linux", home: "/home/op" })).toBe(
       "/opt/auto-harness",

@@ -93,7 +93,14 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
     manifestPublicKey: publicKey,
     fetcher: createHttpsUpdateFetcher(manifestUrl, bindings.fetchFn),
     lifecycle: {
-      drain: () => bindings.loop.beginDrain(),
+      drain: async () => {
+        // beginDrain() is intentionally idempotent for operator and policy
+        // drains. Capture ownership before entering it so a failed update
+        // cannot resume a maintenance drain that it did not acquire.
+        const alreadyDraining = bindings.loop.isDraining();
+        await bindings.loop.beginDrain();
+        return !alreadyDraining;
+      },
       waitForIdle: () => bindings.loop.waitForIdle(),
       resume: () => bindings.loop.resumeFromDrain(),
     },

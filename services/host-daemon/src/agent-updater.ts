@@ -15,7 +15,8 @@ export type UpdateInstaller = {
 };
 
 export type UpdateLifecycle = {
-  drain(): Promise<void>;
+  /** Resolve false when a pre-existing operator/policy drain was retained. */
+  drain(): Promise<boolean | void>;
   waitForIdle(): Promise<void>;
   resume(): Promise<void>;
 };
@@ -89,8 +90,7 @@ export class AgentUpdater {
         currentVersion,
         targetVersion,
       });
-      await this.options.lifecycle.drain();
-      drained = true;
+      drained = (await this.options.lifecycle.drain()) !== false;
       await this.options.lifecycle.waitForIdle();
       this.transition({
         phase: "downloading",

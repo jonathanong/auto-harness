@@ -11,10 +11,9 @@ export function parseEnvFile(contents: string): Record<string, string> {
     const eq = line.indexOf("=");
     const key = line.slice(0, eq);
     let value = line.slice(eq + 1);
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replaceAll("\\\\", "\\").replaceAll('\\"', '"');
+    } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1);
     }
     parsed[key] = value;
@@ -189,6 +188,16 @@ function assertSingleLine(key: string, value: string): void {
 }
 
 /**
+ * systemd EnvironmentFile consumes backslashes in unquoted values. Keep the
+ * updater's documented literal `\\n` PEM encoding intact by quoting it and
+ * escaping the backslash for the EnvironmentFile parser.
+ */
+export function formatPersistedEnvValue(key: string, value: string): string {
+  if (key !== "HARNESS_UPDATE_PUBLIC_KEY") return value;
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/**
  * Render a systemd-style env file from the checked-in example, filling current
  * identity. Extra allowlisted child credentials are appended so they survive
  * restart; HARNESS_* still never reaches repository commands.
@@ -213,21 +222,21 @@ export function renderEnvFile(
     seen.add(key);
     const value = filledValue(key, line.slice(eq + 1), env, capturePath);
     assertSingleLine(key, value);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   for (const key of extras.keys) {
     const value = env[key];
     if (value === undefined || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   for (const key of PERSISTED_DAEMON_ENV_KEYS) {
     const value = env[key];
     if (value === undefined || value === "" || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   const rendered = out.join("\n");
   return rendered.endsWith("\n") ? rendered : `${rendered}\n`;

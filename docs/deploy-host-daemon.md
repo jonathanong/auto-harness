@@ -154,7 +154,7 @@ On the agent host:
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
 | `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                            |
 | `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                            |
-| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the root-owned stable launcher selects its `current` directory.                                                                                                                            |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the root-owned stable launcher selects its `current` directory.                                                                             |
 | `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
 | `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
 
@@ -343,7 +343,7 @@ accepts its registration. If that replacement crashes before acknowledgement, it
 launch rolls `current` back to the saved release and restarts through the stable launcher. Obsolete
 release trees are pruned only after that acknowledgement. Concurrent runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
 `HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM; use literal `\\n` in a single-line EnvironmentFile),
-optional `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
+optional absolute `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
 `~/Library/Application Support/auto-harness/updates` on macOS, and
 `%APPDATA%\\auto-harness\\updates` on Windows), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once
 per start; maximum `2147483647`) to enable the

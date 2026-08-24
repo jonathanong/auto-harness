@@ -92,10 +92,22 @@ describe("renderEnvFile", () => {
     expect(rendered).toContain(
       "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json",
     );
-    expect(rendered).toContain("HARNESS_UPDATE_PUBLIC_KEY=public-key");
+    expect(rendered).toContain('HARNESS_UPDATE_PUBLIC_KEY="public-key"');
     expect(rendered).toContain("HARNESS_UPDATE_INSTALL_DIR=/srv/auto-harness");
     expect(rendered).toContain("HARNESS_UPDATE_POLL_MS=60000");
     expect(rendered).toContain("HARNESS_DAEMON_VERSION=1.2.3");
+  });
+
+  it("quotes escaped updater PEM values for systemd EnvironmentFile", () => {
+    const rendered = renderEnvFile(example, {
+      HARNESS_UPDATE_PUBLIC_KEY: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
+    });
+    expect(rendered).toContain(
+      'HARNESS_UPDATE_PUBLIC_KEY="-----BEGIN KEY-----\\\\nabc\\\\n-----END KEY-----"',
+    );
+    expect(parseEnvFile(rendered).HARNESS_UPDATE_PUBLIC_KEY).toBe(
+      "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
+    );
   });
 
   it("keeps an existing extra key and rejects multiline values", () => {

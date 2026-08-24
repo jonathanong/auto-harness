@@ -97,4 +97,48 @@ describe("HTTPS update fetcher", () => {
       })).fetchArtifact("https://updates.example.test/agent.tgz"),
     ).rejects.toThrow("update artifact fetch failed: 404");
   });
+
+  it("rejects oversized streamed update responses before buffering", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async (url) => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get: () =>
+            url.endsWith("manifest.json") ? String(64 * 1024 + 1) : String(512 * 1024 * 1024 + 1),
+        },
+        body: {
+          getReader: () => {
+            throw new Error("body must not be read");
+          },
+        },
+      }),
+    );
+    await expect(fetcher.fetchManifest()).rejects.toThrow("manifest response exceeds");
+    await expect(fetcher.fetchArtifact("https://updates.example.test/agent.tgz")).rejects.toThrow(
+      "artifact response exceeds",
+    );
+  });
+
+  it("cancels a manifest stream that exceeds its limit without a length header", async () => {
+    let cancelled = false;
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: async () => ({ done: false, value: new Uint8Array(64 * 1024 + 1) }),
+            cancel: async () => {
+              cancelled = true;
+            },
+          }),
+        },
+      }),
+    );
+    await expect(fetcher.fetchManifest()).rejects.toThrow("manifest response exceeds");
+    expect(cancelled).toBe(true);
+  });
 });
