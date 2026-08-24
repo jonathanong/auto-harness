@@ -45,10 +45,25 @@ describe("sendDaemonLog", () => {
       undefined,
       {
         ...chunk,
+        stream: "system",
         dropped: 4,
       },
     );
     expect(sent).toEqual([expect.objectContaining({ type: "session:log", dropped: 4 })]);
+    expect(options).toEqual([{ nonDroppable: true }]);
+  });
+
+  it("retains lifecycle system frames under outbound pressure", async () => {
+    const options: unknown[] = [];
+    await sendDaemonLog(
+      {
+        send: async (_message: unknown, sendOptions?: unknown) => {
+          options.push(sendOptions);
+        },
+      } as never,
+      undefined,
+      { ...chunk, stream: "system", content: "Session failed at t" },
+    );
     expect(options).toEqual([{ nonDroppable: true }]);
   });
 

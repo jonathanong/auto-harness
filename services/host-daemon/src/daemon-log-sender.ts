@@ -20,7 +20,7 @@ export async function sendDaemonLog(
         seq: chunk.seq,
         ...(chunk.dropped !== undefined ? { dropped: chunk.dropped } : {}),
       },
-      chunk.dropped !== undefined ? { nonDroppable: true } : undefined,
+      chunk.stream === "system" ? { nonDroppable: true } : undefined,
     )
     .catch((err: unknown) => {
       onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);

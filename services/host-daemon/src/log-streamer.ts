@@ -20,7 +20,7 @@ import {
 } from "./log-coalesce.ts";
 
 type LogEmit = (chunk: SessionLogChunk) => void;
-type EnqueueResult = { chunk: SessionLogChunk | null; diverted: boolean };
+type EnqueueResult = { chunk: SessionLogChunk | null; diverted: boolean; dropped: boolean };
 
 const DEFAULT_MAX_LOG_CHUNKS = 10_000;
 const DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024;
@@ -135,11 +135,20 @@ export class LogStreamer {
     const bounded = force ? content : truncateUtf8(content, this.remainingBytes());
     if (bounded.length === 0) return last;
     let allowPending = true;
+    let rejectRest = false;
     for (const wirePiece of splitUtf8(bounded, this.maxWireBytes)) {
       for (const piece of splitLogLines(wirePiece, this.logBatchMaxLines)) {
-        const result = this.enqueuePiece(stream, piece, timestamp, force, allowPending);
+        const result = this.enqueuePiece(
+          stream,
+          piece,
+          timestamp,
+          force,
+          allowPending && !rejectRest,
+          !rejectRest,
+        );
         if (result.chunk) last = result.chunk;
         if (result.diverted) allowPending = false;
+        if (result.dropped) rejectRest = true;
       }
     }
     if (!force) {
@@ -166,31 +175,40 @@ export class LogStreamer {
     timestamp: string,
     force: boolean,
     allowPending: boolean,
+    allowOverflow: boolean,
   ): EnqueueResult {
     if (allowPending && !this.overflow && this.pending && this.fits(this.pending, stream, piece)) {
       appendToBatch(this.pending, piece);
-      return { chunk: null, diverted: false };
+      return { chunk: null, diverted: false, dropped: false };
     }
     if (allowPending && !this.pending) {
-      return { chunk: this.startPending(stream, piece, timestamp, force), diverted: false };
+      return {
+        chunk: this.startPending(stream, piece, timestamp, force),
+        diverted: false,
+        dropped: false,
+      };
     }
     let last: SessionLogChunk | null = null;
     if (this.pending) last = this.flushPending(force);
     this.promoteOverflow();
     if (!this.pending) {
-      return { chunk: this.startPending(stream, piece, timestamp, force) ?? last, diverted: false };
+      return {
+        chunk: this.startPending(stream, piece, timestamp, force) ?? last,
+        diverted: false,
+        dropped: false,
+      };
     }
-    if (this.overflow && this.fits(this.overflow, stream, piece)) {
+    if (allowOverflow && this.overflow && this.fits(this.overflow, stream, piece)) {
       appendToBatch(this.overflow, piece);
-      return { chunk: last, diverted: true };
+      return { chunk: last, diverted: true, dropped: false };
     }
-    if (!this.overflow && this.emittedChunks + 1 < this.maxChunks) {
+    if (allowOverflow && !this.overflow && this.emittedChunks + 1 < this.maxChunks) {
       this.overflow = startBatch(stream, piece, timestamp);
       this.overflowSinceMs = this.nowMs();
-      return { chunk: last, diverted: true };
+      return { chunk: last, diverted: true, dropped: false };
     }
     this.recordDrop();
-    return { chunk: last, diverted: true };
+    return { chunk: last, diverted: true, dropped: true };
   }
 
   private startPending(
@@ -248,8 +266,12 @@ export class LogStreamer {
       this.promoteOverflow();
       if (!force) break;
     }
+    if (this.pending || this.overflow) {
+      if (!force) this.scheduleFlush();
+      return last;
+    }
     const notice = this.flushDropNotice(force);
-    if (!force && (this.pending || this.overflow || this.unsentDropped > 0)) this.scheduleFlush();
+    if (!force && this.unsentDropped > 0) this.scheduleFlush();
     return notice ?? last;
   }
 
