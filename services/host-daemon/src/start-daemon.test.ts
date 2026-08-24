@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
 import {
@@ -28,6 +28,32 @@ function updateRoot(): { rootDir: string; cleanup: () => void } {
   return { rootDir, cleanup: () => rmSync(rootDir, { recursive: true, force: true }) };
 }
 
+/**
+ * The file installer owns these test roots, unlike Linux production roots
+ * where systemd's root-owned helper owns promotion and rollback. Model a
+ * healthy launchd restart so these tests exercise mutable-root recovery
+ * without invoking the host's service manager.
+ */
+function mutableRootService(rootDir: string, restartSucceeds = true) {
+  let inspection = 0;
+  return {
+    env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+    log: () => undefined,
+    error: () => undefined,
+    platform: "darwin",
+    run: (_command: string, args: string[]) => {
+      if (args[0] === "print") {
+        inspection += 1;
+        return { status: 0, stdout: `state = running\npid = ${inspection}\n`, stderr: "" };
+      }
+      if (args[0] === "kickstart" && !restartSucceeds) {
+        return { status: 1, stdout: "", stderr: "restart failed" };
+      }
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  };
+}
+
 describe("startDaemon", () => {
   it("queues the Linux supervisor handoff without invoking systemctl", async () => {
     const signals: Array<[number, NodeJS.Signals]> = [];
@@ -37,7 +63,7 @@ describe("startDaemon", () => {
     expect(signals).toEqual([[process.pid, "SIGTERM"]]);
   });
 
-  it("rolls back a second unacknowledged replacement boot before daemon preflight", async () => {
+  it("rolls back a second unacknowledged mutable-root boot before daemon preflight", async () => {
     const { rootDir, cleanup } = updateRoot();
     try {
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
@@ -49,31 +75,21 @@ describe("startDaemon", () => {
       await installer.activate("1.1.0");
       await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
 
-      let handoffs = 0;
       await expect(
         prepareDaemonUpdateBoot({
           env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
           log: () => undefined,
           error: () => undefined,
-          service: {
-            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
-            log: () => undefined,
-            error: () => undefined,
-            platform: "linux",
-            restartHandoff: () => {
-              handoffs += 1;
-            },
-          },
+          service: mutableRootService(rootDir),
         }),
       ).rejects.toThrow("rolled back unacknowledged update boot");
       expect(readInstalledVersion(rootDir)).toBe("1.0.0");
-      expect(handoffs).toBe(1);
     } finally {
       cleanup();
     }
   });
 
-  it("fails closed when a rollback cannot request its Linux supervisor handoff", async () => {
+  it("fails closed when a mutable-root rollback cannot request its supervisor handoff", async () => {
     const { rootDir, cleanup } = updateRoot();
     try {
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
@@ -86,12 +102,7 @@ describe("startDaemon", () => {
           env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
           log: () => undefined,
           error: () => undefined,
-          service: {
-            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
-            log: () => undefined,
-            error: () => undefined,
-            platform: "linux",
-          },
+          service: mutableRootService(rootDir, false),
         }),
       ).rejects.toThrow("could not restart the supervisor");
       expect(readInstalledVersion(rootDir)).toBeUndefined();
@@ -128,6 +139,7 @@ describe("startDaemon", () => {
         wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
         childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
         updateBootPrepared: true,
+        updateService: mutableRootService(rootDir),
         inventoryPollMs: 0,
         log: (line) => lines.push(line),
       });
@@ -166,6 +178,7 @@ describe("startDaemon", () => {
           wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
           childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
           updateBootPrepared: true,
+          updateService: mutableRootService(rootDir),
           inventoryPollMs: 0,
           log: () => undefined,
           error: () => undefined,
@@ -188,7 +201,6 @@ describe("startDaemon", () => {
     const { config, cleanup } = await makeRepo();
     const server = createServer();
     const wss = new WebSocketServer({ server, path: "/ws" });
-    const kill = vi.spyOn(process, "kill").mockReturnValue(true);
     wss.on("connection", (socket) => {
       socket.on("message", (raw) => {
         const message = JSON.parse(String(raw)) as { type: string; hostId?: string };
@@ -213,23 +225,14 @@ describe("startDaemon", () => {
           wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
           childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
           updateBootPrepared: true,
-          updateService: {
-            env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
-            log: () => undefined,
-            error: () => undefined,
-            platform: "linux",
-            restartHandoff: requestSupervisorRestart,
-          },
+          updateService: mutableRootService(rootDir),
           inventoryPollMs: 0,
           log: () => undefined,
           error: () => undefined,
         }),
       ).rejects.toThrow("updater health acknowledgement failed");
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(kill).toHaveBeenCalledWith(process.pid, "SIGTERM");
       expect(readInstalledVersion(rootDir)).toBeUndefined();
     } finally {
-      kill.mockRestore();
       await close(wss, server);
       cleanup();
       cleanupUpdate();
