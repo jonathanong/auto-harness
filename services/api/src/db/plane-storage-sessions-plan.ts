@@ -24,16 +24,24 @@ function hostLeaseForSession(session: SessionRecord): SessionRecord["hostAssignm
  */
 export function legacyHostAssignmentForSession(
   session: SessionRecord,
-): { hostId: string; connectionId: string } | undefined {
+): { sessionId: string; attemptId: string; hostId: string; connectionId: string } | undefined {
+  const attemptId = session.attemptId ?? session.resolvedRoute?.attemptId;
   if (
     session.hostAssignmentLease ||
+    session.legacyHostAssignmentReleased ||
+    !attemptId ||
     !session.hostId ||
     !session.assignmentConnectionId ||
     (session.status !== "running" && session.status !== "cancelled")
   ) {
     return undefined;
   }
-  return { hostId: session.hostId, connectionId: session.assignmentConnectionId };
+  return {
+    sessionId: session.id,
+    attemptId,
+    hostId: session.hostId,
+    connectionId: session.assignmentConnectionId,
+  };
 }
 
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {

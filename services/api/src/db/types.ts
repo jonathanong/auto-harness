@@ -92,6 +92,8 @@ export type SessionRecord = {
   hostAssignmentLease?: {
     hostId: string;
   };
+  /** Idempotency marker for post-transition repair of a pre-lease host slot. */
+  legacyHostAssignmentReleased?: boolean;
 };
 
 export type WorktreeRecord = {

@@ -550,6 +550,8 @@ describe("session-transition planner", () => {
       ).hostAssignmentLease,
     ).toBeUndefined();
     expect(legacyHostAssignmentForSession(session({ assignmentConnectionId: "conn" }))).toEqual({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "conn",
     });
@@ -562,7 +564,7 @@ describe("session-transition planner", () => {
       legacyHostAssignmentForSession(
         session({ providerAccountLease: row.providerAccountLease, assignmentConnectionId: "conn" }),
       ),
-    ).toEqual({ hostId: "host", connectionId: "conn" });
+    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
     expect(
       legacyHostAssignmentForSession(
         session({
@@ -577,7 +579,12 @@ describe("session-transition planner", () => {
           assignmentConnectionId: "conn",
         }),
       ),
-    ).toEqual({ hostId: "host", connectionId: "conn" });
+    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
+    expect(
+      legacyHostAssignmentForSession(
+        session({ assignmentConnectionId: "conn", legacyHostAssignmentReleased: true }),
+      ),
+    ).toBeUndefined();
     expect(legacyHostAssignmentForSession(session({ hostId: undefined }))).toBeUndefined();
     expect(
       legacyHostAssignmentForSession(session({ assignmentConnectionId: undefined })),

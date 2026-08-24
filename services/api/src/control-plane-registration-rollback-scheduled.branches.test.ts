@@ -23,6 +23,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     type: "scheduled",
     source: "schedule",
     hostId: "host",
+    attemptId: "attempt",
     assignmentConnectionId: "old",
     mainCheckoutLease: true,
     ackReceivedAt: NOW,
@@ -108,6 +109,8 @@ describe("scheduled registration rollback branch coverage", () => {
     expect(state.sessions.get("s")).toMatchObject({ status: "queued", hostId: null });
     expect(state.pendingAcks.has("s")).toBe(false);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "old",
     });

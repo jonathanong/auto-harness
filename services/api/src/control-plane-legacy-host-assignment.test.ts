@@ -53,6 +53,8 @@ describe("legacy host assignment release", () => {
 
     expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(1);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "session",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "connection",
     });
@@ -77,5 +79,46 @@ describe("legacy host assignment release", () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  it("retries against a replacement fence with a per-session release marker", async () => {
+    const state = createControlPlaneState();
+    const releaseLegacyHostAssignment = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const getHostLockState = vi.fn(async () => ({
+      connectionId: "replacement",
+      draining: false,
+    }));
+    state.storage = { releaseLegacyHostAssignment, getHostLockState } as never;
+
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, legacySession());
+
+    expect(releaseLegacyHostAssignment).toHaveBeenNthCalledWith(2, {
+      sessionId: "session",
+      attemptId: "attempt",
+      hostId: "host",
+      connectionId: "replacement",
+    });
+  });
+
+  it("stops retrying when the replacement fence is absent or repeats", async () => {
+    const state = createControlPlaneState();
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const getHostLockState = vi
+      .fn<() => Promise<{ connectionId: string | null; draining: boolean }>>()
+      .mockResolvedValueOnce({ connectionId: "replacement", draining: false })
+      .mockResolvedValueOnce({ connectionId: "replacement", draining: false });
+    state.storage = { releaseLegacyHostAssignment, getHostLockState } as never;
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, legacySession());
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(2);
+
+    getHostLockState.mockResolvedValueOnce({ connectionId: null, draining: false });
+    await releaseLegacyHostAssignmentAfterDurableTransition(
+      state,
+      legacySession({ assignmentConnectionId: "disconnected" }),
+    );
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(3);
   });
 });

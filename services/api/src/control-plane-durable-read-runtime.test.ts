@@ -14,6 +14,7 @@ import {
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { accountHasLeaseCapacity } from "./control-plane-provider-account-leases.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 const session = {
@@ -254,6 +255,141 @@ describe("durable runtime read-through", () => {
     await refreshSchedulerReadModel(state);
     expect(state.sessions.get("running")).toMatchObject({ status: "running", hostId: "host" });
     expect(state.sessions.has(session.id)).toBe(false);
+  });
+
+  it("rebuilds provider-account lease cache from authoritative occupying sessions", async () => {
+    const activeLease = {
+      concurrencyId: "provider-lease:account:0",
+      providerAccountId: "account",
+      slot: 0,
+      attemptId: "active-attempt",
+    };
+    const staleLease = {
+      concurrencyId: "provider-lease:account:3",
+      providerAccountId: "account",
+      slot: 3,
+      attemptId: "stale-attempt",
+    };
+    const timedOutLease = {
+      concurrencyId: "provider-lease:account:1",
+      providerAccountId: "account",
+      slot: 1,
+      attemptId: "timed-out-attempt",
+    };
+    const active = {
+      ...session,
+      id: "active",
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+      providerAccountLease: activeLease,
+    };
+    const cachedStale = {
+      ...session,
+      id: "stale-migrated",
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "stale-worktree",
+      providerAccountLease: staleLease,
+    };
+    const completed = {
+      ...cachedStale,
+      status: "completed" as const,
+      completedAt: "2026-01-01T00:00:01.000Z",
+    };
+    const timedOut = {
+      ...session,
+      id: "timed-out",
+      status: "timed_out" as const,
+      timedOutHostId: "host",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      providerAccountLease: timedOutLease,
+    };
+    const account = {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 3,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [account],
+        listSessionsByStatus: async (status: string) =>
+          status === "running" ? [active, cachedStale] : [],
+        getSession: async (id: string) =>
+          id === active.id
+            ? { ...active }
+            : id === cachedStale.id
+              ? { ...completed }
+              : id === timedOut.id
+                ? { ...timedOut }
+                : null,
+      } as never,
+    });
+    state.sessions.set(active.id, active);
+    state.sessions.set(cachedStale.id, cachedStale);
+    state.sessions.set(timedOut.id, timedOut);
+    state.providerAccountLeases.set(activeLease.concurrencyId, {
+      sessionId: active.id,
+      attemptId: activeLease.attemptId,
+      slot: activeLease.slot,
+      hostId: "host",
+      providerAccountId: activeLease.providerAccountId,
+    });
+    state.providerAccountLeases.set(staleLease.concurrencyId, {
+      sessionId: cachedStale.id,
+      attemptId: staleLease.attemptId,
+      slot: staleLease.slot,
+      hostId: "host",
+      providerAccountId: staleLease.providerAccountId,
+    });
+    state.providerAccountLeases.set(timedOutLease.concurrencyId, {
+      sessionId: timedOut.id,
+      attemptId: timedOutLease.attemptId,
+      slot: timedOutLease.slot,
+      hostId: "host",
+      providerAccountId: timedOutLease.providerAccountId,
+    });
+
+    await refreshSchedulerReadModel(state);
+
+    expect(state.providerAccountLeases).toEqual(
+      new Map([
+        [
+          activeLease.concurrencyId,
+          {
+            sessionId: active.id,
+            attemptId: activeLease.attemptId,
+            slot: activeLease.slot,
+            hostId: "host",
+            providerAccountId: activeLease.providerAccountId,
+          },
+        ],
+        [
+          timedOutLease.concurrencyId,
+          {
+            sessionId: timedOut.id,
+            attemptId: timedOutLease.attemptId,
+            slot: timedOutLease.slot,
+            hostId: "host",
+            providerAccountId: timedOutLease.providerAccountId,
+          },
+        ],
+      ]),
+    );
+    expect(state.sessions.get(timedOut.id)).toMatchObject({
+      status: "timed_out",
+      providerAccountLease: timedOutLease,
+    });
+    expect(accountHasLeaseCapacity(state, account.id)).toBe(true);
   });
 
   it("does not let a stale running GSI row overwrite a queued session", async () => {

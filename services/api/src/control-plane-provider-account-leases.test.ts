@@ -1077,7 +1077,12 @@ describe("provider account execution-profile leases", () => {
     expect(durableCalls[1]).not.toHaveProperty("hostAssignmentLease");
     expect(durableCalls[2]).not.toHaveProperty("hostAssignmentLease");
     expect(legacyCalls).toEqual([
-      { hostId: "timed-out-host", connectionId: "timed-out-connection" },
+      {
+        sessionId: "timed-out",
+        attemptId: "timed-out-attempt",
+        hostId: "timed-out-host",
+        connectionId: "timed-out-connection",
+      },
     ]);
 
     const hostCleanup = vi.fn(async () => true);

@@ -121,6 +121,8 @@ describe("durable worktree terminal branches", () => {
 
     expect(state.sessions.get("legacy")).toMatchObject({ status: "completed" });
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "legacy",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "connection",
     });

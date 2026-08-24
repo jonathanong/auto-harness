@@ -28,6 +28,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     type: "scheduled",
     source: "schedule",
     hostId: "host",
+    attemptId: "attempt",
     assignmentConnectionId: "old",
     mainCheckoutLease: true,
     ackReceivedAt: NOW,
@@ -113,6 +114,8 @@ describe("scheduled reconnect branch coverage", () => {
     expect(calls).toHaveLength(1);
     expect(durableRequeued).toEqual(["s"]);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "old",
     });
@@ -172,6 +175,8 @@ describe("scheduled reconnect branch coverage", () => {
     expect(await reclaimScheduledReconnect(durableSuccess, session(), success)).toBe(true);
     expect(success).toEqual(["s"]);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "old",
     });

@@ -274,10 +274,14 @@ describe("assignment residual coverage", () => {
       "scheduled",
     ]);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "prompt",
+      attemptId: "prompt-attempt",
       hostId: "host",
       connectionId: "prompt-connection",
     });
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "scheduled",
+      attemptId: "scheduled-attempt",
       hostId: "host",
       connectionId: "scheduled-connection",
     });

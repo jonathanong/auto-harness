@@ -3,6 +3,7 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { selectLogs } from "./log-query.ts";
+import { rebuildProviderAccountLeasesFromSessions } from "./control-plane-provider-account-leases.ts";
 import {
   listHostInventoriesDurable,
   listRepositoriesDurable,
@@ -178,5 +179,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
       if (previousDraining.has(connection.hostId)) state.drainingHosts.add(connection.hostId);
     }
   }
-  await hydrateRunningSessions(state, storage);
+  if (await hydrateRunningSessions(state, storage)) {
+    rebuildProviderAccountLeasesFromSessions(state);
+  }
 }

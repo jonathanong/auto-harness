@@ -328,7 +328,12 @@ export class DynamoPlaneStorageBase {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
   }
 
-  releaseLegacyHostAssignment(opts: { hostId: string; connectionId: string }): Promise<boolean> {
+  releaseLegacyHostAssignment(opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+    connectionId: string;
+  }): Promise<boolean> {
     return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
   }
 

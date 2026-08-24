@@ -109,6 +109,15 @@ export function accountHasLeaseCapacityOverCap(
   return holders.size > max;
 }
 
+export function sessionOccupiesProviderAccountLease(session: SessionRecord): boolean {
+  return (
+    session.providerAccountLease !== undefined &&
+    (session.status === "running" ||
+      (session.status === "cancelled" && session.hostId != null) ||
+      (session.status === "timed_out" && session.timedOutHostId != null))
+  );
+}
+
 /** Availability hints use the running-session read model even in durable mode. */
 export function accountHasLeaseCapacityFromReadModel(
   state: ControlPlaneState,
@@ -121,11 +130,10 @@ export function accountHasLeaseCapacityFromReadModel(
     if (lease.providerAccountId === providerAccountId) holders.add(lease.sessionId);
   }
   for (const session of state.sessions.values()) {
-    const ownsLease =
-      session.status === "running" ||
-      (session.status === "cancelled" && session.hostId != null) ||
-      (session.status === "timed_out" && session.timedOutHostId != null);
-    if (ownsLease && session.providerAccountLease?.providerAccountId === providerAccountId) {
+    if (
+      sessionOccupiesProviderAccountLease(session) &&
+      session.providerAccountLease?.providerAccountId === providerAccountId
+    ) {
       holders.add(session.id);
       continue;
     }
@@ -138,6 +146,27 @@ export function accountHasLeaseCapacityFromReadModel(
     }
   }
   return holders.size < max;
+}
+
+/**
+ * Scheduler refreshes use strongly re-read occupying sessions as the source
+ * of truth. Rebuild this local cache rather than letting an old migrated
+ * out-of-range slot keep blocking a later assignment after another Lambda
+ * completed its durable session.
+ */
+export function rebuildProviderAccountLeasesFromSessions(state: ControlPlaneState): void {
+  state.providerAccountLeases.clear();
+  for (const session of state.sessions.values()) {
+    const lease = session.providerAccountLease;
+    if (!lease || !sessionOccupiesProviderAccountLease(session)) continue;
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: session.id,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: session.hostId ?? session.timedOutHostId ?? "",
+      providerAccountId: lease.providerAccountId,
+    });
+  }
 }
 
 export function tryAcquireProviderAccountLeaseLocal(
@@ -229,9 +258,15 @@ export async function releaseTimedOutProviderAccountLease(
   session: SessionRecord,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
+  const attemptId = session.attemptId ?? lease?.attemptId;
   const legacyHostAssignment =
-    !session.hostAssignmentLease && session.timedOutHostId && session.timedOutAssignmentConnectionId
+    !session.hostAssignmentLease &&
+    session.timedOutHostId &&
+    session.timedOutAssignmentConnectionId &&
+    attemptId
       ? {
+          sessionId: session.id,
+          attemptId,
           hostId: session.timedOutHostId,
           connectionId: session.timedOutAssignmentConnectionId,
         }

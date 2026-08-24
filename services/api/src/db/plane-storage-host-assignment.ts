@@ -1,4 +1,4 @@
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
   isConditionalFailed,
@@ -52,24 +52,45 @@ export function hostAssignmentReleaseItem(ctx: PlaneStorageCtx, lease: HostAssig
  */
 export async function releaseLegacyHostAssignment(
   ctx: PlaneStorageCtx,
-  opts: { hostId: string; connectionId: string },
+  opts: { sessionId: string; attemptId: string; hostId: string; connectionId: string },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.hostLocks,
-        Key: { hostId: opts.hostId },
-        UpdateExpression: "SET assignmentCount = assignmentCount - :one",
-        ConditionExpression: "connectionId = :connectionId AND assignmentCount >= :one",
-        ExpressionAttributeValues: {
-          ":connectionId": opts.connectionId,
-          ":one": 1,
-        },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression: "SET legacyHostAssignmentReleased = :true",
+              ConditionExpression:
+                "(attemptId = :attemptId OR (attribute_not_exists(attemptId) AND resolvedRoute.attemptId = :attemptId)) AND #status <> :running AND attribute_not_exists(legacyHostAssignmentReleased)",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":attemptId": opts.attemptId,
+                ":running": "running",
+                ":true": true,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              UpdateExpression: "SET assignmentCount = assignmentCount - :one",
+              ConditionExpression: "connectionId = :connectionId AND assignmentCount >= :one",
+              ExpressionAttributeValues: {
+                ":connectionId": opts.connectionId,
+                ":one": 1,
+              },
+            },
+          },
+        ],
       }),
     );
     return true;
   } catch (error) {
-    if (isConditionalFailed(error)) return false;
+    if (isConditionalFailed(error) || isConditionalTransactionFailed(error)) return false;
     throw error;
   }
 }

@@ -23,6 +23,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     type: "scheduled",
     source: "schedule",
     hostId: "host",
+    attemptId: "attempt",
     assignmentConnectionId: "old",
     mainCheckoutLease: true,
     ...over,
@@ -67,6 +68,8 @@ describe("scheduled disconnect branch coverage", () => {
     expect(requeued).toEqual(["s"]);
     expect(current.pendingAcks.has("s")).toBe(false);
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "old",
     });

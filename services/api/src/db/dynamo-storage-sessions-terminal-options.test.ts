@@ -100,6 +100,24 @@ describe("DynamoDB Local terminal options", () => {
   it("reconciles legacy host capacity without failing a zero-count row", async () => {
     const hostId = "legacy-host";
     const connectionId = "legacy-connection";
+    const lease = {
+      sessionId: "legacy-session",
+      attemptId: "legacy-attempt",
+      hostId,
+      connectionId,
+    };
+    await putSession(ctx, {
+      ...base,
+      id: lease.sessionId,
+      status: "completed",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId,
+        worktreeId: null,
+        attemptId: lease.attemptId,
+      },
+    });
     expect(
       await tryAcquireHostLock(ctx, {
         hostId,
@@ -107,7 +125,7 @@ describe("DynamoDB Local terminal options", () => {
         replaceExisting: false,
       }),
     ).toBe(true);
-    expect(await releaseLegacyHostAssignment(ctx, { hostId, connectionId })).toBe(false);
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(false);
     await ctx.doc.send(
       new UpdateCommand({
         TableName: tables.hostLocks,
@@ -116,11 +134,23 @@ describe("DynamoDB Local terminal options", () => {
         ExpressionAttributeValues: { ":one": 1 },
       }),
     );
-    expect(await releaseLegacyHostAssignment(ctx, { hostId, connectionId })).toBe(true);
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(true);
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(false);
+    await putSession(ctx, {
+      ...base,
+      id: "legacy-error",
+      status: "completed",
+      attemptId: "legacy-error-attempt",
+    });
     await expect(
       releaseLegacyHostAssignment(
         { ...ctx, tables: { ...tables, hostLocks: "missing-host-locks" } },
-        { hostId, connectionId },
+        {
+          sessionId: "legacy-error",
+          attemptId: "legacy-error-attempt",
+          hostId,
+          connectionId,
+        },
       ),
     ).rejects.toThrow();
   });

@@ -59,6 +59,8 @@ describe("disconnect durable fallback coverage", () => {
     ).resolves.toEqual(["s"]);
     expect(state.worktrees.get("w")).toMatchObject({ status: "idle", online: false });
     expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "s",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "connection",
     });
@@ -141,10 +143,14 @@ describe("disconnect durable fallback coverage", () => {
 
     expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(2);
     expect(releaseLegacyHostAssignment).toHaveBeenNthCalledWith(1, {
+      sessionId: "cancelled",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "connection",
     });
     expect(releaseLegacyHostAssignment).toHaveBeenNthCalledWith(2, {
+      sessionId: "unacknowledged",
+      attemptId: "attempt",
       hostId: "host",
       connectionId: "connection",
     });

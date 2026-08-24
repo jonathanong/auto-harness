@@ -17,12 +17,27 @@ export async function releaseLegacyHostAssignmentAfterDurableTransition(
 
 export async function releaseLegacyHostAssignment(
   state: ControlPlaneState,
-  lease: { hostId: string; connectionId: string },
+  lease: { sessionId: string; attemptId: string; hostId: string; connectionId: string },
 ): Promise<void> {
-  const release = state.storage?.releaseLegacyHostAssignment;
-  if (typeof release !== "function") return;
+  const storage = state.storage;
+  const release = storage?.releaseLegacyHostAssignment;
+  if (!storage || typeof release !== "function") return;
   try {
-    await release.call(state.storage, lease);
+    let connectionId = lease.connectionId;
+    const attemptedFences = new Set<string>();
+    while (!attemptedFences.has(connectionId)) {
+      attemptedFences.add(connectionId);
+      if (await release.call(storage, { ...lease, connectionId })) return;
+
+      // Re-registration intentionally preserves assignmentCount while changing
+      // the connection fence. The storage transaction couples the decrement
+      // to a per-session marker, so retrying cannot release this slot twice.
+      const getHostLockState = storage.getHostLockState;
+      if (typeof getHostLockState !== "function") return;
+      const current = await getHostLockState.call(storage, lease.hostId);
+      if (!current.connectionId) return;
+      connectionId = current.connectionId;
+    }
   } catch (error) {
     // The durable lifecycle transition already committed. Capacity repair is
     // intentionally best effort for old rows and must never undo it.
