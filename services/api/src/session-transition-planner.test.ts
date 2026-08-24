@@ -543,6 +543,29 @@ describe("session-transition planner", () => {
     });
     expect(
       finishSessionOptsFromPlan(
+        session(),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toBeUndefined();
+    expect(
+      finishSessionOptsFromPlan(
+        session({
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+        }),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toEqual({ hostId: "host" });
+    expect(
+      finishSessionOptsFromPlan(
         row,
         { effects: [{ type: "finish", status: "completed", completedAt: NOW }] },
         { attemptId: "attempt" },

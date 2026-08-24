@@ -12,9 +12,14 @@ function firstDefined<T>(primary: T | undefined, fallback: T | undefined): T | u
 }
 
 function hostLeaseForSession(session: SessionRecord): SessionRecord["hostAssignmentLease"] {
+  const providerBacked = Boolean(
+    session.providerAccountLease || session.resolvedRoute?.providerAccountId,
+  );
   return (
     session.hostAssignmentLease ??
-    (session.hostId && (session.status === "running" || session.status === "cancelled")
+    (providerBacked &&
+    session.hostId &&
+    (session.status === "running" || session.status === "cancelled")
       ? { hostId: session.hostId }
       : undefined)
   );

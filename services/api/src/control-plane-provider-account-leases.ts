@@ -174,7 +174,7 @@ export function tryAcquireProviderAccountLeaseLocal(
 
 export function providerAccountLeaseWriteOpts(
   session: Pick<SessionRecord, "providerAccountLease" | "hostAssignmentLease"> &
-    Partial<Pick<SessionRecord, "hostId" | "timedOutHostId" | "status">>,
+    Partial<Pick<SessionRecord, "hostId" | "timedOutHostId" | "status" | "resolvedRoute">>,
 ): {
   providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]>;
   hostAssignmentLease?: NonNullable<SessionRecord["hostAssignmentLease"]>;
@@ -183,9 +183,12 @@ export function providerAccountLeaseWriteOpts(
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
     ...(session.hostAssignmentLease
       ? { hostAssignmentLease: session.hostAssignmentLease }
-      : session.hostId && (session.status === "running" || session.status === "cancelled")
+      : (session.providerAccountLease || session.resolvedRoute?.providerAccountId) &&
+          session.hostId &&
+          (session.status === "running" || session.status === "cancelled")
         ? { hostAssignmentLease: { hostId: session.hostId } }
-        : session.timedOutHostId
+        : (session.providerAccountLease || session.resolvedRoute?.providerAccountId) &&
+            session.timedOutHostId
           ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
           : {}),
   };

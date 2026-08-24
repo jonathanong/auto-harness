@@ -928,5 +928,13 @@ describe("provider account execution-profile leases", () => {
         attemptId: "attempt",
       },
     });
+    expect(
+      providerAccountLeaseWriteOpts({
+        hostId: "host",
+        status: "running",
+        resolvedRoute: { providerAccountId: "acct" },
+      }),
+    ).toEqual({ hostAssignmentLease: { hostId: "host" } });
+    expect(providerAccountLeaseWriteOpts({ hostId: "host", status: "running" })).toEqual({});
   });
 });
