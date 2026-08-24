@@ -194,7 +194,7 @@ function prune(root) {
   }
 }
 
-function settlePriorBoot(root, incoming) {
+function settlePriorBoot(root) {
   const markerPath = join(root, markerName);
   const marker = readJson(markerPath);
   if (!marker || !VERSION.test(marker.version) || marker.attempted !== true) return;
@@ -331,7 +331,7 @@ function main() {
     }
     return;
   }
-  settlePriorBoot(root, incoming);
+  settlePriorBoot(root);
   promote(root, incoming);
 }
 

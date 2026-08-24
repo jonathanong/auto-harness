@@ -102,7 +102,7 @@ export function validateSystemdActivationHelper(helper: string): string[] {
     "assertSafeArchive(archive)",
     'switchCurrent(root, join("releases", manifest.version))',
     'process.argv[2] === "--mark-boot-attempt"',
-    "settlePriorBoot(root, incoming)",
+    "settlePriorBoot(root)",
     'rmSync(join(root, "releases", marker.version), { recursive: true, force: true })',
     "promote(root, incoming)",
     '|| "/opt/auto-harness"',
