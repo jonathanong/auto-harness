@@ -50,6 +50,10 @@ function isKickstartAlreadyInProgress(result: HostServiceRunResult): boolean {
   return result.status === LAUNCHCTL_EALREADY || /already in progress/i.test(launchctlText(result));
 }
 
+function isLaunchctlLoadFailed(result: HostServiceRunResult): boolean {
+  return /\bload failed\b/i.test(launchctlText(result));
+}
+
 function isLaunchAgentPresent(status: HostServiceStatus): boolean {
   return status.state !== "missing" && status.state !== "failed";
 }
@@ -89,7 +93,7 @@ function loadLaunchAgent(
     if (retry.status === 0) return 0;
   }
   const load = ctx.run("launchctl", ["load", "-w", plist]);
-  if (load.status === 0) return 0;
+  if (load.status === 0 && !isLaunchctlLoadFailed(load)) return 0;
   return failedCommand(ctx.error, "launchctl bootstrap/load", load);
 }
 
