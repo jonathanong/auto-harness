@@ -45,4 +45,27 @@ describe("supervisor restart installer", () => {
     );
     await expect(installer.restart()).rejects.toThrow("supervisor restart failed");
   });
+
+  it("requires and delegates the Windows external task handoff without invoking schtasks inline", async () => {
+    const spawn = recorder();
+    let handoffs = 0;
+    const installer = createSupervisorRestartInstaller(
+      {
+        stage: async () => undefined,
+        activate: async () => undefined,
+        rollback: async () => undefined,
+      },
+      baseOpts({
+        platform: "win32",
+        fs: seededFs(),
+        run: spawn.run,
+        restartHandoff: () => {
+          handoffs += 1;
+        },
+      }),
+    );
+    await installer.restart();
+    expect(handoffs).toBe(1);
+    expect(spawn.calls).toEqual([]);
+  });
 });

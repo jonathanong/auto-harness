@@ -30,7 +30,7 @@ describe("linux unit rendering", () => {
       "WorkingDirectory=/home/op/src",
     );
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
-      'ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
+      'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
     );
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=simple");
     expect(() => renderLinuxUnit(unitTemplate, "/tmp\nEvil=1")).toThrow(/single line/);

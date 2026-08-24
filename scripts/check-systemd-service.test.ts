@@ -47,14 +47,14 @@ describe("production host systemd artifacts", () => {
     expect(
       validateSystemdArtifacts(
         service.replace(
-          'ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
+          'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
           "ExecStart=pnpm local:daemon start",
         ),
         envExample.replace("HARNESS_HOST_ID=REPLACE_WITH_BOUND_HOST_ID\n", ""),
       ),
     ).toEqual(
       expect.arrayContaining([
-        'missing service directive: ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
+        'missing service directive: ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
         "forbidden service behavior: pnpm ",
         "missing environment example: HARNESS_HOST_ID",
       ]),

@@ -10,6 +10,7 @@ import {
   LINUX_ENABLE_NOW_COMMAND,
   LINUX_ENV_DEST,
   LINUX_ENV_DIR,
+  LINUX_LAUNCHER_DEST,
   LINUX_RELOAD_COMMAND,
   LINUX_SERVICE_NAME,
   LINUX_UNIT_DEST,
@@ -18,6 +19,7 @@ import {
 } from "./host-service-templates.ts";
 
 type LinuxPaths = {
+  updateRoot: string;
   currentRoot: string;
   launcher: string;
 };
@@ -33,8 +35,9 @@ function linuxPaths(ctx: HostServiceContext): LinuxPaths {
     appData: ctx.appData,
   });
   return {
+    updateRoot,
     currentRoot: join(updateRoot, "current"),
-    launcher: join(updateRoot, "run-host-daemon.sh"),
+    launcher: LINUX_LAUNCHER_DEST,
   };
 }
 
@@ -117,11 +120,12 @@ function stageLinux(
   ctx.log("Not running as root. Run:");
   ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
   ctx.log(
-    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${dirname(paths.launcher)}`,
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${paths.updateRoot}`,
   );
   ctx.log(
-    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${join(dirname(paths.launcher), "versions")}`,
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${join(paths.updateRoot, "versions")}`,
   );
+  ctx.log(`  sudo install -d -o root -g root -m 0755 ${dirname(paths.launcher)}`);
   if (envContents !== undefined) {
     ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
   }
@@ -186,7 +190,7 @@ export function installLinux(ctx: HostServiceContext): number {
     LINUX_SERVICE_USER,
     "-m",
     "0755",
-    dirname(paths.launcher),
+    paths.updateRoot,
   ]);
   if (updateRoot.status !== 0) {
     return failedCommand(ctx.error, "install writable update root", updateRoot);
@@ -199,10 +203,23 @@ export function installLinux(ctx: HostServiceContext): number {
     LINUX_SERVICE_USER,
     "-m",
     "0755",
-    join(dirname(paths.launcher), "versions"),
+    join(paths.updateRoot, "versions"),
   ]);
   if (releaseRoot.status !== 0) {
     return failedCommand(ctx.error, "install writable update release directory", releaseRoot);
+  }
+  const launcherRoot = ctx.run("install", [
+    "-d",
+    "-o",
+    "root",
+    "-g",
+    "root",
+    "-m",
+    "0755",
+    dirname(paths.launcher),
+  ]);
+  if (launcherRoot.status !== 0) {
+    return failedCommand(ctx.error, "install root-owned launcher directory", launcherRoot);
   }
   if (writeEnv) {
     writeMode(ctx.fs, LINUX_ENV_DEST, preparedEnv.contents, 0o600, !envExists);

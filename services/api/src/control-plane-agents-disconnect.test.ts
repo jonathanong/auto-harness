@@ -276,6 +276,7 @@ describe("durable host disconnect", () => {
       recordHostOfflineAlertCandidate: async () => false,
       clearHostOfflineAlertCandidate: async () => false,
       listHostOfflineAlertCandidates: async () => [candidate],
+      enqueueHostOfflineAlertCandidate: async () => false,
       getSlackIntegration: async () => ({
         id: "slack",
         type: "slack" as const,
@@ -295,6 +296,62 @@ describe("durable host disconnect", () => {
     });
 
     await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(state.disconnectedHosts.has(candidate.hostId)).toBe(false);
+  });
+
+  it("fences durable candidate enqueue before alerting and continues a stale sweep when the candidate scan fails", async () => {
+    const candidate = {
+      hostId: "fenced-offline",
+      reason: "agent heartbeat stale; requeued",
+      lastHeartbeatAt: "2000-01-01T00:00:00.000Z",
+    };
+    let atomicEnqueues = 0;
+    let released = 0;
+    const state = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(state, {
+      listHostOfflineAlertCandidates: async () => {
+        throw new Error("candidate scan unavailable");
+      },
+      recordHostOfflineAlertCandidate: async () => true,
+      clearHostOfflineAlertCandidate: async () => true,
+      enqueueHostOfflineAlertCandidate: async () => {
+        atomicEnqueues += 1;
+        return true;
+      },
+      getSlackIntegration: async () => ({
+        id: "slack",
+        type: "slack" as const,
+        encryptedConfig: "x",
+        defaultChannel: "#ops",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        signingSecretConfigured: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      listWorktreesByHost: async () => [],
+      releaseHostConnection: async () => {
+        released += 1;
+        return true;
+      },
+    });
+    state.disconnectedHosts.set(candidate.hostId, {
+      lastHeartbeatAt: candidate.lastHeartbeatAt,
+    });
+    state.connections.set("stale-connection", {
+      connectionId: "stale-connection",
+      type: "host",
+      hostId: "stale-live",
+      connectedAt: candidate.lastHeartbeatAt,
+      lastHeartbeatAt: candidate.lastHeartbeatAt,
+      commandProfiles: [],
+    });
+    state.hostConnection.set("stale-live", "stale-connection");
+
+    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    expect(released).toBe(1);
+    expect(atomicEnqueues).toBe(2);
     expect(state.disconnectedHosts.has(candidate.hostId)).toBe(false);
   });
 

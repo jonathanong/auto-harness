@@ -3,7 +3,13 @@ export const LINUX_ENV_DIR = "/etc/auto-harness";
 export const LINUX_ENV_DEST = "/etc/auto-harness/host-daemon.env";
 export const LINUX_UNIT_DEST = "/etc/systemd/system/auto-harness-host-daemon.service";
 export const LINUX_OPT_CURRENT = "/opt/auto-harness/current";
-export const LINUX_LAUNCHER_DEST = "/opt/auto-harness/run-host-daemon.sh";
+/**
+ * A root-owned entrypoint deliberately kept outside the daemon-writable
+ * update root. `current` is selected by this script, so allowing the daemon
+ * to replace the script would turn an update-root write into service command
+ * replacement.
+ */
+export const LINUX_LAUNCHER_DEST = "/usr/local/lib/auto-harness/run-host-daemon.sh";
 export const LINUX_SERVICE_NAME = "auto-harness-host-daemon.service";
 export const LINUX_RELOAD_COMMAND = "systemctl daemon-reload";
 export const LINUX_ENABLE_NOW_COMMAND = "systemctl enable --now auto-harness-host-daemon.service";

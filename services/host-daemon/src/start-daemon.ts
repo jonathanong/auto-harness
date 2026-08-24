@@ -13,6 +13,7 @@ import {
   startUpdatePoll,
 } from "./agent-updater-runtime.ts";
 import { restartHostService, type HostServiceOpts } from "./host-service.ts";
+import { requestWindowsTaskRestart } from "./windows-task-handoff.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -79,7 +80,13 @@ function daemonUpdateService(
   log: (line: string) => void,
   error: (line: string) => void,
 ): HostServiceOpts {
-  return { env, log, error, restartHandoff: requestSupervisorRestart };
+  return {
+    env,
+    log,
+    error,
+    restartHandoff:
+      process.platform === "win32" ? requestWindowsTaskRestart : requestSupervisorRestart,
+  };
 }
 
 /**

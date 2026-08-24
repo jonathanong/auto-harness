@@ -118,10 +118,16 @@ export function installWin32(ctx: HostServiceContext): number {
 }
 
 export function restartWin32(ctx: HostServiceContext): number {
-  if (endWindowsTask(ctx) !== 0) return 1;
-  const runNow = ctx.run("schtasks", ["/Run", "/TN", WINDOWS_TASK_NAME]);
-  if (runNow.status !== 0) return failedCommand(ctx.error, "schtasks /Run", runNow);
-  ctx.log(`Restarted scheduled task ${WINDOWS_TASK_NAME}`);
+  if (!ctx.restartHandoff) {
+    ctx.error(
+      "Windows automatic update restart requires an external scheduled-task handoff; refusing to end this daemon's own task.",
+    );
+    return 1;
+  }
+  // `/End` terminates this process. The handoff launches an independent
+  // command before that happens, so it alone owns `/End` followed by `/Run`.
+  ctx.restartHandoff();
+  ctx.log(`Requested external restart handoff for scheduled task ${WINDOWS_TASK_NAME}`);
   return 0;
 }
 

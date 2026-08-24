@@ -8,6 +8,8 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
+import type { SlackDeliveryRecord } from "../slack-delivery-types.ts";
+
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
@@ -284,6 +286,52 @@ export async function clearHostOfflineAlertCandidate(
           ":reason": candidate.reason,
           ":lastHeartbeatAt": candidate.lastHeartbeatAt,
         },
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalHostWriteOrThrow(err);
+  }
+}
+
+/**
+ * Linearize a host-offline alert against reconnect. The outbox record's ID is
+ * deterministic, but a separate enqueue followed by candidate clear let two
+ * cron invocations race and let a just-reconnected host receive a stale alert.
+ * This transaction makes either the exact candidate's enqueue win, or the
+ * fresh registration clear it first. Any failed transaction retains the
+ * candidate for a later cold-Lambda retry.
+ */
+export async function enqueueHostOfflineAlertCandidate(
+  ctx: PlaneStorageCtx,
+  candidate: HostOfflineAlertCandidate,
+  delivery: SlackDeliveryRecord,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: candidate.hostId },
+              UpdateExpression: "REMOVE offlineAlertReason, offlineAlertLastHeartbeatAt",
+              ConditionExpression:
+                "offlineAlertReason = :reason AND offlineAlertLastHeartbeatAt = :lastHeartbeatAt",
+              ExpressionAttributeValues: {
+                ":reason": candidate.reason,
+                ":lastHeartbeatAt": candidate.lastHeartbeatAt,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.notificationDeliveries,
+              Item: delivery,
+              ConditionExpression: "attribute_not_exists(id)",
+            },
+          },
+        ],
       }),
     );
     return true;

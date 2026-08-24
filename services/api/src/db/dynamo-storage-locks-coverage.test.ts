@@ -4,7 +4,7 @@ import {
   DeleteTableCommand,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -14,6 +14,7 @@ import {
   conditionalHostWriteOrThrow,
   connectionPageItems,
   deleteConnection,
+  enqueueHostOfflineAlertCandidate,
   getConnection,
   getHostLock,
   heartbeatConnection,
@@ -42,6 +43,24 @@ const connection = (connectionId: string, hostId: string) => ({
   lastHeartbeatAt: at,
   commandProfiles: [],
 });
+
+function offlineDelivery(hostId: string, lastHeartbeatAt: string) {
+  return {
+    id: `slack:host:${hostId}:offline:${lastHeartbeatAt}`,
+    integrationId: "slack" as const,
+    sessionId: `host:${hostId}`,
+    event: "host_offline" as const,
+    operation: "post-root" as const,
+    channel: "#ops",
+    text: "offline",
+    status: "pending" as const,
+    attempts: 0,
+    maxAttempts: 8,
+    nextAttemptAt: at,
+    createdAt: at,
+    updatedAt: at,
+  };
+}
 
 beforeAll(async () => {
   const clients = createDynamoClients();
@@ -237,6 +256,41 @@ describe("DynamoDB Local host lock adapters", () => {
         lastHeartbeatAt: at,
       }),
     ).toBe(true);
+
+    const atomicCandidate = {
+      hostId: "atomic-alert-host",
+      reason: "agent heartbeat stale; requeued",
+      lastHeartbeatAt: at,
+    };
+    expect(await recordHostOfflineAlertCandidate(ctx, atomicCandidate)).toBe(true);
+    const atomicDelivery = offlineDelivery(atomicCandidate.hostId, atomicCandidate.lastHeartbeatAt);
+    expect(await enqueueHostOfflineAlertCandidate(ctx, atomicCandidate, atomicDelivery)).toBe(true);
+    await expect(listHostOfflineAlertCandidates(ctx)).resolves.not.toContainEqual(atomicCandidate);
+    await expect(
+      client.send(
+        new GetCommand({
+          TableName: tables.notificationDeliveries,
+          Key: { id: atomicDelivery.id },
+        }),
+      ),
+    ).resolves.toMatchObject({ Item: expect.objectContaining({ id: atomicDelivery.id }) });
+
+    const reconnectedCandidate = { ...atomicCandidate, hostId: "reconnected-alert-host" };
+    expect(await recordHostOfflineAlertCandidate(ctx, reconnectedCandidate)).toBe(true);
+    expect(
+      await tryRegisterHost(ctx, {
+        hostId: reconnectedCandidate.hostId,
+        connection: connection("reconnected-alert", reconnectedCandidate.hostId),
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    expect(
+      await enqueueHostOfflineAlertCandidate(
+        ctx,
+        reconnectedCandidate,
+        offlineDelivery(reconnectedCandidate.hostId, reconnectedCandidate.lastHeartbeatAt),
+      ),
+    ).toBe(false);
   });
 
   it("continues a real DynamoDB scan past its one-megabyte page boundary", async () => {

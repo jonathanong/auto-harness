@@ -11,6 +11,7 @@ import * as providerAccountUpdates from "./plane-storage-provider-account-update
 import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
+import * as locks from "./plane-storage-locks.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
 import * as webhookOutbox from "./plane-storage-webhook-outbox.ts";
 import * as webhookSettlement from "./plane-storage-webhook-settlement.ts";
@@ -41,6 +42,13 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   enqueue(record: import("../slack-delivery-types.ts").SlackDeliveryRecord) {
     return notificationDeliveries.enqueue(this.ctx, record);
+  }
+
+  enqueueHostOfflineAlertCandidate(
+    candidate: locks.HostOfflineAlertCandidate,
+    delivery: import("../slack-delivery-types.ts").SlackDeliveryRecord,
+  ) {
+    return locks.enqueueHostOfflineAlertCandidate(this.ctx, candidate, delivery);
   }
 
   claimDue(

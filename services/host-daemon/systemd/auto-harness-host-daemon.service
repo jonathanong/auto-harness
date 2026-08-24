@@ -14,7 +14,7 @@ WorkingDirectory=/
 EnvironmentFile=/etc/auto-harness/host-daemon.env
 # install-service (or the manual copy-unit instructions) places this stable
 # wrapper outside the atomically activated update tree.
-ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"
+ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"
 Restart=always
 RestartSec=5s
 TimeoutStopSec=15min

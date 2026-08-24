@@ -60,15 +60,20 @@ describe("unsupported platform / thrown failures", () => {
         }),
       ),
     ).toBe(0);
+    let windowsHandoffs = 0;
     expect(
       restartHostService(
         baseOpts({
           platform: "win32",
           fs: seededFs(),
           run: () => ({ status: 0, stdout: "", stderr: "" }),
+          restartHandoff: () => {
+            windowsHandoffs += 1;
+          },
         }),
       ),
     ).toBe(0);
+    expect(windowsHandoffs).toBe(1);
     // A Linux service user cannot authorize systemctl; it must have the local handoff.
     expect(
       restartHostService(

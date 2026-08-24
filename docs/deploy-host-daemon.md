@@ -107,8 +107,10 @@ sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-da
 If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
 installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
-The generated Linux launcher is stable outside the activated release tree: it starts
-`/opt/auto-harness/current` when that tree exists and otherwise falls back to this checkout.
+The generated Linux launcher is root-owned at
+`/usr/local/lib/auto-harness/run-host-daemon.sh`, outside both the activated release tree
+and the daemon-writable update root. It starts `/opt/auto-harness/current` when that tree
+exists and otherwise falls back to this checkout.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
 
 Uninstall (removes the service definition, not the checkout):
@@ -152,7 +154,7 @@ On the agent host:
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
 | `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                            |
 | `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                            |
-| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the stable launcher selects its `current` directory.                                                                                                                                       |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the root-owned stable launcher selects its `current` directory.                                                                                                                            |
 | `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
 | `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
 
@@ -175,18 +177,19 @@ sudoedit /etc/auto-harness/host-daemon.env
 sudo install -m 0644 \
   "$UPDATE_ROOT/current/services/host-daemon/systemd/auto-harness-host-daemon.service" \
   /etc/systemd/system/auto-harness-host-daemon.service
-# This root-owned wrapper stays outside the activated tree; it reads the env-file's
-# HARNESS_UPDATE_INSTALL_DIR and then selects that tree's current pointer.
-sudo install -d -m 0755 /opt/auto-harness
+# This root-owned wrapper stays outside both the activated tree and the daemon-writable
+# update root; it reads the env-file's HARNESS_UPDATE_INSTALL_DIR and selects that tree's
+# current pointer.
+sudo install -d -o root -g root -m 0755 /usr/local/lib/auto-harness
 # The daemon switches UPDATE_ROOT/current and writes releases below versions/.
 # Provision both paths for the service user, including on a reinstall where
-# versions/ was previously root-owned. Keep this after the wrapper directory:
+# versions/ was previously root-owned:
 # UPDATE_ROOT is /opt/auto-harness by default and must remain harness-writable.
 sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT"
 sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT/versions"
 sudo install -m 0755 \
   "$UPDATE_ROOT/current/services/host-daemon/systemd/run-host-daemon.sh" \
-  /opt/auto-harness/run-host-daemon.sh
+  /usr/local/lib/auto-harness/run-host-daemon.sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now auto-harness-host-daemon.service
 ```
@@ -355,6 +358,8 @@ restart does not reinstall the same release. Linux requests an asynchronous self
 updater transaction; its already-authorized systemd supervisor restarts it, rather than the
 unprivileged service user invoking `systemctl`. macOS and Windows supervisors invoke stable
 launcher files outside the activated tree, so their next start resolves the new `current` pointer.
+On Windows, a detached handoff owns the scheduled task's stop/start sequence rather than asking
+the running daemon to terminate its own task before it can request the replacement.
 On Linux, the selected update root and its `versions/` directory must be writable by `harness`; the
 dedicated-VPS bootstrap above provisions both, including after a root-driven reinstall. The stable
 launcher itself is root-owned and is not replaced by the updater.

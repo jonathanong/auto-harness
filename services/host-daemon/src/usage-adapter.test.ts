@@ -146,10 +146,11 @@ describe("parseCliUsage", () => {
       parseCliUsage({
         argv: ["claude", "-p", "--output-format", "json"],
         output:
-          'Ready\n{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}}\n',
+          '{"type":"message","usage":{"input_tokens":999}}\n' +
+          'Ready\n\u001b[?25l{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2,"output_tokens":1},"result":"brace: { not an envelope }"}\n\u001b[?25h',
         observedAt,
       }),
-    ).toEqual({});
+    ).toMatchObject({ usage: { inputTokens: "2", outputTokens: "1" } });
     expect(
       parseCliUsage({
         argv: ["claude", "-p", "--output-format", "json"],
@@ -168,6 +169,33 @@ describe("parseCliUsage", () => {
       parseCliUsage({
         argv: ["grok", "--output-format", "json", "-p"],
         output: '{"usage":{"input_tokens":2}}',
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("finds a complete terminal envelope across mixed PTY diagnostics without accepting oversized output", () => {
+    const pretty = JSON.stringify(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        usage: { input_tokens: 23 },
+      },
+      null,
+      2,
+    );
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output: `warning: starting\r\n${pretty}\r\nwarning: complete`,
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { inputTokens: "23" } });
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output: `${"x".repeat(4 * 1024 * 1024)}${pretty}`,
         observedAt,
       }),
     ).toEqual({});

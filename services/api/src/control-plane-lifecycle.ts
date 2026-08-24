@@ -1,5 +1,6 @@
+/* eslint-disable max-lines -- durable and in-memory stale reclaim share alert fencing. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { enqueueHostOfflineAlert } from "./slack-host-alert.ts";
+import { enqueueFencedHostOfflineAlert, enqueueHostOfflineAlert } from "./slack-host-alert.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
 export { cancelSession } from "./control-plane-cancel-local.ts";
@@ -24,6 +25,10 @@ type OfflineAlertCandidateStore = {
   recordHostOfflineAlertCandidate(candidate: OfflineAlertCandidate): Promise<boolean>;
   clearHostOfflineAlertCandidate(candidate: OfflineAlertCandidate): Promise<boolean>;
   listHostOfflineAlertCandidates(): Promise<OfflineAlertCandidate[]>;
+  enqueueHostOfflineAlertCandidate?: (
+    candidate: OfflineAlertCandidate,
+    delivery: import("./slack-delivery-types.ts").SlackDeliveryRecord,
+  ) => Promise<boolean>;
 };
 
 function offlineAlertCandidateStore(
@@ -57,6 +62,27 @@ async function enqueueOfflineAlertCandidate(
   store: OfflineAlertCandidateStore | undefined,
 ): Promise<boolean> {
   try {
+    if (store?.enqueueHostOfflineAlertCandidate) {
+      const result = await enqueueFencedHostOfflineAlert(state, candidate);
+      if (result === "enqueued") {
+        clearLocalOfflineCandidate(state, candidate);
+        return true;
+      }
+      if (result === "lost") {
+        // The atomic condition lost to a fresh registration or a newer
+        // candidate. Do not keep a stale warm-process observation alive.
+        clearLocalOfflineCandidate(state, candidate);
+        return false;
+      }
+      // Alerts disabled or unavailable: clearing this exact durable candidate
+      // is safe, but still cannot erase a fresh registration's observation.
+      if (!(await store.clearHostOfflineAlertCandidate(candidate))) {
+        clearLocalOfflineCandidate(state, candidate);
+        return false;
+      }
+      clearLocalOfflineCandidate(state, candidate);
+      return true;
+    }
     await enqueueHostOfflineAlert(state, candidate);
     if (store && !(await store.clearHostOfflineAlertCandidate(candidate))) {
       // A fresh registration (or a newer disconnect) may have already
@@ -153,8 +179,13 @@ export async function reclaimStaleHostsDurable(
   // the host lease. Deliver these durable candidates before considering the
   // current process's stale-connection cache.
   if (alertStore) {
-    for (const candidate of await alertStore.listHostOfflineAlertCandidates()) {
-      await enqueueOfflineAlertCandidate(state, candidate, alertStore);
+    try {
+      for (const candidate of await alertStore.listHostOfflineAlertCandidates()) {
+        await enqueueOfflineAlertCandidate(state, candidate, alertStore);
+      }
+    } catch {
+      // Candidate delivery is retried by the next cron run. A scan outage must
+      // not block stale leases and sessions from being reclaimed below.
     }
   }
   const reclaimed: string[] = [];
