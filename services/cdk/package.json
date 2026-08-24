@@ -15,7 +15,8 @@
     "teardown": "node ../../scripts/aws-deployment.mts teardown",
     "purge": "node ../../scripts/aws-deployment.mts purge",
     "synth": "cdk synth --app 'node src/cli.ts'",
-    "diff": "cdk diff --app 'node src/cli.ts'"
+    "diff": "cdk diff --app 'node src/cli.ts'",
+    "synth:apigateway-account": "cdk synth --app 'node src/apigateway-account-cli.ts' ApiGatewayAccount"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.266.0",
