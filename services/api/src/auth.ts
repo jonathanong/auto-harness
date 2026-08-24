@@ -486,7 +486,7 @@ export class AuthService {
       value.exp <= Date.now() / 1000
     )
       return null;
-    if (!isBrowserPrincipal(value) || value.audience !== undefined) return null;
+    if (value.audience !== undefined || !isBrowserPrincipal(value)) return null;
     return this.bindCurrentPrincipal(value);
   }
 
@@ -554,9 +554,9 @@ function samePrincipalClaims(current: Principal, claims: Record<string, unknown>
   );
 }
 
-function isBrowserPrincipal(
-  principal: Principal,
-): principal is Principal & { kind: "admin" | "user" } {
+function isBrowserPrincipal<T extends Principal>(
+  principal: T,
+): principal is T & { kind: "admin" | "user" } {
   return principal.kind === "admin" || principal.kind === "user";
 }
 

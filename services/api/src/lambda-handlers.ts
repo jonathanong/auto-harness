@@ -215,7 +215,7 @@ export async function createLambdaRuntime(
     auth,
     management,
     storage: created.storage,
-    publicBaseUrl: viewerPublicBaseUrl,
+    ...(viewerPublicBaseUrl !== undefined ? { publicBaseUrl: viewerPublicBaseUrl } : {}),
   });
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();
