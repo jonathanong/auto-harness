@@ -23,7 +23,7 @@ export type SessionTransitionEvent =
   | { type: "disconnect"; acknowledged: boolean }
   | { type: "queue_expired" };
 
-export type SessionTransitionIgnoreReason =
+type SessionTransitionIgnoreReason =
   | "stale_attempt"
   | "already_acked"
   | "not_running"
@@ -49,14 +49,13 @@ export type SessionTransitionEffect =
     } & SessionReportFields)
   | ({
       type: "requeue";
-      reason:
-        | "usage_limit"
-        | "usage_limit_retry"
-        | "missing_account"
-        | "providerless"
-        | "disconnect";
-      retryCount?: number;
-      retryAfter?: string;
+      reason: "usage_limit_retry";
+      retryCount: number;
+      retryAfter: string;
+    } & SessionReportFields)
+  | ({
+      type: "requeue";
+      reason: "usage_limit" | "missing_account" | "providerless" | "disconnect";
     } & SessionReportFields)
   | { type: "cooldown"; providerAccountId: string; usageLimitedUntil: string }
   | { type: "suppress_target"; targetIndex: number }

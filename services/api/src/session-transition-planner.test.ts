@@ -520,6 +520,38 @@ describe("session-transition planner", () => {
     ).toMatchObject({ status: "cancelled", exitCode: null });
     expect(
       finishSessionOptsFromPlan(
+        session({ worktreeId: undefined }),
+        { effects: [{ type: "finish", status: "completed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).worktreeId,
+    ).toBeNull();
+    expect(
+      finishSessionOptsFromPlan(
+        row,
+        {
+          effects: [
+            { type: "finish", status: "failed", completedAt: NOW },
+            {
+              type: "requeue",
+              reason: "providerless",
+              exitCode: 1,
+              errorCode: "usage_limit",
+              errorMessage: "limit",
+              cliResumeRef: "r",
+            },
+          ],
+        },
+        { attemptId: "attempt" },
+      ),
+    ).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      errorCode: "usage_limit",
+      errorMessage: "limit",
+      cliResumeRef: "r",
+    });
+    expect(
+      finishSessionOptsFromPlan(
         row,
         { effects: [{ type: "requeue", reason: "providerless" }] },
         { attemptId: "attempt" },

@@ -146,4 +146,19 @@ describe("host message residual coverage", () => {
     expect(current.sessions.get("s")?.suppressedTargetIndexes).toEqual([2, 1]);
     expect(getLogs(current, "missing")).toEqual([]);
   });
+
+  it("reports a fenced drain that lost the durable mark", async () => {
+    const current = state(session());
+    setDurableReadStorage(current, {
+      getHostLock: async () => "connection",
+      markHostDraining: async () => false,
+    });
+    await expect(
+      handleHostMessageDurable(
+        current,
+        { type: "host:status", hostId: "host", draining: true },
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: false, error: "stale host connection" });
+  });
 });

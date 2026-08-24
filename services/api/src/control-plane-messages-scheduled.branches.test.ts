@@ -163,4 +163,47 @@ describe("scheduled terminal and retry message branches", () => {
     });
     expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
   });
+
+  it("cools a cached account when storage cannot load provider accounts", async () => {
+    const row = session({
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "acct",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    });
+    const state = durable(row, { requeueMainCheckoutUsageLimitedSession: async () => false });
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "p",
+      label: "acct",
+      usageLimitCooldownSeconds: 60,
+      usageLimitedUntil: null,
+      lastUsageLimitedAt: null,
+      lastAssignedAt: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await handleHostMessageDurable(state, status("s", "failed", { errorCode: "usage_limit" }));
+    expect(state.sessions.get("s")?.status).toBe("running");
+  });
+
+  it("leaves a cancelled lease without an assignment untouched", async () => {
+    const row = session({
+      status: "cancelled",
+      completedAt: NOW,
+      hostId: null,
+      assignmentConnectionId: undefined,
+      mainCheckoutLease: true,
+    });
+    const state = durable(row);
+    await handleHostMessageDurable(state, status("s", "cancelled"));
+    expect(state.sessions.get("s")).toMatchObject({
+      status: "cancelled",
+      mainCheckoutLease: true,
+    });
+  });
 });

@@ -10,7 +10,8 @@ export function cancelSession(
   state: ControlPlaneState,
   id: string,
 ): { ok: true; session: PublicSession } | { ok: false; error: string } {
-  const session = state.sessions.get(id) ?? null;
+  const session = state.sessions.get(id);
+  if (!session) return { ok: false, error: "session not found" };
   const plan = planSessionTransition(
     session,
     { type: "cancel" },
@@ -22,7 +23,6 @@ export function cancelSession(
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };
-  if (!session) return { ok: false, error: "session not found" };
   const cancel = transitionEffect(plan, "cancel")!;
   state.pendingAcks.delete(id);
   const hostId = session.hostId;
