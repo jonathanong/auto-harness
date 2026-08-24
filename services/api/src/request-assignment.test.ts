@@ -48,6 +48,9 @@ describe("requestAssignment", () => {
         listSessionsByStatus: async () => {
           throw new Error("ddb unavailable");
         },
+        listSessionsByStatusPage: async () => {
+          throw new Error("ddb unavailable");
+        },
       } as never,
     });
     await expect(requestAssignment(state)).resolves.toBeUndefined();
@@ -89,7 +92,7 @@ describe("requestAssignment", () => {
       backfillQueuedSessionQueueOrder: async () => {
         backfills += 1;
       },
-      listSessionsByStatus: async (status: string, shard: number) => {
+      listSessionsByStatusPage: async (status: string, shard: number) => {
         if (status === "queued") queuedReads += 1;
         return [...plane.state.sessions.values()].filter(
           (session) => session.status === status && session.queueShard === shard,
@@ -100,7 +103,58 @@ describe("requestAssignment", () => {
     await requestAssignment(plane.state);
 
     expect(queuedReads).toBe(2);
-    expect(backfills).toBe(1);
+    expect(backfills).toBe(0);
+  });
+
+  it("refreshes stale provider readiness before bounded event placement", async () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1, idFactory: () => "session" });
+    plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "command" });
+    plane.createProviderAccount({
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    });
+    plane.createCommand({
+      id: "command",
+      name: "command",
+      argv: ["command"],
+      providerId: "provider",
+    });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [
+        { id: "worktree", name: "worktree", repositoryId: "repo", path: "/work", labels: [] },
+      ],
+      providerAccountReadiness: [{ providerAccountId: "account", ready: true }],
+    });
+    expect(
+      plane.createSession({
+        repositoryId: "repo",
+        prompt: "run",
+        target: { providerId: "provider" },
+        timeout: 60,
+      }).ok,
+    ).toBe(true);
+    const connection = [...plane.state.connections.values()][0]!;
+    let commandReads = 0;
+    setDurableReadStorage(plane.state, {
+      getConnection: async () => ({
+        ...connection,
+        providerAccountReadiness: [{ providerAccountId: "account", ready: false }],
+      }),
+      getCommand: async () => {
+        commandReads += 1;
+        return plane.state.commands.get("command") ?? null;
+      },
+    });
+
+    await requestAssignment(plane.state);
+
+    expect(plane.state.sessions.get("session")?.status).toBe("queued");
+    expect(plane.state.connections.get(connection.connectionId)?.providerAccountReadiness).toEqual([
+      { providerAccountId: "account", ready: false },
+    ]);
+    expect(commandReads).toBeGreaterThan(0);
   });
 
   it("handles scheduled queue entries and isolates a per-session failure", async () => {
@@ -120,5 +174,44 @@ describe("requestAssignment", () => {
 
     await expect(requestAssignment(plane.state)).resolves.toBeUndefined();
     expect(plane.state.sessions.get(scheduled.id)?.status).toBe("queued");
+  });
+
+  it("caps event work by session count and elapsed budget while full repair drains the rest", async () => {
+    let id = 0;
+    const plane = new ControlPlane({
+      now: () => NOW,
+      idFactory: () => `sess-${++id}`,
+      shardCount: 1,
+    });
+    seedBaseCommand(plane);
+    for (const worktreeId of ["wt-1", "wt-2"]) {
+      plane.seedWorktree({
+        id: worktreeId,
+        name: worktreeId,
+        hostId: "host-1",
+        repositoryId: "repo-1",
+        path: `/${worktreeId}`,
+        labels: [],
+        status: "idle",
+        online: true,
+      });
+    }
+    expect(plane.createSession(baseSessionBody({ prompt: "first" })).ok).toBe(true);
+    expect(plane.createSession(baseSessionBody({ prompt: "second" })).ok).toBe(true);
+
+    await requestAssignment(plane.state, { maxSessions: 1, budgetMs: 1, now: () => 0 });
+    expect(
+      [...plane.state.sessions.values()].filter((row) => row.status === "running"),
+    ).toHaveLength(1);
+
+    await requestAssignment(plane.state, { budgetMs: 0, now: () => 0 });
+    expect(
+      [...plane.state.sessions.values()].filter((row) => row.status === "running"),
+    ).toHaveLength(1);
+
+    await requestAssignment(plane.state, { fullScan: true, maxSessions: 0, budgetMs: 0 });
+    expect(
+      [...plane.state.sessions.values()].filter((row) => row.status === "running"),
+    ).toHaveLength(2);
   });
 });

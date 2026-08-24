@@ -22,17 +22,30 @@ export function EditWorktreeForm({
   hostId,
   repositoryId,
   worktree,
+  canWriteExecConfig = false,
+  hasInheritedExecutionConfig = false,
 }: {
   hostId: string;
   repositoryId: string;
   worktree: HostWorktree;
+  canWriteExecConfig?: boolean;
+  /** Host/repository setup or terminal hooks execute in this worktree's checkout. */
+  hasInheritedExecutionConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const [setupScriptEdited, setSetupScriptEdited] = useState(false);
+  const pathEditingBlocked =
+    !canWriteExecConfig && (hasInheritedExecutionConfig || (worktree.setupScript ?? "") !== "");
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    setOpen(nextOpen);
+    if (!nextOpen) setSetupScriptEdited(false);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" variant="outline" data-pw="worktree-edit-open">
           Edit
@@ -42,7 +55,8 @@ export function EditWorktreeForm({
         <DialogHeader>
           <DialogTitle>Edit worktree</DialogTitle>
           <DialogDescription>
-            Update this worktree's absolute path, scheduler labels, and optional setup script.
+            Update this worktree's absolute path, scheduler labels, and optional setup script (setup
+            scripts require fleet:exec-config).
           </DialogDescription>
         </DialogHeader>
         <form
@@ -51,7 +65,9 @@ export function EditWorktreeForm({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const path = String(fd.get("path") ?? "").trim();
+            // Disabled controls are omitted from FormData. Keep the stored path
+            // when an inherited executable action makes its cwd privileged.
+            const path = pathEditingBlocked ? worktree.path : String(fd.get("path") ?? "").trim();
             const labels = String(fd.get("labels") ?? "")
               .split(",")
               .map((s) => s.trim())
@@ -75,20 +91,29 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
-                  setupScript: worktreeSetupScript,
+                  ...(canWriteExecConfig && setupScriptEdited
+                    ? { setupScript: worktreeSetupScript ?? "" }
+                    : {}),
                 }),
               );
               if (!r.ok) {
                 showToast(r.error, { variant: "destructive", pw: "worktree-edit-error" });
                 return;
               }
-              setOpen(false);
+              handleOpenChange(false);
               router.refresh();
             });
           }}
         >
           <div className="space-y-1">
-            <Label htmlFor="path" tip="Absolute path on this host">
+            <Label
+              htmlFor="path"
+              tip={
+                pathEditingBlocked
+                  ? "Changing this path requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+                  : "Absolute path on this host"
+              }
+            >
               Absolute Path
             </Label>
             <Input
@@ -96,6 +121,7 @@ export function EditWorktreeForm({
               name="path"
               defaultValue={worktree.path}
               required
+              disabled={pathEditingBlocked}
               data-pw="worktree-edit-path"
             />
           </div>
@@ -110,29 +136,37 @@ export function EditWorktreeForm({
               data-pw="worktree-edit-labels"
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor="worktreeSetupScript"
-              tip="Optional worktree override; leave blank to inherit repository setup"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id="worktreeSetupScript"
-              name="setupScript"
-              rows={5}
-              defaultValue={worktree.setupScript ?? ""}
-              className="font-mono text-xs"
-              data-pw="worktree-edit-setup-script"
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="worktreeSetupScript"
+                tip="Optional worktree override; leave blank to inherit repository setup. Requires fleet:exec-config."
+              >
+                Setup Script
+              </Label>
+              <Textarea
+                id="worktreeSetupScript"
+                name="setupScript"
+                rows={5}
+                defaultValue={worktree.setupScript ?? ""}
+                onChange={() => setSetupScriptEdited(true)}
+                className="font-mono text-xs"
+                data-pw="worktree-edit-setup-script"
+              />
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this worktree">
               <Button type="submit" size="sm" disabled={pending} data-pw="worktree-edit-submit">
                 {pending ? "Saving…" : "Save"}
               </Button>
             </WithTooltip>
-            <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
           </div>

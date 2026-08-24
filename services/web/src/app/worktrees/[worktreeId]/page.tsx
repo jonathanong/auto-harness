@@ -13,6 +13,7 @@ import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export default async function WorktreeDetailPage({
 }) {
   const { worktreeId } = await params;
   const { tab } = await searchParams;
+  const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
 
   let worktree: Wt | undefined;
   try {
@@ -100,6 +102,10 @@ export default async function WorktreeDetailPage({
   }
   const hostRepository = inventory?.repositories.find((r) => r.id === worktree.repositoryId);
   const hostWorktree = hostRepository?.worktrees.find((w) => w.id === worktree.id);
+  const hasInheritedExecutionConfig =
+    (inventory?.setupScript ?? "") !== "" ||
+    (hostRepository?.setupScript ?? "") !== "" ||
+    (hostRepository?.terminalHookScript ?? "") !== "";
 
   const { providersById, providerAccountsById, commandsById, catalog } =
     await fetchProviderCatalogLookups();
@@ -191,6 +197,8 @@ export default async function WorktreeDetailPage({
                       hostId={worktree.hostId}
                       repositoryId={worktree.repositoryId}
                       worktree={hostWorktree}
+                      canWriteExecConfig={canWriteExecConfig}
+                      hasInheritedExecutionConfig={hasInheritedExecutionConfig}
                     />
                   ) : null}
                 </div>

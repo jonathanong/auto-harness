@@ -67,7 +67,8 @@ describe("host message optional-field coverage", () => {
         worktrees: [],
         commandProfiles: [],
         repositories: [],
-        capabilities: [],
+        capabilities: { features: [] },
+        maxConcurrentAssignments: 1,
         runningSessions: [],
       }),
     ).resolves.toMatchObject({ ok: true, connectionId: "connection" });
@@ -111,6 +112,54 @@ describe("host message optional-field coverage", () => {
     expect(current.logs.get("s")).toHaveLength(10_000);
     expect(current.logs.get("s")?.at(-1)?.seq).toBe(10_001);
     expect(committed).toHaveLength(1);
+  });
+
+  it("ignores an empty retained cache entry while appending a log", () => {
+    const current = state(session());
+    const retained = Array.from({ length: 10_001 }, (_, seq) => ({
+      sessionId: "s",
+      timestampSeq: `${NOW}#${String(seq).padStart(12, "0")}`,
+      stream: "stdout",
+      content: "old",
+      timestamp: NOW,
+      seq,
+    }));
+    retained.shift = () => undefined;
+    current.logs.set("s", retained);
+    appendLog(current, {
+      sessionId: "s",
+      stream: "stdout",
+      content: "new",
+      timestamp: NOW,
+      seq: 1,
+    });
+    expect(current.logs.get("s")?.some((record) => record.content === "new")).toBe(true);
+  });
+
+  it("returns success when a durable log batch contains only stale attempts", async () => {
+    const current = state(session());
+    setDurableReadStorage(current, {
+      getSession: async () => session(),
+      getHostLock: async () => "connection",
+      putLogsFenced: async () => true,
+    });
+    await expect(
+      handleHostLogBatchDurable(
+        current,
+        [
+          {
+            type: "session:log",
+            sessionId: "s",
+            attemptId: "stale",
+            stream: "stdout",
+            content: "old",
+            timestamp: NOW,
+            seq: 1,
+          },
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
   });
 
   it("publishes queued and directly durable log commits", async () => {
@@ -201,6 +250,27 @@ describe("host message optional-field coverage", () => {
       errorCode: "usage_limit",
     });
     expect(current.sessions.get("s")?.suppressedTargetIndexes).toEqual([0]);
+  });
+
+  it("treats an uncached provider account as absent for local usage-limit planning", () => {
+    const current = state(
+      session({
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "cmd",
+          providerAccountId: "account",
+          hostId: "host",
+          worktreeId: "w",
+          attemptId: "attempt",
+        },
+      }),
+    );
+    expect(
+      handleHostMessage(current, {
+        ...status(),
+        worktreeId: "w",
+      }),
+    ).toEqual({ ok: true });
   });
 
   it("routes standalone and terminal usage reports through both message facades", async () => {

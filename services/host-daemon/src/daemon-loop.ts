@@ -19,6 +19,7 @@ import { OutboundQueue } from "./outbound-queue.ts";
 import {
   emptyExecutionProfiles,
   executionProfileReady,
+  providerAccountReadiness,
   resolveExecutionProfile,
   type ExecutionProfiles,
 } from "./execution-profiles.ts";
@@ -77,6 +78,10 @@ export class DaemonLoop {
   private readonly inflight = new Map<string, InflightSession>();
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
+  /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
+  private inventoryPolicyBlocked = false;
+  /** Tracks whether the control plane has acknowledged the policy drain registration. */
+  private inventoryPolicyDrainPublished = false;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
   private drainConfirmation: Promise<void> | undefined;
@@ -97,6 +102,7 @@ export class DaemonLoop {
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly executionProfiles: ExecutionProfiles;
+  private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -121,6 +127,8 @@ export class DaemonLoop {
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
     const innerCommandRunner =
       options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
+    // Preserve explicitly supplied command runners as test and operator seams;
+    // production command execution is wrapped so provider usage envelopes are retained.
     const commandRunner = options.commandRunner
       ? innerCommandRunner
       : new UsageCapturingProcessRunner(innerCommandRunner, this.now);
@@ -167,24 +175,79 @@ export class DaemonLoop {
     await this.register();
   }
   async applyInventory(next: DaemonConfig): Promise<void> {
-    await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
+    const wasPolicyBlocked = this.inventoryPolicyBlocked;
+    const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
+    const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
+    // Validate the candidate inventory against its own roots. The prior fence
+    // remains represented by `inventoryPolicyBlocked`, which refuses new
+    // assignments and blocks pending hooks until replacement registration succeeds.
+    try {
+      await applyDaemonInventory(
+        this.config,
+        next,
+        this.worktrees,
+        async (candidate) => {
+          // Advertise the validated inventory as available while retaining the local
+          // assignment fence until that registration has been durably handed off.
+          // A peer can otherwise queue an assignment while send() is still pending.
+          await this.register({ config: candidate, inventoryPolicyBlocked: false });
+        },
+        () => {
+          this.worktrees.clearAllowedRootsPolicy();
+          this.inventoryPolicyBlocked = false;
+          this.inventoryPolicyDrainPublished = false;
+        },
+      );
+    } catch (error) {
+      this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
+      this.inventoryPolicyBlocked = wasPolicyBlocked;
+      this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
+      throw error;
+    }
   }
-  async register(): Promise<void> {
+  async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
+    this.worktrees.setAllowedRootsPolicy(allowedRoots);
+    if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
+    // Set the local gate before network I/O so an already-connected peer cannot assign work in
+    // the interval before its durable registration is marked draining.
+    this.inventoryPolicyBlocked = true;
+    try {
+      await this.register();
+    } catch (error) {
+      this.inventoryPolicyDrainPublished = false;
+      throw error;
+    }
+  }
+  async register({
+    inventoryPolicyBlocked = this.inventoryPolicyBlocked,
+    config = this.config,
+  }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
+    const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
     await registerDaemon(
-      this.config,
+      config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
-      this.drainRequested || this.draining,
+      this.drainRequested || this.draining || inventoryPolicyBlocked,
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
       this.executionProfiles,
     );
+    if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
+    this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {
+    if (
+      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+        this.advertisedProviderAccountReadiness &&
+      !this.hasPendingAcknowledgement()
+    ) {
+      await this.register();
+      return;
+    }
     await this.outbound.send({
       type: "host:keepalive",
       hostId: this.config.hostId,
@@ -230,7 +293,7 @@ export class DaemonLoop {
   }
 
   isDraining(): boolean {
-    return this.draining || this.isDrainingExternal?.() === true;
+    return this.draining || this.inventoryPolicyBlocked || this.isDrainingExternal?.() === true;
   }
   inflightCount(): number {
     return this.inflight.size;
@@ -317,6 +380,16 @@ export class DaemonLoop {
     for (const current of this.inflightFor(msg.sessionId, msg.attemptId)) {
       current.controller.abort();
     }
+  }
+
+  /**
+   * A readiness registration is also a reconciliation snapshot. Do not send
+   * one while an assignment's durable ACK is outstanding: `register()` only
+   * reports acknowledged attempts, so omitting the pending attempt could let
+   * the control plane requeue it before its acknowledgement arrives.
+   */
+  private hasPendingAcknowledgement(): boolean {
+    return [...this.inflight.values()].some((session) => !session.acknowledged);
   }
 
   private handleAcknowledged(

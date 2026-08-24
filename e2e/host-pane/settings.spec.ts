@@ -25,7 +25,10 @@ test.describe("host pane settings", () => {
       await expect(page.getByTestId("settings-heading")).toHaveText("Settings");
       await expect(page.getByTestId("host-drain")).toBeVisible();
       await expect(page.getByTestId("form-host-setup-script")).toBeVisible();
+      await expect(page.getByTestId("host-exec-config-alert")).toBeVisible();
       await expect(page.getByTestId("host-setup-script")).toBeVisible();
+      await expect(page.getByTestId("host-allowed-roots")).toBeVisible();
+      await expect(page.getByTestId("host-required-environment")).toBeVisible();
       await expect(page.getByTestId("form-host-config-json")).toBeVisible();
       await expect(page.getByTestId("host-config-json")).toBeVisible();
       await expect(page.getByTestId("host-config-json").locator(".cm-editor")).toBeVisible();

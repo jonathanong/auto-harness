@@ -1,10 +1,11 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { tryAcquireHostLock } from "./plane-storage-locks.ts";
+import { releaseLegacyHostAssignment } from "./plane-storage-host-assignment.ts";
 import { finishSession, getSession, putSession } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -94,5 +95,63 @@ describe("DynamoDB Local terminal options", () => {
         concurrencyId: "key",
       }),
     ).toBe(true);
+  });
+
+  it("reconciles legacy host capacity without failing a zero-count row", async () => {
+    const hostId = "legacy-host";
+    const connectionId = "legacy-connection";
+    const lease = {
+      sessionId: "legacy-session",
+      attemptId: "legacy-attempt",
+      hostId,
+      connectionId,
+    };
+    await putSession(ctx, {
+      ...base,
+      id: lease.sessionId,
+      status: "completed",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId,
+        worktreeId: null,
+        attemptId: lease.attemptId,
+      },
+    });
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId,
+        connectionId,
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(false);
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: tables.hostLocks,
+        Key: { hostId },
+        UpdateExpression: "SET assignmentCount = :one",
+        ExpressionAttributeValues: { ":one": 1 },
+      }),
+    );
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(true);
+    expect(await releaseLegacyHostAssignment(ctx, lease)).toBe(false);
+    await putSession(ctx, {
+      ...base,
+      id: "legacy-error",
+      status: "completed",
+      attemptId: "legacy-error-attempt",
+    });
+    await expect(
+      releaseLegacyHostAssignment(
+        { ...ctx, tables: { ...tables, hostLocks: "missing-host-locks" } },
+        {
+          sessionId: "legacy-error",
+          attemptId: "legacy-error-attempt",
+          hostId,
+          connectionId,
+        },
+      ),
+    ).rejects.toThrow();
   });
 });

@@ -1,11 +1,27 @@
+/* eslint-disable max-lines -- claim, checkout, and allowed-root policy share one manager. */
+import {
+  assertClaimedPathsAllowed,
+  assertDaemonPathsAllowed,
+  assertPathWithinAllowedRoots,
+  type ClaimedPathsAllowed,
+} from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 
-type ClaimedWorktree = {
+export type ClaimedWorktree = {
   hostSetupScript?: string;
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
   cwd: string;
+  allowedRoots?: string[];
+  /** Re-check the live inventory policy before each filesystem/CLI execution boundary. */
+  currentExecutionTarget?: () => Promise<void>;
+  /** Resolve hook policy again when a session finishes after a config reload. */
+  currentHookTarget: () => Promise<{
+    cwd: string;
+    repository: RepositoryConfig;
+    allowedRoots?: string[];
+  } | null>;
 };
 
 type MainWaiter = {
@@ -20,25 +36,91 @@ const mainWorktree = (repository: RepositoryConfig): WorktreeConfig => ({
   labels: [],
 });
 
+function sameOptionalString(left: string | undefined, right: string | undefined): boolean {
+  return (left ?? "") === (right ?? "");
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export class WorktreeManager {
   private readonly busy = new Set<string>();
   private readonly mainBusy = new Set<string>();
   private readonly mainWaiters = new Map<string, MainWaiter[]>();
   private readonly config: DaemonConfig;
   private readonly git: GitClient;
+  private inventoryGeneration = 0;
+  private allowedRootsPolicyActive = false;
+  private policyAllowedRoots: string[] = [];
 
   constructor(config: DaemonConfig, git: GitClient) {
     this.config = config;
     this.git = git;
   }
 
-  async ensureAll(): Promise<void> {
-    for (const repo of this.config.repositories) {
-      await this.git.ensureRepo(repo.path);
+  /**
+   * Keep an invalid polled policy in force for pending hooks even though the rest of the
+   * inventory cannot be applied. An empty policy is intentionally fail-closed here.
+   */
+  setAllowedRootsPolicy(allowedRoots?: readonly string[]): void {
+    this.allowedRootsPolicyActive = true;
+    this.policyAllowedRoots = allowedRoots ? [...allowedRoots] : [];
+    this.noteInventoryChange();
+  }
+
+  clearAllowedRootsPolicy(): void {
+    this.allowedRootsPolicyActive = false;
+    this.policyAllowedRoots = [];
+    this.noteInventoryChange();
+  }
+
+  getAllowedRootsPolicy(): { active: boolean; roots: string[] } {
+    return {
+      active: this.allowedRootsPolicyActive,
+      roots: [...this.policyAllowedRoots],
+    };
+  }
+
+  restoreAllowedRootsPolicy(policy: { active: boolean; roots: readonly string[] }): void {
+    this.allowedRootsPolicyActive = policy.active;
+    this.policyAllowedRoots = policy.active ? [...policy.roots] : [];
+    this.noteInventoryChange();
+  }
+
+  /** Invalidate claims that are waiting on filesystem validation during an inventory refresh. */
+  noteInventoryChange(): void {
+    this.inventoryGeneration += 1;
+  }
+
+  private effectiveAllowedRoots(): string[] {
+    return this.allowedRootsPolicyActive
+      ? this.policyAllowedRoots
+      : (this.config.allowedRoots ?? []);
+  }
+
+  async ensureAll(candidate?: DaemonConfig): Promise<void> {
+    if (!candidate && this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
+      throw new Error("host inventory policy blocks execution");
+    }
+    const config = candidate ?? this.config;
+    // Candidate validation must not replace an active retained policy: pending
+    // terminal hooks continue to read `this.config` and `effectiveAllowedRoots()`
+    // until the candidate registration has succeeded.
+    // An explicitly supplied candidate with no allowedRoots intentionally
+    // clears the restriction. Only a normal (non-candidate) preparation reads
+    // the active retained policy.
+    const roots =
+      candidate === undefined ? this.effectiveAllowedRoots() : (candidate.allowedRoots ?? []);
+    await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
+    for (const repo of config.repositories) {
+      const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);
+      await this.git.ensureRepo(repositoryPath);
       for (const wt of repo.worktrees) {
+        const worktreePath = await assertPathWithinAllowedRoots(wt.path, roots);
         await this.git.ensureWorktree({
-          repoPath: repo.path,
-          worktreePath: wt.path,
+          repoPath: repositoryPath,
+          worktreePath,
           branch: repo.defaultBranch,
         });
       }
@@ -49,7 +131,135 @@ export class WorktreeManager {
     return this.busy.has(worktreeId);
   }
 
-  claim(repositoryId: string, worktreeId: string): ClaimedWorktree {
+  private claimedResult(
+    repository: RepositoryConfig,
+    worktree: WorktreeConfig,
+    cwd: string,
+    paths: ClaimedPathsAllowed,
+    generation: number,
+  ): ClaimedWorktree {
+    const claimedRepository = { ...repository, path: paths.repositoryPath };
+    const claimedWorktree = { ...worktree, path: cwd };
+    const claimedAllowedRoots = this.effectiveAllowedRoots();
+    const claimedHostSetupScript = this.config.setupScript;
+    return {
+      ...(claimedHostSetupScript !== undefined ? { hostSetupScript: claimedHostSetupScript } : {}),
+      ...(claimedAllowedRoots.length ? { allowedRoots: claimedAllowedRoots } : {}),
+      repository: claimedRepository,
+      worktree: claimedWorktree,
+      cwd,
+      currentExecutionTarget: async () => {
+        while (true) {
+          const validationGeneration = this.inventoryGeneration;
+          const roots = this.effectiveAllowedRoots();
+          if (this.allowedRootsPolicyActive && roots.length === 0) {
+            throw new Error(
+              validationGeneration === generation
+                ? "host inventory policy blocks execution"
+                : "host inventory changed after this checkout was claimed",
+            );
+          }
+
+          let targetRepository = claimedRepository;
+          let targetWorktree = claimedWorktree;
+          if (validationGeneration !== generation) {
+            const currentRepository = this.config.repositories.find(
+              (candidate) => candidate.id === claimedRepository.id,
+            );
+            const currentWorktree = currentRepository
+              ? claimedWorktree.id === `main:${claimedRepository.id}`
+                ? mainWorktree(currentRepository)
+                : currentRepository.worktrees.find(
+                    (candidate) => candidate.id === claimedWorktree.id,
+                  )
+              : undefined;
+            if (
+              !currentRepository ||
+              !currentWorktree ||
+              !sameOptionalString(claimedHostSetupScript, this.config.setupScript) ||
+              !sameOptionalString(claimedRepository.setupScript, currentRepository.setupScript) ||
+              !sameOptionalString(
+                claimedRepository.terminalHookScript,
+                currentRepository.terminalHookScript,
+              ) ||
+              !sameOptionalString(claimedWorktree.setupScript, currentWorktree.setupScript) ||
+              !sameStrings(claimedAllowedRoots, roots)
+            ) {
+              throw new Error("host inventory changed after this checkout was claimed");
+            }
+            targetRepository = currentRepository;
+            targetWorktree = currentWorktree;
+          }
+
+          const currentPaths = await assertClaimedPathsAllowed({
+            cwd: targetWorktree.path,
+            repositoryPath: targetRepository.path,
+            terminalHookScript: targetRepository.terminalHookScript,
+            allowedRoots: roots,
+          });
+          if (currentPaths.cwd !== cwd || currentPaths.repositoryPath !== paths.repositoryPath) {
+            throw new Error("host inventory changed after this checkout was claimed");
+          }
+          if (validationGeneration === this.inventoryGeneration) return;
+        }
+      },
+      currentHookTarget: () => this.currentHookTarget(repository.id, cwd, paths.repositoryPath),
+    };
+  }
+
+  /**
+   * Resolve terminal-hook inputs from the live daemon config, not the assignment snapshot.
+   * A session may remain pending while an inventory reload tightens or removes its policy.
+   */
+  private async currentHookTarget(
+    repositoryId: string,
+    claimedCwd: string,
+    claimedRepositoryPath: string,
+  ): Promise<{
+    cwd: string;
+    repository: RepositoryConfig;
+    allowedRoots?: string[];
+  } | null> {
+    const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
+    if (!repository) return null;
+    const roots = this.effectiveAllowedRoots();
+    if (this.allowedRootsPolicyActive && roots.length === 0) return null;
+    const paths = await assertClaimedPathsAllowed({
+      // A refreshed inventory may move or remove the worktree. Finish the session in the
+      // originally claimed checkout, subject to the current root policy and hook config.
+      cwd: claimedCwd,
+      repositoryPath: claimedRepositoryPath,
+      terminalHookScript: repository.terminalHookScript,
+      allowedRoots: roots,
+    });
+    return {
+      cwd: paths.cwd,
+      repository: { ...repository, path: paths.repositoryPath },
+      ...(roots.length ? { allowedRoots: roots } : {}),
+    };
+  }
+
+  private async assertClaimPaths(
+    repository: RepositoryConfig,
+    cwd: string,
+  ): Promise<ClaimedPathsAllowed> {
+    if (this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
+      throw new Error("host inventory policy blocks execution");
+    }
+    return await assertClaimedPathsAllowed({
+      cwd,
+      repositoryPath: repository.path,
+      terminalHookScript: repository.terminalHookScript,
+      allowedRoots: this.effectiveAllowedRoots(),
+    });
+  }
+
+  async claim(
+    repositoryId: string,
+    worktreeId: string,
+    signal?: AbortSignal,
+  ): Promise<ClaimedWorktree> {
+    signal?.throwIfAborted();
     if (this.busy.has(worktreeId)) {
       throw new Error(`Worktree already busy: ${worktreeId}`);
     }
@@ -62,29 +272,57 @@ export class WorktreeManager {
       throw new Error(`Unknown worktree: ${worktreeId}`);
     }
     this.busy.add(worktreeId);
-    return {
-      ...(this.config.setupScript !== undefined
-        ? { hostSetupScript: this.config.setupScript }
-        : {}),
-      repository,
-      worktree,
-      cwd: worktree.path,
-    };
+    try {
+      while (true) {
+        signal?.throwIfAborted();
+        const generation = this.inventoryGeneration;
+        const currentRepository = this.config.repositories.find((r) => r.id === repositoryId);
+        const currentWorktree = currentRepository?.worktrees.find((w) => w.id === worktreeId);
+        if (!currentRepository || !currentWorktree) {
+          if (generation !== this.inventoryGeneration) continue;
+          throw new Error(
+            !currentRepository
+              ? `Unknown repository: ${repositoryId}`
+              : `Unknown worktree: ${worktreeId}`,
+          );
+        }
+        let paths: ClaimedPathsAllowed;
+        try {
+          paths = await this.assertClaimPaths(currentRepository, currentWorktree.path);
+          signal?.throwIfAborted();
+        } catch (error) {
+          if (generation !== this.inventoryGeneration) continue;
+          throw error;
+        }
+        if (generation !== this.inventoryGeneration) continue;
+        return this.claimedResult(currentRepository, currentWorktree, paths.cwd, paths, generation);
+      }
+    } catch (error) {
+      this.busy.delete(worktreeId);
+      throw error;
+    }
   }
 
-  mainClaim(repositoryId: string): ClaimedWorktree {
-    const repository = this.config.repositories.find((r) => r.id === repositoryId);
-    if (!repository) {
-      throw new Error(`Unknown repository: ${repositoryId}`);
+  async mainClaim(repositoryId: string, signal?: AbortSignal): Promise<ClaimedWorktree> {
+    while (true) {
+      signal?.throwIfAborted();
+      const generation = this.inventoryGeneration;
+      const repository = this.config.repositories.find((r) => r.id === repositoryId);
+      if (!repository) {
+        if (generation !== this.inventoryGeneration) continue;
+        throw new Error(`Unknown repository: ${repositoryId}`);
+      }
+      let paths: ClaimedPathsAllowed;
+      try {
+        paths = await this.assertClaimPaths(repository, repository.path);
+        signal?.throwIfAborted();
+      } catch (error) {
+        if (generation !== this.inventoryGeneration) continue;
+        throw error;
+      }
+      if (generation !== this.inventoryGeneration) continue;
+      return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths, generation);
     }
-    return {
-      ...(this.config.setupScript !== undefined
-        ? { hostSetupScript: this.config.setupScript }
-        : {}),
-      repository,
-      worktree: mainWorktree(repository),
-      cwd: repository.path,
-    };
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {
@@ -143,6 +381,7 @@ export class WorktreeManager {
     ref: string | undefined,
     signal?: AbortSignal,
   ): Promise<void> {
+    await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
     await this.git.checkoutRef({ cwd: claimed.cwd, ref: target, ...(signal ? { signal } : {}) });
   }
@@ -152,6 +391,7 @@ export class WorktreeManager {
     ref: string | undefined,
     signal?: AbortSignal,
   ): Promise<void> {
+    await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
     await this.git.prepareMainCheckout({
       cwd: claimed.cwd,

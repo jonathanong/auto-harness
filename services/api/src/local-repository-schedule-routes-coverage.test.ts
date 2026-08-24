@@ -347,6 +347,192 @@ describe("repository and schedule route coverage", () => {
       );
     }
   });
+
+  it("covers denied and terminal route audits that stop before writing a response", async () => {
+    const denied = seededPlane();
+    denied.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const principal: Principal = {
+      id: "scoped",
+      kind: "service-account",
+      role: "operator",
+      allowedRepositoryIds: ["elsewhere"],
+    };
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          denied,
+          "POST",
+          "/api/v1/repositories/repository/pause",
+          {},
+          principal,
+        )
+      ).status,
+    ).toBe(500);
+  });
+
+  it("audits trigger failures without a repository and hides a scoped result", async () => {
+    const missing = seededPlane();
+    missing.getScheduleDurable = async () => null;
+    missing.triggerScheduleDurable = async () => {
+      throw new Error("trigger failed");
+    };
+    expect((await invoke(missing, "POST", "/api/v1/schedules/missing/trigger", {})).status).toBe(
+      500,
+    );
+
+    const outOfScope = seededPlane();
+    outOfScope.triggerScheduleDurable = async () =>
+      ({
+        ok: true,
+        created: true,
+        session: { id: "session", repositoryId: "repository" },
+      }) as never;
+    const principal: Principal = {
+      id: "scoped",
+      kind: "service-account",
+      role: "operator",
+      allowedRepositoryIds: ["elsewhere"],
+    };
+    expect(
+      (
+        await invokeDirect(
+          handleScheduleRoutes,
+          outOfScope,
+          "POST",
+          "/api/v1/schedules/schedule/trigger",
+          {},
+          principal,
+        )
+      ).status,
+    ).toBe(404);
+
+    const resultOutOfScope = seededPlane();
+    resultOutOfScope.triggerScheduleDurable = async () =>
+      ({
+        ok: true,
+        created: true,
+        session: { id: "session", repositoryId: "elsewhere" },
+      }) as never;
+    expect(
+      (
+        await invokeDirect(
+          handleScheduleRoutes,
+          resultOutOfScope,
+          "POST",
+          "/api/v1/schedules/schedule/trigger",
+          {},
+          {
+            id: "scoped",
+            kind: "service-account",
+            role: "operator",
+            allowedRepositoryIds: ["repository"],
+          },
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it("covers schedule mutation audits when legacy rows omit repositoryId", async () => {
+    const legacy = seededPlane();
+    const schedule = legacy.state.schedules.get("schedule")!;
+    const withoutRepository = { ...schedule, repositoryId: undefined } as never;
+    legacy.getScheduleDurable = async () => withoutRepository;
+    legacy.updateScheduleDurable = async () => ({ ok: false, error: "invalid" }) as never;
+    expect((await invoke(legacy, "PATCH", "/api/v1/schedules/schedule", {})).status).toBe(400);
+
+    const thrown = seededPlane();
+    thrown.getScheduleDurable = async () => withoutRepository;
+    thrown.updateScheduleDurable = async () => {
+      throw new Error("update failed");
+    };
+    expect((await invoke(thrown, "PATCH", "/api/v1/schedules/schedule", {})).status).toBe(500);
+
+    const deleted = seededPlane();
+    deleted.getScheduleDurable = async () => withoutRepository;
+    deleted.deleteScheduleDurable = async () => ({ ok: false, error: "missing" });
+    expect((await invoke(deleted, "DELETE", "/api/v1/schedules/schedule")).status).toBe(404);
+
+    const hiddenRepositoryUpdate = seededPlane();
+    expect(
+      (
+        await invokeDirect(
+          handleScheduleRoutes,
+          hiddenRepositoryUpdate,
+          "PATCH",
+          "/api/v1/schedules/schedule",
+          { repositoryId: "elsewhere" },
+          {
+            id: "scoped",
+            kind: "service-account",
+            role: "operator",
+            allowedRepositoryIds: ["repository"],
+          },
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it("stops scoped route mutations when their failure audit cannot be stored", async () => {
+    const denied = seededPlane();
+    denied.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const principal: Principal = {
+      id: "scoped",
+      kind: "service-account",
+      role: "operator",
+      allowedRepositoryIds: ["elsewhere"],
+    };
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          denied,
+          "POST",
+          "/api/v1/repositories/repository/pause",
+          {},
+          principal,
+        )
+      ).status,
+    ).toBe(500);
+
+    const repositoryDelete = seededPlane();
+    repositoryDelete.deleteRepositoryDurable = async () => ({ ok: true });
+    repositoryDelete.appendAuditLog = denied.appendAuditLog;
+    expect(
+      (await invoke(repositoryDelete, "DELETE", "/api/v1/repositories/repository")).status,
+    ).toBe(500);
+
+    const trigger = seededPlane();
+    trigger.appendAuditLog = denied.appendAuditLog;
+    trigger.triggerScheduleDurable = async () =>
+      ({
+        ok: true,
+        created: true,
+        session: { id: "session", repositoryId: "elsewhere" },
+      }) as never;
+    expect(
+      (
+        await invokeDirect(
+          handleScheduleRoutes,
+          trigger,
+          "POST",
+          "/api/v1/schedules/schedule/trigger",
+          {},
+          { ...principal, allowedRepositoryIds: ["repository"] },
+        )
+      ).status,
+    ).toBe(500);
+
+    const legacyDelete = seededPlane();
+    legacyDelete.getScheduleDurable = async () => null;
+    legacyDelete.deleteScheduleDurable = async () => ({ ok: false, error: "missing" });
+    legacyDelete.appendAuditLog = denied.appendAuditLog;
+    expect((await invoke(legacyDelete, "DELETE", "/api/v1/schedules/schedule")).status).toBe(500);
+  });
 });
 
 async function invokeDirect(

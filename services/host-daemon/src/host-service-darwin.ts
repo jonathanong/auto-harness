@@ -154,8 +154,19 @@ function activateLaunchAgent(
       stderr: inspection.status.reason,
     });
   }
-  if (inspection.status.state === "running" && inspection.pid !== undefined) return 0;
-  return kickstartAndVerify(ctx, service, inspection.pid);
+  // Installation only needs launchd to accept the newly written agent. Unlike
+  // an updater-triggered restart, it may report an unstructured transitional
+  // state without a PID, so do not apply the strict replacement verifier here.
+  if (inspection.status.state === "running") return 0;
+  const kick = ctx.run("launchctl", ["kickstart", service]);
+  if (kick.status !== 0) return failedCommand(ctx.error, "launchctl kickstart", kick);
+  inspection = inspectDarwin(ctx);
+  if (isLaunchAgentPresent(inspection.status)) return 0;
+  return failedCommand(ctx.error, "launchctl verification", {
+    status: 1,
+    stdout: "",
+    stderr: inspection.status.reason,
+  });
 }
 
 function renderDarwinLauncher(ctx: HostServiceContext): string {

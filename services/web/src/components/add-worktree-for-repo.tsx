@@ -11,10 +11,12 @@ export function AddWorktreeForRepo({
   repositoryId,
   repositoryName,
   attachments,
+  canWriteExecConfig = false,
 }: {
   repositoryId: string;
   repositoryName: string;
   attachments: WorktreeHostAttachment[];
+  canWriteExecConfig?: boolean;
 }) {
   const [hostId, setHostId] = useState(attachments[0]?.hostId ?? "");
   if (attachments.length === 0) {
@@ -35,6 +37,10 @@ export function AddWorktreeForRepo({
     (current, attachment) => (attachment.hostId === hostId ? attachment : current),
     attachments[0]!,
   );
+  const hasInheritedExecutionConfig =
+    selected.hasHostSetupScript === true ||
+    (selected.repo.setupScript ?? "") !== "" ||
+    (selected.repo.terminalHookScript ?? "") !== "";
   return (
     <div
       className="flex flex-wrap items-end gap-2"
@@ -62,6 +68,8 @@ export function AddWorktreeForRepo({
         hostId={selected.hostId}
         repo={selected.repo}
         repoName={repositoryName}
+        canWriteExecConfig={canWriteExecConfig}
+        hasInheritedExecutionConfig={hasInheritedExecutionConfig}
       />
     </div>
   );

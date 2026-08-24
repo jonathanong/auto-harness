@@ -65,6 +65,30 @@ describe("SessionRunner cancellation", () => {
     expect(released).toBe(true);
   });
 
+  it("preserves cancellation when the main claim rejects after abort", async () => {
+    const controller = new AbortController();
+    let released = false;
+    const runner = new SessionRunner({
+      worktrees: {
+        acquireMain: async () => true,
+        mainClaim: async () => {
+          controller.abort();
+          throw new Error("inventory changed while claiming");
+        },
+        releaseMain: () => {
+          released = true;
+        },
+      } as unknown as WorktreeManager,
+      processRunner: cancellableRunner("main"),
+    });
+    await expect(
+      runner.run(baseAssign({ worktreeId: null, sessionType: "scheduled" }), {
+        signal: controller.signal,
+      }),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    expect(released).toBe(true);
+  });
+
   it("preserves cancellation when an interrupted checkout rejects", async () => {
     const controller = new AbortController();
     const runner = new SessionRunner({

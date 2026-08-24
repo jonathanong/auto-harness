@@ -221,6 +221,11 @@ describe("running timeout residual coverage", () => {
       assignmentConnectionId: undefined,
       worktreeId: null,
     });
+    const fenced = scheduledRunning({
+      id: "fenced",
+      mainCheckoutLease: undefined,
+      worktreeId: null,
+    });
     const future = scheduledRunning({
       id: "future",
       ackReceivedAt: new Date(Date.parse(NOW) + TIMEOUT_SECONDS * 1000).toISOString(),
@@ -239,7 +244,7 @@ describe("running timeout residual coverage", () => {
       currentSessionId: leased.id,
     });
     plane.state.storage = {
-      listAllSessions: async () => [leased, ordinary, future],
+      listAllSessions: async () => [leased, ordinary, fenced, future],
       releaseMainCheckoutSession: async () => true,
       finishSession: async () => true,
       listLogs: async () => [],
@@ -247,11 +252,11 @@ describe("running timeout residual coverage", () => {
     } as never;
     await expect(
       plane.enforceRunningTimeoutsDurable(Date.parse(NOW) + TIMEOUT_SECONDS * 1000),
-    ).resolves.toEqual(["leased", "ordinary"]);
+    ).resolves.toEqual(["leased", "ordinary", "fenced"]);
     expect(plane.state.worktrees.get("worktree")).toMatchObject({
       status: "idle",
       currentSessionId: null,
     });
-    expect(cancels).toEqual(["host:session:cancel", "host:session:cancel"]);
+    expect(cancels).toEqual(["host:session:cancel", "host:session:cancel", "host:session:cancel"]);
   });
 });

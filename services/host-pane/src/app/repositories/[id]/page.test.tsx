@@ -10,7 +10,12 @@ import {
 import RepositoryDetailPage from "./page.tsx";
 
 beforeEach(startRouteTestServer);
-afterEach(resetRouteTestState);
+const originalAuthMode = process.env.HARNESS_AUTH_MODE;
+afterEach(async () => {
+  await resetRouteTestState();
+  if (originalAuthMode === undefined) delete process.env.HARNESS_AUTH_MODE;
+  else process.env.HARNESS_AUTH_MODE = originalAuthMode;
+});
 
 describe("repository detail route", () => {
   it("renders repository tabs, decoded ids, sessions, and worktree actions", async () => {
@@ -86,5 +91,69 @@ describe("repository detail route", () => {
         }),
       ),
     ).toContain("No repository");
+  });
+
+  it("keeps removal controls for repositories without stored exec-config", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    setApiReplies({
+      "/api/v1/auth/me": {
+        username: "operator",
+        role: "operator",
+        kind: "user",
+        capabilities: [],
+      },
+      "/api/v1/hosts/local-1/inventory": inventory,
+      "/api/v1/worktrees?hostId=local-1": { items: [{ id: "wt/one" }] },
+      "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
+      "/api/v1/sessions?hostId=local-1&limit=100": { items: [] },
+    });
+    const sessions = await renderRoute(
+      RepositoryDetailPage({
+        params: Promise.resolve({ id: "repo/one" }),
+        searchParams: Promise.resolve({ tab: "sessions" }),
+      }),
+    );
+    expect(sessions).toContain('data-pw="repo-remove-repo/one"');
+    const worktrees = await renderRoute(
+      RepositoryDetailPage({
+        params: Promise.resolve({ id: "repo/one" }),
+        searchParams: Promise.resolve({ tab: "worktrees" }),
+      }),
+    );
+    expect(worktrees).toContain('data-pw="worktree-remove-wt/one"');
+  });
+
+  it("hides removal controls for stored executable configuration without the capability", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    const protectedInventory = {
+      ...inventory,
+      repositories: [
+        {
+          ...inventory.repositories[0]!,
+          setupScript: "pnpm install",
+          worktrees: [{ ...inventory.repositories[0]!.worktrees[0]!, setupScript: "pnpm build" }],
+        },
+      ],
+    };
+    setApiReplies({
+      "/api/v1/auth/me": {
+        username: "operator",
+        role: "operator",
+        kind: "user",
+        capabilities: [],
+      },
+      "/api/v1/hosts/local-1/inventory": protectedInventory,
+      "/api/v1/worktrees?hostId=local-1": { items: [{ id: "wt/one" }] },
+      "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
+      "/api/v1/sessions?hostId=local-1&limit=100": { items: [] },
+    });
+    const worktrees = await renderRoute(
+      RepositoryDetailPage({
+        params: Promise.resolve({ id: "repo/one" }),
+        searchParams: Promise.resolve({ tab: "worktrees" }),
+      }),
+    );
+    expect(worktrees).not.toContain('data-pw="repo-remove-repo/one"');
+    expect(worktrees).not.toContain('data-pw="worktree-remove-wt/one"');
   });
 });

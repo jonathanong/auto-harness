@@ -8,6 +8,7 @@ export type Capability =
   | "repositories:operate"
   | "fleet:drain"
   | "fleet:inventory"
+  | "fleet:exec-config"
   | "providers:accounts"
   | "catalog:write"
   | "accounts:write"
@@ -24,6 +25,7 @@ export const CAPABILITIES = [
   "repositories:operate",
   "fleet:drain",
   "fleet:inventory",
+  "fleet:exec-config",
   "providers:accounts",
   "catalog:write",
   "accounts:write",
@@ -76,7 +78,8 @@ export const USER_ROLE_DESCRIPTIONS = {
   operator: "Run the queue: sessions, any in-scope cancel, schedules, and drain.",
   maintainer: "Configure fleet inventory and provider accounts, plus operator work.",
   agent: "Bound to one host; cannot author sessions.",
-  admin: "Platform admin: catalog argv, accounts, Slack, audit. Must be unscoped.",
+  admin:
+    "Platform admin: catalog argv, fleet exec-config, accounts, Slack, audit. Must be unscoped.",
 } as const satisfies Record<UserRole, string>;
 
 /** Identity fields that affect role mapping and grants. */

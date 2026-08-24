@@ -42,6 +42,7 @@ export {
   defaultMaxConcurrentAssignments,
   hasHostCapability,
   isHostCapability,
+  isPositiveAssignmentCap,
   normalizeHostCapabilities,
   parseHostCapabilitiesAdvertisement,
   type HostCapability,
@@ -121,6 +122,7 @@ export {
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
+  updateHostAllowedRoots,
   updateHostRequiredEnvironment,
   updateHostWorktree,
   upsertHostRepository,
@@ -132,6 +134,31 @@ export {
 } from "./host-inventory.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
+  EXEC_CONFIG_CAPABILITY,
+  EXEC_CONFIG_REQUIRED_MESSAGE,
+  MAX_ALLOWED_ROOTS,
+  MAX_EXEC_PATH_LENGTH,
+  applyHostExecConfig,
+  inventoryHasExecConfig,
+  isAbsolutePathString,
+  listExecConfigEdits,
+  parseAllowedRoots,
+  parseHostExecConfig,
+  parseTerminalHookScript,
+  preserveHostExecConfig,
+  reconcileInventoryWrite,
+  type HostExecConfigPatch,
+  type HostExecRepositoryPatch,
+  type HostExecWorktreePatch,
+} from "./host-exec-config.ts";
+export {
+  getInventory,
+  mutateInventory,
+  mutateExecConfig,
+  putInventory,
+  putExecConfig,
+} from "./host-inventory-api.ts";
+export {
   assertHostRepositoryRequiredEnvironmentLimit,
   MAX_REQUIRED_ENVIRONMENT_NAMES,
   parseRequiredEnvironment,
@@ -141,6 +168,7 @@ export {
   isHostRepositoryRegistration,
   isHostRunningAttempt,
   isProviderAccountReadiness,
+  MAX_HOST_REGISTRATION_BYTES,
   MAX_PROVIDER_ACCOUNT_ID_LENGTH,
   MAX_PROVIDER_ACCOUNT_READINESS,
   PROVIDER_ACCOUNT_FINGERPRINT_PATTERN,
@@ -164,7 +192,6 @@ export {
 
 export { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
 
-export { getInventory, mutateInventory, putInventory } from "./host-inventory-api.ts";
 export {
   attachProviderAccountToHost,
   detachProviderAccountFromHost,

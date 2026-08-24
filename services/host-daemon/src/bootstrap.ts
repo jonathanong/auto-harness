@@ -1,4 +1,5 @@
 import type { DaemonConfig, HostIdentity } from "./config-types.ts";
+import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
 
 /** Normalize control-plane base to HTTP origin (strip trailing slash and /ws). */
@@ -20,6 +21,21 @@ export type FetchHostInventoryDeps = {
   fetchFn?: typeof fetch;
 };
 
+/** A fetched inventory is syntactically valid but unsafe under its allowed-roots policy. */
+export class HostInventoryPolicyError extends Error {
+  readonly allowedRoots: string[] | undefined;
+
+  constructor(cause: unknown, allowedRoots?: readonly string[]) {
+    super(
+      `host inventory violates its allowed-roots policy: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+    this.name = "HostInventoryPolicyError";
+    this.allowedRoots = allowedRoots === undefined ? undefined : [...allowedRoots];
+  }
+}
+
 /** Identity only — no host inventory yet (register first, attach repos via UI). */
 export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
   const config: DaemonConfig = {
@@ -38,6 +54,7 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
+    ...(config.allowedRoots !== undefined ? { allowedRoots: config.allowedRoots } : {}),
     repositories: config.repositories,
   });
 }
@@ -75,6 +92,11 @@ export async function fetchHostInventory(
   config.apiUrl = identity.apiUrl;
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;
+  }
+  try {
+    await assertDaemonPathsAllowed(config);
+  } catch (error) {
+    throw new HostInventoryPolicyError(error, config.allowedRoots);
   }
   return config;
 }

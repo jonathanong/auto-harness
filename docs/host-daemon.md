@@ -4,13 +4,12 @@ Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
 ## Session usage and cost attribution
 
-Usage accounting is separate from usage-limit detection. Provider-aware CLI adapters
-(`claude`, `codex`, `gemini`, `grok`) parse structured JSON result objects from the process
-runner and return a `SessionUsage` value; the daemon forwards it in terminal status or a
-`session:usage` frame. Prompts and free-form logs are never scanned for token counts or prices,
-and the control plane accepts only `source: "cli"`. Counts and configured monetary values are
-decimal strings; monetary values use integer micros. Provider `usageRates` are optional
-operator configuration (control-plane Provider Settings) and are never fetched from a vendor.
+Usage accounting is separate from usage-limit detection. A provider-aware CLI adapter may return a
+structured `SessionUsage` value from the process runner; the daemon forwards it in terminal status
+or a `session:usage` frame. The daemon does not scan prompts, stdout, stderr, or retained logs for
+token counts or prices, and the control plane accepts only `source: "cli"`. Counts and configured
+monetary values are decimal strings; monetary values use integer micros. Provider rates are
+optional operator configuration and are never fetched from a vendor.
 
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
@@ -158,10 +157,13 @@ is durable local observability only: it neither restarts the host nor sends an e
   keyed by Provider Account ID and owns that account's CLI home and extra environment. Extra env
   may not set `HOME` or `USERPROFILE`; the isolated profile home always wins. `install-service`
   persists `HARNESS_EXECUTION_PROFILES` and `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` in the service
-  environment file. Registration advertises only `ready` plus an opaque SHA-256 fingerprint of
+  environment file. The profile JSON path must be absolute for `install-service`; relative paths
+  are rejected rather than being interpreted using a supervisor working directory. Registration
+  advertises only `ready` plus an opaque SHA-256 fingerprint of
   the home path and extra-env key names (values omitted) — never credentials, home paths, or env
   values. Assignment of a provider-backed session is refused (no ACK) when the exact account
-  profile is missing or its home is not a directory.
+  profile is missing or its home is not a directory. Unknown top-level or per-profile JSON keys
+  are rejected so misspelled configuration cannot silently disable a profile.
 
 ```json
 {
@@ -271,7 +273,7 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | Piece             | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from the selected target/fallback (**non-interactive CLI** form, e.g. `codex exec --json` or a provider print mode with `--output-format json`, not an Agent SDK process). The agent does zero provider/account/command resolution — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`). Structured provider envelopes are the only CLI output used for usage telemetry; model text and incidental JSON are never inferred as quota data.                                                                                                                                                                                                                                                                                                      |
+| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from the selected target/fallback (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero provider/account/command resolution — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Route metadata    | Optional non-secret `targetIndex`, `commandId`, and `providerAccountId` breadcrumbs for logs and UI diagnostics. They are never used to select a command. A `providerAccountId` **does** select the daemon-local execution profile (CLI `HOME` / extra env) for the assigned AI CLI. Git, setup scripts, and terminal hooks keep the daemon's own child environment.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — **never** interpolated into a shell string. A literal `--` is inserted first when the Command opts in via `appendPromptSeparator`, or implicitly whenever the Command has a `providerId` and does not opt out (`appendPromptSeparator: false`) — safe only for getopt-style executables; e.g. `printf "%s"` reads `--` as data, not a terminator. See [api.md](api.md#post-commands).                                                                                                                                                                                                                                                                                                                                           |
 | Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -298,9 +300,9 @@ the same SIGTERM → SIGKILL lifecycle.
 Example (illustrative):
 
 ```text
-assign.resolvedArgv = ["codex", "exec", "--json", "Fix the failing test"]  // computed control-plane-side
+assign.resolvedArgv = ["codex", "exec", "Fix the failing test"]  // computed control-plane-side
 
-→ argv: ["codex", "exec", "--json", "Fix the failing test"]  // spawned as-is, no further resolution
+→ argv: ["codex", "exec", "Fix the failing test"]  // spawned as-is, no further resolution
 → cwd:  /home/harness/repos/my-app/.worktrees/wt-1
 → pty:  yes (cols/rows default 120x40)
 ```
@@ -326,22 +328,29 @@ AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit
 
 1. The assigned command runs to completion. Timeout and cancel are never `usage_limit`.
 2. Exit `0` is always `completed`. Successful output — including adversarial or prompt-controlled phrases such as “rate limit” — never cools down a Provider Account.
-3. On a failed command (`exitCode !== 0`), the daemon requires **trusted assignment identity** (`providerAccountId` from the control plane), **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side), and a provider-aware adapter's structured `usageLimit` flag. Raw stdout/stderr is never classified, even when it contains a vendor quota phrase.
-4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, `errorMessage: "Usage limit detected"`, and `exitCode`. Do not retry or resolve a fallback on the host.
+3. On a failed command (`exitCode !== 0`), the daemon classifies using **trusted assignment identity** (`providerAccountId` from the control plane) plus **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side) plus provider-specific matchers, or a provider-aware CLI adapter's `usageLimit` flag. Untrusted stdout/stderr is never enough on its own.
+4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage`, and `exitCode`. Do not retry or resolve a fallback on the host. Output-matcher hits use `errorMessage: "Usage limit detected in CLI output"`; adapter-only hits use `errorMessage: "Usage limit detected"`.
 5. The control plane then pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or explicit fallback. A queued session remains eligible until its absolute `queueTtlSeconds` expires (default 8 days), then fails with `queue_expired`.
 
 Providerless commands (`providerId: null`, no `providerAccountId`) and unknown executables **fail closed**: generic quota-like text is an ordinary `failed`, not `usage_limit`. No account is paused.
 
 **What counts as a usage-limit error:**
 
-Classification keys off a provider-backed assignment (`providerAccountId`) plus the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. The adapter accepts usage or quota data only when the fixed command explicitly requests that provider's structured envelope: Claude/Grok use `--output-format json`, Codex uses `exec --json`, and Gemini uses `--output-format json`. It then validates the terminal provider envelope (`result`, `turn.completed`/`turn.failed`, Gemini response/error, or Grok response/error) before reading usage or an exact structured quota code.
+Classification keys off a provider-backed assignment (`providerAccountId`) plus the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
 
-Generic phrases such as `rate limit`, `too many requests`, a bare `429`, JSON embedded in a model response, and custom commands are **never** enough. The structured flag is still ignored on success, on unknown/providerless argv, and when the assignment has no `providerAccountId`.
+| Trusted executable | Example signals in failed CLI output                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`                                |
+| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your weekly limit · resets 12pm (America/Los_Angeles)` |
+| `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota`                       |
+| `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`                               |
+
+Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success, on unknown/providerless argv, and when the assignment has no `providerAccountId`.
 
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
-- Prompt-controlled / adversarial stdout/stderr, including JSON-shaped model text
+- Prompt-controlled / adversarial stdout, unless a provider-backed assignment, trusted argv[0], a failure, **and** a vendor-specific matcher all apply
 - Providerless commands (no `providerAccountId`) and unknown executables (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)
@@ -438,24 +447,32 @@ Adding a name to the service environment is insufficient unless it is also permi
 `HARNESS_CHILD_ENV_ALLOWLIST` (baseline child variables remain available automatically).
 
 Setup is opt-in: the daemon does **not** source `.zshrc`, `.bashrc`, or any other shell startup file
-by default. Configure a host-wide script at the inventory root when every repository on that host
-needs the same initialization, and/or a script on that host's repository attachment:
+by default. Configure a host-wide script, repository/worktree scripts, terminal hooks, and
+host-local `allowedRoots` with `PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`).
+Ordinary `PUT /inventory` preserves omitted exec-config fields.
 
 ```json
 {
   "setupScript": "source \"$HOME/.zshrc\"",
+  "allowedRoots": ["/home/harness"],
   "repositories": [
     {
       "id": "repo-abc",
-      "path": "/home/harness/repos/my-app",
-      "defaultBranch": "main",
       "setupScript": "pnpm install",
-      "worktrees": []
+      "terminalHookScript": "/home/harness/hooks/done.sh"
     }
-  ],
-  "providerAccounts": []
+  ]
 }
 ```
+
+When `allowedRoots` is set, the daemon `realpath`s inventory filesystem paths and terminal hook
+paths (including at worktree claim and hook spawn) and refuses anything outside those roots.
+Unset or empty roots apply no extra restriction. Catalog command argv is not checked against
+these roots. Control-plane inventory and exec-config writes reject a relative `terminalHookScript`;
+an unchanged legacy relative hook is preserved only for compatibility, while new or changed hooks
+must be absolute. An empty string clears the stored hook. If a polled `allowedRoots` policy makes
+the current repository or worktree paths invalid, the daemon immediately re-registers as draining
+and refuses assignments; it continues polling and resumes only after a valid inventory applies.
 
 For a fresh session, the host script runs first, followed by one effective scoped script using the
 existing precedence `session assignment > worktree > host/repository attachment`. Both run in the
@@ -505,7 +522,7 @@ conversation's existing worktree.
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Setup scripts, terminal hooks, and `allowedRoots` use `PUT /api/v1/hosts/:hostId/exec-config`. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 
@@ -538,7 +555,7 @@ stateDiagram-v2
   "sessionId": "sess-x1y2z3",
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test",
-  "resolvedArgv": ["codex", "exec", "--json", "Fix the failing test"],
+  "resolvedArgv": ["codex", "exec", "Fix the failing test"],
   "timeout": 1800,
   "worktreeId": "wt-1",
   "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
@@ -608,23 +625,12 @@ older daemons that omit it.
 
 ---
 
-## Auto-update (graceful restart)
+## Auto-update target (graceful restart)
 
-The daemon's drain protocol and signed-manifest updater support the safety invariants below
-without interrupting in-flight AI CLI work. When `HARNESS_UPDATE_MANIFEST_URL` and
-`HARNESS_UPDATE_PUBLIC_KEY` are set, `start` polls for a signed Ed25519 manifest, downloads the
-HTTPS artifact, stages it under `HARNESS_UPDATE_INSTALL_DIR` (default `/opt/auto-harness` on
-Linux, a platform user-data directory on macOS/Windows),
-extracts the runnable tarball into a version directory, atomically switches the `current`
-directory pointer, and requests a systemd/launchd/schtasks restart. Linux exits through its own
-authorized handoff and lets `Restart=always` restart it; macOS/Windows invoke a stable launcher
-that resolves `current` at every start. The installed version marker survives that restart.
-Activation or restart failure rolls back to the previous directory and
-resumes scheduling (`DaemonLoop.resumeFromDrain`).
-After the restarted daemon confirms the activated pointer and version marker, it retains that
-version plus one rollback version and prunes older release trees. `HARNESS_UPDATE_POLL_MS` accepts
-`0` for a one-time startup check or an integer no greater than `2147483647` milliseconds.
-Operators can still follow [the manual update runbook](deploy-host-daemon.md#update).
+The daemon's drain protocol and signed-manifest orchestration core support the safety invariants below
+without interrupting in-flight AI CLI work. Production manifest fetching, artifact installation, and
+supervisor restart adapters are not wired yet, so the end-to-end auto-update path remains a target;
+operators currently follow [the manual update runbook](deploy-host-daemon.md#update).
 
 ### Goals
 

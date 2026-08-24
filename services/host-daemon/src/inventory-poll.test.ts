@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { emptyDaemonConfig } from "./bootstrap.ts";
+import { emptyDaemonConfig, HostInventoryPolicyError } from "./bootstrap.ts";
 import type { DaemonConfig, HostIdentity } from "./config-types.ts";
 import { startInventoryPoll } from "./start-daemon.ts";
 
@@ -167,6 +167,45 @@ describe("startInventoryPoll", () => {
     expect(stopped).toBe(true);
     await vi.advanceTimersByTimeAsync(20);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks assignments for an invalid root policy, keeps polling, and reapplies a valid policy", async () => {
+    vi.useFakeTimers();
+    const config = emptyDaemonConfig(identity);
+    let calls = 0;
+    const fetchFn = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new HostInventoryPolicyError(new Error("outside root"), ["/safe/root"]);
+      }
+      return Response.json(updatedInventory);
+    }) as typeof fetch;
+    const applyInventory = vi.fn(async (_next: DaemonConfig) => {});
+    const blockAssignments = vi.fn(async (_allowedRoots?: readonly string[]) => {});
+    const errors: string[] = [];
+    const stop = startInventoryPoll({
+      config,
+      identity,
+      applyInventory,
+      blockAssignments,
+      pollMs: 10,
+      fetchFn,
+      log: () => {},
+      error: (line) => errors.push(line),
+    });
+
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      expect(blockAssignments).toHaveBeenCalledOnce();
+      expect(blockAssignments).toHaveBeenCalledWith(["/safe/root"]);
+      expect(applyInventory).not.toHaveBeenCalled();
+      expect(errors[0]).toContain("allowed-roots policy");
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(applyInventory).toHaveBeenCalledOnce();
+    } finally {
+      await stop();
+    }
   });
 });
 

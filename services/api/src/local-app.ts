@@ -10,6 +10,7 @@ import { resolvePublicBaseUrl, type LocalServerOptions, send } from "./local-htt
 import { handleAuditLogRoutes } from "./local-routes-audit-logs.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleCommandRoutes } from "./local-routes-commands.ts";
+import { handleHostExecConfigRoutes } from "./local-routes-host-exec-config.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
 import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
 import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts";
@@ -146,6 +147,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleScheduleRoutes(ctx)) return;
     if (await handleHostSchedulerRoutes(ctx)) return;
     if (await handleHostInventoryRoutes(ctx)) return;
+    if (await handleHostExecConfigRoutes(ctx)) return;
     if (await handleProviderRoutes(ctx)) return;
     if (await handleProviderAccountRoutes(ctx)) return;
     if (await handleCommandRoutes(ctx)) return;

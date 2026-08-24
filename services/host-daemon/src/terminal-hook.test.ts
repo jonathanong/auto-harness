@@ -1,7 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
+
+const fixtures: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 describe("runTerminalHook", () => {
   it("passes session env to the hook script", async () => {
@@ -124,6 +134,59 @@ describe("runTerminalHook", () => {
       log,
     );
     expect(log).toHaveBeenCalled();
+  });
+
+  it("does not spawn a hook outside allowed roots", async () => {
+    const log = vi.fn();
+    const run = vi.fn(async () => ({ exitCode: 0, timedOut: false, signal: null }));
+    await runTerminalHook(
+      { run },
+      {
+        scriptPath: "/etc/evil.sh",
+        cwd: "/wt",
+        sessionId: "sess-1",
+        status: "completed",
+        worktreePath: "/wt",
+        allowedRoots: ["/repo"],
+      },
+      log,
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(log.mock.calls[0]?.[0]).toContain("terminal hook blocked");
+
+    const cwdLog = vi.fn();
+    await runTerminalHook(
+      { run },
+      {
+        scriptPath: "/etc/evil.sh",
+        cwd: "/wt",
+        sessionId: "sess-2",
+        status: "completed",
+        worktreePath: "/wt",
+        allowedRoots: ["/wt"],
+      },
+      cwdLog,
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(cwdLog.mock.calls[0]?.[0]).toContain("terminal hook blocked");
+
+    const root = join(tmpdir(), `ah-hook-ok-${String(Date.now())}`);
+    fixtures.push(root);
+    await mkdir(root);
+    const hook = join(root, "hook.sh");
+    const okRun = vi.fn(async () => ({ exitCode: 0, timedOut: false, signal: null }));
+    await runTerminalHook(
+      { run: okRun },
+      {
+        scriptPath: hook,
+        cwd: root,
+        sessionId: "sess-3",
+        status: "completed",
+        worktreePath: root,
+        allowedRoots: [root],
+      },
+    );
+    expect(okRun).toHaveBeenCalledOnce();
   });
 
   it("uses console.error by default on failure and discards output chunks", async () => {

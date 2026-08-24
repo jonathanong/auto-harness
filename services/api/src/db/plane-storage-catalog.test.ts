@@ -6,7 +6,7 @@ import {
   type TransactWriteCommandInput,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SESSION_LOGS_TTL_SECONDS } from "./dynamo.ts";
 import {
@@ -25,9 +25,28 @@ import {
   skipScheduleForPrincipalDrainAndAudit,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
+  claimArchiveRetry,
+  completeArchiveRetry,
+  listPendingArchives,
+  releaseArchiveRetry,
 } from "./plane-storage-catalog.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
+
+const archive = {
+  key: "sessions/session/logs.jsonl",
+  contentType: "application/x-ndjson",
+  bodyBytes: 5,
+  status: "pending" as const,
+  objectStored: false,
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  retryState: "processing" as const,
+  retryOrder: "2026-01-01T00:00:00.000Z#sessions/session/logs.jsonl",
+};
+
+function archiveCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
+  return { doc: { send } as never, tables: { archives: "Archives" } as never };
+}
 
 function schedule(ref?: string): ScheduleRecord {
   return {
@@ -61,6 +80,191 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
     } as never,
   };
 }
+
+describe("archive retry storage", () => {
+  it("lists the oldest pending and stale-processing rows through the retry index", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, retryState: "pending", retryOrder: "2026-01-02#pending" }],
+      })
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, retryOrder: "2026-01-01#processing" }],
+      });
+
+    await expect(listPendingArchives(archiveCtx(send), 100)).resolves.toEqual([
+      expect.objectContaining({ retryOrder: "2026-01-01#processing" }),
+      expect.objectContaining({ retryOrder: "2026-01-02#pending" }),
+    ]);
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        TableName: "Archives",
+        IndexName: "retryState-retryOrder",
+        KeyConditionExpression: "retryState = :pending",
+        Limit: 25,
+        ScanIndexForward: true,
+      },
+    });
+    expect(send.mock.calls[1]?.[0]).toMatchObject({
+      input: {
+        KeyConditionExpression: "retryState = :processing AND retryOrder < :staleBefore",
+        ExpressionAttributeValues: expect.objectContaining({ ":processing": "processing" }),
+      },
+    });
+  });
+
+  it("bounds archive retry listing to at least one result", async () => {
+    const send = vi.fn().mockResolvedValue({ Items: [] });
+    await expect(listPendingArchives(archiveCtx(send), 0)).resolves.toEqual([]);
+    expect(send.mock.calls).toHaveLength(2);
+    expect(send.mock.calls[0]?.[0]).toMatchObject({ input: { Limit: 1 } });
+  });
+
+  it("handles missing retry-index pages and orders legacy rows by key", async () => {
+    const missing = vi.fn().mockResolvedValue({});
+    await expect(listPendingArchives(archiveCtx(missing), 1)).resolves.toEqual([]);
+
+    const legacy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, key: "sessions/z/logs.jsonl", retryOrder: undefined }],
+      })
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, key: "sessions/a/logs.jsonl", retryOrder: undefined }],
+      });
+    await expect(listPendingArchives(archiveCtx(legacy), 2)).resolves.toEqual([
+      expect.objectContaining({ key: "sessions/a/logs.jsonl" }),
+      expect.objectContaining({ key: "sessions/z/logs.jsonl" }),
+    ]);
+  });
+
+  it("claims, releases, and completes archive retry fences", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const ctx = archiveCtx(send);
+
+    await expect(
+      claimArchiveRetry(ctx, archive.key, "pending", "pending-order", "claimed-order"),
+    ).resolves.toBe(true);
+    await expect(
+      releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
+    ).resolves.toBe(true);
+    await expect(completeArchiveRetry(ctx, archive, "claimed-order")).resolves.toBe(true);
+    await expect(
+      completeArchiveRetry(
+        ctx,
+        { ...archive, objectKey: "archives/session.jsonl" },
+        "claimed-order",
+      ),
+    ).resolves.toBe(true);
+
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      input: {
+        UpdateExpression: "SET retryState = :processing, retryOrder = :claimed",
+        ExpressionAttributeValues: expect.objectContaining({ ":expectedState": "pending" }),
+      },
+    });
+    expect(send.mock.calls[1]?.[0]).toMatchObject({
+      input: { UpdateExpression: "SET retryState = :pending, retryOrder = :retryOrder" },
+    });
+    expect(send.mock.calls[2]?.[0]).toMatchObject({
+      input: { UpdateExpression: expect.stringContaining("REMOVE retryState, retryOrder") },
+    });
+    expect(send.mock.calls[3]?.[0]).toMatchObject({
+      input: {
+        UpdateExpression: expect.stringContaining("objectKey = :objectKey"),
+        ExpressionAttributeValues: expect.objectContaining({
+          ":objectKey": "archives/session.jsonl",
+        }),
+      },
+    });
+  });
+
+  it("returns false when another worker changes an archive retry fence", async () => {
+    const send = vi.fn().mockRejectedValue({ name: "ConditionalCheckFailedException" });
+    const ctx = archiveCtx(send);
+
+    await expect(
+      claimArchiveRetry(ctx, archive.key, "processing", "claimed-order", "new-claim"),
+    ).resolves.toBe(false);
+    await expect(
+      releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
+    ).resolves.toBe(false);
+    await expect(completeArchiveRetry(ctx, archive, "claimed-order")).resolves.toBe(false);
+  });
+
+  it("propagates non-conditional archive retry failures", async () => {
+    const ctx = archiveCtx(vi.fn().mockRejectedValue(new Error("archive retry unavailable")));
+    await expect(
+      claimArchiveRetry(ctx, archive.key, "pending", "pending-order", "claimed-order"),
+    ).rejects.toThrow("archive retry unavailable");
+    await expect(
+      releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
+    ).rejects.toThrow("archive retry unavailable");
+    await expect(completeArchiveRetry(ctx, archive, "claimed-order")).rejects.toThrow(
+      "archive retry unavailable",
+    );
+  });
+});
+
+describe("archive and assignment base-storage delegators", () => {
+  it("forwards bounded migrations, timeout cleanup, lease repair, and archive retry operations", async () => {
+    const send = vi.fn(async (command: { input: Record<string, unknown> }) => {
+      const { input } = command;
+      if (input.TableName === "SessionDrains" && input.UpdateExpression === undefined) return {};
+      if (input.UpdateExpression?.toString().includes("ADD fence")) {
+        return { Attributes: { fence: 1 } };
+      }
+      if (input.TableName === "Archives" && input.ConsistentRead) return { Items: [] };
+      if (input.IndexName === "retryState-retryOrder") return { Items: [] };
+      return {};
+    });
+    const storage = new DynamoPlaneStorageBase(
+      { send } as never,
+      {
+        archives: "Archives",
+        sessionDrains: "SessionDrains",
+        sessions: "Sessions",
+        concurrencyLocks: "Locks",
+        hostLocks: "Hosts",
+        providerAccounts: "Accounts",
+      } as never,
+    );
+
+    await expect(storage.migrateArchiveRetryIndexPage()).resolves.toBe(true);
+    await expect(
+      storage.releaseTimedOutProviderAccountLease({
+        concurrencyId: "provider-lease:account:0",
+        sessionId: "session",
+        attemptId: "attempt",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      storage.releaseTimedOutHostAssignment({
+        sessionId: "session",
+        attemptId: "attempt",
+        hostId: "host",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      storage.backfillProviderAccountLease({
+        sessionId: "session",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "account",
+        slot: 0,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+    await expect(storage.listPendingArchives(1)).resolves.toEqual([]);
+    await expect(
+      storage.claimArchiveRetry(archive.key, "pending", "pending-order", "claimed-order"),
+    ).resolves.toBe(true);
+    await expect(
+      storage.releaseArchiveRetry(archive.key, "claimed-order", "pending-order"),
+    ).resolves.toBe(true);
+    await expect(storage.completeArchiveRetry(archive, "claimed-order")).resolves.toBe(true);
+    expect(send).toHaveBeenCalled();
+  });
+});
 
 describe("repository admission storage", () => {
   it("fences a non-reopening activation to active or legacy rows", async () => {

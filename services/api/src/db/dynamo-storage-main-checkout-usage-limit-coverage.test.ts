@@ -197,4 +197,57 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
       ),
     ).rejects.toThrow();
   });
+
+  it("requeues a usage-limited assignment while releasing its advertised host slot", async () => {
+    const opts = {
+      sessionId: "host-counted",
+      hostId: "counted-host",
+      repositoryId: "counted-repo",
+      connectionId: "counted-connection",
+      attemptId: "counted-attempt",
+      providerAccountId: "counted-account",
+      queueShard: 0,
+      now,
+      usageLimitedUntil: "2026-01-01T01:00:00.000Z",
+      hostAssignmentLease: { hostId: "counted-host" },
+    };
+    await ctx.doc.send(
+      new PutCommand({ TableName: tables.providerAccounts, Item: { id: opts.providerAccountId } }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: opts.hostId,
+          assignmentCount: 1,
+          mainCheckoutLeases: {
+            [opts.repositoryId]: { sessionId: opts.sessionId, connectionId: opts.connectionId },
+          },
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessions,
+        Item: {
+          id: opts.sessionId,
+          status: "running",
+          statusShard: "running#0",
+          hostId: opts.hostId,
+          assignmentConnectionId: opts.connectionId,
+          mainCheckoutLease: true,
+          attemptId: opts.attemptId,
+        },
+      }),
+    );
+
+    expect(await requeueMainCheckoutUsageLimitedSession(ctx, opts)).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: opts.hostId } }),
+        )
+      ).Item,
+    ).toMatchObject({ assignmentCount: 0, mainCheckoutLeases: {} });
+  });
 });

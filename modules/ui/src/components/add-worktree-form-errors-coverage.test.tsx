@@ -50,7 +50,13 @@ describe("AddWorktreeForm errors", () => {
       return { ok: false, error: "stop after transform" };
     };
     const view = mount(
-      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
+      <AddWorktreeForm
+        hostId="host-1"
+        repo={repo}
+        repoName="Repo"
+        mutate={mutate}
+        canWriteExecConfig
+      />,
     );
     const form = open(view);
     fill();
@@ -60,6 +66,7 @@ describe("AddWorktreeForm errors", () => {
     );
     await submit(form);
     expect(transformed?.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    // Blank override is omitted from exec-config as well as inventory.
     view.unmount();
   });
 
@@ -74,16 +81,22 @@ describe("AddWorktreeForm errors", () => {
       },
     );
     const rejected = mount(
-      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
+      <AddWorktreeForm
+        hostId="host-1"
+        repo={repo}
+        repoName="Repo"
+        mutate={mutate}
+        canWriteExecConfig
+      />,
     );
     const rejectedForm = open(rejected);
     fill();
     setValue(
       document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
-      "pnpm install",
+      "  pnpm install  ",
     );
     await submit(rejectedForm);
-    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm install");
+    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("  pnpm install  ");
     expect(document.body.textContent).toContain("denied");
     rejected.unmount();
 
@@ -115,5 +128,53 @@ describe("AddWorktreeForm errors", () => {
     fill();
     await submit(offlineForm);
     expect(document.body.textContent).toContain("offline");
+  });
+
+  it("writes setup scripts on the same inventory create as the worktree", async () => {
+    let transformed: HostInventory | undefined;
+    const mutate: typeof mutateInventory = async (_hostId, transform) => {
+      transformed = transform(withRepo);
+      return { ok: true };
+    };
+    const view = mount(
+      <AddWorktreeForm
+        hostId="host-1"
+        repo={repo}
+        repoName="Repo"
+        mutate={mutate}
+        canWriteExecConfig
+      />,
+    );
+    const form = open(view);
+    fill();
+    setValue(
+      document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
+      "pnpm install",
+    );
+    await submit(form);
+    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm install");
+    view.unmount();
+  });
+
+  it("hides the setup script field without exec-config", () => {
+    const view = mount(
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" canWriteExecConfig={false} />,
+    );
+    open(view);
+    expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("disables worktree creation when an inherited executable action uses its path", () => {
+    const view = mount(
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" hasInheritedExecutionConfig />,
+    );
+    const openButton = view.container.querySelector(
+      '[data-pw="add-worktree-open-repo-1"]',
+    ) as HTMLButtonElement;
+    expect(openButton.disabled).toBe(true);
+    act(() => openButton.click());
+    expect(document.querySelector('[data-pw="form-add-worktree-repo-1"]')).toBeNull();
+    view.unmount();
   });
 });

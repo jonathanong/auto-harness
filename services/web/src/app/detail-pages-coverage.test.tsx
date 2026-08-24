@@ -146,6 +146,7 @@ describe("control detail routes previously omitted from coverage include", () =>
       "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo", url: "/src/repo" }] },
       "/api/v1/sessions?limit=100": { items: [] },
       "/api/v1/hosts/host-1/inventory": {
+        setupScript: "pnpm install",
         repositories: [
           {
             id: "r-1",
@@ -162,7 +163,7 @@ describe("control detail routes previously omitted from coverage include", () =>
     const html = await renderPage(
       WorktreeDetailPage({
         params: Promise.resolve({ worktreeId: "wt-1" }),
-        searchParams: noSearch,
+        searchParams: Promise.resolve({ tab: "settings" }),
       }),
     );
     expect(html).toContain('data-pw="page-worktree-detail"');

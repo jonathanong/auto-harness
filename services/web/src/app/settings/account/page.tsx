@@ -19,7 +19,7 @@ export default async function AccountSettingsPage() {
             <p data-pw="account-role">{principal.role}</p>
           </CardContent>
         </Card>
-      ) : (
+      ) : principal === undefined ? (
         <Card>
           <CardHeader>
             <CardTitle>Authentication disabled</CardTitle>
@@ -28,7 +28,7 @@ export default async function AccountSettingsPage() {
             Loopback development mode does not use a signed account session.
           </CardContent>
         </Card>
-      )}
+      ) : null}
       {principal ? (
         principal.kind === "user" ? (
           <Card data-pw="change-password-card">

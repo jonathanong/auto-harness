@@ -1,13 +1,17 @@
+/* eslint-disable max-lines -- independently saved exec-config and environment forms share one host setup surface. */
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import {
+  mutateExecConfig,
   mutateInventory,
+  parseAllowedRoots,
+  type HostExecConfigPatch,
   updateHostRequiredEnvironment,
-  updateHostSetupScript,
 } from "@auto-harness/shared";
+import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
@@ -17,110 +21,275 @@ import { WithTooltip } from "./tooltip.tsx";
 export function HostSetupScriptForm({
   hostId,
   setupScript,
+  allowedRoots,
   requiredEnvironment,
-  mutate = mutateInventory,
+  mutateExec = mutateExecConfig,
+  mutateInv = mutateInventory,
+  canWriteExecConfig = false,
+  canWriteInventory = true,
 }: Readonly<{
   hostId: string;
   setupScript?: string | undefined;
+  allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
-  mutate?: typeof mutateInventory;
+  mutateExec?: typeof mutateExecConfig;
+  mutateInv?: typeof mutateInventory;
+  canWriteExecConfig?: boolean;
+  canWriteInventory?: boolean;
 }>) {
   const router = useRouter();
-  const [pending, start] = useTransition();
-  const [saved, setSaved] = useState(false);
+  const [execPending, startExec] = useTransition();
+  const [inventoryPending, startInventory] = useTransition();
+  const [execSaved, setExecSaved] = useState(false);
+  const [environmentSaved, setEnvironmentSaved] = useState(false);
   const [script, setScript] = useState(setupScript ?? "");
+  const [roots, setRoots] = useState((allowedRoots ?? []).join("\n"));
   const [environment, setEnvironment] = useState((requiredEnvironment ?? []).join("\n"));
-  const savedRefreshScriptRef = useRef<string | null>(null);
+  const [scriptDirty, setScriptDirty] = useState(false);
+  const [rootsDirty, setRootsDirty] = useState(false);
+  const scriptDirtyRef = useRef(false);
+  const rootsDirtyRef = useRef(false);
+  const scriptValueRef = useRef(script);
+  const rootsValueRef = useRef(roots);
+  const environmentDirtyRef = useRef(false);
+  const environmentValueRef = useRef(environment);
+  const savedRefreshExecRef = useRef<string | null>(null);
+  const savedRefreshEnvironmentRef = useRef<string | null>(null);
 
   useEffect(() => {
     const nextScript = setupScript ?? "";
-    const preserveSavedFeedback = savedRefreshScriptRef.current === nextScript;
-    savedRefreshScriptRef.current = null;
-    setScript(nextScript);
-    if (!preserveSavedFeedback) setSaved(false);
-  }, [setupScript]);
+    const nextRoots = (allowedRoots ?? []).join("\n");
+    const refreshKey = JSON.stringify([nextScript, nextRoots]);
+    const preserveSavedFeedback = savedRefreshExecRef.current === refreshKey;
+    savedRefreshExecRef.current = null;
+    if (!scriptDirtyRef.current) {
+      setScript(nextScript);
+      setScriptDirty(false);
+    }
+    if (!rootsDirtyRef.current) {
+      setRoots(nextRoots);
+      setRootsDirty(false);
+    }
+    if (!preserveSavedFeedback) setExecSaved(false);
+  }, [allowedRoots, setupScript]);
 
   useEffect(() => {
-    setEnvironment((requiredEnvironment ?? []).join("\n"));
+    const nextEnvironment = (requiredEnvironment ?? []).join("\n");
+    const preserveSavedFeedback = savedRefreshEnvironmentRef.current === nextEnvironment;
+    savedRefreshEnvironmentRef.current = null;
+    if (!environmentDirtyRef.current) {
+      setEnvironment(nextEnvironment);
+      environmentValueRef.current = nextEnvironment;
+    }
+    if (!preserveSavedFeedback) setEnvironmentSaved(false);
   }, [requiredEnvironment]);
 
+  if (!canWriteExecConfig && !canWriteInventory) return null;
+
   return (
-    <form
-      className="space-y-3"
-      data-pw="form-host-setup-script"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setSaved(false);
-        start(async () => {
-          try {
-            const result = await mutate(hostId, (current) =>
-              updateHostRequiredEnvironment(
-                updateHostSetupScript(current, script),
-                environment.split(/[\s,]+/).filter(Boolean),
-              ),
-            );
-            if (!result.ok) {
-              showToast(result.error, { variant: "destructive", pw: "host-setup-script-error" });
-              return;
-            }
-            savedRefreshScriptRef.current = script;
-            setSaved(true);
-            router.refresh();
-          } catch (error) {
-            showToast(error instanceof Error ? error.message : String(error), {
-              variant: "destructive",
-              pw: "host-setup-script-error",
+    <div className="space-y-6">
+      {canWriteExecConfig ? (
+        <form
+          className="space-y-3"
+          data-pw="form-host-setup-script"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setExecSaved(false);
+            const submittedScript = script;
+            const submittedRoots = roots;
+            startExec(async () => {
+              try {
+                const patch: HostExecConfigPatch = {};
+                let parsedRoots: string[] | undefined;
+                if (scriptDirty) patch.setupScript = script;
+                if (rootsDirty) {
+                  try {
+                    parsedRoots =
+                      parseAllowedRoots(
+                        roots
+                          .split("\n")
+                          .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+                          .filter((line) => line.length > 0),
+                      ) ?? [];
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : String(error), {
+                      variant: "destructive",
+                      pw: "host-setup-script-error",
+                    });
+                    return;
+                  }
+                  patch.allowedRoots = parsedRoots;
+                }
+                if (Object.keys(patch).length > 0) {
+                  const execResult = await mutateExec(hostId, () => patch);
+                  if (!execResult.ok) {
+                    showToast(execResult.error, {
+                      variant: "destructive",
+                      pw: "host-setup-script-error",
+                    });
+                    return;
+                  }
+                }
+                savedRefreshExecRef.current = JSON.stringify([submittedScript, submittedRoots]);
+                if (scriptValueRef.current === submittedScript) {
+                  scriptDirtyRef.current = false;
+                  setScriptDirty(false);
+                }
+                if (rootsValueRef.current === submittedRoots) {
+                  rootsDirtyRef.current = false;
+                  setRootsDirty(false);
+                }
+                setExecSaved(true);
+                router.refresh();
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
+                  variant: "destructive",
+                  pw: "host-setup-script-error",
+                });
+              }
             });
-          }
-        });
-      }}
-    >
-      <div className="space-y-1">
-        <Label
-          htmlFor="hostSetupScript"
-          tip="Optional host-wide setup run before repository and worktree setup scripts"
+          }}
         >
-          Host Setup Script
-        </Label>
-        <Textarea
-          id="hostSetupScript"
-          name="setupScript"
-          rows={6}
-          value={script}
-          onChange={(event) => setScript(event.target.value)}
-          className="font-mono text-xs"
-          data-pw="host-setup-script"
-        />
-      </div>
-      <div className="space-y-1">
-        <Label
-          htmlFor="hostRequiredEnvironment"
-          tip="Variable names every repository child process on this host requires"
+          <Alert variant="warning" role="alert" data-pw="host-exec-config-alert">
+            Changing setup scripts, terminal hooks, or allowed roots permits arbitrary execution on
+            this host. These writes require the admin <code>fleet:exec-config</code>
+            capability and are recorded in the audit log.
+          </Alert>
+          <div className="space-y-1">
+            <Label
+              htmlFor="hostSetupScript"
+              tip="Optional host-wide setup run before repository and worktree setup scripts"
+            >
+              Host Setup Script
+            </Label>
+            <Textarea
+              id="hostSetupScript"
+              name="setupScript"
+              rows={6}
+              value={script}
+              onChange={(event) => {
+                setScript(event.target.value);
+                scriptValueRef.current = event.target.value;
+                scriptDirtyRef.current = true;
+                setScriptDirty(true);
+              }}
+              className="font-mono text-xs"
+              data-pw="host-setup-script"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label
+              htmlFor="hostAllowedRoots"
+              tip="Absolute directories executable paths and inventory filesystem paths must resolve under. Leave blank for no extra restriction."
+            >
+              Allowed Roots
+            </Label>
+            <Textarea
+              id="hostAllowedRoots"
+              name="allowedRoots"
+              rows={4}
+              value={roots}
+              onChange={(event) => {
+                setRoots(event.target.value);
+                rootsValueRef.current = event.target.value;
+                rootsDirtyRef.current = true;
+                setRootsDirty(true);
+              }}
+              className="font-mono text-xs"
+              data-pw="host-allowed-roots"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <WithTooltip tip="Save host exec-config">
+              <Button type="submit" disabled={execPending} data-pw="host-setup-script-submit">
+                {execPending ? "Saving…" : "Save host setup"}
+              </Button>
+            </WithTooltip>
+            {execSaved ? (
+              <span className="text-sm text-emerald-700" data-pw="host-setup-script-ok">
+                Saved.
+              </span>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
+      {canWriteInventory ? (
+        <form
+          className="space-y-3"
+          data-pw="form-host-required-environment"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setEnvironmentSaved(false);
+            const submittedEnvironment = environment;
+            startInventory(async () => {
+              try {
+                const inventoryResult = await mutateInv(hostId, (current) =>
+                  updateHostRequiredEnvironment(
+                    current,
+                    environment.split(/[\s,]+/).filter(Boolean),
+                  ),
+                );
+                if (!inventoryResult.ok) {
+                  showToast(inventoryResult.error, {
+                    variant: "destructive",
+                    pw: "host-required-environment-error",
+                  });
+                  return;
+                }
+                savedRefreshEnvironmentRef.current = submittedEnvironment;
+                if (environmentValueRef.current === submittedEnvironment) {
+                  environmentDirtyRef.current = false;
+                }
+                setEnvironmentSaved(true);
+                router.refresh();
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
+                  variant: "destructive",
+                  pw: "host-required-environment-error",
+                });
+              }
+            });
+          }}
         >
-          Required Environment
-        </Label>
-        <Textarea
-          id="hostRequiredEnvironment"
-          name="requiredEnvironment"
-          rows={4}
-          value={environment}
-          onChange={(event) => setEnvironment(event.target.value)}
-          className="font-mono text-xs"
-          data-pw="host-required-environment"
-        />
-      </div>
-      <div className="flex items-center gap-3">
-        <WithTooltip tip="Save the host-wide setup script and required environment">
-          <Button type="submit" disabled={pending} data-pw="host-setup-script-submit">
-            {pending ? "Saving…" : "Save host setup and environment"}
-          </Button>
-        </WithTooltip>
-        {saved ? (
-          <span className="text-sm text-emerald-700" data-pw="host-setup-script-ok">
-            Saved.
-          </span>
-        ) : null}
-      </div>
-    </form>
+          <div className="space-y-1">
+            <Label
+              htmlFor="hostRequiredEnvironment"
+              tip="Variable names every repository child process on this host requires"
+            >
+              Required Environment
+            </Label>
+            <Textarea
+              id="hostRequiredEnvironment"
+              name="requiredEnvironment"
+              rows={4}
+              value={environment}
+              onChange={(event) => {
+                setEnvironment(event.target.value);
+                environmentValueRef.current = event.target.value;
+                environmentDirtyRef.current = true;
+              }}
+              className="font-mono text-xs"
+              data-pw="host-required-environment"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <WithTooltip tip="Save required environment">
+              <Button
+                type="submit"
+                disabled={inventoryPending}
+                data-pw="host-required-environment-submit"
+              >
+                {inventoryPending ? "Saving…" : "Save required environment"}
+              </Button>
+            </WithTooltip>
+            {environmentSaved ? (
+              <span className="text-sm text-emerald-700" data-pw="host-required-environment-ok">
+                Saved.
+              </span>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
+    </div>
   );
 }

@@ -233,6 +233,7 @@ export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 export type HostInventoryRecord = {
   hostId: string;
   setupScript?: string | undefined;
+  allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
   /** Opaque identity last reported by a modern daemon process. */
   daemonInstanceId?: string;
@@ -259,6 +260,8 @@ export type HostInventoryRecord = {
       name: string;
       path: string;
       labels: string[];
+      /** Internal snapshot of the last labels advertised by the daemon. */
+      daemonLabels?: string[];
       setupScript?: string | undefined;
       providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;

@@ -16,6 +16,7 @@ function runner(result: { exitCode?: number; stdout?: string; throws?: boolean }
 describe("Git checkout-recovery readiness", () => {
   it.each([
     ["git version 2.36.0\n", "2.36.0"],
+    ["git version 2.36\n", "2.36.0"],
     ["git version 2.49.1 (Apple Git-155)\n", "2.49.1"],
   ])("parses supported Git output", (output, version) => {
     expect(parseGitVersion(output)).toBe(version);

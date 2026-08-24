@@ -1,13 +1,19 @@
 /* eslint-disable max-lines -- archive retry fencing and direct archive reads share one lifecycle. */
-import { createHash } from "node:crypto";
-
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
 
-function archiveObjectKey(key: string, retryOrder: string | undefined): string {
-  if (!retryOrder) return key;
-  const suffix = createHash("sha256").update(retryOrder).digest("hex").slice(0, 16);
-  return key.replace(/\.jsonl$/, `.${suffix}.jsonl`);
+async function rewriteWinningArchive(
+  state: ControlPlaneState,
+  sessionId: string,
+  key: string,
+): Promise<void> {
+  const current =
+    state.storage && typeof state.storage.getArchive === "function"
+      ? await state.storage.getArchive(key)
+      : state.archives.get(key);
+  if (!current || current.status !== "complete" || !current.objectStored) return;
+  const body = await archiveBody(state, sessionId);
+  await state.archiveWriter?.putArchive({ key, body, contentType: current.contentType });
 }
 
 export async function archiveSessionLogs(
@@ -39,10 +45,8 @@ export async function archiveSessionLogs(
   // scale with total output since process start rather than with the session's own.
   await Promise.all(state.pendingLogPersists.get(sessionId) ?? []);
   const body = await archiveBody(state, sessionId);
-  const objectKey = archiveObjectKey(key, retryClaim?.retryOrder);
   const object: ArchiveObject = {
     key,
-    ...(objectKey === key ? {} : { objectKey }),
     body,
     contentType: "application/x-ndjson",
   };
@@ -54,7 +58,7 @@ export async function archiveSessionLogs(
     objectStored: false,
     updatedAt: state.now(),
     retryState: retryClaim?.retryState ?? "pending",
-    retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${object.key}`,
+    retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
   };
   if (state.storage && !retryClaim) await state.storage.putArchive(pending);
   if (!retryClaim) state.archives.set(object.key, pending);
@@ -69,9 +73,8 @@ export async function archiveSessionLogs(
     state.archives.set(object.key, complete);
     return object;
   }
-  await state.archiveWriter.putArchive({ ...object, key: object.objectKey ?? object.key });
+  await state.archiveWriter.putArchive(object);
   const storedMetadata = { ...pending };
-  if (object.objectKey) storedMetadata.objectKey = object.objectKey;
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
   const complete: ArchiveMetadata = {
@@ -81,12 +84,13 @@ export async function archiveSessionLogs(
     updatedAt: state.now(),
     ...(state.archiveWriter
       ? {}
-      : { retryState: "pending" as const, retryOrder: `${state.now()}#${object.key}` }),
+      : { retryState: "pending" as const, retryOrder: `${state.now()}#${key}` }),
   };
   if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
     const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
     if (committed) state.archives.set(object.key, complete);
-    // A generation that loses the durable fence must never write the winner's object key.
+    else await rewriteWinningArchive(state, sessionId, key);
+    // A generation that loses the durable fence must never mark the archive complete.
   } else if (retryClaim) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
@@ -94,7 +98,7 @@ export async function archiveSessionLogs(
     if (current?.retryState === "processing" && current.retryOrder === retryClaim.retryOrder) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);
-    }
+    } else await rewriteWinningArchive(state, sessionId, key);
   } else {
     if (state.storage) await state.storage.putArchive(complete);
     state.archives.set(object.key, complete);

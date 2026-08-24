@@ -3,12 +3,13 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { selectLogs } from "./log-query.ts";
+import { rebuildProviderAccountLeasesFromSessions } from "./control-plane-provider-account-leases.ts";
 import {
   listHostInventoriesDurable,
   listRepositoriesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
-import { sessionOccupiesHostAssignment } from "./control-plane-provider-account-leases.ts";
+import { hydrateRunningSessions } from "./control-plane-durable-read-hydration.ts";
 
 export async function getSessionDurable(
   state: ControlPlaneState,
@@ -46,28 +47,72 @@ export async function listSessionsForRepositoriesDurable(
 export async function listQueuedSessionsDurable(
   state: ControlPlaneState,
   type: SessionRecord["type"],
+  options: { limit?: number } = {},
 ): Promise<SessionRecord[]> {
   if (!state.storage) {
     return [...state.sessions.values()].filter(
       (session) => session.status === "queued" && session.type === type,
     );
   }
+  const bounded = options.limit !== undefined;
+  // Each shard may hold every globally highest-priority row, so take the full
+  // global allowance from each shard and merge/slice after the reads.
+  const perShardLimit = bounded ? Math.max(1, options.limit!) : undefined;
   const pages = await Promise.all(
     [...Array(state.shardCount).keys()].map((shard) =>
-      state.storage!.listSessionsByStatus("queued", shard),
+      bounded
+        ? (state.storage!.listSessionsByStatusPage?.("queued", shard, perShardLimit!) ??
+          Promise.resolve([]))
+        : state.storage!.listSessionsByStatus("queued", shard),
     ),
   );
-  // Status GSIs are eventually consistent and can omit a row this process just
-  // wrote. Union with the in-memory queued set instead of delete-then-replace.
-  for (const session of pages.flat()) {
+  const pageSessions = pages.flat();
+  const pageIds = new Set(pageSessions.map((session) => session.id));
+  const revalidatedIds = new Set<string>();
+  if (bounded && typeof state.storage.getSession === "function") {
+    const cachedNonQueued = pageSessions
+      .filter((candidate) => candidate.type === type)
+      .map((candidate) => state.sessions.get(candidate.id))
+      .filter((cached): cached is SessionRecord => cached !== undefined)
+      .filter((cached) => cached.status !== "queued");
+    const refreshed = await Promise.all(
+      cachedNonQueued.map(async (cached) => ({
+        id: cached.id,
+        session: await state.storage!.getSession(cached.id, true),
+      })),
+    );
+    for (const { id, session } of refreshed) {
+      revalidatedIds.add(id);
+      if (session) state.sessions.set(id, { ...session });
+      else state.sessions.delete(id);
+    }
+  }
+  for (const session of pageSessions) {
     if (session.type !== type) continue;
+    if (revalidatedIds.has(session.id)) continue;
     const existing = state.sessions.get(session.id);
     if (existing && existing.status !== "queued") continue;
     state.sessions.set(session.id, { ...session });
   }
-  return [...state.sessions.values()].filter(
+  if (!bounded && typeof state.storage.getSession === "function") {
+    const omitted = [...state.sessions.values()]
+      .filter((session) => session.status === "queued" && session.type === type)
+      .filter((session) => !pageIds.has(session.id));
+    const refreshed = await Promise.all(
+      omitted.map(async (cached) => ({
+        id: cached.id,
+        session: await state.storage!.getSession(cached.id, true),
+      })),
+    );
+    for (const { id, session } of refreshed) {
+      if (session) state.sessions.set(id, { ...session });
+      else state.sessions.delete(id);
+    }
+  }
+  const queued = [...state.sessions.values()].filter(
     (session) => session.status === "queued" && session.type === type,
   );
+  return bounded ? queued.filter((session) => pageIds.has(session.id)) : queued;
 }
 
 export async function getLogsDurable(
@@ -82,7 +127,6 @@ export async function getLogsDurable(
   const logs = (
     await (query ? state.storage.queryLogs(sessionId, query) : state.storage.listLogs(sessionId))
   ).toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
-  // A bounded request must not replace the cache with a partial history.
   if (!query)
     state.logs.set(
       sessionId,
@@ -151,57 +195,11 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
       if (lock.connectionId === connectionId && lock.draining) state.drainingHosts.add(hostId);
     }
   } else {
-    // Keep legacy storage doubles compatible; production Dynamo storage always exposes
-    // getHostLockState, which is the authoritative drain read above.
     for (const connection of connections) {
       if (previousDraining.has(connection.hostId)) state.drainingHosts.add(connection.hostId);
     }
   }
-  await hydrateRunningSessions(state, storage);
-}
-
-async function listSessionsByStatusAcrossShards(
-  state: ControlPlaneState,
-  storage: DynamoPlaneStorage,
-  status: SessionRecord["status"],
-): Promise<SessionRecord[]> {
-  return (
-    await Promise.all(
-      [...Array(state.shardCount).keys()].map((shard) =>
-        storage.listSessionsByStatus(status, shard),
-      ),
-    )
-  ).flat();
-}
-
-async function hydrateRunningSessions(
-  state: ControlPlaneState,
-  storage: DynamoPlaneStorage,
-): Promise<void> {
-  if (typeof storage.listSessionsByStatus !== "function") return;
-  const [running, cancelled] = await Promise.all([
-    listSessionsByStatusAcrossShards(state, storage, "running"),
-    listSessionsByStatusAcrossShards(state, storage, "cancelled"),
-  ]);
-  const occupying = new Map(
-    [...running, ...cancelled.filter(sessionOccupiesHostAssignment)].map((session) => [
-      session.id,
-      session,
-    ]),
-  );
-  const localHolders = [...state.sessions.values()].filter(sessionOccupiesHostAssignment);
-  const extras: SessionRecord[] = [];
-  for (const session of localHolders) {
-    if (occupying.has(session.id)) continue;
-    const fresh =
-      typeof storage.getSession === "function"
-        ? await storage.getSession(session.id, true)
-        : session;
-    if (fresh && sessionOccupiesHostAssignment(fresh)) extras.push(fresh);
+  if (await hydrateRunningSessions(state, storage)) {
+    rebuildProviderAccountLeasesFromSessions(state);
   }
-  for (const [id, session] of state.sessions) {
-    if (session.status === "running" || session.status === "cancelled") state.sessions.delete(id);
-  }
-  for (const session of occupying.values()) state.sessions.set(session.id, { ...session });
-  for (const session of extras) state.sessions.set(session.id, { ...session });
 }

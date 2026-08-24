@@ -1,10 +1,34 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { putHostInventoryFenced } from "./plane-storage-catalog.ts";
+import { deleteHostInventory, putHostInventoryFenced } from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("fenced host inventory publication", () => {
+  it("conditions deletion on the inspected inventory version", async () => {
+    const commands: DeleteCommand[] = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(DeleteCommand);
+          commands.push(command as DeleteCommand);
+          if (commands.length === 2) throw { name: "ConditionalCheckFailedException" };
+          return {};
+        },
+      } as never,
+      tables: { hostInventories: "HostInventories" } as never,
+    };
+
+    await expect(deleteHostInventory(ctx, "host-1", 2)).resolves.toBe(true);
+    expect(commands[0]?.input).toMatchObject({
+      TableName: "HostInventories",
+      Key: { hostId: "host-1" },
+      ConditionExpression: "version = :expected",
+      ExpressionAttributeValues: { ":expected": 2 },
+    });
+    await expect(deleteHostInventory(ctx, "host-1", 2)).resolves.toBe(false);
+  });
+
   it("requires the exact connection lease", async () => {
     const commands: TransactWriteCommand[] = [];
     const ctx: PlaneStorageCtx = {

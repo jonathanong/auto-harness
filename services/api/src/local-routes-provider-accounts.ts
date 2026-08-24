@@ -103,8 +103,8 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           ...(typeof body.usageLimitCooldownSeconds === "number"
             ? { usageLimitCooldownSeconds: body.usageLimitCooldownSeconds }
             : {}),
-          ...(typeof body.maxConcurrentSessions === "number"
-            ? { maxConcurrentSessions: body.maxConcurrentSessions }
+          ...(Object.prototype.hasOwnProperty.call(body, "maxConcurrentSessions")
+            ? { maxConcurrentSessions: body.maxConcurrentSessions as number }
             : {}),
         });
         if (!result.ok) {

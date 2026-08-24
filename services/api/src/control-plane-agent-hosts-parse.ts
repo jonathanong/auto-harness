@@ -9,6 +9,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function parseHostBody(
   hostId: string,
   body: unknown,
+  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): Omit<HostInventoryRecord, "updatedAt"> {
   if (!isRecord(body)) {
     throw new Error("body must be an object");
@@ -16,7 +17,7 @@ export function parseHostBody(
   if (body.hostId !== undefined && body.hostId !== hostId) {
     throw new Error("body.hostId must match path hostId");
   }
-  const inventory = parseHostInventory(body);
+  const inventory = parseHostInventory(body, options);
 
   return {
     hostId,

@@ -1,5 +1,6 @@
 import {
   HOST_PROTOCOL_VERSION,
+  MAX_HOST_REGISTRATION_BYTES,
   type HostRuntimeReport,
   type HostRunningAttempt,
   type HostToServerMessage,
@@ -65,6 +66,11 @@ export async function registerDaemon(
     ...(runtime ? { runtime } : {}),
     ...(draining ? { draining: true } : {}),
   };
+  if (Buffer.byteLength(JSON.stringify(registration), "utf8") > MAX_HOST_REGISTRATION_BYTES) {
+    throw new Error(
+      `host registration exceeds ${String(MAX_HOST_REGISTRATION_BYTES)} byte WebSocket limit`,
+    );
+  }
   await transport.send(registration);
 }
 
@@ -72,20 +78,39 @@ export async function applyDaemonInventory(
   config: DaemonConfig,
   next: DaemonConfig,
   worktrees: WorktreeManager,
-  register: () => Promise<void>,
+  register: (candidate: DaemonConfig) => Promise<void>,
+  afterApply?: () => void,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
+  const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
-  if (next.setupScript === undefined) delete config.setupScript;
-  else config.setupScript = next.setupScript;
-  config.repositories = next.repositories;
+  // Older test-only managers may not expose the generation hook; real managers always do.
+  worktrees.noteInventoryChange?.();
   try {
-    await worktrees.ensureAll();
-    await register();
+    // Validate and register the candidate without replacing the live config or
+    // retained roots policy. Pending terminal hooks must remain fail-closed
+    // until the control plane has accepted this registration.
+    await worktrees.ensureAll(next);
+    await register(next);
+    if (next.setupScript === undefined) delete config.setupScript;
+    else config.setupScript = next.setupScript;
+    if (next.allowedRoots === undefined) delete config.allowedRoots;
+    else config.allowedRoots = next.allowedRoots;
+    config.repositories = next.repositories;
+    // A claim can begin after the pre-registration fence above and finish while
+    // registration is in flight. Once the candidate becomes live, advance the
+    // generation again so that claim has to revalidate against this inventory.
+    worktrees.noteInventoryChange?.();
+    afterApply?.();
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
     else config.setupScript = previousSetupScript;
+    if (previousAllowedRoots === undefined) delete config.allowedRoots;
+    else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;
+    // Claims that were revalidating during this attempt must retry against the
+    // restored configuration too.
+    worktrees.noteInventoryChange?.();
     throw err;
   }
 }

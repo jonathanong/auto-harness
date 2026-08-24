@@ -91,6 +91,34 @@ describe("loadDaemonConfig", () => {
   it("rejects missing hostId in parsed config", () => {
     expect(() => parseDaemonConfig({ repositories: valid.repositories })).toThrow(/hostId/);
   });
+
+  it("parses host-local allowed roots", () => {
+    const config = parseDaemonConfig({ ...valid, allowedRoots: ["/tmp", "/tmp"] });
+    expect(config.allowedRoots).toEqual(["/tmp"]);
+    expect(() => parseDaemonConfig({ ...valid, allowedRoots: ["relative"] })).toThrow(/absolute/);
+  });
+
+  it("rejects fetched inventory whose paths escape allowed roots", async () => {
+    const fetchFn = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          hostId: "local-1",
+          allowedRoots: ["/no/such/auto-harness-root"],
+          repositories: valid.repositories,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    await expect(
+      loadDaemonConfig({
+        env: {
+          HARNESS_HOST_ID: "local-1",
+          HARNESS_API_URL: "http://127.0.0.1:7420",
+        },
+        fetchFn: fetchFn as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/allowed roots/);
+  });
 });
 
 describe("find helpers", () => {

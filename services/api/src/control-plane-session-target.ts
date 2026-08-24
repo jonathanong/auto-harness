@@ -118,32 +118,25 @@ function resolveNativeResumeRoute(
   }
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
   const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
-  const argv = providerId ? migrateLegacyProviderArgv(spec.argv) : [...spec.argv];
-  const resumeArgvTemplate =
-    spec.resumeArgvTemplate === undefined
-      ? undefined
-      : providerId
-        ? migrateLegacyProviderArgv(spec.resumeArgvTemplate)
-        : [...spec.resumeArgvTemplate];
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
     ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
-    resolvedArgv: resumeArgvTemplate
+    resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(
-          resumeArgvTemplate,
+          spec.resumeArgvTemplate,
           session.cliResumeRef!,
           session.prompt,
           spec.appendPromptSeparator,
         )
       : // Same opt-in `--` separator as buildArgv, for the same reason.
         !spec.appendPrompt
-        ? argv
+        ? [...spec.argv]
         : spec.appendPromptSeparator
-          ? [...argv, "--", session.prompt]
-          : [...argv, session.prompt],
-    resumeSpec: copyResumeSpec(spec, argv, resumeArgvTemplate),
+          ? [...spec.argv, "--", session.prompt]
+          : [...spec.argv, session.prompt],
+    resumeSpec: copyResumeSpec(spec),
   };
 }
 
@@ -188,12 +181,12 @@ function resolveTargets(
     if (!command) return [];
     const providerId = command.providerId;
     if (providerId === null) {
-      const resolvedArgv = buildArgv(command, prompt, false);
+      const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
-        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command, false) }]
+        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
         : [];
     }
-    const resolvedArgv = buildArgv(command, prompt, true);
+    const resolvedArgv = buildArgv(command, prompt);
     if (!resolvedArgv) return [];
     return resolveEligibleAccounts(
       state,
@@ -207,7 +200,7 @@ function resolveTargets(
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
-      resumeSpec: commandResumeSpec(command, true),
+      resumeSpec: commandResumeSpec(command),
     }));
   }
   const host = state.hostInventories.get(worktree.hostId);
@@ -230,14 +223,14 @@ function resolveTargets(
       catalog,
     );
     const command = commandId ? state.commands.get(commandId) : undefined;
-    const resolvedArgv = buildArgv(command, prompt, true);
+    const resolvedArgv = buildArgv(command, prompt);
     if (resolvedArgv && commandId && command) {
       routes.push({
         providerId: target.providerId,
         providerAccountId: account.id,
         commandId,
         resolvedArgv,
-        resumeSpec: commandResumeSpec(command, true),
+        resumeSpec: commandResumeSpec(command),
       });
     }
   }
@@ -365,88 +358,33 @@ export function resolveScheduledSessionTarget(
   return resolveScheduledSessionTargets(state, catalog, session, hostId)[0] ?? null;
 }
 
-function buildArgv(
-  command: CommandRecord | undefined,
-  prompt: string,
-  providerBound: boolean,
-): string[] | null {
+function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
-  const argv = providerBound ? migrateLegacyProviderArgv(command.argv) : [...command.argv];
-  if (!command.appendPrompt) return argv;
+  if (!command.appendPrompt) return [...command.argv];
   // `--` only neutralizes a leading-dash prompt for getopt-style executables that treat it
   // as "end of options" — some commands (e.g. `printf "%s"`) instead read it as literal
   // data, breaking the one-argument contract. So it's opt-in per Command, not automatic.
-  return command.appendPromptSeparator ? [...argv, "--", prompt] : [...argv, prompt];
+  return command.appendPromptSeparator
+    ? [...command.argv, "--", prompt]
+    : [...command.argv, prompt];
 }
 
-/**
- * Compatibility-upgrade pre-existing provider commands at dispatch. The catalog remains
- * operator-authored: explicit format flags and custom executables are never rewritten.
- */
-function migrateLegacyProviderArgv(argv: readonly string[]): string[] {
-  const separator = argv.indexOf("--");
-  const optionEnd = separator < 0 ? argv.length : separator;
-  const optionArgv = argv.slice(0, optionEnd);
-  const executable = executableStem(optionArgv[0]);
-  if (executable === "codex") {
-    if (hasOption(optionArgv, "--json")) return [...argv];
-    const execIndex = optionArgv.indexOf("exec");
-    return execIndex < 0 ? [...argv] : insertArgs(argv, execIndex + 1, ["--json"]);
-  }
-  if (hasOption(optionArgv, "--output-format")) return [...argv];
-  const promptIndex = optionArgv.findIndex((arg) => {
-    if (executable === "claude") return arg === "-p" || arg === "--print";
-    if (executable === "gemini") return arg === "-p" || arg === "--prompt";
-    return executable === "grok" && (arg === "-p" || arg === "--single");
-  });
-  if (promptIndex < 0) return [...argv];
-  // Gemini and Grok prompt switches consume their following value, so the format pair must
-  // precede them. Claude accepts the same order and keeps this migration uniform.
-  return insertArgs(argv, promptIndex, ["--output-format", "json"]);
-}
-
-function executableStem(value: string | undefined): string {
-  if (!value) return "";
-  const normalized = value.replaceAll("\\", "/");
-  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return basename.replace(/\.(?:exe|cmd|bat)$/iu, "").toLowerCase();
-}
-
-function hasOption(argv: readonly string[], option: string): boolean {
-  return argv.some((arg) => arg === option || arg.startsWith(`${option}=`));
-}
-
-function insertArgs(argv: readonly string[], index: number, args: readonly string[]): string[] {
-  return [...argv.slice(0, index), ...args, ...argv.slice(index)];
-}
-
-function commandResumeSpec(command: CommandRecord, providerBound: boolean): SessionResumeSpec {
-  const argv = providerBound ? migrateLegacyProviderArgv(command.argv) : [...command.argv];
-  const resumeArgvTemplate =
-    command.resumeArgvTemplate === undefined
-      ? undefined
-      : providerBound
-        ? migrateLegacyProviderArgv(command.resumeArgvTemplate)
-        : [...command.resumeArgvTemplate];
+function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
   return {
-    argv,
+    argv: [...command.argv],
     appendPrompt: command.appendPrompt,
     appendPromptSeparator: command.appendPromptSeparator,
-    ...(resumeArgvTemplate ? { resumeArgvTemplate } : {}),
+    ...(command.resumeArgvTemplate ? { resumeArgvTemplate: [...command.resumeArgvTemplate] } : {}),
     ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
   };
 }
 
-function copyResumeSpec(
-  spec: SessionResumeSpec,
-  argv: readonly string[] = spec.argv,
-  resumeArgvTemplate: readonly string[] | undefined = spec.resumeArgvTemplate,
-): SessionResumeSpec {
+function copyResumeSpec(spec: SessionResumeSpec): SessionResumeSpec {
   return {
-    argv: [...argv],
+    argv: [...spec.argv],
     appendPrompt: spec.appendPrompt,
     appendPromptSeparator: spec.appendPromptSeparator,
-    ...(resumeArgvTemplate ? { resumeArgvTemplate: [...resumeArgvTemplate] } : {}),
+    ...(spec.resumeArgvTemplate ? { resumeArgvTemplate: [...spec.resumeArgvTemplate] } : {}),
     ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
   };
 }

@@ -7,6 +7,7 @@ import {
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+import { releaseLegacyHostAssignment } from "./control-plane-legacy-host-assignment.ts";
 
 type ProviderAccountLease = {
   concurrencyId: string;
@@ -108,6 +109,15 @@ export function accountHasLeaseCapacityOverCap(
   return holders.size > max;
 }
 
+export function sessionOccupiesProviderAccountLease(session: SessionRecord): boolean {
+  return (
+    session.providerAccountLease !== undefined &&
+    (session.status === "running" ||
+      (session.status === "cancelled" && session.hostId != null) ||
+      (session.status === "timed_out" && session.timedOutHostId != null))
+  );
+}
+
 /** Availability hints use the running-session read model even in durable mode. */
 export function accountHasLeaseCapacityFromReadModel(
   state: ControlPlaneState,
@@ -120,11 +130,10 @@ export function accountHasLeaseCapacityFromReadModel(
     if (lease.providerAccountId === providerAccountId) holders.add(lease.sessionId);
   }
   for (const session of state.sessions.values()) {
-    const ownsLease =
-      session.status === "running" ||
-      (session.status === "cancelled" && session.hostId != null) ||
-      (session.status === "timed_out" && session.timedOutHostId != null);
-    if (ownsLease && session.providerAccountLease?.providerAccountId === providerAccountId) {
+    if (
+      sessionOccupiesProviderAccountLease(session) &&
+      session.providerAccountLease?.providerAccountId === providerAccountId
+    ) {
       holders.add(session.id);
       continue;
     }
@@ -137,6 +146,27 @@ export function accountHasLeaseCapacityFromReadModel(
     }
   }
   return holders.size < max;
+}
+
+/**
+ * Scheduler refreshes use strongly re-read occupying sessions as the source
+ * of truth. Rebuild this local cache rather than letting an old migrated
+ * out-of-range slot keep blocking a later assignment after another Lambda
+ * completed its durable session.
+ */
+export function rebuildProviderAccountLeasesFromSessions(state: ControlPlaneState): void {
+  state.providerAccountLeases.clear();
+  for (const session of state.sessions.values()) {
+    const lease = session.providerAccountLease;
+    if (!lease || !sessionOccupiesProviderAccountLease(session)) continue;
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: session.id,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: session.hostId ?? session.timedOutHostId ?? "",
+      providerAccountId: lease.providerAccountId,
+    });
+  }
 }
 
 export function tryAcquireProviderAccountLeaseLocal(
@@ -174,20 +204,14 @@ export function tryAcquireProviderAccountLeaseLocal(
 
 export function providerAccountLeaseWriteOpts(
   session: Pick<SessionRecord, "providerAccountLease" | "hostAssignmentLease"> &
-    Partial<Pick<SessionRecord, "hostId" | "timedOutHostId" | "status">>,
+    Partial<Pick<SessionRecord, "hostId" | "timedOutHostId" | "status" | "resolvedRoute">>,
 ): {
   providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]>;
   hostAssignmentLease?: NonNullable<SessionRecord["hostAssignmentLease"]>;
 } {
   return {
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease
-      ? { hostAssignmentLease: session.hostAssignmentLease }
-      : session.hostId && (session.status === "running" || session.status === "cancelled")
-        ? { hostAssignmentLease: { hostId: session.hostId } }
-        : session.timedOutHostId
-          ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
-          : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
   };
 }
 
@@ -234,6 +258,19 @@ export async function releaseTimedOutProviderAccountLease(
   session: SessionRecord,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
+  const attemptId = session.attemptId ?? lease?.attemptId;
+  const legacyHostAssignment =
+    !session.hostAssignmentLease &&
+    session.timedOutHostId &&
+    session.timedOutAssignmentConnectionId &&
+    attemptId
+      ? {
+          sessionId: session.id,
+          attemptId,
+          hostId: session.timedOutHostId,
+          connectionId: session.timedOutAssignmentConnectionId,
+        }
+      : undefined;
   if (!lease) {
     if (
       state.storage &&
@@ -245,33 +282,37 @@ export async function releaseTimedOutProviderAccountLease(
         sessionId: session.id,
         attemptId: session.attemptId,
         hostId: session.timedOutHostId,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!released) return false;
     }
+    if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
     delete session.hostAssignmentLease;
     delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
     return true;
   }
   if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
     releaseProviderAccountLease(state, session);
     delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
     return true;
   }
   const released = await state.storage.releaseTimedOutProviderAccountLease({
     concurrencyId: lease.concurrencyId,
     sessionId: session.id,
     attemptId: lease.attemptId,
-    ...(session.hostAssignmentLease
-      ? { hostAssignmentLease: session.hostAssignmentLease }
-      : session.timedOutHostId
-        ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
-        : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
   });
   if (!released) return false;
+  if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
   releaseProviderAccountLeaseLocal(state, session);
   delete session.providerAccountLease;
   delete session.hostAssignmentLease;
   delete session.timedOutHostId;
+  delete session.timedOutAssignmentConnectionId;
   return true;
 }
 

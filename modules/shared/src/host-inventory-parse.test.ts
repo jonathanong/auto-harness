@@ -1,16 +1,18 @@
+/* eslint-disable max-lines -- exhaustive inventory parser coverage shares one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { parseHostInventory } from "./host-inventory-parse.ts";
 
 const valid = {
   setupScript: "source ~/.zshrc",
+  allowedRoots: ["/opt/harness"],
   repositories: [
     {
       id: "repo-1",
       path: "/repo",
       defaultBranch: "main",
       setupScript: "pnpm install",
-      terminalHookScript: "./hook.sh",
+      terminalHookScript: "/repo/hook.sh",
       providerAccountOverrides: { account: { enabled: false, commandId: "command" } },
       worktrees: [
         {
@@ -31,6 +33,41 @@ const valid = {
 describe("parseHostInventory", () => {
   it("parses every supported inventory field", () => {
     expect(parseHostInventory(valid)).toEqual(valid);
+  });
+
+  it("accepts an empty terminal hook so a capable PUT can clear it", () => {
+    expect(
+      parseHostInventory({
+        repositories: [{ id: "repo", path: "/repo", worktrees: [], terminalHookScript: "" }],
+      }),
+    ).toEqual({
+      repositories: [
+        { id: "repo", path: "/repo", defaultBranch: "main", worktrees: [], terminalHookScript: "" },
+      ],
+      providerAccounts: [],
+      capabilities: [],
+    });
+  });
+
+  it("preserves an explicit empty allowed-roots list and can read a legacy hook unchanged", () => {
+    expect(
+      parseHostInventory({
+        allowedRoots: [],
+        repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
+      }),
+    ).toMatchObject({ allowedRoots: [] });
+    expect(
+      parseHostInventory(
+        {
+          repositories: [
+            { id: "repo", path: "/repo", terminalHookScript: "./hook.sh", worktrees: [] },
+          ],
+        },
+        { allowLegacyRelativeTerminalHooks: true },
+      ),
+    ).toMatchObject({
+      repositories: [expect.objectContaining({ terminalHookScript: "./hook.sh" })],
+    });
   });
 
   it("applies legacy defaults without requiring optional fields", () => {
@@ -65,6 +102,7 @@ describe("parseHostInventory", () => {
     [null, "body must be an object"],
     [[], "body must be an object"],
     [{ repositories: [], setupScript: 1 }, "setupScript must be a string"],
+    [{ repositories: [], allowedRoots: ["relative"] }, "absolute paths"],
     [{}, "repositories must be an array"],
     [{ repositories: [null] }, "repositories[0] must be an object"],
     [{ repositories: [{}] }, "repositories[0]: id must be a non-empty string"],
@@ -145,6 +183,20 @@ describe("parseHostInventory", () => {
         repositories: [{ id: "repo", path: "/repo", worktrees: [], terminalHookScript: 1 }],
       },
       "repository.repo.terminalHookScript must be a string",
+    ],
+    [
+      {
+        repositories: [{ id: "repo", path: "/repo", worktrees: [], terminalHookScript: "hook.sh" }],
+      },
+      "repository.repo.terminalHookScript must be an absolute path",
+    ],
+    [
+      {
+        repositories: [
+          { id: "repo", path: "/repo", worktrees: [], terminalHookScript: `/${"a".repeat(4097)}` },
+        ],
+      },
+      "repository.repo.terminalHookScript is too long",
     ],
     [{ repositories: [], capabilities: "yes" }, "capabilities must be a supported"],
     [

@@ -4,11 +4,15 @@ import { DrainButton, HostConfigForm, HostSetupScriptForm } from "@auto-harness/
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
 import { hostId, apiGet } from "../../lib/api.ts";
 import { loadHostInventoryWithVersion } from "../../lib/inventory.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const id = hostId();
+  const principal = await loadPrincipal();
+  const canEditExecConfig = can(principal, "fleet:exec-config");
+  const canEditInventory = can(principal, "fleet:inventory");
   const { inventory, version } = await loadHostInventoryWithVersion(id);
 
   let providers: Provider[] = [];
@@ -34,6 +38,8 @@ export default async function SettingsPage() {
   const initialJson = JSON.stringify(
     {
       setupScript: inventory.setupScript,
+      allowedRoots: inventory.allowedRoots,
+      requiredEnvironment: inventory.requiredEnvironment,
       repositories: inventory.repositories,
       providerAccounts: inventory.providerAccounts,
     },
@@ -80,7 +86,14 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted-foreground">
           Optional host-wide setup run before repository and worktree setup scripts.
         </p>
-        <HostSetupScriptForm hostId={id} setupScript={inventory.setupScript} />
+        <HostSetupScriptForm
+          hostId={id}
+          setupScript={inventory.setupScript}
+          allowedRoots={inventory.allowedRoots}
+          requiredEnvironment={inventory.requiredEnvironment}
+          canWriteExecConfig={canEditExecConfig}
+          canWriteInventory={canEditInventory}
+        />
       </div>
 
       <div className="space-y-2 border-t border-border pt-6">

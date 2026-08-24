@@ -13,6 +13,9 @@ test("host setup and validated raw inventory editor preserve conflict semantics"
 
   await page.goto(`/hosts/${id}?tab=advanced`);
   await expect(page.getByTestId("form-host-setup-script")).toBeVisible();
+  await expect(page.getByTestId("host-exec-config-alert")).toBeVisible();
+  await expect(page.getByTestId("host-allowed-roots")).toBeVisible();
+  await expect(page.getByTestId("host-required-environment")).toBeVisible();
   await page.getByTestId("host-setup-script").fill("source ~/.zshrc");
   await page.getByTestId("host-setup-script-submit").click();
   await expect(page.getByTestId("host-setup-script-ok")).toHaveText("Saved.", {
@@ -43,9 +46,9 @@ test("host setup and validated raw inventory editor preserve conflict semantics"
   );
   await expect(page.getByTestId("host-config-submit")).toBeEnabled();
 
-  // Land another valid write after the page's read so the editor's version is genuinely stale.
+  // Inventory-only PUT so a maintainer could still bump the editor's version.
   await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
-    data: { setupScript: "source ~/.zshrc", repositories: [], providerAccounts: [] },
+    data: { repositories: [], providerAccounts: [] },
   });
   await page.getByTestId("host-config-submit").click();
   await expect(page.getByTestId("host-config-conflict")).toBeVisible({ timeout: 15_000 });

@@ -50,6 +50,12 @@ export type HostProviderAccount = {
 export type HostInventory = {
   /** Optional host-wide setup run before the repository/worktree setup. */
   setupScript?: string | undefined;
+  /**
+   * Host-local directories that inventory filesystem paths and terminal hook
+   * paths must resolve under. Empty/absent = unrestricted. Catalog argv is not
+   * checked against these roots.
+   */
+  allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
   repositories: HostRepository[];
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
@@ -71,6 +77,7 @@ export function defaultWorktreePath(repoPath: string, worktreeName: string): str
 function cloneInventory(existing: HostInventory | null | undefined): HostInventory {
   return {
     ...(existing?.setupScript !== undefined ? { setupScript: existing.setupScript } : {}),
+    ...(existing?.allowedRoots !== undefined ? { allowedRoots: [...existing.allowedRoots] } : {}),
     ...(existing?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
       : {}),
@@ -96,6 +103,17 @@ export function updateHostSetupScript(
   setupScript: string,
 ): HostInventory {
   return { ...cloneInventory(existing), setupScript };
+}
+
+/** Replace host-local allowed roots without disturbing the rest of the inventory. */
+export function updateHostAllowedRoots(
+  existing: HostInventory | null | undefined,
+  allowedRoots: string[],
+): HostInventory {
+  const next = cloneInventory(existing);
+  if (allowedRoots.length) next.allowedRoots = [...allowedRoots];
+  else delete next.allowedRoots;
+  return next;
 }
 
 export function updateHostRequiredEnvironment(

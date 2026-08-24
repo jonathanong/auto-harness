@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- release planning and transaction fencing stay co-located. */
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
@@ -45,6 +46,8 @@ type ReleaseMainCheckoutOptions = {
   preserveProviderAccountLease?: boolean;
   /** Timeout keeps host capacity until terminal/disconnect cleanup. */
   preserveHostAssignmentLease?: boolean;
+  timedOutHostId?: string;
+  timedOutAssignmentConnectionId?: string;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -168,6 +171,10 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (isQueued ? ", hostId = :null" : "") +
     (opts.reason ? ", errorMessage = :reason" : "") +
     (opts.completedAt ? ", completedAt = :completedAt" : "") +
+    (opts.timedOutHostId ? ", timedOutHostId = :timedOutHostId" : "") +
+    (opts.timedOutAssignmentConnectionId
+      ? ", timedOutAssignmentConnectionId = :timedOutAssignmentConnectionId"
+      : "") +
     (opts.exitCode !== undefined ? ", exitCode = :exitCode" : "") +
     (opts.errorCode ? ", errorCode = :errorCode" : "") +
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
@@ -191,6 +198,10 @@ function expressionValues(
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
     ...(opts.status === "queued" ? { ":queueOrder": queueOrder } : {}),
+    ...(opts.timedOutHostId ? { ":timedOutHostId": opts.timedOutHostId } : {}),
+    ...(opts.timedOutAssignmentConnectionId
+      ? { ":timedOutAssignmentConnectionId": opts.timedOutAssignmentConnectionId }
+      : {}),
     ":expectedStatus": opts.expectedStatus ?? "running",
     ":hostId": opts.hostId,
     ":connectionId": opts.connectionId,

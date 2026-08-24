@@ -105,14 +105,21 @@ function isPortOccupied(port: number): Promise<boolean> {
   });
 }
 
-type ContainerState = "missing" | "running" | "stopped";
+const DYNAMODB_IMAGE = "amazon/dynamodb-local:3.3.1";
 
-function containerState(name: string): ContainerState {
-  const inspect = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", name], {
-    encoding: "utf8",
-  });
-  if (inspect.status !== 0) return "missing";
-  return inspect.stdout.trim() === "true" ? "running" : "stopped";
+type ContainerInspection = {
+  state: "running" | "stopped";
+  image: string;
+};
+
+function inspectContainer(name: string): ContainerInspection | undefined {
+  // This operator-run local harness intentionally inherits the same trusted PATH used to launch
+  // pnpm; the executable is a fixed literal and arguments are passed without a shell.
+  const inspectArgs = ["inspect", "-f", "{{.State.Running}}\t{{.Config.Image}}", name];
+  const inspect = spawnSync("docker", inspectArgs, { encoding: "utf8" }); // NOSONAR
+  if (inspect.status !== 0) return undefined;
+  const [running, image = ""] = inspect.stdout.trim().split("\t");
+  return { state: running === "true" ? "running" : "stopped", image };
 }
 
 /**
@@ -129,7 +136,7 @@ export async function findAvailablePorts(
   let bucket = bucketFor(slug);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ports = portsForBucket(slug, bucket);
-    const dynamoIsOurs = containerState(ports.containerName) !== "missing";
+    const dynamoIsOurs = inspectContainer(ports.containerName) !== undefined;
     const [dynamoFree, apiFree, controlFree, hostPaneFree] = await Promise.all([
       dynamoIsOurs ? Promise.resolve(true) : isPortOccupied(ports.dynamoPort).then((b) => !b),
       isPortOccupied(ports.apiPort).then((b) => !b),
@@ -144,16 +151,25 @@ export async function findAvailablePorts(
   );
 }
 
-function ensureDynamo(ports: WorktreePorts): void {
-  const state = containerState(ports.containerName);
-  if (state === "running") return;
-  if (state === "stopped") {
+export function ensureDynamo(ports: WorktreePorts): void {
+  const existing = inspectContainer(ports.containerName);
+  if (existing?.image === DYNAMODB_IMAGE && existing.state === "running") return;
+  if (existing?.image === DYNAMODB_IMAGE) {
     const start = spawnSync("docker", ["start", ports.containerName], { stdio: "inherit" });
     if (start.status !== 0) {
       console.error(`Failed to restart stopped container ${ports.containerName}.`);
       process.exit(1);
     }
     return;
+  }
+  if (existing !== undefined) {
+    // See inspectContainer: this local operator command inherits the trusted pnpm launch PATH.
+    const removeArgs = ["rm", "-f", ports.containerName];
+    const remove = spawnSync("docker", removeArgs, { stdio: "inherit" }); // NOSONAR
+    if (remove.status !== 0) {
+      console.error(`Failed to recreate outdated container ${ports.containerName}.`);
+      process.exit(1);
+    }
   }
   const run = spawnSync(
     "docker",
@@ -164,7 +180,7 @@ function ensureDynamo(ports: WorktreePorts): void {
       ports.containerName,
       "-p",
       `${ports.dynamoPort}:8000`,
-      "amazon/dynamodb-local:2.5.2",
+      DYNAMODB_IMAGE,
       "-jar",
       "DynamoDBLocal.jar",
       "-sharedDb",

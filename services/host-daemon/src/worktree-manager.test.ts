@@ -1,8 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+/* eslint-disable max-lines -- claim policy regressions share this focused manager fixture. */
+import { mkdir, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+
+const fixtures: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 function fakeGit(): GitClient & {
   checkouts: string[];
@@ -34,13 +45,13 @@ const config = parseDaemonConfig({
 });
 
 describe("WorktreeManager", () => {
-  it("claims and releases worktrees", () => {
+  it("claims and releases worktrees", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    const claimed = mgr.claim("repo-1", "wt-1");
+    const claimed = await mgr.claim("repo-1", "wt-1");
     expect(claimed.cwd).toBe("/repo/wt-1");
     expect(mgr.isBusy("wt-1")).toBe(true);
-    expect(() => mgr.claim("repo-1", "wt-1")).toThrow(/busy/);
+    await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/busy/);
     mgr.release("wt-1");
     expect(mgr.isBusy("wt-1")).toBe(false);
   });
@@ -48,7 +59,7 @@ describe("WorktreeManager", () => {
   it("checks out explicit ref or default branch", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    const claimed = mgr.claim("repo-1", "wt-1");
+    const claimed = await mgr.claim("repo-1", "wt-1");
     await mgr.prepareCheckout(claimed, "feature/x");
     await mgr.prepareCheckout(claimed, undefined);
     expect(git.checkouts).toEqual(["feature/x", "main"]);
@@ -63,16 +74,58 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
-  it("rejects unknown repo or worktree", () => {
+  it("validates a candidate that explicitly clears retained allowed roots", async () => {
+    const root = join(tmpdir(), `ah-candidate-clear-roots-${String(Date.now())}`);
+    fixtures.push(root);
+    const restrictedRepository = join(root, "restricted", "repository");
+    const candidateRepository = join(root, "candidate", "repository");
+    await mkdir(restrictedRepository, { recursive: true });
+    await mkdir(candidateRepository, { recursive: true });
+    const current = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [join(root, "restricted")],
+      repositories: [
+        {
+          id: "repo-1",
+          path: restrictedRepository,
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+    });
+    const candidate = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: candidateRepository,
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(current, git);
+    manager.setAllowedRootsPolicy(current.allowedRoots);
+
+    await expect(manager.ensureAll(candidate)).resolves.toBeUndefined();
+    expect(git.ensureRepo).toHaveBeenCalledWith(candidateRepository);
+
+    await expect(
+      manager.ensureAll({ ...candidate, allowedRoots: [join(root, "candidate")] }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects unknown repo or worktree", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);
-    expect(() => mgr.claim("nope", "wt-1")).toThrow(/Unknown repository/);
-    expect(() => mgr.claim("repo-1", "nope")).toThrow(/Unknown worktree/);
+    await expect(mgr.claim("nope", "wt-1")).rejects.toThrow(/Unknown repository/);
+    await expect(mgr.claim("repo-1", "nope")).rejects.toThrow(/Unknown worktree/);
   });
 
   it("serializes main claims, removes aborted waiters, and tolerates idle release", async () => {
     const mgr = new WorktreeManager(config, fakeGit());
-    expect(mgr.mainClaim("repo-1").cwd).toBe("/repo");
+    expect((await mgr.mainClaim("repo-1")).cwd).toBe("/repo");
     expect(await mgr.acquireMain("repo-1")).toBe(true);
     const controller = new AbortController();
     const canceled = mgr.acquireMain("repo-1", controller.signal);
@@ -84,7 +137,7 @@ describe("WorktreeManager", () => {
     mgr.releaseMain("repo-1");
     mgr.releaseMain("repo-1");
     expect(await mgr.acquireMain("repo-1", AbortSignal.abort())).toBe(false);
-    expect(() => mgr.mainClaim("missing")).toThrow(/Unknown repository/);
+    await expect(mgr.mainClaim("missing")).rejects.toThrow(/Unknown repository/);
   });
 
   it("skips a stale aborted waiter when releasing a lock", async () => {
@@ -126,11 +179,343 @@ describe("WorktreeManager", () => {
     expect(await Promise.race([first, Promise.resolve("pending")])).toBe("pending");
     expect(await Promise.race([second, Promise.resolve("pending")])).toBe("pending");
 
-    const claimed = mgr.mainClaim("repo-1");
+    const claimed = await mgr.mainClaim("repo-1");
     const signal = new AbortController().signal;
     await mgr.prepareMainCheckout(claimed, undefined, signal);
     await mgr.prepareMainCheckout(claimed, "release", undefined);
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "main", signal });
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "release" });
+  });
+
+  it("refuses to claim a worktree outside allowed roots and does not mark it busy", async () => {
+    const root = join(tmpdir(), `ah-claim-root-${String(Date.now())}`);
+    fixtures.push(root);
+    await mkdir(root, { recursive: true });
+    await mkdir(join(root, "repo"), { recursive: true });
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: join(root, "repo"),
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/etc", labels: [] }],
+        },
+      ],
+    });
+    const mgr = new WorktreeManager(jailed, fakeGit());
+    await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/outside allowed roots/);
+    expect(mgr.isBusy("wt-1")).toBe(false);
+    await expect(mgr.mainClaim("repo-1")).resolves.toMatchObject({
+      cwd: await realpath(join(root, "repo")),
+    });
+  });
+
+  it("propagates canonical repository and worktree paths into a claim", async () => {
+    const root = join(tmpdir(), `ah-canonical-claim-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const repositoryLink = join(root, "repository-link");
+    const worktreeLink = join(root, "worktree-link");
+    await symlink(repository, repositoryLink);
+    await symlink(worktree, worktreeLink);
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repositoryLink,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktreeLink, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const claimed = await new WorktreeManager(jailed, git).claim("repo-1", "wt-1");
+    expect(claimed.cwd).toBe(await realpath(worktree));
+    expect(claimed.repository.path).toBe(await realpath(repository));
+    expect(claimed.worktree.path).toBe(await realpath(worktree));
+    const outside = join(root, "outside");
+    await mkdir(outside);
+    await rm(worktreeLink);
+    await symlink(outside, worktreeLink);
+    await new WorktreeManager(jailed, git).prepareCheckout(claimed, "main");
+    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+  });
+
+  it("fails closed for a pending hook while an invalid roots policy is retained", async () => {
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          terminalHookScript: "/repo/hook.sh",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(jailed, fakeGit());
+    const claimed = await manager.claim("repo-1", "wt-1");
+    manager.setAllowedRootsPolicy([]);
+    await expect(claimed.currentHookTarget()).resolves.toBeNull();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
+  it("fails closed for claims and startup preparation while an empty policy is active", async () => {
+    const manager = new WorktreeManager(config, fakeGit());
+    manager.setAllowedRootsPolicy([]);
+    await expect(manager.claim("repo-1", "wt-1")).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+    await expect(manager.mainClaim("repo-1")).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+    await expect(manager.ensureAll()).rejects.toThrow("host inventory policy blocks execution");
+  });
+
+  it("fails closed when an active empty policy is observed before its generation fence", async () => {
+    const manager = new WorktreeManager(config, fakeGit());
+    const claimed = await manager.claim("repo-1", "wt-1");
+    // The public policy mutators advance the generation atomically. Exercise the defensive
+    // branch as well: a pending execution must still fail closed if policy state is observed
+    // active before a concurrent inventory fence is recorded.
+    const internals = manager as unknown as {
+      allowedRootsPolicyActive: boolean;
+      policyAllowedRoots: string[];
+    };
+    internals.allowedRootsPolicyActive = true;
+    internals.policyAllowedRoots = [];
+    await expect(claimed.currentExecutionTarget?.()).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+  });
+
+  it("stops claim retries when the session is already cancelled", async () => {
+    const signal = AbortSignal.abort();
+    const manager = new WorktreeManager(config, fakeGit());
+    await expect(manager.claim("repo-1", "wt-1", signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(manager.mainClaim("repo-1", signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(manager.isBusy("wt-1")).toBe(false);
+  });
+
+  it("refuses checkout when the roots policy changes after a claim", async () => {
+    const root = join(tmpdir(), `ah-claim-policy-change-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(jailed, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    manager.setAllowedRootsPolicy([]);
+    await expect(manager.prepareCheckout(claimed, undefined)).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+    expect(git.checkoutRef).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a claim after unrelated inventory changes", async () => {
+    const root = join(tmpdir(), `ah-claim-unrelated-refresh-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: ["before"] }],
+        },
+      ],
+      providerAccounts: [],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(refreshed, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    const mainClaim = await manager.mainClaim("repo-1");
+    refreshed.requiredEnvironment = ["TOKEN"];
+    refreshed.repositories = [
+      {
+        ...refreshed.repositories[0]!,
+        providerAccountOverrides: { "provider-1": { enabled: false } },
+        worktrees: [
+          {
+            ...refreshed.repositories[0]!.worktrees[0]!,
+            labels: ["after"],
+            providerAccountOverrides: { "provider-1": { commandId: "safe" } },
+          },
+        ],
+      },
+    ];
+    manager.noteInventoryChange();
+
+    await expect(manager.prepareCheckout(claimed, "main")).resolves.toBeUndefined();
+    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+    await expect(manager.prepareMainCheckout(mainClaim, "main")).resolves.toBeUndefined();
+    expect(git.prepareMainCheckout).toHaveBeenCalledWith({
+      cwd: await realpath(repository),
+      ref: "main",
+    });
+
+    const movedWorktree = join(repository, "moved-worktree");
+    await mkdir(movedWorktree);
+    refreshed.repositories = [
+      {
+        ...refreshed.repositories[0]!,
+        worktrees: [{ ...refreshed.repositories[0]!.worktrees[0]!, path: movedWorktree }],
+      },
+    ];
+    manager.noteInventoryChange();
+    await expect(manager.prepareCheckout(claimed, "main")).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
+  it("uses canonical paths for startup Git preparation", async () => {
+    const root = join(tmpdir(), `ah-canonical-ensure-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const repositoryLink = join(root, "repository-link");
+    const worktreeLink = join(root, "worktree-link");
+    await symlink(repository, repositoryLink);
+    await symlink(worktree, worktreeLink);
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repositoryLink,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktreeLink, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    await new WorktreeManager(jailed, git).ensureAll();
+    expect(git.ensureRepo).toHaveBeenCalledWith(await realpath(repository));
+    expect(git.ensureWorktree).toHaveBeenCalledWith({
+      repoPath: await realpath(repository),
+      worktreePath: await realpath(worktree),
+      branch: "main",
+    });
+  });
+
+  it("retries a claim against the refreshed inventory after async validation", async () => {
+    const root = join(tmpdir(), `ah-claim-refresh-${String(Date.now())}`);
+    fixtures.push(root);
+    const oldWorktree = join(root, "old", "wt");
+    const newWorktree = join(root, "new", "wt");
+    await mkdir(oldWorktree, { recursive: true });
+    await mkdir(newWorktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: join(root, "old"),
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: oldWorktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(refreshConfig, fakeGit());
+    const pending = manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [
+      {
+        id: "repo-1",
+        path: join(root, "new"),
+        defaultBranch: "main",
+        worktrees: [{ id: "wt-1", name: "wt-1", path: newWorktree, labels: [] }],
+      },
+    ];
+    manager.noteInventoryChange();
+    await expect(pending).resolves.toMatchObject({ cwd: await realpath(newWorktree) });
+  });
+
+  it("rejects a claim when a refresh removes its repository during validation", async () => {
+    const root = join(tmpdir(), `ah-claim-removed-repository-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(refreshConfig, fakeGit());
+    const pending = manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [];
+    manager.noteInventoryChange();
+    await expect(pending).rejects.toThrow("Unknown repository: repo-1");
+    expect(manager.isBusy("wt-1")).toBe(false);
+  });
+
+  it("rejects a claimed execution when a refresh removes its worktree", async () => {
+    const root = join(tmpdir(), `ah-claim-removed-worktree-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(refreshConfig, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [{ ...refreshConfig.repositories[0]!, worktrees: [] }];
+    manager.noteInventoryChange();
+    await expect(manager.prepareCheckout(claimed, "main")).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+    expect(git.checkoutRef).not.toHaveBeenCalled();
   });
 });

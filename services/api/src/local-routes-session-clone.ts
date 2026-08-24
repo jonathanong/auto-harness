@@ -191,18 +191,19 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
           ),
       );
     }
-    await plane.requestAssignment();
-    return respondAfterCloneAudit(
-      ctx,
-      {
+    if (
+      !(await writeRouteAudit(ctx, {
         action: "session:clone",
         resourceType: "session",
         resourceId: result.session.id,
         repositoryId: result.session.repositoryId,
         metadata: { sourceId },
-      },
-      () => send(res, 201, { ...result.session, created: true }),
-    );
+      }))
+    )
+      return true;
+    await plane.requestAssignment();
+    send(res, 201, { ...result.session, created: true });
+    return true;
   } catch {
     return respondAfterCloneAudit(
       ctx,

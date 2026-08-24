@@ -41,4 +41,13 @@ describe("account settings page", () => {
     expect(html).toContain('data-pw="account-details"');
     expect(html).toContain("Password rotation");
   });
+
+  it("hides account chrome when a required session is denied", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({ "/api/v1/auth/me": new Response(null, { status: 401 }) });
+    const html = await renderPage(AccountSettingsPage());
+    expect(html).not.toContain('data-pw="account-details"');
+    expect(html).not.toContain("Authentication disabled");
+    expect(html).not.toContain("Password rotation");
+  });
 });

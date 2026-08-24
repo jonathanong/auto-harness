@@ -56,6 +56,79 @@ describe("claimed session cancellation", () => {
     expect(started).toBe(false);
   });
 
+  it("does not run setup or the command after execution policy validation fails", async () => {
+    let started = false;
+    const logs = [];
+    const outcome = await runClaimedSession(
+      {
+        async run() {
+          started = true;
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign({ setupScript: "setup" }),
+      {
+        ...claimed,
+        currentExecutionTarget: async () => {
+          throw new Error("host inventory changed after this checkout was claimed");
+        },
+      },
+      undefined,
+      () => false,
+      () => 100,
+    );
+    expect(outcome).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "host inventory changed after this checkout was claimed",
+    });
+    expect(started).toBe(false);
+  });
+
+  it("does not start the command when policy changes after setup", async () => {
+    let checks = 0;
+    let setupRuns = 0;
+    let commandStarted = false;
+    const logs = [];
+    const outcome = await runClaimedSession(
+      {
+        async run() {
+          setupRuns += 1;
+          return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+        },
+      },
+      new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign({ setupScript: "setup" }),
+      {
+        ...claimed,
+        currentExecutionTarget: async () => {
+          checks += 1;
+          if (checks === 3) throw new Error("host inventory changed during setup");
+        },
+      },
+      undefined,
+      () => false,
+      () => 100,
+      {
+        async run() {
+          commandStarted = true;
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    );
+    expect(outcome).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "host inventory changed during setup",
+    });
+    expect(checks).toBe(3);
+    expect(setupRuns).toBe(1);
+    expect(commandStarted).toBe(false);
+  });
+
   it("reports timeout when setup is entered after the deadline", async () => {
     const controller = new AbortController();
     controller.abort();

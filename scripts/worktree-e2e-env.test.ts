@@ -6,7 +6,7 @@ vi.mock("node:net", () => ({ connect: vi.fn() }));
 
 const { spawnSync } = await import("node:child_process");
 const { connect } = await import("node:net");
-const { bucketFor, computePorts, envFor, findAvailablePorts, fnv1a, portsForBucket } =
+const { bucketFor, computePorts, ensureDynamo, envFor, findAvailablePorts, fnv1a, portsForBucket } =
   await import("./worktree-e2e-env.mts");
 
 afterEach(() => {
@@ -113,6 +113,72 @@ describe("findAvailablePorts", () => {
 
     await expect(findAvailablePorts("worktree-a", 3)).rejects.toThrow(
       /Could not find a free e2e port block/,
+    );
+  });
+});
+
+describe("ensureDynamo", () => {
+  const ports = computePorts("worktree-a");
+
+  it("reuses a running container on the pinned image", () => {
+    vi.mocked(spawnSync).mockReturnValue({
+      status: 0,
+      stdout: "true\tamazon/dynamodb-local:3.3.1\n",
+    } as never);
+
+    ensureDynamo(ports);
+
+    expect(spawnSync).toHaveBeenCalledOnce();
+  });
+
+  it("restarts a stopped container on the pinned image", () => {
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "false\tamazon/dynamodb-local:3.3.1\n",
+      } as never)
+      .mockReturnValueOnce({ status: 0 } as never);
+
+    ensureDynamo(ports);
+
+    expect(spawnSync).toHaveBeenLastCalledWith("docker", ["start", ports.containerName], {
+      stdio: "inherit",
+    });
+  });
+
+  it("recreates a reusable container when its configured image is outdated", () => {
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "true\tamazon/dynamodb-local:2.5.2\n",
+      } as never)
+      .mockReturnValueOnce({ status: 0 } as never)
+      .mockReturnValueOnce({ status: 0 } as never);
+
+    ensureDynamo(ports);
+
+    expect(spawnSync).toHaveBeenNthCalledWith(2, "docker", ["rm", "-f", ports.containerName], {
+      stdio: "inherit",
+    });
+    expect(spawnSync).toHaveBeenNthCalledWith(
+      3,
+      "docker",
+      expect.arrayContaining(["run", "-d", "amazon/dynamodb-local:3.3.1"]),
+      { stdio: "inherit" },
+    );
+  });
+
+  it("creates the pinned container when none exists", () => {
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({ status: 1, stdout: "" } as never)
+      .mockReturnValueOnce({ status: 0 } as never);
+
+    ensureDynamo(ports);
+
+    expect(spawnSync).toHaveBeenLastCalledWith(
+      "docker",
+      expect.arrayContaining(["run", "-d", "amazon/dynamodb-local:3.3.1"]),
+      { stdio: "inherit" },
     );
   });
 });

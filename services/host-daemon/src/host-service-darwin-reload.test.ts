@@ -79,7 +79,7 @@ describe("install-service darwin reload", () => {
       }),
     ]) {
       expect(result.code).toBe(1);
-      expect(result.errors.join("\n")).toMatch(/kickstart -k/);
+      expect(result.errors.join("\n")).toMatch(/kickstart/);
     }
   });
 
@@ -95,7 +95,7 @@ describe("install-service darwin reload", () => {
       kickstart: errRun(37, ""),
     });
     expect(result.code).toBe(1);
-    expect(result.errors.join("\n")).toMatch(/kickstart -k/);
+    expect(result.errors.join("\n")).toMatch(/kickstart/);
   });
 
   it("does not treat a failed or unverifiable kickstart as a restart", () => {
@@ -121,7 +121,7 @@ describe("install-service darwin reload", () => {
           kickstart: errRun(1, "kick"),
         }),
       ).errors.join("\n"),
-    ).toMatch(/kickstart -k/);
+    ).toMatch(/kickstart/);
     expect(
       install(
         launchctlByStep({

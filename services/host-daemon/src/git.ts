@@ -65,11 +65,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         "worktree",
         "add",
         "--detach",
-        worktreePath,
+        worktreeIdentity,
         sha,
       ]);
       if (add.exitCode !== 0) {
-        throw gitFailure(`Failed to create worktree at ${worktreePath}`, add.stderr);
+        throw gitFailure(`Failed to create worktree at ${worktreeIdentity}`, add.stderr);
       }
     },
 

@@ -10,6 +10,9 @@ import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 
+export { refreshAssignmentCommandsDurable } from "./control-plane-assignment-command-refresh.ts";
+import { withoutDaemonLabelProvenance } from "./control-plane-agent-registration.ts";
+
 /** Read queue rows directly for operational metrics instead of reusing stale cache entries. */
 export async function listQueuedSessionsDurableForMetric(
   state: ControlPlaneState,
@@ -108,6 +111,7 @@ export const getCommandDurable = (state: ControlPlaneState, id: string) =>
     (storage, recordId) => storage.getCommand(recordId),
     id,
   );
+
 export const listCommandsDurable = (state: ControlPlaneState) =>
   list<CommandRecord>(
     state,
@@ -146,18 +150,23 @@ export const listProviderAccountsDurable = (state: ControlPlaneState) =>
     (record) => record.id,
   );
 
-export const getHostInventoryDurable = (state: ControlPlaneState, hostId: string) =>
-  get<HostInventoryRecord>(
+export async function getHostInventoryDurable(
+  state: ControlPlaneState,
+  hostId: string,
+): Promise<HostInventoryRecord | null> {
+  const record = await get<HostInventoryRecord>(
     state,
     state.hostInventories,
     (storage, id) => storage.getHostInventory(id),
     hostId,
   );
+  return record ? withoutDaemonLabelProvenance(record) : null;
+}
 export async function listHostInventoriesDurable(
   state: ControlPlaneState,
 ): Promise<HostInventoryRecord[]> {
   if (!state.storage) {
-    return [...state.hostInventories.values()].map((record) => ({ ...record }));
+    return [...state.hostInventories.values()].map(withoutDaemonLabelProvenance);
   }
   // A scan that started before a concurrent durable PUT can finish afterward and
   // otherwise erase the newer cache entry. Retry against storage after mutations.
@@ -165,7 +174,8 @@ export async function listHostInventoriesDurable(
     const revision = state.hostInventoryRevision;
     const records = await state.storage.listHostInventories();
     if (revision === state.hostInventoryRevision) {
-      return replace(state.hostInventories, records, (record) => record.hostId);
+      replace(state.hostInventories, records, (record) => record.hostId);
+      return records.map(withoutDaemonLabelProvenance);
     }
   }
 }

@@ -18,6 +18,7 @@ import {
   loadLiveWorktreesById,
   loadRepoNamesById,
 } from "../../../lib/inventory.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,18 @@ type Session = {
   source?: string;
 };
 
+function hasRepositoryExecConfig(repository: HostRepository): boolean {
+  return (
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== "" ||
+    repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== "")
+  );
+}
+
+function hasWorktreeExecConfig(worktree: HostRepository["worktrees"][number] | undefined): boolean {
+  return (worktree?.setupScript ?? "") !== "";
+}
+
 export default async function RepositoryDetailPage({
   params,
   searchParams,
@@ -40,6 +53,8 @@ export default async function RepositoryDetailPage({
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
   const agent = hostId();
+  const principal = await loadPrincipal();
+  const canEditExecConfig = can(principal, "fleet:exec-config");
   const inventory = await loadHostInventory(agent);
 
   const repo: HostRepository | undefined = inventory.repositories.find(
@@ -105,9 +120,17 @@ export default async function RepositoryDetailPage({
                 repo={repo}
                 repoName={repoName}
                 browseEndpoint="/api/browse"
+                canWriteExecConfig={canEditExecConfig}
+                hasInheritedExecutionConfig={
+                  (inventory.setupScript ?? "") !== "" ||
+                  (repo.setupScript ?? "") !== "" ||
+                  (repo.terminalHookScript ?? "") !== ""
+                }
               />
             ) : null}
-            <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+            {canEditExecConfig || !hasRepositoryExecConfig(repo) ? (
+              <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+            ) : null}
           </>
         }
       >
@@ -135,13 +158,18 @@ export default async function RepositoryDetailPage({
                   groups={[group]}
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees yet."
-                  renderWorktreeActions={(wt) => (
-                    <RemoveWorktreeButton
-                      hostId={agent}
-                      repositoryId={repo.id}
-                      worktreeId={wt.id}
-                    />
-                  )}
+                  renderWorktreeActions={(wt) =>
+                    canEditExecConfig ||
+                    !hasWorktreeExecConfig(
+                      repo.worktrees.find((worktree) => worktree.id === wt.id),
+                    ) ? (
+                      <RemoveWorktreeButton
+                        hostId={agent}
+                        repositoryId={repo.id}
+                        worktreeId={wt.id}
+                      />
+                    ) : null
+                  }
                 />
               ),
             },

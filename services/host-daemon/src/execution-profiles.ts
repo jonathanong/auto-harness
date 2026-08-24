@@ -29,6 +29,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function rejectUnknownKeys(
+  raw: Record<string, unknown>,
+  allowed: readonly string[],
+  ctx: string,
+): void {
+  const unknown = Object.keys(raw).find((key) => !allowed.includes(key));
+  if (unknown) throw new Error(`${ctx} has unknown key: ${unknown}`);
+}
+
 function parseAssignmentCap(value: unknown, ctx: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new Error(`${ctx} must be a positive integer`);
@@ -65,6 +74,7 @@ function parseAccountProfile(providerAccountId: string, raw: unknown): Execution
     );
   }
   if (!isRecord(raw)) throw new Error(`execution profile ${providerAccountId} must be an object`);
+  rejectUnknownKeys(raw, ["home", "env"], `execution profile ${providerAccountId}`);
   if (typeof raw.home !== "string" || raw.home.length === 0 || !isAbsolute(raw.home)) {
     throw new Error(`execution profile ${providerAccountId}.home must be an absolute path`);
   }
@@ -83,6 +93,7 @@ export function emptyExecutionProfiles(): ExecutionProfiles {
 export function parseExecutionProfiles(raw: unknown): ExecutionProfiles {
   if (raw === undefined || raw === null) return emptyExecutionProfiles();
   if (!isRecord(raw)) throw new Error("execution profiles must be an object");
+  rejectUnknownKeys(raw, ["maxConcurrentAssignments", "accounts"], "execution profiles");
   const maxConcurrentAssignments =
     raw.maxConcurrentAssignments === undefined
       ? DEFAULT_MAX_CONCURRENT_ASSIGNMENTS

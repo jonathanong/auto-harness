@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- setup-script field is gated separately from inventory fields. */
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -25,6 +26,8 @@ export function AddWorktreeForm({
   repoName,
   browseEndpoint,
   mutate = mutateInventory,
+  canWriteExecConfig = false,
+  hasInheritedExecutionConfig = false,
 }: {
   hostId: string;
   repo: HostRepository;
@@ -33,6 +36,9 @@ export function AddWorktreeForm({
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
   mutate?: typeof mutateInventory;
+  canWriteExecConfig?: boolean;
+  /** Host/repository setup or terminal hooks execute in the new worktree's checkout. */
+  hasInheritedExecutionConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -45,15 +51,23 @@ export function AddWorktreeForm({
   const [pathEdited, setPathEdited] = useState(false);
   const [labels, setLabels] = useState("");
   const [setupScript, setSetupScript] = useState("");
+  const pathEditingBlocked = !canWriteExecConfig && hasInheritedExecutionConfig;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <WithTooltip tip="Records the name and path on the control plane. Does not mkdir the worktree directory — the daemon runs git worktree add when online.">
+      <WithTooltip
+        tip={
+          pathEditingBlocked
+            ? "Adding a worktree requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+            : "Records the name and path on the control plane. Does not mkdir the worktree directory — the daemon runs git worktree add when online."
+        }
+      >
         <Button
           type="button"
           variant="outline"
           size="sm"
           data-pw={`add-worktree-open-${repo.id}`}
+          disabled={pathEditingBlocked}
           onClick={() => setOpen(true)}
         >
           + Add worktree
@@ -83,7 +97,8 @@ export function AddWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
-            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
+            const worktreeSetupScript =
+              canWriteExecConfig && setupScript.trim() ? setupScript : undefined;
             start(async () => {
               try {
                 const r = await mutate(hostId, (current) =>
@@ -92,9 +107,7 @@ export function AddWorktreeForm({
                     name: wtName,
                     path: wtPath,
                     labels: requestedLabels,
-                    ...(worktreeSetupScript !== undefined
-                      ? { setupScript: worktreeSetupScript }
-                      : {}),
+                    ...(worktreeSetupScript ? { setupScript: worktreeSetupScript } : {}),
                   }),
                 );
                 if (!r.ok) {
@@ -168,22 +181,24 @@ export function AddWorktreeForm({
               data-pw={`add-worktree-labels-${repo.id}`}
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`addWorktreeSetupScript-${repo.id}`}
-              tip="Optional worktree override; leave blank to inherit repository setup"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id={`addWorktreeSetupScript-${repo.id}`}
-              value={setupScript}
-              onChange={(event) => setSetupScript(event.target.value)}
-              rows={5}
-              className="font-mono text-xs"
-              data-pw={`add-worktree-setup-script-${repo.id}`}
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor={`addWorktreeSetupScript-${repo.id}`}
+                tip="Optional worktree override; leave blank to inherit repository setup. Requires fleet:exec-config."
+              >
+                Setup Script
+              </Label>
+              <Textarea
+                id={`addWorktreeSetupScript-${repo.id}`}
+                value={setupScript}
+                onChange={(event) => setSetupScript(event.target.value)}
+                rows={5}
+                className="font-mono text-xs"
+                data-pw={`add-worktree-setup-script-${repo.id}`}
+              />
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Persist this worktree on host inventory (daemon reloads within ~15s)">
               <Button
