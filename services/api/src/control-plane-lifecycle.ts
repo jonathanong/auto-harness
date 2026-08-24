@@ -2,6 +2,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
 export { cancelSession } from "./control-plane-cancel-local.ts";
+export { planSessionTransition, transitionEffect } from "./session-transition-planner.ts";
 
 export {
   archiveSessionLogs,

@@ -40,6 +40,7 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import { sessionPrincipalId } from "../control-plane-session-owner.ts";
+import { transitionEffect, type SessionTransitionPlan } from "../session-transition-planner.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
@@ -1756,4 +1757,85 @@ export async function setWorktreeOnlineFenced(
     if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
     throw err;
   }
+}
+
+function reportFieldsFromPlan(plan: SessionTransitionPlan): {
+  exitCode?: number | null;
+  errorCode?: string;
+  errorMessage?: string;
+  cliResumeRef?: string;
+} {
+  const finish = transitionEffect(plan, "finish");
+  const requeue = transitionEffect(plan, "requeue");
+  const exitCode = finish?.exitCode !== undefined ? finish.exitCode : requeue?.exitCode;
+  const errorCode = finish?.errorCode !== undefined ? finish.errorCode : requeue?.errorCode;
+  const errorMessage =
+    finish?.errorMessage !== undefined ? finish.errorMessage : requeue?.errorMessage;
+  const cliResumeRef =
+    finish?.cliResumeRef !== undefined ? finish.cliResumeRef : requeue?.cliResumeRef;
+  return {
+    ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(errorCode !== undefined ? { errorCode } : {}),
+    ...(errorMessage !== undefined ? { errorMessage } : {}),
+    ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+  };
+}
+
+/** Build finishSession arguments from finish/requeue effects. */
+export function finishSessionOptsFromPlan(
+  session: SessionRecord,
+  plan: SessionTransitionPlan,
+  extras: { attemptId: string; fence?: { hostId: string; connectionId: string } },
+): Parameters<typeof finishSession>[1] {
+  const finish = transitionEffect(plan, "finish");
+  const queued = transitionEffect(plan, "requeue") !== undefined && finish === undefined;
+  return {
+    sessionId: session.id,
+    worktreeId: session.worktreeId ?? null,
+    attemptId: extras.attemptId,
+    status: finish?.status ?? "queued",
+    queueShard: session.queueShard,
+    ...(queued || finish?.completedAt === undefined ? {} : { completedAt: finish.completedAt }),
+    ...reportFieldsFromPlan(plan),
+    ...(extras.fence ? { fence: extras.fence } : {}),
+    ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+  };
+}
+
+/** Map planner cooldown+requeue effects onto the usage-limit worktree write. */
+export function requeueUsageLimitedSessionOptsFromPlan(
+  session: SessionRecord,
+  plan: SessionTransitionPlan,
+  extras: { now: string; attemptId: string },
+): Parameters<typeof requeueUsageLimitedSession>[1] {
+  const cooldown = transitionEffect(plan, "cooldown")!;
+  const requeue = transitionEffect(plan, "requeue");
+  return {
+    sessionId: session.id,
+    worktreeId: session.worktreeId!,
+    attemptId: extras.attemptId,
+    providerAccountId: cooldown.providerAccountId,
+    queueShard: session.queueShard,
+    now: extras.now,
+    usageLimitedUntil: cooldown.usageLimitedUntil,
+    ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+  };
+}
+
+/** Map planner suppress+requeue effects onto the providerless usage-limit write. */
+export function suppressProviderlessUsageLimitOptsFromPlan(
+  session: SessionRecord,
+  plan: SessionTransitionPlan,
+  extras: { attemptId: string },
+): Parameters<typeof suppressProviderlessUsageLimit>[1] {
+  const suppress = transitionEffect(plan, "suppress_target")!;
+  const requeue = transitionEffect(plan, "requeue");
+  return {
+    sessionId: session.id,
+    worktreeId: session.worktreeId!,
+    attemptId: extras.attemptId,
+    queueShard: session.queueShard,
+    targetIndex: suppress.targetIndex,
+    ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+  };
 }
