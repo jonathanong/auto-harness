@@ -8,6 +8,7 @@ import {
   parseCliUsage,
   resolveCliProvider,
 } from "./usage-adapter.ts";
+import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
 
 const observedAt = "2026-01-01T00:00:00.000Z";
 
@@ -200,9 +201,208 @@ describe("parseCliUsage", () => {
       }),
     ).toEqual({});
   });
+
+  it("accepts provider flag aliases and rejects incomplete structured modes", () => {
+    const claude = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      usage: { input_tokens: 2 },
+    });
+    expect(
+      parseCliUsage({
+        argv: ["claude", "--print", "--output-format=json"],
+        output: claude,
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { inputTokens: "2" } });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "--prompt", "--output-format=json"],
+        output: JSON.stringify({ response: "ok", usageMetadata: { inputTokens: 3 } }),
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { inputTokens: "3" } });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "--single", "--output-format=json"],
+        output: JSON.stringify({ response: "ok", usage: { inputTokens: 4 } }),
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { inputTokens: "4" } });
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json=true"],
+        output: '{"type":"turn.completed","usage":{"input_tokens":1}}',
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("covers provider usage fallbacks, malformed usage, and all structured quota envelopes", () => {
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ response: "ok", stats: { usageMetadata: { outputTokens: 6 } } }),
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { outputTokens: "6" } });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ response: "ok", stats: { tokens: { totalTokens: 7 } } }),
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { totalTokens: "7" } });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ response: "ok", usageMetadata: { inputTokens: -1 } }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED" } }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ error: { code: "RESOURCE_EXHAUSTED" } }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ status: "error", error: { code: "RATE_LIMIT_ERROR" } }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ type: "error", error: { status: "usage_limit" } }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ response: "ok", usage: { reasoningTokens: "8", totalTokens: 9 } }),
+        observedAt,
+      }),
+    ).toMatchObject({ usage: { reasoningTokens: "8", totalTokens: "9" } });
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output: JSON.stringify({ type: "result", subtype: "success", is_error: true }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({ response: "ok" }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ text: "ok" }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("maps every token field and handles alternate structured error codes", () => {
+    const usage = parseCliUsage({
+      argv: ["claude", "-p", "--output-format", "json"],
+      output: JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        usage: {
+          inputTokens: 1.9,
+          outputTokens: "2",
+          cachedInputTokens: "3",
+          reasoningTokens: 4,
+          totalTokens: "5",
+        },
+      }),
+      observedAt,
+    });
+    expect(usage).toMatchObject({
+      usage: {
+        inputTokens: "1",
+        outputTokens: "2",
+        cachedInputTokens: "3",
+        reasoningTokens: "4",
+        totalTokens: "5",
+      },
+    });
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "result",
+          subtype: "server_error",
+          is_error: true,
+          error: { code: "INSUFFICIENT_QUOTA" },
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "turn.failed", error: { status: "RATE_LIMIT_ERROR" } }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "turn.completed", usage: [] }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+});
+
+describe("structured JSON scanners", () => {
+  it("skips malformed and incomplete objects while finding a later valid envelope", () => {
+    expect(jsonObject("{incomplete")).toBeUndefined();
+    expect(jsonObject('{bad} {"ok":true}')).toEqual({ ok: true });
+    expect(jsonObject(JSON.stringify({ message: 'brace { and quote "' }))).toEqual({
+      message: 'brace { and quote "',
+    });
+    expect(jsonLines('\nnot-json\nnull\n[]\n{"ok":true}\n')).toEqual([{ ok: true }]);
+  });
 });
 
 describe("UsageCapturingProcessRunner", () => {
+  it("passes through unstructured commands without capturing their output", async () => {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: "plain output" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["echo", "plain"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toEqual({ exitCode: 0, timedOut: false, signal: null });
+  });
+
   it("retains a complete structured envelope larger than 256 KiB", async () => {
     const envelope = JSON.stringify({
       response: "x".repeat(300 * 1024),

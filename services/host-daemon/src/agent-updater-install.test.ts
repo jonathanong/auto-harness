@@ -1,5 +1,13 @@
 /* eslint-disable max-lines -- installer staging, activation, rollback, and boot recovery share one tree helper. */
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync } from "node:fs";
@@ -328,6 +336,83 @@ describe("file update installer", () => {
       await expect(
         badExtract.stage({ version: "3.0.3", artifact: new Uint8Array() }),
       ).rejects.toThrow("extraction failed");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rejects mismatched privileged manifests and boot acknowledgements", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, privilegedActivation: true });
+      await installer.stage({
+        version: "2.0.0",
+        artifact: new Uint8Array([1]),
+        manifest: {
+          version: "2.0.0",
+          artifactUrl: "https://updates.example.test/2.0.0.tgz",
+          sha256: "a".repeat(64),
+          signature: "signature",
+        },
+      });
+      await expect(installer.activate("2.0.1")).rejects.toThrow("marker does not match");
+      writeFileSync(
+        join(rootDir, ".auto-harness-update-boot.json"),
+        '{"version":"2.0.0","attempted":false}\n',
+      );
+      expect(() => confirmPrivilegedPendingUpdateBoot(rootDir)).toThrow(
+        "does not match the active release",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("handles legacy current trees and invalid installed version markers", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      runnableExtract("", join(rootDir, "current"));
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "2.1.0", artifact: new Uint8Array() });
+      await installer.activate("2.1.0");
+      expect(readInstalledVersion(rootDir)).toBe("2.1.0");
+      expect(readInstalledVersion(join(rootDir, "missing"))).toBeUndefined();
+      writeFileSync(join(rootDir, "current", ".auto-harness-version"), "not-a-version\n");
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails closed for a pointer that disagrees with the active marker", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const versions = join(rootDir, "versions");
+      mkdirSync(join(versions, "2.2.0"), { recursive: true });
+      mkdirSync(join(versions, "2.3.0"), { recursive: true });
+      writeFileSync(join(versions, "2.2.0", ".auto-harness-version"), "2.2.0\n");
+      writeFileSync(join(versions, "2.3.0", ".auto-harness-version"), "2.2.0\n");
+      symlinkSync(join("versions", "2.3.0"), join(rootDir, "current"), "dir");
+      writeFileSync(
+        join(rootDir, ".auto-harness-update-boot.json"),
+        '{"version":"2.2.0","attempted":true}\n',
+      );
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("migrates an unversioned legacy current tree with the stable fallback", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      runnableExtract("", join(rootDir, "current"));
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "2.4.0", artifact: new Uint8Array() });
+      await installer.activate("2.4.0");
+      expect(readFileSync(join(rootDir, "previous-version"), "utf8")).toBe(
+        join("versions", "0.0.0"),
+      );
     } finally {
       cleanup();
     }

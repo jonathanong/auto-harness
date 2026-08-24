@@ -83,6 +83,25 @@ describe("install-service CLI", () => {
     });
   });
 
+  it("keeps the existing service environment when remote update settings cannot load", async () => {
+    let received: NodeJS.ProcessEnv | undefined;
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("control plane unavailable");
+      },
+      installService: ({ env }) => {
+        received = env;
+        return 0;
+      },
+    });
+    const env = { HARNESS_UPDATE_INSTALL_DIR: "/srv/known-good" };
+    expect(await runCli(["node", "x", "install-service"], env, a)).toBe(0);
+    expect(received).toBe(env);
+    expect(a.errors).toEqual([
+      "Could not load host update settings; keeping local service settings: control plane unavailable",
+    ]);
+  });
+
   it("requires a value after --api-url", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "install-service", "--api-url"], {}, a)).toBe(1);

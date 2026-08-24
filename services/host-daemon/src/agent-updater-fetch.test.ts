@@ -141,4 +141,81 @@ describe("HTTPS update fetcher", () => {
     await expect(fetcher.fetchManifest()).rejects.toThrow("manifest response exceeds");
     expect(cancelled).toBe(true);
   });
+
+  it("buffers streamed manifests and artifacts, including empty chunks", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async (url) => {
+        const chunks = url.endsWith("manifest.json")
+          ? [encoder.encode('{"version":"'), undefined, encoder.encode('1.3.0"}')]
+          : [new Uint8Array([1]), undefined, new Uint8Array([2, 3])];
+        let index = 0;
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: async () =>
+                index < chunks.length ? { done: false, value: chunks[index++] } : { done: true },
+            }),
+          },
+        };
+      },
+    );
+    await expect(fetcher.fetchManifest()).resolves.toEqual({ version: "1.3.0" });
+    await expect(fetcher.fetchArtifact("https://updates.example.test/agent.tgz")).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+  });
+
+  it("cancels and preserves the original error when a reader fails", async () => {
+    let cancelled = false;
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: async () => {
+              throw new Error("stream broke");
+            },
+            cancel: async () => {
+              cancelled = true;
+              throw new Error("cancel broke");
+            },
+          }),
+        },
+      }),
+    );
+    await expect(fetcher.fetchManifest()).rejects.toThrow("stream broke");
+    expect(cancelled).toBe(true);
+  });
+
+  it("uses legacy body fallbacks and reports responses without a body", async () => {
+    const fallback = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async (url) => ({
+        ok: true,
+        status: 200,
+        body: null,
+        ...(url.endsWith("manifest.json")
+          ? { json: async () => ({ version: "1.4.0" }) }
+          : { arrayBuffer: async () => new Uint8Array([4, 5]).buffer }),
+      }),
+    );
+    await expect(fallback.fetchManifest()).resolves.toEqual({ version: "1.4.0" });
+    await expect(fallback.fetchArtifact("https://updates.example.test/agent.tgz")).resolves.toEqual(
+      new Uint8Array([4, 5]),
+    );
+    const missing = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({ ok: true, status: 200, body: null }),
+    );
+    await expect(missing.fetchManifest()).rejects.toThrow("manifest response has no body");
+    await expect(missing.fetchArtifact("https://updates.example.test/agent.tgz")).rejects.toThrow(
+      "artifact response has no body",
+    );
+  });
 });
