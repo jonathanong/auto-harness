@@ -57,6 +57,39 @@ describe("host registration repository inventory", () => {
     ]);
   });
 
+  it("preserves operator-edited worktree labels across a stale daemon registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.putHostInventory("host", {
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            defaultBranch: "main",
+            worktrees: [{ id: "worktree", name: "worktree", path: "/repo/worktree", labels: [] }],
+          },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          {
+            id: "worktree",
+            name: "worktree",
+            repositoryId: "repo",
+            path: "/repo/worktree",
+            labels: ["stale"],
+          },
+        ],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]?.labels).toEqual([]);
+    expect(plane.getWorktree("worktree")?.labels).toEqual([]);
+  });
+
   it("derives older registrations from worktrees and rejects malformed input", () => {
     expect(
       resolveRegisteredRepositories(
