@@ -93,15 +93,16 @@ describe("LogStreamer drop telemetry", () => {
     streamer.write("stdout", "b");
     streamer.write("stdout", "c");
     clock.advance(1_000);
-    clock.advance(1_000);
     expect(chunks.map((chunk) => chunk.content)).toEqual(["a", "b"]);
-    streamer.flush();
+    clock.advance(1_000);
     expect(streamer.droppedCount()).toBe(1);
     expect(contents(chunks)).toEqual([
       { content: "a", dropped: undefined },
       { content: "b", dropped: undefined },
       { content: formatDroppedLogNotice(1), dropped: 1 },
     ]);
+    clock.advance(1_000);
+    expect(chunks).toHaveLength(3);
   });
 
   it("still emits system lifecycle lines after session chunk and byte caps fill", () => {

@@ -167,7 +167,7 @@ export class LogStreamer {
     force: boolean,
     allowPending: boolean,
   ): EnqueueResult {
-    if (allowPending && this.pending && this.fits(this.pending, stream, piece)) {
+    if (allowPending && !this.overflow && this.pending && this.fits(this.pending, stream, piece)) {
       appendToBatch(this.pending, piece);
       return { chunk: null, diverted: false };
     }
@@ -267,7 +267,6 @@ export class LogStreamer {
         this.scheduleFlush();
         return last;
       }
-      if (!mustSend && this.emittedChunks >= this.maxChunks) return last;
       const count = Math.min(this.unsentDropped, this.maxDroppedPerNotice);
       this.unsentDropped -= count;
       last = this.emitRaw("system", formatDroppedLogNotice(count), this.now(), count);

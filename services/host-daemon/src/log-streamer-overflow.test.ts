@@ -93,6 +93,39 @@ describe("LogStreamer overflow and split writes", () => {
     ]);
   });
 
+  it("does not append later stdout onto pending once overflow holds an intervening write", () => {
+    const chunks: SessionLogChunk[] = [];
+    const clock = createStreamerClock();
+    const streamer = new LogStreamer(
+      "sess-1",
+      "attempt-1",
+      (chunk) => chunks.push(chunk),
+      () => "2026-08-01T12:00:00.000Z",
+      0,
+      { logBatchMaxWaitMs: 0, maxWireBytes: 10, maxMessagesPerSec: 1 },
+      clock.timers,
+    );
+    streamer.write("stdout", "b");
+    streamer.write("stdout", "more");
+    streamer.write("stderr", "c");
+    streamer.write("stdout", "d");
+    expect(streamer.droppedCount()).toBe(1);
+    streamer.flush();
+    expect(
+      chunks
+        .filter((chunk) => chunk.stream !== "system")
+        .map((chunk) => ({
+          stream: chunk.stream,
+          content: chunk.content,
+        })),
+    ).toEqual([
+      { stream: "stdout", content: "b" },
+      { stream: "stdout", content: "more" },
+      { stream: "stderr", content: "c" },
+    ]);
+    expect(chunks.some((chunk) => chunk.content.includes("mored"))).toBe(false);
+  });
+
   it("schedules leftover drop telemetry after emitting one capped notice", () => {
     const chunks: SessionLogChunk[] = [];
     const clock = createStreamerClock();
