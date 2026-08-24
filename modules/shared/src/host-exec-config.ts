@@ -135,20 +135,41 @@ function addOptionalStringEdit(
   if (!sameOptionalString(existing, incoming)) edits.push(path);
 }
 
+function sameHookResolutionBases(previous: HostRepository, incoming: HostRepository): boolean {
+  if (previous.path !== incoming.path) return false;
+  const previousWorktrees = entriesById(previous.worktrees);
+  const incomingWorktrees = entriesById(incoming.worktrees);
+  if (previousWorktrees.size !== incomingWorktrees.size) return false;
+  for (const [id, worktree] of incomingWorktrees) {
+    if (previousWorktrees.get(id)?.path !== worktree.path) return false;
+  }
+  return true;
+}
+
 /**
  * A relative hook is accepted only when a legacy document supplies the exact
- * same value. New or changed hooks must be absolute even for admins.
+ * same value. New or changed hooks must be absolute even for admins. Since a
+ * relative hook is resolved from the execution repository/worktree, ordinary
+ * inventory writes may not move either base without exec-config capability.
  */
 function legacyRelativeHookError(
   existing: HostInventory | null | undefined,
   incoming: HostInventory,
-): string | undefined {
+  allowExecConfig: boolean,
+): { error: string; kind: "forbidden" | "validation" } | undefined {
   const previousRepositories = entriesById(existing?.repositories);
   for (const repository of incoming.repositories) {
     const hook = repository.terminalHookScript;
     if (hook === undefined || hook.length === 0 || isAbsolutePathString(hook)) continue;
-    if (previousRepositories.get(repository.id)?.terminalHookScript === hook) continue;
-    return `repository.${repository.id}.terminalHookScript must be an absolute path`;
+    const previous = previousRepositories.get(repository.id);
+    if (previous?.terminalHookScript === hook) {
+      if (allowExecConfig || sameHookResolutionBases(previous, repository)) continue;
+      return { error: EXEC_CONFIG_REQUIRED_MESSAGE, kind: "forbidden" };
+    }
+    return {
+      error: `repository.${repository.id}.terminalHookScript must be an absolute path`,
+      kind: "validation",
+    };
   }
   return undefined;
 }
@@ -291,9 +312,9 @@ export function reconcileInventoryWrite(input: {
   }
   const inventory = preserveHostExecConfig(input.incoming, input.existing);
   const execEdits = listExecConfigEdits(input.existing, inventory);
-  const legacyHookError = legacyRelativeHookError(input.existing, inventory);
+  const legacyHookError = legacyRelativeHookError(input.existing, inventory, input.allowExecConfig);
   if (legacyHookError) {
-    return { ok: false, error: legacyHookError, execEdits, kind: "validation" };
+    return { ok: false, execEdits, ...legacyHookError };
   }
   if (execEdits.length && !input.allowExecConfig) {
     return {

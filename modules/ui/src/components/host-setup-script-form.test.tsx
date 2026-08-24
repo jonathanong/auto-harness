@@ -169,6 +169,30 @@ describe("HostSetupScriptForm", () => {
     view.unmount();
   });
 
+  it("preserves trailing spaces in allowed-root path lines", async () => {
+    let execPatch: HostExecConfigPatch | undefined;
+    const mutateExec: typeof mutateExecConfig = async (hostId, patch) => {
+      execPatch = patch(current);
+      expect(hostId).toBe("host");
+      return { ok: true };
+    };
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        allowedRoots={[]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-allowed-roots"), "/opt/root  \n/usr/local\t");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(execPatch).toEqual({
+      allowedRoots: ["/opt/root  ", "/usr/local\t"],
+    });
+    view.unmount();
+  });
+
   it("surfaces mutation failures and invalid allowed roots", async () => {
     const view = mount(
       <HostSetupScriptForm

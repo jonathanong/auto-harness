@@ -498,6 +498,41 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     });
   });
 
+  it("fences unchanged legacy relative hooks when resolution paths move", () => {
+    const legacy = inventory();
+    legacy.repositories[0]!.terminalHookScript = "./hook.sh";
+    const movedRepository: HostInventory = {
+      ...legacy,
+      repositories: [
+        {
+          ...legacy.repositories[0]!,
+          path: "/opt/other/repo",
+          worktrees: [
+            { ...legacy.repositories[0]!.worktrees[0]!, path: "/opt/other/repo/.worktrees/wt-1" },
+          ],
+        },
+      ],
+    };
+    expect(
+      reconcileInventoryWrite({
+        existing: legacy,
+        incoming: movedRepository,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      error: "fleet:exec-config is required to change setup scripts or executable paths",
+    });
+    expect(
+      reconcileInventoryWrite({
+        existing: legacy,
+        incoming: movedRepository,
+        allowExecConfig: true,
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("rejects duplicate repository and worktree IDs before reconciliation", () => {
     const duplicateRepository = inventory();
     duplicateRepository.repositories.push({ ...duplicateRepository.repositories[0]! });

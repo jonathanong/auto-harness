@@ -47,7 +47,10 @@ export async function runTerminalHook(
   if (input.allowedRoots?.length) {
     try {
       scriptPath = resolveHookPath(input.cwd, input.scriptPath);
-      await assertPathWithinAllowedRoots(scriptPath, input.allowedRoots);
+      // Execute the exact canonical path that was checked. Keeping the
+      // symlink spelling here would re-open a TOCTOU window between the
+      // containment check and spawning the shell.
+      scriptPath = await assertPathWithinAllowedRoots(scriptPath, input.allowedRoots);
     } catch (err) {
       log(
         `terminal hook blocked for session ${input.sessionId}: ${

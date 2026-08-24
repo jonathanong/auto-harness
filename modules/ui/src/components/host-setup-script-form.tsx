@@ -107,9 +107,9 @@ export function HostSetupScriptForm({
                     parsedRoots =
                       parseAllowedRoots(
                         roots
-                          .split(/\r?\n/)
-                          .map((line) => line.trim())
-                          .filter(Boolean),
+                          .split("\n")
+                          .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+                          .filter((line) => line.length > 0),
                       ) ?? [];
                   } catch (error) {
                     showToast(error instanceof Error ? error.message : String(error), {
