@@ -173,4 +173,38 @@ describe("durable host inventory registration fence", () => {
       error: "host connection changed while publishing inventory",
     });
   });
+
+  it("rejects duplicate durable runningAttempts before taking a lease", async () => {
+    const plane = new ControlPlane();
+    plane.state.storage = { tryRegisterHost: async () => true } as never;
+    await expect(
+      registerHostDurable(plane.state, {
+        hostId: "h",
+        worktrees: [],
+        runningAttempts: [
+          { sessionId: "s", attemptId: "a" },
+          { sessionId: "s", attemptId: "b" },
+        ],
+      }),
+    ).resolves.toEqual({ ok: false, error: expect.stringMatching(/duplicate/) });
+  });
+
+  it("registers a durable host without protocolVersion", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [],
+      putWorktreeFenced: async () => true,
+      putHostInventoryFenced: async () => ({ ok: true }),
+    } as never;
+    await expect(
+      registerHostDurable(plane.state, {
+        hostId: "h",
+        worktrees: [],
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "c" });
+    expect(plane.state.connections.get("c")?.protocolVersion).toBeUndefined();
+  });
 });
