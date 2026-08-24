@@ -163,9 +163,10 @@ export async function smokeDeployment(
   dependencies.log(`Web health check passed: ${webUrl}`);
   // Runtime cannot know WebUrl at synth/deploy time — Web depends on Runtime, not the
   // reverse, so CloudFront's domain doesn't exist yet when Runtime's Lambdas are created.
-  // Publish it here, now that Web is confirmed healthy, so a session's `url` field and the
-  // Slack integration's deep link point at the real control plane instead of
-  // ControlPlane's http://localhost:7421 default. See public-base-url-param.ts.
+  // Publish it here, now that Web is confirmed healthy, so a session's `url` field, the
+  // Slack integration's deep link, and viewer WebSocket Origin checks point at the real
+  // control plane instead of ControlPlane's http://localhost:7421 default. See
+  // public-base-url-param.ts.
   await dependencies.run(
     "aws",
     awsArgs(config, [

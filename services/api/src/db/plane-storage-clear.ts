@@ -81,6 +81,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
     } while (startKey !== undefined);
   }
+  await clearByKey(ctx, ctx.tables.viewerTickets, "ticketHash");
   {
     let startKey: Record<string, unknown> | undefined;
     do {

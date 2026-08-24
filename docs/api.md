@@ -72,7 +72,7 @@ matrix: [roles.md](roles.md).
 
 ### `POST /auth/viewer-ticket`
 
-Issue a short-lived, single-purpose browser WebSocket credential from the authenticated session cookie. The browser presents it only as the `ticket` query parameter on `/ws/viewer`; service-account credentials are never accepted by that read-only socket.
+Issue a 60-second, one-time browser WebSocket credential from an authenticated admin or user session (cookie or Basic auth). The response is `{ ticket }` with `Cache-Control: no-store`. The browser presents it only as the `ticket` query parameter on `/ws/viewer`, which consumes it. When authentication is required, that socket does not accept the session cookie. Service-account credentials cannot mint a ticket and are never accepted by the socket.
 
 ---
 
@@ -378,8 +378,11 @@ repository- or host-scoped admins receive `403`.
 body, including the `xoxb-…` bot token and a channel name (such as `#harness`)
 or Slack channel ID. `enabled`, notification toggles, and an optional signing
 secret are supported. `GET` returns no token, signing secret, or ciphertext:
-only `botTokenConfigured` and `signingSecretConfigured` flags. `DELETE` returns
-`204`.
+only `botTokenConfigured`, `signingSecretConfigured`, and `deliveryAvailable`
+flags. `DELETE` returns `204`. `deliveryAvailable` is `true` only when this
+environment can decrypt the bot token and run the outbound worker; otherwise
+the control plane reports configured-but-unavailable and does not imply that
+messages will be sent.
 
 KMS encrypts the secret fields with `KMS_KEY_ID` and the stable
 `auto-harness/slack-integration` / `slack` encryption context before the
@@ -389,9 +392,16 @@ stale worker receives `409 CONFLICT`, rather than overwriting another worker.
 All create, update, delete, validation, and storage outcomes are audit events;
 the request body and secret values are never passed to audit metadata.
 
-This configuration endpoint does not implement Slack OAuth, incoming events,
-outbound HTTP, or production session-thread delivery. A local lifecycle worker
-can run only when a transport is explicitly injected; the API supplies none.
+Outbound session-thread delivery uses `chat.postMessage` / `chat.update` through
+the leased outbox. Session create/cancel/complete writers enqueue lifecycle rows
+in the REST/WS/cron process that persisted the snapshot, so a session that is
+created and cancelled between ticks is still delivered. The local server starts
+the worker when storage plus an injected transport or secret encryptor exist;
+the deployed cron Lambda drains the same outbox. GET may decrypt the bot token
+as a capability probe for `deliveryAvailable`. Delivery is at-least-once across
+Lambda invocations.
+Retries use the existing attempt ceiling and dead-letter exhausted operations.
+This endpoint does not implement Slack OAuth or incoming event verification.
 
 ---
 

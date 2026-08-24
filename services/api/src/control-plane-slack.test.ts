@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
+import { enableSlackOutbound } from "./slack-runtime.ts";
 
 const token = "xoxb-1234567890-abcdefghij";
 
@@ -138,6 +139,42 @@ describe("Slack integration configuration", () => {
     await expect(unencrypted.updateSlackIntegrationDurable(input())).resolves.toMatchObject({
       ok: false,
       unavailable: true,
+    });
+  });
+
+  it("reports configured-but-unavailable until outbound delivery can decrypt the token", async () => {
+    const opaque = new ControlPlane({ secretEncryptor: encryptor() });
+    const created = await opaque.createSlackIntegrationDurable(input());
+    expect(created).toMatchObject({
+      ok: true,
+      integration: { deliveryAvailable: false },
+    });
+    expect(await opaque.getSlackIntegration()).toMatchObject({ deliveryAvailable: false });
+    enableSlackOutbound(opaque);
+    expect(await opaque.getSlackIntegration()).toMatchObject({ deliveryAvailable: false });
+
+    const roundTrip: SecretEncryptor = {
+      encrypt: async (plaintext) => Buffer.from(plaintext, "utf8").toString("base64"),
+      decrypt: async (ciphertext) => Buffer.from(ciphertext, "base64").toString("utf8"),
+    };
+    const ready = new ControlPlane({ secretEncryptor: roundTrip });
+    enableSlackOutbound(ready);
+    const saved = await ready.createSlackIntegrationDurable(input());
+    expect(saved).toMatchObject({ ok: true, integration: { deliveryAvailable: true } });
+    expect(await ready.getSlackIntegration()).toMatchObject({ deliveryAvailable: true });
+    expect(await ready.getSlackIntegrationDurable()).toMatchObject({ deliveryAvailable: true });
+
+    const broken: SecretEncryptor = {
+      encrypt: async () => "ciphertext",
+      decrypt: async () => {
+        throw new Error("kms down");
+      },
+    };
+    const unavailable = new ControlPlane({ secretEncryptor: broken });
+    enableSlackOutbound(unavailable);
+    unavailable.state.slackIntegration = ready.state.slackIntegration;
+    expect(await unavailable.getSlackIntegrationDurable()).toMatchObject({
+      deliveryAvailable: false,
     });
   });
 });

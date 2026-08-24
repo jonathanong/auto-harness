@@ -15,6 +15,19 @@ import type { WebhookDestinationSelector, WebhookTransport } from "./webhook-del
 import type { WebhookWorkerOptions } from "./webhook-worker.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
+const DEFAULT_PUBLIC_BASE_URL = "http://localhost:7421";
+
+/** Configured browser origin. Empty or unset falls back to the local web default. */
+export function publicBaseUrlFromEnv(
+  value = process.env.HARNESS_PUBLIC_BASE_URL,
+): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function resolvePublicBaseUrl(value?: string): string {
+  return value ?? publicBaseUrlFromEnv() ?? DEFAULT_PUBLIC_BASE_URL;
+}
 
 export type LocalServerOptions = {
   port?: number;
@@ -25,6 +38,7 @@ export type LocalServerOptions = {
   authService?: AuthService;
   store?: MemorySessionStore;
   plane?: ControlPlane;
+  /** Browser web origin used for viewer WebSocket Origin checks and session URLs. */
   publicBaseUrl?: string;
   /**
    * When true (default for startLocalServer), open DynamoDB Local and hydrate.
@@ -47,8 +61,8 @@ export type LocalServerOptions = {
   /** Per-connection WebSocket messages per second. */
   wsRateLimitPerSecond?: number;
   /**
-   * Optional outbound boundary. No Slack transport is supplied by production code;
-   * tests or a future approved adapter must inject one explicitly.
+   * Optional outbound boundary. Local/AWS runtimes inject the HTTP transport when
+   * credentials can be decrypted; tests may replace it.
    */
   slackTransport?: SlackTransport;
   slackWorker?: SlackLifecycleWorkerOptions;

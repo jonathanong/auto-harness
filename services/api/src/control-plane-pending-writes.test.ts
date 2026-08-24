@@ -9,9 +9,10 @@ import {
 } from "./control-plane-state.ts";
 
 /**
- * settleStorage is the only thing that ever emptied these, and no production path calls
- * it — so a long-running API retained one settled promise per durable write, forever, and
- * archiving any session awaited every log write since process start.
+ * Successful writes prune themselves. settleStorage still reports failed writes and is
+ * invoked at the end of each Lambda invocation so fire-and-forget enqueue cannot be
+ * frozen before it reaches DynamoDB. Archiving a session must wait only that session's
+ * log writes, not every log write since process start.
  */
 describe("pending durable writes", () => {
   it("retains nothing once writes succeed", async () => {

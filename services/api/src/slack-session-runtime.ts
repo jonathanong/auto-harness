@@ -1,6 +1,5 @@
-import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
-import type { SlackNotifications } from "./slack-integration-types.ts";
+import type { SlackIntegrationRecord, SlackNotifications } from "./slack-integration-types.ts";
 import { planSlackLifecycle } from "./slack-lifecycle.ts";
 import { enqueueSlackDeliveries } from "./slack-outbox.ts";
 import type {
@@ -13,6 +12,20 @@ export type SlackLifecycleConfig = {
   enabled: boolean;
   defaultChannel: string;
   notifications: SlackNotifications;
+};
+
+/** Structural slice of control-plane state — kept local to avoid a circular import. */
+type SlackSessionStorage = SlackOutboxStore & {
+  getSlackIntegration?: () => Promise<SlackIntegrationRecord | null>;
+};
+
+type SlackSessionWriterState = {
+  storage: SlackSessionStorage | undefined;
+  slackIntegration: SlackIntegrationRecord | undefined;
+  now: () => string;
+  repositories: { get(id: string): { name: string } | undefined };
+  logs: { get(id: string): ReadonlyArray<{ stream: string; content: string }> | undefined };
+  publicBaseUrl: string;
 };
 
 /**
@@ -45,8 +58,42 @@ export async function reconcileSlackSession(input: {
   return { created, existing };
 }
 
+/**
+ * REST/WS/cron session writers enqueue here so a short-lived session is in the
+ * outbox even if another worker never observed it as queued/running.
+ */
+export async function enqueueSlackSessionLifecycle(
+  state: SlackSessionWriterState,
+  session: SessionRecord,
+): Promise<void> {
+  const storage = state.storage;
+  if (!storage || typeof storage.enqueue !== "function") return;
+  const record = await loadSlackRecord(state, storage);
+  if (!record?.enabled) return;
+  await reconcileSlackSession({
+    store: storage,
+    config: {
+      enabled: record.enabled,
+      defaultChannel: record.defaultChannel,
+      notifications: record.notifications,
+    },
+    session: slackSessionSnapshot(state, session),
+    now: state.now(),
+  });
+}
+
+async function loadSlackRecord(
+  state: Pick<SlackSessionWriterState, "slackIntegration">,
+  storage: SlackSessionStorage,
+): Promise<SlackIntegrationRecord | null> {
+  if (typeof storage.getSlackIntegration === "function") {
+    return storage.getSlackIntegration();
+  }
+  return state.slackIntegration ?? null;
+}
+
 export function slackSessionSnapshot(
-  state: Pick<ControlPlaneState, "repositories" | "logs" | "publicBaseUrl">,
+  state: Pick<SlackSessionWriterState, "repositories" | "logs" | "publicBaseUrl">,
   session: SessionRecord,
 ): SlackSessionSnapshot {
   const repository = state.repositories.get(session.repositoryId);
@@ -98,7 +145,7 @@ function stringMetadata(
 }
 
 function stderrTail(
-  logs: Array<{ stream: string; content: string }> | undefined,
+  logs: ReadonlyArray<{ stream: string; content: string }> | undefined,
 ): string[] | undefined {
   const lines = (logs ?? [])
     .filter(({ stream }) => stream === "stderr")

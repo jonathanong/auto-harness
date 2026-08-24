@@ -80,11 +80,12 @@ export function worktreeSlug(cwd: string = process.cwd()): string {
   return path.basename(root);
 }
 
-function envFor(ports: WorktreePorts): Record<string, string> {
+export function envFor(ports: WorktreePorts): Record<string, string> {
   return {
     HARNESS_E2E_PORT_OFFSET: String(ports.offset),
     HARNESS_E2E_DDB_ENDPOINT: `http://127.0.0.1:${ports.dynamoPort}`,
     HARNESS_API_HTTP: `http://127.0.0.1:${ports.apiPort}`,
+    HARNESS_PUBLIC_BASE_URL: `http://127.0.0.1:${ports.controlPort}`,
   };
 }
 

@@ -33,6 +33,20 @@ export type ProviderRecord = Provider;
 export type ProviderAccountRecord = ProviderAccount & { version?: number };
 export type CommandRecord = Command;
 
+/** Hashed one-time browser viewer ticket. The raw ticket is never persisted. */
+export type ViewerTicketRecord = {
+  ticketHash: string;
+  principal: {
+    id: string;
+    username: string;
+    role: UserRole;
+    kind: "admin" | "user";
+    allowedRepositoryIds?: string[];
+    boundHostId?: string;
+  };
+  expiresAtMs: number;
+};
+
 /** Authentication principal record stored in the dedicated Users table. */
 export type AuthAccountRecord = {
   id: string;

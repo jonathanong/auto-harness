@@ -69,6 +69,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       handler: "websocket",
       timeout: Duration.seconds(30),
     });
+    // Minute scheduler also drains the Slack lifecycle outbox through chat.postMessage / chat.update.
     const cronFunction = new nodejs.NodejsFunction(this, "CronFunction", {
       ...functionProps,
       handler: "cron",

@@ -7,7 +7,7 @@ import {
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ConnectionRecord, LogRecord } from "./db/plane-storage-types.ts";
-import { parseViewerMessage } from "./viewer-ws-protocol.ts";
+import { isAllowedViewerOrigin, parseViewerMessage } from "./viewer-ws-protocol.ts";
 
 const MAX_SUBSCRIPTIONS = 8;
 const REPLAY_LIMIT = 250;
@@ -26,6 +26,9 @@ type ViewerDependencies = {
   auth: AuthService;
   management: ManagementClient;
   storage: ViewerStorage;
+  publicBaseUrl?: string;
+  /** Retry a missing origin after a transient cold-start SSM miss. */
+  resolvePublicBaseUrl?: () => Promise<string | undefined>;
 };
 
 function viewerPrincipal(principal: Principal | null): ConnectionRecord["viewerPrincipal"] {
@@ -64,9 +67,30 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
   const save = async (connection: ConnectionRecord): Promise<void> => {
     await dependencies.storage.putConnection(connection);
   };
+  let allowedOrigin = dependencies.publicBaseUrl;
+  let inflightOrigin: Promise<string | undefined> | undefined;
+  let nextOriginRetryAt = 0;
+  const viewerOrigin = async (): Promise<string | undefined> => {
+    if (allowedOrigin !== undefined) return allowedOrigin;
+    if (inflightOrigin) return inflightOrigin;
+    if (Date.now() < nextOriginRetryAt) return undefined;
+    inflightOrigin = (async () => {
+      const resolved = await dependencies.resolvePublicBaseUrl?.();
+      if (resolved !== undefined) {
+        allowedOrigin = resolved;
+        return resolved;
+      }
+      nextOriginRetryAt = Date.now() + 5_000;
+      return undefined;
+    })().finally(() => {
+      inflightOrigin = undefined;
+    });
+    return inflightOrigin;
+  };
 
   return {
-    async connect(connectionId: string, ticket: string): Promise<number> {
+    async connect(connectionId: string, ticket: string, origin?: string): Promise<number> {
+      if (!isAllowedViewerOrigin(origin, await viewerOrigin())) return 403;
       const principal = viewerPrincipal(await dependencies.auth.authenticateViewerTicket(ticket));
       if (!principal) return 403;
       const now = new Date().toISOString();

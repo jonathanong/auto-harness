@@ -3,7 +3,7 @@ import { isTerminalSessionStatus } from "@auto-harness/shared";
 import { cancelSession } from "./control-plane-cancel-local.ts";
 import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { toPublic } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import { releaseWorktree } from "./control-plane-worktree-release.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
@@ -68,6 +68,7 @@ export async function cancelSessionDurable(
           : {}),
       };
       state.sessions.set(id, updatedSession);
+      noteSlackSessionLifecycle(state, updatedSession);
       state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
       return { ok: true, session: toPublic(state, updatedSession) };
     }
@@ -110,6 +111,7 @@ export async function cancelSessionDurable(
         : {}),
     };
     state.sessions.set(id, updatedSession);
+    noteSlackSessionLifecycle(state, updatedSession);
     // assignment.hostId (not session.hostId) — the guard above validated this exact
     // value as the host that actually holds the lease being cancelled; session is the
     // separately-fetched fresh record and isn't guaranteed to agree in a race.
@@ -144,5 +146,6 @@ export async function cancelSessionDurable(
     ...(options.drainOperationId ? { cancelledByDrainOperationId: options.drainOperationId } : {}),
   };
   state.sessions.set(id, updatedSession);
+  noteSlackSessionLifecycle(state, updatedSession);
   return { ok: true, session: toPublic(state, updatedSession) };
 }

@@ -41,6 +41,7 @@ function fixture() {
       auth: auth as never,
       management: management as never,
       storage,
+      publicBaseUrl: "https://app.example.test",
     }),
     storage,
   };
@@ -60,7 +61,7 @@ function log(timestampSeq: string, seq: number): LogRecord {
 describe("Lambda viewer WebSocket delivery", () => {
   it("fans committed logs out to current durable viewer subscriptions", async () => {
     const ctx = fixture();
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", "https://app.example.test");
     const viewer = ctx.connections.get("viewer-1")!;
     viewer.viewerSubscriptions = [
       {
@@ -89,7 +90,7 @@ describe("Lambda viewer WebSocket delivery", () => {
 
   it("removes gone viewers and propagates other delivery failures", async () => {
     const ctx = fixture();
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", "https://app.example.test");
     ctx.management.send.mockRejectedValueOnce({ name: "GoneException" });
     await ctx.sockets.message(
       "viewer-1",
@@ -98,7 +99,7 @@ describe("Lambda viewer WebSocket delivery", () => {
     expect(ctx.connections.has("viewer-1")).toBe(false);
     expect(ctx.storage.deleteConnection).toHaveBeenCalledWith("viewer-1");
 
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", "https://app.example.test");
     ctx.management.send.mockRejectedValueOnce(new Error("network"));
     await expect(
       ctx.sockets.message(

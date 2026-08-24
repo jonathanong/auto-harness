@@ -34,6 +34,7 @@ describe("clearAll session-drain cleanup", () => {
         connections: "connections",
         hostLocks: "host-locks",
         rateLimits: "rate-limits",
+        viewerTickets: "viewer-tickets",
         concurrencyLocks: "concurrency-locks",
         schedules: "schedules",
         repositories: "repositories",

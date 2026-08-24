@@ -78,6 +78,8 @@ export async function viewerTicket(timeoutMs = 10_000): Promise<string | undefin
   const response = await fetch("/api/v1/auth/viewer-ticket", {
     method: "POST",
     credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Cache-Control": "no-store" },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error("viewer ticket unavailable");

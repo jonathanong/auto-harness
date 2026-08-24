@@ -49,6 +49,7 @@ describe("SettingsPageClient", () => {
           },
           botTokenConfigured: true,
           signingSecretConfigured: false,
+          deliveryAvailable: false,
           version: 2,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",

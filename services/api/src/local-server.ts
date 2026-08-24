@@ -4,10 +4,10 @@ import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-app.ts";
-import type { LocalServerOptions } from "./local-http.ts";
+import { resolvePublicBaseUrl, type LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
-import { slackSessionSnapshot } from "./slack-session-runtime.ts";
+import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { SlackLifecycleWorker } from "./slack-worker.ts";
 import { WebhookWorker } from "./webhook-worker.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
@@ -53,9 +53,10 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   let plane = options.plane;
   let store = options.store;
 
+  const publicBaseUrl = resolvePublicBaseUrl(options.publicBaseUrl);
   if (!plane && !store && options.useDynamo !== false) {
     const created = await createControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
+      publicBaseUrl,
     });
     plane = created.plane;
     store = new MemorySessionStore({ plane });
@@ -63,7 +64,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane = store.plane;
   } else if (!plane) {
     plane = new ControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
+      publicBaseUrl,
     });
     store = new MemorySessionStore({ plane });
   }
@@ -80,6 +81,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     authService: auth,
     plane,
     store: store ?? new MemorySessionStore({ plane }),
+    publicBaseUrl,
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);
@@ -155,27 +157,10 @@ function createSlackWorker(
   plane: ControlPlane,
   options: LocalServerOptions,
 ): SlackLifecycleWorker | undefined {
-  const storage = plane.state.storage;
-  if (!options.slackTransport || !storage) return undefined;
-  return new SlackLifecycleWorker(
-    {
-      store: storage,
-      transport: options.slackTransport,
-      getConfig: async () => {
-        const config = await plane.getSlackIntegrationDurable();
-        return config
-          ? {
-              enabled: config.enabled,
-              defaultChannel: config.defaultChannel,
-              notifications: config.notifications,
-            }
-          : null;
-      },
-      listSessions: async () =>
-        plane.listSessions().map((session) => slackSessionSnapshot(plane.state, session)),
-    },
-    options.slackWorker,
-  );
+  return createSlackLifecycleWorker(plane, {
+    ...(options.slackTransport ? { transport: options.slackTransport } : {}),
+    ...(options.slackWorker ? { worker: options.slackWorker } : {}),
+  });
 }
 
 function isLoopback(host: string): boolean {

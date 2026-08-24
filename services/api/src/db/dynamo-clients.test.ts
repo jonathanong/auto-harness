@@ -16,6 +16,7 @@ import {
   tableNames,
 } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
 import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Cli");
@@ -29,6 +30,10 @@ describe("DynamoDB Local clients", () => {
     expect(statusShardAttr("queued", 2)).toBe("queued#2");
     expect(tableNames("AH").sessions).toBe("AH-Sessions");
     expect(tableNames("AH").webhookDeliveries).toBe("AH-WebhookDeliveries");
+    expect(tableNames("AH").viewerTickets).toBe("AH-ViewerTickets");
+    expect(viewerTicketsTableDefinition("AH-ViewerTickets").KeySchema).toEqual([
+      { AttributeName: "ticketHash", KeyType: "HASH" },
+    ]);
     expect(tableNames("").sessions).toContain("Sessions");
     expect(tableNames("A H/!").sessions).toBe("AH-Sessions");
     expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("7423");

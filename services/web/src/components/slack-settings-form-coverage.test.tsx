@@ -31,6 +31,7 @@ const configured: PublicSlackIntegration = {
   },
   botTokenConfigured: true,
   signingSecretConfigured: false,
+  deliveryAvailable: false,
   version: 1,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -47,9 +48,32 @@ function fillCreate(view: ReturnType<typeof mountForm>) {
 }
 
 describe("SlackSettingsForm", () => {
+  it("hides the delivery warning when outbound delivery is available", () => {
+    const view = mountForm(
+      <SlackSettingsForm
+        initial={{ ...configured, deliveryAvailable: true, signingSecretConfigured: true }}
+      />,
+    );
+    expect(view.container.querySelector('[data-pw="slack-delivery-warning"]')).toBeNull();
+    expect(field(view.container, "slack-delivery-state").textContent).toBe("Available");
+    expect(field(view.container, "slack-signing-secret-state").textContent).toBe("Configured");
+  });
+
+  it("does not promise delivery when the integration is disabled", () => {
+    const view = mountForm(
+      <SlackSettingsForm initial={{ ...configured, enabled: false, deliveryAvailable: true }} />,
+    );
+    expect(field(view.container, "slack-delivery-state").textContent).toBe("Disabled");
+    expect(field(view.container, "slack-delivery-warning").textContent).toContain("disabled");
+  });
+
   it("validates, creates, and surfaces save failures", async () => {
     createApiFake(json({ error: { message: "unavailable" } }, 503), json(configured));
     const view = mountForm(<SlackSettingsForm />);
+    expect(field(view.container, "slack-delivery-warning").textContent).toContain(
+      "outbound delivery is available",
+    );
+    expect(field(view.container, "slack-delivery-state").textContent).toBe("Not configured");
     submit(field(view.container, "form-slack-create"));
     expect(field(view.container, "slack-error").textContent).toContain("required");
     fillCreate(view);
@@ -66,6 +90,10 @@ describe("SlackSettingsForm", () => {
   it("replaces and deletes an existing configuration", async () => {
     createApiFake(json({ ...configured, version: 2 }), json({}, 204));
     const view = mountForm(<SlackSettingsForm initial={configured} />);
+    expect(field(view.container, "slack-delivery-state").textContent).toContain("unavailable");
+    expect(field(view.container, "slack-delivery-warning").textContent).toContain(
+      "configured but delivery is unavailable",
+    );
     setValue(field<HTMLInputElement>(view.container, "slack-bot-token"), "xoxb-1234567890-test");
     submit(field(view.container, "form-slack-replace"));
     await settle();

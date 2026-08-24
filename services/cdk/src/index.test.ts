@@ -19,6 +19,7 @@ describe("CDK table catalog", () => {
       "HostInventories",
       "AuditLogs",
       "RateLimits",
+      "ViewerTickets",
       "Providers",
       "ProviderAccounts",
       "Commands",
@@ -56,6 +57,10 @@ describe("CDK table catalog", () => {
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "RateLimits")).toMatchObject({
       partitionKey: { name: "bucketKey" },
+      ttlAttribute: "expiresAt",
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "ViewerTickets")).toMatchObject({
+      partitionKey: { name: "ticketHash" },
       ttlAttribute: "expiresAt",
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "SessionUsage")).toMatchObject({

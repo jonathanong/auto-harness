@@ -68,7 +68,7 @@ export type SlackTransportResult = { channel: string; messageTs: string };
 
 /**
  * A real adapter must use `idempotencyKey` to deduplicate ambiguous retries.
- * This repository intentionally supplies no network-backed Slack implementation yet.
+ * `createSlackHttpTransport` is the production adapter.
  */
 export interface SlackTransport {
   deliver(request: SlackTransportRequest): Promise<SlackTransportResult>;

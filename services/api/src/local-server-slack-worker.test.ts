@@ -8,7 +8,7 @@ import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
 const dynamo = createDynamoTestCtx("LocalSlackWorker");
 const now = "2026-08-12T10:00:00.000Z";
 
-it("starts the lifecycle worker only with durable storage and an injected transport", async () => {
+it("starts the lifecycle worker with durable storage and an injected transport", async () => {
   if (!dynamo.storage) return;
   await dynamo.storage.putSlackIntegration(
     {

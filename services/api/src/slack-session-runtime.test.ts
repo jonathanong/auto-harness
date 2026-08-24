@@ -64,7 +64,7 @@ function state() {
       ],
     ]),
     publicBaseUrl: "https://harness.example.test",
-  } as never;
+  };
 }
 
 const config = {

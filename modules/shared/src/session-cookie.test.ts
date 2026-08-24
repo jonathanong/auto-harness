@@ -14,6 +14,18 @@ describe("session cookie helpers", () => {
     expect(sessionCookieValue(`other=x; ${SESSION_COOKIE}=def`)).toBe("def");
   });
 
+  it("rejects a service-account cookie even when the HMAC is valid", async () => {
+    const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+      id: "svc:ci",
+      username: "ci",
+      role: "operator",
+      kind: "service-account",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    })}`;
+    const token = `${unsigned}.${createHmac("sha256", secret).update(unsigned).digest("base64url")}`;
+    expect(await hasValidSession(token, secret)).toBe(false);
+  });
+
   it("rejects a viewer-ticket audience even when the HMAC is valid", async () => {
     const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
       id: "user:alice",
