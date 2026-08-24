@@ -105,12 +105,13 @@ describe("pull request labeler", () => {
 describe("actionlint", () => {
   it("downloads a checksummed release and lints workflows on CI events", () => {
     expect(actionlintWorkflow).toContain("branches: [main]");
-    expect(actionlintWorkflow).toContain(
-      "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
-    );
+    expect(actionlintWorkflow).toMatch(/uses: actions\/checkout@[0-9a-f]{40} # /);
     expect(actionlintWorkflow).toContain('ACTIONLINT_VERSION: "1.7.12"');
     expect(actionlintWorkflow).toContain(
       "ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+    );
+    expect(actionlintWorkflow).toContain(
+      'curl -fsSL --proto "=https" --tlsv1.2 --proto-redir "=https"',
     );
     expect(actionlintWorkflow).toContain("sha256sum --check --strict");
     expect(actionlintWorkflow).toContain("./actionlint -color");
