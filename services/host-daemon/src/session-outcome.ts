@@ -35,6 +35,11 @@ type ClaimedHookTarget = {
   cwd: string;
   repository: { path: string; terminalHookScript?: string };
   allowedRoots?: readonly string[];
+  currentHookTarget?: () => {
+    cwd: string;
+    repository: { path: string; terminalHookScript?: string };
+    allowedRoots?: readonly string[];
+  } | null;
 };
 
 export async function failSession(
@@ -107,17 +112,19 @@ export async function finishClaimedSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
+  const refreshed = claimed.currentHookTarget?.();
+  const target = refreshed ?? (claimed.currentHookTarget ? null : claimed);
   return finishSession(
     processRunner,
     streamer,
     logs,
     assign,
     claimed.worktree.id,
-    claimed.cwd,
-    claimed.repository.terminalHookScript,
+    target?.cwd ?? claimed.cwd,
+    target?.repository.terminalHookScript,
     outcome,
     childEnvSource,
-    claimed.allowedRoots ?? [],
-    claimed.repository.path,
+    target?.allowedRoots ?? [],
+    target?.repository.path ?? claimed.repository.path,
   );
 }

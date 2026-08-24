@@ -8,6 +8,12 @@ type ClaimedWorktree = {
   worktree: WorktreeConfig;
   cwd: string;
   allowedRoots?: string[];
+  /** Resolve hook policy again when a session finishes after a config reload. */
+  currentHookTarget: () => {
+    cwd: string;
+    repository: RepositoryConfig;
+    allowedRoots?: string[];
+  } | null;
 };
 
 type MainWaiter = {
@@ -56,6 +62,7 @@ export class WorktreeManager {
     repository: RepositoryConfig,
     worktree: WorktreeConfig,
     cwd: string,
+    main = false,
   ): ClaimedWorktree {
     return {
       ...(this.config.setupScript !== undefined
@@ -65,6 +72,38 @@ export class WorktreeManager {
       repository,
       worktree,
       cwd,
+      currentHookTarget: () =>
+        this.currentHookTarget(repository.id, main ? undefined : worktree.id),
+    };
+  }
+
+  /**
+   * Resolve terminal-hook inputs from the live daemon config, not the assignment snapshot.
+   * A session may remain pending while an inventory reload tightens or removes its policy.
+   */
+  private currentHookTarget(
+    repositoryId: string,
+    worktreeId: string | undefined,
+  ): {
+    cwd: string;
+    repository: RepositoryConfig;
+    allowedRoots?: string[];
+  } | null {
+    const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
+    if (!repository) return null;
+    if (worktreeId !== undefined) {
+      const worktree = repository.worktrees.find((candidate) => candidate.id === worktreeId);
+      if (!worktree) return null;
+      return {
+        cwd: worktree.path,
+        repository,
+        ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
+      };
+    }
+    return {
+      cwd: repository.path,
+      repository,
+      ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
     };
   }
 
@@ -105,7 +144,7 @@ export class WorktreeManager {
       throw new Error(`Unknown repository: ${repositoryId}`);
     }
     await this.assertClaimPaths(repository, repository.path);
-    return this.claimedResult(repository, mainWorktree(repository), repository.path);
+    return this.claimedResult(repository, mainWorktree(repository), repository.path, true);
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {

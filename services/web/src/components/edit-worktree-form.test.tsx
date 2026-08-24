@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- edit form regressions cover ordinary and exec-config saves. */
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
@@ -160,6 +161,44 @@ describe("EditWorktreeForm", () => {
       repositories: [{ worktrees: [{ id: "worktree-1", setupScript: "" }] }],
     });
     expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
+    view.unmount();
+  });
+
+  it("preserves a concurrently changed setup script when only ordinary fields are edited", async () => {
+    const current = {
+      ...inventory,
+      repositories: [
+        {
+          ...inventory.repositories[0],
+          worktrees: [{ ...worktree, setupScript: "concurrent setup" }],
+        },
+      ],
+    };
+    const fetch = stubInventoryFetch(current);
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-path"), "/new/feature");
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    expect(putBody(fetch)).toMatchObject({
+      repositories: [{ worktrees: [{ setupScript: "concurrent setup" }] }],
+    });
+    view.unmount();
+  });
+
+  it("does not carry setup-script dirtiness across a cancelled edit", async () => {
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-setup-script"), "discarded setup");
+    pressCancel();
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-path"), "/new/feature");
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    expect(putBody(fetch)).toMatchObject({
+      repositories: [{ worktrees: [{ setupScript: "old setup" }] }],
+    });
     view.unmount();
   });
 

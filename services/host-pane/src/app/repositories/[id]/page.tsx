@@ -18,6 +18,7 @@ import {
   loadLiveWorktreesById,
   loadRepoNamesById,
 } from "../../../lib/inventory.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ export default async function RepositoryDetailPage({
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
   const agent = hostId();
+  const principal = await loadPrincipal();
+  const canEditExecConfig = can(principal, "fleet:exec-config");
   const inventory = await loadHostInventory(agent);
 
   const repo: HostRepository | undefined = inventory.repositories.find(
@@ -105,7 +108,7 @@ export default async function RepositoryDetailPage({
                 repo={repo}
                 repoName={repoName}
                 browseEndpoint="/api/browse"
-                canWriteExecConfig
+                canWriteExecConfig={canEditExecConfig}
               />
             ) : null}
             <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />

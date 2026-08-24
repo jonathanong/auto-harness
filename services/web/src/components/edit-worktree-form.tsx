@@ -32,9 +32,15 @@ export function EditWorktreeForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const [setupScriptEdited, setSetupScriptEdited] = useState(false);
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    setOpen(nextOpen);
+    if (!nextOpen) setSetupScriptEdited(false);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" variant="outline" data-pw="worktree-edit-open">
           Edit
@@ -78,7 +84,9 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
-                  ...(canWriteExecConfig ? { setupScript: worktreeSetupScript ?? "" } : {}),
+                  ...(canWriteExecConfig && setupScriptEdited
+                    ? { setupScript: worktreeSetupScript ?? "" }
+                    : {}),
                 }),
               );
               if (!r.ok) {
@@ -126,6 +134,7 @@ export function EditWorktreeForm({
                 name="setupScript"
                 rows={5}
                 defaultValue={worktree.setupScript ?? ""}
+                onChange={() => setSetupScriptEdited(true)}
                 className="font-mono text-xs"
                 data-pw="worktree-edit-setup-script"
               />

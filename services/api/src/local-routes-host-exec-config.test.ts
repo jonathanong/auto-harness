@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
+import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import { handleHostExecConfigRoutes } from "./local-routes-host-exec-config.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
 import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
@@ -82,6 +83,54 @@ async function invoke(
 }
 
 describe("host exec-config isolation", () => {
+  it("acknowledges the committed exec-config when projection persistence fails afterward", async () => {
+    const inventories = new Map<string, HostInventoryRecord>();
+    const worktrees = new Map<string, import("./db/types.ts").WorktreeRecord>();
+    const audits: Array<{ action: string; outcome?: string }> = [];
+    let failProjection = false;
+    const storage = {
+      putAuditLog: async (record: { action: string; outcome?: string }) => {
+        audits.push(record);
+      },
+      listAuditLogs: async () => ({ items: [] }),
+      putHostInventory: async (record: HostInventoryRecord) => {
+        inventories.set(record.hostId, { ...record });
+        return true;
+      },
+      getHostInventory: async (hostId: string) => inventories.get(hostId) ?? null,
+      listHostInventories: async () => [...inventories.values()],
+      listAllWorktrees: async () => [...worktrees.values()],
+      putWorktree: async (record: import("./db/types.ts").WorktreeRecord) => {
+        if (failProjection) throw new Error("projection unavailable");
+        worktrees.set(record.id, { ...record });
+      },
+      deleteWorktree: async (id: string) => {
+        if (failProjection) throw new Error("projection unavailable");
+        worktrees.delete(id);
+      },
+    } as never;
+    const plane = new ControlPlane({ storage });
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    await plane.settleStorage();
+    failProjection = true;
+
+    await expect(
+      invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", { setupScript: "new setup" }, admin),
+    ).resolves.toMatchObject({ status: 200 });
+    expect((await plane.getHostInventoryDurable("host-1"))?.setupScript).toBe("new setup");
+    expect(
+      audits.some(
+        (record) => record.action === "host-exec-config:update" && record.outcome === "success",
+      ),
+    ).toBe(true);
+    expect(
+      audits.some(
+        (record) => record.action === "host-exec-config:update" && record.outcome === "failed",
+      ),
+    ).toBe(false);
+    await expect(plane.settleStorage()).rejects.toThrow("projection unavailable");
+  });
+
   it("rejects inventory writes that change setup scripts or executable paths", async () => {
     const plane = new ControlPlane();
     expect(

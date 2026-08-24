@@ -93,10 +93,10 @@ describe("AddWorktreeForm errors", () => {
     fill();
     setValue(
       document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
-      "pnpm install",
+      "  pnpm install  ",
     );
     await submit(rejectedForm);
-    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm install");
+    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("  pnpm install  ");
     expect(document.body.textContent).toContain("denied");
     rejected.unmount();
 

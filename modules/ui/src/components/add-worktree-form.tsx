@@ -87,7 +87,7 @@ export function AddWorktreeForm({
               .map((s) => s.trim())
               .filter(Boolean);
             const worktreeSetupScript =
-              canWriteExecConfig && setupScript.trim() ? setupScript.trim() : undefined;
+              canWriteExecConfig && setupScript.trim() ? setupScript : undefined;
             start(async () => {
               try {
                 const r = await mutate(hostId, (current) =>

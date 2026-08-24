@@ -163,10 +163,16 @@ export async function putHostInventoryDurable(
   );
   // Older storage doubles return void; only an explicit false means the conditional write lost.
   if (stored === false) return inventoryVersionConflict();
-  await Promise.all([
-    ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
-    ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),
-  ]);
+  // The inventory document is the commit point.  Projection writes are queued after it so a
+  // transient projection failure cannot make a committed exec-config request look like a 500
+  // (and trigger a misleading failed audit).  The queue preserves ordering and settleStorage
+  // still surfaces a projection failure for repair/observability.
+  queueWrite(state, async (storage) => {
+    await Promise.all([
+      ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
+      ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
+    ]);
+  });
   state.hostInventoryRevision += 1;
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
