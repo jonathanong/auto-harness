@@ -28,7 +28,29 @@ if [[ -t 0 ]]; then
   fi
 fi
 
+existing_role_arn="$(aws apigateway get-account --region "$AWS_REGION" \
+  --query 'cloudwatchRoleArn' --output text 2>/dev/null || true)"
+if [[ -n "$existing_role_arn" && "$existing_role_arn" != "None" \
+  && "$existing_role_arn" != *AutoHarnessApiGatewayAccount* ]]; then
+  cat >&2 <<EOF
+A CloudWatch Logs role is already configured for API Gateway in
+$AWS_REGION, and it was not created by this script:
+  $existing_role_arn
+
+This is an AWS-account-wide singleton. Deploying this stack would silently
+replace it, breaking access logging for whatever other stack or repository
+currently owns it. Refusing to continue.
+
+If you have verified it is safe to replace (e.g. it is orphaned, or you also
+own the other stack), remove or re-point it manually before retrying.
+EOF
+  exit 1
+fi
+
+account="$(aws sts get-caller-identity --query Account --output text)"
+pnpm exec cdk bootstrap "aws://$account/$AWS_REGION"
+
 pnpm exec cdk deploy \
   --app "node src/apigateway-account-cli.ts" \
-  ApiGatewayAccount \
+  AutoHarnessApiGatewayAccount \
   --require-approval never
