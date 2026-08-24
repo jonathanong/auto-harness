@@ -1,8 +1,8 @@
 import type { UpdateFetcher } from "./agent-updater.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-export const MAX_UPDATE_MANIFEST_BYTES = 64 * 1024;
-export const MAX_UPDATE_ARTIFACT_BYTES = 512 * 1024 * 1024;
+const MAX_UPDATE_MANIFEST_BYTES = 64 * 1024;
+const MAX_UPDATE_ARTIFACT_BYTES = 512 * 1024 * 1024;
 
 type UpdateFetch = (
   url: string,
