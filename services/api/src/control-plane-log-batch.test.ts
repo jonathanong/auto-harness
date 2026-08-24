@@ -52,7 +52,12 @@ describe("durable host log batches", () => {
     plane.state.sessions.set("one", { hostId: "host-one", attemptId: "a" } as never);
     plane.state.sessions.set("two", { hostId: "host-two", attemptId: "a" } as never);
     plane.state.storage = {
-      getSession: async () => null,
+      getSession: async (sessionId: string) =>
+        sessionId === "one"
+          ? { hostId: "host-one", attemptId: "a" }
+          : sessionId === "two"
+            ? { hostId: "host-two", attemptId: "a" }
+            : null,
       getHostLock: async () => "other-connection",
     } as never;
 
@@ -90,7 +95,7 @@ describe("durable host log batches", () => {
     const published: number[] = [];
     plane.state.onLogCommitted = (record) => published.push(record.seq);
     plane.state.storage = {
-      getSession: async () => null,
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
       getHostLock: async () => "connection",
       putLogsFenced: async (records: Array<{ seq: number; ttl?: number }>) => {
         written.push(records.map(({ seq }) => seq));
@@ -133,7 +138,7 @@ describe("durable host log batches", () => {
   it("uses an authoritative session row when the cache has no owner", async () => {
     const plane = new ControlPlane();
     plane.state.storage = {
-      getSession: async () => ({ hostId: "host" }),
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
       getHostLock: async () => "connection",
       putLogsFenced: async () => true,
       deleteLog: async () => {},
@@ -141,5 +146,26 @@ describe("durable host log batches", () => {
     await expect(
       handleHostLogBatchDurable(plane.state, [message("session", 1)], "connection"),
     ).resolves.toEqual({ ok: true });
+  });
+
+  it("ignores cached attempts and writes only the durable current attempt", async () => {
+    const plane = new ControlPlane();
+    plane.state.sessions.set("session", { hostId: "host", attemptId: "old" } as never);
+    const written: string[] = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (records: Array<{ content: string }>) => (
+        written.push(...records.map((record) => record.content)), true
+      ),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [{ ...message("session", 1, "stale"), attemptId: "old" }, message("session", 2, "current")],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(written).toEqual(["current"]);
   });
 });

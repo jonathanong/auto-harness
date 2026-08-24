@@ -214,4 +214,57 @@ describe("DaemonLoop outbound delivery", () => {
       cleanup();
     }
   });
+
+  it("aborts a superseded inflight attempt when a new assign arrives for the same session", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const logs: string[] = [];
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => logs.push(line),
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      });
+      await loop.start();
+      const previous = new AbortController();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("running\0attempt-1", {
+        sessionId: "running",
+        attemptId: "attempt-1",
+        controller: previous,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "running",
+        attemptId: "attempt-2",
+        repositoryId: "demo",
+        prompt: "hello",
+        resolvedArgv: ["printf", "%s", "hello"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+      await Promise.resolve();
+      expect(previous.signal.aborted).toBe(true);
+      expect(logs.some((line) => line.includes("superseded attempt attempt-1"))).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

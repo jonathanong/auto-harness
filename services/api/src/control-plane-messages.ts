@@ -165,6 +165,20 @@ function ignoreStaleAttempt(
   );
 }
 
+/** Durable log fencing must not trust a warm worker's session cache. */
+async function loadDurableSession(
+  state: ControlPlaneState,
+  storage: NonNullable<ControlPlaneState["storage"]>,
+  sessionId: string,
+): Promise<SessionRecord | null> {
+  const session =
+    typeof storage.getSession === "function"
+      ? await storage.getSession(sessionId, true)
+      : state.sessions.get(sessionId);
+  if (session) state.sessions.set(session.id, session);
+  return session ?? null;
+}
+
 function cachedProviderAccount(
   state: ControlPlaneState,
   session: SessionRecord | null | undefined,
@@ -245,12 +259,15 @@ export async function handleHostLogBatchDurable(
   const storage = state.storage;
   let hostId: string | undefined;
   const accepted: LogMessage[] = [];
+  const loaded = new Map<string, SessionRecord | null>();
   for (const message of messages) {
     if (Buffer.byteLength(message.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
-    const session =
-      state.sessions.get(message.sessionId) ?? (await storage.getSession(message.sessionId));
+    if (!loaded.has(message.sessionId)) {
+      loaded.set(message.sessionId, await loadDurableSession(state, storage, message.sessionId));
+    }
+    const session = loaded.get(message.sessionId) ?? null;
     if (
       ignoreStaleAttempt(state, session, { type: "log", attemptId: message.attemptId }, "durable")
     ) {
@@ -455,8 +472,7 @@ export async function handleHostMessageDurable(
     if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
-    const session = state.sessions.get(msg.sessionId) ?? (await storage.getSession(msg.sessionId));
-    if (session) state.sessions.set(session.id, session);
+    const session = await loadDurableSession(state, storage, msg.sessionId);
     if (ignoreStaleAttempt(state, session, { type: "log", attemptId: msg.attemptId }, "durable")) {
       return { ok: true };
     }

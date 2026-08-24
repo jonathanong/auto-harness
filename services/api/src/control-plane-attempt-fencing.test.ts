@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- stale-cache and reconnect claim races stay together. */
 import { describe, expect, it } from "vitest";
 
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
@@ -179,6 +180,56 @@ describe("ControlPlane assignment-attempt fencing", () => {
     ).toEqual({ ok: true });
     expect(logs).toBe(0);
     expect(finished).toBe(0);
+    expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);
+  });
+
+  it("fences durable logs against storage, not a stale process cache", async () => {
+    const { now, plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.enforceAckDeadlines(Date.parse(now) + 15_000);
+    const second = plane.assignQueued()[0]!;
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      attemptId: first.session.attemptId,
+    });
+    const persisted = { ...second.session };
+    const stored: string[] = [];
+    plane.state.storage = {
+      getSession: async () => persisted,
+      getHostLock: async () => "connection",
+      putLogFenced: async (record: { content: string }) => (stored.push(record.content), true),
+    } as never;
+
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          attemptId: first.session.attemptId!,
+          stream: "stdout",
+          content: "stale-cache",
+          timestamp: now,
+          seq: 1,
+        },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          attemptId: second.session.attemptId!,
+          stream: "stdout",
+          content: "current-durable",
+          timestamp: now,
+          seq: 2,
+        },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(stored).toEqual(["current-durable"]);
+    expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["current-durable"]);
     expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);
   });
 

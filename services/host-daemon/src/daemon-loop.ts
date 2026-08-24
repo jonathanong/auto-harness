@@ -255,6 +255,24 @@ export class DaemonLoop {
     }
   }
 
+  private abortSupersededAttempts(sessionId: string, attemptId: string): void {
+    for (const entry of this.inflight.values()) {
+      if (entry.sessionId !== sessionId || entry.attemptId === attemptId) continue;
+      this.onLog?.(`superseded attempt ${entry.attemptId} aborted for ${sessionId}`);
+      entry.controller.abort();
+    }
+  }
+
+  private async waitForAbortedAttempts(sessionId: string, attemptId: string): Promise<void> {
+    const pending = [...this.inflight.values()].filter(
+      (entry) =>
+        entry.sessionId === sessionId &&
+        entry.attemptId !== attemptId &&
+        entry.controller.signal.aborted,
+    );
+    await Promise.all(pending.map((entry) => entry.work.catch(() => undefined)));
+  }
+
   private handleCancel(msg: Extract<HostWireMessage, { type: "session:cancel" }>): void {
     const current = this.inflight.get(inflightKey(msg.sessionId, msg.attemptId));
     this.onLog?.(`cancel requested for ${msg.sessionId} attempt ${msg.attemptId}`);
@@ -292,7 +310,9 @@ export class DaemonLoop {
       return;
     }
 
-    if (this.inflight.size >= MAX_INFLIGHT_SESSIONS) {
+    this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
+    const live = [...this.inflight.values()].filter((entry) => !entry.controller.signal.aborted);
+    if (live.length >= MAX_INFLIGHT_SESSIONS) {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
       return;
     }
@@ -374,6 +394,7 @@ export class DaemonLoop {
       { signal },
     );
     if (!(await this.waitForAcknowledgement(msg.sessionId, msg.attemptId, signal))) return;
+    await this.waitForAbortedAttempts(msg.sessionId, msg.attemptId);
     const route = resolvedRouteMetadata(msg);
     if (route.targetIndex !== undefined || route.commandId || route.providerAccountId) {
       this.onLog?.(
