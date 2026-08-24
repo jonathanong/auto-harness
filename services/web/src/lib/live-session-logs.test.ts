@@ -57,6 +57,15 @@ describe("live session log state", () => {
     expect(lastLiveCursor(entries)).toBe(third.timestampSeq);
   });
 
+  it("inserts out-of-order replay, replaces a matching cursor, and still bounds output", () => {
+    const second = { ...first, timestampSeq: "2026-08-10T12:00:01.000Z#0000000002", seq: 2 };
+    const third = { ...first, timestampSeq: "2026-08-10T12:00:02.000Z#0000000003", seq: 3 };
+    const replayed = { ...second, content: "replayed" };
+    expect(mergeLiveLogs([first, third], second).map((entry) => entry.seq)).toEqual([1, 2, 3]);
+    expect(mergeLiveLogs([first, second], replayed)).toEqual([first, replayed]);
+    expect(mergeLiveLogs([second, third], first, 2).map((entry) => entry.seq)).toEqual([2, 3]);
+  });
+
   it("keeps existing entries for malformed frames and validates all supported streams", () => {
     expect(mergeLiveLogs([first], { ...first, seq: -1 })).toEqual([first]);
     expect(validLiveLog(null)).toBe(false);
