@@ -12,6 +12,8 @@ type UpdateFetch = (
   arrayBuffer(): Promise<ArrayBuffer>;
 }>;
 
+type UpdateResponse = Awaited<ReturnType<UpdateFetch>>;
+
 export function createHttpsUpdateFetcher(
   manifestUrl: string,
   fetchFn: UpdateFetch = fetch,
@@ -20,28 +22,32 @@ export function createHttpsUpdateFetcher(
   requireHttps(manifestUrl, "update manifest URL");
   return {
     async fetchManifest() {
-      const response = await timedFetch(fetchFn, manifestUrl, timeoutMs);
-      if (!response.ok) throw new Error(`update manifest fetch failed: ${response.status}`);
-      return await response.json();
+      return await timedFetch(fetchFn, manifestUrl, timeoutMs, async (response) => {
+        if (!response.ok) throw new Error(`update manifest fetch failed: ${response.status}`);
+        return await response.json();
+      });
     },
     async fetchArtifact(url) {
       requireHttps(url, "update artifact URL");
-      const response = await timedFetch(fetchFn, url, timeoutMs);
-      if (!response.ok) throw new Error(`update artifact fetch failed: ${response.status}`);
-      return new Uint8Array(await response.arrayBuffer());
+      return await timedFetch(fetchFn, url, timeoutMs, async (response) => {
+        if (!response.ok) throw new Error(`update artifact fetch failed: ${response.status}`);
+        return new Uint8Array(await response.arrayBuffer());
+      });
     },
   };
 }
 
-async function timedFetch(
+async function timedFetch<T>(
   fetchFn: UpdateFetch,
   url: string,
   timeoutMs: number,
-): Promise<Awaited<ReturnType<UpdateFetch>>> {
+  consume: (response: UpdateResponse) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetchFn(url, { signal: controller.signal });
+    const response = await fetchFn(url, { signal: controller.signal });
+    return await consume(response);
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error("update fetch timed out", { cause: error });

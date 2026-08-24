@@ -621,8 +621,10 @@ The daemon's drain protocol and signed-manifest updater support the safety invar
 without interrupting in-flight AI CLI work. When `HARNESS_UPDATE_MANIFEST_URL` and
 `HARNESS_UPDATE_PUBLIC_KEY` are set, `start` polls for a signed Ed25519 manifest, downloads the
 HTTPS artifact, stages it under `HARNESS_UPDATE_INSTALL_DIR` (default `/opt/auto-harness`),
-activates it, and requests a systemd/launchd/schtasks restart. Activation or restart failure
-rolls back to the previous artifact and resumes scheduling (`DaemonLoop.resumeFromDrain`).
+extracts the runnable tarball into a version directory, atomically switches the `current`
+directory pointer, and requests a systemd/launchd/schtasks restart. The installed version marker
+survives that restart. Activation or restart failure rolls back to the previous directory and
+resumes scheduling (`DaemonLoop.resumeFromDrain`).
 Operators can still follow [the manual update runbook](deploy-host-daemon.md#update).
 
 ### Goals

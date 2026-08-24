@@ -180,15 +180,17 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
 
   let stopUpdatePoll = noopUpdatePoll;
   try {
+    const updaterEnv = options.childEnvSource ?? process.env;
     const updater = createDaemonUpdater({
       loop,
-      env: options.childEnvSource ?? process.env,
+      env: updaterEnv,
       log,
       error,
+      service: { env: updaterEnv, log, error },
     });
     if (updater) {
       stopUpdatePoll = startUpdatePoll(updater, {
-        pollMs: parseUpdatePollMs((options.childEnvSource ?? process.env).HARNESS_UPDATE_POLL_MS),
+        pollMs: parseUpdatePollMs(updaterEnv.HARNESS_UPDATE_POLL_MS),
         log,
         error,
       });

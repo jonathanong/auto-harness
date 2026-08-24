@@ -13,9 +13,7 @@ import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
 
 import { AddCommandDialog } from "../../../components/add-command-dialog.tsx";
 import { AddProviderAccountForm } from "../../../components/add-provider-account-form.tsx";
-import { DeleteProviderButton } from "../../../components/delete-provider-button.tsx";
-import { EditProviderForm } from "../../../components/edit-provider-form.tsx";
-import { ProviderUsageRatesForm } from "../../../components/provider-usage-rates-form.tsx";
+import { ProviderSettingsPanel } from "../../../components/provider-settings-panel.tsx";
 import { ProviderAccountUnattachedWarning } from "../../../components/provider-account-unattached-warning.tsx";
 import { ProviderDefaultCommandForm } from "../../../components/provider-default-command-form.tsx";
 import { RemoveProviderAccountButton } from "../../../components/remove-provider-account-button.tsx";
@@ -192,18 +190,11 @@ export default async function ProviderDetailPage({
             key: "settings",
             label: "Settings",
             content: (
-              <div className="space-y-4" data-pw="provider-settings">
-                <p className="font-mono text-xs text-muted-foreground">id: {provider.id}</p>
-                <ProviderUsageRatesForm provider={provider} />
-                <div className="flex flex-wrap gap-2">
-                  <EditProviderForm provider={provider} />
-                  <DeleteProviderButton
-                    providerId={providerId}
-                    accountCount={accounts.length}
-                    commandCount={commands.length}
-                  />
-                </div>
-              </div>
+              <ProviderSettingsPanel
+                accountCount={accounts.length}
+                commandCount={commands.length}
+                provider={provider}
+              />
             ),
           },
         ]}

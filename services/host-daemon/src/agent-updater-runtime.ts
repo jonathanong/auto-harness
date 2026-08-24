@@ -1,6 +1,6 @@
 import { AgentUpdater } from "./agent-updater.ts";
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";
-import { createFileUpdateInstaller } from "./agent-updater-install.ts";
+import { createFileUpdateInstaller, readInstalledVersion } from "./agent-updater-install.ts";
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
 import type { DaemonLoop } from "./daemon-loop.ts";
 
@@ -32,18 +32,17 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
   if (!manifestUrl || !publicKey) {
     throw new Error("HARNESS_UPDATE_MANIFEST_URL and HARNESS_UPDATE_PUBLIC_KEY are both required");
   }
+  if (!bindings.service) throw new Error("supervisor restart adapter is required");
   const installDir = bindings.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness";
-  const files = createFileUpdateInstaller({ rootDir: installDir });
-  const installer = bindings.service
-    ? createSupervisorRestartInstaller(files, bindings.service)
-    : {
-        ...files,
-        async restart() {
-          bindings.log("update staged; supervisor restart is not configured");
-        },
-      };
+  const configuredVersion = bindings.env.HARNESS_DAEMON_VERSION?.trim();
+  const currentVersion = readInstalledVersion(installDir) ?? configuredVersion ?? "0.0.0";
+  const files = createFileUpdateInstaller({
+    rootDir: installDir,
+    currentVersion,
+  });
+  const installer = createSupervisorRestartInstaller(files, bindings.service);
   return new AgentUpdater({
-    currentVersion: bindings.env.HARNESS_DAEMON_VERSION?.trim() || "0.0.0",
+    currentVersion,
     manifestPublicKey: publicKey,
     fetcher: createHttpsUpdateFetcher(manifestUrl, bindings.fetchFn),
     lifecycle: {

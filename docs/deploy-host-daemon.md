@@ -319,7 +319,11 @@ runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
 `HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM), optional `HARNESS_UPDATE_INSTALL_DIR` (default
 `/opt/auto-harness`), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once per start) to enable the
 production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. The
-manual steps above remain valid when those variables are unset.
+artifact is a gzip-compressed tar archive whose root is a complete runnable checkout (including
+`package.json` and the host-daemon launcher). Verified releases are extracted below `versions/`;
+`current` is atomically switched to that directory and carries a persisted version marker so a
+restart does not reinstall the same release. The manual steps above remain valid when those
+variables are unset.
 
 ### Rollback
 

@@ -1,5 +1,4 @@
 import {
-  DEFAULT_SLACK_NOTIFICATIONS,
   normalizeSlackNotifications,
   type PublicSlackIntegration,
   type SlackNotifications,

@@ -31,6 +31,17 @@ describe("daemon updater runtime", () => {
         error: () => undefined,
       }),
     ).toThrow("both required");
+    expect(() =>
+      createDaemonUpdater({
+        loop: {} as DaemonLoop,
+        env: {
+          HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/m.json",
+          HARNESS_UPDATE_PUBLIC_KEY: "key",
+        },
+        log: () => undefined,
+        error: () => undefined,
+      }),
+    ).toThrow("supervisor restart adapter is required");
   });
 
   it("polls once when pollMs is zero", async () => {
@@ -50,6 +61,7 @@ describe("daemon updater runtime", () => {
         },
         log: (line) => logs.push(line),
         error: () => undefined,
+        service: baseOpts({ platform: "linux", uid: 0, fs: seededFs() }),
         fetchFn: async () => {
           throw new Error("offline");
         },

@@ -60,6 +60,27 @@ describe("HTTPS update fetcher", () => {
     );
     await expect(slow.fetchManifest()).rejects.toThrow("update fetch timed out");
 
+    const stalledBody = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async (_url, init) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+          await new Promise((_, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new Error("body aborted")));
+          }),
+        arrayBuffer: async () =>
+          await new Promise((_, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new Error("body aborted")));
+          }),
+      }),
+      5,
+    );
+    await expect(stalledBody.fetchManifest()).rejects.toThrow("update fetch timed out");
+    await expect(
+      stalledBody.fetchArtifact("https://updates.example.test/agent.tgz"),
+    ).rejects.toThrow("update fetch timed out");
+
     const exploding = createHttpsUpdateFetcher(
       "https://updates.example.test/manifest.json",
       async () => {
