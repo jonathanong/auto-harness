@@ -387,6 +387,77 @@ describe("DaemonLoop reconnect", () => {
       cleanup();
     }
   });
+
+  it("omits aborted acknowledged attempts from reconnect registration", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer(message) {
+          sent.push(message);
+        },
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      });
+      await loop.start();
+      const live = new AbortController();
+      const aborted = new AbortController();
+      aborted.abort();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("sess\0old", {
+        sessionId: "sess",
+        attemptId: "old",
+        controller: aborted,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("sess\0new", {
+        sessionId: "sess",
+        attemptId: "new",
+        controller: live,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      await loop.register();
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).toEqual(
+        expect.objectContaining({
+          runningSessions: ["sess"],
+          runningAttempts: [{ sessionId: "sess", attemptId: "new" }],
+        }),
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 afterEach(() => vi.useRealTimers());

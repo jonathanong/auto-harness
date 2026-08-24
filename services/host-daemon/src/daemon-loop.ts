@@ -157,7 +157,7 @@ export class DaemonLoop {
   }
   async register(): Promise<void> {
     const runningAttempts = [...this.inflight.values()]
-      .filter((session) => session.acknowledged)
+      .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
     await registerDaemon(
       this.config,
