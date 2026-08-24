@@ -1055,7 +1055,7 @@ Create a provider. **Does not** create its default command — the control-plane
 
 #### `GET /providers`, `GET /providers/:id`, `PATCH /providers/:id`, `DELETE /providers/:id`
 
-Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommandId: null` clears it).
+Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"?, "usageRates"? }` (`defaultCommandId: null` and `usageRates: null` clear those fields). `usageRates` is optional operator-configured integer micros plus an ISO currency; Auto Harness never fetches vendor prices. The Provider Settings tab is the structured editor.
 `DELETE` fails `409` while an account, command, schedule, or queued/running session references the
 provider. The response identifies every live dependency; deletion never cascades.
 

@@ -133,6 +133,13 @@ export function installLinux(ctx: HostServiceContext): number {
   return activateLinux(ctx, envExists);
 }
 
+export function restartLinux(ctx: HostServiceContext): number {
+  const restart = ctx.run("systemctl", ["restart", LINUX_SERVICE_NAME]);
+  if (restart.status !== 0) return failedCommand(ctx.error, "systemctl restart", restart);
+  ctx.log(`Restarted ${LINUX_SERVICE_NAME}`);
+  return 0;
+}
+
 export function uninstallLinux(ctx: HostServiceContext): number {
   if (ctx.uid !== 0) {
     ctx.log("Not running as root. Run:");

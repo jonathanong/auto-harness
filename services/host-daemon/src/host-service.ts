@@ -1,8 +1,8 @@
-import { installDarwin, uninstallDarwin } from "./host-service-darwin.ts";
+import { installDarwin, restartDarwin, uninstallDarwin } from "./host-service-darwin.ts";
 import type { HostServiceOpts } from "./host-service-io.ts";
 import { resolveHostService } from "./host-service-io.ts";
-import { installLinux, uninstallLinux } from "./host-service-linux.ts";
-import { installWin32, uninstallWin32 } from "./host-service-win32.ts";
+import { installLinux, restartLinux, uninstallLinux } from "./host-service-linux.ts";
+import { installWin32, restartWin32, uninstallWin32 } from "./host-service-win32.ts";
 import { statusDarwin } from "./host-service-darwin.ts";
 import { statusLinux } from "./host-service-linux.ts";
 import { statusWin32 } from "./host-service-win32.ts";
@@ -42,6 +42,26 @@ export function installHostService(opts: HostServiceOpts): number {
         return installWin32(ctx);
       default:
         ctx.error(`install-service is not supported on ${ctx.platform}`);
+        return 1;
+    }
+  } catch (err) {
+    opts.error(err instanceof Error ? err.message : String(err));
+    return 1;
+  }
+}
+
+export function restartHostService(opts: HostServiceOpts): number {
+  try {
+    const ctx = resolveHostService(opts);
+    switch (ctx.platform) {
+      case "linux":
+        return restartLinux(ctx);
+      case "darwin":
+        return restartDarwin(ctx);
+      case "win32":
+        return restartWin32(ctx);
+      default:
+        ctx.error(`service restart is not supported on ${ctx.platform}`);
         return 1;
     }
   } catch (err) {

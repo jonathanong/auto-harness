@@ -14,6 +14,11 @@ Identity (env; local defaults shown):
                       never a raw API Gateway *.execute-api.*.amazonaws.com URL.
   HARNESS_API_KEY    service account token (when auth enabled)
   HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
+  HARNESS_UPDATE_MANIFEST_URL  https URL of the signed update manifest (optional)
+  HARNESS_UPDATE_PUBLIC_KEY    Ed25519 PEM for that manifest
+  HARNESS_UPDATE_INSTALL_DIR   artifact root (default /opt/auto-harness)
+  HARNESS_UPDATE_POLL_MS       auto-update poll; 0 runs once per start
+  HARNESS_DAEMON_VERSION       currently running version (default 0.0.0)
 
 install-service persists the daemon (systemd / LaunchAgent / logon task) from this
 identity into a mode-0600 env file that is never committed. Every platform validates

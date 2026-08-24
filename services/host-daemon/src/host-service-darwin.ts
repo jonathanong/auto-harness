@@ -185,6 +185,16 @@ export function installDarwin(ctx: HostServiceContext): number {
   return 0;
 }
 
+export function restartDarwin(ctx: HostServiceContext): number {
+  const service = `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`;
+  const kick = ctx.run("launchctl", ["kickstart", service]);
+  if (kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
+    return failedCommand(ctx.error, "launchctl kickstart", kick);
+  }
+  ctx.log(`Restarted LaunchAgent ${DARWIN_LABEL}`);
+  return 0;
+}
+
 export function uninstallDarwin(ctx: HostServiceContext): number {
   const paths = darwinPaths(ctx.home);
   const domain = launchDomain(ctx.uid);

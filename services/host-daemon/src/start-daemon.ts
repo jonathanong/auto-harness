@@ -4,6 +4,11 @@ import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
+import {
+  createDaemonUpdater,
+  parseUpdatePollMs,
+  startUpdatePoll,
+} from "./agent-updater-runtime.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -41,6 +46,10 @@ type InventoryPollOptions = {
 
 function noopInventoryPollStop(): Promise<void> {
   return Promise.resolve();
+}
+
+function noopUpdatePoll(): void {
+  // Default until update env enables a real poll stop handle.
 }
 
 /**
@@ -169,9 +178,29 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     });
   }, 20_000);
 
+  let stopUpdatePoll = noopUpdatePoll;
+  try {
+    const updater = createDaemonUpdater({
+      loop,
+      env: options.childEnvSource ?? process.env,
+      log,
+      error,
+    });
+    if (updater) {
+      stopUpdatePoll = startUpdatePoll(updater, {
+        pollMs: parseUpdatePollMs((options.childEnvSource ?? process.env).HARNESS_UPDATE_POLL_MS),
+        log,
+        error,
+      });
+    }
+  } catch (err) {
+    error(`updater disabled: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const stop = async (): Promise<void> => {
     // Keep this channel alive until the fenced drain commits. If it fails,
     // callers receive the error and can retry without exiting this daemon.
+    stopUpdatePoll();
     await loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);

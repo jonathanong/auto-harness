@@ -6,6 +6,7 @@ export type SlackNotifications = {
   onSessionFailed: boolean;
   onSessionCancelled: boolean;
   onScheduleCompleted: boolean;
+  onHostOffline: boolean;
 };
 
 export const DEFAULT_SLACK_NOTIFICATIONS: SlackNotifications = {
@@ -15,7 +16,14 @@ export const DEFAULT_SLACK_NOTIFICATIONS: SlackNotifications = {
   onSessionFailed: true,
   onSessionCancelled: true,
   onScheduleCompleted: false,
+  onHostOffline: true,
 };
+
+export function normalizeSlackNotifications(
+  value: Partial<SlackNotifications> | undefined,
+): SlackNotifications {
+  return { ...DEFAULT_SLACK_NOTIFICATIONS, ...value };
+}
 
 /** Redacted Slack configuration returned by the admin-only API. */
 export type PublicSlackIntegration = {

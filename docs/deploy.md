@@ -2,12 +2,12 @@
 
 Ops is split by **surface**. Pick the doc for what you are running.
 
-| Surface                                                                         | Doc                                                | Maturity                                                                        |
-| ------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Local** — DynamoDB Local + API + optional web + agent                         | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                             |
-| **AWS control plane** — serverless web, REST, WebSocket, schedules, and storage | **[deploy-aws.md](deploy-aws.md)**                 | **Supported** deploy, update, and teardown lifecycle                            |
-| **VPS agent** — daemon, profiles, worktrees                                     | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run |
-| **npm client** — manual version, tag, and trusted publish                       | **[release-client.md](release-client.md)**         | **Manual GitHub Actions release**                                               |
+| Surface                                                                         | Doc                                                | Maturity                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Local** — DynamoDB Local + API + optional web + agent                         | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                                                                                                                       |
+| **AWS control plane** — serverless web, REST, WebSocket, schedules, and storage | **[deploy-aws.md](deploy-aws.md)**                 | **Supported** deploy/update/teardown in `us-west-2` (2026-08-17); short programmatic session dispatch proven 2026-08-18. Long-running CLI fleet E2E is still operator QA. |
+| **VPS agent** — daemon, profiles, worktrees                                     | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run                                                                                           |
+| **npm client** — manual version, tag, and trusted publish                       | **[release-client.md](release-client.md)**         | **Manual GitHub Actions release**                                                                                                                                         |
 
 AWS releases use the account-backed gate in [deploy-aws.md](deploy-aws.md#gates).
 
@@ -56,9 +56,10 @@ identity. Environment and first-rollout details remain in the surface-specific r
 | AWS control plane              | [deploy-aws.md](deploy-aws.md#update-an-environment)  |
 | Agent binary, config, profiles | [deploy-host-daemon.md](deploy-host-daemon.md#update) |
 
-Prefer **control plane first**, then **agents**. Agent updates are manual today: an operator must
-request drain, wait for in-flight sessions, install the update, and restart the daemon. Automatic
-download/restart orchestration remains future work.
+Prefer **control plane first**, then **agents**. Agent updates drain, wait for idle, verify a
+signed manifest, stage/activate the artifact, and request a supervisor restart when
+`HARNESS_UPDATE_MANIFEST_URL` and `HARNESS_UPDATE_PUBLIC_KEY` are set. The manual runbook remains
+supported. A failed activation rolls the previous artifact back and resumes scheduling.
 
 Automation rollouts that need to quiesce only their own work use the authenticated
 repository-principal session-drain API instead. They must keep their external admission gates off,

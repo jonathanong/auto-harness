@@ -313,10 +313,13 @@ the LaunchAgent may still be running correctly, but that result does not verify 
 Do **not** kill in-flight AI CLIs for routine upgrades.
 
 `AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
-durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, request activation, and
-request supervisor restart. Concurrent runs collapse into one update. Production fetch/install/
-restart boundaries are intentionally not configured yet, so operators still use the manual steps
-above until those host-mutating adapters are explicitly enabled and validated.
+durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, activate, request
+supervisor restart, and roll back plus resume scheduling if activation or restart fails. Concurrent
+runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
+`HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM), optional `HARNESS_UPDATE_INSTALL_DIR` (default
+`/opt/auto-harness`), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once per start) to enable the
+production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. The
+manual steps above remain valid when those variables are unset.
 
 ### Rollback
 

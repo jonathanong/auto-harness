@@ -1,4 +1,5 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { enqueueHostOfflineAlert } from "./slack-host-alert.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
 export { cancelSession } from "./control-plane-cancel-local.ts";
@@ -45,7 +46,8 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
     if (nowMs - last < state.heartbeatStaleMs) {
       continue;
     }
-    const freed = offlineHostAndRequeue(state, hostId, "agent heartbeat stale; requeued");
+    const reason = "agent heartbeat stale; requeued";
+    const freed = offlineHostAndRequeue(state, hostId, reason);
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) {
         reclaimed.push(sid);
@@ -56,6 +58,11 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
     }
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);
+    void enqueueHostOfflineAlert(state, {
+      hostId,
+      reason,
+      lastHeartbeatAt: meta.lastHeartbeatAt,
+    });
   }
   return reclaimed;
 }
@@ -88,12 +95,8 @@ export async function reclaimStaleHostsDurable(
       continue;
     }
     if (!meta.connectionId) continue;
-    const freed = await offlineHostAndRequeueDurable(
-      state,
-      hostId,
-      meta.connectionId,
-      "agent heartbeat stale; requeued",
-    );
+    const reason = "agent heartbeat stale; requeued";
+    const freed = await offlineHostAndRequeueDurable(state, hostId, meta.connectionId, reason);
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) reclaimed.push(sid);
     }
@@ -108,6 +111,11 @@ export async function reclaimStaleHostsDurable(
     state.connections.delete(meta.connectionId);
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);
+    await enqueueHostOfflineAlert(state, {
+      hostId,
+      reason,
+      lastHeartbeatAt: meta.lastHeartbeatAt,
+    });
   }
   return reclaimed;
 }

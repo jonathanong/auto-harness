@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getHostServiceStatus, installHostService, uninstallHostService } from "./host-service.ts";
+import {
+  getHostServiceStatus,
+  installHostService,
+  restartHostService,
+  uninstallHostService,
+} from "./host-service.ts";
 import type { HostServiceFs } from "./host-service-io.ts";
 import { baseOpts, memFs, seededFs } from "./host-service-test-helpers.ts";
 
@@ -22,6 +27,83 @@ describe("unsupported platform / thrown failures", () => {
     expect(getHostServiceStatus(baseOpts({ platform: "aix", fs: seededFs() }))).toMatchObject({
       state: "unknown",
     });
+    expect(restartHostService(baseOpts({ platform: "aix", fs: seededFs() }))).toBe(1);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "win32",
+          fs: seededFs(),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          run: () => ({ status: 1, stdout: "", stderr: "failed" }),
+        }),
+      ),
+    ).toBe(1);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          run: () => ({ status: 1, stdout: "", stderr: "failed" }),
+        }),
+      ),
+    ).toBe(1);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          run: () => ({ status: 37, stdout: "", stderr: "already in progress" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "win32",
+          fs: seededFs(),
+          run: () => ({ status: 1, stdout: "", stderr: "failed" }),
+        }),
+      ),
+    ).toBe(1);
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          run: () => {
+            throw new Error("boom");
+          },
+        }),
+      ),
+    ).toBe(1);
     expect(
       getHostServiceStatus(
         baseOpts({

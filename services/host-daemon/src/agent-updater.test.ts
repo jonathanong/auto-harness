@@ -46,6 +46,7 @@ describe("AgentUpdater", () => {
         stage: async ({ version }) => void calls.push(`stage:${version}`),
         activate: async (version) => void calls.push(`activate:${version}`),
         restart: async () => void calls.push("restart"),
+        rollback: async () => void calls.push("rollback"),
       },
       onState: (state) => states.push(state.phase),
     });
@@ -83,6 +84,7 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(updater.run()).resolves.toEqual({ phase: "complete", currentVersion: "2.0.0" });
@@ -104,6 +106,7 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(equalUpdater.run()).resolves.toEqual({
@@ -127,6 +130,7 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(largeVersionUpdater.run()).resolves.toEqual({
@@ -158,6 +162,7 @@ describe("AgentUpdater", () => {
         },
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(updater.run()).resolves.toMatchObject({

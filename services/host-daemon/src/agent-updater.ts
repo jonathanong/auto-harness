@@ -11,6 +11,7 @@ export type UpdateInstaller = {
   stage(input: { version: string; artifact: Uint8Array }): Promise<void>;
   activate(version: string): Promise<void>;
   restart(): Promise<void>;
+  rollback(): Promise<void>;
 };
 
 export type UpdateLifecycle = {
@@ -110,7 +111,14 @@ export class AgentUpdater {
       return this.transition({ phase: "complete", currentVersion: targetVersion });
     } catch (error) {
       let failure = error instanceof Error ? error.message : String(error);
-      if (drained && !activationAttempted) {
+      if (activationAttempted) {
+        try {
+          await this.options.installer.rollback();
+        } catch (rollbackError) {
+          failure += `; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`;
+        }
+      }
+      if (drained) {
         try {
           await this.options.lifecycle.resume();
         } catch (resumeError) {

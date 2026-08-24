@@ -119,6 +119,18 @@ test.describe("control plane providers", () => {
 
     await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("provider-settings")).toBeVisible();
+    await expect(page.getByTestId("form-provider-usage-rates")).toBeVisible();
+    await expect(page.getByTestId("provider-usage-rates-error")).toBeHidden();
+    await page.getByTestId("provider-usage-rates-currency").fill("USD");
+    await page.getByTestId("provider-usage-rates-inputTokenMicros").fill("2");
+    await page.getByTestId("provider-usage-rates-outputTokenMicros").fill("3");
+    await page.getByTestId("provider-usage-rates-cachedInputTokenMicros").fill("1");
+    await page.getByTestId("provider-usage-rates-reasoningTokenMicros").fill("4");
+    await page.getByTestId("provider-usage-rates-submit").click();
+    await expect(page.getByTestId("provider-usage-rates-currency")).toHaveValue("USD", {
+      timeout: 15_000,
+    });
+    await page.getByTestId("provider-usage-rates-clear").click();
     // A provider with accounts/commands still attached can't be deleted (409 deadlock
     // avoidance) — the delete button is disabled rather than left to fail server-side.
     await expect(page.getByTestId("delete-provider-open")).toBeDisabled();

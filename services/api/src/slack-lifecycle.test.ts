@@ -162,6 +162,12 @@ describe("Slack message formatting", () => {
   it("formats terminal variants, bounded errors, and only five stderr lines", () => {
     const completed = { ...base, status: "completed" as const, exitCode: null };
     expect(formatSlackLifecycleMessage("session_completed", completed)).toContain("Exit code: 0");
+    expect(formatSlackLifecycleMessage("host_offline", { ...base, hostId: "host-1" })).toContain(
+      "Host: host-1",
+    );
+    expect(formatSlackLifecycleMessage("host_offline", { ...base, hostId: undefined })).toContain(
+      `Host: ${base.id}`,
+    );
     expect(formatSlackLifecycleMessage("session_cancelled", base)).toContain("(Ada)");
     const failed = formatSlackLifecycleMessage("session_failed", {
       ...base,

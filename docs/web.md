@@ -4,9 +4,12 @@
 
 Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials: [auth.md](auth.md). Roles: [roles.md](roles.md).
 
-The UI runs against the supported local control plane. Cloud-hosted UI/API behavior remains a
-target until the AWS runtime has a deploy path and account-backed verification. Sections that say
-**Target** retain the intended product behavior without claiming it is already shipped.
+The UI runs against the supported local control plane and against the hosted CloudFront UI after
+an AWS deploy. Account-backed evidence: deploy → update → REST/web health → teardown in
+`us-west-2` on 2026-08-17; a short programmatic session was dispatched and completed during the
+2026-08-18 `qa` purge. Long-running subscription-CLI fleet QA remains
+[qa-production.md](qa-production.md). Sections that say **Target** retain intended product
+behavior without claiming that extra path is already shipped.
 
 ### Shell & Navigation
 
@@ -438,7 +441,8 @@ The Overview tab's Daemon block shows the detected restart count, daemon start t
 time (all relative, full timestamp on hover). A daemon process keeps one opaque instance id across
 WebSocket reconnects; the control plane counts a restart only when a later registration changes a
 previously known instance id. Legacy daemons establish no baseline. This is local API/UI
-observability, not an outbound alert and not permission to restart a host.
+observability. Stale/offline host reclaim also enqueues an external Slack **Host Offline**
+notification when that toggle is enabled. It is not permission to restart a host.
 
 An offline host's Overview tab also shows **Connect this host**: the quoted env +
 `pnpm local:daemon start` foreground command, plus the same quoted env with
@@ -474,7 +478,7 @@ Table: name, default command, attached-account count, owned-command count. "Add 
 
 ### Provider Detail
 
-Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an Add command dialog) · **Settings** (rename in a dialog; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
+Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an Add command dialog) · **Settings** (rename in a dialog; optional usage-rate micros for configured cost views; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
 
 ---
 
@@ -505,7 +509,8 @@ management chrome.
 ### Slack configuration
 
 Settings displays only redacted Slack state: whether each secret is configured,
-the default channel, enabled state, and notification toggles. Bot tokens and
+the default channel, enabled state, and notification toggles (session lifecycle
+plus Host Offline for stale/offline hosts). Bot tokens and
 signing secrets are write-only password inputs with no initial value and are
 cleared after successful create or complete replacement. Replacement always
 requires the bot token again; the UI cannot recover or preserve a prior secret.

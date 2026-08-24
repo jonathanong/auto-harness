@@ -1,22 +1,11 @@
+import {
+  DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
+  type SlackNotifications,
+} from "@auto-harness/shared";
+
 export const SLACK_INTEGRATION_ID = "slack";
-
-export type SlackNotifications = {
-  onSessionCreated: boolean;
-  onSessionStarted: boolean;
-  onSessionCompleted: boolean;
-  onSessionFailed: boolean;
-  onSessionCancelled: boolean;
-  onScheduleCompleted: boolean;
-};
-
-export const DEFAULT_SLACK_NOTIFICATIONS: SlackNotifications = {
-  onSessionCreated: true,
-  onSessionStarted: true,
-  onSessionCompleted: true,
-  onSessionFailed: true,
-  onSessionCancelled: true,
-  onScheduleCompleted: false,
-};
+export { DEFAULT_SLACK_NOTIFICATIONS, normalizeSlackNotifications, type SlackNotifications };
 
 /** The singleton durable record. Ciphertext must never leave the API boundary. */
 export type SlackIntegrationRecord = {
@@ -41,6 +30,11 @@ export function toPublicSlackIntegration(
   record: SlackIntegrationRecord,
   deliveryAvailable = false,
 ): PublicSlackIntegration {
-  const { encryptedConfig: _encryptedConfig, ...publicRecord } = record;
-  return { ...publicRecord, botTokenConfigured: true, deliveryAvailable };
+  const { encryptedConfig: _encryptedConfig, notifications, ...publicRecord } = record;
+  return {
+    ...publicRecord,
+    notifications: normalizeSlackNotifications(notifications),
+    botTokenConfigured: true,
+    deliveryAvailable,
+  };
 }

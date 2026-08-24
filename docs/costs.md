@@ -46,17 +46,21 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
-## AWS cost model (not yet estimated)
+## AWS cost model (measured implementation + modelled workload)
 
 The AWS runtime has been deployed and account-tested — see the Maturity table in
-[deploy-aws.md](deploy-aws.md#maturity) — but a credible monthly estimate still
-requires a representative **long-running** CLI transcript, not a smoke test. Log
-chunks affect WebSocket messages, Lambda invocations, DynamoDB writes, archive
-bytes, and CloudWatch volume all at once, and those inputs scale with session
-length and chattiness far more than with session _count_. A handful of short
-`claude -p` sessions (each a single quick reply, a few seconds end to end) is not
-enough workload to produce those inputs — there is still no supported aggregate
-monthly-cost estimate.
+[deploy-aws.md](deploy-aws.md#maturity). Implementation constants that drive
+volume are measured from the running code (daemon ~10 log messages/s after
+source-side coalesce, control-plane 25-item log transactions, 20s WebSocket
+keepalive, 1-minute EventBridge scheduler, 7-day SessionLogs TTL, 32 KiB API
+Gateway frame). Those constants live in `modules/shared/src/capacity-model.ts`.
+
+The 2026-08-18 `qa` purge in `us-west-2` completed 3 short programmatic sessions
+and later emptied 3 archived object versions. That run is acceptance evidence for
+archive upload, not a monthly invoice. Monthly figures below use the reference
+workload (100 sessions/day, 15-minute CLI at the measured 10 msg/s, 2 hosts + 2
+viewers, 256 KiB archive/session). They are a capacity model, not a contract
+price.
 
 Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
 pages for the deployment region before approving a budget.
@@ -72,16 +76,26 @@ pages for the deployment region before approving a budget.
 | **EventBridge (target)**  | Cron evaluation frequency                    | Number of schedules                                    |
 | **CloudWatch (target)**   | Runtime log retention                        | Actual emitted runtime-log bytes                       |
 
-## Inputs required before a scale estimate
+## Reference workload (modelled from measured rates)
 
-- sessions per day and connected-agent/viewer minutes
-- distribution of log chunks and bytes per session from real supported CLIs
-- handler invocation duration and memory in a deployed account
-- read patterns from real UI/API usage
-- effective retention, compression, and S3 lifecycle behavior after those paths exist
+| Input                   | Reference value | Source                                                          |
+| ----------------------- | --------------- | --------------------------------------------------------------- |
+| Sessions / day          | 100             | planning default                                                |
+| Session duration        | 15 minutes      | long-running CLI, not a smoke `claude -p`                       |
+| Daemon log rate         | 10 messages/s   | `DEFAULT_LOG_MESSAGES_PER_SEC`                                  |
+| Log chunks / session    | 9,000           | duration × log rate                                             |
+| Control-plane log batch | 25 items        | connection-fenced transaction                                   |
+| Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                  |
+| Keepalive               | 20 s            | daemon `startDaemon`                                            |
+| Scheduler               | 1 / minute      | EventBridge / local repair sweep                                |
+| Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics |
+| SessionLogs TTL         | 7 days          | `ttl` on new writes                                             |
 
-Publish solo/team/enterprise totals only after these inputs are measured; scaling session count
-alone cannot estimate the dominant log-driven costs.
+At that workload the model reports ~27M DynamoDB log item writes/month (~1.1M
+transactions), ~27M+ WebSocket messages/month, 43,200 scheduler invocations/month,
+and ~750 MiB archive PUT volume/month. Queue throughput is 100 assigns/day plus
+the one-minute repair sweep. Re-run `estimateMonthlyCapacity` when the session mix
+changes; do not scale by session count alone.
 
 ## Cost by Component
 
@@ -223,7 +237,7 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 | **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU.                                                               |
 | **Plan usage limits**    | Soft/hard caps, rate limits                     | Hit → `usage_limit`; pause that Provider Account globally for its configurable cooldown (5h default), then use account/fallback routing. Providerless commands are ungated. |
 | **VPS / runner hosts**   | Fixed monthly instance cost                     | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost.                                                                                      |
-| **Auto Harness on AWS**  | Not yet measured                                | Queue, API, and logs; log volume is the dominant unknown.                                                                                                                   |
+| **Auto Harness on AWS**  | Modelled from measured rates                    | Queue, API, and logs; log volume dominates. See the reference workload above.                                                                                               |
 
 ### Why we do _not_ lead with API unit economics
 
@@ -251,8 +265,9 @@ goal with deployed measurements before presenting a dollar estimate.
 ### AWS + VPS
 
 1. **Set log retention when deploying** — CloudWatch Logs can accumulate. Set 7–14 day retention.
-2. **Implement the archive path** — Move completed session logs to S3, then to Glacier; the
-   current runtime only writes DynamoDB archive rows.
+2. **Keep the archive path configured** — Terminal logs upload as JSONL when `ARCHIVE_BUCKET` is
+   set; TTL then expires DynamoDB log rows. Measure archive bytes from a real transcript before
+   changing lifecycle class.
 3. **Right-size Lambda** — 256 MB is sufficient for most handlers. Don't over-allocate.
 4. **Monitor with Cost Explorer** — Set up a $10 billing alert to catch any surprises.
 5. **Use reserved capacity** — If DynamoDB costs grow, switch from on-demand to provisioned with auto-scaling.

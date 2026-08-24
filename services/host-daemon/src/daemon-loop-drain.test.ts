@@ -47,6 +47,8 @@ describe("DaemonLoop drain", () => {
         attemptId: "attempt-sess-x",
       });
       expect(logs.some((l) => l.includes("cancel"))).toBe(true);
+      await loop.resumeFromDrain();
+      expect(loop.isDraining()).toBe(false);
       // unknown wire type ignored
       transport.deliver({ type: "ping" } as never);
       loop.stop();

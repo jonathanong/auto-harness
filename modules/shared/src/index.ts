@@ -198,6 +198,13 @@ export {
 export type { Command, Provider, ProviderAccount, ResumeRefCapture } from "./providers.ts";
 export { validateUsageRates, type SessionUsage, type UsageRates } from "./usage.ts";
 export {
+  CAPACITY_CONSTANTS,
+  REFERENCE_WORKLOAD,
+  estimateMonthlyCapacity,
+  type CapacityEstimate,
+  type CapacityWorkload,
+} from "./capacity-model.ts";
+export {
   isValidCliResumeRef,
   MAX_COMMAND_ARGV_ITEMS,
   MAX_COMMAND_ARG_LENGTH,
@@ -222,6 +229,7 @@ export {
 
 export {
   DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
   type PublicSlackIntegration,
   type SlackNotifications,
 } from "./slack.ts";

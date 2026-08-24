@@ -4,6 +4,7 @@ import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SpawnProcessRunner } from "./executor.ts";
 import { PtyProcessRunner } from "./pty-runner.ts";
+import { UsageCapturingProcessRunner } from "./usage-adapter.ts";
 import { createGitClient } from "./git.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
@@ -28,7 +29,7 @@ export async function runAssignedSession(
   assign: SessionAssign,
   onLog: (line: string) => void,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
-  commandRunner: ProcessRunner = new PtyProcessRunner(),
+  commandRunner: ProcessRunner = new UsageCapturingProcessRunner(new PtyProcessRunner()),
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   const runtime = await probeGitReadiness(processRunner);

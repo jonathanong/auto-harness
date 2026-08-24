@@ -104,6 +104,14 @@ export function installWin32(ctx: HostServiceContext): number {
   return 0;
 }
 
+export function restartWin32(ctx: HostServiceContext): number {
+  if (endWindowsTask(ctx) !== 0) return 1;
+  const runNow = ctx.run("schtasks", ["/Run", "/TN", WINDOWS_TASK_NAME]);
+  if (runNow.status !== 0) return failedCommand(ctx.error, "schtasks /Run", runNow);
+  ctx.log(`Restarted scheduled task ${WINDOWS_TASK_NAME}`);
+  return 0;
+}
+
 export function uninstallWin32(ctx: HostServiceContext): number {
   const paths = windowsPaths(ctx.appData);
   if (endWindowsTask(ctx) !== 0) return 1;

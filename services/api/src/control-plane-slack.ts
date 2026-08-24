@@ -1,6 +1,7 @@
 import { SLACK_SECRET_ENCRYPTION_CONTEXT, type SecretEncryptor } from "./secret-crypto.ts";
 import {
   DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
   SLACK_INTEGRATION_ID,
   toPublicSlackIntegration,
   type PublicSlackIntegration,
@@ -145,7 +146,7 @@ async function makeRecord(
     ),
     defaultChannel: input.defaultChannel,
     enabled: input.enabled ?? true,
-    notifications: input.notifications ?? { ...DEFAULT_SLACK_NOTIFICATIONS },
+    notifications: normalizeSlackNotifications(input.notifications),
     signingSecretConfigured: !!input.signingSecret,
     version,
     createdAt,

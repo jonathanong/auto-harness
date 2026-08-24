@@ -451,19 +451,21 @@ CLI modes; it does not add an interactive user-input channel.
   same millisecond (Invariant 5).
 - `POST /sessions` response includes a `url` that resolves to the session in the local Web UI.
 
-**Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
-agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
-session create with `ref`/`target`/`fallbacks`/`concurrencyId`/`metadata`/`url`.
-CDK table definitions plus deployable HTTP/WebSocket Lambda runtime resources live in
-`services/cdk`, including an EventBridge rule and cron Lambda for durable scheduling sweeps.
-The explicit deploy, update, and teardown lifecycle and REST health check were verified against
-an AWS account in `us-west-2` on 2026-08-16. New SessionLogs writes set `ttl` to Unix-epoch
-seconds 7 days from the write; CDK and local table creation enable DynamoDB TTL on that
-attribute. Rows written before this change omit `ttl` and are not backfilled, so they do not
-expire through TTL. Terminal archival retains bounded pointer/status metadata in the DynamoDB
-Archives table and writes JSONL objects to S3 when `ARCHIVE_BUCKET` configures the archive
-writer. No account-backed upload has been verified. The local store is DynamoDB Local via
-`pnpm local:dynamodb` (official image).
+**Status (code-complete; AWS lifecycle proven, hosted session E2E partial):** `ControlPlane`
+implements exclusive claim (Inv 1), agent register uniqueness (Inv 3), cron `nextRunAt` claim
+(Inv 4), `timestampSeq` logs (Inv 5), session create with `ref`/`target`/`fallbacks`/
+`concurrencyId`/`metadata`/`url`. CDK table definitions plus deployable HTTP/WebSocket Lambda
+runtime resources live in `services/cdk`, including an EventBridge rule and cron Lambda for
+durable scheduling sweeps. Account-backed evidence is recorded in
+[deploy-aws.md](deploy-aws.md#maturity): deploy → update → REST/web health → teardown in
+`us-west-2` on 2026-08-17, and `purge` on 2026-08-18 against a disposable `qa` environment
+that created, dispatched, and completed a programmatic session (3 short test sessions left 3
+archived object versions). That is not a long-running CLI fleet E2E. New SessionLogs writes set
+`ttl` to Unix-epoch seconds 7 days from the write; CDK and local table creation enable DynamoDB
+TTL on that attribute. Rows written before this change omit `ttl` and are not backfilled, so
+they do not expire through TTL. Terminal archival retains bounded pointer/status metadata in the
+DynamoDB Archives table and writes JSONL objects to S3 when `ARCHIVE_BUCKET` configures the
+archive writer. The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
@@ -520,12 +522,16 @@ writer. No account-backed upload has been verified. The local store is DynamoDB 
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
-**Status (code-complete and tested locally):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
-`auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
-deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable
-concurrency dedupe (Inv 9), heartbeat stale reclaim. Local WS log ingress commits up to 25
-adjacent chunks in one connection-fenced transaction; a plain `BatchWriteItem` would not preserve
-that fence. No live AWS API Gateway deployment or account-backed Phase 3 E2E has been demonstrated.
+**Status (code-complete and tested locally; AWS dispatch proven only for short programmatic
+sessions):** `DaemonLoop` + **WebSocket** (`/ws` on local API, `auto-harness-agent start`,
+`pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack deadline requeue (Inv 2),
+usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable concurrency dedupe (Inv 9),
+heartbeat stale reclaim. Local WS log ingress commits up to 25 adjacent chunks in one
+connection-fenced transaction; a plain `BatchWriteItem` would not preserve that fence. AWS
+API Gateway + Lambda dispatch is synthesized and was exercised for a short programmatic
+session during the 2026-08-18 `qa` purge in `us-west-2` (see [deploy-aws.md](deploy-aws.md#maturity)).
+A long-running subscription-CLI fleet E2E on a production VPS against that hosted control
+plane has not been demonstrated.
 
 **Migration marker: a plan-only repo workflow (e.g. `codex-plan`, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and account cooldown/fallback routing
@@ -570,7 +576,9 @@ operations, setup scripts, and terminal hooks remain pipe-based. Slack configura
 encrypted at rest; lifecycle delivery runs through the leased outbox when a secret encryptor or
 injected transport is attached (cron in AWS, local worker otherwise). If the token cannot be
 decrypted, the control plane reports configured-but-unavailable rather than implying send.
-No cloud-hosted UI/runtime has been deployed or account-tested.
+CloudFront + Lambda UI deploy/update/teardown and REST/web health were account-tested in
+`us-west-2` on 2026-08-17; operator-driven hosted UI QA remains the [qa-production.md](qa-production.md)
+runbook rather than an automated fleet E2E.
 
 **Migration marker:** UI availability doesn't gate any repo-workflow cutover — CLI/API-driven
 callers don't need it. Useful before wider multi-repo rollout.
@@ -597,23 +605,33 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   bounded secret-safe metadata, and fail-closed acknowledgement if an audit
   append cannot persist).
 
-**Status (local/runtime code complete, deployment unproven):** `archiveSessionLogs` serializes
+**Status (local/runtime code complete; AWS lifecycle proven, long-running fleet unproven):**
+`archiveSessionLogs` serializes
 terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in DynamoDB, and uses
 the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
 pending upload before the PUT so a repeated terminal message can retry safely. The bucket name and
-scoped archive policy are wired into the synthesized runtime functions; no account-backed upload
-or deployment has been run. An opt-in local webhook worker reconciles terminal session snapshots
+scoped archive policy are wired into the synthesized runtime functions. The 2026-08-18 `qa`
+purge in `us-west-2` emptied 3 archived object versions after 3 short test sessions completed;
+byte-size and monthly-cost measurements still come from the modelled workload in
+[costs.md](costs.md), not from that run. An opt-in local webhook worker reconciles terminal session snapshots
 into the secret-safe durable outbox and processes bounded pending or expired leases through
 explicitly injected destination and transport boundaries. Production supplies neither boundary,
 so no outbound HTTP/configuration or secret runtime exists. `drainHost` +
 `DaemonLoop.beginDrain` stop new assignments without killing
-in-flight CLIs. The signed-manifest updater core sequences drain, idle, checksum
-verification, staging, activation, and restart through injected boundaries, but production
-download/install/supervisor adapters remain unwired, so operators still execute that path
-manually. Host registration carries one daemon-process identity across reconnects; durable
-inventory records count identity changes and expose local API/UI restart observability without
-restarting a host or sending an external alert. Slack config CRUD and outbound session-thread
-delivery exist; OAuth and inbound verification do not.
+in-flight CLIs. The signed-manifest updater sequences drain, idle, checksum verification,
+staging, activation, supervisor restart, and rollback. Production HTTPS fetch, filesystem
+install, and systemd/launchd/schtasks restart adapters are wired when
+`HARNESS_UPDATE_MANIFEST_URL` and `HARNESS_UPDATE_PUBLIC_KEY` are set; operators still have
+the manual runbook. Host registration carries one daemon-process identity across reconnects;
+durable inventory records count identity changes and expose API/UI restart observability.
+Stale/offline host reclaim enqueues an external Slack `onHostOffline` alert when that
+notification is enabled. Slack config CRUD and outbound session-thread delivery exist; OAuth
+and inbound verification do not. Provider-aware CLI usage adapters emit structured
+`SessionUsage` from Claude/Codex/Gemini/Grok results so session usage and configured-cost
+views reflect real executions. DynamoDB Local tests that share one endpoint run in a
+serialized `dynamo` Vitest project (one file at a time) so `pnpm check` does not 60s-timeout
+under concurrent Dynamo-heavy groups. The measured capacity/cost model lives in
+[costs.md](costs.md) and `modules/shared/src/capacity-model.ts`.
 
 **Migration marker:** none of this gates any product-repo automation workflow.
 

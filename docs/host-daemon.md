@@ -4,12 +4,13 @@ Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
 ## Session usage and cost attribution
 
-Usage accounting is separate from usage-limit detection. A provider-aware CLI adapter may return a
-structured `SessionUsage` value from the process runner; the daemon forwards it in terminal status
-or a `session:usage` frame. The daemon does not scan prompts, stdout, stderr, or retained logs for
-token counts or prices, and the control plane accepts only `source: "cli"`. Counts and configured
-monetary values are decimal strings; monetary values use integer micros. Provider rates are
-optional operator configuration and are never fetched from a vendor.
+Usage accounting is separate from usage-limit detection. Provider-aware CLI adapters
+(`claude`, `codex`, `gemini`, `grok`) parse structured JSON result objects from the process
+runner and return a `SessionUsage` value; the daemon forwards it in terminal status or a
+`session:usage` frame. Prompts and free-form logs are never scanned for token counts or prices,
+and the control plane accepts only `source: "cli"`. Counts and configured monetary values are
+decimal strings; monetary values use integer micros. Provider `usageRates` are optional
+operator configuration (control-plane Provider Settings) and are never fetched from a vendor.
 
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
@@ -614,12 +615,15 @@ older daemons that omit it.
 
 ---
 
-## Auto-update target (graceful restart)
+## Auto-update (graceful restart)
 
-The daemon's drain protocol and signed-manifest orchestration core support the safety invariants below
-without interrupting in-flight AI CLI work. Production manifest fetching, artifact installation, and
-supervisor restart adapters are not wired yet, so the end-to-end auto-update path remains a target;
-operators currently follow [the manual update runbook](deploy-host-daemon.md#update).
+The daemon's drain protocol and signed-manifest updater support the safety invariants below
+without interrupting in-flight AI CLI work. When `HARNESS_UPDATE_MANIFEST_URL` and
+`HARNESS_UPDATE_PUBLIC_KEY` are set, `start` polls for a signed Ed25519 manifest, downloads the
+HTTPS artifact, stages it under `HARNESS_UPDATE_INSTALL_DIR` (default `/opt/auto-harness`),
+activates it, and requests a systemd/launchd/schtasks restart. Activation or restart failure
+rolls back to the previous artifact and resumes scheduling (`DaemonLoop.resumeFromDrain`).
+Operators can still follow [the manual update runbook](deploy-host-daemon.md#update).
 
 ### Goals
 

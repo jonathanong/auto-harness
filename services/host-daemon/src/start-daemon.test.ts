@@ -74,13 +74,17 @@ describe("startDaemon", () => {
     });
     try {
       await listen(server);
+      const errors: string[] = [];
       const daemon = await startDaemon({
         config,
         wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
         inventoryPollMs: 0,
+        error: (line) => errors.push(line),
+        childEnvSource: { HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/m.json" },
       });
       await daemon.stop();
       expect(received).toEqual(["host:register", "host:status"]);
+      expect(errors.some((line) => line.includes("updater disabled"))).toBe(true);
     } finally {
       await close(wss, server);
       cleanup();

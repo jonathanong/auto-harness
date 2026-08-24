@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack.ts";
+import { DEFAULT_SLACK_NOTIFICATIONS, normalizeSlackNotifications } from "./slack.ts";
 
 describe("Slack shared contract", () => {
   it("defaults lifecycle notifications on and schedule notifications off", () => {
@@ -11,6 +11,8 @@ describe("Slack shared contract", () => {
       onSessionFailed: true,
       onSessionCancelled: true,
       onScheduleCompleted: false,
+      onHostOffline: true,
     });
+    expect(normalizeSlackNotifications({ onHostOffline: false }).onHostOffline).toBe(false);
   });
 });

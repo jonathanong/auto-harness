@@ -37,6 +37,7 @@ it("keeps observer failures from interrupting activation and restart", async () 
       stage: async () => void calls.push("stage"),
       activate: async () => void calls.push("activate"),
       restart: async () => void calls.push("restart"),
+      rollback: async () => void calls.push("rollback"),
     },
     onState: () => {
       throw new Error("observer unavailable");
@@ -77,6 +78,7 @@ function failingUpdater(
           await activate();
         },
         restart: async () => void calls.push("restart"),
+        rollback: async () => void calls.push("rollback"),
       },
     }),
   };
@@ -96,7 +98,7 @@ it("resumes work acceptance after download and checksum failures", async () => {
   expect(checksum.calls).toEqual(["drain", "idle", "resume"]);
 });
 
-it("reports resume failure and stays drained once activation was attempted", async () => {
+it("rolls back and resumes after an activation failure", async () => {
   const resumeFailure = failingUpdater(
     async () => Promise.reject("download offline"),
     undefined,
@@ -122,7 +124,14 @@ it("reports resume failure and stays drained once activation was attempted", asy
   await expect(activationFailure.updater.run()).resolves.toMatchObject({
     error: "activation failed",
   });
-  expect(activationFailure.calls).toEqual(["drain", "idle", "stage", "activate"]);
+  expect(activationFailure.calls).toEqual([
+    "drain",
+    "idle",
+    "stage",
+    "activate",
+    "rollback",
+    "resume",
+  ]);
 });
 
 it("reports manifest fetch failures without attempting lifecycle recovery", async () => {
@@ -144,6 +153,7 @@ it("reports manifest fetch failures without attempting lifecycle recovery", asyn
       stage: async () => undefined,
       activate: async () => undefined,
       restart: async () => undefined,
+      rollback: async () => undefined,
     },
   });
   await expect(updater.run()).resolves.toEqual({
