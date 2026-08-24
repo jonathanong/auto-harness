@@ -79,6 +79,8 @@ describe("install-service darwin reload", () => {
       }).code,
     ).toBe(0);
     expect(steps({ print: stopped, kickstart: errRun(37, "") }).code).toBe(0);
+    expect(steps({ print: [stopped, missing, stopped], kickstart: errRun(37, "") }).code).toBe(0);
+    expect(steps({ print: [stopped, missing, stopped] }).code).toBe(0);
   });
 
   it("reports kickstart failure when the agent stays stopped", () => {
