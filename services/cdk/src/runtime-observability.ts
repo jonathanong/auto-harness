@@ -148,34 +148,13 @@ export function addRuntimeObservability(input: {
     operationalMetric("QueueAgeSeconds", env, "Maximum", cloudwatch.Unit.SECONDS),
     1800,
   );
-  addErrorAlarm(
-    input.scope,
+  for (const name of [
     "AssignmentFailures",
-    operationalMetric("AssignmentFailures", env, "Sum", cloudwatch.Unit.COUNT),
-    1,
-  );
-  addErrorAlarm(
-    input.scope,
     "AckTimeouts",
-    operationalMetric("AckTimeouts", env, "Sum", cloudwatch.Unit.COUNT),
-    1,
-  );
-  addErrorAlarm(
-    input.scope,
     "StaleHosts",
-    operationalMetric("StaleHosts", env, "Sum", cloudwatch.Unit.COUNT),
-    1,
-  );
-  addErrorAlarm(
-    input.scope,
     "Cooldowns",
-    operationalMetric("Cooldowns", env, "Sum", cloudwatch.Unit.COUNT),
-    1,
-  );
-  addErrorAlarm(
-    input.scope,
     "LogDrops",
-    operationalMetric("LogDrops", env, "Sum", cloudwatch.Unit.COUNT),
-    1,
-  );
+  ] as const) {
+    addErrorAlarm(input.scope, name, operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT), 1);
+  }
 }
