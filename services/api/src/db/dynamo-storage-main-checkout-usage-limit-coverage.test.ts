@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -107,6 +108,38 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
       queueOrder: queueOrderKeyForWrite({ id: opts.sessionId }, opts.sessionId),
     });
     expect(await requeueMainCheckoutUsageLimitedSession(ctx, opts)).toBe(false);
+  });
+
+  it("still writes queueOrder when the session pre-read is empty", async () => {
+    const commands: unknown[] = [];
+    const empty = {
+      doc: {
+        send: async (command: unknown) => {
+          commands.push(command);
+          if (command instanceof GetCommand) return {};
+          return {};
+        },
+      },
+      tables: {
+        sessions: "sessions",
+        providerAccounts: "accounts",
+        hostLocks: "locks",
+      },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      requeueMainCheckoutUsageLimitedSession(empty, {
+        sessionId: "missing",
+        hostId: "host",
+        repositoryId: "repo",
+        connectionId: "connection",
+        attemptId: "attempt",
+        providerAccountId: "account",
+        queueShard: 0,
+        now,
+        usageLimitedUntil: now,
+      }),
+    ).resolves.toBe(true);
+    expect(commands.some((command) => command instanceof GetCommand)).toBe(true);
   });
 
   it("uses the default message and rethrows an unavailable table", async () => {

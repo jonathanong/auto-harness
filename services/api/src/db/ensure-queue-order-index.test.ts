@@ -123,6 +123,19 @@ describe("ensureSessionsQueueOrderIndex", () => {
     );
   });
 
+  it("creates the queue-order index when DescribeTable omits it", async () => {
+    const commands: unknown[] = [];
+    const mockedClient = {
+      send: async (command: unknown) => {
+        commands.push(command);
+        if (command instanceof DescribeTableCommand) return { Table: {} };
+        return {};
+      },
+    } as never;
+    await expect(ensureSessionsQueueOrderIndex(mockedClient, "Sessions")).resolves.toBeUndefined();
+    expect(commands).toEqual([expect.any(DescribeTableCommand), expect.any(UpdateTableCommand)]);
+  });
+
   it("skips creating the index when it already exists", async () => {
     const mockedClient = {
       send: async (command: unknown) => {
@@ -236,6 +249,13 @@ describe("ensureSessionsQueueOrderIndex", () => {
     } as never;
     await expect(backfillQueuedSessionQueueOrder(paged, "Sessions", 1)).resolves.toBe(0);
     expect(queries).toBe(2);
+    const noItems = {
+      send: async (command: unknown) => {
+        if (command instanceof QueryCommand) return {};
+        return {};
+      },
+    } as never;
+    await expect(backfillQueuedSessionQueueOrder(noItems, "Sessions", 1)).resolves.toBe(0);
     const failing = {
       send: async (command: unknown) => {
         if (command instanceof QueryCommand) {
