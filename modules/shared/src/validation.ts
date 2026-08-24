@@ -106,7 +106,11 @@ export function isWorktreeStatus(value: unknown): value is WorktreeStatus {
 
 /** Internal deletion leases share the concurrency-lock table but reserve this namespace. */
 export function isReservedConcurrencyId(value: string): boolean {
-  return value.startsWith("catalog-delete:") || value.startsWith("provider-account:");
+  return (
+    value.startsWith("catalog-delete:") ||
+    value.startsWith("provider-account:") ||
+    value.startsWith("provider-lease:")
+  );
 }
 
 /** Validate fields required to create a session (control-plane create path). */

@@ -26,6 +26,7 @@ export {
   tryClaimWorktree,
 } from "./plane-storage-sessions-worktrees.ts";
 export { tryAssignSession } from "./plane-storage-sessions-assign.ts";
+export { backfillProviderAccountLease } from "./plane-storage-provider-account-leases.ts";
 export { failExpiredResumeSession } from "./plane-storage-sessions-assign-resume.ts";
 export { acknowledgeSession } from "./plane-storage-sessions-ack.ts";
 export {

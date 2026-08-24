@@ -336,8 +336,36 @@ describe("provider account execution-profile leases", () => {
 
   it("rebuilds in-memory leases from running sessions on hydrate", async () => {
     const plane = new ControlPlane();
+    let backfilled: { sessionId: string; slot: number } | undefined;
     plane.state.storage = {
       listAllSessions: async () => [
+        {
+          id: "legacy",
+          repositoryId: "repo",
+          prompt: "p",
+          target: { commandId: "c" },
+          fallbacks: [],
+          targetLabels: [],
+          queueTtlSeconds: 1,
+          queueExpiresAt: NOW,
+          timeout: 1,
+          priority: 0,
+          requiredLabels: [],
+          status: "running",
+          queueShard: 0,
+          createdAt: NOW,
+          hostId: "host",
+          attemptId: "legacy-attempt",
+          resolvedRoute: {
+            targetIndex: 0,
+            providerId: "p",
+            providerAccountId: "acct",
+            commandId: "c",
+            hostId: "host",
+            worktreeId: null,
+            attemptId: "legacy-attempt",
+          },
+        },
         {
           id: "running",
           repositoryId: "repo",
@@ -420,14 +448,30 @@ describe("provider account execution-profile leases", () => {
       listArchives: async () => [],
       listAllAuditLogs: async () => [],
       listLogs: async () => [],
+      backfillProviderAccountLease: async (opts: { sessionId: string; slot: number }) => {
+        backfilled = opts;
+        return {
+          status: "migrated",
+          lease: {
+            concurrencyId: "provider-lease:acct:1",
+            providerAccountId: "acct",
+            slot: opts.slot,
+            attemptId: "legacy-attempt",
+          },
+        };
+      },
     } as never;
     await plane.hydrateFromStorage();
     expect(plane.state.providerAccountLeases.get("provider-lease:acct:0")).toMatchObject({
       sessionId: "running",
       attemptId: "attempt",
     });
-    expect(plane.state.providerAccountLeases.has("provider-lease:acct:1")).toBe(false);
+    expect(plane.state.providerAccountLeases.has("provider-lease:acct:1")).toBe(true);
     expect(plane.state.providerAccountLeases.has("provider-lease:acct:2")).toBe(false);
+    expect(backfilled).toMatchObject({ sessionId: "legacy", slot: 1 });
+    expect(plane.getSession("legacy")?.providerAccountLease?.concurrencyId).toBe(
+      "provider-lease:acct:1",
+    );
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
   });
 

@@ -290,6 +290,12 @@ export class DynamoPlaneStorageBase {
     return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
   }
 
+  backfillProviderAccountLease(
+    opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
+  ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {
+    return providerAccountLeases.backfillProviderAccountLease(this.ctx, opts);
+  }
+
   ensureMainCheckoutLeaseMap(hostId: string, connectionId: string): Promise<boolean> {
     return mainCheckout.ensureMainCheckoutLeaseMap(this.ctx, hostId, connectionId);
   }

@@ -10,6 +10,7 @@ import type {
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
+import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import type {
   ArchiveMetadata,
   ConnectionRecord,
@@ -120,6 +121,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
   state.providerAccountLeases.clear();
+  await backfillLegacyProviderAccountLeases(state, sessions);
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
     const lease = session.providerAccountLease;
