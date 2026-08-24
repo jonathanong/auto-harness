@@ -506,7 +506,7 @@ function isAllowedMessage(
   if (!session) return false;
   if (session.hostId === hostId) return true;
   return (
-    msg.type === "session:log" &&
+    "attemptId" in msg &&
     msg.attemptId !== undefined &&
     session.attemptId !== undefined &&
     msg.attemptId !== session.attemptId

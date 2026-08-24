@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- omitted-attempt and mixed-host batch cases stay together. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";

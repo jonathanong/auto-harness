@@ -441,6 +441,71 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.getLogs("sess-1")).toEqual([]);
   });
 
+  it("ignores delayed ack and status from a previous host without a stale-connection error", async () => {
+    const { plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: "wt-1",
+      attemptId: first.session.attemptId!,
+    });
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      hostId: "host-2",
+      worktreeId: "wt-2",
+      attemptId: "attempt-2",
+    });
+    plane.state.storage = {
+      getSession: async () => plane.getSession("sess-1"),
+      getHostLock: async (hostId: string) =>
+        hostId === "host-2" ? "new-connection" : "old-connection",
+      finishSession: async () => true,
+    } as never;
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:ack",
+          sessionId: "sess-1",
+          worktreeId: "wt-1",
+          attemptId: first.session.attemptId!,
+        },
+        "old-connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:status",
+          sessionId: "sess-1",
+          worktreeId: "wt-1",
+          attemptId: first.session.attemptId!,
+          status: "completed",
+        },
+        "old-connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:usage",
+          sessionId: "sess-1",
+          worktreeId: "wt-1",
+          attemptId: first.session.attemptId!,
+          usage: {
+            kind: "delta",
+            sequence: 1,
+            inputTokens: "1",
+            source: "cli",
+            observedAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+        "old-connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(plane.getSession("sess-1")?.status).toBe("running");
+  });
+
   it("rejects a current-attempt durable log from a connection that does not own the host", async () => {
     const { now, plane } = assignedPlane();
     plane.assignQueued();

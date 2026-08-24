@@ -510,6 +510,15 @@ export async function handleHostMessageDurable(
     }
     return { ok: true };
   }
+  if (
+    (msg.type === "session:ack" || msg.type === "session:status" || msg.type === "session:usage") &&
+    msg.attemptId
+  ) {
+    const session = await loadDurableSession(state, storage, msg.sessionId);
+    if (session?.attemptId && session.attemptId !== msg.attemptId) {
+      return { ok: true };
+    }
+  }
   let fence: { hostId: string; connectionId: string } | undefined;
   if (sourceConnectionId) {
     const hostId =
