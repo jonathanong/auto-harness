@@ -35,9 +35,13 @@ export type LogLimits = {
   maxDroppedPerNotice?: number;
 };
 
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+type DelayTimer = (fn: () => void, ms: number) => TimeoutHandle;
+type ClearDelayTimer = (id: TimeoutHandle) => void;
+
 export type LogStreamerTimers = {
-  setTimeout?: typeof setTimeout;
-  clearTimeout?: typeof clearTimeout;
+  setTimeout?: DelayTimer;
+  clearTimeout?: ClearDelayTimer;
   nowMs?: () => number;
 };
 
@@ -52,8 +56,8 @@ export class LogStreamer {
   private readonly emit: LogEmit;
   private readonly now: () => string;
   private readonly nowMs: () => number;
-  private readonly setTimeoutFn: typeof setTimeout;
-  private readonly clearTimeoutFn: typeof clearTimeout;
+  private readonly setTimeoutFn: DelayTimer;
+  private readonly clearTimeoutFn: ClearDelayTimer;
   private readonly maxChunks: number;
   private readonly maxBytes: number;
   private readonly maxWireBytes: number;
@@ -85,8 +89,8 @@ export class LogStreamer {
     this.emit = emit;
     this.now = now;
     this.nowMs = timers.nowMs ?? Date.now;
-    this.setTimeoutFn = timers.setTimeout ?? setTimeout;
-    this.clearTimeoutFn = timers.clearTimeout ?? clearTimeout;
+    this.setTimeoutFn = timers.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
+    this.clearTimeoutFn = timers.clearTimeout ?? ((id) => clearTimeout(id));
     this.seq = initialSeq;
     this.maxChunks = limits.maxChunks ?? DEFAULT_MAX_LOG_CHUNKS;
     this.maxBytes = limits.maxBytes ?? DEFAULT_MAX_LOG_BYTES;

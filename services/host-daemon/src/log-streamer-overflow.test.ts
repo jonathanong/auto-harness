@@ -124,7 +124,7 @@ describe("LogStreamer overflow and split writes", () => {
       rateLimited,
       {
         nowMs: () => nowMs,
-        setTimeout: () => 1 as unknown as ReturnType<typeof setTimeout>,
+        setTimeout: () => 1 as ReturnType<typeof setTimeout>,
         clearTimeout: () => undefined,
       },
     );
