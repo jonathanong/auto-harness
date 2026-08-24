@@ -1,4 +1,3 @@
-import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SlackIntegrationRecord, SlackNotifications } from "./slack-integration-types.ts";
 import { planSlackLifecycle } from "./slack-lifecycle.ts";
@@ -13,6 +12,20 @@ export type SlackLifecycleConfig = {
   enabled: boolean;
   defaultChannel: string;
   notifications: SlackNotifications;
+};
+
+/** Structural slice of control-plane state — kept local to avoid a circular import. */
+type SlackSessionStorage = SlackOutboxStore & {
+  getSlackIntegration?: () => Promise<SlackIntegrationRecord | null>;
+};
+
+type SlackSessionWriterState = {
+  storage: SlackSessionStorage | undefined;
+  slackIntegration: SlackIntegrationRecord | undefined;
+  now: () => string;
+  repositories: { get(id: string): { name: string } | undefined };
+  logs: { get(id: string): ReadonlyArray<{ stream: string; content: string }> | undefined };
+  publicBaseUrl: string;
 };
 
 /**
@@ -50,10 +63,7 @@ export async function reconcileSlackSession(input: {
  * outbox even if another worker never observed it as queued/running.
  */
 export async function enqueueSlackSessionLifecycle(
-  state: Pick<
-    ControlPlaneState,
-    "storage" | "slackIntegration" | "now" | "repositories" | "logs" | "publicBaseUrl"
-  >,
+  state: SlackSessionWriterState,
   session: SessionRecord,
 ): Promise<void> {
   const storage = state.storage;
@@ -73,8 +83,8 @@ export async function enqueueSlackSessionLifecycle(
 }
 
 async function loadSlackRecord(
-  state: Pick<ControlPlaneState, "slackIntegration">,
-  storage: NonNullable<ControlPlaneState["storage"]>,
+  state: Pick<SlackSessionWriterState, "slackIntegration">,
+  storage: SlackSessionStorage,
 ): Promise<SlackIntegrationRecord | null> {
   if (typeof storage.getSlackIntegration === "function") {
     return storage.getSlackIntegration();
@@ -83,7 +93,7 @@ async function loadSlackRecord(
 }
 
 export function slackSessionSnapshot(
-  state: Pick<ControlPlaneState, "repositories" | "logs" | "publicBaseUrl">,
+  state: Pick<SlackSessionWriterState, "repositories" | "logs" | "publicBaseUrl">,
   session: SessionRecord,
 ): SlackSessionSnapshot {
   const repository = state.repositories.get(session.repositoryId);
@@ -135,7 +145,7 @@ function stringMetadata(
 }
 
 function stderrTail(
-  logs: Array<{ stream: string; content: string }> | undefined,
+  logs: ReadonlyArray<{ stream: string; content: string }> | undefined,
 ): string[] | undefined {
   const lines = (logs ?? [])
     .filter(({ stream }) => stream === "stderr")
