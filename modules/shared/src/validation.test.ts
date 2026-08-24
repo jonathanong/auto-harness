@@ -299,6 +299,10 @@ describe("validateCreateSessionInput", () => {
       priority: "high" as unknown as number,
     });
     expect(result).toEqual({ ok: false, error: "priority must be a number" });
+    expect(validateCreateSessionInput({ ...base, priority: 0.5 })).toEqual({
+      ok: false,
+      error: "priority must be an integer",
+    });
   });
 
   it("rejects invalid requiredLabels", () => {

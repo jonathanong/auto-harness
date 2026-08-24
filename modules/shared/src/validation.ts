@@ -165,6 +165,9 @@ export function validateCreateSessionInput(input: {
     if (typeof input.priority !== "number" || !Number.isFinite(input.priority)) {
       return { ok: false, error: "priority must be a number" };
     }
+    if (!Number.isInteger(input.priority)) {
+      return { ok: false, error: "priority must be an integer" };
+    }
     if (Math.abs(input.priority) > MAX_SESSION_PRIORITY) {
       return {
         ok: false,

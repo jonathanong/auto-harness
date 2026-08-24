@@ -30,6 +30,7 @@ import { DynamoPlaneStorage } from "./plane-storage.ts";
 const tableName = `AhQueueOrder${process.pid}`;
 let client: DynamoDBClient | null = null;
 let doc: ReturnType<typeof createDynamoClients>["doc"] | null = null;
+let fillTables: string[] = [];
 
 beforeAll(async () => {
   if (!(await dynamoAvailable())) return;
@@ -61,7 +62,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (client) await client.send(new DeleteTableCommand({ TableName: tableName }));
+  if (!client) return;
+  await Promise.all(
+    [tableName, ...fillTables].map((name) =>
+      client!.send(new DeleteTableCommand({ TableName: name })),
+    ),
+  );
 });
 
 describe("ensureSessionsQueueOrderIndex", () => {
@@ -140,6 +146,7 @@ describe("ensureSessionsQueueOrderIndex", () => {
       client,
       prefix: `AhQueueOrderFill${process.pid}`,
     });
+    fillTables = Object.values(tables);
     const rows = [
       { id: "low", priority: 0, createdAt: "2026-01-01T00:00:00.000Z", queueShard: 0 },
       { id: "high", priority: 8, createdAt: "2026-01-01T00:00:01.000Z", queueShard: 0 },

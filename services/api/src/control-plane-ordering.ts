@@ -6,9 +6,6 @@ export const SESSIONS_STATUS_CREATED_INDEX = "statusShard-createdAt";
 
 /** Matches `validateCreateSessionInput` so inverted priorities stay non-negative. */
 export const QUEUE_ORDER_PRIORITY_OFFSET = 10_000;
-/** Micro-priority scale so fractional API priorities keep numeric order as strings. */
-const QUEUE_ORDER_PRIORITY_SCALE = 1_000_000;
-const QUEUE_ORDER_KEY_WIDTH = 12;
 
 export function compareSessionsForQueue(
   a: Pick<SessionRecord, "id" | "priority" | "createdAt">,
@@ -26,10 +23,9 @@ export function queueOrderKey(
 ): string {
   const inverted = Math.min(
     QUEUE_ORDER_PRIORITY_OFFSET * 2,
-    Math.max(0, QUEUE_ORDER_PRIORITY_OFFSET - session.priority),
+    Math.max(0, Math.round(QUEUE_ORDER_PRIORITY_OFFSET - session.priority)),
   );
-  const scaled = Math.round(inverted * QUEUE_ORDER_PRIORITY_SCALE);
-  return `${String(scaled).padStart(QUEUE_ORDER_KEY_WIDTH, "0")}#${session.createdAt}#${session.id}`;
+  return `${String(inverted).padStart(5, "0")}#${session.createdAt}#${session.id}`;
 }
 
 /** Always produce a GSI key for a requeue write, even if a pre-read omitted fields. */

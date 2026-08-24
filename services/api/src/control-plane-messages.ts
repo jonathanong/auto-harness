@@ -709,6 +709,7 @@ async function applySessionStatusDurable(
       await assignScheduledQueuedDurable(state);
       return { ok: true };
     }
+    const completedAt = finish?.completedAt ?? state.now();
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
@@ -717,7 +718,7 @@ async function applySessionStatusDurable(
       attemptId: msg.attemptId,
       status: finish?.status ?? msg.status,
       queueShard: session.queueShard,
-      completedAt: finish?.completedAt ?? state.now(),
+      completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
@@ -730,7 +731,7 @@ async function applySessionStatusDurable(
       ...session,
       status: finish?.status ?? msg.status,
       worktreeId: null,
-      completedAt: finish?.completedAt ?? state.now(),
+      completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
@@ -817,7 +818,7 @@ async function applySessionStatusDurable(
   const nextSession = {
     ...session,
     status: nextStatus,
-    ...(shouldSuppressTarget ? {} : { completedAt: state.now() }),
+    ...(shouldSuppressTarget ? {} : { completedAt: finish?.completedAt ?? state.now() }),
     worktreeId: null,
     hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),

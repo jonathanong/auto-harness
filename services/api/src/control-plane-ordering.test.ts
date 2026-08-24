@@ -56,20 +56,12 @@ describe("compare helpers", () => {
     expect(queueOrderKey(samePriEarlier) < queueOrderKey(samePriLater)).toBe(true);
     expect(
       queueOrderKey({ id: "max", priority: QUEUE_ORDER_PRIORITY_OFFSET, createdAt: "t" }),
-    ).toBe("000000000000#t#max");
+    ).toBe("00000#t#max");
     expect(
-      queueOrderKey({ id: "over", priority: 99_999, createdAt: "t" }).startsWith("000000000000"),
+      queueOrderKey({ id: "over", priority: 99_999, createdAt: "t" }).startsWith("00000"),
     ).toBe(true);
     expect(
-      queueOrderKey({ id: "under", priority: -99_999, createdAt: "t" }).startsWith("020000000000"),
-    ).toBe(true);
-    expect(
-      queueOrderKey({ id: "half", priority: 0.5, createdAt: "t" }) <
-        queueOrderKey({ id: "zero", priority: 0, createdAt: "t" }),
-    ).toBe(true);
-    expect(
-      queueOrderKey({ id: "one", priority: 1, createdAt: "t" }) <
-        queueOrderKey({ id: "half", priority: 0.5, createdAt: "t" }),
+      queueOrderKey({ id: "under", priority: -99_999, createdAt: "t" }).startsWith("20000"),
     ).toBe(true);
     expect(queueOrderKeyForWrite({ id: "s", priority: 3, createdAt: "t" }, "fallback")).toBe(
       queueOrderKey({ id: "s", priority: 3, createdAt: "t" }),
