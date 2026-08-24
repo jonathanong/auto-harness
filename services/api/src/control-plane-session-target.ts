@@ -117,10 +117,11 @@ function resolveNativeResumeRoute(
     }
   }
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
+  const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
-    ...(accountId ? { providerId: catalog.providerAccounts[accountId]?.providerId } : {}),
+    ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(
@@ -178,7 +179,8 @@ function resolveTargets(
   if ("commandId" in target) {
     const command = state.commands.get(target.commandId);
     if (!command) return [];
-    if (command.providerId === null) {
+    const providerId = command.providerId;
+    if (providerId === null) {
       const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
         ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
@@ -189,12 +191,12 @@ function resolveTargets(
     return resolveEligibleAccounts(
       state,
       catalog,
-      command.providerId,
+      providerId,
       worktree,
       nowMs,
       pinnedProviderAccountId,
     ).map((account) => ({
-      providerId: command.providerId,
+      providerId,
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
