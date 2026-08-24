@@ -39,6 +39,7 @@ describe("detectUsageLimit", () => {
       { argv: [""], output: "rate limit", expected: false },
       { argv: ["claude", "-p"], output: "", expected: false },
       { argv: ["codex"], output: "all tests passed", expected: false },
+      { argv: ["codex"], output: "rate limit\nHTTP 429 Too Many Requests", expected: false },
       { argv: ["codex"], output: "rate_limit_error\nRESOURCE_EXHAUSTED", expected: false },
       { argv: ["claude"], output: "insufficient_quota\nquota exceeded", expected: false },
       { argv: ["gemini"], output: "rate_limit_error\nrate limit reached", expected: false },
@@ -74,6 +75,9 @@ describe("detectUsageLimit", () => {
       { argv: ["claude"], output: "You've hit your limit. Reset at 5pm.", expected: true },
       { argv: ["claude"], output: "Claude usage limit reached.", expected: true },
       { argv: ["claude"], output: "You have hit your monthly limit", expected: true },
+      { argv: ["claude"], output: "You've hit your session limit", expected: true },
+      { argv: ["claude"], output: "You've hit your weekly limit", expected: true },
+      { argv: ["claude"], output: "You've hit your Opus limit", expected: true },
       { argv: ["gemini"], output: '{"error":{"status":"RESOURCE_EXHAUSTED"}}', expected: true },
       {
         argv: ["gemini"],
@@ -100,6 +104,11 @@ describe("detectUsageLimit", () => {
       { argv: ["grok"], output: "usage limits exceeded for this account", expected: true },
       { argv: ["grok.cmd"], output: "You have reached your rate limit", expected: true },
       { argv: ["grok"], output: "usage limit hit", expected: true },
+      {
+        argv: ["grok"],
+        output: "You've reached your free Grok Build usage limit for now.",
+        expected: true,
+      },
     ];
     for (const row of cases) expect(classify(row), JSON.stringify(row)).toBe(row.expected);
   });

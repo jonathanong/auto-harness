@@ -313,16 +313,16 @@ Classification keys off the spawned catalog executable (basename of `resolvedArg
 | Trusted executable | Example signals in failed CLI output                                                   |
 | ------------------ | -------------------------------------------------------------------------------------- |
 | `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`          |
-| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your limit`                      |
+| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your session/weekly/Opus limit`  |
 | `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota` |
-| `grok`             | `Rate limit error`, `You've reached your usage limit`                                  |
+| `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`         |
 
-Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are not enough without that trusted executable **and** a failure. A provider-aware CLI adapter may set `usageLimit` as a trusted failure channel; that flag is still ignored on success and on unknown/providerless argv.
+Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success and on unknown/providerless argv.
 
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
-- Prompt-controlled / adversarial stdout that prints rate-limit wording
+- Prompt-controlled / adversarial stdout, unless trusted argv[0], a failure, **and** a vendor-specific matcher all apply
 - Providerless commands and unknown executables (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)

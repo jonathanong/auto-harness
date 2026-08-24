@@ -188,7 +188,8 @@ async function runProcessAndFinish(
       status: "failed",
       exitCode: result.exitCode,
       errorCode: "usage_limit",
-      errorMessage: "Usage limit detected in CLI output",
+      errorMessage:
+        combined.length > 0 ? "Usage limit detected in CLI output" : "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });

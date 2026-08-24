@@ -78,13 +78,26 @@ describe("claimed session usage-limit classification", () => {
     expect(outcome.errorCode).toBeUndefined();
   });
 
+  it("does not classify a failed Codex run that only prints generic rate-limit text", async () => {
+    const outcome = await runClaimed(
+      baseAssign({ resolvedArgv: ["codex", "exec"] }),
+      outputRunner("rate limit\nHTTP 429 Too Many Requests", { exitCode: 1 }),
+    );
+    expect(outcome.status).toBe("failed");
+    expect(outcome.errorCode).toBeUndefined();
+  });
+
   it("reports usage_limit for a genuine Codex limit on a failed run", async () => {
     await expect(
       runClaimed(
         baseAssign({ resolvedArgv: ["codex", "exec"] }),
         outputRunner("Error: insufficient_quota for request", { exitCode: 1 }),
       ),
-    ).resolves.toMatchObject({ status: "failed", errorCode: "usage_limit" });
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "Usage limit detected in CLI output",
+    });
   });
 
   it("reports usage_limit from a trusted adapter failure channel", async () => {
@@ -93,7 +106,11 @@ describe("claimed session usage-limit classification", () => {
         baseAssign({ resolvedArgv: ["claude", "-p"] }),
         outputRunner("", { exitCode: 1, usageLimit: true }),
       ),
-    ).resolves.toMatchObject({ status: "failed", errorCode: "usage_limit" });
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "Usage limit detected",
+    });
   });
 
   it("ignores an adapter usage-limit flag without known provider context", async () => {

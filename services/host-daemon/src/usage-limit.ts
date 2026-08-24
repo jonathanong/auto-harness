@@ -2,7 +2,7 @@ const PROVIDER_PATTERNS = {
   claude: [
     /rate_limit_error/i,
     /claude(?: ai)? usage limit/i,
-    /you(?:'| ha)ve hit your (?:usage |monthly )?limit/i,
+    /you(?:'| ha)ve hit your(?: \S+)? limit/i,
   ],
   codex: [
     /insufficient_quota/i,
@@ -19,6 +19,7 @@ const PROVIDER_PATTERNS = {
   grok: [
     /rate limit error/i,
     /you(?:'| ha)ve reached your (?:usage |rate )?limit/i,
+    /you(?:'| ha)ve reached your.{0,80}?usage limit/i,
     /usage limit(?:s)? (?:reached|exceeded|hit)/i,
   ],
 } as const;
