@@ -8,7 +8,7 @@ import {
   type CloneFailure,
   type CloneOptions,
 } from "./control-plane-session-clone.ts";
-import { createSession, getSession, resumeSession } from "./control-plane-sessions.ts";
+import { createSession, resumeSession } from "./control-plane-sessions.ts";
 import {
   isCreateSessionConflict,
   isRepositoryAdmissionClosed,
@@ -124,18 +124,6 @@ export async function resumeSessionDurable(
   state.sessions.set(result.session.id, { ...result.session });
   noteSlackSessionLifecycle(state, result.session);
   return { ok: true, session: toPublic(state, result.session), created: result.created };
-}
-
-/** Read a session from the durable authority before exposing it to an HTTP route. */
-export async function getSessionDurable(
-  state: ControlPlaneState,
-  sessionId: string,
-): Promise<PublicSession | null> {
-  if (!state.storage) return getSession(state, sessionId);
-  const session = await state.storage.getSession(sessionId);
-  if (!session) return null;
-  state.sessions.set(session.id, { ...session });
-  return toPublic(state, session);
 }
 
 /** Durable clone reads the source authoritatively, then conditionally writes a new id. */

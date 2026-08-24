@@ -1,6 +1,6 @@
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
-import { ControlPlaneReadFacade } from "./control-plane-facade-reads.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
 import * as commands from "./control-plane-commands.ts";
 import * as durableCommands from "./control-plane-commands-durable.ts";
 import type { CommandInput } from "./control-plane-commands.ts";
@@ -11,11 +11,13 @@ import { listSessionTargets, type SessionTarget } from "./control-plane-session-
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 
-/**
- * Provider/ProviderAccount/Command catalog delegators — split from
- * ControlPlaneBase/ControlPlane so neither breaks the max-lines budget.
- */
-export class ControlPlaneCatalog extends ControlPlaneReadFacade {
+/** Provider/ProviderAccount/Command catalog delegators. */
+export class ControlPlaneCatalogService {
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
   createProvider(input: {
     id?: string;
     name: string;

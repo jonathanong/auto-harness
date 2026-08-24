@@ -271,6 +271,13 @@ describe("durable runtime read-through", () => {
         scope: { repositoryIds: ["elsewhere"] },
       }),
     ).resolves.toMatchObject({ items: [] });
+    await expect(
+      plane.listSessionsPageDurable({
+        repositoryId: "repository",
+        scope: { repositoryIds: ["repository"] },
+      }),
+    ).resolves.toMatchObject({ items: [{ id: "session" }] });
+    await expect(plane.listRepositoryCountsDurable([])).resolves.toEqual(new Map());
   });
 
   it("uses repository indexes for page counts instead of catalog scans", async () => {

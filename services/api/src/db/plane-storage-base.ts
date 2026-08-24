@@ -37,7 +37,7 @@ import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
  * Split from DynamoPlaneStorage so each file stays under the max-lines budget —
- * mirrors the ControlPlaneBase/ControlPlane split in control-plane-facade.ts.
+ * mirrors the composed ControlPlane services in control-plane.ts.
  */
 export class DynamoPlaneStorageBase {
   protected readonly ctx: PlaneStorageCtx;

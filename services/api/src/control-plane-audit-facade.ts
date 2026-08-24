@@ -1,5 +1,5 @@
 import * as audit from "./control-plane-audit.ts";
-import { ControlPlaneBase } from "./control-plane-facade.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
 import type {
   AuditLogInput,
   AuditLogListQuery,
@@ -8,7 +8,13 @@ import type {
 } from "./audit-types.ts";
 
 /** Immutable audit history is a facade concern, not a domain mutation helper. */
-export class ControlPlaneAuditFacade extends ControlPlaneBase {
+export class ControlPlaneAuditService {
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
+
   /** Callers must not acknowledge their mutation if this append rejects. */
   appendAuditLog(input: AuditLogInput): Promise<AuditLogRecord> {
     return audit.appendAuditLog(this.state, input);

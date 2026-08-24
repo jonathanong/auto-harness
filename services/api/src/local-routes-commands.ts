@@ -1,10 +1,11 @@
-import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
+import { commitMutationAudit, readJsonBody, sendRouteError } from "./local-audited-route.ts";
 import { commandPatchFromBody } from "./local-routes-command-patch.ts";
 
 /** Command CRUD routes. Returns true if handled. */
 export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
-  const { plane, req, res, url, method } = ctx;
+  const { plane, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/commands") {
     try {
@@ -15,13 +16,9 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/commands") {
-    let body: Record<string, unknown>;
-    try {
-      body = (await readJson(req)) as Record<string, unknown>;
-    } catch {
-      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
-      return true;
-    }
+    const parsed = await readJsonBody(ctx);
+    if (!parsed.ok) return true;
+    const body = parsed.body as Record<string, unknown>;
     try {
       const result = await plane.createCommandDurable({
         name: String(body.name ?? ""),
@@ -30,7 +27,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       });
       if (!result.ok) {
         if (
-          !(await writeRouteAudit(ctx, {
+          !(await commitMutationAudit(ctx, {
             action: "command:create",
             resourceType: "command",
             resourceId: "new",
@@ -38,11 +35,11 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
           }))
         )
           return true;
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
+        sendRouteError(res, 400, "VALIDATION_ERROR", result.error);
         return true;
       }
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action: "command:create",
           resourceType: "command",
           resourceId: result.command.id,
@@ -54,7 +51,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     } catch {
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action: "command:create",
           resourceType: "command",
           resourceId: "new",
@@ -83,13 +80,9 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
-      let body: Record<string, unknown>;
-      try {
-        body = (await readJson(req)) as Record<string, unknown>;
-      } catch {
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
-        return true;
-      }
+      const parsed = await readJsonBody(ctx);
+      if (!parsed.ok) return true;
+      const body = parsed.body as Record<string, unknown>;
       try {
         const result = await plane.updateCommandDurable(id, commandPatchFromBody(body));
         if (!result.ok) {
