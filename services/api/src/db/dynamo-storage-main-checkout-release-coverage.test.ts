@@ -292,6 +292,8 @@ describe("DynamoDB Local main-checkout release", () => {
       },
       preserveHostAssignmentLease: true,
       preserveProviderAccountLease: true,
+      timedOutHostId: "timeout-host",
+      timedOutAssignmentConnectionId: "timeout-connection",
     };
     await ctx.doc.send(
       new PutCommand({
@@ -341,6 +343,8 @@ describe("DynamoDB Local main-checkout release", () => {
       status: "timed_out",
       hostAssignmentLease: opts.hostAssignmentLease,
       providerAccountLease: opts.providerAccountLease,
+      timedOutHostId: opts.timedOutHostId,
+      timedOutAssignmentConnectionId: opts.timedOutAssignmentConnectionId,
     });
   });
 });

@@ -315,6 +315,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     attemptId: string;
     hostId: string;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"];
   }): Promise<boolean> {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
   }
@@ -404,6 +405,8 @@ export class DynamoPlaneStorageBase {
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -642,6 +645,8 @@ export class DynamoPlaneStorageBase {
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

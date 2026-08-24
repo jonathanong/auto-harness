@@ -86,6 +86,8 @@ export type SessionRecord = {
   };
   /** Host that owned a provider lease when a timeout cleared the assignment. */
   timedOutHostId?: string;
+  /** Original host connection used to fence legacy timeout capacity repair. */
+  timedOutAssignmentConnectionId?: string;
   /** Transactional host-wide assignment-cap reservation, when advertised. */
   hostAssignmentLease?: {
     hostId: string;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import {
@@ -94,6 +94,7 @@ describe("scheduled reconnect branch coverage", () => {
 
     const durable = state();
     const calls: Record<string, unknown>[] = [];
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
     durable.storage = {
       listSessionsByHost: async () => [
         row,
@@ -105,11 +106,16 @@ describe("scheduled reconnect branch coverage", () => {
         calls.push(input);
         return input.sessionId !== "reported";
       },
+      releaseLegacyHostAssignment,
     } as never;
     const durableRequeued: string[] = [];
     await requeueOmittedScheduled(durable, "host", new Set(["reported"]), durableRequeued);
     expect(calls).toHaveLength(1);
     expect(durableRequeued).toEqual(["s"]);
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "old",
+    });
   });
 
   it("restores confirmed reconnects in reverse order and skips unusable entries", async () => {
@@ -155,5 +161,19 @@ describe("scheduled reconnect branch coverage", () => {
     const noChange: string[] = [];
     expect(await reclaimScheduledReconnect(durable, session(), noChange)).toBe(true);
     expect(noChange).toEqual([]);
+
+    const durableSuccess = state();
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    durableSuccess.storage = {
+      releaseMainCheckoutSession: async () => true,
+      releaseLegacyHostAssignment,
+    } as never;
+    const success = [] as string[];
+    expect(await reclaimScheduledReconnect(durableSuccess, session(), success)).toBe(true);
+    expect(success).toEqual(["s"]);
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "old",
+    });
   });
 });

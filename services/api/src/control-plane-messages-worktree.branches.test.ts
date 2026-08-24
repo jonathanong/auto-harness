@@ -126,6 +126,39 @@ describe("durable worktree terminal branches", () => {
     });
   });
 
+  it("reconciles provider-backed legacy occupants after terminal transition", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      finishSession: async () => true,
+      releaseLegacyHostAssignment,
+      putArchive: async () => undefined,
+    });
+    for (const id of ["legacy-a", "legacy-b"]) {
+      state.sessions.set(
+        id,
+        row(id, {
+          assignmentConnectionId: "connection",
+          worktreeId: null,
+          providerAccountLease: {
+            concurrencyId: `provider-lease:acct:${id}`,
+            providerAccountId: "acct",
+            slot: 0,
+            attemptId: "attempt",
+          },
+          resolvedRoute: { providerAccountId: "acct" },
+        }),
+      );
+      await handleHostMessageDurable(state, {
+        ...terminal(id, "completed"),
+        worktreeId: null,
+      });
+    }
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(2);
+    expect(state.sessions.get("legacy-a")).toMatchObject({ status: "completed" });
+    expect(state.sessions.get("legacy-b")).toMatchObject({ status: "completed" });
+  });
+
   it("keeps a committed terminal successful when legacy capacity repair throws", async () => {
     const releaseLegacyHostAssignment = vi.fn(async () => {
       throw new Error("host lock unavailable");
@@ -150,7 +183,7 @@ describe("durable worktree terminal branches", () => {
 
       expect(state.sessions.get("legacy-error")).toMatchObject({ status: "completed" });
       expect(error).toHaveBeenCalledWith(
-        "legacy providerless host assignment release failed",
+        "legacy host assignment release failed",
         expect.any(Error),
       );
     } finally {

@@ -36,6 +36,7 @@ type FinishSessionOpts = {
   /** Timeout keeps host capacity until terminal/disconnect cleanup. */
   preserveHostAssignmentLease?: boolean;
   timedOutHostId?: string;
+  timedOutAssignmentConnectionId?: string;
 };
 
 function setOptional(
@@ -85,6 +86,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   setOptional(sets, values, "exitCode", opts.exitCode);
   setOptional(sets, values, "cliResumeRef", opts.cliResumeRef);
   setOptional(sets, values, "timedOutHostId", opts.timedOutHostId);
+  setOptional(sets, values, "timedOutAssignmentConnectionId", opts.timedOutAssignmentConnectionId);
   return {
     names: { "#s": "status" },
     values,

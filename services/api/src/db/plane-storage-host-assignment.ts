@@ -77,7 +77,12 @@ export async function releaseLegacyHostAssignment(
 /** Release a timeout-preserved host slot when no provider-account lease exists. */
 export async function releaseTimedOutHostAssignment(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; attemptId: string; hostId: string },
+  opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -87,7 +92,8 @@ export async function releaseTimedOutHostAssignment(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: "REMOVE timedOutHostId, hostAssignmentLease",
+              UpdateExpression:
+                "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
               ConditionExpression:
                 "#s = :timedOut AND timedOutHostId = :hostId AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
@@ -98,7 +104,9 @@ export async function releaseTimedOutHostAssignment(
               },
             },
           },
-          hostAssignmentReleaseItem(ctx, { hostId: opts.hostId }),
+          ...(opts.hostAssignmentLease
+            ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
+            : []),
         ],
       }),
     );

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- assignment coverage cases share one fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assignQueued,
@@ -209,6 +209,78 @@ describe("assignment residual coverage", () => {
 
     await expect(enforceAckDeadlinesDurable(state, Date.parse(NOW) + 2)).resolves.toEqual(["s"]);
     expect(state.pendingAcks.has("s")).toBe(false);
+  });
+
+  it("reconciles legacy host capacity after prompt and scheduled ACK releases commit", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const prompt = session({
+      id: "prompt",
+      status: "running",
+      worktreeId: "w",
+      hostId: "host",
+      attemptId: "prompt-attempt",
+      assignmentSentAt: NOW,
+      assignmentConnectionId: "prompt-connection",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "account",
+        commandId: "missing",
+        hostId: "host",
+        worktreeId: "w",
+        attemptId: "prompt-attempt",
+      },
+    });
+    const promptState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    promptState.sessions.set(prompt.id, prompt);
+    setDurableReadStorage(promptState, {
+      listAllSessions: async () => [prompt],
+      tryRequeueSession: async () => true,
+      releaseLegacyHostAssignment,
+    });
+
+    await expect(enforceAckDeadlinesDurable(promptState, Date.parse(NOW) + 2)).resolves.toEqual([
+      "prompt",
+    ]);
+
+    const scheduled = session({
+      id: "scheduled",
+      type: "scheduled",
+      source: "schedule",
+      status: "running",
+      worktreeId: null,
+      hostId: "host",
+      mainCheckoutLease: true,
+      attemptId: "scheduled-attempt",
+      assignmentSentAt: NOW,
+      assignmentConnectionId: "scheduled-connection",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "account",
+        commandId: "missing",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "scheduled-attempt",
+      },
+    });
+    const scheduledState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    scheduledState.sessions.set(scheduled.id, scheduled);
+    setDurableReadStorage(scheduledState, {
+      listAllSessions: async () => [scheduled],
+      releaseMainCheckoutSession: async () => true,
+      releaseLegacyHostAssignment,
+    });
+
+    await expect(enforceAckDeadlinesDurable(scheduledState, Date.parse(NOW) + 2)).resolves.toEqual([
+      "scheduled",
+    ]);
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "prompt-connection",
+    });
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "scheduled-connection",
+    });
   });
 
   it("drops a stale scheduled deadline that lacks an assignment fence", async () => {

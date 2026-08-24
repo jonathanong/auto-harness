@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- assignment, hydrate, and helper cases share one fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
@@ -936,7 +936,7 @@ describe("provider account execution-profile leases", () => {
         status: "running",
         resolvedRoute: { providerAccountId: "acct" },
       }),
-    ).toEqual({ hostAssignmentLease: { hostId: "host" } });
+    ).toEqual({});
     expect(providerAccountLeaseWriteOpts({ hostId: "host", status: "running" })).toEqual({});
   });
 
@@ -994,7 +994,14 @@ describe("provider account execution-profile leases", () => {
         },
         timedOutHostId: "timed-out-host",
       }),
-    ).toMatchObject({ hostAssignmentLease: { hostId: "timed-out-host" } });
+    ).toEqual({
+      providerAccountLease: {
+        concurrencyId: "provider-lease:acct:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    });
   });
 
   it("cleans timeout leases through each local and durable host-assignment path", async () => {
@@ -1025,9 +1032,14 @@ describe("provider account execution-profile leases", () => {
     expect(local).not.toHaveProperty("providerAccountLease");
 
     const durableCalls: unknown[] = [];
+    const legacyCalls: unknown[] = [];
     state.storage = {
       releaseTimedOutProviderAccountLease: async (opts: unknown) => {
         durableCalls.push(opts);
+        return true;
+      },
+      releaseLegacyHostAssignment: async (opts: unknown) => {
+        legacyCalls.push(opts);
         return true;
       },
     } as never;
@@ -1055,16 +1067,46 @@ describe("provider account execution-profile leases", () => {
           providerAccountLease: lease,
           ...(hostAssignmentLease ? { hostAssignmentLease } : {}),
           timedOutHostId,
+          ...(id === "timed-out" ? { timedOutAssignmentConnectionId: "timed-out-connection" } : {}),
         } as never),
       ).resolves.toBe(true);
     }
     expect(durableCalls[0]).toEqual(
       expect.objectContaining({ hostAssignmentLease: { hostId: "lease-host" } }),
     );
-    expect(durableCalls[1]).toEqual(
-      expect.objectContaining({ hostAssignmentLease: { hostId: "timed-out-host" } }),
-    );
+    expect(durableCalls[1]).not.toHaveProperty("hostAssignmentLease");
     expect(durableCalls[2]).not.toHaveProperty("hostAssignmentLease");
+    expect(legacyCalls).toEqual([
+      { hostId: "timed-out-host", connectionId: "timed-out-connection" },
+    ]);
+
+    const hostCleanup = vi.fn(async () => true);
+    state.storage = {
+      releaseTimedOutHostAssignment: hostCleanup,
+      releaseLegacyHostAssignment: async () => true,
+    } as never;
+    const legacyTimeout = {
+      id: "legacy-timeout",
+      attemptId: "legacy-attempt",
+      timedOutHostId: "legacy-host",
+      timedOutAssignmentConnectionId: "legacy-connection",
+    } as never;
+    await expect(releaseTimedOutProviderAccountLease(state, legacyTimeout)).resolves.toBe(true);
+    expect(hostCleanup).toHaveBeenCalledWith({
+      sessionId: "legacy-timeout",
+      attemptId: "legacy-attempt",
+      hostId: "legacy-host",
+    });
+
+    state.storage = { releaseTimedOutHostAssignment: async () => false } as never;
+    await expect(
+      releaseTimedOutProviderAccountLease(state, {
+        id: "lost-timeout",
+        attemptId: "lost-attempt",
+        timedOutHostId: "lost-host",
+        hostAssignmentLease: { hostId: "lost-host" },
+      } as never),
+    ).resolves.toBe(false);
   });
 
   it("releases only matching timed-out host leases", async () => {

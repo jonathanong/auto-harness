@@ -4,6 +4,30 @@ import { describe, expect, it } from "vitest";
 import { PtyProcessRunner } from "./pty-runner.ts";
 
 describe("PtyProcessRunner defensive boundary", () => {
+  it("reports an unknown native signal as null", async () => {
+    let exit: ((event: { exitCode: number; signal?: number }) => void) | undefined;
+    const terminal = {
+      pid: 321,
+      kill() {},
+      onData() {
+        return { dispose() {} };
+      },
+      onExit(listener: (event: { exitCode: number; signal?: number }) => void) {
+        exit = listener;
+        return { dispose() {} };
+      },
+    } as IPty;
+    const runner = new PtyProcessRunner({ spawn: () => terminal });
+    const run = runner.run({
+      argv: ["tool"],
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+    exit?.({ exitCode: 1, signal: 999 });
+    await expect(run).resolves.toEqual({ exitCode: 1, signal: null, timedOut: false });
+  });
+
   it("preserves unexpected spawn failures", async () => {
     const failure = new Error("native PTY initialization failed");
     const runner = new PtyProcessRunner({

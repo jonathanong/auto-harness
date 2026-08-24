@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider lease storage cases share transaction fixtures. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -51,7 +52,8 @@ describe("provider account lease storage", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
       Update: {
-        UpdateExpression: "REMOVE providerAccountLease, timedOutHostId, hostAssignmentLease",
+        UpdateExpression:
+          "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
       },
     });
     expect(items[1]).toMatchObject({ Delete: { TableName: "Locks" } });
@@ -78,7 +80,12 @@ describe("provider account lease storage", () => {
     await expect(
       releaseTimedOutHostAssignment(
         { doc: { send }, tables: { sessions: "Sessions", hostLocks: "Hosts" } } as never,
-        { sessionId: "sess", attemptId: "attempt", hostId: "host" },
+        {
+          sessionId: "sess",
+          attemptId: "attempt",
+          hostId: "host",
+          hostAssignmentLease: { hostId: "host" },
+        },
       ),
     ).resolves.toBe(true);
     const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } } | undefined;
@@ -87,6 +94,25 @@ describe("provider account lease storage", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({ Update: { TableName: "Sessions" } });
     expect(items[1]).toMatchObject({ Update: { TableName: "Hosts" } });
+  });
+
+  it("clears legacy timeout metadata without manufacturing host occupancy", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutHostAssignment(
+        { doc: { send }, tables: { sessions: "Sessions", hostLocks: "Hosts" } } as never,
+        { sessionId: "sess", attemptId: "attempt", hostId: "host" },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toHaveLength(1);
+    expect(request.input.TransactItems[0]).toMatchObject({
+      Update: {
+        TableName: "Sessions",
+        UpdateExpression:
+          "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
+      },
+    });
   });
 
   it("omits transact deletes when no lease is held", () => {

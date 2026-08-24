@@ -819,6 +819,7 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
     if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
     releaseProviderAccountLease(state, session);
     delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
     persistSession(state, session);
   }
   return requeued;

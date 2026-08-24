@@ -18,6 +18,7 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
@@ -513,6 +514,7 @@ export async function enforceAckDeadlinesDurable(
       state.pendingAcks.delete(sessionId);
       continue;
     }
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     const wt = pending.worktreeId ? state.worktrees.get(pending.worktreeId) : undefined;
     if (wt && pending.worktreeId) {
       state.worktrees.set(pending.worktreeId, {

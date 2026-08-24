@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { disconnectScheduledMainCheckouts } from "./control-plane-worktrees-disconnect-scheduled.ts";
@@ -49,6 +49,7 @@ describe("scheduled disconnect branch coverage", () => {
   it("requeues an unacknowledged durable run and clears pending ACK state", async () => {
     const current = state();
     const calls: Record<string, unknown>[] = [];
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
     current.storage = {
       listSessionsByHost: async () => [session({ ackReceivedAt: undefined })],
       releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
@@ -56,6 +57,7 @@ describe("scheduled disconnect branch coverage", () => {
         return true;
       },
       markMainCheckoutReconnectPending: async () => false,
+      releaseLegacyHostAssignment,
     } as never;
     current.pendingAcks.set("s", { sessionId: "s", worktreeId: null, assignedAtMs: 0 });
     const requeued: string[] = [];
@@ -64,6 +66,10 @@ describe("scheduled disconnect branch coverage", () => {
     expect(calls[0]).toMatchObject({ connectionId: "new", reason: "lost", status: "queued" });
     expect(requeued).toEqual(["s"]);
     expect(current.pendingAcks.has("s")).toBe(false);
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "old",
+    });
   });
 
   it("leaves an unacknowledged run alone when the conditional release loses", async () => {

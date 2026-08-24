@@ -42,6 +42,21 @@ function worktree(overrides: Record<string, unknown> = {}) {
 }
 
 describe("agent registration branch boundaries", () => {
+  it("rejects duplicate local running attempts", () => {
+    const plane = new ControlPlane();
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+        runningAttempts: [
+          { sessionId: "s", attemptId: "attempt" },
+          { sessionId: "s", attemptId: "attempt" },
+        ],
+      }),
+    ).toEqual({ ok: false, error: "duplicate running session s" });
+  });
+
   it("rejects every durable running-session ownership mismatch", async () => {
     const cases = [
       [session({ status: "queued" }), worktree()],

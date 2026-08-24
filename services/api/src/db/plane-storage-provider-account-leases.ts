@@ -185,7 +185,8 @@ export async function releaseTimedOutProviderAccountLease(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: "REMOVE providerAccountLease, timedOutHostId, hostAssignmentLease",
+              UpdateExpression:
+                "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
               ConditionExpression:
                 "#s = :timedOut AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },

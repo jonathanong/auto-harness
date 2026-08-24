@@ -38,10 +38,10 @@ import {
 } from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
-  legacyProviderlessHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {
   SessionTransitionContext,
@@ -62,22 +62,6 @@ const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
 type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
-
-async function releaseLegacyProviderlessHostAssignment(
-  state: ControlPlaneState,
-  session: SessionRecord,
-): Promise<void> {
-  const lease = legacyProviderlessHostAssignmentForSession(session);
-  const release = state.storage?.releaseLegacyHostAssignment;
-  if (!lease || typeof release !== "function") return;
-  try {
-    await release.call(state.storage, lease);
-  } catch (error) {
-    // Capacity repair is best effort for legacy rows. The durable session
-    // transition has already committed and must remain successful.
-    console.error("legacy providerless host assignment release failed", error);
-  }
-}
 
 function legacyHostRuntime() {
   return {
@@ -744,7 +728,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
-      await releaseLegacyProviderlessHostAssignment(state, session);
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
@@ -790,7 +774,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
-      await releaseLegacyProviderlessHostAssignment(state, session);
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       const { mainCheckoutLease: _, ...next } = {
@@ -839,7 +823,7 @@ async function applySessionStatusDurable(
           : {}),
       });
       if (!requeued) return { ok: true };
-      await releaseLegacyProviderlessHostAssignment(state, session);
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
@@ -871,7 +855,7 @@ async function applySessionStatusDurable(
           : {}),
       });
       if (!requeued) return { ok: true };
-      await releaseLegacyProviderlessHostAssignment(state, session);
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       emitCooldown();
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
@@ -909,7 +893,7 @@ async function applySessionStatusDurable(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
-      await releaseLegacyProviderlessHostAssignment(state, session);
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
@@ -950,7 +934,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (!committed) return { ok: true };
-    await releaseLegacyProviderlessHostAssignment(state, session);
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
     const { mainCheckoutLease: _, ...next } = {
@@ -979,7 +963,7 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
-    await releaseLegacyProviderlessHostAssignment(state, session);
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     emitCooldown();
     releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
@@ -1010,7 +994,7 @@ async function applySessionStatusDurable(
       suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
-    await releaseLegacyProviderlessHostAssignment(state, session);
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseProviderAccountLease(state, session);
     const worktree = state.worktrees.get(session.worktreeId);
     if (worktree)
@@ -1035,7 +1019,7 @@ async function applySessionStatusDurable(
   if (!committed) {
     return { ok: true };
   }
-  await releaseLegacyProviderlessHostAssignment(state, session);
+  await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
   releaseProviderAccountLease(state, session);
   const worktreeId = session.worktreeId;
   if (worktreeId) {

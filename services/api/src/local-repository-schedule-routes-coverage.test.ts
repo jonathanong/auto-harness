@@ -500,6 +500,7 @@ describe("repository and schedule route coverage", () => {
     ).toBe(500);
 
     const repositoryDelete = seededPlane();
+    repositoryDelete.deleteRepositoryDurable = async () => ({ ok: true });
     repositoryDelete.appendAuditLog = denied.appendAuditLog;
     expect(
       (await invoke(repositoryDelete, "DELETE", "/api/v1/repositories/repository")).status,
@@ -527,11 +528,7 @@ describe("repository and schedule route coverage", () => {
     ).toBe(500);
 
     const legacyDelete = seededPlane();
-    legacyDelete.getScheduleDurable = async () =>
-      ({
-        ...legacyDelete.state.schedules.get("schedule")!,
-        repositoryId: undefined,
-      }) as never;
+    legacyDelete.getScheduleDurable = async () => null;
     legacyDelete.deleteScheduleDurable = async () => ({ ok: false, error: "missing" });
     legacyDelete.appendAuditLog = denied.appendAuditLog;
     expect((await invoke(legacyDelete, "DELETE", "/api/v1/schedules/schedule")).status).toBe(500);

@@ -47,7 +47,7 @@ export {
 } from "./plane-storage-sessions-worktrees-online.ts";
 export {
   finishSessionOptsFromPlan,
-  legacyProviderlessHostAssignmentForSession,
+  legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./plane-storage-sessions-plan.ts";

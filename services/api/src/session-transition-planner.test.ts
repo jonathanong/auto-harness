@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   finishSessionOptsFromPlan,
-  legacyProviderlessHostAssignmentForSession,
+  legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
@@ -549,21 +549,22 @@ describe("session-transition planner", () => {
         { attemptId: "attempt" },
       ).hostAssignmentLease,
     ).toBeUndefined();
+    expect(legacyHostAssignmentForSession(session({ assignmentConnectionId: "conn" }))).toEqual({
+      hostId: "host",
+      connectionId: "conn",
+    });
     expect(
-      legacyProviderlessHostAssignmentForSession(session({ assignmentConnectionId: "conn" })),
-    ).toEqual({ hostId: "host", connectionId: "conn" });
-    expect(
-      legacyProviderlessHostAssignmentForSession(
+      legacyHostAssignmentForSession(
         session({ hostAssignmentLease: { hostId: "host" }, assignmentConnectionId: "conn" }),
       ),
     ).toBeUndefined();
     expect(
-      legacyProviderlessHostAssignmentForSession(
+      legacyHostAssignmentForSession(
         session({ providerAccountLease: row.providerAccountLease, assignmentConnectionId: "conn" }),
       ),
-    ).toBeUndefined();
+    ).toEqual({ hostId: "host", connectionId: "conn" });
     expect(
-      legacyProviderlessHostAssignmentForSession(
+      legacyHostAssignmentForSession(
         session({
           resolvedRoute: {
             targetIndex: 0,
@@ -576,16 +577,12 @@ describe("session-transition planner", () => {
           assignmentConnectionId: "conn",
         }),
       ),
-    ).toBeUndefined();
+    ).toEqual({ hostId: "host", connectionId: "conn" });
+    expect(legacyHostAssignmentForSession(session({ hostId: undefined }))).toBeUndefined();
     expect(
-      legacyProviderlessHostAssignmentForSession(session({ hostId: undefined })),
+      legacyHostAssignmentForSession(session({ assignmentConnectionId: undefined })),
     ).toBeUndefined();
-    expect(
-      legacyProviderlessHostAssignmentForSession(session({ assignmentConnectionId: undefined })),
-    ).toBeUndefined();
-    expect(
-      legacyProviderlessHostAssignmentForSession(session({ status: "queued" })),
-    ).toBeUndefined();
+    expect(legacyHostAssignmentForSession(session({ status: "queued" }))).toBeUndefined();
     expect(
       finishSessionOptsFromPlan(
         session({
@@ -601,7 +598,7 @@ describe("session-transition planner", () => {
         { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
         { attemptId: "attempt" },
       ).hostAssignmentLease,
-    ).toEqual({ hostId: "host" });
+    ).toBeUndefined();
     expect(
       finishSessionOptsFromPlan(
         session({

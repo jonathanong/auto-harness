@@ -7,6 +7,7 @@ import {
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+import { releaseLegacyHostAssignment } from "./control-plane-legacy-host-assignment.ts";
 
 type ProviderAccountLease = {
   concurrencyId: string;
@@ -181,16 +182,7 @@ export function providerAccountLeaseWriteOpts(
 } {
   return {
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease
-      ? { hostAssignmentLease: session.hostAssignmentLease }
-      : (session.providerAccountLease || session.resolvedRoute?.providerAccountId) &&
-          session.hostId &&
-          (session.status === "running" || session.status === "cancelled")
-        ? { hostAssignmentLease: { hostId: session.hostId } }
-        : (session.providerAccountLease || session.resolvedRoute?.providerAccountId) &&
-            session.timedOutHostId
-          ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
-          : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
   };
 }
 
@@ -237,6 +229,13 @@ export async function releaseTimedOutProviderAccountLease(
   session: SessionRecord,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
+  const legacyHostAssignment =
+    !session.hostAssignmentLease && session.timedOutHostId && session.timedOutAssignmentConnectionId
+      ? {
+          hostId: session.timedOutHostId,
+          connectionId: session.timedOutAssignmentConnectionId,
+        }
+      : undefined;
   if (!lease) {
     if (
       state.storage &&
@@ -248,33 +247,37 @@ export async function releaseTimedOutProviderAccountLease(
         sessionId: session.id,
         attemptId: session.attemptId,
         hostId: session.timedOutHostId,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!released) return false;
     }
+    if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
     delete session.hostAssignmentLease;
     delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
     return true;
   }
   if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
     releaseProviderAccountLease(state, session);
     delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
     return true;
   }
   const released = await state.storage.releaseTimedOutProviderAccountLease({
     concurrencyId: lease.concurrencyId,
     sessionId: session.id,
     attemptId: lease.attemptId,
-    ...(session.hostAssignmentLease
-      ? { hostAssignmentLease: session.hostAssignmentLease }
-      : session.timedOutHostId
-        ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
-        : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
   });
   if (!released) return false;
+  if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
   releaseProviderAccountLeaseLocal(state, session);
   delete session.providerAccountLease;
   delete session.hostAssignmentLease;
   delete session.timedOutHostId;
+  delete session.timedOutAssignmentConnectionId;
   return true;
 }
 
