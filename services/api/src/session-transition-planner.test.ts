@@ -502,7 +502,15 @@ describe("session-transition planner", () => {
   });
 
   it("maps planner effects onto storage writes", () => {
-    const row = session({ concurrencyId: "lock" });
+    const row = session({
+      concurrencyId: "lock",
+      providerAccountLease: {
+        concurrencyId: "acct:lock:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    });
     const finishPlan: SessionTransitionPlan = {
       effects: [
         {
@@ -531,6 +539,7 @@ describe("session-transition planner", () => {
       cliResumeRef: "ref",
       fence: { hostId: "host", connectionId: "conn" },
       concurrencyId: "lock",
+      providerAccountLease: { concurrencyId: "acct:lock:0", slot: 0 },
     });
     expect(
       finishSessionOptsFromPlan(
@@ -629,6 +638,7 @@ describe("session-transition planner", () => {
       providerAccountId: "acct",
       usageLimitedUntil: LATER,
       errorMessage: "quota",
+      providerAccountLease: { concurrencyId: "acct:lock:0" },
     });
     expect(
       requeueUsageLimitedSessionOptsFromPlan(
@@ -649,6 +659,7 @@ describe("session-transition planner", () => {
     ).toMatchObject({
       targetIndex: 2,
       errorMessage: "limit",
+      providerAccountLease: { concurrencyId: "acct:lock:0" },
     });
     expect(
       suppressProviderlessUsageLimitOptsFromPlan(

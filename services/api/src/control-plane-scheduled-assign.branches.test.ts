@@ -379,4 +379,47 @@ describe("scheduled assignment branch coverage", () => {
       commandId: "cmd",
     });
   });
+
+  it("does not retry remaining scheduled slots after a non-lease assignment loss", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 4,
+    });
+    current.commands.set("cmd", {
+      ...current.commands.get("cmd")!,
+      providerId: "provider",
+    });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    const host = connection("h1", "c1");
+    current.connections.set("c1", {
+      ...host,
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    const slots: number[] = [];
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return false;
+      },
+    });
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(0);
+    expect(slots).toEqual([0]);
+  });
 });
