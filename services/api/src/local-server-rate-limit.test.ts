@@ -149,6 +149,14 @@ describe("local API rate limits", () => {
       (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
     ).toBe(401);
     expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, {
+          ...wrongBasic,
+          cookie: ["ignored=1", "auto_harness_session=stale"],
+        })
+      ).status,
+    ).toBe(500);
+    expect(
       (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
     ).toBe(429);
   });

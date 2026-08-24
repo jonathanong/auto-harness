@@ -237,6 +237,7 @@ describe("resolveSessionTargetArgv", () => {
         ["C:\\Tools\\claude.exe", "--output-format", "json", "-p"],
       ],
       ["codex", ["codex", "exec"], ["codex", "exec", "--json"]],
+      ["codex-no-exec", ["codex"], ["codex"]],
       [
         "gemini",
         ["/opt/bin/gemini", "--prompt"],
@@ -302,6 +303,40 @@ describe("resolveSessionTargetArgv", () => {
         ),
       ).toEqual([...argv, "hello"]);
     }
+    state.commands.set("separator", {
+      id: "separator",
+      name: "separator",
+      argv: ["claude", "-p", "--", "--raw"],
+      appendPrompt: true,
+      providerId: "provider-claude",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(
+      resolveSessionTargetArgv(
+        state,
+        buildProviderCatalog(state),
+        session({ target: { commandId: "separator" } }),
+        worktree(),
+      ),
+    ).toEqual(["claude", "--output-format", "json", "-p", "--", "--raw", "hello"]);
+    state.commands.set("empty-executable", {
+      id: "empty-executable",
+      name: "empty-executable",
+      argv: [""],
+      appendPrompt: true,
+      providerId: "provider-claude",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(
+      resolveSessionTargetArgv(
+        state,
+        buildProviderCatalog(state),
+        session({ target: { commandId: "empty-executable" } }),
+        worktree(),
+      ),
+    ).toEqual(["", "hello"]);
   });
 
   it("skips suppressed and native-fenced routes", () => {

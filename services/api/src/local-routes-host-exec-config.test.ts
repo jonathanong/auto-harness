@@ -83,6 +83,21 @@ async function invoke(
 }
 
 describe("host exec-config isolation", () => {
+  it("rejects a JSON null patch and maps a non-conflict durable rejection", async () => {
+    const plane = new ControlPlane();
+    await expect(
+      invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", null, admin),
+    ).resolves.toMatchObject({ status: 400 });
+    const original = plane.putHostInventoryDurable.bind(plane);
+    plane.putHostInventoryDurable = async (...args) => {
+      const result = await original(...args);
+      return result.ok ? { ok: false, error: "validation failed", conflict: false } : result;
+    };
+    await expect(
+      invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", { setupScript: "new" }, admin),
+    ).resolves.toMatchObject({ status: 400 });
+  });
+
   it("acknowledges the committed exec-config when projection persistence fails afterward", async () => {
     const inventories = new Map<string, HostInventoryRecord>();
     const worktrees = new Map<string, import("./db/types.ts").WorktreeRecord>();

@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawnSync: vi.fn(() => ({ status: 0, stderr: "" })) };
+});
 
 import {
   MAX_UPDATE_POLL_MS,
   createDaemonUpdater,
+  notifySystemdReady,
   parseUpdatePollMs,
+  recoverDaemonUpdateBoot,
   startUpdatePoll,
   withHostUpdateConfig,
 } from "./agent-updater-runtime.ts";
@@ -197,5 +204,38 @@ describe("daemon updater runtime", () => {
     release?.();
     await stopping;
     expect(stopped).toBe(true);
+  });
+
+  it("handles optional boot bindings and a string updater failure", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      await expect(
+        recoverDaemonUpdateBoot({ env: { HARNESS_UPDATE_INSTALL_DIR: config.rootDir } }),
+      ).resolves.toBe("none");
+      await expect(
+        recoverDaemonUpdateBoot({
+          env: { HARNESS_UPDATE_INSTALL_DIR: config.rootDir },
+          service: { platform: "darwin" } as never,
+        }),
+      ).resolves.toBe("none");
+      expect(notifySystemdReady({ env: {}, service: { platform: "linux" } } as never)).toBe(false);
+      expect(
+        notifySystemdReady({
+          env: { NOTIFY_SOCKET: "/run/systemd/notify" },
+          service: { platform: "linux" },
+        } as never),
+      ).toBe(true);
+
+      const errors: string[] = [];
+      const stop = startUpdatePoll({ run: async () => Promise.reject("offline") } as never, {
+        pollMs: 0,
+        log: () => undefined,
+        error: (line) => errors.push(line),
+      });
+      await stop();
+      expect(errors).toContain("updater failed: offline");
+    } finally {
+      cleanup();
+    }
   });
 });

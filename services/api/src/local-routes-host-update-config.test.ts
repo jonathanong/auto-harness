@@ -99,6 +99,7 @@ describe("host update-config route", () => {
       status: 200,
       json: { version: 1 },
     });
+    await expect(invoke(emptyPlane, null, admin, "PUT")).resolves.toMatchObject({ status: 400 });
     await expect(
       invoke(emptyPlane, { updateConfig: enabled, version: "bad" }),
     ).resolves.toMatchObject({

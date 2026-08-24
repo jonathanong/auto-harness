@@ -158,6 +158,29 @@ describe("startDaemon runtime wiring", () => {
       await harness.close();
     }
   });
+
+  it("disables an updater whose legacy service environment is incomplete", async () => {
+    const harness = await acceptingServer();
+    const { config, cleanup } = await makeRepo();
+    const errors: string[] = [];
+    try {
+      const daemon = await startDaemon({
+        config: { ...config, apiUrl: `ws://127.0.0.1:${harness.port}/ws` },
+        childEnvSource: {
+          HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+        },
+        error: (line) => errors.push(line),
+        runUntil: Promise.resolve(),
+      });
+      expect(errors).toContain(
+        "updater disabled: HARNESS_UPDATE_MANIFEST_URL and HARNESS_UPDATE_PUBLIC_KEY are both required",
+      );
+      await daemon.stop();
+    } finally {
+      cleanup();
+      await harness.close();
+    }
+  });
 });
 
 async function waitFor(predicate: () => boolean): Promise<void> {

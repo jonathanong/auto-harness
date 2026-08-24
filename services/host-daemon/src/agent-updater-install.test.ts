@@ -444,4 +444,52 @@ describe("file update installer", () => {
       cleanup();
     }
   });
+
+  it("reports both pointer-switch and pointer-restore failures on Windows", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const first = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await first.stage({ version: "3.0.0", artifact: new Uint8Array() });
+      await first.activate("3.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+
+      let calls = 0;
+      const second = createFileUpdateInstaller({
+        rootDir,
+        platform: "win32",
+        extract: runnableExtract,
+        renamePath: (from, to) => {
+          calls += 1;
+          if (calls === 2) throw new Error("switch failed");
+          if (calls === 3) throw new Error("restore failed");
+          symlinkSync(from, to, "dir");
+        },
+      });
+      await second.stage({ version: "3.1.0", artifact: new Uint8Array() });
+      await expect(second.activate("3.1.0")).rejects.toThrow(
+        "failed to switch current update pointer and restore the prior pointer",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps a healthy external pointer when the versions directory is absent", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    const external = tempRoot();
+    try {
+      runnableExtract("", join(external.rootDir, "release"));
+      writeFileSync(join(external.rootDir, "release", ".auto-harness-version"), "4.0.0\n");
+      symlinkSync(join(external.rootDir, "release"), join(rootDir, "current"), "dir");
+      writeFileSync(
+        join(rootDir, ".auto-harness-update-boot.json"),
+        '{"version":"4.0.0","attempted":true}\n',
+      );
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+    } finally {
+      cleanup();
+      external.cleanup();
+    }
+  });
 });
