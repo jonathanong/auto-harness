@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
+
 import { ControlPlane } from "./control-plane.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
@@ -81,6 +83,17 @@ describe("Slack integration configuration", () => {
     ).toMatchObject({ ok: true, integration: { enabled: false, signingSecretConfigured: false } });
     expect(await second.deleteSlackIntegrationDurable()).toEqual({ ok: true });
     expect(await first.getSlackIntegrationDurable()).toBeNull();
+  });
+
+  it("normalizes a legacy six-event notification payload", async () => {
+    const { onHostOffline: _onHostOffline, ...legacyNotifications } = DEFAULT_SLACK_NOTIFICATIONS;
+    const plane = new ControlPlane({ secretEncryptor: encryptor() });
+    await expect(
+      plane.createSlackIntegrationDurable({ ...input(), notifications: legacyNotifications }),
+    ).resolves.toMatchObject({
+      ok: true,
+      integration: { notifications: { ...legacyNotifications, onHostOffline: true } },
+    });
   });
 
   it("fails closed without encryption and rejects invalid secret-bearing inputs", async () => {

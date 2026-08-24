@@ -58,8 +58,9 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
     (workload.connectedHosts * CAPACITY_CONSTANTS.secondsPerMonth) /
     CAPACITY_CONSTANTS.websocketKeepaliveSeconds;
   const viewerLogMessagesPerMonth = dynamoLogWritesPerMonth * workload.connectedViewers;
-  const websocketMessagesPerMonth =
-    dynamoLogWritesPerMonth + viewerLogMessagesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
+  const inboundWebsocketMessagesPerMonth =
+    dynamoLogWritesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
+  const websocketMessagesPerMonth = inboundWebsocketMessagesPerMonth + viewerLogMessagesPerMonth;
   const schedulerInvocationsPerMonth =
     CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.schedulerIntervalSeconds;
   return {
@@ -67,7 +68,8 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
     dynamoLogWritesPerMonth,
     dynamoLogTransactionsPerMonth,
     websocketMessagesPerMonth,
-    lambdaInvocationsPerMonth: websocketMessagesPerMonth + sessionsPerMonth * 10,
+    // Viewer fanout is an outbound gateway message, not an invocation of the WebSocket Lambda.
+    lambdaInvocationsPerMonth: inboundWebsocketMessagesPerMonth + sessionsPerMonth * 10,
     schedulerInvocationsPerMonth,
     archiveBytesPerMonth: sessionsPerMonth * workload.archiveBytesPerSession,
     queueAssignsPerDay: workload.sessionsPerDay,

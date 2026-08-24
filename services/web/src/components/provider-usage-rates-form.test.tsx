@@ -33,11 +33,17 @@ describe("ProviderUsageRatesForm", () => {
         }),
       }),
     );
-    field(document, "provider-usage-rates-clear").click();
-    await act(async () => Promise.resolve());
+    await act(async () => {
+      field(document, "provider-usage-rates-clear").click();
+      await Promise.resolve();
+    });
     expect(fetch).toHaveBeenLastCalledWith(
       "/api/v1/providers/provider%2Fone",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ usageRates: null }) }),
+    );
+    expect(field<HTMLInputElement>(document, "provider-usage-rates-currency").value).toBe("");
+    expect(field<HTMLInputElement>(document, "provider-usage-rates-inputTokenMicros").value).toBe(
+      "",
     );
     expect(router.refresh).toHaveBeenCalled();
     view.unmount();
@@ -55,8 +61,10 @@ describe("ProviderUsageRatesForm", () => {
     await act(async () => Promise.resolve());
     expect(document.querySelector('[data-pw="form-provider-usage-rates"]')).not.toBeNull();
     expect(field(document, "provider-usage-rates-error").textContent).toBe("nope");
-    field(document, "provider-usage-rates-clear").click();
-    await act(async () => Promise.resolve());
+    await act(async () => {
+      field(document, "provider-usage-rates-clear").click();
+      await Promise.resolve();
+    });
     expect(document.querySelector('[data-pw="form-provider-usage-rates"]')).not.toBeNull();
     view.unmount();
   });

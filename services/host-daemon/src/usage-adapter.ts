@@ -4,7 +4,9 @@ import type { SessionUsage } from "@auto-harness/shared";
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
 import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
 
-const MAX_CAPTURE_BYTES = 256 * 1024;
+// Structured provider envelopes may include a long response alongside the final usage block.
+// Keep a bounded whole envelope rather than trimming its opening JSON delimiters.
+const MAX_STRUCTURED_ENVELOPE_BYTES = 4 * 1024 * 1024;
 const PROVIDERS = ["claude", "codex", "gemini", "grok"] as const;
 type CliProvider = (typeof PROVIDERS)[number];
 
@@ -59,10 +61,24 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
 
   async run(options: RunProcessOptions): Promise<ProcessResult> {
     let captured = "";
+    let capturedBytes = 0;
+    let captureOverflowed = false;
+    const provider = resolveCliProvider(options.argv);
+    const captureStructuredOutput =
+      provider !== undefined && hasStructuredOutputMode(provider, options.argv);
     const result = await this.inner.run({
       ...options,
       onChunk: (chunk) => {
-        captured = (captured + chunk.data).slice(-MAX_CAPTURE_BYTES);
+        if (captureStructuredOutput && !captureOverflowed) {
+          const chunkBytes = Buffer.byteLength(chunk.data);
+          if (capturedBytes + chunkBytes > MAX_STRUCTURED_ENVELOPE_BYTES) {
+            captured = "";
+            captureOverflowed = true;
+          } else {
+            captured += chunk.data;
+            capturedBytes += chunkBytes;
+          }
+        }
         options.onChunk(chunk);
       },
     });

@@ -71,6 +71,34 @@ describe("install-service linux", () => {
     ]);
   });
 
+  it("persists a custom update root for the generated launcher and unit", () => {
+    const updateRoot = "/srv/auto-harness";
+    const fs = seededFs({
+      [`${updateRoot}/current`]: "",
+      [LINUX_ENV_DEST]:
+        "HARNESS_HOST_ID=existing\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: { HARNESS_UPDATE_INSTALL_DIR: updateRoot },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`WorkingDirectory=${updateRoot}/current`);
+    expect(fs.files.get(LINUX_UNIT_DEST)).toContain(
+      `ExecStart=/bin/sh "${updateRoot}/run-host-daemon.sh"`,
+    );
+    expect(fs.files.get(`${updateRoot}/run-host-daemon.sh`)).toContain(
+      `cd '${updateRoot}/current'`,
+    );
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain(`HARNESS_UPDATE_INSTALL_DIR=${updateRoot}`);
+  });
+
   it("merges exported execution settings into an existing env", () => {
     const fs = seededFs({
       [LINUX_ENV_DEST]:

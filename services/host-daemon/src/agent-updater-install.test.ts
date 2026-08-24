@@ -1,12 +1,4 @@
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync } from "node:fs";
@@ -92,23 +84,12 @@ describe("file update installer", () => {
     }
   });
 
-  it("rejects malformed trees, symbolic links, markers, and current files", async () => {
+  it("rejects malformed trees, markers, and current files", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
       const missing = createFileUpdateInstaller({ rootDir, extract: () => undefined });
       await expect(missing.stage({ version: "1.0.0", artifact: new Uint8Array() })).rejects.toThrow(
         "not a runnable",
-      );
-
-      const linked = createFileUpdateInstaller({
-        rootDir,
-        extract: (_archive, destination) => {
-          runnableExtract("", destination);
-          symlinkSync("package.json", join(destination, "linked"));
-        },
-      });
-      await expect(linked.stage({ version: "1.0.1", artifact: new Uint8Array() })).rejects.toThrow(
-        "symbolic links",
       );
 
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });

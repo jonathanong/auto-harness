@@ -149,6 +149,7 @@ On the agent host:
 | `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                   |
 | `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                |
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the stable launcher selects its `current` directory.                                                                                                                                       |
 
 If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
 supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
@@ -160,16 +161,20 @@ target and accepts the raw API Gateway endpoint directly; REST still resolves fr
    never commit it:
 
 ```bash
+UPDATE_ROOT=/opt/auto-harness # set to the same value as HARNESS_UPDATE_INSTALL_DIR when customized
 sudo install -d -m 0755 /etc/auto-harness
 sudo install -m 0600 \
-  /opt/auto-harness/current/services/host-daemon/systemd/host-daemon.env.example \
+  "$UPDATE_ROOT/current/services/host-daemon/systemd/host-daemon.env.example" \
   /etc/auto-harness/host-daemon.env
 sudoedit /etc/auto-harness/host-daemon.env
 sudo install -m 0644 \
-  /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
+  "$UPDATE_ROOT/current/services/host-daemon/systemd/auto-harness-host-daemon.service" \
   /etc/systemd/system/auto-harness-host-daemon.service
+# This root-owned wrapper stays outside the activated tree; it reads the env-file's
+# HARNESS_UPDATE_INSTALL_DIR and then selects that tree's current pointer.
+sudo install -d -m 0755 /opt/auto-harness
 sudo install -m 0755 \
-  /opt/auto-harness/current/services/host-daemon/systemd/run-host-daemon.sh \
+  "$UPDATE_ROOT/current/services/host-daemon/systemd/run-host-daemon.sh" \
   /opt/auto-harness/run-host-daemon.sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now auto-harness-host-daemon.service
@@ -324,7 +329,10 @@ optional `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
 `~/Library/Application Support/auto-harness/updates` on macOS, and
 `%APPDATA%\\auto-harness\\updates` on Windows), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once
 per start) to enable the
-production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. The
+production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. On
+Linux, the checked-in manual unit uses a stable wrapper outside the activated tree; that wrapper
+reads the persisted `HARNESS_UPDATE_INSTALL_DIR`, so set `UPDATE_ROOT` above to the same path when
+using a non-default root. The
 artifact is a gzip-compressed tar archive whose root is a complete runnable checkout (including
 `package.json` and the host-daemon launcher). Verified releases are extracted below `versions/`;
 `current` is atomically switched to that directory and carries a persisted version marker so a

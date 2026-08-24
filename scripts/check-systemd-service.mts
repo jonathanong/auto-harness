@@ -24,7 +24,7 @@ const REQUIRED_SERVICE_LINES = [
   "After=network-online.target",
   "User=harness",
   "Group=harness",
-  "WorkingDirectory=/opt/auto-harness/current",
+  "WorkingDirectory=/",
   "EnvironmentFile=/etc/auto-harness/host-daemon.env",
   'ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
   "Restart=always",
@@ -42,6 +42,7 @@ const REQUIRED_ENV_NAMES = [
   "HARNESS_API_URL",
   "HARNESS_API_KEY",
   "HARNESS_CHILD_ENV_ALLOWLIST",
+  "HARNESS_UPDATE_INSTALL_DIR",
 ] as const;
 
 export function validateSystemdArtifacts(service: string, envExample: string): string[] {
@@ -73,7 +74,8 @@ export function validateSystemdLauncher(launcher: string): string[] {
   const errors: string[] = [];
   for (const fragment of [
     "#!/bin/sh",
-    "current=/opt/auto-harness/current",
+    "update_root=${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}",
+    'current="$update_root/current"',
     'cd "$current"',
     'auto-harness-host-daemon.mjs start "$@"',
   ]) {

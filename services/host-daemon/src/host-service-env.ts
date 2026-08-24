@@ -122,6 +122,7 @@ export function persistedEnvError(errors: string[]): string {
 export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_EXECUTION_PROFILES",
   "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
+  "HARNESS_UPDATE_INSTALL_DIR",
 ] as const;
 
 function filledValue(

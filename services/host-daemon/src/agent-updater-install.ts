@@ -1,22 +1,20 @@
 import { spawnSync } from "node:child_process";
 import {
-  existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   readlinkSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import type { UpdateInstaller } from "./agent-updater.ts";
+import { assertRunnableTree } from "./agent-updater-install-tree.ts";
 
 const VERSION_FILE = ".auto-harness-version";
-const REQUIRED_LAUNCHER = "services/host-daemon/bin/auto-harness-host-daemon.mjs";
 
 type ArchiveRun = (
   command: string,
@@ -53,25 +51,6 @@ function defaultExtract(archivePath: string, destination: string, run: ArchiveRu
   }
 }
 
-function assertNoSymlinks(root: string, current = root): void {
-  for (const entry of readdirSync(current, { withFileTypes: true })) {
-    const path = join(current, entry.name);
-    if (entry.isSymbolicLink()) throw new Error("update archive must not contain symbolic links");
-    if (entry.isDirectory()) assertNoSymlinks(root, path);
-    const rel = relative(root, path);
-    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-      throw new Error("update archive escaped its staging directory");
-    }
-  }
-}
-
-function assertRunnableTree(root: string): void {
-  assertNoSymlinks(root);
-  if (!existsSync(join(root, "package.json")) || !existsSync(join(root, REQUIRED_LAUNCHER))) {
-    throw new Error("update archive is not a runnable Auto Harness tree");
-  }
-}
-
 function atomicWrite(path: string, value: string): void {
   const next = `${path}.next`;
   writeFileSync(next, value, "utf8");
@@ -82,11 +61,24 @@ function linkTarget(version: string): string {
   return join("versions", version);
 }
 
-function switchCurrent(rootDir: string, target: string, suffix: string): void {
+function pointerTarget(rootDir: string, target: string, platform: NodeJS.Platform): string {
+  return platform === "win32" && !isAbsolute(target) ? join(rootDir, target) : target;
+}
+
+function switchCurrent(
+  rootDir: string,
+  target: string,
+  suffix: string,
+  platform: NodeJS.Platform,
+): void {
   const current = join(rootDir, "current");
   const next = `${current}.${suffix}`;
   rmSync(next, { recursive: true, force: true });
-  symlinkSync(process.platform === "win32" ? join(rootDir, target) : target, next, "dir");
+  symlinkSync(
+    pointerTarget(rootDir, target, platform),
+    next,
+    platform === "win32" ? "junction" : "dir",
+  );
   renameSync(next, current);
 }
 
@@ -115,6 +107,7 @@ export function createFileUpdateInstaller(options: {
   currentVersion?: string;
   extract?: ExtractArchive;
   run?: ArchiveRun;
+  platform?: NodeJS.Platform;
 }): UpdateInstaller {
   const versions = join(options.rootDir, "versions");
   const current = join(options.rootDir, "current");
@@ -169,7 +162,12 @@ export function createFileUpdateInstaller(options: {
         throw new Error("current update path is not a directory pointer");
       }
       atomicWrite(previous, oldTarget);
-      switchCurrent(options.rootDir, linkTarget(version), "next");
+      switchCurrent(
+        options.rootDir,
+        linkTarget(version),
+        "next",
+        options.platform ?? process.platform,
+      );
     },
     async rollback() {
       const oldTarget = readFileSync(previous, "utf8");
@@ -177,7 +175,7 @@ export function createFileUpdateInstaller(options: {
         rmSync(current, { recursive: true, force: true });
         return;
       }
-      switchCurrent(options.rootDir, oldTarget, "rollback");
+      switchCurrent(options.rootDir, oldTarget, "rollback", options.platform ?? process.platform);
     },
     async restart() {
       throw new Error("supervisor restart adapter is required");

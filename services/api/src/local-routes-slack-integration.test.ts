@@ -30,6 +30,23 @@ function admins(): string {
 }
 
 describe("Slack integration routes", () => {
+  it("accepts the legacy six-event notification payload", async () => {
+    const { onHostOffline: _onHostOffline, ...legacyNotifications } = DEFAULT_SLACK_NOTIFICATIONS;
+    const response = await invokeHandler(
+      createLocalApp({
+        plane: new ControlPlane({ secretEncryptor: encryptor() }),
+        authMode: "disabled",
+      }).handler,
+      "POST",
+      "/api/v1/integrations/slack",
+      { ...body(), notifications: legacyNotifications },
+    );
+    expect(response).toMatchObject({
+      status: 201,
+      json: { notifications: { ...legacyNotifications, onHostOffline: true } },
+    });
+  });
+
   it("requires an unscoped admin, redacts secrets, and creates audit events", async () => {
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey: operator } = await auth.createServiceAccount({ name: "op", role: "operator" });

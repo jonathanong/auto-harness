@@ -155,6 +155,29 @@ describe("parseCliUsage", () => {
 });
 
 describe("UsageCapturingProcessRunner", () => {
+  it("retains a complete structured envelope larger than 256 KiB", async () => {
+    const envelope = JSON.stringify({
+      response: "x".repeat(300 * 1024),
+      usageMetadata: { promptTokenCount: 321 },
+    });
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        for (let index = 0; index < envelope.length; index += 64 * 1024) {
+          options.onChunk({ stream: "stdout", data: envelope.slice(index, index + 64 * 1024) });
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toMatchObject({ usage: { inputTokens: "321" } });
+  });
+
   it("attaches parsed usage without replacing an inner adapter report", async () => {
     const inner: ProcessRunner = {
       async run(options: RunProcessOptions): Promise<ProcessResult> {

@@ -8,10 +8,12 @@ After=network-online.target
 Type=simple
 User=harness
 Group=harness
-WorkingDirectory=/opt/auto-harness/current
+# The wrapper selects HARNESS_UPDATE_INSTALL_DIR/current itself. Keep systemd from
+# requiring the default update root when an operator configures another location.
+WorkingDirectory=/
 EnvironmentFile=/etc/auto-harness/host-daemon.env
 # install-service (or the manual copy-unit instructions) places this stable
-# wrapper outside the atomically activated /opt/auto-harness/current tree.
+# wrapper outside the atomically activated update tree.
 ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"
 Restart=always
 RestartSec=5s

@@ -16,10 +16,13 @@ export function ProviderUsageRatesForm({ provider }: { provider: Provider }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const rates = provider.usageRates;
+  const [cleared, setCleared] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+  const rates = cleared ? undefined : provider.usageRates;
 
   return (
     <form
+      key={formKey}
       className="grid max-w-md gap-2 rounded-md border p-3"
       data-pw="form-provider-usage-rates"
       onSubmit={(event) => {
@@ -49,6 +52,7 @@ export function ProviderUsageRatesForm({ provider }: { provider: Provider }) {
             return;
           }
           setError(null);
+          setCleared(false);
           router.refresh();
         });
       }}
@@ -98,6 +102,10 @@ export function ProviderUsageRatesForm({ provider }: { provider: Provider }) {
           pending={pending}
           start={start}
           onError={setError}
+          onCleared={() => {
+            setCleared(true);
+            setFormKey((key) => key + 1);
+          }}
         />
       </div>
     </form>
@@ -109,11 +117,13 @@ function ClearRatesButton({
   pending,
   start,
   onError,
+  onCleared,
 }: {
   providerId: string;
   pending: boolean;
   start: ReturnType<typeof useTransition>[1];
   onError: (message: string | null) => void;
+  onCleared: () => void;
 }) {
   const router = useRouter();
   const [clearing, setClearing] = useState(false);
@@ -143,6 +153,7 @@ function ClearRatesButton({
             return;
           }
           onError(null);
+          onCleared();
           router.refresh();
         });
       }}

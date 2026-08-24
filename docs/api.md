@@ -1075,6 +1075,13 @@ Standard CRUD. `GET /provider-accounts` returns `{ "items": [ ...accounts ] }`, 
 
 **Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
 
+For compatibility with provider commands stored before structured usage reporting,
+dispatch upgrades only recognized native forms that have no explicit output setting:
+`claude -p` / `--print`, `gemini -p` / `--prompt`, and `grok -p` / `--single` receive
+`--output-format json`; `codex exec` receives `--json`. This happens in the resolved
+execution argv so quota routing continues to receive vendor envelopes. Commands with an explicit
+format or an unrecognized executable remain operator-authored and unchanged.
+
 `appendPromptSeparator` controls whether a `--` element is inserted before the appended
 prompt: `[...command.argv, "--", prompt]` vs `[...command.argv, prompt]`
 (`services/api/src/control-plane-session-target.ts`). If not given explicitly, it

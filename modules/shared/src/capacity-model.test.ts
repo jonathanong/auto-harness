@@ -15,7 +15,7 @@ describe("capacity model", () => {
     expect(estimate.schedulerInvocationsPerMonth).toBe(30 * 24 * 60);
     expect(estimate.archiveBytesPerMonth).toBe(100 * 30 * 256 * 1024);
     expect(estimate.queueAssignsPerDay).toBe(100);
-    expect(estimate.lambdaInvocationsPerMonth).toBeGreaterThan(estimate.websocketMessagesPerMonth);
+    expect(estimate.lambdaInvocationsPerMonth).toBeGreaterThan(estimate.dynamoLogWritesPerMonth);
   });
 
   it("keeps a one-session day above zero", () => {
@@ -37,5 +37,6 @@ describe("capacity model", () => {
     expect(withViewers.websocketMessagesPerMonth - withoutViewers.websocketMessagesPerMonth).toBe(
       withoutViewers.dynamoLogWritesPerMonth * 3,
     );
+    expect(withViewers.lambdaInvocationsPerMonth).toBe(withoutViewers.lambdaInvocationsPerMonth);
   });
 });

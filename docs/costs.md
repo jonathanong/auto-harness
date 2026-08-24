@@ -67,7 +67,7 @@ pages for the deployment region before approving a budget.
 
 | Service                   | Base input                                   | Workload-sensitive input                               |
 | ------------------------- | -------------------------------------------- | ------------------------------------------------------ |
-| **Lambda**                | Memory and duration per handler              | REST requests + every WebSocket/log message            |
+| **Lambda**                | Memory and duration per handler              | REST requests + inbound host WebSocket/log messages    |
 | **API Gateway REST**      | API calls made by clients                    | Session/UI polling pattern                             |
 | **API Gateway WebSocket** | Connected-agent/viewer minutes and keepalive | Log chunks, status messages, reconnects, subscriptions |
 | **DynamoDB on-demand**    | Session/status/catalog operations            | One current write per log chunk + reads                |
@@ -93,7 +93,8 @@ pages for the deployment region before approving a budget.
 
 At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
 transactional write items/month, ~81M WebSocket messages/month (including each
-viewer copy), 43,200 scheduler invocations/month,
+viewer copy), ~27.3M Lambda invocations/month (viewer fanout is outbound and does
+not invoke Lambda), 43,200 scheduler invocations/month,
 and ~750 MiB archive PUT volume/month. Queue throughput is 100 assigns/day plus
 the one-minute repair sweep. Re-run `estimateMonthlyCapacity` when the session mix
 changes; do not scale by session count alone.
@@ -102,7 +103,8 @@ changes; do not scale by session count alone.
 
 ### Lambda
 
-In the target runtime, each API request or WebSocket message triggers an invocation. Duration and
+In the target runtime, each API request or inbound WebSocket message triggers an invocation.
+Viewer fanout is an outbound WebSocket delivery and does not invoke the Lambda. Duration and
 memory must be measured after deployment.
 
 - **Invocation cost**: $0.20 per 1M requests

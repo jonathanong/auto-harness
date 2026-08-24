@@ -64,7 +64,8 @@ describe("production host systemd artifacts", () => {
   it("keeps the manual stable launcher on current and forwards daemon arguments", () => {
     expect(validateSystemdLauncher("#!/bin/sh\n")).toEqual(
       expect.arrayContaining([
-        "missing systemd launcher fragment: current=/opt/auto-harness/current",
+        "missing systemd launcher fragment: update_root=${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}",
+        'missing systemd launcher fragment: current="$update_root/current"',
         'missing systemd launcher fragment: cd "$current"',
         'missing systemd launcher fragment: auto-harness-host-daemon.mjs start "$@"',
       ]),
