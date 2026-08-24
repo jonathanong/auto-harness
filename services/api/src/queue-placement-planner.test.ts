@@ -229,6 +229,55 @@ describe("queue placement planner", () => {
     ).toBe(true);
   });
 
+  it("clears a resume pin when its provider profile is no longer ready", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    plane.state.providers.set("prov", { id: "prov", name: "prov", defaultCommandId: "cmd" });
+    plane.state.commands.set("cmd", {
+      id: "cmd",
+      name: "cmd",
+      argv: ["tool"],
+      appendPrompt: false,
+      providerId: "prov",
+    });
+    plane.state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "prov",
+      label: "account",
+    });
+    markHostReady(plane, "host");
+    const connection = plane.state.connections.get("host-connection")!;
+    plane.state.connections.set("host-connection", {
+      ...connection,
+      providerAccountReadiness: [
+        { providerAccountId: "acct", ready: false, fingerprint: "a".repeat(64) },
+      ],
+    });
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+
+    expect(
+      planPromptPlacement(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        session({
+          target: { providerId: "prov" },
+          pinnedHostId: "host",
+          pinnedProviderAccountId: "acct",
+          pinnedTargetIndex: 0,
+        }),
+        Date.parse(NOW),
+      ),
+    ).toEqual({ action: "clear_pin" });
+  });
+
   it("assigns a later shard's higher-priority session before draining shard 0", () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 2 });
     seedBaseCommand(plane);

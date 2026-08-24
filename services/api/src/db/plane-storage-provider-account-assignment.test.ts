@@ -19,4 +19,14 @@ describe("provider account assignment fence", () => {
         .ConditionExpression,
     ).not.toContain(":slot");
   });
+
+  it("fences the account against a catalog move", () => {
+    const fenced = providerAccountLastAssignedTransactItem(ctx, {
+      providerAccountId: "acct",
+      providerId: "provider-one",
+      now: "now",
+    });
+    expect(fenced.Update.ConditionExpression).toContain("providerId = :providerId");
+    expect(fenced.Update.ExpressionAttributeValues[":providerId"]).toBe("provider-one");
+  });
 });

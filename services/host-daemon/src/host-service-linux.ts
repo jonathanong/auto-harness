@@ -114,7 +114,7 @@ export function installLinux(ctx: HostServiceContext): number {
     return 1;
   }
   const unit = renderedUnit(ctx);
-  const writeEnv = !envExists || ctx.apiUrl !== undefined;
+  const writeEnv = !envExists || ctx.apiUrl !== undefined || preparedEnv.contents !== existingEnv;
   if (ctx.uid !== 0) {
     return stageLinux(ctx, unit, writeEnv ? preparedEnv.contents : undefined);
   }

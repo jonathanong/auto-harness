@@ -144,16 +144,20 @@ export function planPromptPlacement(
     idle = idle.filter((worktree) => worktree.hostId === session.pinnedHostId);
     const hasNativeRoute =
       session.pinnedTargetIndex !== undefined &&
-      idle.some((candidate) =>
-        resolveSessionTargetRouteAt(
+      idle.some((candidate) => {
+        const route = resolveSessionTargetRouteAt(
           state,
           catalog,
           session,
           candidate,
           nowMs,
           session.pinnedTargetIndex!,
-        ),
-      );
+        );
+        return (
+          route !== null &&
+          hostProviderAccountReady(state, candidate.hostId, route.providerAccountId)
+        );
+      });
     if (!hasNativeRoute) return { action: "clear_pin" };
   }
   idle.sort(compareWorktreesForRoundRobin);

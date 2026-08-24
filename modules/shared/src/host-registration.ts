@@ -22,6 +22,8 @@ export type ProviderAccountReadiness = {
 };
 
 export const MAX_PROVIDER_ACCOUNT_READINESS = 256;
+/** Keep account identifiers bounded across daemon configuration and readiness advertisements. */
+export const MAX_PROVIDER_ACCOUNT_ID_LENGTH = 512;
 export const PROVIDER_ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
 
 /** Validate the non-worktree portion of a host registration advertisement. */
@@ -81,7 +83,7 @@ export function isProviderAccountReadiness(value: unknown): value is ProviderAcc
   return (
     typeof entry.providerAccountId === "string" &&
     entry.providerAccountId.length > 0 &&
-    entry.providerAccountId.length <= 512 &&
+    entry.providerAccountId.length <= MAX_PROVIDER_ACCOUNT_ID_LENGTH &&
     typeof entry.ready === "boolean" &&
     typeof entry.fingerprint === "string" &&
     PROVIDER_ACCOUNT_FINGERPRINT_PATTERN.test(entry.fingerprint)
@@ -117,8 +119,8 @@ export function validateProviderAccountReadiness(
   return null;
 }
 
-/** Attempt-owned account leases share the concurrency-lock table under this prefix. */
-export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-account:";
+/** Attempt-owned account leases use a namespace disjoint from caller lock IDs. */
+export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-lease:";
 
 export function providerAccountLeaseConcurrencyId(providerAccountId: string, slot: number): string {
   return `${PROVIDER_ACCOUNT_LEASE_PREFIX}${providerAccountId}:${String(slot)}`;

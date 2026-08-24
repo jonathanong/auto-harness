@@ -93,6 +93,11 @@ describe("session cursor primitives", () => {
     expect(() => decodeSessionCursor(state, malformed, base)).toThrow(InvalidSessionCursorError);
     const primitive = encodeSessionCursor(state, null as unknown as SessionCursor);
     expect(() => decodeSessionCursor(state, primitive, base)).toThrow(InvalidSessionCursorError);
+    const arrayQuery = encodeSessionCursor(state, {
+      ...cursor,
+      query: [] as unknown as SessionCursor["query"],
+    });
+    expect(() => decodeSessionCursor(state, arrayQuery, base)).toThrow(InvalidSessionCursorError);
     const invalidJson = Buffer.from("{", "utf8").toString("base64url");
     const signature = createHmac("sha256", state.sessionCursorSecret)
       .update(invalidJson)

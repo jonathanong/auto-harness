@@ -24,6 +24,17 @@ type RuntimeFields = Pick<
   "daemonInstanceId" | "daemonStartedAt" | "restartCount" | "lastRestartDetectedAt" | "runtime"
 >;
 
+/** Keep an operator's latest label edit when a stale daemon registration races it. */
+function registeredWorktreeLabels(
+  previous: HostInventoryRecord | undefined,
+  worktree: RegisteredWorktree,
+): string[] {
+  const prior = previous?.repositories
+    .find((repository) => repository.id === worktree.repositoryId)
+    ?.worktrees.find((item) => item.id === worktree.id);
+  return prior ? [...prior.labels] : [...worktree.labels];
+}
+
 /** Preserve daemon runtime observability through control-plane inventory edits. */
 export function preservedDaemonRuntime(previous?: HostInventoryRecord): RuntimeFields {
   return {
@@ -177,7 +188,7 @@ export function buildRegisteredInventory(
           id: worktree.id,
           name: worktree.name,
           path: worktree.path,
-          labels: [...worktree.labels],
+          labels: registeredWorktreeLabels(previous, worktree),
           ...(prior?.worktrees.find((item) => item.id === worktree.id)?.setupScript !== undefined
             ? { setupScript: prior.worktrees.find((item) => item.id === worktree.id)?.setupScript }
             : {}),

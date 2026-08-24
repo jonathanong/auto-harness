@@ -152,7 +152,7 @@ describe("scheduled terminal and retry message branches", () => {
 
   it("releases a cancelled leased run and carries late terminal metadata", async () => {
     const lease = {
-      concurrencyId: "provider-account:acct:0",
+      concurrencyId: "provider-lease:acct:0",
       providerAccountId: "acct",
       slot: 0,
       attemptId: "attempt",

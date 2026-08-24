@@ -998,12 +998,6 @@ describe("Lambda runtime adapters", () => {
         "running:1",
         "running:2",
         "running:3",
-        "connections",
-        "repositories",
-        "running:0",
-        "running:1",
-        "running:2",
-        "running:3",
       ]);
     } finally {
       vi.useRealTimers();

@@ -88,6 +88,7 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
     ...(session.ref ? { ref: session.ref } : {}),
     ...(session.metadata ? { metadata: session.metadata } : {}),
     ...(route?.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+    ...(route?.providerId ? { providerId: route.providerId } : {}),
     ...(route?.commandId ? { commandId: route.commandId } : {}),
     ...(route?.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
   };
@@ -96,8 +97,9 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
 export async function assignScheduledQueuedDurable(
   state: ControlPlaneState,
   sessionId?: string,
+  options?: { readModelLoaded?: boolean },
 ): Promise<ScheduledAssignment[]> {
-  if (state.storage) {
+  if (state.storage && !options?.readModelLoaded) {
     if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
       await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
     }
@@ -178,6 +180,7 @@ export async function assignScheduledQueuedDurable(
               resumeSpec: target.resumeSpec,
               resolvedRoute: {
                 targetIndex: target.targetIndex,
+                ...(target.providerId ? { providerId: target.providerId } : {}),
                 commandId: target.commandId,
                 ...(target.providerAccountId
                   ? { providerAccountId: target.providerAccountId }
@@ -187,6 +190,7 @@ export async function assignScheduledQueuedDurable(
                 attemptId,
               },
               ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+              ...(target.providerId ? { providerId: target.providerId } : {}),
               ...(lease ? { providerAccountLease: lease } : {}),
               queueShard: session.queueShard,
               attemptId,
@@ -216,6 +220,7 @@ export async function assignScheduledQueuedDurable(
         : {}),
       resolvedRoute: {
         targetIndex: target.targetIndex,
+        ...(target.providerId ? { providerId: target.providerId } : {}),
         commandId: target.commandId,
         ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
         hostId,

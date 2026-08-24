@@ -511,7 +511,10 @@ export function registerHost(
       hostId: opts.hostId,
       repositoryId: wt.repositoryId,
       path: wt.path,
-      labels: wt.labels,
+      labels:
+        registrationInventory.repositories
+          .find((repository) => repository.id === wt.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === wt.id)?.labels ?? wt.labels,
       status: "idle",
       online: !opts.draining,
       currentSessionId: prev && prev.currentSessionId != null ? prev.currentSessionId : null,
@@ -657,7 +660,10 @@ export async function registerHostDurable(
       hostId: opts.hostId,
       repositoryId: wt.repositoryId,
       path: wt.path,
-      labels: wt.labels,
+      labels:
+        previousInventory?.repositories
+          .find((repository) => repository.id === wt.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === wt.id)?.labels ?? wt.labels,
       status: "idle" as const,
       online: !opts.draining,
       currentSessionId: prev?.currentSessionId ?? null,
