@@ -175,7 +175,7 @@ export function SessionDetail({
               Prompt
             </h3>
             <pre
-              className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-4 font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-4 font-sans text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               data-pw="session-detail-prompt-content"
               tabIndex={0}
             >
