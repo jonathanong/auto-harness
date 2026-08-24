@@ -119,28 +119,7 @@ export function persistedEnvError(errors: string[]): string {
   return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.`;
 }
 
-export function updatePersistedApiUrl(contents: string, apiUrl: string): string {
-  const lines = contents.split(/\r?\n/);
-  let found = false;
-  const updated = lines.map((line) => {
-    const eq = line.indexOf("=");
-    if (eq < 0 || line.slice(0, eq).trim() !== "HARNESS_API_URL") return line;
-    found = true;
-    return `${line.slice(0, eq + 1)}${apiUrl}`;
-  });
-  if (!found) {
-    if (updated.at(-1) === "") updated.pop();
-    updated.push(`HARNESS_API_URL=${apiUrl}`);
-  }
-  const result = updated.join("\n");
-  return result.endsWith("\n") ? result : `${result}\n`;
-}
-
-export function serviceEnv(env: NodeJS.ProcessEnv, apiUrl: string | undefined): NodeJS.ProcessEnv {
-  return apiUrl === undefined ? env : { ...env, HARNESS_API_URL: apiUrl };
-}
-
-const PERSISTED_DAEMON_ENV_KEYS = [
+export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_EXECUTION_PROFILES",
   "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
 ] as const;

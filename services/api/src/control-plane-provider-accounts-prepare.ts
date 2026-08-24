@@ -112,6 +112,21 @@ export function prepareUpdateProviderAccount(
       error: `maxConcurrentSessions must be an integer between 1 and ${String(MAX_CONCURRENT_SESSIONS_LIMIT)}`,
     };
   }
+  if (
+    !state.storage &&
+    patch.maxConcurrentSessions !== undefined &&
+    patch.maxConcurrentSessions <
+      (existing.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS)
+  ) {
+    for (const lease of state.providerAccountLeases.values()) {
+      if (lease.providerAccountId === id && lease.slot >= patch.maxConcurrentSessions) {
+        return {
+          ok: false,
+          error: "cannot reduce maxConcurrentSessions while an active lease uses a removed slot",
+        };
+      }
+    }
+  }
   const account: ProviderAccountRecord = {
     ...existing,
     updatedAt: state.now(),

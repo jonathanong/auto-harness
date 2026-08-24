@@ -47,6 +47,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
       parseHostMessage({
         ...registration,
         capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 3,
         runningSessions: ["session-1"],
         runningAttempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
         protocolVersion: 1,

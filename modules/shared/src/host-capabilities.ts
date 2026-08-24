@@ -63,7 +63,10 @@ export function parseHostCapabilitiesAdvertisement(
     ) {
       return null;
     }
-    return { features: normalizeHostCapabilities(value) };
+    return {
+      features: normalizeHostCapabilities(value),
+      maxConcurrentAssignments: DEFAULT_MAX_CONCURRENT_ASSIGNMENTS,
+    };
   }
   if (!value || typeof value !== "object") return null;
   const advertised = value as Record<string, unknown>;

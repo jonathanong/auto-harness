@@ -71,6 +71,33 @@ describe("install-service win32", () => {
     expect(errors.join("\n")).toMatch(/Create/);
   });
 
+  it("merges exported execution settings into an existing env", () => {
+    const envPath = "/Users/op/AppData/Roaming/auto-harness/host-daemon.env";
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\nOTHER=keep\n",
+    });
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "win32",
+          fs,
+          env: {
+            HARNESS_EXECUTION_PROFILES: "C:/auto-harness/profiles.json",
+            HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "5",
+          },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(envPath)).toContain(
+      "HARNESS_EXECUTION_PROFILES=C:/auto-harness/profiles.json",
+    );
+    expect(fs.files.get(envPath)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=5");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
+    expect(fs.files.get(envPath)).toContain("OTHER=keep");
+  });
+
   it("fails install when /End fails for a reason other than not running", () => {
     const errors: string[] = [];
     expect(

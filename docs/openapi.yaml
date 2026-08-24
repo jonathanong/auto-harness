@@ -194,6 +194,20 @@ paths:
           description: Provider account deleted
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /provider-accounts/{providerAccountId}/usage-limit:
+    parameters:
+      - $ref: "#/components/parameters/ProviderAccountId"
+    delete:
+      operationId: clearProviderAccountUsageLimit
+      summary: Clear an account's active usage-limit cooldown
+      responses:
+        "200":
+          description: Provider account with cooldown cleared
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccount" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /repositories/{repositoryId}/session-drains/{operationId}/release:
     parameters:
       - $ref: "#/components/parameters/RepositoryId"

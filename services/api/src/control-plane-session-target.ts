@@ -14,6 +14,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 
 export type ResolvedSessionRoute = {
   targetIndex: number;
+  providerId?: string;
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
@@ -116,9 +117,11 @@ function resolveNativeResumeRoute(
     }
   }
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
+  const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
+    ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(
@@ -176,7 +179,8 @@ function resolveTargets(
   if ("commandId" in target) {
     const command = state.commands.get(target.commandId);
     if (!command) return [];
-    if (command.providerId === null) {
+    const providerId = command.providerId;
+    if (providerId === null) {
       const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
         ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
@@ -187,11 +191,12 @@ function resolveTargets(
     return resolveEligibleAccounts(
       state,
       catalog,
-      command.providerId,
+      providerId,
       worktree,
       nowMs,
       pinnedProviderAccountId,
     ).map((account) => ({
+      providerId,
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
@@ -221,6 +226,7 @@ function resolveTargets(
     const resolvedArgv = buildArgv(command, prompt);
     if (resolvedArgv && commandId && command) {
       routes.push({
+        providerId: target.providerId,
         providerAccountId: account.id,
         commandId,
         resolvedArgv,

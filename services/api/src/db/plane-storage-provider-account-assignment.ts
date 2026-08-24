@@ -4,7 +4,7 @@ import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 export function providerAccountLastAssignedTransactItem(
   ctx: PlaneStorageCtx,
-  opts: { providerAccountId: string; now: string; slot?: number },
+  opts: { providerAccountId: string; providerId?: string; now: string; slot?: number },
 ): {
   Update: {
     TableName: string;
@@ -22,6 +22,10 @@ export function providerAccountLastAssignedTransactItem(
       " AND ((attribute_not_exists(maxConcurrentSessions) AND :slot < :defaultCap) OR maxConcurrentSessions > :slot)";
     values[":slot"] = opts.slot;
     values[":defaultCap"] = DEFAULT_MAX_CONCURRENT_SESSIONS;
+  }
+  if (opts.providerId !== undefined) {
+    condition += " AND providerId = :providerId";
+    values[":providerId"] = opts.providerId;
   }
   return {
     Update: {

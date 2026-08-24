@@ -144,16 +144,20 @@ export function planPromptPlacement(
     idle = idle.filter((worktree) => worktree.hostId === session.pinnedHostId);
     const hasNativeRoute =
       session.pinnedTargetIndex !== undefined &&
-      idle.some((candidate) =>
-        resolveSessionTargetRouteAt(
+      idle.some((candidate) => {
+        const route = resolveSessionTargetRouteAt(
           state,
           catalog,
           session,
           candidate,
           nowMs,
           session.pinnedTargetIndex!,
-        ),
-      );
+        );
+        return (
+          route !== null &&
+          hostProviderAccountReady(state, candidate.hostId, route.providerAccountId)
+        );
+      });
     if (!hasNativeRoute) return { action: "clear_pin" };
   }
   idle.sort(compareWorktreesForRoundRobin);
@@ -204,13 +208,17 @@ export function planScheduledPlacement(
     connectionId: string;
     route: ResolvedSessionRoute;
   }> = [];
-  for (const host of hosts) {
-    for (const route of resolveScheduledSessionTargets(state, catalog, session, host.hostId)) {
-      if (
-        hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
-        accountHasLeaseCapacity(state, route.providerAccountId)
-      ) {
-        candidates.push({ ...host, route });
+  const maxTargetIndex = session.fallbacks.length;
+  for (let targetIndex = 0; targetIndex <= maxTargetIndex; targetIndex++) {
+    for (const host of hosts) {
+      for (const route of resolveScheduledSessionTargets(state, catalog, session, host.hostId)) {
+        if (route.targetIndex !== targetIndex) continue;
+        if (
+          hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
+          accountHasLeaseCapacity(state, route.providerAccountId)
+        ) {
+          candidates.push({ ...host, route });
+        }
       }
     }
   }
@@ -256,7 +264,7 @@ export function targetIsAvailable(
 ): boolean {
   return [...state.worktrees.values()].some((worktree) => {
     if (!isSchedulableWorktree(state, worktree)) return false;
-    const route = resolveSessionTargetRouteAt(
+    return resolveSessionTargetRoutesAt(
       state,
       catalog,
       {
@@ -278,11 +286,10 @@ export function targetIsAvailable(
       worktree,
       nowMs,
       0,
-    );
-    return (
-      Boolean(route) &&
-      hostProviderAccountReady(state, worktree.hostId, route?.providerAccountId) &&
-      accountHasLeaseCapacity(state, route?.providerAccountId)
+    ).some(
+      (route) =>
+        hostProviderAccountReady(state, worktree.hostId, route.providerAccountId) &&
+        accountHasLeaseCapacity(state, route.providerAccountId),
     );
   });
 }

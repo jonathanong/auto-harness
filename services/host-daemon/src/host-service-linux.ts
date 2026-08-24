@@ -163,7 +163,7 @@ export function installLinux(ctx: HostServiceContext): number {
   const paths = linuxPaths(ctx);
   const unit = renderedUnit(ctx, paths);
   const launcher = renderedLauncher(ctx, paths);
-  const writeEnv = !envExists || ctx.apiUrl !== undefined;
+  const writeEnv = !envExists || ctx.apiUrl !== undefined || preparedEnv.contents !== existingEnv;
   if (ctx.uid !== 0) {
     return stageLinux(ctx, paths, unit, launcher, writeEnv ? preparedEnv.contents : undefined);
   }

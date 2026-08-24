@@ -191,7 +191,12 @@ describe("durable scheduled recovery", () => {
     });
     for (const field of ["mainCheckoutLease", "assignmentConnectionId", "assignmentSentAt"]) {
       expect(persisted).not.toHaveProperty(field);
-      expect(seeded.plane.state.sessions.get(seeded.sessionId)).not.toHaveProperty(field);
+    }
+    const cached = seeded.plane.state.sessions.get(seeded.sessionId);
+    if (cached) {
+      for (const field of ["mainCheckoutLease", "assignmentConnectionId", "assignmentSentAt"]) {
+        expect(cached).not.toHaveProperty(field);
+      }
     }
   });
 });

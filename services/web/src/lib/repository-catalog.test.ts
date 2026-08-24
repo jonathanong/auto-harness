@@ -24,6 +24,11 @@ describe("repository catalog pagination", () => {
     await expect(loadAllRepositoryPages(fetchPage)).rejects.toThrow("cursor repeated");
   });
 
+  it("treats a page without items as empty", async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ nextCursor: null });
+    await expect(loadAllRepositoryPages(fetchPage)).resolves.toEqual([]);
+  });
+
   it("deduplicates appended UI pages by repository id", () => {
     expect(dedupeRepositories([{ id: "a" }, { id: "a" }, { id: "b" }])).toEqual([
       { id: "a" },

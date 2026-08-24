@@ -4,12 +4,27 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { seedBaseCommand } from "./control-plane-test-helpers.ts";
 import {
+  repositoryAdmissionFailure,
+  repositoryAdmissionOpen,
+} from "./control-plane-repository-admission-state.ts";
+import {
   drainRepositoryDurable,
   reconcileRepositoryDrainsDurable,
   setRepositoryAdmissionDurable,
 } from "./control-plane-repository-admission.ts";
 
 describe("repository admission", () => {
+  it("fails closed for malformed persisted admission values", () => {
+    const plane = new ControlPlane();
+    expect(repositoryAdmissionOpen("future-state")).toBe(false);
+    plane.state.repositories.set("repo-invalid", { admissionState: "future-state" } as never);
+    expect(repositoryAdmissionFailure(plane.state, "repo-invalid")).toMatchObject({
+      ok: false,
+      code: "REPOSITORY_ADMISSION_CLOSED",
+      error: "repository admission is paused",
+    });
+  });
+
   it("pauses creation, activates again, and drains active sessions to paused", async () => {
     let tick = 0;
     const plane = new ControlPlane({

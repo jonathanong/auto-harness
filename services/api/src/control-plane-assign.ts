@@ -33,6 +33,7 @@ import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
  */
 export function assignQueued(
   state: ControlPlaneState,
+  sessionId?: string,
 ): Array<{ session: PublicSession; worktree: WorktreeRecord }> {
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
@@ -44,6 +45,7 @@ export function assignQueued(
     state.shardCount,
     "prompt",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {
       clearResumePin(session);
@@ -85,6 +87,7 @@ export function assignQueued(
       }
       session.resolvedRoute = {
         targetIndex: route.targetIndex,
+        ...(route.providerId ? { providerId: route.providerId } : {}),
         commandId: route.commandId,
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         hostId: candidate.hostId,
@@ -140,15 +143,19 @@ export function assignQueued(
  */
 export async function assignQueuedDurable(
   state: ControlPlaneState,
+  sessionId?: string,
+  options?: { readModelLoaded?: boolean },
 ): Promise<Array<{ session: PublicSession; worktree: WorktreeRecord }>> {
   if (!state.storage) {
-    return assignQueued(state);
+    return assignQueued(state, sessionId);
   }
-  if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-    await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
+  if (!options?.readModelLoaded) {
+    if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
+      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
+    }
+    await refreshSchedulerReadModel(state);
+    await listQueuedSessionsDurable(state, "prompt");
   }
-  await refreshSchedulerReadModel(state);
-  await listQueuedSessionsDurable(state, "prompt");
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);
@@ -159,6 +166,7 @@ export async function assignQueuedDurable(
     state.shardCount,
     "prompt",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     await listWorktreesForRepositoryDurable(state, session.repositoryId);
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {
@@ -234,6 +242,7 @@ export async function assignQueuedDurable(
           resumeSpec: route.resumeSpec,
           resolvedRoute: {
             targetIndex: route.targetIndex,
+            ...(route.providerId ? { providerId: route.providerId } : {}),
             commandId: route.commandId,
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             hostId: candidate.hostId,
@@ -242,6 +251,7 @@ export async function assignQueuedDurable(
           },
           attemptId,
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+          ...(route.providerId ? { providerId: route.providerId } : {}),
           ...(lease ? { providerAccountLease: lease } : {}),
           queueShard: session.queueShard,
         });
@@ -262,6 +272,7 @@ export async function assignQueuedDurable(
         resumeSpec,
         resolvedRoute: {
           targetIndex: route.targetIndex,
+          ...(route.providerId ? { providerId: route.providerId } : {}),
           commandId: route.commandId,
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
           hostId: candidate.hostId,

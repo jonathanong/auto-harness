@@ -275,6 +275,7 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
@@ -287,6 +288,12 @@ export class DynamoPlaneStorageBase {
     attemptId: string;
   }): Promise<void> {
     return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
+  }
+
+  backfillProviderAccountLease(
+    opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
+  ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {
+    return providerAccountLeases.backfillProviderAccountLease(this.ctx, opts);
   }
 
   ensureMainCheckoutLeaseMap(hostId: string, connectionId: string): Promise<boolean> {
@@ -316,6 +323,7 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;

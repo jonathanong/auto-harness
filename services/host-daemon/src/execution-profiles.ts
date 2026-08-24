@@ -5,6 +5,7 @@ import { isAbsolute, normalize } from "node:path";
 import {
   DEFAULT_MAX_CONCURRENT_ASSIGNMENTS,
   MAX_CONCURRENT_ASSIGNMENTS_LIMIT,
+  MAX_PROVIDER_ACCOUNT_ID_LENGTH,
   MAX_PROVIDER_ACCOUNT_READINESS,
   type ProviderAccountReadiness,
 } from "@auto-harness/shared";
@@ -58,6 +59,11 @@ function parseProfileEnv(raw: unknown, ctx: string): Record<string, string> {
 
 function parseAccountProfile(providerAccountId: string, raw: unknown): ExecutionProfile {
   if (!providerAccountId) throw new Error("execution profile id must be a non-empty string");
+  if (providerAccountId.length > MAX_PROVIDER_ACCOUNT_ID_LENGTH) {
+    throw new Error(
+      `execution profile id must be at most ${String(MAX_PROVIDER_ACCOUNT_ID_LENGTH)} characters`,
+    );
+  }
   if (!isRecord(raw)) throw new Error(`execution profile ${providerAccountId} must be an object`);
   if (typeof raw.home !== "string" || raw.home.length === 0 || !isAbsolute(raw.home)) {
     throw new Error(`execution profile ${providerAccountId}.home must be an absolute path`);

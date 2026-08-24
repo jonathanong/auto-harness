@@ -74,6 +74,9 @@ describe("execution profiles", () => {
       /accounts must be an object/,
     );
     expect(() => parseExecutionProfiles({ accounts: { "": { home: "/x" } } })).toThrow(/id/);
+    expect(() =>
+      parseExecutionProfiles({ accounts: { ["a".repeat(513)]: { home: "/x" } } }),
+    ).toThrow(/id must be at most 512 characters/);
     expect(() => parseExecutionProfiles({ accounts: { a: "nope" } })).toThrow(/must be an object/);
     expect(() => parseExecutionProfiles({ accounts: { a: { home: "relative" } } })).toThrow(
       /absolute path/,

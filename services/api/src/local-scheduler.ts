@@ -16,8 +16,7 @@ type SchedulerPlane = Pick<
   | "reclaimStaleHostsDurable"
   | "reconcileRepositoryDrainsDurable"
   | "reconcileSessionDrainsDurable"
-  | "assignQueuedDurable"
-  | "assignScheduledQueuedDurable"
+  | "requestAssignment"
 >;
 
 export type LocalSchedulerOptions = {
@@ -90,8 +89,7 @@ export class LocalScheduler {
       () => this.plane.reclaimStaleHostsDurable(),
       () => this.plane.reconcileRepositoryDrainsDurable(),
       () => this.plane.reconcileSessionDrainsDurable(),
-      () => this.plane.assignQueuedDurable(),
-      () => this.plane.assignScheduledQueuedDurable(),
+      () => this.plane.requestAssignment(),
     ];
     for (const step of steps) {
       if (!this.started) return;
