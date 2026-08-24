@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- registration rollback and reconnect barriers share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
