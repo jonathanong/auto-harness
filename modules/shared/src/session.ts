@@ -123,8 +123,8 @@ export type HostWireMessage =
     }
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
-  | { type: "session:acknowledged"; sessionId: string; attemptId: string }
-  | { type: "session:cancel"; sessionId: string; attemptId: string }
+  | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
+  | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
   | { type: "host:drain" }

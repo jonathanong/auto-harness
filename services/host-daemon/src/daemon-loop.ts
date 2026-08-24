@@ -273,23 +273,35 @@ export class DaemonLoop {
     await Promise.all(pending.map((entry) => entry.work.catch(() => undefined)));
   }
 
+  private inflightFor(sessionId: string, attemptId: string | undefined): InflightSession[] {
+    if (attemptId) {
+      const current = this.inflight.get(inflightKey(sessionId, attemptId));
+      return current ? [current] : [];
+    }
+    return [...this.inflight.values()].filter((entry) => entry.sessionId === sessionId);
+  }
+
   private handleCancel(msg: Extract<HostWireMessage, { type: "session:cancel" }>): void {
-    const current = this.inflight.get(inflightKey(msg.sessionId, msg.attemptId));
-    this.onLog?.(`cancel requested for ${msg.sessionId} attempt ${msg.attemptId}`);
-    current?.controller.abort();
+    this.onLog?.(
+      `cancel requested for ${msg.sessionId}${msg.attemptId ? ` attempt ${msg.attemptId}` : ""}`,
+    );
+    for (const current of this.inflightFor(msg.sessionId, msg.attemptId)) {
+      current.controller.abort();
+    }
   }
 
   private handleAcknowledged(
     msg: Extract<HostWireMessage, { type: "session:acknowledged" }>,
   ): void {
-    const current = this.inflight.get(inflightKey(msg.sessionId, msg.attemptId));
-    // Duplicate and late confirmations are harmless. The peer's durable
-    // confirmation—not the outgoing write callback—permits execution.
-    if (!current || current.acknowledged || current.controller.signal.aborted) return;
-    current.acknowledged = true;
-    const resolve = current.resolveAcknowledgement;
-    current.resolveAcknowledgement = undefined;
-    resolve?.();
+    for (const current of this.inflightFor(msg.sessionId, msg.attemptId)) {
+      // Duplicate and late confirmations are harmless. The peer's durable
+      // confirmation—not the outgoing write callback—permits execution.
+      if (current.acknowledged || current.controller.signal.aborted) continue;
+      current.acknowledged = true;
+      const resolve = current.resolveAcknowledgement;
+      current.resolveAcknowledgement = undefined;
+      resolve?.();
+    }
   }
 
   private async handleAssign(

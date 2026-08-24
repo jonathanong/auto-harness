@@ -291,6 +291,31 @@ describe("ControlPlane assignment-attempt fencing", () => {
         runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
       }).ok,
     ).toBe(true);
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      status: "queued",
+      hostId: null,
+      worktreeId: null,
+      attemptId: first.session.attemptId,
+    });
+    expect(
+      plane.registerHost({
+        hostId: "host-queued",
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        worktrees: [
+          { id: "wt-queued", name: "wt-queued", repositoryId: "repo-1", path: "/wq", labels: [] },
+        ],
+        runningAttempts: [{ sessionId: "sess-1", attemptId: first.session.attemptId! }],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }).ok,
+    ).toBe(true);
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      hostId: "host-2",
+      worktreeId: "wt-2",
+      status: "running",
+      attemptId: "attempt-2",
+    });
     expect(
       plane.registerHost({
         hostId: "host-3",

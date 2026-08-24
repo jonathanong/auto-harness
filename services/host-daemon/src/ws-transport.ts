@@ -255,14 +255,14 @@ export function createWsTransport(options: Options): DaemonTransport & {
         } else if (
           registered &&
           (("sessionId" in message &&
-            "attemptId" in message &&
             (message.type === "session:acknowledged" || message.type === "session:cancel") &&
             typeof message.sessionId === "string" &&
             message.sessionId.length > 0 &&
             message.sessionId.length <= 512 &&
-            typeof message.attemptId === "string" &&
-            message.attemptId.length > 0 &&
-            message.attemptId.length <= 512) ||
+            (message.attemptId === undefined ||
+              (typeof message.attemptId === "string" &&
+                message.attemptId.length > 0 &&
+                message.attemptId.length <= 512))) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
             message.type === "host:drain")

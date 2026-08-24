@@ -218,6 +218,13 @@ describe("session-transition planner", () => {
     ).toEqual([]);
     expect(
       planSessionTransition(
+        session({ status: "queued", hostId: null, worktreeId: null }),
+        { type: "reconnect_claim", attemptId: "attempt" },
+        ctx(),
+      ).effects,
+    ).toEqual([{ type: "ignore", reason: "stale_attempt" }]);
+    expect(
+      planSessionTransition(
         session({ ackReceivedAt: NOW }),
         { type: "ack", worktreeId: "wt", attemptId: "attempt" },
         ctx(),

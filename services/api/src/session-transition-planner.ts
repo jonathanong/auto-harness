@@ -292,7 +292,10 @@ function planStatus(
 }
 
 function planAttemptId(session: SessionRecord, attemptId: string): SessionTransitionPlan {
-  if (session.attemptId !== undefined && session.attemptId !== attemptId) {
+  if (
+    session.status !== "running" ||
+    (session.attemptId !== undefined && session.attemptId !== attemptId)
+  ) {
     return planOf({ type: "ignore", reason: "stale_attempt" });
   }
   return planOf();

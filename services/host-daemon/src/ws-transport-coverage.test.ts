@@ -74,6 +74,8 @@ describe("WebSocket transport residual runtime branches", () => {
       { type: "session:acknowledged", sessionId: "session-1", attemptId: "a" },
       { type: "session:assign" },
       { type: "session:cancel", sessionId: "session-1", attemptId: "a" },
+      { type: "session:acknowledged", sessionId: "session-2" },
+      { type: "session:cancel", sessionId: "session-2" },
       { type: "host:drain" },
     ])
       socket.server(message);
@@ -81,6 +83,8 @@ describe("WebSocket transport residual runtime branches", () => {
     expect(received).toEqual([
       "session:acknowledged",
       "session:assign",
+      "session:cancel",
+      "session:acknowledged",
       "session:cancel",
       "host:drain",
     ]);

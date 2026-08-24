@@ -159,6 +159,29 @@ describe("DaemonLoop outbound delivery", () => {
         attemptId: "attempt-running",
       });
       expect(controller.signal.aborted).toBe(true);
+      const legacy = new AbortController();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("legacy-cancel\0attempt-legacy-cancel", {
+        sessionId: "legacy-cancel",
+        attemptId: "attempt-legacy-cancel",
+        controller: legacy,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      transport.deliver({ type: "session:cancel", sessionId: "legacy-cancel" });
+      expect(legacy.signal.aborted).toBe(true);
       loop.stop();
     } finally {
       cleanup();
