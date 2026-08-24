@@ -51,6 +51,10 @@ describe("scheduled provider deletion", () => {
       repositories: [{ id: "missing-provider-repo", path: "/repo", defaultBranch: "main" }],
       commandProfiles: [],
       capabilities: ["scheduled-main-checkout"],
+      providerAccountReadiness: [
+        { providerAccountId: "missing-account-a", ready: true, fingerprint: "a".repeat(64) },
+        { providerAccountId: "missing-account-b", ready: true, fingerprint: "b".repeat(64) },
+      ],
       replaceExisting: true,
     });
     if (!registered.ok) throw new Error(registered.error);

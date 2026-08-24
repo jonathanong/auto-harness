@@ -1,6 +1,14 @@
+/* eslint-disable max-lines -- claimed run covers setup, profile env, and terminal outcomes. */
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
+import {
+  applyExecutionProfile,
+  emptyExecutionProfiles,
+  executionProfileReady,
+  resolveExecutionProfile,
+  type ExecutionProfiles,
+} from "./execution-profiles.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { finishSession, type SessionRunResult } from "./session-outcome.ts";
@@ -25,6 +33,7 @@ export async function runClaimedSession(
   remainingMs: () => number,
   commandRunner: ProcessRunner = processRunner,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
 ): Promise<SessionRunResult> {
   const setup = await runSetupIfNeeded(
     processRunner,
@@ -84,6 +93,7 @@ export async function runClaimedSession(
     timedOut,
     remainingMs,
     setup.environment,
+    executionProfiles,
   );
 }
 
@@ -99,6 +109,7 @@ async function runProcessAndFinish(
   timedOut: () => boolean,
   remainingMs: () => number,
   environment: NodeJS.ProcessEnv,
+  executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -110,10 +121,29 @@ async function runProcessAndFinish(
       ? { ...assign.resumeRefCapture, stream: "either" as const }
       : assign.resumeRefCapture;
   const resumeRef = new ResumeRefCaptureReader(capturePolicy);
+  const profile = resolveExecutionProfile(executionProfiles, assign.providerAccountId);
+  if (assign.providerAccountId && (!profile || !executionProfileReady(profile))) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      {
+        status: "failed",
+        exitCode: null,
+        errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
+      },
+      environment,
+    );
+  }
+  const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
   const result = await commandRunner.run({
     argv,
     cwd: claimed.cwd,
-    env: environment,
+    env: commandEnv,
     timeoutMs: remainingMs(),
     ...(signal ? { signal } : {}),
     onChunk: (c) => {

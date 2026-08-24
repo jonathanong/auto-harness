@@ -43,10 +43,12 @@ describe("parseHostMessage exhaustive wire validation", () => {
     };
     expect(parseHostMessage(JSON.stringify(registration))).toEqual(registration);
     expect(parseHostMessage(Buffer.from(JSON.stringify(registration)))).toEqual(registration);
+    expect(parseHostMessage({ ...registration })).toEqual(registration);
     expect(
       parseHostMessage({
         ...registration,
         capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 3,
         runningSessions: ["session-1"],
         runningAttempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
         protocolVersion: 1,
@@ -113,6 +115,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, capabilities: Array(20).fill("scheduled-main-checkout") },
       { ...registration, capabilities: ["unknown"] },
       { ...registration, capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"] },
+      { ...registration, maxConcurrentAssignments: 0 },
+      { ...registration, providerAccountReadiness: [{ providerAccountId: "acct" }] },
       { ...registration, runningSessions: "session-1" },
       { ...registration, runningSessions: Array(1_001).fill("session-1") },
       { ...registration, runningSessions: [""] },

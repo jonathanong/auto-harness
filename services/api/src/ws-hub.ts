@@ -4,16 +4,18 @@ import type { Duplex } from "node:stream";
 
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
-  HOST_CAPABILITIES,
   MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
-  isHostCapability,
   isHostRunningAttempt,
   isValidCliResumeRef,
   isSessionStatus,
+  parseHostCapabilitiesAdvertisement,
   principalHas,
+  sanitizeProviderAccountReadiness,
+  validateProviderAccountReadiness,
   type HostToServerMessage,
   type HostWireMessage,
+  type ProviderAccountReadiness,
 } from "@auto-harness/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -149,6 +151,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 connectionId: boundConnectionId,
               }),
             );
+            await plane.requestAssignment();
           } else if (
             msg.type === "session:ack" &&
             result.sessionAcknowledged === msg.sessionId &&
@@ -378,10 +381,16 @@ export function parseHostMessage(
           );
         }) ||
         (message.capabilities !== undefined &&
-          (!Array.isArray(message.capabilities) ||
-            message.capabilities.length > HOST_CAPABILITIES.length ||
-            !message.capabilities.every(isHostCapability) ||
-            new Set(message.capabilities).size !== message.capabilities.length)) ||
+          parseHostCapabilitiesAdvertisement(message.capabilities) === null) ||
+        (message.maxConcurrentAssignments !== undefined &&
+          parseHostCapabilitiesAdvertisement({
+            maxConcurrentAssignments: message.maxConcurrentAssignments,
+          }) === null) ||
+        (message.providerAccountReadiness !== undefined &&
+          (!Array.isArray(message.providerAccountReadiness) ||
+            validateProviderAccountReadiness(
+              message.providerAccountReadiness as ProviderAccountReadiness[],
+            ) !== null)) ||
         (message.runningSessions !== undefined &&
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
@@ -415,7 +424,32 @@ export function parseHostMessage(
       ) {
         return null;
       }
-      return message as HostToServerMessage;
+      const advertised = parseHostCapabilitiesAdvertisement(message.capabilities) ?? {
+        features: [],
+      };
+      const maxConcurrentAssignments =
+        typeof message.maxConcurrentAssignments === "number"
+          ? message.maxConcurrentAssignments
+          : advertised.maxConcurrentAssignments;
+      const normalized: HostToServerMessage = {
+        ...(message as HostToServerMessage),
+        type: "host:register",
+        hostId: message.hostId as string,
+        worktrees: message.worktrees as Extract<
+          HostToServerMessage,
+          { type: "host:register" }
+        >["worktrees"],
+        ...(message.capabilities !== undefined ? { capabilities: advertised.features } : {}),
+        ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
+        ...(message.providerAccountReadiness !== undefined
+          ? {
+              providerAccountReadiness: sanitizeProviderAccountReadiness(
+                message.providerAccountReadiness as ProviderAccountReadiness[],
+              ),
+            }
+          : {}),
+      };
+      return normalized;
     }
     if (message.type === "session:ack") {
       return boundedText(message.sessionId) &&
@@ -518,7 +552,7 @@ function isAllowedMessage(
     "attemptId" in msg &&
     msg.attemptId !== undefined &&
     session.attemptId !== undefined &&
-    msg.attemptId !== session.attemptId
+    (msg.attemptId !== session.attemptId || session.timedOutHostId === hostId)
   );
 }
 

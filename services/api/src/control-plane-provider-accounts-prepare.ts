@@ -1,4 +1,8 @@
-import { DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS } from "@auto-harness/shared";
+import {
+  DEFAULT_MAX_CONCURRENT_SESSIONS,
+  DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
+  MAX_CONCURRENT_SESSIONS_LIMIT,
+} from "@auto-harness/shared";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -8,12 +12,14 @@ type ProviderAccountInput = {
   providerId: string;
   label: string;
   usageLimitCooldownSeconds?: number;
+  maxConcurrentSessions?: number;
 };
 
 type ProviderAccountPatch = Partial<{
   providerId: string;
   label: string;
   usageLimitCooldownSeconds: number;
+  maxConcurrentSessions: number;
 }>;
 
 export function prepareCreateProviderAccount(
@@ -32,6 +38,17 @@ export function prepareCreateProviderAccount(
   ) {
     return { ok: false, error: "usageLimitCooldownSeconds must be a positive integer" };
   }
+  if (
+    input.maxConcurrentSessions !== undefined &&
+    (!Number.isInteger(input.maxConcurrentSessions) ||
+      input.maxConcurrentSessions < 1 ||
+      input.maxConcurrentSessions > MAX_CONCURRENT_SESSIONS_LIMIT)
+  ) {
+    return {
+      ok: false,
+      error: `maxConcurrentSessions must be an integer between 1 and ${String(MAX_CONCURRENT_SESSIONS_LIMIT)}`,
+    };
+  }
   const id = input.id ?? state.providerAccountIdFactory();
   if (state.providerAccounts.has(id)) {
     return { ok: false, error: `provider account already exists: ${id}` };
@@ -45,6 +62,7 @@ export function prepareCreateProviderAccount(
       label: input.label,
       usageLimitCooldownSeconds:
         input.usageLimitCooldownSeconds ?? DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
+      maxConcurrentSessions: input.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
       usageLimitedUntil: null,
       lastUsageLimitedAt: null,
       lastAssignedAt: null,
@@ -65,7 +83,10 @@ export function prepareUpdateProviderAccount(
       existing: ProviderAccountRecord;
       account: ProviderAccountRecord;
       patch: Partial<
-        Pick<ProviderAccountRecord, "providerId" | "label" | "usageLimitCooldownSeconds">
+        Pick<
+          ProviderAccountRecord,
+          "providerId" | "label" | "usageLimitCooldownSeconds" | "maxConcurrentSessions"
+        >
       >;
     }
   | { ok: false; error: string } {
@@ -80,6 +101,32 @@ export function prepareUpdateProviderAccount(
   ) {
     return { ok: false, error: "usageLimitCooldownSeconds must be a positive integer" };
   }
+  if (
+    patch.maxConcurrentSessions !== undefined &&
+    (!Number.isInteger(patch.maxConcurrentSessions) ||
+      patch.maxConcurrentSessions < 1 ||
+      patch.maxConcurrentSessions > MAX_CONCURRENT_SESSIONS_LIMIT)
+  ) {
+    return {
+      ok: false,
+      error: `maxConcurrentSessions must be an integer between 1 and ${String(MAX_CONCURRENT_SESSIONS_LIMIT)}`,
+    };
+  }
+  if (
+    !state.storage &&
+    patch.maxConcurrentSessions !== undefined &&
+    patch.maxConcurrentSessions <
+      (existing.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS)
+  ) {
+    for (const lease of state.providerAccountLeases.values()) {
+      if (lease.providerAccountId === id && lease.slot >= patch.maxConcurrentSessions) {
+        return {
+          ok: false,
+          error: "cannot reduce maxConcurrentSessions while an active lease uses a removed slot",
+        };
+      }
+    }
+  }
   const account: ProviderAccountRecord = {
     ...existing,
     updatedAt: state.now(),
@@ -88,6 +135,9 @@ export function prepareUpdateProviderAccount(
     ...(patch.label !== undefined ? { label: patch.label } : {}),
     ...(patch.usageLimitCooldownSeconds !== undefined
       ? { usageLimitCooldownSeconds: patch.usageLimitCooldownSeconds }
+      : {}),
+    ...(patch.maxConcurrentSessions !== undefined
+      ? { maxConcurrentSessions: patch.maxConcurrentSessions }
       : {}),
   };
   return {
@@ -99,6 +149,9 @@ export function prepareUpdateProviderAccount(
       ...(patch.label !== undefined ? { label: patch.label } : {}),
       ...(patch.usageLimitCooldownSeconds !== undefined
         ? { usageLimitCooldownSeconds: patch.usageLimitCooldownSeconds }
+        : {}),
+      ...(patch.maxConcurrentSessions !== undefined
+        ? { maxConcurrentSessions: patch.maxConcurrentSessions }
         : {}),
     },
   };

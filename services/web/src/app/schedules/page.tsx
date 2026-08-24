@@ -60,7 +60,20 @@ export default async function SchedulesPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const editing = editId ? items.find((schedule) => schedule.id === editId) : undefined;
+  const requestedEditId = editId;
+  let editing = requestedEditId
+    ? items.find((schedule) => schedule.id === requestedEditId)
+    : undefined;
+  // The list can briefly lag a just-created or just-updated schedule in a durable
+  // deployment. An explicit edit link must still open the form, so fall back to the
+  // authoritative item endpoint when the list snapshot does not contain it.
+  if (!editing && requestedEditId) {
+    try {
+      editing = await apiGet<Schedule>(`/api/v1/schedules/${encodeURIComponent(requestedEditId)}`);
+    } catch {
+      editing = undefined;
+    }
+  }
   // A schedule can reference a repository since removed from the catalog — keep it selectable
   // rather than letting the <select> silently fall back to the first real option and rewrite
   // the schedule's repositoryId out from under the user on save.

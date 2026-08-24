@@ -1,4 +1,5 @@
-import { LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
+import { isPositiveAssignmentCap, LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
+import { isAbsolute, win32 } from "node:path";
 import { parseChildEnvAllowlist } from "./child-env.ts";
 
 export function parseEnvFile(contents: string): Record<string, string> {
@@ -49,6 +50,20 @@ function isPlaceholder(value: string): boolean {
     value.length === 0 ||
     /^(?:REPLACE_WITH|PLACEHOLDER|YOUR[_ -]|<[^>]+>|\$\{[^}]+\})/iu.test(value)
   );
+}
+
+/**
+ * Service files outlive the installer process, so their profile-file value
+ * cannot depend on the installer or supervisor working directory. Recognize
+ * both native and Windows absolute paths because platform service fixtures are
+ * exercised from one host OS.
+ */
+function isPersistableExecutionProfilesPath(value: string): boolean {
+  return isAbsolute(value) || win32.isAbsolute(value);
+}
+
+function isInvalidAssignmentCap(value: string | undefined): boolean {
+  return value !== undefined && value !== "" && !isPositiveAssignmentCap(Number(value));
 }
 
 export function isProductionApiUrl(value: string): boolean {
@@ -109,6 +124,18 @@ export function validatePersistedEnvFile(contents: string): string[] {
   if (isPlaceholder(hostId) || hostId === LOCAL_HOST_ID) errors.push("HARNESS_HOST_ID");
   if (isPlaceholder(apiUrl) || !isProductionApiUrl(apiUrl)) errors.push("HARNESS_API_URL");
   if (isPlaceholder(apiKey)) errors.push("HARNESS_API_KEY");
+  const executionProfiles = env.HARNESS_EXECUTION_PROFILES;
+  if (
+    executionProfiles !== undefined &&
+    executionProfiles !== "" &&
+    !isPersistableExecutionProfilesPath(executionProfiles)
+  ) {
+    errors.push("HARNESS_EXECUTION_PROFILES");
+  }
+  const maxConcurrentAssignments = env.HARNESS_MAX_CONCURRENT_ASSIGNMENTS;
+  if (isInvalidAssignmentCap(maxConcurrentAssignments)) {
+    errors.push("HARNESS_MAX_CONCURRENT_ASSIGNMENTS");
+  }
   errors.push(...parseChildEnvAllowlist(env).errors);
   return errors;
 }
@@ -116,29 +143,16 @@ export function validatePersistedEnvFile(contents: string): string[] {
 export function persistedEnvError(errors: string[]): string {
   const remediation =
     "set each named variable to its real bound production value (HTTPS control-plane URL, bound host id, and bound service key)";
-  return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.`;
+  const profilePathRemediation = errors.includes("HARNESS_EXECUTION_PROFILES")
+    ? " HARNESS_EXECUTION_PROFILES must be an absolute path."
+    : "";
+  return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.${profilePathRemediation}`;
 }
 
-export function updatePersistedApiUrl(contents: string, apiUrl: string): string {
-  const lines = contents.split(/\r?\n/);
-  let found = false;
-  const updated = lines.map((line) => {
-    const eq = line.indexOf("=");
-    if (eq < 0 || line.slice(0, eq).trim() !== "HARNESS_API_URL") return line;
-    found = true;
-    return `${line.slice(0, eq + 1)}${apiUrl}`;
-  });
-  if (!found) {
-    if (updated.at(-1) === "") updated.pop();
-    updated.push(`HARNESS_API_URL=${apiUrl}`);
-  }
-  const result = updated.join("\n");
-  return result.endsWith("\n") ? result : `${result}\n`;
-}
-
-export function serviceEnv(env: NodeJS.ProcessEnv, apiUrl: string | undefined): NodeJS.ProcessEnv {
-  return apiUrl === undefined ? env : { ...env, HARNESS_API_URL: apiUrl };
-}
+export const PERSISTED_DAEMON_ENV_KEYS = [
+  "HARNESS_EXECUTION_PROFILES",
+  "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
+] as const;
 
 function filledValue(
   key: string,
@@ -198,6 +212,13 @@ export function renderEnvFile(
   for (const key of extras.keys) {
     const value = env[key];
     if (value === undefined || seen.has(key)) continue;
+    assertSingleLine(key, value);
+    seen.add(key);
+    out.push(`${key}=${value}`);
+  }
+  for (const key of PERSISTED_DAEMON_ENV_KEYS) {
+    const value = env[key];
+    if (value === undefined || value === "" || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
     out.push(`${key}=${value}`);

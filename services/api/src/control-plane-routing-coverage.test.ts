@@ -27,6 +27,7 @@ function providerPlane(): ControlPlane {
     providerId: "provider",
     label: "vendor@example.test",
     usageLimitCooldownSeconds: 60,
+    maxConcurrentSessions: 1,
   });
   plane.createCommand({
     id: "provider-command",
@@ -41,6 +42,9 @@ function providerPlane(): ControlPlane {
       { id: "worktree", name: "worktree", repositoryId: "repo", path: "/work", labels: [] },
     ],
     commandProfiles: [],
+    providerAccountReadiness: [
+      { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+    ],
   });
   plane.putHostInventory("host", {
     repositories: [
@@ -161,6 +165,7 @@ describe("routing edge coverage", () => {
       providerId: "provider",
       label: "vendor@example.test",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
     });
     const accountSession: SessionRecord = {
       id: "account-session",
@@ -590,6 +595,7 @@ describe("routing edge coverage", () => {
       providerId: "provider",
       label: "account",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });

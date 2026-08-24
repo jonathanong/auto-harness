@@ -58,6 +58,7 @@ const account: ProviderAccountRecord = {
   providerId: provider.id,
   label: "account@example.test",
   usageLimitCooldownSeconds: DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
+  maxConcurrentSessions: 1,
   usageLimitedUntil: null,
   lastUsageLimitedAt: null,
   lastAssignedAt: null,

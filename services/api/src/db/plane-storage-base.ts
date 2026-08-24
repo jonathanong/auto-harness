@@ -6,6 +6,7 @@ import type { SessionResumeSpec } from "@auto-harness/shared";
 import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
 import {
+  type AssignmentWriteResult,
   type HostInventoryRecord,
   type ArchiveMetadata,
   type ConnectionRecord,
@@ -20,6 +21,8 @@ import {
   type ViewerTicketRecord,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
+import * as providerAccountLeases from "./plane-storage-provider-account-leases.ts";
+import * as hostAssignment from "./plane-storage-host-assignment.ts";
 import * as reconnect from "./plane-storage-reconnect.ts";
 import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
@@ -32,6 +35,7 @@ import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
+import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
 import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 
 /**
@@ -49,6 +53,13 @@ export class DynamoPlaneStorageBase {
   /** Bounded deployment migration; scheduler callers run at most one page. */
   migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
     return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
+  }
+
+  migrateArchiveRetryIndexPage(): Promise<boolean> {
+    return backfillArchiveRetryIndexPage(this.ctx.doc, {
+      archives: this.ctx.tables.archives,
+      sessionDrains: this.ctx.tables.sessionDrains,
+    });
   }
 
   /** Repair queued rows missing `queueOrder`. Safe to repeat; later requeues are also written. */
@@ -162,6 +173,14 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
   }
 
+  listSessionsByStatusPage(
+    status: SessionStatus,
+    shard: number,
+    limit: number,
+  ): Promise<SessionRecord[]> {
+    return sessions.listSessionsByStatusPage(this.ctx, status, shard, limit);
+  }
+
   createOrGetSessionDrain(
     record: SessionDrainRecord,
     audit: import("../audit-types.ts").AuditLogRecord,
@@ -273,9 +292,55 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
-  }): Promise<boolean> {
+  }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
+  }
+
+  releaseProviderAccountLease(opts: {
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+  }): Promise<void> {
+    return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
+  }
+
+  releaseTimedOutProviderAccountLease(opts: {
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+  }): Promise<boolean> {
+    return providerAccountLeases.releaseTimedOutProviderAccountLease(this.ctx, opts);
+  }
+
+  releaseTimedOutHostAssignment(opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"];
+  }): Promise<boolean> {
+    return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
+  }
+
+  releaseLegacyHostAssignment(opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+    connectionId: string;
+  }): Promise<boolean> {
+    return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
+  }
+
+  backfillProviderAccountLease(
+    opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
+  ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {
+    return providerAccountLeases.backfillProviderAccountLease(this.ctx, opts);
   }
 
   ensureMainCheckoutLeaseMap(hostId: string, connectionId: string): Promise<boolean> {
@@ -305,9 +370,14 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
     attemptId: string;
-  }): Promise<boolean> {
+  }): Promise<AssignmentWriteResult> {
     return mainCheckout.tryAssignMainCheckoutSession(this.ctx, opts);
   }
 
@@ -344,6 +414,12 @@ export class DynamoPlaneStorageBase {
     attemptId?: string;
     concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    preserveProviderAccountLease?: boolean;
+    preserveHostAssignmentLease?: boolean;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -359,6 +435,8 @@ export class DynamoPlaneStorageBase {
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string | undefined;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return mainCheckout.requeueMainCheckoutUsageLimitedSession(this.ctx, opts);
   }
@@ -446,6 +524,8 @@ export class DynamoPlaneStorageBase {
     fence?: { hostId: string; connectionId: string } | undefined;
     attemptId: string;
     concurrencyId?: string | undefined;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -464,6 +544,8 @@ export class DynamoPlaneStorageBase {
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
     requireUnacknowledged?: boolean;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -509,6 +591,8 @@ export class DynamoPlaneStorageBase {
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.requeueUsageLimitedSession(this.ctx, opts);
   }
@@ -520,6 +604,8 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     targetIndex: number;
     errorMessage?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
   }
@@ -568,6 +654,12 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
     concurrencyId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    preserveProviderAccountLease?: boolean;
+    preserveHostAssignmentLease?: boolean;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }
@@ -883,6 +975,27 @@ export class DynamoPlaneStorageBase {
 
   listArchives(): Promise<ArchiveMetadata[]> {
     return catalog.listArchives(this.ctx);
+  }
+
+  listPendingArchives(limit: number): Promise<ArchiveMetadata[]> {
+    return catalog.listPendingArchives(this.ctx, limit);
+  }
+
+  claimArchiveRetry(
+    key: string,
+    retryState: "pending" | "processing",
+    retryOrder: string,
+    claimedOrder: string,
+  ): Promise<boolean> {
+    return catalog.claimArchiveRetry(this.ctx, key, retryState, retryOrder, claimedOrder);
+  }
+
+  releaseArchiveRetry(key: string, claimedOrder: string, retryOrder: string): Promise<boolean> {
+    return catalog.releaseArchiveRetry(this.ctx, key, claimedOrder, retryOrder);
+  }
+
+  completeArchiveRetry(archive: ArchiveMetadata, expectedRetryOrder: string): Promise<boolean> {
+    return catalog.completeArchiveRetry(this.ctx, archive, expectedRetryOrder);
   }
 
   /** Returns false when `expectedVersion` no longer matches the stored document. */

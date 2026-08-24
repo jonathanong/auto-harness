@@ -67,6 +67,33 @@ describe("install-service linux", () => {
     ]);
   });
 
+  it("merges exported execution settings into an existing env", () => {
+    const fs = seededFs({
+      [LINUX_ENV_DEST]:
+        "HARNESS_HOST_ID=existing\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\nOTHER=keep\n",
+    });
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: {
+            HARNESS_EXECUTION_PROFILES: "/etc/auto-harness/profiles.json",
+            HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "3",
+          },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain(
+      "HARNESS_EXECUTION_PROFILES=/etc/auto-harness/profiles.json",
+    );
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("OTHER=keep");
+  });
+
   it("writes env as root and reports systemctl failures", () => {
     const fs = seededFs();
     expect(
@@ -104,6 +131,58 @@ describe("install-service linux", () => {
       ),
     ).toBe(1);
     expect(errors.join("\n")).toMatch(/enable failed/);
+  });
+
+  it("persists execution profile settings from the install environment", () => {
+    const fs = seededFs();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_EXECUTION_PROFILES: "/etc/auto-harness/profiles.json",
+            HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "3",
+          },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain(
+      "HARNESS_EXECUTION_PROFILES=/etc/auto-harness/profiles.json",
+    );
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
+  });
+
+  it("refuses a relative execution profile path before mutating the service", () => {
+    const fs = seededFs();
+    const before = new Map(fs.files);
+    const spawn = recorder();
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_EXECUTION_PROFILES: "profiles.json",
+          },
+          error: (message) => errors.push(message),
+          run: spawn.run,
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/HARNESS_EXECUTION_PROFILES.*absolute path/s);
+    expect(fs.files).toEqual(before);
+    expect(spawn.calls).toEqual([]);
   });
 
   it("reports split enable and restart failures for an existing root environment update", () => {

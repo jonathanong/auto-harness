@@ -328,4 +328,279 @@ describe("scheduled assignment branch coverage", () => {
     }
     expect(versions).toEqual([null, 0]);
   });
+
+  it("retries the next account slot when a durable scheduled lease put is lost", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 2,
+    });
+    current.commands.set("cmd", {
+      ...current.commands.get("cmd")!,
+      providerId: "provider",
+    });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    const host = connection("h1", "c1");
+    current.connections.set("c1", {
+      ...host,
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    const slots: number[] = [];
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return opts.providerAccountLease?.slot === 1 ? true : "lease_collision";
+      },
+    });
+    const messages: unknown[] = [];
+    current.onHostMessage = (_host, message) => messages.push(message);
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(1);
+    expect(slots).toEqual([0, 1]);
+    expect(current.sessions.get("s")?.providerAccountLease?.slot).toBe(1);
+    expect(messages[0]).toMatchObject({
+      type: "session:assign",
+      providerAccountId: "account",
+      commandId: "cmd",
+    });
+  });
+
+  it("does not retry remaining scheduled slots after a non-lease assignment loss", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 4,
+    });
+    current.commands.set("cmd", {
+      ...current.commands.get("cmd")!,
+      providerId: "provider",
+    });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    const host = connection("h1", "c1");
+    current.connections.set("c1", {
+      ...host,
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    const slots: number[] = [];
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return false;
+      },
+    });
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(0);
+    expect(slots).toEqual([0]);
+  });
+
+  it("assigns a local scheduled provider session without durable storage", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    });
+    current.commands.set("cmd", { ...current.commands.get("cmd")!, providerId: "provider" });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    current.connections.set("c1", {
+      ...connection("h1", "c1"),
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(1);
+    expect(current.sessions.get("s")?.providerAccountLease?.slot).toBe(0);
+  });
+
+  it("includes the full route and advertised host cap in a durable assignment", async () => {
+    const current = state();
+    current.connections.set("c1", {
+      ...connection("h1", "c1"),
+      maxConcurrentAssignments: 2,
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session());
+    const writes: unknown[] = [];
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: unknown) => {
+        writes.push(opts);
+        return true;
+      },
+    });
+    const messages: unknown[] = [];
+    current.onHostMessage = (_host, message) => messages.push(message);
+
+    await expect(assignScheduledQueuedDurable(current)).resolves.toHaveLength(1);
+    expect(writes).toEqual([
+      expect.objectContaining({
+        hostAssignmentLease: { hostId: "h1" },
+        hostAssignmentCap: 2,
+      }),
+    ]);
+    expect(current.sessions.get("s")).toMatchObject({
+      hostAssignmentLease: { hostId: "h1" },
+      resolvedRoute: { commandId: "cmd", targetIndex: 0 },
+    });
+    expect(messages).toEqual([expect.objectContaining({ commandId: "cmd", targetIndex: 0 })]);
+  });
+
+  it("omits absent legacy route identity fields from a scheduled host message", async () => {
+    const current = state();
+    current.connections.set("c1", connection("h1", "c1"));
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session());
+    const messages: unknown[] = [];
+    Object.defineProperty(current, "onHostMessage", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        const route = current.sessions.get("s")?.resolvedRoute as
+          | { commandId?: string; targetIndex?: number }
+          | undefined;
+        if (route) {
+          delete route.commandId;
+          delete route.targetIndex;
+        }
+        return (_host: string, message: unknown) => {
+          messages.push(message);
+        };
+      },
+    });
+
+    await expect(assignScheduledQueuedDurable(current)).resolves.toHaveLength(1);
+    expect(messages[0]).not.toHaveProperty("commandId");
+    expect(messages[0]).not.toHaveProperty("targetIndex");
+  });
+
+  it("skips a provider route whose readiness changes after planning", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 1,
+    });
+    current.commands.set("cmd", { ...current.commands.get("cmd")!, providerId: "provider" });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    const host = connection("h1", "c1");
+    let readinessReads = 0;
+    Object.defineProperty(host, "providerAccountReadiness", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        readinessReads += 1;
+        return [
+          {
+            providerAccountId: "account",
+            ready: readinessReads === 1,
+            fingerprint: "a".repeat(64),
+          },
+        ];
+      },
+    });
+    current.connections.set("c1", host);
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(readinessReads).toBeGreaterThanOrEqual(2);
+  });
+
+  it("abandons a provider route when its cap contracts before a durable lease is acquired", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    const account = {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    };
+    const caps = [1, 1, 0];
+    Object.defineProperty(account, "maxConcurrentSessions", {
+      configurable: true,
+      enumerable: true,
+      get: () => caps.shift() ?? 0,
+    });
+    current.providerAccounts.set("account", account);
+    current.commands.set("cmd", { ...current.commands.get("cmd")!, providerId: "provider" });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    current.connections.set("c1", {
+      ...connection("h1", "c1"),
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    let writes = 0;
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async () => {
+        writes += 1;
+        return true;
+      },
+    });
+
+    await expect(
+      assignScheduledQueuedDurable(current, undefined, { readModelLoaded: true }),
+    ).resolves.toEqual([]);
+    expect(writes).toBe(0);
+  });
 });

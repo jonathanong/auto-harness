@@ -60,6 +60,7 @@ export async function updateProviderAccountDurable(
     id,
     expectedVersion: result.existing.version ?? 0,
     expectedProviderId: result.existing.providerId,
+    expectedMaxConcurrentSessions: result.existing.maxConcurrentSessions,
     updatedAt: result.account.updatedAt,
     patch: result.patch,
   });

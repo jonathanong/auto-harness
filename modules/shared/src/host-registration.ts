@@ -11,6 +11,23 @@ export type HostRunningAttempt = {
   attemptId: string;
 };
 
+/**
+ * Daemon-local execution-profile advertisement. Credentials and CLI homes never
+ * leave the host; the control plane only sees readiness and an opaque hash.
+ */
+export type ProviderAccountReadiness = {
+  providerAccountId: string;
+  ready: boolean;
+  fingerprint: string;
+};
+
+export const MAX_PROVIDER_ACCOUNT_READINESS = 256;
+/** Keep account identifiers bounded across daemon configuration and readiness advertisements. */
+export const MAX_PROVIDER_ACCOUNT_ID_LENGTH = 512;
+/** Leave headroom below the WebSocket frame limit for registration inventory and framing. */
+export const MAX_HOST_REGISTRATION_BYTES = 120 * 1024;
+export const PROVIDER_ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
+
 /** Validate the non-worktree portion of a host registration advertisement. */
 export function isHostRepositoryRegistration(value: unknown): value is HostRepositoryRegistration {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -60,4 +77,53 @@ export function validateHostRunningAttempts(
     seen.add(attempt.sessionId);
   }
   return null;
+}
+
+export function isProviderAccountReadiness(value: unknown): value is ProviderAccountReadiness {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.providerAccountId === "string" &&
+    entry.providerAccountId.length > 0 &&
+    entry.providerAccountId.length <= MAX_PROVIDER_ACCOUNT_ID_LENGTH &&
+    typeof entry.ready === "boolean" &&
+    typeof entry.fingerprint === "string" &&
+    PROVIDER_ACCOUNT_FINGERPRINT_PATTERN.test(entry.fingerprint)
+  );
+}
+
+/** Drop undeclared properties so homes, env, or credentials cannot persist. */
+export function sanitizeProviderAccountReadiness(
+  readiness: readonly ProviderAccountReadiness[],
+): ProviderAccountReadiness[] {
+  return readiness.map((entry) => ({
+    providerAccountId: entry.providerAccountId,
+    ready: entry.ready,
+    fingerprint: entry.fingerprint,
+  }));
+}
+
+/** Reject duplicate account IDs while retaining the daemon's ordering. */
+export function validateProviderAccountReadiness(
+  readiness: readonly ProviderAccountReadiness[],
+): string | null {
+  if (readiness.length > MAX_PROVIDER_ACCOUNT_READINESS) {
+    return "too many provider account readiness entries";
+  }
+  const seen = new Set<string>();
+  for (const entry of readiness) {
+    if (!isProviderAccountReadiness(entry)) return "invalid provider account readiness";
+    if (seen.has(entry.providerAccountId)) {
+      return `duplicate provider account ${entry.providerAccountId}`;
+    }
+    seen.add(entry.providerAccountId);
+  }
+  return null;
+}
+
+/** Attempt-owned account leases use a namespace disjoint from caller lock IDs. */
+export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-lease:";
+
+export function providerAccountLeaseConcurrencyId(providerAccountId: string, slot: number): string {
+  return `${PROVIDER_ACCOUNT_LEASE_PREFIX}${providerAccountId}:${String(slot)}`;
 }

@@ -14,6 +14,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 
 export type ResolvedSessionRoute = {
   targetIndex: number;
+  providerId?: string;
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
@@ -116,9 +117,11 @@ function resolveNativeResumeRoute(
     }
   }
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
+  const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
+    ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(
@@ -164,7 +167,7 @@ export function resolveSessionTargetArgv(
   );
 }
 
-function resolveTarget(
+function resolveTargets(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
   target: TargetRef,
@@ -172,37 +175,38 @@ function resolveTarget(
   worktree: WorktreeRecord,
   nowMs: number,
   pinnedProviderAccountId: string | null | undefined,
-): Omit<ResolvedSessionRoute, "targetIndex"> | null {
+): Array<Omit<ResolvedSessionRoute, "targetIndex">> {
   if ("commandId" in target) {
     const command = state.commands.get(target.commandId);
-    if (!command) return null;
-    if (command.providerId === null) {
+    if (!command) return [];
+    const providerId = command.providerId;
+    if (providerId === null) {
       const resolvedArgv = buildArgv(command, prompt);
       return resolvedArgv
-        ? { commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }
-        : null;
+        ? [{ commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }]
+        : [];
     }
-    const account = resolveEligibleAccounts(
+    const resolvedArgv = buildArgv(command, prompt);
+    if (!resolvedArgv) return [];
+    return resolveEligibleAccounts(
       state,
       catalog,
-      command.providerId,
+      providerId,
       worktree,
       nowMs,
       pinnedProviderAccountId,
-    )[0];
-    const resolvedArgv = buildArgv(command, prompt);
-    return account && resolvedArgv
-      ? {
-          providerAccountId: account.id,
-          commandId: command.id,
-          resolvedArgv,
-          resumeSpec: commandResumeSpec(command),
-        }
-      : null;
+    ).map((account) => ({
+      providerId,
+      providerAccountId: account.id,
+      commandId: command.id,
+      resolvedArgv,
+      resumeSpec: commandResumeSpec(command),
+    }));
   }
   const host = state.hostInventories.get(worktree.hostId);
   const repo = host?.repositories.find((r) => r.id === worktree.repositoryId);
   const hostWorktree = repo?.worktrees.find((w) => w.id === worktree.id);
+  const routes: Array<Omit<ResolvedSessionRoute, "targetIndex">> = [];
   for (const account of resolveEligibleAccounts(
     state,
     catalog,
@@ -221,15 +225,59 @@ function resolveTarget(
     const command = commandId ? state.commands.get(commandId) : undefined;
     const resolvedArgv = buildArgv(command, prompt);
     if (resolvedArgv && commandId && command) {
-      return {
+      routes.push({
+        providerId: target.providerId,
         providerAccountId: account.id,
         commandId,
         resolvedArgv,
         resumeSpec: commandResumeSpec(command),
-      };
+      });
     }
   }
-  return null;
+  return routes;
+}
+
+function resolveTarget(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  target: TargetRef,
+  prompt: string,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  pinnedProviderAccountId: string | null | undefined,
+): Omit<ResolvedSessionRoute, "targetIndex"> | null {
+  return (
+    resolveTargets(state, catalog, target, prompt, worktree, nowMs, pinnedProviderAccountId)[0] ??
+    null
+  );
+}
+
+/** Resolve every eligible account for one policy entry, in lastAssignedAt order. */
+export function resolveSessionTargetRoutesAt(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  targetIndex: number,
+): ResolvedSessionRoute[] {
+  if (session.suppressedTargetIndexes?.includes(targetIndex)) return [];
+  const target = [session.target, ...session.fallbacks][targetIndex];
+  if (!target) return [];
+  const routes = resolveTargets(
+    state,
+    catalog,
+    target,
+    session.prompt,
+    worktree,
+    nowMs,
+    session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+  ).map((route) => ({ ...route, targetIndex }));
+  if (routes.length === 0) {
+    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    return native && matchesNativeResumePin(session, native) ? [native] : [];
+  }
+  return routes.filter((route) => matchesNativeResumePin(session, route));
 }
 
 function resolveEligibleAccounts(
@@ -257,15 +305,15 @@ function resolveEligibleAccounts(
 }
 
 /** Resolve a scheduled run against a host's main checkout, never a worktree. */
-export function resolveScheduledSessionTarget(
+export function resolveScheduledSessionTargets(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
   session: SessionRecord,
   hostId: string,
-): ResolvedSessionRoute | null {
+): ResolvedSessionRoute[] {
   const host = state.hostInventories.get(hostId);
   const repository = host?.repositories.find((entry) => entry.id === session.repositoryId);
-  if (!host || !repository) return null;
+  if (!host || !repository) return [];
   // A scheduled run is deliberately resolved against the repository itself,
   // rather than an arbitrary worktree. The synthetic id cannot match a
   // worktree override, so provider account selection still honors account,
@@ -282,9 +330,10 @@ export function resolveScheduledSessionTarget(
   };
   const targets = [session.target, ...session.fallbacks];
   const nowMs = Date.parse(state.now());
+  const routes: ResolvedSessionRoute[] = [];
   for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
     if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
-    const route = resolveTarget(
+    for (const route of resolveTargets(
       state,
       catalog,
       targets[targetIndex]!,
@@ -292,12 +341,21 @@ export function resolveScheduledSessionTarget(
       mainCheckout,
       nowMs,
       session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
-    );
-    if (route && matchesNativeResumePin(session, { ...route, targetIndex })) {
-      return { ...route, targetIndex };
+    )) {
+      const resolved = { ...route, targetIndex };
+      if (matchesNativeResumePin(session, resolved)) routes.push(resolved);
     }
   }
-  return null;
+  return routes;
+}
+
+export function resolveScheduledSessionTarget(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  hostId: string,
+): ResolvedSessionRoute | null {
+  return resolveScheduledSessionTargets(state, catalog, session, hostId)[0] ?? null;
 }
 
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {

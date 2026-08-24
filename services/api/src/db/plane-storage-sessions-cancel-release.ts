@@ -6,6 +6,14 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 type ReleaseCancelledOpts = {
   sessionId: string;
@@ -17,6 +25,8 @@ type ReleaseCancelledOpts = {
   fence?: { hostId: string; connectionId: string } | undefined;
   attemptId: string;
   concurrencyId?: string | undefined;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
 };
 
 function releaseFenceCheck(ctx: PlaneStorageCtx, fence?: { hostId: string; connectionId: string }) {
@@ -44,7 +54,7 @@ function releaseSessionUpdate(
       Key: { id: opts.sessionId },
       UpdateExpression:
         `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
-        "REMOVE assignmentConnectionId, reconnectDeadlineAt",
+        "REMOVE assignmentConnectionId, reconnectDeadlineAt, providerAccountLease, hostAssignmentLease",
       ConditionExpression:
         "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId" +
         (requireNoDrainCancellation
@@ -141,10 +151,18 @@ export async function releaseCancelledSessionWorktree(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          ...releaseFenceCheck(ctx, opts.fence),
+          ...(opts.hostAssignmentLease ? [] : releaseFenceCheck(ctx, opts.fence)),
           releaseSessionUpdate(ctx, opts, requireNoDrainCancellation),
           releaseWorktreeUpdate(ctx, opts),
           ...releaseConcurrencyDelete(ctx, opts),
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
+          ...(opts.hostAssignmentLease
+            ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
+            : []),
           ...cleanup,
         ],
       }),

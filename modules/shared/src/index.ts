@@ -39,11 +39,15 @@ export type {
 
 export {
   HOST_CAPABILITIES,
+  defaultMaxConcurrentAssignments,
   hasHostCapability,
   isHostCapability,
+  isPositiveAssignmentCap,
   normalizeHostCapabilities,
+  parseHostCapabilitiesAdvertisement,
   type HostCapability,
   type HostCapabilities,
+  type HostCapabilitiesAdvertisement,
 } from "./host-capabilities.ts";
 
 export {
@@ -65,6 +69,10 @@ export {
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_QUEUE_TTL_SECONDS,
   DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
+  DEFAULT_MAX_CONCURRENT_SESSIONS,
+  MAX_CONCURRENT_SESSIONS_LIMIT,
+  DEFAULT_MAX_CONCURRENT_ASSIGNMENTS,
+  MAX_CONCURRENT_ASSIGNMENTS_LIMIT,
   LOCAL_HOST_ID,
   LOCAL_HOST_PANE_HTTP,
   LOCAL_API_HTTP,
@@ -133,10 +141,20 @@ export {
 export {
   isHostRepositoryRegistration,
   isHostRunningAttempt,
+  isProviderAccountReadiness,
+  MAX_HOST_REGISTRATION_BYTES,
+  MAX_PROVIDER_ACCOUNT_ID_LENGTH,
+  MAX_PROVIDER_ACCOUNT_READINESS,
+  PROVIDER_ACCOUNT_FINGERPRINT_PATTERN,
+  PROVIDER_ACCOUNT_LEASE_PREFIX,
+  providerAccountLeaseConcurrencyId,
+  sanitizeProviderAccountReadiness,
   validateHostRepositoryRegistrations,
   validateHostRunningAttempts,
+  validateProviderAccountReadiness,
   type HostRepositoryRegistration,
   type HostRunningAttempt,
+  type ProviderAccountReadiness,
 } from "./host-registration.ts";
 
 export {

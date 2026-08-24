@@ -16,8 +16,7 @@ type SchedulerPlane = Pick<
   | "reclaimStaleHostsDurable"
   | "reconcileRepositoryDrainsDurable"
   | "reconcileSessionDrainsDurable"
-  | "assignQueuedDurable"
-  | "assignScheduledQueuedDurable"
+  | "requestAssignment"
 >;
 
 export type LocalSchedulerOptions = {
@@ -30,9 +29,9 @@ export type LocalSchedulerOptions = {
 /**
  * Drives the durable scheduler paths while the local API is listening.
  *
- * A tick deliberately shares the operations used by the admin endpoints. That
- * keeps local development faithful to the deployed cron/scheduler split while
- * making a failed storage operation retry naturally on a later tick.
+ * Event-driven assignment is the primary dispatcher. This one-minute tick is
+ * the EventBridge-equivalent repair sweep (cron, reclaim, missed assigns).
+ * A tick deliberately shares the operations used by the admin endpoints.
  */
 export class LocalScheduler {
   private readonly plane: SchedulerPlane;
@@ -90,8 +89,7 @@ export class LocalScheduler {
       () => this.plane.reclaimStaleHostsDurable(),
       () => this.plane.reconcileRepositoryDrainsDurable(),
       () => this.plane.reconcileSessionDrainsDurable(),
-      () => this.plane.assignQueuedDurable(),
-      () => this.plane.assignScheduledQueuedDurable(),
+      () => this.plane.requestAssignment({ fullScan: true }),
     ];
     for (const step of steps) {
       if (!this.started) return;

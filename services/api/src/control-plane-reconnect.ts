@@ -15,6 +15,11 @@ import {
   ignoreStaleReconnectClaim,
 } from "./control-plane-reconnect-confirm.ts";
 import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
 } from "./control-plane-reconnect-rollback.ts";
@@ -90,6 +95,7 @@ export async function reconcileHostRunningSessions(
       if (!session || session.status !== "running" || session.hostId !== hostId) continue;
       if (running.has(session.id)) continue;
       if (!state.storage) {
+        releaseProviderAccountLease(state, session);
         state.sessions.set(
           session.id,
           queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
@@ -111,8 +117,11 @@ export async function reconcileHostRunningSessions(
             ? { expectedConnectionId: session.assignmentConnectionId }
             : {}),
           fence: { hostId, connectionId: connectionId! },
+          ...providerAccountLeaseWriteOpts(session),
         })
       ) {
+        await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+        releaseProviderAccountLease(state, session);
         state.sessions.set(
           session.id,
           queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
@@ -168,6 +177,7 @@ export async function reclaimReconnectDeadlines(
       ? await state.storage.getHostLock(session.hostId)
       : undefined;
     if (!state.storage) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
@@ -190,8 +200,11 @@ export async function reclaimReconnectDeadlines(
           : {}),
         ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
         ...(!connectionId ? { requireNoHostLock: session.hostId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       })
     ) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),

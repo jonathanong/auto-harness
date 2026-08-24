@@ -3,6 +3,14 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { statusShardAttr } from "./dynamo.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import { queueOrderForSession } from "./plane-storage-sessions-queue.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 type RequeueOpts = {
   sessionId: string;
@@ -18,11 +26,13 @@ type RequeueOpts = {
   requireNoHostLock?: string;
   fence?: { hostId: string; connectionId: string };
   requireUnacknowledged?: boolean;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
 };
 
 function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [];
-  if (opts.fence) {
+  if (opts.fence && !opts.hostAssignmentLease) {
     items.push({
       ConditionCheck: {
         TableName: ctx.tables.hostLocks,
@@ -91,7 +101,7 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
       Key: { id: opts.sessionId },
       UpdateExpression:
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
+        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, providerAccountLease, hostAssignmentLease",
       ConditionExpression: requeueSessionCondition(opts),
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -123,6 +133,14 @@ export async function tryRequeueSession(ctx: PlaneStorageCtx, opts: RequeueOpts)
           ...hostLockChecks(ctx, opts),
           requeueWorktreeUpdate(ctx, opts),
           requeueSessionUpdate(ctx, opts, queueOrder),
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
+          ...(opts.hostAssignmentLease
+            ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
+            : []),
         ],
       }),
     );

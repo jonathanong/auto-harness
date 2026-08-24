@@ -12,9 +12,8 @@ export function parseGitVersion(output: string): string | null {
   const match = /^git version (\d+)\.(\d+)(?:\.(\d+))?/m.exec(output.trim());
   if (!match) return null;
   const [, majorText, minorText, patchText] = match;
-  if (!majorText || !minorText) return null;
-  const major = Number(majorText);
-  const minor = Number(minorText);
+  const major = Number(majorText!);
+  const minor = Number(minorText!);
   const patch = Number(patchText ?? "0");
   if (![major, minor, patch].every(Number.isSafeInteger)) return null;
   return `${major}.${minor}.${patch}`;

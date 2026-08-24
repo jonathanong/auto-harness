@@ -26,6 +26,7 @@ describe("DynamoPlaneStorage catalog delegators", () => {
         providerId: "provider",
         label: "account@example.test",
         usageLimitCooldownSeconds: 60,
+        maxConcurrentSessions: 1,
         usageLimitedUntil: null,
         lastUsageLimitedAt: null,
         lastAssignedAt: null,

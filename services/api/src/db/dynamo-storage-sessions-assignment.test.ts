@@ -297,4 +297,60 @@ describe("DynamoDB Local session assignment", () => {
       true,
     );
   });
+
+  it("refuses a provider lease slot at or above the durable account cap", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "capped",
+          providerId: "provider",
+          name: "capped",
+          maxConcurrentSessions: 1,
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      }),
+    );
+    await putSession(ctx, { ...session, id: "capped-session" });
+    await putWorktree(ctx, { ...worktree, id: "capped-worktree", hostId: "capped-host" });
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId: "capped-host",
+        hostInventoryVersion: null,
+        connectionId: "one",
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    const assign = (slot: number) =>
+      tryAssignSession(ctx, {
+        sessionId: "capped-session",
+        repositoryId: "repo",
+        worktreeId: "capped-worktree",
+        hostId: "capped-host",
+        hostInventoryVersion: null,
+        connectionId: "one",
+        now: "2025-01-01T00:00:00.000Z",
+        attemptId: `attempt-${String(slot)}`,
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "capped-host",
+          worktreeId: "capped-worktree",
+          attemptId: `attempt-${String(slot)}`,
+        },
+        providerAccountId: "capped",
+        providerAccountLease: {
+          concurrencyId: `acct:capped:${String(slot)}`,
+          providerAccountId: "capped",
+          slot,
+          attemptId: `attempt-${String(slot)}`,
+        },
+        queueShard: 0,
+      });
+    expect(await assign(1)).toBe(false);
+    expect((await getWorktree(ctx, "capped-worktree"))?.status).toBe("idle");
+    expect(await assign(0)).toBe(true);
+  });
 });

@@ -14,7 +14,13 @@ import {
 
 export function createProviderAccount(
   state: ControlPlaneState,
-  input: { id?: string; providerId: string; label: string; usageLimitCooldownSeconds?: number },
+  input: {
+    id?: string;
+    providerId: string;
+    label: string;
+    usageLimitCooldownSeconds?: number;
+    maxConcurrentSessions?: number;
+  },
 ): { ok: true; account: ProviderAccountRecord } | { ok: false; error: string } {
   const result = prepareCreateProviderAccount(state, input);
   if (!result.ok) return result;
@@ -42,7 +48,12 @@ export function listProviderAccounts(state: ControlPlaneState): ProviderAccountR
 export function updateProviderAccount(
   state: ControlPlaneState,
   id: string,
-  patch: Partial<{ providerId: string; label: string; usageLimitCooldownSeconds: number }>,
+  patch: Partial<{
+    providerId: string;
+    label: string;
+    usageLimitCooldownSeconds: number;
+    maxConcurrentSessions: number;
+  }>,
 ): { ok: true; account: ProviderAccountRecord } | { ok: false; error: string } {
   const result = prepareUpdateProviderAccount(state, id, patch);
   if (!result.ok) return result;
@@ -54,6 +65,7 @@ export function updateProviderAccount(
           id,
           expectedVersion: result.existing.version ?? 0,
           expectedProviderId: result.existing.providerId,
+          expectedMaxConcurrentSessions: result.existing.maxConcurrentSessions,
           updatedAt: result.account.updatedAt,
           patch: result.patch,
         })

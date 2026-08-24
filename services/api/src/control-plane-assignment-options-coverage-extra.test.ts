@@ -79,6 +79,9 @@ function providerState() {
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       protocolVersion: 1,
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
     });
     state.hostConnection.set(hostId, `connection-${hostId}`);
     state.hostInventories.set(hostId, {
@@ -123,6 +126,65 @@ describe("assignment optional-field coverage", () => {
     await expect(assignQueuedDurable(state)).resolves.toMatchObject([
       { session: { resolvedRoute: { providerAccountId: "account" } } },
     ]);
+  });
+
+  it("retries the next account slot when a durable lease put is lost", async () => {
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 2,
+    });
+    const slots: number[] = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return opts.providerAccountLease?.slot === 1 ? true : "lease_collision";
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(slots).toEqual([0, 1]);
+    expect(state.sessions.get("s")?.providerAccountLease?.slot).toBe(1);
+  });
+
+  it("does not retry remaining slots when assignment lost a non-lease condition", async () => {
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 4,
+    });
+    const slots: number[] = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return false;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(0);
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.every((slot) => slot === 0)).toBe(true);
+  });
+
+  it("stops after every durable lease slot collides", async () => {
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 2,
+    });
+    const slots: number[] = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return "lease_collision";
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(0);
+    expect(new Set(slots)).toEqual(new Set([0, 1]));
   });
 
   it("uses legacy metadata ownership for the durable assignment drain fence", async () => {
@@ -218,5 +280,69 @@ describe("assignment optional-field coverage", () => {
     expect(assignQueued(state)).toEqual([]);
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
+  });
+
+  it("honors advertised host assignment capacity from the durable running read model", async () => {
+    const state = providerState();
+    for (const hostId of ["host-a", "host-b"]) {
+      const connectionId = `connection-${hostId}`;
+      const connection = state.connections.get(connectionId)!;
+      state.connections.set(connectionId, { ...connection, maxConcurrentAssignments: 1 });
+      state.sessions.set(`running-${hostId}`, {
+        ...session({ id: `running-${hostId}`, status: "running", hostId }),
+      });
+    }
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+  });
+
+  it("assigns a just-created queued session when the status GSI has not caught up", async () => {
+    const state = providerState();
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+      listSessionsByStatus: async () => [],
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(state.sessions.get("s")?.status).toBe("running");
+  });
+
+  it("does not assign onto a cap-1 host that still holds a cancelled worktree", async () => {
+    const state = providerState();
+    const connection = state.connections.get("connection-host-a")!;
+    state.connections.set("connection-host-a", { ...connection, maxConcurrentAssignments: 1 });
+    state.worktrees.delete("worktree-host-b");
+    state.hostConnection.delete("host-b");
+    const held = state.worktrees.get("worktree-host-a")!;
+    state.worktrees.set("worktree-host-a", {
+      ...held,
+      status: "busy",
+      currentSessionId: "cancelled-hold",
+    });
+    state.worktrees.set("worktree-host-a-idle", {
+      id: "worktree-host-a-idle",
+      name: "worktree-host-a-idle",
+      hostId: "host-a",
+      repositoryId: "repo",
+      path: "/repo/idle",
+      labels: [],
+      status: "idle",
+      online: true,
+      connectionId: "connection-host-a",
+    });
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+      listSessionsByStatus: async (status: string) => (status === "queued" ? [session()] : []),
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
   });
 });

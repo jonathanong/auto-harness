@@ -186,7 +186,7 @@ export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:daemon -- run-session --file /path/to/session.assign.json
 ```
 
-> The local API begins an EventBridge-equivalent scheduler sweep on startup and repeats it every minute. It evaluates cron, reclaims stale hosts, enforces ACK deadlines, and dispatches queued sessions over the real `/ws` channel. The `POST /scheduler/*` routes remain available when an operator needs to force a sweep.
+> The local API assigns queued sessions immediately on create, resume, host register/reconnect, terminal transitions, and capacity/cooldown changes. A one-minute EventBridge-equivalent repair sweep still evaluates cron, reclaims stale hosts, enforces ACK deadlines, and retries missed assigns. The `POST /scheduler/*` routes remain available when an operator needs to force a sweep.
 
 ---
 
@@ -225,7 +225,7 @@ operator steps.
    - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**, or host detail → **Repositories & Worktrees**
    - Host pane (`:7422`) is debug-only and is not required for attach
 4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step; Codex is `codex exec`, not `-p`) → attach an account to the host on its detail page's Provider accounts tab.
-5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`). The local scheduler dispatches it on its next sweep (within one minute). `POST /scheduler/assign` is still useful to force a manual sweep.
+5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`). Create and host registration trigger assignment immediately. `POST /scheduler/assign` is still useful to force a manual repair sweep.
 
 Local defaults: `HARNESS_HOST_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 

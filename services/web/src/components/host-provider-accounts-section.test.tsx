@@ -18,6 +18,7 @@ const account = {
   providerId: "p",
   label: "primary",
   usageLimitCooldownSeconds: 18_000,
+  maxConcurrentSessions: 1,
   usageLimitedUntil: null,
   lastUsageLimitedAt: null,
   lastAssignedAt: null,

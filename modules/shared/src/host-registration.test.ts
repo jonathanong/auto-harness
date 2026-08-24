@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   isHostRepositoryRegistration,
   isHostRunningAttempt,
+  isProviderAccountReadiness,
+  providerAccountLeaseConcurrencyId,
+  sanitizeProviderAccountReadiness,
   validateHostRepositoryRegistrations,
   validateHostRunningAttempts,
+  validateProviderAccountReadiness,
 } from "./host-registration.ts";
 
 describe("host registration repository validation", () => {
@@ -35,5 +39,44 @@ describe("host registration repository validation", () => {
     expect(validateHostRunningAttempts([{ sessionId: "s", attemptId: "" }])).toBe(
       "invalid running attempt",
     );
+  });
+
+  it("validates opaque provider-account readiness advertisements", () => {
+    const fingerprint = "a".repeat(64);
+    expect(
+      isProviderAccountReadiness({
+        providerAccountId: "acct",
+        ready: true,
+        fingerprint,
+      }),
+    ).toBe(true);
+    expect(
+      isProviderAccountReadiness({
+        providerAccountId: "acct",
+        ready: true,
+        fingerprint: "not-hex",
+      }),
+    ).toBe(false);
+    expect(validateProviderAccountReadiness([])).toBeNull();
+    expect(
+      validateProviderAccountReadiness([
+        { providerAccountId: "acct", ready: true, fingerprint },
+        { providerAccountId: "acct", ready: false, fingerprint },
+      ]),
+    ).toBe("duplicate provider account acct");
+    expect(validateProviderAccountReadiness([{ providerAccountId: "acct" } as never])).toBe(
+      "invalid provider account readiness",
+    );
+    expect(providerAccountLeaseConcurrencyId("acct", 0)).toBe("provider-lease:acct:0");
+    expect(
+      sanitizeProviderAccountReadiness([
+        {
+          providerAccountId: "acct",
+          ready: true,
+          fingerprint,
+          home: "/secret",
+        } as never,
+      ]),
+    ).toEqual([{ providerAccountId: "acct", ready: true, fingerprint }]);
   });
 });

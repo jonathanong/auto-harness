@@ -1,7 +1,27 @@
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+/* eslint-disable max-lines -- provider account updates share transactional cap fencing. */
+
+import {
+  TransactWriteCommand,
+  UpdateCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
+import {
+  DEFAULT_MAX_CONCURRENT_SESSIONS,
+  MAX_CONCURRENT_SESSIONS_LIMIT,
+  providerAccountLeaseConcurrencyId,
+} from "@auto-harness/shared";
 
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
+
+type TransactWriteItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
+type LeaseFence = TransactWriteItem & {
+  ConditionCheck: {
+    TableName: string;
+    Key: { concurrencyId: string };
+    ConditionExpression: string;
+  };
+};
 
 export async function updateProviderAccount(
   ctx: PlaneStorageCtx,
@@ -9,11 +29,16 @@ export async function updateProviderAccount(
     id: string;
     expectedVersion: number;
     expectedProviderId?: string;
+    expectedMaxConcurrentSessions?: number;
     updatedAt: string;
     patch: Partial<
       Pick<
         ProviderAccountRecord,
-        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
+        | "providerId"
+        | "label"
+        | "usageLimitCooldownSeconds"
+        | "usageLimitedUntil"
+        | "maxConcurrentSessions"
       >
     >;
   },
@@ -40,12 +65,22 @@ export async function updateProviderAccount(
     sets.push("usageLimitedUntil = :usageLimitedUntil");
     values[":usageLimitedUntil"] = opts.patch.usageLimitedUntil;
   }
+  if (opts.patch.maxConcurrentSessions !== undefined) {
+    sets.push("maxConcurrentSessions = :maxConcurrentSessions");
+    values[":maxConcurrentSessions"] = opts.patch.maxConcurrentSessions;
+  }
   const common = {
     id: opts.id,
     expectedVersion: opts.expectedVersion,
     expression: `SET ${sets.join(", ")}`,
     values,
   };
+  const oldCap = opts.expectedMaxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS;
+  const newCap = opts.patch.maxConcurrentSessions;
+  const leaseFences =
+    newCap !== undefined && newCap < oldCap
+      ? providerAccountLeaseFenceItems(ctx, opts.id, newCap)
+      : [];
   if (opts.patch.providerId && opts.patch.providerId !== opts.expectedProviderId) {
     if (!(await ensureProviderAccountCount(ctx, opts.expectedProviderId ?? ""))) return false;
     if (!(await ensureProviderAccountCount(ctx, opts.patch.providerId))) return false;
@@ -53,9 +88,25 @@ export async function updateProviderAccount(
       ...common,
       oldProviderId: opts.expectedProviderId,
       newProviderId: opts.patch.providerId,
+      leaseFences,
     });
   }
+  if (leaseFences.length > 0) return updateWithLeaseFences(ctx, common, leaseFences);
   return update(ctx, common);
+}
+
+function providerAccountLeaseFenceItems(
+  ctx: PlaneStorageCtx,
+  providerAccountId: string,
+  newCap: number,
+): LeaseFence[] {
+  return Array.from({ length: MAX_CONCURRENT_SESSIONS_LIMIT - newCap }, (_, index) => ({
+    ConditionCheck: {
+      TableName: ctx.tables.concurrencyLocks,
+      Key: { concurrencyId: providerAccountLeaseConcurrencyId(providerAccountId, newCap + index) },
+      ConditionExpression: "attribute_not_exists(concurrencyId)",
+    },
+  }));
 }
 
 export async function clearProviderAccountUsageLimit(
@@ -123,6 +174,44 @@ async function update(
   }
 }
 
+async function updateWithLeaseFences(
+  ctx: PlaneStorageCtx,
+  opts: {
+    id: string;
+    expectedVersion: number;
+    expression: string;
+    values: Record<string, unknown>;
+  },
+  leaseFences: LeaseFence[],
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.providerAccounts,
+              Key: { id: opts.id },
+              UpdateExpression: opts.expression,
+              ConditionExpression: `attribute_exists(id) AND ${versionCondition(opts.expectedVersion)}`,
+              ExpressionAttributeValues: {
+                ...opts.values,
+                ":expectedVersion": opts.expectedVersion,
+                ":nextVersion": opts.expectedVersion + 1,
+              },
+            },
+          },
+          ...leaseFences,
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailure(err)) return false;
+    throw err;
+  }
+}
+
 async function moveProviderAccount(
   ctx: PlaneStorageCtx,
   opts: {
@@ -130,6 +219,7 @@ async function moveProviderAccount(
     expectedVersion: number;
     oldProviderId: string | undefined;
     newProviderId: string;
+    leaseFences: LeaseFence[];
     expression: string;
     values: Record<string, unknown>;
   },
@@ -162,6 +252,7 @@ async function moveProviderAccount(
               ExpressionAttributeValues: { ":delta": index === 0 ? -1 : 1 },
             },
           })),
+          ...opts.leaseFences,
         ],
       }),
     );
@@ -177,10 +268,12 @@ function versionCondition(expectedVersion: number): string {
 }
 
 function isConditionalFailure(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("name" in err)) return false;
+  const named = err as { name?: string; CancellationReasons?: Array<{ Code?: string }> };
   return (
-    typeof err === "object" &&
-    err !== null &&
-    "name" in err &&
-    (err as { name?: string }).name === "ConditionalCheckFailedException"
+    named.name === "ConditionalCheckFailedException" ||
+    (named.name === "TransactionCanceledException" &&
+      (named.CancellationReasons?.some((reason) => reason.Code === "ConditionalCheckFailed") ??
+        false))
   );
 }

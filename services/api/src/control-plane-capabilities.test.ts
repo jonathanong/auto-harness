@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- advertisement, durable register, and hydrate cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -15,7 +16,68 @@ describe("host capability advertisements", () => {
         commandProfiles: [],
         capabilities: ["scheduled-main-checkout"],
       }),
-    ).toMatchObject({ capabilities: ["scheduled-main-checkout"] });
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 64,
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 4 },
+        providerAccountReadiness: [
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 4,
+      providerAccountReadiness: [
+        { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 4,
+      }),
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 4,
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        providerAccountReadiness: [
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          },
+        ],
+      })?.providerAccountReadiness?.[0],
+    ).not.toHaveProperty("home");
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        commandProfiles: [],
+        maxConcurrentAssignments: 8,
+      }),
+    ).toMatchObject({ maxConcurrentAssignments: 8 });
     expect(
       parseHostMessage({
         type: "host:register",
@@ -34,6 +96,69 @@ describe("host capability advertisements", () => {
         capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"],
       }),
     ).toBeNull();
+  });
+
+  it("stores assignment capacity and provider-account readiness on the connection", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "capped" });
+    expect(
+      plane.registerHost({
+        hostId: "capped",
+        worktrees: [
+          { id: "wt-cap", name: "wt-cap", repositoryId: "repo", path: "/repo/wt", labels: [] },
+        ],
+        commandProfiles: [],
+        capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 2,
+        providerAccountReadiness: [
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          } as never,
+        ],
+      }).ok,
+    ).toBe(true);
+    const capped = plane.state.connections.get("capped");
+    expect(capped?.maxConcurrentAssignments).toBe(2);
+    expect(capped?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
+    expect(capped?.providerAccountReadiness?.[0]).not.toHaveProperty("home");
+  });
+
+  it("forwards assignment capacity and readiness through durable registration", async () => {
+    let n = 0;
+    const plane = new ControlPlane({ connectionIdFactory: () => `durable-ready-${++n}` });
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "host:register",
+          hostId: "durable-ready",
+          worktrees: [
+            { id: "wt-d", name: "wt-d", repositoryId: "repo", path: "/repo/wt", labels: [] },
+          ],
+          maxConcurrentAssignments: 3,
+          providerAccountReadiness: [
+            { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+          ],
+        })
+      ).ok,
+    ).toBe(true);
+    const conn = plane.state.connections.get("durable-ready-1");
+    expect(conn?.maxConcurrentAssignments).toBe(3);
+    expect(conn?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
+
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "host:register",
+          hostId: "durable-features",
+          worktrees: [
+            { id: "wt-f", name: "wt-f", repositoryId: "repo", path: "/repo/wt", labels: [] },
+          ],
+          capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 5 },
+        } as never)
+      ).ok,
+    ).toBe(true);
   });
 
   it("replaces a capability with an older reconnect advertisement", () => {

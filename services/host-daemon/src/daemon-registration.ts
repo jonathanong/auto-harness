@@ -1,5 +1,6 @@
 import {
   HOST_PROTOCOL_VERSION,
+  MAX_HOST_REGISTRATION_BYTES,
   type HostRuntimeReport,
   type HostRunningAttempt,
   type HostToServerMessage,
@@ -7,6 +8,11 @@ import {
 
 import type { DaemonConfig } from "./config.ts";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
+import {
+  emptyExecutionProfiles,
+  providerAccountReadiness,
+  type ExecutionProfiles,
+} from "./execution-profiles.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 export type DaemonRuntimeIdentity = {
@@ -22,6 +28,7 @@ export async function registerDaemon(
   identity?: DaemonRuntimeIdentity,
   runtime?: HostRuntimeReport,
   runningAttempts: readonly HostRunningAttempt[] = [],
+  executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
 ): Promise<void> {
   // Registration is the reconnect barrier.  It deliberately bypasses the
   // producer-side FIFO so WsTransport can synchronously replace its pending
@@ -41,7 +48,11 @@ export async function registerDaemon(
     repositories: config.repositories
       .map(({ id, path, defaultBranch }) => ({ id, path, defaultBranch }))
       .toSorted((a, b) => a.id.localeCompare(b.id)),
-    capabilities: ["scheduled-main-checkout"],
+    capabilities: {
+      features: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: executionProfiles.maxConcurrentAssignments,
+    },
+    providerAccountReadiness: providerAccountReadiness(executionProfiles),
     protocolVersion: HOST_PROTOCOL_VERSION,
     runningSessions: [...runningSessions].toSorted(),
     runningAttempts: [...runningAttempts].toSorted(
@@ -55,6 +66,11 @@ export async function registerDaemon(
     ...(runtime ? { runtime } : {}),
     ...(draining ? { draining: true } : {}),
   };
+  if (Buffer.byteLength(JSON.stringify(registration), "utf8") > MAX_HOST_REGISTRATION_BYTES) {
+    throw new Error(
+      `host registration exceeds ${String(MAX_HOST_REGISTRATION_BYTES)} byte WebSocket limit`,
+    );
+  }
   await transport.send(registration);
 }
 

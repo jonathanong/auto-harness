@@ -7,6 +7,7 @@ import {
   resolveSessionTargetArgv,
   resolveSessionTargetRoute,
   resolveSessionTargetRouteAt,
+  resolveSessionTargetRoutesAt,
 } from "./control-plane-session-target.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -253,6 +254,9 @@ describe("resolveSessionTargetArgv", () => {
     expect(
       resolveSessionTargetRouteAt(state, catalog, base, worktree(), Date.parse(state.now()), 9),
     ).toBeNull();
+    expect(
+      resolveSessionTargetRoutesAt(state, catalog, base, worktree(), Date.parse(state.now()), 9),
+    ).toEqual([]);
     expect(
       resolveSessionTargetRouteAt(state, catalog, base, worktree(), Date.parse(state.now()), 1),
     ).toMatchObject({ targetIndex: 1, commandId: "cmd-fallback" });

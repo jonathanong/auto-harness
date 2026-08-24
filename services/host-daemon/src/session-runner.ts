@@ -1,6 +1,7 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
+import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { failSession, finishSession, type SessionRunResult } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
@@ -16,6 +17,8 @@ export type SessionRunnerDeps = {
   commandRunner?: ProcessRunner;
   /** Daemon environment after loading the persisted service environment file. */
   childEnvSource?: NodeJS.ProcessEnv;
+  /** Daemon-local CLI homes; never forwarded to the control plane. */
+  executionProfiles?: ExecutionProfiles;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
 };
@@ -189,6 +192,7 @@ export class SessionRunner {
           () => Math.max(1, deadlineMs - Date.now()),
           this.deps.commandRunner ?? this.deps.processRunner,
           this.deps.childEnvSource ?? process.env,
+          this.deps.executionProfiles,
         );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

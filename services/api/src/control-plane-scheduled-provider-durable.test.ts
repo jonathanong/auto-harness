@@ -11,7 +11,12 @@ import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-h
 const ctx = createDynamoTestCtx("ScheduledProvider");
 const NOW = "2026-01-01T00:00:00.000Z";
 
-async function plane(connectionId: string, hostId: string, repositoryId: string) {
+async function plane(
+  connectionId: string,
+  hostId: string,
+  repositoryId: string,
+  readiness: Array<{ providerAccountId: string; ready: boolean; fingerprint: string }> = [],
+) {
   await putActiveTestRepository(ctx.storage!, repositoryId);
   const created = await createControlPlane({
     tablePrefix: ctx.prefix,
@@ -40,6 +45,7 @@ async function plane(connectionId: string, hostId: string, repositoryId: string)
     capabilities: ["scheduled-main-checkout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     protocolVersion: 1,
+    ...(readiness.length ? { providerAccountReadiness: readiness } : {}),
     replaceExisting: true,
   });
   if (!registered.ok) throw new Error(registered.error);
@@ -111,7 +117,10 @@ describe("durable scheduled terminal and provider fallback", () => {
 
   it("cools a usage-limited scheduled account then reroutes to its fallback account", async () => {
     if (!ctx.available || !ctx.storage) return;
-    const run = await plane("provider-connection", "provider-host", "provider-repo");
+    const run = await plane("provider-connection", "provider-host", "provider-repo", [
+      { providerAccountId: "account-a", ready: true, fingerprint: "a".repeat(64) },
+      { providerAccountId: "account-b", ready: true, fingerprint: "b".repeat(64) },
+    ]);
     const provider = await run.plane.createProviderDurable({
       id: "provider",
       name: "provider",

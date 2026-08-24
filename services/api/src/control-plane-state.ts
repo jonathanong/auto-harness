@@ -87,6 +87,20 @@ export type ControlPlaneState = {
   /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
    * encoded with NUL, which repository IDs cannot contain on supported APIs. */
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
+  /**
+   * In-memory counterpart of ConcurrencyLocks provider-account slots.
+   * Keyed by the internal `provider-lease:` concurrency id.
+   */
+  providerAccountLeases: Map<
+    string,
+    {
+      sessionId: string;
+      attemptId: string;
+      slot: number;
+      hostId: string;
+      providerAccountId: string;
+    }
+  >;
   /** Agents in drain: no new assigns; worktrees stay offline after release (Phase 5). */
   drainingHosts: Set<string>;
   /**
@@ -154,6 +168,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     archiveWriter: options.archiveWriter,
     pendingAcks: new Map(),
     mainCheckoutLeases: new Map(),
+    providerAccountLeases: new Map(),
     drainingHosts: new Set(),
     disconnectedHosts: new Map(),
     publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",

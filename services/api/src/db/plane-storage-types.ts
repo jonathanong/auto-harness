@@ -6,6 +6,7 @@ import type {
   HostRuntimeReport,
   Provider,
   ProviderAccount,
+  ProviderAccountReadiness,
   RepositoryAdmissionState,
   TargetRef,
   UserRole,
@@ -72,6 +73,10 @@ export type ConnectionRecord = {
   repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
+  /** Host-wide concurrent assignment cap advertised with capabilities. */
+  maxConcurrentAssignments?: number;
+  /** Ready local execution profiles; credentials never appear here. */
+  providerAccountReadiness?: ProviderAccountReadiness[];
   /** Present only when this daemon has completed the checkout-recovery preflight. */
   runtime?: HostRuntimeReport;
   /** Host control-channel protocol. Missing means a legacy daemon (version 0). */
@@ -150,11 +155,15 @@ export type HostLogFence = {
 
 export type ArchiveMetadata = {
   key: string;
+  objectKey?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";
   objectStored: boolean;
   updatedAt: string;
+  /** Internal GSI fields; present on every not-yet-stored archive. */
+  retryState?: "pending" | "processing";
+  retryOrder?: string;
 };
 
 export type RepositoryRecord = {
@@ -250,6 +259,8 @@ export type HostInventoryRecord = {
       name: string;
       path: string;
       labels: string[];
+      /** Internal snapshot of the last labels advertised by the daemon. */
+      daemonLabels?: string[];
       setupScript?: string | undefined;
       providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;
@@ -319,6 +330,17 @@ export function isConditionalTransactionFailureAt(err: unknown, index: number): 
   }
   const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
   return reasons?.[index]?.Code === "ConditionalCheckFailed";
+}
+
+export type AssignmentWriteResult = boolean | "lease_collision";
+
+/** True only when the provider-account lease Put was the sole failed condition. */
+export function assignmentLeaseCollision(err: unknown, leaseIndex: number | undefined): boolean {
+  if (leaseIndex === undefined || !isConditionalTransactionFailureAt(err, leaseIndex)) {
+    return false;
+  }
+  const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
+  return reasons?.filter((reason) => reason.Code === "ConditionalCheckFailed").length === 1;
 }
 
 /**

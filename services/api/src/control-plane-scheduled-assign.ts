@@ -17,6 +17,14 @@ import {
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
+import {
+  accountHasLeaseCapacity,
+  hostHasAssignmentCapacity,
+  hostProviderAccountReady,
+  hostAssignmentOccupancyCount,
+  tryAcquireProviderAccountLeaseLocal,
+} from "./control-plane-provider-account-leases.ts";
+import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -32,6 +40,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
       connection.runtime?.gitReady === true &&
       hostAcceptsNewAssignments(state, connection.hostId) &&
+      hostHasAssignmentCapacity(state, connection.hostId) &&
       hostEnvironmentReady(state, connection.hostId, repositoryId) &&
       connection.repositoryIds?.includes(repositoryId)
     )
@@ -65,6 +74,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
 }
 
 function wire(session: import("./db/types.ts").SessionRecord, now: string): HostWireMessage {
+  const route = session.resolvedRoute;
   return {
     type: "session:assign",
     sessionId: session.id,
@@ -78,13 +88,19 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
     attemptId: session.attemptId!,
     ...(session.ref ? { ref: session.ref } : {}),
     ...(session.metadata ? { metadata: session.metadata } : {}),
+    ...(route?.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+    ...(route?.providerId ? { providerId: route.providerId } : {}),
+    ...(route?.commandId ? { commandId: route.commandId } : {}),
+    ...(route?.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
   };
 }
 
 export async function assignScheduledQueuedDurable(
   state: ControlPlaneState,
+  sessionId?: string,
+  options?: { readModelLoaded?: boolean },
 ): Promise<ScheduledAssignment[]> {
-  if (state.storage) {
+  if (state.storage && !options?.readModelLoaded) {
     if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
       await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
     }
@@ -99,6 +115,7 @@ export async function assignScheduledQueuedDurable(
     state.shardCount,
     "scheduled",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     const hosts = await eligibleHosts(state, session.repositoryId);
     const plan = planScheduledPlacement(state, catalog, session, hosts);
     if (plan.action === "expire") {
@@ -121,46 +138,83 @@ export async function assignScheduledQueuedDurable(
           connectionId: string;
           target: (typeof plan.candidates)[number]["route"];
           attemptId: string;
+          lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
         }
       | undefined;
     for (const { hostId, connectionId, route: target } of plan.candidates) {
       const connection = state.connections.get(connectionId);
       if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
         continue;
+      if (
+        !hostProviderAccountReady(state, hostId, target.providerAccountId) ||
+        !accountHasLeaseCapacity(state, target.providerAccountId)
+      )
+        continue;
       const attemptId = state.attemptIdFactory();
-      const won = state.storage
-        ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
-          (await state.storage.tryAssignMainCheckoutSession({
-            sessionId: session.id,
-            hostId,
-            principalId,
-            hostInventoryVersion: state.hostInventories.has(hostId)
-              ? (state.hostInventories.get(hostId)!.version ?? 0)
-              : null,
-            repositoryId: session.repositoryId,
-            connectionId,
-            now,
-            resolvedArgv: target.resolvedArgv,
-            resumeSpec: target.resumeSpec,
-            resolvedRoute: {
-              targetIndex: target.targetIndex,
-              commandId: target.commandId,
-              ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+      const occupiedSlots = new Set<number>();
+      let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
+      let won: AssignmentWriteResult = false;
+      while (true) {
+        lease = tryAcquireProviderAccountLeaseLocal(
+          state,
+          session,
+          target.providerAccountId,
+          attemptId,
+          hostId,
+          occupiedSlots,
+          !state.storage,
+        );
+        if (target.providerAccountId && !lease) break;
+        won = state.storage
+          ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
+            (await state.storage.tryAssignMainCheckoutSession({
+              sessionId: session.id,
               hostId,
-              worktreeId: null,
+              principalId,
+              hostInventoryVersion: state.hostInventories.has(hostId)
+                ? (state.hostInventories.get(hostId)!.version ?? 0)
+                : null,
+              repositoryId: session.repositoryId,
+              connectionId,
+              now,
+              resolvedArgv: target.resolvedArgv,
+              resumeSpec: target.resumeSpec,
+              resolvedRoute: {
+                targetIndex: target.targetIndex,
+                ...(target.providerId ? { providerId: target.providerId } : {}),
+                commandId: target.commandId,
+                ...(target.providerAccountId
+                  ? { providerAccountId: target.providerAccountId }
+                  : {}),
+                hostId,
+                worktreeId: null,
+                attemptId,
+              },
+              ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+              ...(target.providerId ? { providerId: target.providerId } : {}),
+              ...(lease ? { providerAccountLease: lease } : {}),
+              ...(connection.maxConcurrentAssignments !== undefined
+                ? {
+                    hostAssignmentLease: { hostId },
+                    hostAssignmentCap: connection.maxConcurrentAssignments,
+                    legacyAssignmentCount: hostAssignmentOccupancyCount(state, hostId),
+                  }
+                : {}),
+              queueShard: session.queueShard,
               attemptId,
-            },
-            ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
-            queueShard: session.queueShard,
-            attemptId,
-          }))
-        : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
-      if (!won) continue;
-      placed = { hostId, connectionId, target, attemptId };
+            }))
+          : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
+        if (won === true || !lease) break;
+        state.providerAccountLeases.delete(lease.concurrencyId);
+        if (won !== "lease_collision") break;
+        occupiedSlots.add(lease.slot);
+      }
+      if (won !== true) continue;
+      placed = { hostId, connectionId, target, attemptId, lease };
       break;
     }
     if (!placed) continue;
-    const { hostId, connectionId, target, attemptId } = placed;
+    const { hostId, connectionId, target, attemptId, lease } = placed;
     const next = {
       ...session,
       status: "running" as const,
@@ -174,6 +228,7 @@ export async function assignScheduledQueuedDurable(
         : {}),
       resolvedRoute: {
         targetIndex: target.targetIndex,
+        ...(target.providerId ? { providerId: target.providerId } : {}),
         commandId: target.commandId,
         ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
         hostId,
@@ -183,6 +238,10 @@ export async function assignScheduledQueuedDurable(
       assignmentConnectionId: connectionId,
       mainCheckoutLease: true,
       attemptId,
+      ...(lease ? { providerAccountLease: lease } : {}),
+      ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
+        ? { hostAssignmentLease: { hostId } }
+        : {}),
     };
     delete next.completedAt;
     delete next.exitCode;

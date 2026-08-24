@@ -1,8 +1,8 @@
 import { SessionStatusBadge } from "./session-status-badge.tsx";
 
-/** Waiting is expected — assignment waits for the next ~1 minute scheduler sweep. */
+/** Waiting is expected when no host has capacity yet; a one-minute sweep retries. */
 export const SESSION_QUEUED_WAIT_COPY =
-  "The scheduler runs about once a minute; waiting is expected.";
+  "Assignment is attempted immediately; a one-minute repair sweep retries missed work.";
 
 export function sessionStatusReason(errorCode?: string | null): string | null {
   if (errorCode === "usage_limit") return "Usage limit";

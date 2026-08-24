@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
+import { parseExecutionProfiles } from "./execution-profiles.ts";
 
 describe("daemon registration", () => {
   it("omits optional identity and runtime while preserving drain intent", async () => {
@@ -49,7 +50,11 @@ describe("daemon registration", () => {
       expect.objectContaining({
         type: "host:register",
         hostId: "h",
-        capabilities: ["scheduled-main-checkout"],
+        capabilities: {
+          features: ["scheduled-main-checkout"],
+          maxConcurrentAssignments: 64,
+        },
+        providerAccountReadiness: [],
         repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
         protocolVersion: 1,
         runningSessions: ["a", "z"],
@@ -64,6 +69,56 @@ describe("daemon registration", () => {
         worktrees: [expect.objectContaining({ id: "w", repositoryId: "r" })],
       }),
     ]);
+  });
+
+  it("advertises opaque readiness for local execution profiles", async () => {
+    const messages: unknown[] = [];
+    const profiles = parseExecutionProfiles({
+      maxConcurrentAssignments: 2,
+      accounts: { acct: { home: "/homes/acct" } },
+    });
+    await registerDaemon(
+      { hostId: "h", repositories: [], providerAccounts: [] },
+      { send: async (message: unknown) => void messages.push(message) } as never,
+      [],
+      false,
+      undefined,
+      undefined,
+      [],
+      profiles,
+    );
+    expect(messages[0]).toMatchObject({
+      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 2 },
+      providerAccountReadiness: [
+        expect.objectContaining({ providerAccountId: "acct", ready: false }),
+      ],
+    });
+    expect(JSON.stringify(messages[0])).not.toContain("/homes/acct");
+  });
+
+  it("rejects a registration that cannot fit in one WebSocket frame", async () => {
+    const messages: unknown[] = [];
+    const profiles = parseExecutionProfiles({
+      accounts: Object.fromEntries(
+        Array.from({ length: 256 }, (_, index) => [
+          `account-${String(index)}-${"x".repeat(500)}`,
+          { home: `/homes/${String(index)}` },
+        ]),
+      ),
+    });
+    await expect(
+      registerDaemon(
+        { hostId: "h", repositories: [], providerAccounts: [] },
+        { send: async (message: unknown) => void messages.push(message) } as never,
+        [],
+        false,
+        undefined,
+        undefined,
+        [],
+        profiles,
+      ),
+    ).rejects.toThrow(/WebSocket limit/);
+    expect(messages).toEqual([]);
   });
 
   it("applies the next repositories, ensures worktrees, then registers", async () => {

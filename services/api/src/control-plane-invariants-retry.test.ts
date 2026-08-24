@@ -154,6 +154,9 @@ describe("ControlPlane retry and resume invariants", () => {
       hostId: "host",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
       commandProfiles: [],
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
     });
     plane.putHostInventory("host", {
       repositories: [

@@ -14,6 +14,7 @@ export type SessionRecord = {
   /** The route used for the current or most recent assignment. */
   resolvedRoute?: {
     targetIndex: number;
+    providerId?: string;
     providerAccountId?: string;
     commandId: string;
     hostId: string;
@@ -76,6 +77,23 @@ export type SessionRecord = {
   resumeFallback?: boolean;
   /** The repository main checkout is held by this scheduled session. */
   mainCheckoutLease?: boolean;
+  /** Attempt-owned provider-account concurrency lease, if this route is gated. */
+  providerAccountLease?: {
+    concurrencyId: string;
+    providerAccountId: string;
+    slot: number;
+    attemptId: string;
+  };
+  /** Host that owned a provider lease when a timeout cleared the assignment. */
+  timedOutHostId?: string;
+  /** Original host connection used to fence legacy timeout capacity repair. */
+  timedOutAssignmentConnectionId?: string;
+  /** Transactional host-wide assignment-cap reservation, when advertised. */
+  hostAssignmentLease?: {
+    hostId: string;
+  };
+  /** Idempotency marker for post-transition repair of a pre-lease host slot. */
+  legacyHostAssignmentReleased?: boolean;
 };
 
 export type WorktreeRecord = {

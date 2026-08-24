@@ -3,6 +3,7 @@ import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -110,6 +111,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   // directly (a deploy-day escape hatch); HARNESS_API_URL is not, since the deployed
   // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
   const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
+  const executionProfiles = loadExecutionProfiles(options.childEnvSource ?? process.env);
 
   const transport = createWsTransport({
     url: wsUrl,
@@ -128,6 +130,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     transport,
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
+    executionProfiles,
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();

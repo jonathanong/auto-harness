@@ -3,6 +3,14 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { statusShardAttr } from "./dynamo.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import { queueOrderForSession } from "./plane-storage-sessions-queue.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 function idleClaimedWorktreeUpdate(
   ctx: PlaneStorageCtx,
@@ -41,7 +49,7 @@ function usageLimitRequeueSessionUpdate(
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
         ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
         (opts.extraSet ?? "") +
-        " REMOVE startedAt, ackReceivedAt",
+        " REMOVE startedAt, ackReceivedAt, providerAccountLease, hostAssignmentLease",
       ConditionExpression: "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -85,6 +93,8 @@ export async function requeueUsageLimitedSession(
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
@@ -108,6 +118,12 @@ export async function requeueUsageLimitedSession(
       queueOrder,
       errorMessage: opts.errorMessage ?? "provider usage limit; requeued",
     }),
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
   ]);
 }
 
@@ -121,6 +137,8 @@ export async function suppressProviderlessUsageLimit(
     queueShard: number;
     targetIndex: number;
     errorMessage?: string;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
@@ -137,5 +155,11 @@ export async function suppressProviderlessUsageLimit(
         ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)",
       extraValues: { ":empty": [], ":index": [opts.targetIndex] },
     }),
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
   ]);
 }

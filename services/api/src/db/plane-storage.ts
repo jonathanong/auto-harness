@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- storage facade methods share one persistence boundary. */
+
 import {
   type CommandRecord,
   type ProviderAccountRecord,
@@ -174,11 +176,16 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     id: string;
     expectedVersion: number;
     expectedProviderId?: string;
+    expectedMaxConcurrentSessions?: number;
     updatedAt: string;
     patch: Partial<
       Pick<
         ProviderAccountRecord,
-        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
+        | "providerId"
+        | "label"
+        | "usageLimitCooldownSeconds"
+        | "usageLimitedUntil"
+        | "maxConcurrentSessions"
       >
     >;
   }): Promise<boolean> {

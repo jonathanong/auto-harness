@@ -375,6 +375,12 @@ describe("validateCreateSessionInput", () => {
       validateCreateSessionInput({ ...base, concurrencyId: "catalog-delete:repository:repo" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "provider-account:acct:0" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "provider-lease:acct:0" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
       validateCreateSessionInput({
         ...base,
         concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1),

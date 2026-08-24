@@ -11,6 +11,39 @@ function firstDefined<T>(primary: T | undefined, fallback: T | undefined): T | u
   return fallback;
 }
 
+function hostLeaseForSession(session: SessionRecord): SessionRecord["hostAssignmentLease"] {
+  return session.hostAssignmentLease;
+}
+
+/**
+ * Legacy assignments predate the persisted host lease. Their
+ * capacity release cannot be part of the terminal transaction: old hosts may
+ * have no assignmentCount, while newer assignments may already have seeded a
+ * count that includes them. A separate conditional decrement handles both
+ * cases without creating a misleading zero count or aborting the transition.
+ */
+export function legacyHostAssignmentForSession(
+  session: SessionRecord,
+): { sessionId: string; attemptId: string; hostId: string; connectionId: string } | undefined {
+  const attemptId = session.attemptId ?? session.resolvedRoute?.attemptId;
+  if (
+    session.hostAssignmentLease ||
+    session.legacyHostAssignmentReleased ||
+    !attemptId ||
+    !session.hostId ||
+    !session.assignmentConnectionId ||
+    (session.status !== "running" && session.status !== "cancelled")
+  ) {
+    return undefined;
+  }
+  return {
+    sessionId: session.id,
+    attemptId,
+    hostId: session.hostId,
+    connectionId: session.assignmentConnectionId,
+  };
+}
+
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   exitCode?: number | null;
   errorCode?: string;
@@ -49,6 +82,8 @@ export function finishSessionOptsFromPlan(
     ...reportFieldsFromPlan(plan),
     ...(extras.fence ? { fence: extras.fence } : {}),
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }
 
@@ -69,6 +104,8 @@ export function requeueUsageLimitedSessionOptsFromPlan(
     now: extras.now,
     usageLimitedUntil: cooldown.usageLimitedUntil,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }
 
@@ -87,5 +124,7 @@ export function suppressProviderlessUsageLimitOptsFromPlan(
     queueShard: session.queueShard,
     targetIndex: suppress.targetIndex,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }

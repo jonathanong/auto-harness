@@ -2,6 +2,7 @@
 import {
   isHostRuntimeReport,
   normalizeHostCapabilities,
+  sanitizeProviderAccountReadiness,
   validateHostRunningAttempts,
   type HostRuntimeReport,
   type HostCapability,
@@ -11,7 +12,7 @@ import {
 
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistWorktree, queueWrite } from "./control-plane-state.ts";
+import { persistSession, persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
@@ -24,6 +25,10 @@ import {
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
+import {
+  releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLeasesForHost,
+} from "./control-plane-provider-account-leases.ts";
 
 type ListedHostRuntime = {
   daemonVersion: string | null;
@@ -388,6 +393,8 @@ export function registerHost(
     }>;
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
+    maxConcurrentAssignments?: number;
+    providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
     runningSessions?: string[];
     runningAttempts?: HostRunningAttempt[];
     protocolVersion?: number;
@@ -464,6 +471,14 @@ export function registerHost(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.maxConcurrentAssignments !== undefined
+      ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
+      : {}),
+    ...(opts.providerAccountReadiness
+      ? {
+          providerAccountReadiness: sanitizeProviderAccountReadiness(opts.providerAccountReadiness),
+        }
+      : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };
@@ -500,7 +515,10 @@ export function registerHost(
       hostId: opts.hostId,
       repositoryId: wt.repositoryId,
       path: wt.path,
-      labels: wt.labels,
+      labels:
+        registrationInventory.repositories
+          .find((repository) => repository.id === wt.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === wt.id)?.labels ?? wt.labels,
       status: "idle",
       online: !opts.draining,
       currentSessionId: prev && prev.currentSessionId != null ? prev.currentSessionId : null,
@@ -543,6 +561,8 @@ export async function registerHostDurable(
     }>;
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
+    maxConcurrentAssignments?: number;
+    providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
     runningSessions?: string[];
     runningAttempts?: HostRunningAttempt[];
     protocolVersion?: number;
@@ -598,6 +618,14 @@ export async function registerHostDurable(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.maxConcurrentAssignments !== undefined
+      ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
+      : {}),
+    ...(opts.providerAccountReadiness
+      ? {
+          providerAccountReadiness: sanitizeProviderAccountReadiness(opts.providerAccountReadiness),
+        }
+      : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };
@@ -623,6 +651,16 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, []);
     throw err;
   }
+  let registrationInventory = buildRegisteredInventory(
+    opts.hostId,
+    registeredRepositories,
+    opts.worktrees,
+    conn.capabilities,
+    at,
+    previousInventory,
+    opts.daemonIdentity,
+    opts.runtime,
+  );
   // The transaction committed. Finish all related row writes before changing
   // this process's cache; a failed inventory/worktree write must not make the
   // cache claim a state that was never durably persisted.
@@ -636,7 +674,10 @@ export async function registerHostDurable(
       hostId: opts.hostId,
       repositoryId: wt.repositoryId,
       path: wt.path,
-      labels: wt.labels,
+      labels:
+        registrationInventory.repositories
+          .find((repository) => repository.id === wt.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === wt.id)?.labels ?? wt.labels,
       status: "idle" as const,
       online: !opts.draining,
       currentSessionId: prev?.currentSessionId ?? null,
@@ -702,16 +743,6 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
-  let registrationInventory = buildRegisteredInventory(
-    opts.hostId,
-    registeredRepositories,
-    opts.worktrees,
-    conn.capabilities,
-    at,
-    previousInventory,
-    opts.daemonIdentity,
-    opts.runtime,
-  );
   try {
     // The version this registration read is only as fresh as the strongly-consistent
     // read taken above, before the worktree-publishing and reconciliation round-trips
@@ -750,6 +781,25 @@ export async function registerHostDurable(
         opts.daemonIdentity,
         opts.runtime,
       );
+      // The worktree projection was published before the inventory fence. If a
+      // UI edit won that fence, republish the reconciled effective labels too;
+      // otherwise the inventory and worktree read models would disagree.
+      for (const next of nextWorktrees) {
+        const labels = registrationInventory.repositories
+          .find((repository) => repository.id === next.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === next.id)?.labels;
+        if (labels !== undefined) next.labels = [...labels];
+        if (!(await state.storage.putWorktreeFenced(next, { hostId: opts.hostId, connectionId }))) {
+          await rollbackDurableRegistration(
+            state,
+            opts.hostId,
+            connectionId,
+            at,
+            publishedWorktrees,
+          );
+          return { ok: false, error: "host connection changed while publishing inventory" };
+        }
+      }
     }
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
@@ -783,7 +833,15 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
     state.drainingHosts.delete(hostId);
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
-  return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  const requeued = offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  for (const session of state.sessions.values()) {
+    if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
+    releaseProviderAccountLease(state, session);
+    delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
+    persistSession(state, session);
+  }
+  return requeued;
 }
 
 /** Durable disconnect cleans only work stamped by its exact lease, then
@@ -814,6 +872,7 @@ export async function disconnectHostDurable(
     connectionId,
     "agent disconnected; requeued",
   );
+  await releaseTimedOutProviderAccountLeasesForHost(state, conn.hostId);
   const released = await state.storage.releaseHostConnection(conn.hostId, connectionId);
   // releaseHostConnection's transaction cannot delete the connection row if
   // a replacement won its lock condition. The old connection id is globally

@@ -1,4 +1,5 @@
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
+import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -40,6 +41,7 @@ export function cancelSession(
     return { ok: true, session: toPublic(state, session) };
   }
   if (transitionEffect(plan, "release_worktree") && worktreeId) releaseWorktree(state, worktreeId);
+  if (!cancel.holdAssignment) releaseProviderAccountLease(state, session);
   session.worktreeId = null;
   session.hostId = null;
   const storage = state.storage;

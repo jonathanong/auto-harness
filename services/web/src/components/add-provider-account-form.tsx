@@ -20,11 +20,17 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
         const fd = new FormData(form);
         const label = String(fd.get("label") ?? "").trim();
         const usageLimitCooldownSeconds = Number(fd.get("usageLimitCooldownSeconds") ?? 18000);
+        const maxConcurrentSessions = Number(fd.get("maxConcurrentSessions") ?? 1);
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/provider-accounts`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ providerId, label, usageLimitCooldownSeconds }),
+            body: JSON.stringify({
+              providerId,
+              label,
+              usageLimitCooldownSeconds,
+              maxConcurrentSessions,
+            }),
           });
           if (!res.ok) {
             showToast(await apiErrorMessage(res), {
@@ -68,6 +74,23 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
         <p className="max-w-xs text-xs text-muted-foreground">
           Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry.
         </p>
+      </div>
+      <div className="space-y-1">
+        <Label
+          htmlFor="maxConcurrentSessions"
+          tip="How many sessions may use this account at once. Default 1."
+        >
+          Max concurrent sessions
+        </Label>
+        <Input
+          id="maxConcurrentSessions"
+          name="maxConcurrentSessions"
+          type="number"
+          min={1}
+          max={64}
+          defaultValue={1}
+          data-pw="provider-account-max-concurrent-sessions"
+        />
       </div>
       <WithTooltip tip="Add an account of this provider to the catalog">
         <Button type="submit" size="sm" disabled={pending} data-pw="provider-account-submit">

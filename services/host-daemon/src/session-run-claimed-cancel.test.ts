@@ -1,9 +1,10 @@
+/* eslint-disable max-lines -- cancellation, usage-limit, and profile-refusal cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign, testExecutionProfiles } from "./session-runner-test-helpers.ts";
 
 const claimed = {
   repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
@@ -133,6 +134,9 @@ describe("claimed session cancellation", () => {
         undefined,
         () => false,
         () => 100,
+        undefined,
+        undefined,
+        testExecutionProfiles,
       ),
     ).resolves.toMatchObject({
       status: "failed",
@@ -181,6 +185,29 @@ describe("claimed session cancellation", () => {
       );
       expect(outcome).toMatchObject({ status: scenario.expected, usage });
     }
+  });
+
+  it("fails a provider-backed command when the local profile is missing", async () => {
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run() {
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ providerAccountId: "missing-account", resolvedArgv: ["echo"] }),
+        claimed,
+        undefined,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "execution profile unavailable for missing-account",
+    });
   });
 });
 

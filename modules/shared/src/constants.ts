@@ -66,6 +66,18 @@ export const DEFAULT_QUEUE_TTL_SECONDS = 691_200;
 /** A provider account is paused for this long after reporting a usage limit. */
 export const DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS = 18_000;
 
+/** Default per-account concurrent session cap; operators may raise it. */
+export const DEFAULT_MAX_CONCURRENT_SESSIONS = 1;
+
+/** Hard ceiling for `ProviderAccount.maxConcurrentSessions`. */
+export const MAX_CONCURRENT_SESSIONS_LIMIT = 64;
+
+/** Default host-wide concurrent assignment cap advertised by modern daemons. */
+export const DEFAULT_MAX_CONCURRENT_ASSIGNMENTS = 64;
+
+/** Hard ceiling for `capabilities.maxConcurrentAssignments`. */
+export const MAX_CONCURRENT_ASSIGNMENTS_LIMIT = 256;
+
 /** Default queue shard count for status-createdAt GSI. */
 export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 

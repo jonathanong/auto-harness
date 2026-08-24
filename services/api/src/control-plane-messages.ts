@@ -29,22 +29,30 @@ import {
   retrySessionArchiveIfNeeded,
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
+import { emitCooldown, emitLogDrops } from "./operational-metrics.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {
   SessionTransitionContext,
   SessionTransitionEvent,
 } from "./session-transition-planner.ts";
-import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
+import { assignQueued } from "./control-plane-assign.ts";
 import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,
 } from "./control-plane-scheduled-assign.ts";
+import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
@@ -222,6 +230,7 @@ export function appendLog(
   },
 ): LogRecord {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   state.logs.set(opts.sessionId, retainLogs(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
@@ -246,6 +255,7 @@ export async function appendLogDurable(
   },
 ): Promise<LogRecord> {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   if (state.storage) {
     await state.storage.putLog(rec);
   }
@@ -336,7 +346,19 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
-        ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
+        ...(msg.capabilities
+          ? {
+              capabilities: Array.isArray(msg.capabilities)
+                ? msg.capabilities
+                : msg.capabilities.features,
+            }
+          : {}),
+        ...(msg.maxConcurrentAssignments !== undefined
+          ? { maxConcurrentAssignments: msg.maxConcurrentAssignments }
+          : {}),
+        ...(msg.providerAccountReadiness
+          ? { providerAccountReadiness: msg.providerAccountReadiness }
+          : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
         ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
         ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
@@ -445,7 +467,19 @@ export async function handleHostMessageDurable(
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
-      ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
+      ...(msg.capabilities
+        ? {
+            capabilities: Array.isArray(msg.capabilities)
+              ? msg.capabilities
+              : msg.capabilities.features,
+          }
+        : {}),
+      ...(msg.maxConcurrentAssignments !== undefined
+        ? { maxConcurrentAssignments: msg.maxConcurrentAssignments }
+        : {}),
+      ...(msg.providerAccountReadiness
+        ? { providerAccountReadiness: msg.providerAccountReadiness }
+        : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
       ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
@@ -472,7 +506,15 @@ export async function handleHostMessageDurable(
     // `onHostMessage`. Keeping it out of this result prevents a local WS hub
     // from delivering the same confirmation once through its bridge and once
     // as a direct socket response.
-    return handleHostMessage(state, msg, sourceConnectionId);
+    const result = handleHostMessage(state, msg, sourceConnectionId);
+    if (
+      result.ok &&
+      msg.type === "session:status" &&
+      (isTerminalSessionStatus(msg.status) || msg.errorCode === "usage_limit")
+    ) {
+      await requestAssignment(state);
+    }
+    return result;
   }
   const storage = state.storage;
   if (msg.type === "session:log") {
@@ -507,6 +549,7 @@ export async function handleHostMessageDurable(
       ) {
         return { ok: false, error: "stale host connection" };
       }
+      emitLogDrops(msg.dropped);
       const retained = retainLogs(state, log);
       state.logs.set(log.sessionId, retained);
       state.onLogCommitted?.(log);
@@ -621,6 +664,25 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    (session.providerAccountLease?.attemptId === msg.attemptId ||
+      (!session.providerAccountLease &&
+        session.timedOutHostId != null &&
+        session.attemptId === msg.attemptId))
+  ) {
+    if (state.storage) {
+      await releaseTimedOutProviderAccountLease(state, session);
+      if (typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
+        persistSession(state, session);
+      }
+    } else {
+      releaseProviderAccountLease(state, session);
+      persistSession(state, session);
+    }
+    return { ok: true };
+  }
   let providerAccount: SessionTransitionContext["providerAccount"];
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
@@ -663,8 +725,11 @@ async function applySessionStatusDurable(
       fence,
       attemptId: msg.attemptId,
       concurrencyId: session.concurrencyId,
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
         state.worktrees.set(worktreeId, {
@@ -680,6 +745,7 @@ async function applySessionStatusDurable(
         ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       });
       state.pendingAcks.delete(session.id);
+      await requestAssignment(state);
     }
     return { ok: true };
   }
@@ -705,9 +771,12 @@ async function applySessionStatusDurable(
       reason: msg.errorMessage,
       cliResumeRef: msg.cliResumeRef,
       concurrencyId: session.concurrencyId,
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
         worktreeId: null,
@@ -722,6 +791,7 @@ async function applySessionStatusDurable(
       delete next.reconnectDeadlineAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
+      await requestAssignment(state);
     }
     return { ok: true };
   }
@@ -735,6 +805,8 @@ async function applySessionStatusDurable(
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
       state.providerAccounts.delete(providerAccountId);
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.releaseMainCheckoutSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -745,19 +817,27 @@ async function applySessionStatusDurable(
         queueShard: session.queueShard,
         reason: "provider account missing; requeued",
         errorCode: "usage_limit",
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
         ...queueReconnectSession(session, "provider account missing; requeued"),
         errorCode: "usage_limit",
       });
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     if (requeue && cooldown && providerAccountId) {
       const now = state.now();
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.requeueMainCheckoutUsageLimitedSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -769,9 +849,16 @@ async function applySessionStatusDurable(
         now,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         errorMessage: msg.errorMessage,
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      emitCooldown();
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
         ...queueReconnectSession(session, msg.errorMessage ?? "provider usage limit; requeued"),
         errorCode: "usage_limit",
@@ -786,7 +873,7 @@ async function applySessionStatusDurable(
         });
       }
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     if (suppress && requeue?.reason === "providerless") {
@@ -803,8 +890,10 @@ async function applySessionStatusDurable(
         suppressedTargetIndex: suppress.targetIndex,
         ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
         ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
@@ -824,7 +913,7 @@ async function applySessionStatusDurable(
       delete next.startedAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     const completedAt = state.now();
@@ -842,9 +931,12 @@ async function applySessionStatusDurable(
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
+    releaseProviderAccountLease(state, session);
     const { mainCheckoutLease: _, ...next } = {
       ...session,
       status: msg.status,
@@ -861,7 +953,8 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    await archiveSessionLogs(state, session.id);
+    await archiveSessionLogs(state, session.id, undefined, true);
+    await requestAssignment(state);
     return { ok: true };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -870,6 +963,9 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    emitCooldown();
+    releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
     if (loadedAccount) {
@@ -889,7 +985,7 @@ async function applySessionStatusDurable(
       errorMessage: msg.errorMessage ?? "provider usage limit; requeued",
     });
     state.pendingAcks.delete(session.id);
-    await assignQueuedDurable(state);
+    await requestAssignment(state);
     return { ok: true };
   }
   const shouldSuppressTarget = suppress !== undefined;
@@ -898,6 +994,8 @@ async function applySessionStatusDurable(
       suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    releaseProviderAccountLease(state, session);
     const worktree = state.worktrees.get(session.worktreeId);
     if (worktree)
       state.worktrees.set(worktree.id, { ...worktree, status: "idle", currentSessionId: null });
@@ -909,7 +1007,7 @@ async function applySessionStatusDurable(
       suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
     });
     state.pendingAcks.delete(session.id);
-    await assignQueuedDurable(state);
+    await requestAssignment(state);
     return { ok: true };
   }
   const committed = await storage.finishSession(
@@ -921,6 +1019,8 @@ async function applySessionStatusDurable(
   if (!committed) {
     return { ok: true };
   }
+  await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+  releaseProviderAccountLease(state, session);
   const worktreeId = session.worktreeId;
   if (worktreeId) {
     const wt = state.worktrees.get(worktreeId);
@@ -955,10 +1055,10 @@ async function applySessionStatusDurable(
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
   if (!shouldSuppressTarget) {
-    await archiveSessionLogs(state, msg.sessionId);
+    await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
-  if (shouldSuppressTarget) await assignQueuedDurable(state);
+  await requestAssignment(state);
   return { ok: true };
 }
 
@@ -978,6 +1078,15 @@ function applySessionStatus(
   }
   const session = state.sessions.get(msg.sessionId);
   if (!session) return { ok: false, error: "session not found" };
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    session.providerAccountLease?.attemptId === msg.attemptId
+  ) {
+    releaseProviderAccountLease(state, session);
+    persistSession(state, session);
+    return { ok: true };
+  }
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
@@ -989,6 +1098,9 @@ function applySessionStatus(
   const patch = transitionEffect(plan, "patch_report");
 
   if (session.status !== "running") {
+    if (transitionEffect(plan, "release_lease") || transitionEffect(plan, "release_worktree")) {
+      releaseProviderAccountLease(state, session);
+    }
     if (transitionEffect(plan, "release_lease") && session.mainCheckoutLease) {
       releaseScheduledLeaseLocal(state, session);
       delete session.mainCheckoutLease;
@@ -1038,6 +1150,7 @@ function applySessionStatus(
   if (terminal) {
     session.completedAt = state.now();
     state.pendingAcks.delete(msg.sessionId);
+    releaseProviderAccountLease(state, session);
     if (session.mainCheckoutLease) {
       delete session.mainCheckoutLease;
       delete session.assignmentConnectionId;
@@ -1053,6 +1166,7 @@ function applySessionStatus(
     const suppress = transitionEffect(plan, "suppress_target");
     const finish = transitionEffect(plan, "finish");
     if (cooldown) {
+      emitCooldown();
       const account = state.providerAccounts.get(cooldown.providerAccountId);
       if (account) {
         account.usageLimitedUntil = cooldown.usageLimitedUntil;

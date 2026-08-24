@@ -13,6 +13,10 @@ describe("AddProviderAccountForm", () => {
     const view = mountForm(<AddProviderAccountForm providerId="provider/one" />);
     const label = field<HTMLInputElement>(view.container, "provider-account-label");
     const cooldown = field<HTMLInputElement>(view.container, "provider-account-cooldown-seconds");
+    const concurrent = field<HTMLInputElement>(
+      view.container,
+      "provider-account-max-concurrent-sessions",
+    );
     expect(label.required).toBe(true);
     expect(cooldown.min).toBe("1");
     expect(cooldown.defaultValue).toBe("18000");
@@ -20,7 +24,10 @@ describe("AddProviderAccountForm", () => {
       "Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry.",
     );
     setValue(label, " account@example.test ");
+    expect(concurrent.min).toBe("1");
+    expect(concurrent.defaultValue).toBe("1");
     setValue(cooldown, "90");
+    setValue(concurrent, "3");
     submit(field(view.container, "form-add-provider-account"));
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith("/api/v1/provider-accounts", {
@@ -30,6 +37,7 @@ describe("AddProviderAccountForm", () => {
         providerId: "provider/one",
         label: "account@example.test",
         usageLimitCooldownSeconds: 90,
+        maxConcurrentSessions: 3,
       }),
     });
     expect(label.value).toBe("");
@@ -55,7 +63,12 @@ describe("AddProviderAccountForm", () => {
     submit(form);
     await act(async () => Promise.resolve());
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
-      body: JSON.stringify({ providerId: "provider", label: "", usageLimitCooldownSeconds: 18000 }),
+      body: JSON.stringify({
+        providerId: "provider",
+        label: "",
+        usageLimitCooldownSeconds: 18000,
+        maxConcurrentSessions: 1,
+      }),
     });
     expect(field(view.container, "provider-account-error").textContent).toBe(
       "account already exists",

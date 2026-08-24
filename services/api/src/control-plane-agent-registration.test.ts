@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- registration race scenarios share one inventory fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -5,6 +6,23 @@ import {
   parseHostRegistrationRepositories,
   resolveRegisteredRepositories,
 } from "./control-plane-agent-registration.ts";
+
+function daemonRegistration(labels: string[]) {
+  return {
+    hostId: "host",
+    repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+    worktrees: [
+      {
+        id: "worktree",
+        name: "worktree",
+        repositoryId: "repo",
+        path: "/repo/worktree",
+        labels,
+      },
+    ],
+    replaceExisting: true,
+  };
+}
 
 describe("host registration repository inventory", () => {
   it("keeps zero-worktree repositories in the host inventory and fleet list", () => {
@@ -54,6 +72,87 @@ describe("host registration repository inventory", () => {
     expect(plane.getHostInventory("host")?.requiredEnvironment).toEqual(["GLOBAL_TOKEN"]);
     expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([
       "REPO_TOKEN",
+    ]);
+  });
+
+  it("preserves operator-edited worktree labels across a stale daemon registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    const edited = plane.putHostInventory("host", {
+      repositories: [
+        {
+          id: "repo",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "worktree", name: "worktree", path: "/repo/worktree", labels: [] }],
+        },
+      ],
+    });
+    expect(edited.ok).toBe(true);
+    if (edited.ok) {
+      expect(edited.config.repositories[0]?.worktrees[0]).not.toHaveProperty("daemonLabels");
+    }
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          {
+            id: "worktree",
+            name: "worktree",
+            repositoryId: "repo",
+            path: "/repo/worktree",
+            labels: ["stale"],
+          },
+        ],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]?.labels).toEqual([]);
+    expect(plane.getWorktree("worktree")?.labels).toEqual([]);
+  });
+
+  it("accepts fresh daemon label changes while retaining operator-owned labels", () => {
+    const plane = new ControlPlane({
+      connectionIdFactory: (() => {
+        let connection = 0;
+        return () => `connection-${++connection}`;
+      })(),
+    });
+    expect(plane.registerHost(daemonRegistration(["daemon-old"])).ok).toBe(true);
+    expect(
+      plane.state.hostInventories.get("host")?.repositories[0]?.worktrees[0]?.daemonLabels,
+    ).toEqual(["daemon-old"]);
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]).not.toHaveProperty(
+      "daemonLabels",
+    );
+    expect(plane.listHostInventories()[0]?.repositories[0]?.worktrees[0]).not.toHaveProperty(
+      "daemonLabels",
+    );
+    expect(plane.registerHost(daemonRegistration(["daemon-new"])).ok).toBe(true);
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]?.labels).toEqual([
+      "daemon-new",
+    ]);
+
+    expect(
+      plane.putHostInventory("host", {
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            defaultBranch: "main",
+            worktrees: [
+              { id: "worktree", name: "worktree", path: "/repo/worktree", labels: ["operator"] },
+            ],
+          },
+        ],
+      }).ok,
+    ).toBe(true);
+    expect(plane.registerHost(daemonRegistration(["daemon-new"])).ok).toBe(true);
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]?.labels).toEqual([
+      "operator",
+    ]);
+    expect(plane.registerHost(daemonRegistration(["daemon-latest"])).ok).toBe(true);
+    expect(plane.getHostInventory("host")?.repositories[0]?.worktrees[0]?.labels).toEqual([
+      "daemon-latest",
     ]);
   });
 

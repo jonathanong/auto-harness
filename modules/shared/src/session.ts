@@ -6,9 +6,9 @@ import type {
   SessionType,
 } from "./types.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
-import type { HostCapability } from "./host-capabilities.ts";
+import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
-import type { HostRunningAttempt } from "./host-registration.ts";
+import type { HostRunningAttempt, ProviderAccountReadiness } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
@@ -39,8 +39,9 @@ export type SessionAssign = {
   cliResumeRef?: string;
   resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
   metadata?: Record<string, unknown>;
-  /** Non-secret resolved route metadata for observability. */
+  /** Daemon-local execution profile key; selects CLI HOME/env on the host. */
   providerAccountId?: string;
+  /** Non-secret resolved route breadcrumb for observability. */
   commandId?: string;
   targetIndex?: number;
 };
@@ -146,8 +147,15 @@ export type HostToServerMessage =
       }>;
       /** Explicit repository paths keep zero-worktree repositories dispatchable. */
       repositories?: import("./host-registration.ts").HostRepositoryRegistration[];
-      /** Optional for compatibility with daemons released before capabilities. */
-      capabilities?: HostCapability[];
+      /**
+       * Feature flags (legacy array) or `{ features, maxConcurrentAssignments }`.
+       * parseHostMessage flattens this to a feature array plus a sibling cap.
+       */
+      capabilities?: HostCapability[] | HostCapabilitiesAdvertisement;
+      /** Host-wide concurrent assignment cap; omitted means a legacy daemon. */
+      maxConcurrentAssignments?: number;
+      /** Ready local execution profiles; credentials never appear here. */
+      providerAccountReadiness?: ProviderAccountReadiness[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
       /** Attempt-fenced reconnect claims; ignored when the attempt is no longer current. */

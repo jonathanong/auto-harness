@@ -15,6 +15,13 @@ import {
 } from "./daemon-registration.ts";
 import { sendDaemonLog } from "./daemon-log-sender.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
+import {
+  emptyExecutionProfiles,
+  executionProfileReady,
+  providerAccountReadiness,
+  resolveExecutionProfile,
+  type ExecutionProfiles,
+} from "./execution-profiles.ts";
 import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
@@ -28,6 +35,8 @@ export type DaemonLoopOptions = {
   commandRunner?: ProcessRunner;
   /** Daemon environment after loading the persisted service environment file. */
   childEnvSource?: NodeJS.ProcessEnv;
+  /** Daemon-local execution profiles keyed by provider account. */
+  executionProfiles?: ExecutionProfiles;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -58,7 +67,6 @@ type InflightSession = {
   // explicit type under exactOptionalPropertyTypes.
   resolveAcknowledgement?: (() => void) | undefined;
 };
-const MAX_INFLIGHT_SESSIONS = 64;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -88,6 +96,8 @@ export class DaemonLoop {
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
+  private readonly executionProfiles: ExecutionProfiles;
+  private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -109,6 +119,7 @@ export class DaemonLoop {
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
     this.runtime = options.runtime;
+    this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
     const commandRunner =
       options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
     const git = createGitClient(processRunner);
@@ -118,6 +129,7 @@ export class DaemonLoop {
       processRunner,
       commandRunner,
       ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
+      executionProfiles: this.executionProfiles,
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });
@@ -156,6 +168,7 @@ export class DaemonLoop {
     await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
   }
   async register(): Promise<void> {
+    const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
@@ -167,9 +180,19 @@ export class DaemonLoop {
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
+      this.executionProfiles,
     );
+    this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {
+    if (
+      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+        this.advertisedProviderAccountReadiness &&
+      !this.hasPendingAcknowledgement()
+    ) {
+      await this.register();
+      return;
+    }
     await this.outbound.send({
       type: "host:keepalive",
       hostId: this.config.hostId,
@@ -290,6 +313,16 @@ export class DaemonLoop {
     }
   }
 
+  /**
+   * A readiness registration is also a reconciliation snapshot. Do not send
+   * one while an assignment's durable ACK is outstanding: `register()` only
+   * reports acknowledged attempts, so omitting the pending attempt could let
+   * the control plane requeue it before its acknowledgement arrives.
+   */
+  private hasPendingAcknowledgement(): boolean {
+    return [...this.inflight.values()].some((session) => !session.acknowledged);
+  }
+
   private handleAcknowledged(
     msg: Extract<HostWireMessage, { type: "session:acknowledged" }>,
   ): void {
@@ -315,6 +348,15 @@ export class DaemonLoop {
       this.onLog?.(`git not ready: refused assign ${msg.sessionId}`);
       return;
     }
+    if (msg.providerAccountId) {
+      const profile = resolveExecutionProfile(this.executionProfiles, msg.providerAccountId);
+      if (!profile || !executionProfileReady(profile)) {
+        this.onLog?.(
+          `execution profile unavailable: refused assign ${msg.sessionId} account ${msg.providerAccountId}`,
+        );
+        return;
+      }
+    }
 
     const key = inflightKey(msg.sessionId, msg.attemptId);
     if (this.inflight.has(key)) {
@@ -324,7 +366,7 @@ export class DaemonLoop {
 
     this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
     const live = [...this.inflight.values()].filter((entry) => !entry.controller.signal.aborted);
-    if (live.length >= MAX_INFLIGHT_SESSIONS) {
+    if (live.length >= this.executionProfiles.maxConcurrentAssignments) {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
       return;
     }

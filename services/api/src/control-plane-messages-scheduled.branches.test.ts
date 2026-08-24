@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- scheduled terminal branches share one session fixture. */
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -151,8 +151,27 @@ describe("scheduled terminal and retry message branches", () => {
   });
 
   it("releases a cancelled leased run and carries late terminal metadata", async () => {
-    const row = session({ status: "cancelled", completedAt: NOW });
-    const state = durable(row);
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    const calls: Record<string, unknown>[] = [];
+    const row = session({ status: "cancelled", completedAt: NOW, providerAccountLease: lease });
+    const state = durable(row, {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return true;
+      },
+    });
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: "s",
+      attemptId: "attempt",
+      slot: 0,
+      hostId: "host",
+      providerAccountId: "acct",
+    });
     state.mainCheckoutLeases.set("host\0repo", { sessionId: "s", connectionId: "old" });
     await handleHostMessageDurable(
       state,
@@ -163,6 +182,13 @@ describe("scheduled terminal and retry message branches", () => {
         cliResumeRef: "resume",
       }),
     );
+    expect(calls[0]).toMatchObject({
+      providerAccountLease: lease,
+      exitCode: 2,
+      errorCode: "killed",
+      reason: "late",
+      cliResumeRef: "resume",
+    });
     expect(state.sessions.get("s")).toMatchObject({
       status: "cancelled",
       errorCode: "killed",
@@ -172,6 +198,7 @@ describe("scheduled terminal and retry message branches", () => {
       worktreeId: null,
     });
     expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
+    expect(state.providerAccountLeases.size).toBe(0);
   });
 
   it("cools a cached account when storage cannot load provider accounts", async () => {
@@ -191,6 +218,7 @@ describe("scheduled terminal and retry message branches", () => {
       providerId: "p",
       label: "acct",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: null,
       lastUsageLimitedAt: null,
       lastAssignedAt: null,

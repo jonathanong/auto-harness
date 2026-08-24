@@ -62,6 +62,7 @@ describe("renderEnvFile", () => {
       HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN",
       GITHUB_TOKEN: "gh",
       Path: "C:\\Windows",
+      HARNESS_EXECUTION_PROFILES: "/var/lib/harness/profiles.json",
     });
     expect(rendered).toContain("HARNESS_HOST_ID=local-1");
     expect(rendered).toContain("HARNESS_API_URL=http://127.0.0.1:7420");
@@ -70,6 +71,7 @@ describe("renderEnvFile", () => {
     expect(rendered).not.toMatch(/^HARNESS_SKIP=/m);
     expect(rendered).not.toContain("GITHUB_TOKEN=gh\nGITHUB_TOKEN");
     expect(rendered).toContain("PATH=C:\\Windows");
+    expect(rendered).toContain("HARNESS_EXECUTION_PROFILES=/var/lib/harness/profiles.json");
     expect(() => renderEnvFile(example, { HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN" })).toThrow(
       "undefined name: GITHUB_TOKEN",
     );

@@ -45,6 +45,25 @@ describe("local provider catalog route coverage", () => {
     expect(missing).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
   });
 
+  it("rejects non-numeric provider-account caps rather than treating them as absent", async () => {
+    const plane = seededPlane();
+    for (const maxConcurrentSessions of [null, "2"] as const) {
+      const response = await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", {
+        maxConcurrentSessions,
+      });
+      expect(response).toMatchObject({
+        status: 400,
+        json: {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: expect.stringContaining("maxConcurrentSessions"),
+          },
+        },
+      });
+    }
+    expect(plane.getProviderAccount("account")?.maxConcurrentSessions).toBe(1);
+  });
+
   it("maps a conditional provider account update loss to conflict", async () => {
     const plane = new ControlPlane({
       storage: { updateProviderAccount: async () => false } as never,
@@ -62,6 +81,7 @@ describe("local provider catalog route coverage", () => {
       providerId: "provider",
       label: "account",
       usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
       usageLimitedUntil: null,
       lastUsageLimitedAt: null,
       lastAssignedAt: null,
@@ -74,6 +94,32 @@ describe("local provider catalog route coverage", () => {
       label: "changed",
     });
     expect(response).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+  });
+
+  it("requests assignment after a provider move or cap increase", async () => {
+    const plane = seededPlane();
+    const calls: string[] = [];
+    plane.requestAssignment = async () => {
+      calls.push("assign");
+    };
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", { label: "renamed" }))
+        .status,
+    ).toBe(200);
+    expect(calls).toEqual([]);
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", { providerId: "other" }))
+        .status,
+    ).toBe(200);
+    expect(calls).toEqual(["assign"]);
+    expect(
+      (
+        await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", {
+          maxConcurrentSessions: 2,
+        })
+      ).status,
+    ).toBe(200);
+    expect(calls).toEqual(["assign", "assign"]);
   });
 
   it("returns an internal error when the durable cooldown read fails", async () => {

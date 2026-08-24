@@ -74,6 +74,77 @@ describe("schedule pages", () => {
     expect(html.indexOf("Harness")).toBeLessThan(html.indexOf("Zebra"));
   });
 
+  it("loads an explicitly requested edit when the schedules list is briefly stale", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": { items: [] },
+      "/api/v1/schedules/schedule-just-created": {
+        id: "schedule-just-created",
+        name: "Just created",
+        repositoryId: "repo-1",
+        target: { commandId: "command-1" },
+        fallbacks: [],
+        cron: "0 * * * *",
+        enabled: true,
+        timeout: 60,
+        queueTtlSeconds: 120,
+        nextRunAt: "tomorrow",
+        lastRunAt: null,
+      },
+      "/api/v1/session-targets": { items: [{ id: "command-1", label: "command" }] },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Harness" }] },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ edit: "schedule-just-created" }) }),
+    );
+    expect(html).toContain("Edit Just created");
+    expect(html).toContain('data-pw="form-edit-schedule-schedule-just-created"');
+  });
+
+  it("keeps encoded-looking schedule ids intact when opening an edit", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": {
+        items: [
+          {
+            id: "literal%2Fid",
+            name: "Encoded-looking id",
+            repositoryId: "repo-1",
+            target: { commandId: "command-1" },
+            fallbacks: [],
+            cron: "0 * * * *",
+            enabled: true,
+            timeout: 60,
+            queueTtlSeconds: 120,
+            nextRunAt: "tomorrow",
+            lastRunAt: null,
+          },
+        ],
+      },
+      "/api/v1/session-targets": { items: [{ id: "command-1", label: "command" }] },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Harness" }] },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ edit: "literal%2Fid" }) }),
+    );
+    expect(html).toContain("Edit Encoded-looking id");
+  });
+
+  it("keeps the create form when an explicitly requested schedule no longer exists", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": { items: [] },
+      "/api/v1/schedules/removed": jsonResponse({}, 404),
+      "/api/v1/session-targets": { items: [] },
+      "/api/v1/repositories": { items: [] },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ edit: "removed" }) }),
+    );
+    expect(html).toContain("Add schedule");
+    expect(html).toContain('data-pw="form-create-schedule"');
+  });
+
   it("renders read-only defaults without authoring controls", async () => {
     vi.stubEnv("HARNESS_AUTH_MODE", "required");
     stubApi({

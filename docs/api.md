@@ -581,7 +581,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
 
 `targetLabels` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
 
-The session enters the `queued` state. The scheduler assigns it to an idle worktree that matches the repository and required labels on an online agent. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, it remains queued.
+The session enters the `queued` state. Assignment is attempted immediately as a best-effort side effect of create, resume, clone, host register/reconnect, terminal transitions, and capacity or cooldown changes. The one-minute EventBridge/local cron is a repair sweep (ack deadlines, running timeouts, stale hosts, and any missed assigns), not the primary dispatcher. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, the session remains queued until capacity appears or `queueExpiresAt`. The planner uses advertised host-wide `maxConcurrentAssignments` and per-account execution-profile readiness; daemons still fail closed if a late assign exceeds local capacity.
 
 If the session exceeds `timeout` seconds while running, the agent kills the process and reports `timed_out`. The control plane also terminates an acknowledged `running` assignment at `ackReceivedAt + timeout` if that host report is lost or rejected. The EventBridge/local scheduler applies the bound on the next sweep after that deadline (typically within 60 seconds).
 
@@ -1061,13 +1061,13 @@ provider. The response identifies every live dependency; deletion never cascades
 
 #### `POST /provider-accounts`
 
-**Request:** `{ "providerId": "prov-1", "label": "jonathanrichardong@gmail.com" }`
+**Request:** `{ "providerId": "prov-1", "label": "jonathanrichardong@gmail.com", "maxConcurrentSessions"?: 1 }`
 
-**Response:** `201 Created` — `{ "id", "providerId", "label", "createdAt", "updatedAt" }`. `providerId` must reference an existing provider (`400` otherwise).
+**Response:** `201 Created` — `{ "id", "providerId", "label", "maxConcurrentSessions", "createdAt", "updatedAt" }`. `providerId` must reference an existing provider (`400` otherwise). `maxConcurrentSessions` defaults to `1` (integer 1–64).
 
 #### `GET /provider-accounts`, `GET /provider-accounts/:id`, `PATCH /provider-accounts/:id`, `DELETE /provider-accounts/:id`
 
-Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours), and responses include `usageLimitedUntil`, `lastUsageLimitedAt`, and `lastAssignedAt`. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
+Standard CRUD. `GET /provider-accounts` returns `{ "items": [ ...accounts ] }`, not a bare array. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours) and `maxConcurrentSessions` (default `1`). Responses include `usageLimitedUntil`, `lastUsageLimitedAt`, `lastAssignedAt`, and `maxConcurrentSessions`. The scheduler enforces the cap with attempt-owned durable leases (same conditional-put pattern as `concurrencyId` locks). Assignment fails closed when a host has not advertised a ready execution profile for that exact account. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
 
 #### `POST /commands`
 

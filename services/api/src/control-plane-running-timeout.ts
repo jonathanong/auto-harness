@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- local and durable timeout paths share this sweep. */
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, persistSession } from "./control-plane-state.ts";
@@ -29,6 +30,13 @@ function persistTimedOutSession(state: ControlPlaneState, session: SessionRecord
 }
 
 function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRecord): void {
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease || session.assignmentConnectionId
+      ? session.hostId
+      : undefined;
+  const timedOutAssignmentConnectionId = timedOutHostId
+    ? session.assignmentConnectionId
+    : undefined;
   session.status = "timed_out";
   session.errorMessage = TIMEOUT_ERROR;
   session.completedAt = state.now();
@@ -55,6 +63,9 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
   }
   session.worktreeId = null;
   session.hostId = null;
+  if (timedOutHostId) session.timedOutHostId = timedOutHostId;
+  if (timedOutAssignmentConnectionId)
+    session.timedOutAssignmentConnectionId = timedOutAssignmentConnectionId;
   persistTimedOutSession(state, session);
   queueSessionArchive(state, session.id);
 }
@@ -64,6 +75,13 @@ function rememberDurableTimeout(
   session: SessionRecord,
   completedAt: string,
 ): void {
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease || session.assignmentConnectionId
+      ? session.hostId
+      : undefined;
+  const timedOutAssignmentConnectionId = timedOutHostId
+    ? session.assignmentConnectionId
+    : undefined;
   const worktreeId = session.worktreeId;
   if (worktreeId) {
     const wt = state.worktrees.get(worktreeId);
@@ -87,6 +105,8 @@ function rememberDurableTimeout(
     completedAt,
     worktreeId: null,
     hostId: null,
+    ...(timedOutHostId ? { timedOutHostId } : {}),
+    ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
   };
   delete next.mainCheckoutLease;
   delete next.assignmentConnectionId;
@@ -113,6 +133,13 @@ async function commitDurableTimeout(
   session: SessionRecord,
   completedAt: string,
 ): Promise<boolean> {
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease || session.assignmentConnectionId
+      ? session.hostId
+      : undefined;
+  const timedOutAssignmentConnectionId = timedOutHostId
+    ? session.assignmentConnectionId
+    : undefined;
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
     return storage.releaseMainCheckoutSession({
       sessionId: session.id,
@@ -125,6 +152,10 @@ async function commitDurableTimeout(
       reason: TIMEOUT_ERROR,
       ...(session.attemptId !== undefined ? { attemptId: session.attemptId } : {}),
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+      preserveProviderAccountLease: true,
+      preserveHostAssignmentLease: true,
+      timedOutHostId: session.hostId,
+      timedOutAssignmentConnectionId: session.assignmentConnectionId,
     });
   }
   return storage.finishSession({
@@ -136,6 +167,10 @@ async function commitDurableTimeout(
     completedAt,
     errorMessage: TIMEOUT_ERROR,
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+    preserveProviderAccountLease: true,
+    preserveHostAssignmentLease: true,
+    ...(timedOutHostId ? { timedOutHostId } : {}),
+    ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
   });
 }
 

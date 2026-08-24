@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   finishSessionOptsFromPlan,
+  legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
@@ -502,7 +503,15 @@ describe("session-transition planner", () => {
   });
 
   it("maps planner effects onto storage writes", () => {
-    const row = session({ concurrencyId: "lock" });
+    const row = session({
+      concurrencyId: "lock",
+      providerAccountLease: {
+        concurrencyId: "acct:lock:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    });
     const finishPlan: SessionTransitionPlan = {
       effects: [
         {
@@ -531,7 +540,89 @@ describe("session-transition planner", () => {
       cliResumeRef: "ref",
       fence: { hostId: "host", connectionId: "conn" },
       concurrencyId: "lock",
+      providerAccountLease: { concurrencyId: "acct:lock:0", slot: 0 },
     });
+    expect(
+      finishSessionOptsFromPlan(
+        session(),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toBeUndefined();
+    expect(legacyHostAssignmentForSession(session({ assignmentConnectionId: "conn" }))).toEqual({
+      sessionId: "s",
+      attemptId: "attempt",
+      hostId: "host",
+      connectionId: "conn",
+    });
+    expect(
+      legacyHostAssignmentForSession(
+        session({ hostAssignmentLease: { hostId: "host" }, assignmentConnectionId: "conn" }),
+      ),
+    ).toBeUndefined();
+    expect(
+      legacyHostAssignmentForSession(
+        session({ providerAccountLease: row.providerAccountLease, assignmentConnectionId: "conn" }),
+      ),
+    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
+    expect(
+      legacyHostAssignmentForSession(
+        session({
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+          assignmentConnectionId: "conn",
+        }),
+      ),
+    ).toEqual({ sessionId: "s", attemptId: "attempt", hostId: "host", connectionId: "conn" });
+    expect(
+      legacyHostAssignmentForSession(
+        session({ assignmentConnectionId: "conn", legacyHostAssignmentReleased: true }),
+      ),
+    ).toBeUndefined();
+    expect(legacyHostAssignmentForSession(session({ hostId: undefined }))).toBeUndefined();
+    expect(
+      legacyHostAssignmentForSession(session({ assignmentConnectionId: undefined })),
+    ).toBeUndefined();
+    expect(legacyHostAssignmentForSession(session({ status: "queued" }))).toBeUndefined();
+    expect(
+      finishSessionOptsFromPlan(
+        session({
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+        }),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toBeUndefined();
+    expect(
+      finishSessionOptsFromPlan(
+        session({
+          status: "queued",
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+        }),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toBeUndefined();
     expect(
       finishSessionOptsFromPlan(
         row,
@@ -629,6 +720,7 @@ describe("session-transition planner", () => {
       providerAccountId: "acct",
       usageLimitedUntil: LATER,
       errorMessage: "quota",
+      providerAccountLease: { concurrencyId: "acct:lock:0" },
     });
     expect(
       requeueUsageLimitedSessionOptsFromPlan(
@@ -637,6 +729,12 @@ describe("session-transition planner", () => {
         { now: NOW, attemptId: "attempt" },
       ).errorMessage,
     ).toBeUndefined();
+    expect(
+      requeueUsageLimitedSessionOptsFromPlan(session(), cooldownPlan, {
+        now: NOW,
+        attemptId: "attempt",
+      }),
+    ).not.toHaveProperty("hostAssignmentLease");
 
     const suppressPlan: SessionTransitionPlan = {
       effects: [
@@ -649,6 +747,7 @@ describe("session-transition planner", () => {
     ).toMatchObject({
       targetIndex: 2,
       errorMessage: "limit",
+      providerAccountLease: { concurrencyId: "acct:lock:0" },
     });
     expect(
       suppressProviderlessUsageLimitOptsFromPlan(

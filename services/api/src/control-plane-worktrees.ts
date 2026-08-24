@@ -5,6 +5,7 @@ import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disc
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktree-release.ts";
+import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
 
 export { releaseWorktree } from "./control-plane-worktree-release.ts";
 
@@ -63,6 +64,7 @@ export function offlineHostAndRequeue(
         const session = state.sessions.get(sid);
         if (session?.status === "running" && !session.ackReceivedAt) {
           releaseWorktree(state, wt.id);
+          releaseProviderAccountLease(state, session);
           wt.online = false;
           session.status = "queued";
           session.worktreeId = null;
@@ -86,6 +88,7 @@ export function offlineHostAndRequeue(
       continue;
     if (!session.ackReceivedAt) {
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueReconnectSession(session, reason));
       state.pendingAcks.delete(session.id);
       requeued.push(session.id);

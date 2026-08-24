@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider catalog e2e covers create, pause, and concurrency. */
 import { test, expect } from "@playwright/test";
 import { API_BASE } from "../harness-endpoints.ts";
 
@@ -59,6 +60,7 @@ test.describe("control plane providers", () => {
     await expect(page.getByTestId("provider-account-error")).toBeHidden();
     await page.getByTestId("provider-account-label").fill(`${name}@example.com`);
     await page.getByTestId("provider-account-cooldown-seconds").fill("1234");
+    await page.getByTestId("provider-account-max-concurrent-sessions").fill("2");
     await page.getByTestId("provider-account-submit").click();
     const accountRow = page.locator('[data-pw^="provider-account-row-"]').first();
     await expect(accountRow).toBeVisible();
@@ -71,6 +73,15 @@ test.describe("control plane providers", () => {
       "",
     );
     await expect(page.getByTestId(`provider-account-cooldown-${accountId}`)).toContainText("1234s");
+    const concurrency = page.getByTestId(`provider-account-concurrency-${accountId}`);
+    await expect(concurrency).toHaveText(/2/);
+    await page.getByTestId(`provider-account-concurrency-edit-${accountId}`).click();
+    await page.getByTestId(`provider-account-concurrency-input-${accountId}`).fill("3");
+    await page
+      .getByTestId(`provider-account-concurrency-form-${accountId}`)
+      .getByRole("button", { name: "Save" })
+      .click();
+    await expect(concurrency).toContainText("3");
     await pauseProviderAccount(accountId);
     await page.reload();
     await expect(page.getByTestId(`provider-account-cooldown-clear-${accountId}`)).toBeVisible();
