@@ -120,6 +120,24 @@ describe("archive retry storage", () => {
     expect(send.mock.calls[0]?.[0]).toMatchObject({ input: { Limit: 1 } });
   });
 
+  it("handles missing retry-index pages and orders legacy rows by key", async () => {
+    const missing = vi.fn().mockResolvedValue({});
+    await expect(listPendingArchives(archiveCtx(missing), 1)).resolves.toEqual([]);
+
+    const legacy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, key: "sessions/z/logs.jsonl", retryOrder: undefined }],
+      })
+      .mockResolvedValueOnce({
+        Items: [{ ...archive, key: "sessions/a/logs.jsonl", retryOrder: undefined }],
+      });
+    await expect(listPendingArchives(archiveCtx(legacy), 2)).resolves.toEqual([
+      expect.objectContaining({ key: "sessions/a/logs.jsonl" }),
+      expect.objectContaining({ key: "sessions/z/logs.jsonl" }),
+    ]);
+  });
+
   it("claims, releases, and completes archive retry fences", async () => {
     const send = vi.fn().mockResolvedValue({});
     const ctx = archiveCtx(send);
@@ -131,6 +149,13 @@ describe("archive retry storage", () => {
       releaseArchiveRetry(ctx, archive.key, "claimed-order", "pending-order"),
     ).resolves.toBe(true);
     await expect(completeArchiveRetry(ctx, archive, "claimed-order")).resolves.toBe(true);
+    await expect(
+      completeArchiveRetry(
+        ctx,
+        { ...archive, objectKey: "archives/session.jsonl" },
+        "claimed-order",
+      ),
+    ).resolves.toBe(true);
 
     expect(send.mock.calls[0]?.[0]).toMatchObject({
       input: {
@@ -143,6 +168,14 @@ describe("archive retry storage", () => {
     });
     expect(send.mock.calls[2]?.[0]).toMatchObject({
       input: { UpdateExpression: expect.stringContaining("REMOVE retryState, retryOrder") },
+    });
+    expect(send.mock.calls[3]?.[0]).toMatchObject({
+      input: {
+        UpdateExpression: expect.stringContaining("objectKey = :objectKey"),
+        ExpressionAttributeValues: expect.objectContaining({
+          ":objectKey": "archives/session.jsonl",
+        }),
+      },
     });
   });
 
