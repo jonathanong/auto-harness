@@ -35,4 +35,27 @@ describe("durable cancellation assignment fence", () => {
       error: "session changed before cancellation",
     });
   });
+
+  it("notifies the host with the running attempt id", async () => {
+    const state = createControlPlaneState();
+    const notified: unknown[] = [];
+    state.onHostMessage = (hostId, message) => void notified.push({ hostId, message });
+    const session = {
+      ...runningSession,
+      assignmentConnectionId: "connection",
+      attemptId: "attempt-1",
+    };
+    state.sessions.set(session.id, session);
+    setDurableReadStorage(state, {
+      getSession: async () => session,
+      cancelRunningSession: async () => true,
+    });
+    await expect(cancelSessionDurable(state, session.id)).resolves.toMatchObject({ ok: true });
+    expect(notified).toEqual([
+      {
+        hostId: "host",
+        message: { type: "session:cancel", sessionId: "session", attemptId: "attempt-1" },
+      },
+    ]);
+  });
 });

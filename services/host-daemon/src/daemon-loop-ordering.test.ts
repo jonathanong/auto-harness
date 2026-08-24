@@ -340,4 +340,44 @@ describe("DaemonLoop outbound delivery", () => {
       cleanup();
     }
   });
+
+  it("waits for a superseded aborted attempt before running the replacement", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      });
+      await loop.start();
+      const previous = new AbortController();
+      previous.abort();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("seq-session\0attempt-old", {
+        sessionId: "seq-session",
+        attemptId: "attempt-old",
+        controller: previous,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      transport.deliver(seqAssign("attempt-seq-next"));
+      await loop.waitForIdle();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
