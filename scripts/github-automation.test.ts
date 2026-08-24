@@ -136,7 +136,7 @@ describe("GitHub Actions pin and image alignment", () => {
   });
 
   it("keeps DynamoDB Local tags aligned between CI and Compose", () => {
-    const image = "amazon/dynamodb-local:2.5.2";
+    const image = "amazon/dynamodb-local:3.3.1";
     expect(ciWorkflow).toContain(`image: ${image}`);
     expect(compose.match(new RegExp(`image: ${image}`, "g"))).toHaveLength(2);
   });

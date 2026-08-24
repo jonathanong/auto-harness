@@ -2,7 +2,7 @@
 # Start: pnpm local:dynamodb  (or docker compose up -d dynamodb)
 services:
   dynamodb:
-    image: amazon/dynamodb-local:2.5.2
+    image: amazon/dynamodb-local:3.3.1
     container_name: auto-harness-dynamodb
     ports:
       # Host :7423 → container DynamoDB Local (trails API :7420 / web :7421 / agent-web :7422)
@@ -15,7 +15,7 @@ services:
   # a manual `pnpm local:*` dev session, and force-recreating it wipes prior e2e data on
   # every run instead of letting hundreds of test-created repos/worktrees accumulate.
   dynamodb-e2e:
-    image: amazon/dynamodb-local:2.5.2
+    image: amazon/dynamodb-local:3.3.1
     container_name: auto-harness-dynamodb-e2e
     ports:
       - "7433:8000"

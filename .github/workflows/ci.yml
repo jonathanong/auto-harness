@@ -180,7 +180,7 @@ jobs:
     # a more accurate readiness gate than a container-level health check would be anyway.
     services:
       dynamodb:
-        image: amazon/dynamodb-local:2.5.2
+        image: amazon/dynamodb-local:3.3.1
         ports:
           - 7423:8000
     steps:
