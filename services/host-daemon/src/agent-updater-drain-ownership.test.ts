@@ -24,6 +24,46 @@ const manifest = () => {
 };
 
 describe("AgentUpdater drain ownership", () => {
+  it("defers a newer release without replacing an operator-owned drain", async () => {
+    const calls: string[] = [];
+    const updater = new AgentUpdater({
+      currentVersion: "1.0.0",
+      manifestPublicKey: publicKey,
+      fetcher: {
+        fetchManifest: async () => manifest(),
+        fetchArtifact: async () => {
+          calls.push("download");
+          return artifact;
+        },
+      },
+      lifecycle: {
+        drain: async () => {
+          calls.push("drain");
+          return false;
+        },
+        waitForIdle: async () => {
+          calls.push("idle");
+        },
+        resume: async () => {
+          calls.push("resume");
+        },
+      },
+      installer: {
+        stage: async () => void calls.push("stage"),
+        activate: async () => void calls.push("activate"),
+        restart: async () => void calls.push("restart"),
+        rollback: async () => void calls.push("rollback"),
+      },
+    });
+
+    await expect(updater.run()).resolves.toEqual({
+      phase: "deferred",
+      currentVersion: "1.0.0",
+      targetVersion: "1.2.0",
+    });
+    expect(calls).toEqual(["drain"]);
+  });
+
   it("does not resume a drain that was already owned by an operator", async () => {
     let resumed = false;
     const updater = new AgentUpdater({
@@ -47,7 +87,7 @@ describe("AgentUpdater drain ownership", () => {
         rollback: async () => undefined,
       },
     });
-    await expect(updater.run()).resolves.toMatchObject({ phase: "failed" });
+    await expect(updater.run()).resolves.toMatchObject({ phase: "deferred" });
     expect(resumed).toBe(false);
   });
 });

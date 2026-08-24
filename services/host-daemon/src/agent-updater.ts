@@ -37,6 +37,7 @@ export type UpdateState =
   | { phase: "downloading"; currentVersion: string; targetVersion: string }
   | { phase: "staged"; currentVersion: string; targetVersion: string }
   | { phase: "restarting"; currentVersion: string; targetVersion: string }
+  | { phase: "deferred"; currentVersion: string; targetVersion: string }
   | { phase: "complete"; currentVersion: string }
   | { phase: "failed"; currentVersion: string; targetVersion?: string; error: string };
 
@@ -95,7 +96,14 @@ export class AgentUpdater {
         currentVersion,
         targetVersion,
       });
-      drained = (await this.options.lifecycle.drain()) !== false;
+      const ownsDrain = (await this.options.lifecycle.drain()) !== false;
+      // A maintenance or policy drain must survive a daemon handoff. Deferring
+      // leaves the active release and foreign drain untouched; a later poll
+      // retries once that owner has resumed the host.
+      if (!ownsDrain) {
+        return this.transition({ phase: "deferred", currentVersion, targetVersion });
+      }
+      drained = true;
       await this.options.lifecycle.waitForIdle();
       this.transition({
         phase: "downloading",

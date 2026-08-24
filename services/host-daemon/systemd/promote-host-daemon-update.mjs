@@ -32,6 +32,8 @@ const markerName = ".auto-harness-update-boot.json";
 const requestName = "activation-request.json";
 const confirmationName = "boot-confirmed.json";
 
+class UnsafeUpdateRootPathError extends Error {}
+
 function fail(message) {
   process.stderr.write(`auto-harness update promotion: ${message}\n`);
 }
@@ -71,6 +73,45 @@ function validManifest(value) {
     typeof value.signature === "string" &&
     value.signature.length > 0
   );
+}
+
+/**
+ * The root-owned helper and stable launcher both resolve paths below this
+ * directory. Check every component with lstat rather than trusting only the
+ * leaf: a harness-writable parent could otherwise replace the checked root
+ * between systemd starts. A canonical path also avoids traversing an
+ * attacker-controlled `..` component before reaching the checked leaf.
+ */
+export function assertProtectedUpdateRootPath(root, statPath = lstatSync) {
+  if (root !== resolve(root)) {
+    throw new UnsafeUpdateRootPathError("update root must be a canonical absolute path");
+  }
+  let ancestor = "/";
+  for (const part of root.split("/").filter(Boolean)) {
+    assertProtectedPathEntry(ancestor, statPath);
+    ancestor = join(ancestor, part);
+  }
+  assertProtectedPathEntry(ancestor, statPath);
+}
+
+function assertProtectedPathEntry(ancestor, statPath) {
+  let stat;
+  try {
+    stat = statPath(ancestor);
+  } catch {
+    throw new UnsafeUpdateRootPathError(`cannot inspect update root ancestor: ${ancestor}`);
+  }
+  if (stat.isSymbolicLink()) {
+    throw new UnsafeUpdateRootPathError(`update root ancestor is a symbolic link: ${ancestor}`);
+  }
+  if (!stat.isDirectory()) {
+    throw new UnsafeUpdateRootPathError(`update root ancestor is not a directory: ${ancestor}`);
+  }
+  if (stat.uid !== 0 || (stat.mode & 0o022) !== 0) {
+    throw new UnsafeUpdateRootPathError(
+      `update root ancestor must be root-owned and not group/world writable: ${ancestor}`,
+    );
+  }
 }
 
 function hash(path) {
@@ -270,11 +311,9 @@ function promote(root, incoming) {
 
 function main() {
   const root = process.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness";
-  if (!isAbsolute(root)) throw new Error("HARNESS_UPDATE_INSTALL_DIR must be absolute");
-  const rootStat = lstatSync(root);
-  if (rootStat.uid !== 0 || (rootStat.mode & 0o022) !== 0) {
-    throw new Error("update root must be root-owned and not group/world writable");
-  }
+  if (!isAbsolute(root))
+    throw new UnsafeUpdateRootPathError("HARNESS_UPDATE_INSTALL_DIR must be absolute");
+  assertProtectedUpdateRootPath(root);
   const incoming = join(root, incomingName);
   if (!existsSync(incoming)) return;
   if (process.argv[2] === "--mark-boot-attempt") {
@@ -289,13 +328,19 @@ function main() {
   promote(root, incoming);
 }
 
-try {
-  main();
-} catch (error) {
-  // Do not take a known-good daemon down because an untrusted incoming request
-  // is malformed. Keep `current` unchanged and discard the request so the
-  // next supervisor start remains on the immutable release.
-  fail(error instanceof Error ? error.message : String(error));
-  const root = process.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness";
-  if (isAbsolute(root)) rmSync(join(root, incomingName, requestName), { force: true });
+if (import.meta.main) {
+  try {
+    main();
+  } catch (error) {
+    // A malformed incoming request must not take down a known-good daemon, but
+    // an unsafe root must stop systemd before its launcher can follow a path
+    // a harness-owned ancestor may replace.
+    fail(error instanceof Error ? error.message : String(error));
+    if (error instanceof UnsafeUpdateRootPathError) {
+      process.exitCode = 1;
+    } else {
+      const root = process.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness";
+      if (isAbsolute(root)) rmSync(join(root, incomingName, requestName), { force: true });
+    }
+  }
 }

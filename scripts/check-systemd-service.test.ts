@@ -84,6 +84,8 @@ describe("production host systemd artifacts", () => {
           .replaceAll("assertSafeArchive(archive)", "")
           .replace('process.argv[2] === "--mark-boot-attempt"', "false")
           .replaceAll('|| "/opt/auto-harness"', "")
+          .replace("assertProtectedUpdateRootPath(root)", "")
+          .replace("process.exitCode = 1", "")
           .replace('from "node:crypto"', 'from "./current/daemon.mjs"'),
       ),
     ).toEqual(
@@ -92,6 +94,8 @@ describe("production host systemd artifacts", () => {
         "missing update promotion helper fragment: assertSafeArchive(archive)",
         'missing update promotion helper fragment: process.argv[2] === "--mark-boot-attempt"',
         'missing update promotion helper fragment: || "/opt/auto-harness"',
+        "missing update promotion helper fragment: assertProtectedUpdateRootPath(root)",
+        "missing update promotion helper fragment: process.exitCode = 1",
         "promotion helper must not import daemon-writable activated code",
       ]),
     );

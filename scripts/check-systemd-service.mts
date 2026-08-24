@@ -104,7 +104,9 @@ export function validateSystemdActivationHelper(helper: string): string[] {
     'rmSync(join(root, "releases", marker.version), { recursive: true, force: true })',
     "promote(root, incoming)",
     '|| "/opt/auto-harness"',
-    "rootStat.uid !== 0",
+    "assertProtectedUpdateRootPath(root)",
+    "stat.isSymbolicLink()",
+    "process.exitCode = 1",
   ]) {
     if (!helper.includes(fragment))
       errors.push(`missing update promotion helper fragment: ${fragment}`);
