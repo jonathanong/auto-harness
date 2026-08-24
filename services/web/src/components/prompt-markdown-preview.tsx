@@ -18,7 +18,7 @@ function inlineMarkdown(value: string): ReactNode[] {
     }
     if (part.startsWith("`") && part.endsWith("`")) {
       return (
-        <code key={index} className="rounded bg-muted px-1 font-mono text-xs">
+        <code key={index} className="rounded-sm bg-muted px-1 font-mono text-xs">
           {part.slice(1, -1)}
         </code>
       );
@@ -49,7 +49,7 @@ export function PromptMarkdownPreview({ value }: { value: string }) {
     if (line.startsWith("```")) {
       if (code) {
         nodes.push(
-          <pre key={`code-${index}`} className="overflow-x-auto rounded bg-muted p-3 text-xs">
+          <pre key={`code-${index}`} className="overflow-x-auto rounded-sm bg-muted p-3 text-xs">
             <code>{code.join("\n")}</code>
           </pre>,
         );
@@ -111,7 +111,7 @@ export function PromptMarkdownPreview({ value }: { value: string }) {
   }
   if (code) {
     nodes.push(
-      <pre key="code-final" className="overflow-x-auto rounded bg-muted p-3 text-xs">
+      <pre key="code-final" className="overflow-x-auto rounded-sm bg-muted p-3 text-xs">
         <code>{code.join("\n")}</code>
       </pre>,
     );
