@@ -83,6 +83,19 @@ export async function assertPathWithinAllowedRoots(
   throw new Error(`path is outside allowed roots: ${path}`);
 }
 
+async function assertExistingPathWithinAllowedRoots(
+  path: string,
+  allowedRoots: readonly string[],
+  realpathFn: RealpathFn,
+): Promise<string> {
+  const resolved = await assertPathWithinAllowedRoots(path, allowedRoots, realpathFn);
+  try {
+    return await realpathFn(resolved);
+  } catch (error) {
+    throw new Error(`terminal hook target does not exist: ${path}`, { cause: error });
+  }
+}
+
 export function resolveHookPath(repositoryPath: string, terminalHookScript: string): string {
   // The daemon must use host-native path rules. The control plane accepts
   // both POSIX and Windows spellings because it cannot know the host OS, but
@@ -125,7 +138,7 @@ export async function assertClaimedPathsAllowed(
     realpathFn,
   );
   if (!input.terminalHookScript) return { cwd, repositoryPath };
-  const terminalHookScript = await assertPathWithinAllowedRoots(
+  const terminalHookScript = await assertExistingPathWithinAllowedRoots(
     resolveHookPath(cwd, input.terminalHookScript),
     roots,
     realpathFn,
@@ -143,7 +156,7 @@ export async function assertDaemonPathsAllowed(
   for (const repository of config.repositories) {
     await assertPathWithinAllowedRoots(repository.path, roots, realpathFn);
     if (repository.terminalHookScript) {
-      await assertPathWithinAllowedRoots(
+      await assertExistingPathWithinAllowedRoots(
         resolveHookPath(repository.path, repository.terminalHookScript),
         roots,
         realpathFn,

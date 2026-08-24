@@ -70,6 +70,8 @@ describe("allowed roots realpath checks", () => {
     const root = await tempDir("canonical-claim");
     const repo = join(root, "repo");
     await mkdir(repo);
+    await mkdir(join(repo, "wt"));
+    await writeFile(join(repo, "wt", "hook.sh"), "#!/bin/sh\n");
     const claimed = await assertClaimedPathsAllowed({
       cwd: join(repo, "wt"),
       repositoryPath: repo,
@@ -90,6 +92,9 @@ describe("allowed roots realpath checks", () => {
     const root = await tempDir("cfg");
     const repo = join(root, "repo");
     await mkdir(repo);
+    await mkdir(join(repo, "hooks"));
+    await writeFile(join(repo, "hooks", "done.sh"), "#!/bin/sh\n");
+    await writeFile(join(root, "hook.sh"), "#!/bin/sh\n");
     const config: DaemonConfig = {
       hostId: "host",
       allowedRoots: [root],
@@ -115,6 +120,28 @@ describe("allowed roots realpath checks", () => {
         repositories: [{ ...config.repositories[0]!, path: "/etc" }],
       }),
     ).rejects.toThrow("outside allowed roots");
+  });
+
+  it("rejects a terminal hook whose resolved target does not exist", async () => {
+    const root = await tempDir("missing-hook");
+    const repo = join(root, "repo");
+    await mkdir(repo);
+    await expect(
+      assertDaemonPathsAllowed({
+        hostId: "host",
+        allowedRoots: [root],
+        repositories: [
+          {
+            id: "repo",
+            path: repo,
+            defaultBranch: "main",
+            terminalHookScript: "missing-hook.sh",
+            worktrees: [],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).rejects.toThrow("terminal hook target does not exist");
   });
 
   it("does nothing when allowed roots are unset", async () => {
@@ -153,6 +180,7 @@ describe("allowed roots realpath checks", () => {
     const root = await tempDir("claim");
     const repo = join(root, "repo");
     await mkdir(repo);
+    await writeFile(join(root, "hook.sh"), "#!/bin/sh\n");
     await assertClaimedPathsAllowed({
       cwd: join(repo, "wt"),
       repositoryPath: repo,

@@ -77,6 +77,8 @@ export async function applyDaemonInventory(
   const previousSetupScript = config.setupScript;
   const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
+  // Older test-only managers may not expose the generation hook; real managers always do.
+  worktrees.noteInventoryChange?.();
   if (next.setupScript === undefined) delete config.setupScript;
   else config.setupScript = next.setupScript;
   if (next.allowedRoots === undefined) delete config.allowedRoots;

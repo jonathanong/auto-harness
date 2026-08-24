@@ -34,6 +34,8 @@ describe("SessionRunner success paths", () => {
     const repoPath = join(root, "repo");
     const worktreePath = join(repoPath, "wt-1");
     mkdirSync(worktreePath, { recursive: true });
+    const refreshedWorktreePath = join(repoPath, "wt-2");
+    mkdirSync(refreshedWorktreePath, { recursive: true });
     writeFileSync(join(repoPath, "old-hook.sh"), "");
     writeFileSync(join(repoPath, "current-hook.sh"), "");
     const config = parseDaemonConfig({
@@ -57,10 +59,12 @@ describe("SessionRunner success paths", () => {
     };
     const worktrees = new WorktreeManager(config, git);
     const hooks: string[] = [];
+    const hookCwds: string[] = [];
     const runner: ProcessRunner = {
       async run(options) {
         if (options.argv[0] === "/bin/sh") {
           hooks.push(options.argv[1] ?? "");
+          hookCwds.push(options.cwd ?? "");
           return { exitCode: 0, timedOut: false, signal: null };
         }
         await applyDaemonInventory(
@@ -74,7 +78,7 @@ describe("SessionRunner success paths", () => {
                 path: repoPath,
                 defaultBranch: "main",
                 terminalHookScript: join(repoPath, "current-hook.sh"),
-                worktrees: [{ id: "wt-1", name: "wt-1", path: worktreePath, labels: [] }],
+                worktrees: [{ id: "wt-1", name: "wt-1", path: refreshedWorktreePath, labels: [] }],
               },
             ],
           }),
@@ -87,6 +91,7 @@ describe("SessionRunner success paths", () => {
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
     expect(hooks).toEqual([join(realpathSync(repoPath), "current-hook.sh")]);
+    expect(hookCwds).toEqual([realpathSync(worktreePath)]);
   });
 
   it("captures a configured CLI resume reference without logging the opaque value", async () => {

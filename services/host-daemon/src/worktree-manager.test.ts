@@ -255,4 +255,37 @@ describe("WorktreeManager", () => {
       branch: "main",
     });
   });
+
+  it("retries a claim against the refreshed inventory after async validation", async () => {
+    const root = join(tmpdir(), `ah-claim-refresh-${String(Date.now())}`);
+    fixtures.push(root);
+    const oldWorktree = join(root, "old", "wt");
+    const newWorktree = join(root, "new", "wt");
+    await mkdir(oldWorktree, { recursive: true });
+    await mkdir(newWorktree, { recursive: true });
+    const refreshConfig = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: join(root, "old"),
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: oldWorktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(refreshConfig, fakeGit());
+    const pending = manager.claim("repo-1", "wt-1");
+    refreshConfig.repositories = [
+      {
+        id: "repo-1",
+        path: join(root, "new"),
+        defaultBranch: "main",
+        worktrees: [{ id: "wt-1", name: "wt-1", path: newWorktree, labels: [] }],
+      },
+    ];
+    manager.noteInventoryChange();
+    await expect(pending).resolves.toMatchObject({ cwd: await realpath(newWorktree) });
+  });
 });

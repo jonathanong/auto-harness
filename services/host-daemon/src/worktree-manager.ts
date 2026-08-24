@@ -40,6 +40,7 @@ export class WorktreeManager {
   private readonly mainWaiters = new Map<string, MainWaiter[]>();
   private readonly config: DaemonConfig;
   private readonly git: GitClient;
+  private inventoryGeneration = 0;
   private allowedRootsPolicyActive = false;
   private policyAllowedRoots: string[] = [];
 
@@ -74,6 +75,11 @@ export class WorktreeManager {
     this.policyAllowedRoots = policy.active ? [...policy.roots] : [];
   }
 
+  /** Invalidate claims that are waiting on filesystem validation during an inventory refresh. */
+  noteInventoryChange(): void {
+    this.inventoryGeneration += 1;
+  }
+
   private effectiveAllowedRoots(): string[] {
     return this.allowedRootsPolicyActive
       ? this.policyAllowedRoots
@@ -106,7 +112,6 @@ export class WorktreeManager {
     worktree: WorktreeConfig,
     cwd: string,
     paths: ClaimedPathsAllowed,
-    main = false,
   ): ClaimedWorktree {
     const claimedRepository = { ...repository, path: paths.repositoryPath };
     const claimedWorktree = { ...worktree, path: cwd };
@@ -120,8 +125,7 @@ export class WorktreeManager {
       repository: claimedRepository,
       worktree: claimedWorktree,
       cwd,
-      currentHookTarget: () =>
-        this.currentHookTarget(repository.id, main ? undefined : worktree.id),
+      currentHookTarget: () => this.currentHookTarget(repository.id, cwd, paths.repositoryPath),
     };
   }
 
@@ -131,7 +135,8 @@ export class WorktreeManager {
    */
   private async currentHookTarget(
     repositoryId: string,
-    worktreeId: string | undefined,
+    claimedCwd: string,
+    claimedRepositoryPath: string,
   ): Promise<{
     cwd: string;
     repository: RepositoryConfig;
@@ -141,24 +146,11 @@ export class WorktreeManager {
     if (!repository) return null;
     const roots = this.effectiveAllowedRoots();
     if (this.allowedRootsPolicyActive && roots.length === 0) return null;
-    if (worktreeId !== undefined) {
-      const worktree = repository.worktrees.find((candidate) => candidate.id === worktreeId);
-      if (!worktree) return null;
-      const paths = await assertClaimedPathsAllowed({
-        cwd: worktree.path,
-        repositoryPath: repository.path,
-        terminalHookScript: repository.terminalHookScript,
-        allowedRoots: roots,
-      });
-      return {
-        cwd: paths.cwd,
-        repository: { ...repository, path: paths.repositoryPath },
-        ...(roots.length ? { allowedRoots: roots } : {}),
-      };
-    }
     const paths = await assertClaimedPathsAllowed({
-      cwd: repository.path,
-      repositoryPath: repository.path,
+      // A refreshed inventory may move or remove the worktree. Finish the session in the
+      // originally claimed checkout, subject to the current root policy and hook config.
+      cwd: claimedCwd,
+      repositoryPath: claimedRepositoryPath,
       terminalHookScript: repository.terminalHookScript,
       allowedRoots: roots,
     });
@@ -195,8 +187,28 @@ export class WorktreeManager {
     }
     this.busy.add(worktreeId);
     try {
-      const paths = await this.assertClaimPaths(repository, worktree.path);
-      return this.claimedResult(repository, worktree, paths.cwd, paths);
+      while (true) {
+        const generation = this.inventoryGeneration;
+        const currentRepository = this.config.repositories.find((r) => r.id === repositoryId);
+        const currentWorktree = currentRepository?.worktrees.find((w) => w.id === worktreeId);
+        if (!currentRepository || !currentWorktree) {
+          if (generation !== this.inventoryGeneration) continue;
+          throw new Error(
+            !currentRepository
+              ? `Unknown repository: ${repositoryId}`
+              : `Unknown worktree: ${worktreeId}`,
+          );
+        }
+        let paths: ClaimedPathsAllowed;
+        try {
+          paths = await this.assertClaimPaths(currentRepository, currentWorktree.path);
+        } catch (error) {
+          if (generation !== this.inventoryGeneration) continue;
+          throw error;
+        }
+        if (generation !== this.inventoryGeneration) continue;
+        return this.claimedResult(currentRepository, currentWorktree, paths.cwd, paths);
+      }
     } catch (error) {
       this.busy.delete(worktreeId);
       throw error;
@@ -204,12 +216,23 @@ export class WorktreeManager {
   }
 
   async mainClaim(repositoryId: string): Promise<ClaimedWorktree> {
-    const repository = this.config.repositories.find((r) => r.id === repositoryId);
-    if (!repository) {
-      throw new Error(`Unknown repository: ${repositoryId}`);
+    while (true) {
+      const generation = this.inventoryGeneration;
+      const repository = this.config.repositories.find((r) => r.id === repositoryId);
+      if (!repository) {
+        if (generation !== this.inventoryGeneration) continue;
+        throw new Error(`Unknown repository: ${repositoryId}`);
+      }
+      let paths: ClaimedPathsAllowed;
+      try {
+        paths = await this.assertClaimPaths(repository, repository.path);
+      } catch (error) {
+        if (generation !== this.inventoryGeneration) continue;
+        throw error;
+      }
+      if (generation !== this.inventoryGeneration) continue;
+      return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths);
     }
-    const paths = await this.assertClaimPaths(repository, repository.path);
-    return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths, true);
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {
