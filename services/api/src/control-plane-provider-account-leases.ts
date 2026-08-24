@@ -52,17 +52,30 @@ function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boo
   return session.hostId === hostId && sessionOccupiesHostAssignment(session);
 }
 
+function hostOccupancyKey(session: SessionRecord): string {
+  if (session.worktreeId) return `w:${session.worktreeId}`;
+  if (session.mainCheckoutLease) return `c:${session.repositoryId}`;
+  return `s:${session.id}`;
+}
+
 export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
   const cap = connectionId
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
-  let used = 0;
+  const occupied = new Set<string>();
   for (const session of state.sessions.values()) {
-    if (sessionHoldsHostAssignment(session, hostId)) used += 1;
+    if (sessionHoldsHostAssignment(session, hostId)) occupied.add(hostOccupancyKey(session));
   }
-  return used < cap;
+  for (const worktree of state.worktrees.values()) {
+    if (worktree.hostId !== hostId) continue;
+    if (worktree.status === "busy" || worktree.currentSessionId) occupied.add(`w:${worktree.id}`);
+  }
+  for (const key of state.mainCheckoutLeases.keys()) {
+    if (key.startsWith(`${hostId}\0`)) occupied.add(`c:${key.slice(hostId.length + 1)}`);
+  }
+  return occupied.size < cap;
 }
 
 export function accountHasLeaseCapacity(

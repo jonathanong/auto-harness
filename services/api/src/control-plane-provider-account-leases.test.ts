@@ -210,6 +210,22 @@ describe("provider account execution-profile leases", () => {
     state.sessions.clear();
     state.sessions.set("cancelled", cancelled);
     expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
+    state.sessions.clear();
+    state.worktrees.set("wt", {
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/wt",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "cancelled",
+    });
+    expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
+    state.worktrees.clear();
+    state.mainCheckoutLeases.set("host\0repo", { sessionId: "held", connectionId: "conn" });
+    expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
   });
 
   it("releases a lease idempotently", async () => {

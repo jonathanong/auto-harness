@@ -244,6 +244,7 @@ describe("durable runtime read-through", () => {
         listCommands: async () => [],
         listProviders: async () => [],
         listProviderAccounts: async () => [],
+        getSession: async (id: string) => (id === "running" ? { ...running } : null),
         listSessionsByStatus: async (status: string) => (status === "running" ? [running] : []),
       } as never,
     });
@@ -252,6 +253,98 @@ describe("durable runtime read-through", () => {
     await refreshSchedulerReadModel(state);
     expect(state.sessions.get("running")).toMatchObject({ status: "running", hostId: "host" });
     expect(state.sessions.has(session.id)).toBe(false);
+  });
+
+  it("keeps in-memory queued sessions when the status GSI has not caught up", async () => {
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: { listSessionsByStatus: async () => [] } as never,
+    });
+    state.sessions.set(session.id, { ...session });
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([session]);
+    expect(state.sessions.get(session.id)).toEqual(session);
+  });
+
+  it("does not revert a just-assigned session when the queued GSI still lists it", async () => {
+    const assigned = {
+      ...session,
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: { listSessionsByStatus: async () => [{ ...session }] } as never,
+    });
+    state.sessions.set(session.id, assigned);
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
+    expect(state.sessions.get(session.id)).toEqual(assigned);
+  });
+
+  it("keeps just-written occupancy when the status GSI lags", async () => {
+    const running = {
+      ...session,
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [
+          {
+            connectionId: "connection",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+            maxConcurrentAssignments: 1,
+          },
+        ],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async () => [],
+        getSession: async (id: string) => (id === running.id ? { ...running } : null),
+      } as never,
+    });
+    state.sessions.set(running.id, running);
+
+    await refreshSchedulerReadModel(state);
+    expect(state.sessions.get(running.id)).toMatchObject({
+      status: "running",
+      hostId: "host",
+      worktreeId: "worktree",
+    });
+  });
+
+  it("keeps local occupancy when storage cannot re-read the session", async () => {
+    const running = {
+      ...session,
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async () => [],
+      } as never,
+    });
+    state.sessions.set(running.id, running);
+
+    await refreshSchedulerReadModel(state);
+    expect(state.sessions.get(running.id)).toMatchObject({ status: "running", hostId: "host" });
   });
 
   it("hydrates cancelled occupancy so in-flight cancels still consume host caps", async () => {
@@ -286,6 +379,7 @@ describe("durable runtime read-through", () => {
         listCommands: async () => [],
         listProviders: async () => [],
         listProviderAccounts: async () => [],
+        getSession: async (id: string) => (id === occupying.id ? { ...occupying } : null),
         listSessionsByStatus: async (status: string) =>
           status === "cancelled" ? [occupying, released] : [],
       } as never,
