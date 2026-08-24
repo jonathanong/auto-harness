@@ -285,6 +285,7 @@ describe("scheduled main-checkout DynamoDB races", () => {
       tablePrefix: ctx.prefix,
       skipEnsureTables: true,
       shardCount: 1,
+      now: () => NOW,
     });
     await stale.plane.hydrateFromStorage();
     const replacement = await createControlPlane({

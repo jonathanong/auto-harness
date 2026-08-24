@@ -13,7 +13,7 @@ import {
   type ResolvedSessionRoute,
 } from "./control-plane-session-target.ts";
 
-export type PlacementWaitReason =
+type PlacementWaitReason =
   | "queue_expired"
   | "admission_closed"
   | "admission_draining"
@@ -23,7 +23,7 @@ export type PlacementWaitReason =
   | "no_eligible_host"
   | "no_eligible_route";
 
-export type PromptPlacementPlan =
+type PromptPlacementPlan =
   | { action: "expire" }
   | { action: "skip"; reason: PlacementWaitReason }
   | { action: "clear_pin" }
@@ -32,7 +32,7 @@ export type PromptPlacementPlan =
       candidates: Array<{ worktree: WorktreeRecord; route: ResolvedSessionRoute }>;
     };
 
-export type ScheduledPlacementPlan =
+type ScheduledPlacementPlan =
   | { action: "expire" }
   | { action: "cancel"; reason: "admission_draining" | "missing_principal" }
   | { action: "skip"; reason: PlacementWaitReason }
@@ -45,7 +45,7 @@ export type ScheduledPlacementPlan =
       }>;
     };
 
-export type ScheduledEligibleHost = { hostId: string; connectionId: string };
+type ScheduledEligibleHost = { hostId: string; connectionId: string };
 
 function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
