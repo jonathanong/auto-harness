@@ -35,17 +35,17 @@ describe("required CI check contract", () => {
 
   it("keeps static analysis and Vitest responsibilities separated", () => {
     const staticAnalysis = job("static-code-analysis");
+    expect(staticAnalysis).toMatch(
+      /run: pnpm install --frozen-lockfile[\s\S]*run: pnpm audit --prod --audit-level high/,
+    );
     expect(staticAnalysis).toContain("run: pnpm lint");
     expect(staticAnalysis).toContain("run: pnpm lint:ast");
     expect(staticAnalysis).toContain("run: pnpm fmt:check");
-    expect(staticAnalysis).toContain("name: Cache tsc incremental\n");
     expect(staticAnalysis).toContain("modules/*/tsconfig.tsbuildinfo");
     expect(staticAnalysis).toContain("services/*/tsconfig.tsbuildinfo");
-    expect(staticAnalysis.indexOf("name: Cache tsc incremental\n")).toBeLessThan(
-      staticAnalysis.indexOf("pnpm --dir modules/shared exec tsc --noEmit"),
+    expect(staticAnalysis).toMatch(
+      /name: Cache tsc incremental\n[\s\S]*pnpm --dir modules\/shared exec tsc --noEmit[\s\S]*pnpm --dir services\/api exec tsc --noEmit/,
     );
-    expect(staticAnalysis).toContain("pnpm --dir modules/shared exec tsc --noEmit");
-    expect(staticAnalysis).toContain("pnpm --dir services/api exec tsc --noEmit");
     expect(staticAnalysis).toContain("run: pnpm knip");
     expect(staticAnalysis).toContain("run: pnpm depcruise");
     expect(staticAnalysis).toContain("run: pnpm check:no-mistakes");
