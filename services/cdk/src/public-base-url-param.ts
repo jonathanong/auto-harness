@@ -12,10 +12,10 @@ import type { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
  * writes the resolved WebUrl into this parameter once the Web stack is up and its health
  * check passes; Runtime's Lambdas only need to know the parameter's *name* ahead of time,
  * and read the value at cold start (services/api/src/lambda-handlers.ts
- * fetchPublicBaseUrl), gracefully falling back to ControlPlane's own
- * http://localhost:7421 default if it is missing — this is a display URL used for a
- * session's `url` field and the Slack integration's deep link, never a security boundary,
- * so a missing value degrades gracefully instead of failing a Lambda cold start closed.
+ * fetchPublicBaseUrl). Session `url` fields and Slack deep links fall back to
+ * ControlPlane's http://localhost:7421 default if it is missing. Viewer WebSocket
+ * Origin checks use the fetched value only and deny the connection until a later
+ * connect can read it; they never treat localhost as an allowed browser origin.
  */
 type PublicBaseUrlParam = { arn: string; param: CfnParameter };
 

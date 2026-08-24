@@ -98,11 +98,11 @@ async function fetchSecureParameter(client: SsmClient, name: string): Promise<st
  * services/cdk/src/deployment-support.ts smokeDeployment and
  * services/cdk/src/public-base-url-param.ts). Unlike the three bootstrap secrets above,
  * a missing parameter name, a missing value, or a failed SSM call all fall back to
- * `undefined` here — ControlPlane's own http://localhost:7421 default then applies —
- * rather than failing the Lambda cold start. Session `url` fields and Slack deep
- * links still fall back to ControlPlane's localhost default. Viewer WebSocket
- * Origin checks use the fetched value only and deny the connection when it is
- * missing.
+ * `undefined` here — ControlPlane's own http://localhost:7421 default then applies
+ * for session `url` fields and Slack deep links — rather than failing the Lambda
+ * cold start. Viewer WebSocket Origin checks use the fetched value only and deny
+ * the connection until a later connect can read it; they never fall back to
+ * localhost.
  */
 export async function fetchPublicBaseUrl(client?: SsmClient): Promise<string | undefined> {
   const name = process.env.PUBLIC_BASE_URL_SSM_PARAM;
@@ -208,14 +208,20 @@ export async function createLambdaRuntime(
     track(delivery);
   };
   /* v8 ignore next 3 -- production origin is the fetched public base URL and fails closed when absent */
-  const viewerPublicBaseUrl = dependencies.created
+  let viewerPublicBaseUrl = dependencies.created
     ? created.plane.state.publicBaseUrl
     : fetchedPublicBaseUrl;
   const viewerSockets = createLambdaViewerSockets({
     auth,
     management,
     storage: created.storage,
-    ...(viewerPublicBaseUrl !== undefined ? { publicBaseUrl: viewerPublicBaseUrl } : {}),
+    resolvePublicBaseUrl: async () => {
+      if (viewerPublicBaseUrl !== undefined) return viewerPublicBaseUrl;
+      /* v8 ignore next 3 -- production SSM refetch after a transient cold-start miss */
+      const resolved = await fetchPublicBaseUrl(dependencies.ssmClient);
+      if (resolved !== undefined) viewerPublicBaseUrl = resolved;
+      return resolved;
+    },
   });
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();

@@ -1146,10 +1146,10 @@ describe("loadBootstrapSecrets", () => {
 
 /**
  * Unlike loadBootstrapSecrets, a missing name, a missing value, and a failed SSM call
- * all fall back to undefined here — this value only ever displays in a session's `url`
- * field and feeds the Slack integration's deep link, never a security boundary, so
- * failing open (ControlPlane's own http://localhost:7421 default then applies) is
- * correct where the bootstrap secrets deliberately fail closed instead.
+ * all fall back to undefined here so the Lambda cold start still succeeds. Session
+ * `url` fields and Slack deep links then use ControlPlane's localhost default.
+ * Viewer WebSocket Origin checks stay fail-closed until a later connect can read
+ * the published URL.
  */
 function withPublicBaseUrlParamEnv<T>(value: string | undefined, run: () => T): T {
   const previous = process.env.PUBLIC_BASE_URL_SSM_PARAM;

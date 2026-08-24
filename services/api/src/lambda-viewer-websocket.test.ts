@@ -86,6 +86,24 @@ describe("Lambda viewer WebSocket adapter", () => {
     await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
   });
 
+  it("retries a missing origin lookup on later connects and then caches it", async () => {
+    const ctx = fixture();
+    const resolvePublicBaseUrl = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(origin);
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      resolvePublicBaseUrl,
+    });
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(200);
+    await expect(sockets.connect("viewer-2", "ticket", origin)).resolves.toBe(200);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(2);
+  });
+
   it("authenticates viewer tickets and owns viewer disconnects", async () => {
     const denied = fixture(null);
     await expect(denied.sockets.connect("denied", "bad")).resolves.toBe(403);

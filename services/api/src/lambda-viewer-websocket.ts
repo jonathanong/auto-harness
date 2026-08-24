@@ -27,6 +27,8 @@ type ViewerDependencies = {
   management: ManagementClient;
   storage: ViewerStorage;
   publicBaseUrl?: string;
+  /** Retry a missing origin after a transient cold-start SSM miss. */
+  resolvePublicBaseUrl?: () => Promise<string | undefined>;
 };
 
 function viewerPrincipal(principal: Principal | null): ConnectionRecord["viewerPrincipal"] {
@@ -65,10 +67,17 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
   const save = async (connection: ConnectionRecord): Promise<void> => {
     await dependencies.storage.putConnection(connection);
   };
+  let allowedOrigin = dependencies.publicBaseUrl;
+  const viewerOrigin = async (): Promise<string | undefined> => {
+    if (allowedOrigin !== undefined) return allowedOrigin;
+    const resolved = await dependencies.resolvePublicBaseUrl?.();
+    if (resolved !== undefined) allowedOrigin = resolved;
+    return resolved;
+  };
 
   return {
     async connect(connectionId: string, ticket: string, origin?: string): Promise<number> {
-      if (!isAllowedViewerOrigin(origin, dependencies.publicBaseUrl)) return 403;
+      if (!isAllowedViewerOrigin(origin, await viewerOrigin())) return 403;
       const principal = viewerPrincipal(await dependencies.auth.authenticateViewerTicket(ticket));
       if (!principal) return 403;
       const now = new Date().toISOString();
