@@ -928,4 +928,58 @@ describe("session log ttl", () => {
       expect(item.ttl).toBeLessThanOrEqual(Math.floor(after / 1000) + SESSION_LOGS_TTL_SECONDS);
     }
   });
+
+  it("overwrites a caller-supplied ttl on single, fenced, and batched writes", async () => {
+    const items: Array<Record<string, unknown> | undefined> = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof PutCommand) items.push(command.input.Item);
+          if (command instanceof TransactWriteCommand) {
+            for (const action of command.input.TransactItems ?? []) {
+              items.push(action.Put?.Item);
+            }
+          }
+          return {};
+        },
+      } as never,
+      tables: {
+        sessionLogs: "SessionLogs",
+        hostLocks: "HostLocks",
+      } as never,
+    };
+    const rec = {
+      sessionId: "session-1",
+      timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      stream: "stdout",
+      content: "line",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+      ttl: 1,
+    };
+    const before = Date.now();
+    await putLog(ctx, rec);
+    await putLogFenced(ctx, rec, { hostId: "host", connectionId: "connection" });
+    await putLogsFenced(
+      ctx,
+      [
+        rec,
+        {
+          ...rec,
+          timestampSeq: "2026-01-01T00:00:00.000Z#0000000002",
+          seq: 2,
+          ttl: Date.now(),
+        },
+      ],
+      { hostId: "host", connectionId: "connection" },
+    );
+    const after = Date.now();
+    const written = items.filter((item): item is Record<string, unknown> => item !== undefined);
+    expect(written).toHaveLength(4);
+    for (const item of written) {
+      expect(item.ttl).not.toBe(1);
+      expect(item.ttl).toBeGreaterThanOrEqual(Math.floor(before / 1000) + SESSION_LOGS_TTL_SECONDS);
+      expect(item.ttl).toBeLessThanOrEqual(Math.floor(after / 1000) + SESSION_LOGS_TTL_SECONDS);
+    }
+  });
 });
