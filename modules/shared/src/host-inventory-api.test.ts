@@ -36,6 +36,11 @@ describe("getInventory / putInventory", () => {
           setupScript: "source ~/.zshrc",
           allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
+          updateConfig: {
+            enabled: true,
+            manifestUrl: "https://updates.example.test/manifest.json",
+            publicKey: "key",
+          },
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
         }),
@@ -47,6 +52,7 @@ describe("getInventory / putInventory", () => {
       expect(inv.setupScript).toBe("source ~/.zshrc");
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
+      expect(inv.updateConfig).toMatchObject({ enabled: true });
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
@@ -82,6 +88,11 @@ describe("getInventory / putInventory", () => {
         setupScript: "source ~/.zshrc",
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "key",
+        },
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -91,6 +102,11 @@ describe("getInventory / putInventory", () => {
         setupScript: "source ~/.zshrc",
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "key",
+        },
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],

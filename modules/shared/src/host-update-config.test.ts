@@ -55,4 +55,21 @@ describe("parseHostUpdateConfig", () => {
       expect(() => parseHostUpdateConfig(input)).toThrow();
     }
   });
+
+  it("rejects non-string optional values and credential-only HTTPS URLs", () => {
+    const valid = {
+      enabled: true,
+      manifestUrl: "https://updates.example.test/manifest.json",
+      publicKey: "key",
+    };
+    expect(() => parseHostUpdateConfig({ ...valid, pollMs: "1000" })).toThrow(
+      "updateConfig.pollMs must be an integer",
+    );
+    expect(() =>
+      parseHostUpdateConfig({
+        ...valid,
+        manifestUrl: "https://:secret@updates.example.test/manifest.json",
+      }),
+    ).toThrow("without credentials");
+  });
 });

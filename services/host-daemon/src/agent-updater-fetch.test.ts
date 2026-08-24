@@ -194,6 +194,21 @@ describe("HTTPS update fetcher", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("preserves a non-timeout response parsing failure", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        body: null,
+        json: async () => {
+          throw new Error("invalid manifest payload");
+        },
+      }),
+    );
+    await expect(fetcher.fetchManifest()).rejects.toThrow("invalid manifest payload");
+  });
+
   it("uses legacy body fallbacks and reports responses without a body", async () => {
     const fallback = createHttpsUpdateFetcher(
       "https://updates.example.test/manifest.json",
