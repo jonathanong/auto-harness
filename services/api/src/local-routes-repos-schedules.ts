@@ -1,7 +1,13 @@
 /* eslint-disable max-lines -- repository and schedule scope gates share one route module. */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
+import {
+  commitMutationAudit,
+  readJsonBody,
+  repositoryInScope,
+  sendHiddenNotFound,
+  sendRouteError,
+} from "./local-audited-route.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
 import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import {
@@ -10,11 +16,11 @@ import {
 } from "./control-plane-repositories-page.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
-  return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
+  return repositoryInScope(ctx, repositoryId);
 }
 
 function hidden(res: RouteCtx["res"]): void {
-  send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+  sendHiddenNotFound(res);
 }
 
 type RepositoryListQueryParam = "limit" | "cursor";
@@ -93,15 +99,9 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
-    let body: Record<string, unknown>;
-    try {
-      body = (await readJson(req)) as Record<string, unknown>;
-    } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
-      return true;
-    }
+    const parsed = await readJsonBody(ctx);
+    if (!parsed.ok) return true;
+    const body = parsed.body as Record<string, unknown>;
     try {
       const result = await plane.createRepositoryDurable({
         name: String(body.name ?? ""),
@@ -114,7 +114,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       });
       if (!result.ok) {
         if (
-          !(await writeRouteAudit(ctx, {
+          !(await commitMutationAudit(ctx, {
             action: "repository:create",
             resourceType: "repository",
             resourceId: "new",
@@ -122,11 +122,11 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           }))
         )
           return true;
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
+        sendRouteError(res, 400, "VALIDATION_ERROR", result.error);
         return true;
       }
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action: "repository:create",
           resourceType: "repository",
           resourceId: result.repository.id,
@@ -138,7 +138,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     } catch {
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action: "repository:create",
           resourceType: "repository",
           resourceId: "new",

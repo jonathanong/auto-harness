@@ -1,5 +1,9 @@
-import { writeRouteAudit } from "./local-audit.ts";
-import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import {
+  commitMutationAudit,
+  readJsonBodyWithAudit,
+  sendRouteError,
+} from "./local-audited-route.ts";
+import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import {
   canAccessSession,
   canAuthorSessions,
@@ -7,31 +11,22 @@ import {
 } from "./local-routes-session-access.ts";
 
 export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> {
-  const { plane, req, res, url, method } = ctx;
+  const { plane, res, url, method } = ctx;
   if (method !== "POST" || url.pathname !== "/api/v1/sessions") return false;
-  let body: unknown;
-  try {
-    body = await readJson(req);
-  } catch {
-    if (
-      !(await writeRouteAudit(ctx, {
-        action: "session:create",
-        resourceType: "session",
-        resourceId: "new",
-        outcome: "failed",
-      }))
-    )
-      return true;
-    send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
-    return true;
-  }
+  const parsed = await readJsonBodyWithAudit(ctx, {
+    action: "session:create",
+    resourceType: "session",
+    resourceId: "new",
+  });
+  if (!parsed.ok) return true;
+  const body = parsed.body;
   const sessionBody =
     body && typeof body === "object" ? (body as Record<string, unknown>) : undefined;
   const repositoryId =
     typeof sessionBody?.repositoryId === "string" ? sessionBody.repositoryId : undefined;
   if (!canAuthorSessions(ctx) || !canAccessSession(ctx, repositoryId)) {
     if (
-      !(await writeRouteAudit(ctx, {
+      !(await commitMutationAudit(ctx, {
         action: "session:create",
         resourceType: "session",
         resourceId: "new",
@@ -50,7 +45,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
       sessionBody.metadata === null ||
       Array.isArray(sessionBody.metadata))
   ) {
-    send(res, 400, { error: { code: "VALIDATION_ERROR", message: "metadata must be an object" } });
+    sendRouteError(res, 400, "VALIDATION_ERROR", "metadata must be an object");
     return true;
   }
   const input = sessionBody
@@ -80,7 +75,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     );
     if (!result.ok) {
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action:
             result.code === "DRAINING" ? "session-drain:admission-rejected" : "session:create",
           resourceType: "session",
@@ -115,7 +110,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     }
     if (!canAccessSession(ctx, result.session.repositoryId)) {
       if (
-        !(await writeRouteAudit(ctx, {
+        !(await commitMutationAudit(ctx, {
           action: "session:create",
           resourceType: "session",
           resourceId: result.session.id,
@@ -128,7 +123,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
       return true;
     }
     if (
-      !(await writeRouteAudit(ctx, {
+      !(await commitMutationAudit(ctx, {
         action: "session:create",
         resourceType: "session",
         resourceId: result.session.id,
@@ -140,7 +135,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
   } catch {
     if (
-      !(await writeRouteAudit(ctx, {
+      !(await commitMutationAudit(ctx, {
         action: "session:create",
         resourceType: "session",
         resourceId: "new",

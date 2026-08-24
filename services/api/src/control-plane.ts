@@ -1,20 +1,24 @@
-import type { HostToServerMessage } from "@auto-harness/shared";
+/* eslint-disable typescript/no-unsafe-declaration-merging --
+ * Service methods are copied onto the class prototype at module load so
+ * `plane.createSession()` stays a compatibility wrapper without inheritance.
+ */
+import type { HostWireMessage } from "@auto-harness/shared";
 
-import type {
-  ArchiveMetadata,
-  ArchiveObject,
-  PublicSession,
-  ScheduleRecord,
-} from "./control-plane-types.ts";
-import { ControlPlaneManagement } from "./control-plane-management-ext.ts";
-import * as agents from "./control-plane-agents.ts";
-import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
-import * as lifecycle from "./control-plane-lifecycle.ts";
-import * as messages from "./control-plane-messages.ts";
-import * as schedules from "./control-plane-schedules.ts";
-import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
-import * as clone from "./control-plane-session-clone.ts";
-import * as durableSessions from "./control-plane-sessions-durable.ts";
+import {
+  createControlPlaneState,
+  hydrateFromStorage,
+  settleStorage,
+  type ControlPlaneState,
+} from "./control-plane-state.ts";
+import type { ControlPlaneOptions } from "./control-plane-types.ts";
+import { ControlPlaneAuditService } from "./control-plane-audit-facade.ts";
+import { ControlPlaneCatalogService } from "./control-plane-catalog-ext.ts";
+import { ControlPlaneHostsService } from "./control-plane-hosts-service.ts";
+import { ControlPlaneIntegrationsService } from "./control-plane-integrations-service.ts";
+import { ControlPlaneRepositoriesService } from "./control-plane-repositories-service.ts";
+import { ControlPlaneSchedulingService } from "./control-plane-scheduling-service.ts";
+import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
+import { bindControlPlaneServices } from "./control-plane-service-bind.ts";
 
 export type {
   ArchiveMetadata,
@@ -30,133 +34,62 @@ export type {
  * Control plane for Phases 2–5 (invariants 1–9).
  * Prefer {@link createControlPlane} so state is backed by DynamoDB Local / AWS.
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
+ *
+ * Domain logic lives on composed services. Methods on this class remain a
+ * compatibility wrapper so existing `plane.createSession()` callers keep working.
  */
-export class ControlPlane extends ControlPlaneManagement {
-  /** Return the process-cache connection used for immediate host delivery. */
-  getHostConnectionId(hostId: string): string | undefined {
-    return this.state.hostConnection.get(hostId);
+export class ControlPlane {
+  readonly state: ControlPlaneState;
+  readonly sessions: ControlPlaneSessionsService;
+  readonly scheduling: ControlPlaneSchedulingService;
+  readonly hosts: ControlPlaneHostsService;
+  readonly catalog: ControlPlaneCatalogService;
+  readonly audit: ControlPlaneAuditService;
+  readonly repositories: ControlPlaneRepositoriesService;
+  readonly integrations: ControlPlaneIntegrationsService;
+
+  constructor(options: ControlPlaneOptions = {}) {
+    this.state = createControlPlaneState(options);
+    this.sessions = new ControlPlaneSessionsService(this.state);
+    this.scheduling = new ControlPlaneSchedulingService(this.state);
+    this.hosts = new ControlPlaneHostsService(this.state);
+    this.catalog = new ControlPlaneCatalogService(this.state);
+    this.audit = new ControlPlaneAuditService(this.state);
+    this.repositories = new ControlPlaneRepositoriesService(this.state);
+    this.integrations = new ControlPlaneIntegrationsService(this.state);
   }
 
-  handlePendingHostMessageDurable(msg: HostToServerMessage, connectionId: string) {
-    return messages.handleHostMessageDurable(this.state, msg, connectionId, true, true);
+  setOnHostMessage(handler: ((hostId: string, msg: HostWireMessage) => void) | undefined): void {
+    this.state.onHostMessage = handler;
   }
 
-  cloneSession(
-    sessionId: string,
-    opts: clone.CloneOptions = {},
-  ): ReturnType<typeof clone.cloneSession> {
-    return clone.cloneSession(this.state, sessionId, opts);
+  async hydrateFromStorage(): Promise<void> {
+    await hydrateFromStorage(this.state);
   }
 
-  async cloneSessionDurable(
-    sessionId: string,
-    opts: clone.CloneOptions = {},
-  ): Promise<Awaited<ReturnType<typeof durableSessions.cloneSessionDurable>>> {
-    return durableSessions.cloneSessionDurable(this.state, sessionId, opts);
-  }
-  async assignScheduledQueuedDurable(): Promise<
-    Array<{ session: PublicSession; hostId: string; worktreeId: null }>
-  > {
-    await this.reclaimReconnectDeadlines(Date.now());
-    return scheduledAssign.assignScheduledQueuedDurable(this.state);
-  }
-
-  triggerSchedule(
-    id: string,
-    nowIso: string = this.state.now(),
-  ): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
-    return schedules.triggerSchedule(this.state, id, nowIso);
-  }
-
-  getSchedule(id: string): ScheduleRecord | null {
-    return schedules.getSchedule(this.state, id);
-  }
-
-  listSchedules(): ScheduleRecord[] {
-    return schedules.listSchedules(this.state);
-  }
-
-  async triggerScheduleDurable(
-    id: string,
-    nowIso: string = this.state.now(),
-  ): Promise<
-    | { ok: true; session: PublicSession; created: boolean }
-    | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
-  > {
-    const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
-    if (result.ok) await this.assignScheduledQueuedDurable();
-    return result;
-  }
-
-  cancelSession(id: string): { ok: true; session: PublicSession } | { ok: false; error: string } {
-    return lifecycle.cancelSession(this.state, id);
-  }
-
-  async cancelSessionDurable(
-    id: string,
-  ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
-    return cancelSessionDurable(this.state, id);
-  }
-
-  evaluateCron(nowIso: string = this.state.now()): PublicSession[] {
-    return schedules.evaluateCron(this.state, nowIso);
-  }
-
-  async evaluateCronDurable(nowIso: string = this.state.now()): Promise<PublicSession[]> {
-    const sessions = await schedules.evaluateCronDurable(this.state, nowIso);
-    if (sessions.length) await this.assignScheduledQueuedDurable();
-    return sessions;
-  }
-
-  tryClaimScheduleFire(
-    scheduleId: string,
-    expectedNextRunAt: string,
-    nowIso: string,
-  ): PublicSession | null {
-    return schedules.tryClaimScheduleFire(this.state, scheduleId, expectedNextRunAt, nowIso);
-  }
-
-  async tryClaimScheduleFireDurable(
-    scheduleId: string,
-    expectedNextRunAt: string,
-    nowIso: string,
-  ): Promise<PublicSession | null> {
-    return schedules.tryClaimScheduleFireDurable(this.state, scheduleId, expectedNextRunAt, nowIso);
-  }
-
-  reclaimStaleHosts(nowMs: number = Date.now()): string[] {
-    return lifecycle.reclaimStaleHosts(this.state, nowMs);
-  }
-
-  override async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
-    return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
-  }
-
-  getHeartbeatStaleMs(): number {
-    return this.state.heartbeatStaleMs;
-  }
-
-  getAckDeadlineMs(): number {
-    return this.state.ackDeadlineMs;
-  }
-
-  archiveSessionLogs(sessionId: string): Promise<ArchiveObject> {
-    return lifecycle.archiveSessionLogs(this.state, sessionId);
-  }
-
-  getArchive(sessionId: string): ArchiveMetadata | null {
-    return lifecycle.getArchive(this.state, sessionId);
-  }
-
-  listArchives(): ArchiveMetadata[] {
-    return lifecycle.listArchives(this.state);
-  }
-
-  drainHost(hostId: string): { ok: boolean; runningSessionIds: string[] } {
-    return agents.drainHost(this.state, hostId);
-  }
-
-  isDraining(hostId: string): boolean {
-    return agents.isDraining(this.state, hostId);
+  async settleStorage(): Promise<void> {
+    await settleStorage(this.state);
   }
 }
+
+export interface ControlPlane
+  extends
+    ControlPlaneSessionsService,
+    ControlPlaneSchedulingService,
+    ControlPlaneHostsService,
+    ControlPlaneCatalogService,
+    ControlPlaneAuditService,
+    ControlPlaneRepositoriesService,
+    ControlPlaneIntegrationsService {}
+
+bindControlPlaneServices(ControlPlane, [
+  ControlPlaneSessionsService,
+  ControlPlaneSchedulingService,
+  ControlPlaneHostsService,
+  ControlPlaneCatalogService,
+  ControlPlaneAuditService,
+  ControlPlaneRepositoriesService,
+  ControlPlaneIntegrationsService,
+]);
+
+export { ControlPlane as ControlPlaneBase };

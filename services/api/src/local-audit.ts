@@ -2,7 +2,7 @@ import { auditActor, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import type { AuditLogInput, AuditOutcome } from "./audit-types.ts";
 import { sendInternalError, type RouteCtx } from "./local-http.ts";
 
-type RouteAudit = Omit<AuditLogInput, "actor" | "outcome"> & { outcome?: AuditOutcome };
+export type RouteAudit = Omit<AuditLogInput, "actor" | "outcome"> & { outcome?: AuditOutcome };
 
 /**
  * Route handlers call this only after deciding the specific resource and
