@@ -330,6 +330,7 @@ export async function getConnection(
     new GetCommand({
       TableName: ctx.tables.connections,
       Key: { connectionId },
+      ConsistentRead: true,
     }),
   );
   return (res.Item as ConnectionRecord | undefined) ?? null;

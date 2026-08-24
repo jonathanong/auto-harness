@@ -173,6 +173,14 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
   }
 
+  listSessionsByStatusPage(
+    status: SessionStatus,
+    shard: number,
+    limit: number,
+  ): Promise<SessionRecord[]> {
+    return sessions.listSessionsByStatusPage(this.ctx, status, shard, limit);
+  }
+
   createOrGetSessionDrain(
     record: SessionDrainRecord,
     audit: import("../audit-types.ts").AuditLogRecord,
@@ -315,8 +323,18 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     attemptId: string;
     hostId: string;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"];
   }): Promise<boolean> {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
+  }
+
+  releaseLegacyHostAssignment(opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+    connectionId: string;
+  }): Promise<boolean> {
+    return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
   }
 
   backfillProviderAccountLease(
@@ -400,6 +418,8 @@ export class DynamoPlaneStorageBase {
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -638,6 +658,8 @@ export class DynamoPlaneStorageBase {
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    timedOutHostId?: string;
+    timedOutAssignmentConnectionId?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

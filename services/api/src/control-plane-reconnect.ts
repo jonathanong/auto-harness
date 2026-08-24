@@ -18,6 +18,7 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
@@ -119,6 +120,7 @@ export async function reconcileHostRunningSessions(
           ...providerAccountLeaseWriteOpts(session),
         })
       ) {
+        await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
         releaseProviderAccountLease(state, session);
         state.sessions.set(
           session.id,
@@ -201,6 +203,7 @@ export async function reclaimReconnectDeadlines(
         ...providerAccountLeaseWriteOpts(session),
       })
     ) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,

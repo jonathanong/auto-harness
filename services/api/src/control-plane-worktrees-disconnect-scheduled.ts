@@ -1,6 +1,7 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
@@ -37,6 +38,7 @@ export async function disconnectScheduledMainCheckouts(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (released) {
+        await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
         releaseScheduledLeaseLocal(state, session);
         releaseProviderAccountLease(state, session);
         state.sessions.set(session.id, queueReconnectSession(session, reason));

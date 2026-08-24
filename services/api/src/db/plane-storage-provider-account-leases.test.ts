@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider lease storage cases share transaction fixtures. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -51,7 +52,8 @@ describe("provider account lease storage", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
       Update: {
-        UpdateExpression: "REMOVE providerAccountLease, timedOutHostId, hostAssignmentLease",
+        UpdateExpression:
+          "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
       },
     });
     expect(items[1]).toMatchObject({ Delete: { TableName: "Locks" } });
@@ -73,12 +75,51 @@ describe("provider account lease storage", () => {
     ).resolves.toBe(false);
   });
 
+  it("releases a timeout-preserved host assignment lease in the same transaction", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks", hostLocks: "Hosts" },
+        } as never,
+        {
+          concurrencyId: "provider-lease:acct:0",
+          sessionId: "sess",
+          attemptId: "attempt",
+          hostAssignmentLease: { hostId: "host" },
+        },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toHaveLength(3);
+    expect(request.input.TransactItems[2]).toMatchObject({ Update: { TableName: "Hosts" } });
+  });
+
+  it("rethrows unexpected timeout cleanup failures", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("capacity unavailable"));
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+        } as never,
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+      ),
+    ).rejects.toThrow("capacity unavailable");
+  });
+
   it("atomically releases a timeout-preserved host slot without a provider lease", async () => {
     const send = vi.fn().mockResolvedValue({});
     await expect(
       releaseTimedOutHostAssignment(
         { doc: { send }, tables: { sessions: "Sessions", hostLocks: "Hosts" } } as never,
-        { sessionId: "sess", attemptId: "attempt", hostId: "host" },
+        {
+          sessionId: "sess",
+          attemptId: "attempt",
+          hostId: "host",
+          hostAssignmentLease: { hostId: "host" },
+        },
       ),
     ).resolves.toBe(true);
     const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } } | undefined;
@@ -87,6 +128,25 @@ describe("provider account lease storage", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({ Update: { TableName: "Sessions" } });
     expect(items[1]).toMatchObject({ Update: { TableName: "Hosts" } });
+  });
+
+  it("clears legacy timeout metadata without manufacturing host occupancy", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutHostAssignment(
+        { doc: { send }, tables: { sessions: "Sessions", hostLocks: "Hosts" } } as never,
+        { sessionId: "sess", attemptId: "attempt", hostId: "host" },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toHaveLength(1);
+    expect(request.input.TransactItems[0]).toMatchObject({
+      Update: {
+        TableName: "Sessions",
+        UpdateExpression:
+          "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
+      },
+    });
   });
 
   it("omits transact deletes when no lease is held", () => {

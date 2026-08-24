@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- registration reconciliation keeps its durable field layering together. */
 import {
   validateHostRepositoryRegistrations,
   type HostRuntimeReport,
@@ -14,6 +15,19 @@ type RegisteredWorktree = {
   labels: string[];
 };
 
+function sameLabels(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((label, index) => label === right[index]);
+}
+
+function previousWorktree(
+  previous: HostInventoryRecord | undefined,
+  worktree: RegisteredWorktree,
+): HostInventoryRecord["repositories"][number]["worktrees"][number] | undefined {
+  return previous?.repositories
+    .find((repository) => repository.id === worktree.repositoryId)
+    ?.worktrees.find((item) => item.id === worktree.id);
+}
+
 export type RegisteredDaemonIdentity = {
   instanceId: string;
   startedAt: string;
@@ -29,10 +43,27 @@ function registeredWorktreeLabels(
   previous: HostInventoryRecord | undefined,
   worktree: RegisteredWorktree,
 ): string[] {
-  const prior = previous?.repositories
-    .find((repository) => repository.id === worktree.repositoryId)
-    ?.worktrees.find((item) => item.id === worktree.id);
-  return prior ? [...prior.labels] : [...worktree.labels];
+  const prior = previousWorktree(previous, worktree);
+  // Rows written before the daemon snapshot existed are treated as operator-owned
+  // during their first refresh; the next registration can then detect changes.
+  if (!prior || prior.daemonLabels === undefined)
+    return prior ? [...prior.labels] : [...worktree.labels];
+  // A daemon repeating the same snapshot must not overwrite an operator edit.
+  return sameLabels(worktree.labels, prior.daemonLabels) ? [...prior.labels] : [...worktree.labels];
+}
+
+/** Hide daemon-only label provenance from control-plane API consumers. */
+export function withoutDaemonLabelProvenance(record: HostInventoryRecord): HostInventoryRecord {
+  return {
+    ...record,
+    repositories: record.repositories.map((repository) => ({
+      ...repository,
+      worktrees: repository.worktrees.map(({ daemonLabels: _daemonLabels, ...worktree }) => ({
+        ...worktree,
+        labels: [...worktree.labels],
+      })),
+    })),
+  };
 }
 
 /** Preserve daemon runtime observability through control-plane inventory edits. */
@@ -186,13 +217,14 @@ export function buildRegisteredInventory(
         path: repository.path,
         defaultBranch: repository.defaultBranch ?? prior?.defaultBranch ?? "main",
         worktrees: advertised.map((worktree) => {
-          const previousWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
+          const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
           return {
-            ...previousWorktree,
+            ...priorWorktree,
             id: worktree.id,
             name: worktree.name,
             path: worktree.path,
             labels: registeredWorktreeLabels(previous, worktree),
+            daemonLabels: [...worktree.labels],
           };
         }),
       };

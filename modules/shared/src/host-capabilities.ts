@@ -38,7 +38,7 @@ export function hasHostCapability(
   return capabilities?.includes(capability) ?? false;
 }
 
-function isPositiveAssignmentCap(value: unknown): value is number {
+export function isPositiveAssignmentCap(value: unknown): value is number {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&

@@ -92,6 +92,30 @@ describe("runtime helpers", () => {
     expect(lines.length).toBeGreaterThan(0);
   });
 
+  it("refuses an assignment when Git is unavailable", async () => {
+    const unavailable: ProcessRunner = {
+      async run() {
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      runAssignedSession(
+        config,
+        {
+          sessionId: "unready",
+          repositoryId: "repo-1",
+          prompt: "hi",
+          resolvedArgv: ["echo", "hi"],
+          timeout: 10,
+          worktreeId: "wt-1",
+        },
+        () => undefined,
+        unavailable,
+        unavailable,
+      ),
+    ).rejects.toThrow("Git 2.36 or newer");
+  });
+
   it("uses the command runner only for the assigned CLI", async () => {
     const systemCalls: string[][] = [];
     const commandCalls: string[][] = [];

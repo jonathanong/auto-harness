@@ -41,6 +41,7 @@ import {
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {
   SessionTransitionContext,
@@ -727,6 +728,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
@@ -772,6 +774,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       const { mainCheckoutLease: _, ...next } = {
@@ -802,6 +805,8 @@ async function applySessionStatusDurable(
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
       state.providerAccounts.delete(providerAccountId);
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.releaseMainCheckoutSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -812,9 +817,13 @@ async function applySessionStatusDurable(
         queueShard: session.queueShard,
         reason: "provider account missing; requeued",
         errorCode: "usage_limit",
-        ...providerAccountLeaseWriteOpts(session),
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
@@ -827,6 +836,8 @@ async function applySessionStatusDurable(
     }
     if (requeue && cooldown && providerAccountId) {
       const now = state.now();
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.requeueMainCheckoutUsageLimitedSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -838,9 +849,13 @@ async function applySessionStatusDurable(
         now,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         errorMessage: msg.errorMessage,
-        ...providerAccountLeaseWriteOpts(session),
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       emitCooldown();
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
@@ -878,6 +893,7 @@ async function applySessionStatusDurable(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseScheduledLeaseLocal(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
@@ -918,6 +934,7 @@ async function applySessionStatusDurable(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
     const { mainCheckoutLease: _, ...next } = {
@@ -946,6 +963,7 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     emitCooldown();
     releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
@@ -976,6 +994,7 @@ async function applySessionStatusDurable(
       suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseProviderAccountLease(state, session);
     const worktree = state.worktrees.get(session.worktreeId);
     if (worktree)
@@ -1000,6 +1019,7 @@ async function applySessionStatusDurable(
   if (!committed) {
     return { ok: true };
   }
+  await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
   releaseProviderAccountLease(state, session);
   const worktreeId = session.worktreeId;
   if (worktreeId) {

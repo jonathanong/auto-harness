@@ -18,6 +18,7 @@ import { OutboundQueue } from "./outbound-queue.ts";
 import {
   emptyExecutionProfiles,
   executionProfileReady,
+  providerAccountReadiness,
   resolveExecutionProfile,
   type ExecutionProfiles,
 } from "./execution-profiles.ts";
@@ -100,6 +101,7 @@ export class DaemonLoop {
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
   private readonly executionProfiles: ExecutionProfiles;
+  private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -199,6 +201,7 @@ export class DaemonLoop {
     }
   }
   async register(): Promise<void> {
+    const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
@@ -213,8 +216,17 @@ export class DaemonLoop {
       this.executionProfiles,
     );
     if (this.inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
+    this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {
+    if (
+      JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
+        this.advertisedProviderAccountReadiness &&
+      !this.hasPendingAcknowledgement()
+    ) {
+      await this.register();
+      return;
+    }
     await this.outbound.send({
       type: "host:keepalive",
       hostId: this.config.hostId,
@@ -333,6 +345,16 @@ export class DaemonLoop {
     for (const current of this.inflightFor(msg.sessionId, msg.attemptId)) {
       current.controller.abort();
     }
+  }
+
+  /**
+   * A readiness registration is also a reconciliation snapshot. Do not send
+   * one while an assignment's durable ACK is outstanding: `register()` only
+   * reports acknowledged attempts, so omitting the pending attempt could let
+   * the control plane requeue it before its acknowledgement arrives.
+   */
+  private hasPendingAcknowledgement(): boolean {
+    return [...this.inflight.values()].some((session) => !session.acknowledged);
   }
 
   private handleAcknowledged(

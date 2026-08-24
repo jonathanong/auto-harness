@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- durable disconnect must release every held lease. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { disconnectScheduledMainCheckouts } from "./control-plane-worktrees-disconnect-scheduled.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
@@ -55,6 +56,7 @@ export async function offlineHostAndRequeueDurableImpl(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (released) {
+        await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
         releaseProviderAccountLease(state, session);
         state.sessions.set(sessionId, { ...session, worktreeId: null });
         state.worktrees.set(wt.id, {
@@ -108,6 +110,7 @@ export async function offlineHostAndRequeueDurableImpl(
             ...providerAccountLeaseWriteOpts(latestSession),
           }));
         if (requeuedNow) {
+          await releaseLegacyHostAssignmentAfterDurableTransition(state, latestSession);
           releaseProviderAccountLease(state, latestSession);
           const {
             ackReceivedAt: _,
@@ -158,6 +161,7 @@ export async function offlineHostAndRequeueDurableImpl(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (won) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(sessionId, {
         ...session,

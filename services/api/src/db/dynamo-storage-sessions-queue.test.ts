@@ -191,6 +191,50 @@ describe("DynamoDB Local queued session lifecycle", () => {
     ).rejects.toThrow();
   });
 
+  it("releases a cancelled worktree through its host-assignment lease and tolerates a retry", async () => {
+    await putSession(ctx, {
+      ...base,
+      id: "cancelled-counted",
+      status: "cancelled",
+      worktreeId: "counted-worktree",
+      attemptId: "counted-attempt",
+    });
+    await putWorktree(ctx, {
+      id: "counted-worktree",
+      name: "counted-worktree",
+      hostId: "counted-host",
+      repositoryId: "repo",
+      path: "/repo/counted-worktree",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "cancelled-counted",
+    });
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: { hostId: "counted-host", assignmentCount: 1 },
+      }),
+    );
+
+    const opts = {
+      sessionId: "cancelled-counted",
+      worktreeId: "counted-worktree",
+      attemptId: "counted-attempt",
+      online: true,
+      hostAssignmentLease: { hostId: "counted-host" },
+    };
+    await expect(releaseCancelledSessionWorktree(ctx, opts)).resolves.toBe(true);
+    await expect(releaseCancelledSessionWorktree(ctx, opts)).resolves.toBe(true);
+    expect((await getWorktree(ctx, opts.worktreeId))?.status).toBe("idle");
+    await expect(
+      releaseCancelledSessionWorktree(
+        { ...ctx, tables: { ...tables, hostLocks: "missing-host-locks" } },
+        opts,
+      ),
+    ).rejects.toThrow();
+  });
+
   it("expires a queued session and releases the concurrency lease it owns", async () => {
     await putSession(ctx, {
       ...base,

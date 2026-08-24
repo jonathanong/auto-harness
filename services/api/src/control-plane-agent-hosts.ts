@@ -4,7 +4,10 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
-import { preservedDaemonRuntime } from "./control-plane-agent-registration.ts";
+import {
+  preservedDaemonRuntime,
+  withoutDaemonLabelProvenance,
+} from "./control-plane-agent-registration.ts";
 import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
 import {
   getHostInventoryDurable,
@@ -79,7 +82,7 @@ export function putHostInventory(
     );
   }
   syncWorktreesFromHost(state, rec);
-  return { ok: true, config: { ...rec } };
+  return { ok: true, config: withoutDaemonLabelProvenance(rec) };
 }
 
 type InventoryWriteResult =
@@ -124,10 +127,30 @@ function prepareHostInventory(
     }
     const collision = findWorktreeNameCollision(state, hostId, parsed);
     if (collision) return { ok: false, error: collision };
+    const previous = state.hostInventories.get(hostId);
+    const repositories = parsed.repositories.map((repository) => {
+      const prior = previous?.repositories.find((item) => item.id === repository.id);
+      return {
+        ...repository,
+        worktrees: repository.worktrees.map((worktree) => {
+          const priorWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
+          if (!priorWorktree) return worktree;
+          return {
+            ...worktree,
+            // Keep the daemon snapshot out of the operator-facing PUT body while
+            // retaining it for the next registration comparison.
+            ...(priorWorktree.daemonLabels !== undefined
+              ? { daemonLabels: [...priorWorktree.daemonLabels] }
+              : {}),
+          };
+        }),
+      };
+    });
     return {
       ok: true,
       config: {
         ...parsed,
+        repositories,
         ...preservedDaemonRuntime(state.hostInventories.get(hostId)),
         updatedAt: state.now(),
         version: (state.hostInventories.get(hostId)?.version ?? 0) + 1,
@@ -177,7 +200,6 @@ export async function putHostInventoryDurable(
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
-
   if (options.awaitProjection === false) {
     // The inventory document is already committed. Exec-config callers intentionally retain
     // their committed-result response contract while the ordinary inventory route below waits.
@@ -209,7 +231,7 @@ export async function putHostInventoryDurable(
       };
     }
   }
-  return { ok: true, config: { ...result.config } };
+  return { ok: true, config: withoutDaemonLabelProvenance(result.config) };
 }
 
 export function getHostInventory(
@@ -217,13 +239,13 @@ export function getHostInventory(
   hostId: string,
 ): HostInventoryRecord | null {
   const rec = state.hostInventories.get(hostId);
-  return rec ? { ...rec } : null;
+  return rec ? withoutDaemonLabelProvenance(rec) : null;
 }
 
 export function listHostInventories(state: ControlPlaneState): HostInventoryRecord[] {
   return [...state.hostInventories.values()]
     .toSorted((a, b) => a.hostId.localeCompare(b.hostId))
-    .map((h) => ({ ...h }));
+    .map((h) => withoutDaemonLabelProvenance(h));
 }
 
 export function deleteHostInventory(

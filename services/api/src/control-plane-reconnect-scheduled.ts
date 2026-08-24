@@ -4,6 +4,7 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 
 export type ScheduledReconnectConfirmation = {
@@ -76,6 +77,7 @@ export async function requeueOmittedScheduled(
         })
       : releaseScheduledLeaseLocal(state, session);
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
@@ -147,6 +149,7 @@ export async function reclaimScheduledReconnect(
       })
     : releaseScheduledLeaseLocal(state, session);
   if (released) {
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     if (state.storage) releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
     if (cancelled) {

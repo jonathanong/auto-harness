@@ -4,6 +4,7 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
+import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 
 export async function protectScheduledRunsForFailedRegistration(
   state: ControlPlaneState,
@@ -47,6 +48,7 @@ export async function protectScheduledRunsForFailedRegistration(
       ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,

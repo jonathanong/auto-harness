@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- assignment coverage cases share one fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assignQueued,
@@ -47,7 +47,115 @@ const worktree: WorktreeRecord = {
   connectionId: "connection",
 };
 
+function providerAssignmentState() {
+  const state = createControlPlaneState({
+    now: () => NOW,
+    attemptIdFactory: () => "attempt",
+    shardCount: 1,
+  });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "/repo",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  state.providers.set("provider", {
+    id: "provider",
+    name: "provider",
+    defaultCommandId: "provider-command",
+  });
+  state.providerAccounts.set("account", {
+    id: "account",
+    providerId: "provider",
+    label: "account",
+    maxConcurrentSessions: 1,
+  });
+  state.commands.set("provider-command", {
+    id: "provider-command",
+    name: "provider command",
+    argv: ["tool"],
+    appendPrompt: true,
+    providerId: "provider",
+  });
+  state.sessions.set(
+    "s",
+    session({ target: { commandId: "provider-command" }, targetLabels: ["provider-command"] }),
+  );
+  state.worktrees.set("w", { ...worktree });
+  state.connections.set("connection", {
+    hostId: "host",
+    connectionId: "connection",
+    type: "host",
+    connectedAt: NOW,
+    lastHeartbeatAt: NOW,
+    capabilities: [],
+    repositoryIds: ["repo"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
+    providerAccountReadiness: [
+      { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+    ],
+  });
+  state.hostConnection.set("host", "connection");
+  return state;
+}
+
 describe("assignment residual coverage", () => {
+  it("skips a local candidate when readiness changes after planning", () => {
+    const state = providerAssignmentState();
+    const connection = state.connections.get("connection")!;
+    let readinessReads = 0;
+    const readiness = [...connection.providerAccountReadiness!];
+    Object.defineProperty(readiness, "some", {
+      value: () => {
+        readinessReads += 1;
+        return readinessReads === 1;
+      },
+    });
+    state.connections.set("connection", { ...connection, providerAccountReadiness: readiness });
+
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
+  it("releases a claimed local worktree when provider lease acquisition loses a race", () => {
+    const state = providerAssignmentState();
+    const leases = new Map<string, never>();
+    Object.defineProperty(leases, "has", {
+      value: (key: string) => key === "provider-lease:account:0",
+    });
+    state.providerAccountLeases = leases as typeof state.providerAccountLeases;
+
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
+  it("skips a durable candidate when readiness changes after planning", async () => {
+    const state = providerAssignmentState();
+    const connection = state.connections.get("connection")!;
+    let readinessReads = 0;
+    const readiness = [...connection.providerAccountReadiness!];
+    Object.defineProperty(readiness, "some", {
+      value: () => {
+        readinessReads += 1;
+        return readinessReads === 1;
+      },
+    });
+    state.connections.set("connection", { ...connection, providerAccountReadiness: readiness });
+    setDurableReadStorage(state, { tryAssignSession: async () => true });
+
+    await expect(assignQueuedDurable(state, undefined, { readModelLoaded: true })).resolves.toEqual(
+      [],
+    );
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
   it("skips locally and durably queued work while repository admission is unavailable", async () => {
     const local = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     local.sessions.set("s", session());
@@ -209,6 +317,82 @@ describe("assignment residual coverage", () => {
 
     await expect(enforceAckDeadlinesDurable(state, Date.parse(NOW) + 2)).resolves.toEqual(["s"]);
     expect(state.pendingAcks.has("s")).toBe(false);
+  });
+
+  it("reconciles legacy host capacity after prompt and scheduled ACK releases commit", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const prompt = session({
+      id: "prompt",
+      status: "running",
+      worktreeId: "w",
+      hostId: "host",
+      attemptId: "prompt-attempt",
+      assignmentSentAt: NOW,
+      assignmentConnectionId: "prompt-connection",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "account",
+        commandId: "missing",
+        hostId: "host",
+        worktreeId: "w",
+        attemptId: "prompt-attempt",
+      },
+    });
+    const promptState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    promptState.sessions.set(prompt.id, prompt);
+    setDurableReadStorage(promptState, {
+      listAllSessions: async () => [prompt],
+      tryRequeueSession: async () => true,
+      releaseLegacyHostAssignment,
+    });
+
+    await expect(enforceAckDeadlinesDurable(promptState, Date.parse(NOW) + 2)).resolves.toEqual([
+      "prompt",
+    ]);
+
+    const scheduled = session({
+      id: "scheduled",
+      type: "scheduled",
+      source: "schedule",
+      status: "running",
+      worktreeId: null,
+      hostId: "host",
+      mainCheckoutLease: true,
+      attemptId: "scheduled-attempt",
+      assignmentSentAt: NOW,
+      assignmentConnectionId: "scheduled-connection",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "account",
+        commandId: "missing",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "scheduled-attempt",
+      },
+    });
+    const scheduledState = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    scheduledState.sessions.set(scheduled.id, scheduled);
+    setDurableReadStorage(scheduledState, {
+      listAllSessions: async () => [scheduled],
+      releaseMainCheckoutSession: async () => true,
+      releaseLegacyHostAssignment,
+    });
+
+    await expect(enforceAckDeadlinesDurable(scheduledState, Date.parse(NOW) + 2)).resolves.toEqual([
+      "scheduled",
+    ]);
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "prompt",
+      attemptId: "prompt-attempt",
+      hostId: "host",
+      connectionId: "prompt-connection",
+    });
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "scheduled",
+      attemptId: "scheduled-attempt",
+      hostId: "host",
+      connectionId: "scheduled-connection",
+    });
   });
 
   it("drops a stale scheduled deadline that lacks an assignment fence", async () => {

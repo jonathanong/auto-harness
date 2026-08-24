@@ -40,7 +40,10 @@ pnpm local:cli-e2e
 
 Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`. Optional
 `HARNESS_EXECUTION_PROFILES` points at a daemon-local JSON file of per-account CLI homes
-(credentials never leave the host). Optional `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
+(credentials never leave the host). For `install-service`, use an absolute profile path; relative
+paths are refused rather than being tied to the supervisor working directory. Unknown top-level
+or per-profile JSON keys are rejected. Optional
+`HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
 host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`.
 
 ---
@@ -93,8 +96,9 @@ task as the current user on Windows (not `LOCALSYSTEM`). Identity is read from `
 written to a mode-0600 env file that is never committed.
 
 Every platform validates the effective persisted env before writing service files or restarting:
-use a bound, non-placeholder host id, a non-local HTTPS production URL, and a bound key (same
-recipe as [deploy-host-daemon.md](deploy-host-daemon.md)):
+use a bound, non-placeholder host id, a non-local HTTPS production URL, a bound key, and—when
+set—an integer `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` from 1 through 256 (same recipe as
+[deploy-host-daemon.md](deploy-host-daemon.md)):
 
 ```bash
 export HARNESS_HOST_ID='<bound-host-id>'

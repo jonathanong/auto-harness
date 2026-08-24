@@ -89,7 +89,7 @@ export class LocalScheduler {
       () => this.plane.reclaimStaleHostsDurable(),
       () => this.plane.reconcileRepositoryDrainsDurable(),
       () => this.plane.reconcileSessionDrainsDurable(),
-      () => this.plane.requestAssignment(),
+      () => this.plane.requestAssignment({ fullScan: true }),
     ];
     for (const step of steps) {
       if (!this.started) return;

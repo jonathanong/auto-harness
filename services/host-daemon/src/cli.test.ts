@@ -163,6 +163,47 @@ describe("runCli", () => {
     expect(a.errors).toEqual([]);
   });
 
+  it("handles a config rejection that arrives after the status deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = deps({
+        loadConfig: () =>
+          new Promise<DaemonConfig>((_, reject) =>
+            setTimeout(() => reject("late failure"), 20_000),
+          ),
+      });
+      const result = runCli(["node", "x", "status"], {}, a);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toBe(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles a status operation that settles before its deadline timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = deps();
+      await expect(runCli(["node", "x", "status"], {}, a)).resolves.toBe(0);
+      await vi.advanceTimersByTimeAsync(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports non-Error environment file failures", async () => {
+    const a = deps({
+      readFile: () => {
+        throw "environment unavailable";
+      },
+    });
+    await expect(
+      runCli(["node", "x", "status"], { HARNESS_ENV_FILE: "/missing" }, a),
+    ).resolves.toBe(1);
+    expect(a.errors).toEqual(["Cannot read HARNESS_ENV_FILE: environment unavailable"]);
+  });
+
   it("reports a safe error when config-only loading fails", async () => {
     const a = deps({
       loadConfig: async () => {
@@ -202,6 +243,49 @@ describe("runCli", () => {
     const ok = deps();
     expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, ok)).toBe(0);
     expect(ok.logs.some((l) => l.includes("completed"))).toBe(true);
+  });
+
+  it("dispatches service installation and removal commands", async () => {
+    const installed = deps({ installService: () => 7 });
+    expect(await runCli(["node", "x", "install-service"], {}, installed)).toBe(7);
+    const removed = deps({ uninstallService: () => 8 });
+    expect(await runCli(["node", "x", "uninstall-service"], {}, removed)).toBe(8);
+  });
+
+  it("rejects a malformed child environment allowlist before starting", async () => {
+    const a = deps();
+    expect(
+      await runCli(
+        ["node", "x", "run-session", "--file", "s.json"],
+        { HARNESS_CHILD_ENV_ALLOWLIST: "BAD-NAME" },
+        a,
+      ),
+    ).toBe(1);
+    expect(a.errors[0]).toMatch(/invalid name/);
+  });
+
+  it("reports a non-completed one-shot session as a failure", async () => {
+    const failed = deps({
+      runSession: async () => ({ status: "failed", exitCode: 1, errorCode: "failed", logs: [] }),
+    });
+    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, failed)).toBe(1);
+    expect(failed.logs.some((line) => line.includes('"status":"failed"'))).toBe(true);
+  });
+
+  it("ignores a late status configuration result after its deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = deps({
+        loadConfig: () =>
+          new Promise<DaemonConfig>((resolve) => setTimeout(() => resolve(sampleConfig), 20_000)),
+      });
+      const result = runCli(["node", "x", "status"], {}, a);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toBe(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("passes the environment loaded from HARNESS_ENV_FILE to a one-shot session", async () => {

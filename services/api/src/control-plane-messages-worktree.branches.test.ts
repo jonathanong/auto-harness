@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -99,5 +99,97 @@ describe("durable worktree terminal branches", () => {
       terminal("cancelled", "timed_out", { cliResumeRef: "late" }),
     );
     expect(cancelled.worktrees.get("w")).toMatchObject({ status: "idle", currentSessionId: null });
+  });
+
+  it("does not fail a legacy providerless terminal when host capacity is already zero", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      finishSession: async () => true,
+      releaseLegacyHostAssignment,
+      putArchive: async () => undefined,
+    });
+    state.sessions.set(
+      "legacy",
+      row("legacy", { assignmentConnectionId: "connection", worktreeId: null }),
+    );
+
+    await handleHostMessageDurable(state, {
+      ...terminal("legacy", "completed"),
+      worktreeId: null,
+    });
+
+    expect(state.sessions.get("legacy")).toMatchObject({ status: "completed" });
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      sessionId: "legacy",
+      attemptId: "attempt",
+      hostId: "host",
+      connectionId: "connection",
+    });
+  });
+
+  it("reconciles provider-backed legacy occupants after terminal transition", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      finishSession: async () => true,
+      releaseLegacyHostAssignment,
+      putArchive: async () => undefined,
+    });
+    for (const id of ["legacy-a", "legacy-b"]) {
+      state.sessions.set(
+        id,
+        row(id, {
+          assignmentConnectionId: "connection",
+          worktreeId: null,
+          providerAccountLease: {
+            concurrencyId: `provider-lease:acct:${id}`,
+            providerAccountId: "acct",
+            slot: 0,
+            attemptId: "attempt",
+          },
+          resolvedRoute: { providerAccountId: "acct" },
+        }),
+      );
+      await handleHostMessageDurable(state, {
+        ...terminal(id, "completed"),
+        worktreeId: null,
+      });
+    }
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledTimes(2);
+    expect(state.sessions.get("legacy-a")).toMatchObject({ status: "completed" });
+    expect(state.sessions.get("legacy-b")).toMatchObject({ status: "completed" });
+  });
+
+  it("keeps a committed terminal successful when legacy capacity repair throws", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => {
+      throw new Error("host lock unavailable");
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const state = createControlPlaneState({ now: () => NOW });
+      setDurableReadStorage(state, {
+        finishSession: async () => true,
+        releaseLegacyHostAssignment,
+        putArchive: async () => undefined,
+      });
+      state.sessions.set(
+        "legacy-error",
+        row("legacy-error", { assignmentConnectionId: "connection", worktreeId: null }),
+      );
+
+      await handleHostMessageDurable(state, {
+        ...terminal("legacy-error", "completed"),
+        worktreeId: null,
+      });
+
+      expect(state.sessions.get("legacy-error")).toMatchObject({ status: "completed" });
+      expect(error).toHaveBeenCalledWith(
+        "legacy host assignment release failed",
+        expect.any(Error),
+      );
+    } finally {
+      error.mockRestore();
+    }
   });
 });

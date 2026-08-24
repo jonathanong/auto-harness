@@ -12,8 +12,11 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
+import { refreshAssignmentCommandsDurable } from "./control-plane-durable-read-catalog.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
+import { accountHasLeaseCapacity } from "./control-plane-provider-account-leases.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 const session = {
@@ -44,13 +47,142 @@ const worktree = {
   status: "idle" as const,
   online: true,
 };
+const commandRecord = (id: string) => ({
+  id,
+  name: id,
+  argv: [id],
+  appendPrompt: true,
+  providerId: null,
+  createdAt: "now",
+  updatedAt: "now",
+});
 
 describe("durable runtime read-through", () => {
+  it("returns false when archive retry-index migration is unavailable", async () => {
+    const service = new ControlPlaneSessionsService(createControlPlaneState());
+    await expect(service.migrateArchiveRetryIndexPage()).resolves.toBe(false);
+
+    let migrated = 0;
+    service.state.storage = {
+      migrateArchiveRetryIndexPage: async () => {
+        migrated += 1;
+        return true;
+      },
+    } as never;
+    await expect(service.migrateArchiveRetryIndexPage()).resolves.toBe(true);
+    expect(migrated).toBe(1);
+  });
+
   it("keeps the base durable session facade available to subclasses", async () => {
     const plane = new ControlPlaneBase();
     plane.state.sessions.set(session.id, { ...session });
 
     await expect(plane.getSessionDurable(session.id)).resolves.toMatchObject({ id: session.id });
+  });
+
+  it("refreshes only command rows referenced by bounded assignment candidates", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    const command = {
+      id: "command",
+      name: "fresh",
+      argv: ["fresh"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    state.commands.set(command.id, { ...command, name: "stale" });
+    state.storage = {
+      getCommand: async (id: string) => (id === command.id ? command : null),
+    } as never;
+
+    await refreshAssignmentCommandsDurable(state, [
+      { ...session, target: { commandId: command.id } },
+    ]);
+
+    expect(state.commands.get(command.id)).toEqual(command);
+    state.storage = { getCommand: async () => null } as never;
+    await refreshAssignmentCommandsDurable(state, [
+      { ...session, target: { commandId: command.id } },
+    ]);
+    expect(state.commands.has(command.id)).toBe(false);
+  });
+
+  it("refreshes the provider command cascade for a bounded candidate", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    state.connections.set("connection", {
+      connectionId: "connection",
+      type: "host",
+      hostId: "host",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+      repositoryIds: ["repository"],
+    });
+    state.worktrees.set("worktree", {
+      id: "worktree",
+      name: "worktree",
+      hostId: "host",
+      repositoryId: "repository",
+      path: "/worktree",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    const inventory = {
+      hostId: "host",
+      repositories: [
+        {
+          id: "repository",
+          path: "/repo",
+          defaultBranch: "main",
+          providerAccountOverrides: { account: { commandId: "cmd-repository" } },
+          worktrees: [
+            {
+              id: "worktree",
+              name: "worktree",
+              path: "/worktree",
+              labels: [],
+              providerAccountOverrides: { account: { commandId: "cmd-worktree" } },
+            },
+          ],
+        },
+      ],
+      providerAccounts: [{ providerAccountId: "account", commandId: "cmd-host" }],
+      updatedAt: "now",
+    };
+    state.storage = {
+      getHostInventory: async () => inventory,
+      getProviderAccount: async () => ({
+        id: "account",
+        providerId: "provider",
+        label: "account",
+        usageLimitCooldownSeconds: 60,
+        maxConcurrentSessions: 1,
+        usageLimitedUntil: null,
+        lastUsageLimitedAt: null,
+        lastAssignedAt: null,
+        createdAt: "now",
+        updatedAt: "now",
+      }),
+      getProvider: async () => ({
+        id: "provider",
+        name: "provider",
+        defaultCommandId: "cmd-default",
+        createdAt: "now",
+        updatedAt: "now",
+      }),
+      getCommand: async (id: string) => commandRecord(id),
+    } as never;
+
+    const refreshed = await refreshAssignmentCommandsDurable(
+      state,
+      [{ ...session, target: { providerId: "provider" } }],
+      10,
+    );
+
+    expect([...refreshed]).toEqual(
+      expect.arrayContaining(["cmd-host", "cmd-repository", "cmd-worktree", "cmd-default"]),
+    );
   });
 
   it("reads the base durable session facade from storage", async () => {
@@ -256,6 +388,169 @@ describe("durable runtime read-through", () => {
     expect(state.sessions.has(session.id)).toBe(false);
   });
 
+  it("rebuilds provider-account lease cache from authoritative occupying sessions", async () => {
+    const activeLease = {
+      concurrencyId: "provider-lease:account:0",
+      providerAccountId: "account",
+      slot: 0,
+      attemptId: "active-attempt",
+    };
+    const staleLease = {
+      concurrencyId: "provider-lease:account:3",
+      providerAccountId: "account",
+      slot: 3,
+      attemptId: "stale-attempt",
+    };
+    const timedOutLease = {
+      concurrencyId: "provider-lease:account:1",
+      providerAccountId: "account",
+      slot: 1,
+      attemptId: "timed-out-attempt",
+    };
+    const active = {
+      ...session,
+      id: "active",
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+      providerAccountLease: activeLease,
+    };
+    const cachedStale = {
+      ...session,
+      id: "stale-migrated",
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "stale-worktree",
+      providerAccountLease: staleLease,
+    };
+    const completed = {
+      ...cachedStale,
+      status: "completed" as const,
+      completedAt: "2026-01-01T00:00:01.000Z",
+    };
+    const timedOut = {
+      ...session,
+      id: "timed-out",
+      status: "timed_out" as const,
+      timedOutHostId: "host",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      providerAccountLease: timedOutLease,
+    };
+    const account = {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 3,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [account],
+        listSessionsByStatus: async (status: string) =>
+          status === "running" ? [active, cachedStale] : [],
+        getSession: async (id: string) =>
+          id === active.id
+            ? { ...active }
+            : id === cachedStale.id
+              ? { ...completed }
+              : id === timedOut.id
+                ? { ...timedOut }
+                : null,
+      } as never,
+    });
+    state.sessions.set(active.id, active);
+    state.sessions.set(cachedStale.id, cachedStale);
+    state.sessions.set(timedOut.id, timedOut);
+    state.providerAccountLeases.set(activeLease.concurrencyId, {
+      sessionId: active.id,
+      attemptId: activeLease.attemptId,
+      slot: activeLease.slot,
+      hostId: "host",
+      providerAccountId: activeLease.providerAccountId,
+    });
+    state.providerAccountLeases.set(staleLease.concurrencyId, {
+      sessionId: cachedStale.id,
+      attemptId: staleLease.attemptId,
+      slot: staleLease.slot,
+      hostId: "host",
+      providerAccountId: staleLease.providerAccountId,
+    });
+    state.providerAccountLeases.set(timedOutLease.concurrencyId, {
+      sessionId: timedOut.id,
+      attemptId: timedOutLease.attemptId,
+      slot: timedOutLease.slot,
+      hostId: "host",
+      providerAccountId: timedOutLease.providerAccountId,
+    });
+
+    await refreshSchedulerReadModel(state);
+
+    expect(state.providerAccountLeases).toEqual(
+      new Map([
+        [
+          activeLease.concurrencyId,
+          {
+            sessionId: active.id,
+            attemptId: activeLease.attemptId,
+            slot: activeLease.slot,
+            hostId: "host",
+            providerAccountId: activeLease.providerAccountId,
+          },
+        ],
+        [
+          timedOutLease.concurrencyId,
+          {
+            sessionId: timedOut.id,
+            attemptId: timedOutLease.attemptId,
+            slot: timedOutLease.slot,
+            hostId: "host",
+            providerAccountId: timedOutLease.providerAccountId,
+          },
+        ],
+      ]),
+    );
+    expect(state.sessions.get(timedOut.id)).toMatchObject({
+      status: "timed_out",
+      providerAccountLease: timedOutLease,
+    });
+    expect(accountHasLeaseCapacity(state, account.id)).toBe(true);
+  });
+
+  it("does not let a stale running GSI row overwrite a queued session", async () => {
+    const staleRunning = {
+      ...session,
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async (status: string) =>
+          status === "running" ? [staleRunning] : [],
+        getSession: async () => ({ ...session }),
+      } as never,
+    });
+    state.sessions.set(session.id, { ...session });
+
+    await refreshSchedulerReadModel(state);
+
+    expect(state.sessions.get(session.id)).toMatchObject({ status: "queued" });
+  });
+
   it("keeps in-memory queued sessions when the status GSI has not caught up", async () => {
     const state = createControlPlaneState({
       shardCount: 1,
@@ -265,6 +560,24 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([session]);
     expect(state.sessions.get(session.id)).toEqual(session);
+  });
+
+  it("revalidates cached queued sessions omitted from the status GSI", async () => {
+    const stale = { ...session, id: "stale-queue" };
+    const durable = { ...session, id: "durable-queue" };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatus: async () => [],
+        getSession: async (id: string) =>
+          id === durable.id ? durable : { ...stale, status: "running" },
+      } as never,
+    });
+    state.sessions.set(stale.id, stale);
+    state.sessions.set(durable.id, durable);
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([durable]);
+    expect(state.sessions.get(stale.id)?.status).toBe("running");
   });
 
   it("does not revert a just-assigned session when the queued GSI still lists it", async () => {
@@ -282,6 +595,59 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
     expect(state.sessions.get(session.id)).toEqual(assigned);
+  });
+
+  it("strongly revalidates a queued GSI row whose cache says running", async () => {
+    const gsiRow = { ...session, id: "requeued", status: "queued" as const };
+    const authoritative = { ...gsiRow, errorMessage: "requeued" };
+    const getSession = async (id: string, consistent?: boolean) => {
+      expect(consistent).toBe(true);
+      return id === gsiRow.id ? authoritative : null;
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, { ...gsiRow, status: "running" });
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([
+      authoritative,
+    ]);
+    expect(state.sessions.get(gsiRow.id)).toEqual(authoritative);
+  });
+
+  it("drops a stale queued GSI row when its authoritative row is still running", async () => {
+    const gsiRow = { ...session, id: "stale-running", status: "queued" as const };
+    const authoritative = { ...gsiRow, status: "running" as const };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession: async () => authoritative,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, authoritative);
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([]);
+    expect(state.sessions.get(gsiRow.id)).toEqual(authoritative);
+  });
+
+  it("drops a queued GSI row when its authoritative session was deleted", async () => {
+    const gsiRow = { ...session, id: "deleted-queued", status: "queued" as const };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession: async () => null,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, { ...gsiRow, status: "running" });
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([]);
+    expect(state.sessions.has(gsiRow.id)).toBe(false);
   });
 
   it("uses only durable queue rows for queue age metrics", async () => {

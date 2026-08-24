@@ -1,5 +1,6 @@
 import {
   HOST_PROTOCOL_VERSION,
+  MAX_HOST_REGISTRATION_BYTES,
   type HostRuntimeReport,
   type HostRunningAttempt,
   type HostToServerMessage,
@@ -65,6 +66,11 @@ export async function registerDaemon(
     ...(runtime ? { runtime } : {}),
     ...(draining ? { draining: true } : {}),
   };
+  if (Buffer.byteLength(JSON.stringify(registration), "utf8") > MAX_HOST_REGISTRATION_BYTES) {
+    throw new Error(
+      `host registration exceeds ${String(MAX_HOST_REGISTRATION_BYTES)} byte WebSocket limit`,
+    );
+  }
   await transport.send(registration);
 }
 
