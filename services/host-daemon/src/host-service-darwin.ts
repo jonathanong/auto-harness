@@ -10,7 +10,6 @@ import type {
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import { DARWIN_LABEL, renderLaunchAgentPlist } from "./host-service-templates.ts";
 
-/** Darwin `EALREADY`: launchd is already starting or replacing the job. */
 const LAUNCHCTL_EALREADY = 37;
 
 function darwinPaths(home: string): {
@@ -101,17 +100,21 @@ function recoverLaunchAgent(
   service: string,
   kick: HostServiceRunResult,
 ): number {
-  if (isLaunchAgentPresent(statusDarwin(ctx))) return 0;
-  if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
   const status = statusDarwin(ctx);
+  if (status.state === "stopped" && kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
+    return failedCommand(ctx.error, "launchctl kickstart", kick);
+  }
   if (isLaunchAgentPresent(status)) return 0;
+  if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
+  const after = statusDarwin(ctx);
+  if (isLaunchAgentPresent(after)) return 0;
   if (kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
     return failedCommand(ctx.error, "launchctl kickstart", kick);
   }
   return failedCommand(ctx.error, "launchctl verification", {
     status: 1,
     stdout: "",
-    stderr: status.reason,
+    stderr: after.reason,
   });
 }
 

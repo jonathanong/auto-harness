@@ -78,7 +78,13 @@ describe("install-service darwin reload", () => {
         kickstart: errRun(1, "already in progress"),
       }).code,
     ).toBe(0);
-    expect(steps({ print: stopped, kickstart: errRun(1, "kick") }).code).toBe(0);
+    expect(steps({ print: stopped, kickstart: errRun(37, "") }).code).toBe(0);
+  });
+
+  it("reports kickstart failure when the agent stays stopped", () => {
+    const result = steps({ print: stopped, kickstart: errRun(1, "kick") });
+    expect(result.code).toBe(1);
+    expect(result.errors.join("\n")).toMatch(/kickstart/);
   });
 
   it("re-bootstraps after a kickstart race unregisters the agent", () => {
