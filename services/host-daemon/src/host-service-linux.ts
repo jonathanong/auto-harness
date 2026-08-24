@@ -1,26 +1,62 @@
-import { join } from "node:path";
+/* eslint-disable max-lines -- Linux install, staging, and update handoff share one service contract. */
+import { dirname, join } from "node:path";
 
 import { persistedEnvError } from "./host-service-env.ts";
 import { preparePersistedEnv } from "./host-service-env-persisted.ts";
 import type { HostServiceContext, HostServiceStatus } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
+import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import {
   LINUX_ENABLE_NOW_COMMAND,
   LINUX_ENV_DEST,
   LINUX_ENV_DIR,
-  LINUX_OPT_CURRENT,
   LINUX_RELOAD_COMMAND,
   LINUX_SERVICE_NAME,
   LINUX_UNIT_DEST,
   renderLinuxUnit,
+  renderUnixLaunchScript,
 } from "./host-service-templates.ts";
 
-function linuxWorkingDirectory(ctx: HostServiceContext): string {
-  return ctx.fs.existsSync(LINUX_OPT_CURRENT) ? LINUX_OPT_CURRENT : ctx.checkoutRoot;
+type LinuxPaths = {
+  currentRoot: string;
+  launcher: string;
+};
+
+function linuxPaths(ctx: HostServiceContext): LinuxPaths {
+  const updateRoot = resolveUpdateInstallDir(ctx.env, {
+    platform: ctx.platform,
+    home: ctx.home,
+    appData: ctx.appData,
+  });
+  return {
+    currentRoot: join(updateRoot, "current"),
+    launcher: join(updateRoot, "run-host-daemon.sh"),
+  };
 }
 
-function renderedUnit(ctx: HostServiceContext): string {
-  return renderLinuxUnit(ctx.fs.readFileSync(ctx.unitTemplatePath), linuxWorkingDirectory(ctx));
+function linuxWorkingDirectory(ctx: HostServiceContext, currentRoot: string): string {
+  return ctx.fs.existsSync(currentRoot) ? currentRoot : ctx.checkoutRoot;
+}
+
+function renderedUnit(ctx: HostServiceContext, paths: LinuxPaths): string {
+  return renderLinuxUnit(
+    ctx.fs.readFileSync(ctx.unitTemplatePath),
+    linuxWorkingDirectory(ctx, paths.currentRoot),
+    paths.launcher,
+  );
+}
+
+function renderedLauncher(ctx: HostServiceContext, paths: LinuxPaths): string {
+  return renderUnixLaunchScript({
+    nodePath: ctx.nodePath,
+    currentRoot: paths.currentRoot,
+    currentLauncherPath: join(
+      paths.currentRoot,
+      "services/host-daemon/bin/auto-harness-host-daemon.mjs",
+    ),
+    fallbackRoot: ctx.checkoutRoot,
+    fallbackLauncherPath: ctx.launcherPath,
+  });
 }
 
 function stageRoot(ctx: HostServiceContext): string {
@@ -54,12 +90,21 @@ export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
   return { state: "unknown", reason: "systemctl returned an unrecognized state" };
 }
 
-function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string): number {
+function stageLinux(
+  ctx: HostServiceContext,
+  paths: LinuxPaths,
+  unit: string,
+  launcher: string,
+  envContents?: string,
+): number {
   const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
   const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
   const stagedEnv = join(stagedDir, "host-daemon.env");
+  const stagedLauncher = join(stagedDir, "run-host-daemon.sh");
   writeMode(ctx.fs, stagedUnit, unit, 0o644, true);
+  writeMode(ctx.fs, stagedLauncher, launcher, 0o755, true);
   ctx.log(`Wrote ${stagedUnit}`);
+  ctx.log(`Wrote ${stagedLauncher}`);
   if (envContents !== undefined) {
     writeMode(ctx.fs, stagedEnv, envContents, 0o600, true);
     ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
@@ -67,9 +112,11 @@ function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string)
   ctx.log(`Staged in ephemeral directory ${stagedDir}`);
   ctx.log("Not running as root. Run:");
   ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
+  ctx.log(`  sudo install -d -m 0755 ${dirname(paths.launcher)}`);
   if (envContents !== undefined) {
     ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
   }
+  ctx.log(`  sudo install -m 0755 ${stagedLauncher} ${paths.launcher}`);
   ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
   ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
   ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
@@ -113,19 +160,24 @@ export function installLinux(ctx: HostServiceContext): number {
     ctx.error(persistedEnvError(preparedEnv.errors));
     return 1;
   }
-  const unit = renderedUnit(ctx);
+  const paths = linuxPaths(ctx);
+  const unit = renderedUnit(ctx, paths);
+  const launcher = renderedLauncher(ctx, paths);
   const writeEnv = !envExists || ctx.apiUrl !== undefined;
   if (ctx.uid !== 0) {
-    return stageLinux(ctx, unit, writeEnv ? preparedEnv.contents : undefined);
+    return stageLinux(ctx, paths, unit, launcher, writeEnv ? preparedEnv.contents : undefined);
   }
 
   ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });
+  ctx.fs.mkdirSync(dirname(paths.launcher), { recursive: true, mode: 0o755 });
   if (writeEnv) {
     writeMode(ctx.fs, LINUX_ENV_DEST, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${LINUX_ENV_DEST} (mode 0600)`);
   } else {
     ctx.log(`Keeping existing env file ${LINUX_ENV_DEST}`);
   }
+  writeMode(ctx.fs, paths.launcher, launcher, 0o755);
+  ctx.log(`Wrote ${paths.launcher}`);
   writeMode(ctx.fs, LINUX_UNIT_DEST, unit, 0o644);
   ctx.log(`Wrote ${LINUX_UNIT_DEST}`);
   const reload = ctx.run("systemctl", ["daemon-reload"]);
@@ -134,9 +186,14 @@ export function installLinux(ctx: HostServiceContext): number {
 }
 
 export function restartLinux(ctx: HostServiceContext): number {
-  const restart = ctx.run("systemctl", ["restart", LINUX_SERVICE_NAME]);
-  if (restart.status !== 0) return failedCommand(ctx.error, "systemctl restart", restart);
-  ctx.log(`Restarted ${LINUX_SERVICE_NAME}`);
+  if (!ctx.restartHandoff) {
+    ctx.error(
+      "Linux automatic update restart requires the daemon process handoff; refusing an unprivileged systemctl restart.",
+    );
+    return 1;
+  }
+  ctx.restartHandoff();
+  ctx.log(`Requested daemon exit; systemd Restart=always will restart ${LINUX_SERVICE_NAME}`);
   return 0;
 }
 

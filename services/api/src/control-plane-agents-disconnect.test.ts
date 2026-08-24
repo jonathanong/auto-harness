@@ -1,12 +1,51 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
 import { disconnectHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
 import { seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("durable host disconnect", () => {
+  it("retains a disconnected host until its offline alert is durably enqueued", async () => {
+    const enqueue = vi.fn(async () => "created" as const);
+    enqueue.mockRejectedValueOnce(new Error("outbox unavailable"));
+    const state = createControlPlaneState({
+      heartbeatStaleMs: 1,
+      now: () => "2026-01-01T00:00:00.000Z",
+      storage: {
+        enqueue,
+        getSlackIntegration: async () => ({
+          id: "slack",
+          type: "slack",
+          encryptedConfig: "x",
+          defaultChannel: "#ops",
+          enabled: true,
+          notifications: DEFAULT_SLACK_NOTIFICATIONS,
+          signingSecretConfigured: false,
+          version: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      } as never,
+    });
+    state.disconnectedHosts.set("offline", { lastHeartbeatAt: "2000-01-01T00:00:00.000Z" });
+
+    await expect(
+      reclaimStaleHostsDurable(state, Date.parse("2026-01-01T00:00:00.000Z")),
+    ).resolves.toEqual([]);
+    expect(state.disconnectedHosts.has("offline")).toBe(true);
+
+    await expect(
+      reclaimStaleHostsDurable(state, Date.parse("2026-01-01T00:00:00.000Z")),
+    ).resolves.toEqual([]);
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(state.disconnectedHosts.has("offline")).toBe(false);
+  });
+
   it("drops stale local connections and reports requeues even when exact release loses", async () => {
     const plane = new ControlPlane({ heartbeatStaleMs: 1 });
     plane.state.hostConnection.set("h", "c");

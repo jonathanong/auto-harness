@@ -87,24 +87,45 @@ describe("daemon updater runtime", () => {
         error: (line) => logs.push(line),
       });
       await new Promise((resolve) => setTimeout(resolve, 20));
-      stop();
+      await stop();
       expect(logs.some((line) => line.includes("updater"))).toBe(true);
       const stopPoll = startUpdatePoll(updater!, {
         pollMs: 60_000,
         log: (line) => logs.push(line),
         error: (line) => logs.push(line),
       });
-      stopPoll();
+      await stopPoll();
       const errors: string[] = [];
       const stopFail = startUpdatePoll(
         { run: async () => Promise.reject(new Error("boom")) } as never,
         { pollMs: 0, log: () => undefined, error: (line) => errors.push(line) },
       );
       await new Promise((resolve) => setTimeout(resolve, 20));
-      stopFail();
+      await stopFail();
       expect(errors.some((line) => line.includes("updater failed: boom"))).toBe(true);
     } finally {
       cleanup();
     }
+  });
+
+  it("waits for an active poll before shutdown completes", async () => {
+    let release: (() => void) | undefined;
+    const active = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const stop = startUpdatePoll({ run: async () => active } as never, {
+      pollMs: 0,
+      log: () => undefined,
+      error: () => undefined,
+    });
+    let stopped = false;
+    const stopping = stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    release?.();
+    await stopping;
+    expect(stopped).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- startup, updater, and orderly shutdown share one lifecycle. */
 import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -48,8 +49,20 @@ function noopInventoryPollStop(): Promise<void> {
   return Promise.resolve();
 }
 
-function noopUpdatePoll(): void {
-  // Default until update env enables a real poll stop handle.
+function noopUpdatePoll(): Promise<void> {
+  return Promise.resolve();
+}
+
+/**
+ * Request a nonblocking, self-authorized supervisor handoff. Linux systemd
+ * restarts this process through Restart=always; no service-manager privilege is
+ * needed by the unprivileged daemon user.
+ */
+export function requestSupervisorRestart(
+  signalSelf: (pid: number, signal: NodeJS.Signals) => void = process.kill,
+): void {
+  const handoff = setTimeout(() => signalSelf(process.pid, "SIGTERM"), 0);
+  handoff.unref?.();
 }
 
 /**
@@ -186,7 +199,14 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
       env: updaterEnv,
       log,
       error,
-      service: { env: updaterEnv, log, error },
+      service: {
+        env: updaterEnv,
+        log,
+        error,
+        // Schedule after the updater transaction; the CLI signal handler then
+        // drains normal shutdown and systemd restarts this service.
+        restartHandoff: requestSupervisorRestart,
+      },
     });
     if (updater) {
       stopUpdatePoll = startUpdatePoll(updater, {
@@ -202,7 +222,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const stop = async (): Promise<void> => {
     // Keep this channel alive until the fenced drain commits. If it fails,
     // callers receive the error and can retry without exiting this daemon.
-    stopUpdatePoll();
+    await stopUpdatePoll();
     await loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);

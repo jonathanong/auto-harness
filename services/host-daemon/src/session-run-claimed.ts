@@ -115,7 +115,6 @@ async function runProcessAndFinish(
     "system",
     `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
   );
-  let combined = "";
   const capturePolicy =
     commandRunner.outputStreams === "merged" && assign.resumeRefCapture
       ? { ...assign.resumeRefCapture, stream: "either" as const }
@@ -147,9 +146,6 @@ async function runProcessAndFinish(
     timeoutMs: remainingMs(),
     ...(signal ? { signal } : {}),
     onChunk: (c) => {
-      // Usage-limit detection only needs recent output; retaining every byte of
-      // a long-running command made daemon memory grow without a bound.
-      combined = (combined + c.data).slice(-256 * 1024);
       const safeContent = resumeRef.push(c.stream, c.data);
       if (safeContent) streamer.write(c.stream, safeContent);
     },
@@ -209,7 +205,6 @@ async function runProcessAndFinish(
   const usageLimit = detectUsageLimit({
     argv,
     failed: true,
-    output: combined,
     ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
     ...(result.usageLimit === true ? { adapterUsageLimit: true } : {}),
   });
@@ -218,8 +213,7 @@ async function runProcessAndFinish(
       status: "failed",
       exitCode: result.exitCode,
       errorCode: "usage_limit",
-      errorMessage:
-        usageLimit === "output" ? "Usage limit detected in CLI output" : "Usage limit detected",
+      errorMessage: "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });

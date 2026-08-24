@@ -51,7 +51,7 @@ Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs 
 The AWS runtime has been deployed and account-tested — see the Maturity table in
 [deploy-aws.md](deploy-aws.md#maturity). Implementation constants that drive
 volume are measured from the running code (daemon ~10 log messages/s after
-source-side coalesce, control-plane 25-item log transactions, 20s WebSocket
+source-side coalesce, local 25-item connection-fence batches, 20s WebSocket
 keepalive, 1-minute EventBridge scheduler, 7-day SessionLogs TTL, 32 KiB API
 Gateway frame). Those constants live in `modules/shared/src/capacity-model.ts`.
 
@@ -84,15 +84,16 @@ pages for the deployment region before approving a budget.
 | Session duration        | 15 minutes      | long-running CLI, not a smoke `claude -p`                       |
 | Daemon log rate         | 10 messages/s   | `DEFAULT_LOG_MESSAGES_PER_SEC`                                  |
 | Log chunks / session    | 9,000           | duration × log rate                                             |
-| Control-plane log batch | 25 items        | connection-fenced transaction                                   |
+| Local log fence batch   | 25 items        | reduces local fence checks, not deployed item writes            |
 | Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                  |
 | Keepalive               | 20 s            | daemon `startDaemon`                                            |
 | Scheduler               | 1 / minute      | EventBridge / local repair sweep                                |
 | Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics |
 | SessionLogs TTL         | 7 days          | `ttl` on new writes                                             |
 
-At that workload the model reports ~27M DynamoDB log item writes/month (~1.1M
-transactions), ~27M+ WebSocket messages/month, 43,200 scheduler invocations/month,
+At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
+transactional write items/month, ~81M WebSocket messages/month (including each
+viewer copy), 43,200 scheduler invocations/month,
 and ~750 MiB archive PUT volume/month. Queue throughput is 100 assigns/day plus
 the one-minute repair sweep. Re-run `estimateMonthlyCapacity` when the session mix
 changes; do not scale by session count alone.
@@ -139,9 +140,10 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: one item write per received chunk, with up to 25 adjacent local WebSocket chunks
-  coalesced into each connection-fenced transaction; chunk count must be measured from the chosen
-  CLI and workload
+- Log entries: one item write and one transactional item per received chunk. Up to 25 adjacent
+  local WebSocket chunks can share a connection-fence batch, which reduces local coordination but
+  does not reduce deployed transactional item capacity; chunk count must be measured from the
+  chosen CLI and workload.
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
@@ -153,9 +155,10 @@ are measured.
 SessionLogs is the highest-volume table. A chatty AI agent can produce hundreds of stdout chunks per session. Without mitigation, this is the most expensive DynamoDB component.
 
 **Current implementation:** local WebSocket ingress coalesces up to 25 adjacent `session:log`
-chunks in one connection-fenced transaction, flushing before any later control/status frame and
-before disconnect. This reduces API calls and fence checks, not billed item writes; DynamoDB
-capacity is charged per item and transactional items use transactional capacity pricing.
+chunks behind one connection fence, flushing before any later control/status frame and before
+disconnect. API Gateway still invokes the deployed handler for every received frame, and DynamoDB
+charges one transactional item write per log chunk. Viewer subscriptions add one WebSocket delivery
+per log chunk per connected viewer.
 New SessionLogs writes set `ttl` to now + 7 days (Unix epoch seconds). Local table creation and
 the synthesized AWS table both enable DynamoDB TTL on that attribute, so new rows expire without
 application deletes. Rows written before this change omit `ttl` and are not backfilled (see
@@ -179,11 +182,11 @@ an AWS launch.
 
 **Cost comparison:**
 
-| Approach                                       | Writes/session                       | Monthly cost (100 sessions/day) |
-| ---------------------------------------------- | ------------------------------------ | ------------------------------- |
-| Current fenced batching                        | workload-dependent item writes       | Not yet measured                |
-| Example (500 chunks, full 25-item batches)     | 500 items in ~20 transaction calls   | Recalculate before launch       |
-| Target batching + TTL (no explicit log delete) | same item writes, 0 explicit deletes | Recalculate before launch       |
+| Approach                                       | Writes/session                         | Monthly cost (100 sessions/day) |
+| ---------------------------------------------- | -------------------------------------- | ------------------------------- |
+| Current fenced batching                        | workload-dependent transactional items | Not yet measured                |
+| Example (500 chunks, full 25-item batches)     | 500 transactional items                | Recalculate before launch       |
+| Target batching + TTL (no explicit log delete) | same item writes, 0 explicit deletes   | Recalculate before launch       |
 
 Do not use the former ~50-chunk or $0.23/month assumptions for capacity planning. Measure a real
 transcript, then account for actual item sizes, transactional pricing, retries, API Gateway

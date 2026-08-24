@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- platform dispatch failures share the service fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -28,6 +29,7 @@ describe("unsupported platform / thrown failures", () => {
       state: "unknown",
     });
     expect(restartHostService(baseOpts({ platform: "aix", fs: seededFs() }))).toBe(1);
+    let linuxHandoffs = 0;
     expect(
       restartHostService(
         baseOpts({
@@ -35,15 +37,26 @@ describe("unsupported platform / thrown failures", () => {
           uid: 0,
           fs: seededFs(),
           run: () => ({ status: 0, stdout: "", stderr: "" }),
+          restartHandoff: () => {
+            linuxHandoffs += 1;
+          },
         }),
       ),
     ).toBe(0);
+    expect(linuxHandoffs).toBe(1);
+    let darwinPrints = 0;
     expect(
       restartHostService(
         baseOpts({
           platform: "darwin",
           fs: seededFs(),
-          run: () => ({ status: 0, stdout: "", stderr: "" }),
+          run: (_command, args) => {
+            if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
+            darwinPrints += 1;
+            return darwinPrints === 1
+              ? { status: 0, stdout: "state = waiting\n", stderr: "" }
+              : { status: 0, stdout: "state = running\npid = 42\n", stderr: "" };
+          },
         }),
       ),
     ).toBe(0);
@@ -56,6 +69,7 @@ describe("unsupported platform / thrown failures", () => {
         }),
       ),
     ).toBe(0);
+    // A Linux service user cannot authorize systemctl; it must have the local handoff.
     expect(
       restartHostService(
         baseOpts({
@@ -66,6 +80,7 @@ describe("unsupported platform / thrown failures", () => {
         }),
       ),
     ).toBe(1);
+    // launchd's EALREADY result is not proof that a new daemon was started.
     expect(
       restartHostService(
         baseOpts({
@@ -83,7 +98,7 @@ describe("unsupported platform / thrown failures", () => {
           run: () => ({ status: 37, stdout: "", stderr: "already in progress" }),
         }),
       ),
-    ).toBe(0);
+    ).toBe(1);
     expect(
       restartHostService(
         baseOpts({

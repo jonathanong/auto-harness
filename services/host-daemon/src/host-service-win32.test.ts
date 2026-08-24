@@ -20,6 +20,9 @@ describe("install-service win32", () => {
     expect(fs.modes.get("/Users/op/AppData/Roaming/auto-harness/host-daemon.env")).toBe(0o600);
     const cmd = fs.files.get("/Users/op/AppData/Roaming/auto-harness/run-host-daemon.cmd");
     expect(cmd).toContain("HARNESS_ENV_FILE=");
+    expect(cmd).toContain("if exist");
+    expect(cmd).toContain("/Users/op/AppData/Roaming/auto-harness/updates/current");
+    expect(cmd).toContain('cd /d "/checkout"');
     expect(cmd).not.toMatch(/LOCALSYSTEM|NSSM/i);
     expect(spawn.calls[0]?.args).toEqual(["/End", "/TN", "AutoHarnessHostDaemon"]);
     expect(spawn.calls[1]?.args).toEqual(

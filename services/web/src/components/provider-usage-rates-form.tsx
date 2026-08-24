@@ -57,13 +57,13 @@ export function ProviderUsageRatesForm({ provider }: { provider: Provider }) {
         Optional operator-configured rates in integer micros. Auto Harness never fetches vendor
         prices.
       </p>
-      {error ? (
-        <p className="text-sm text-red-700" role="alert" data-pw="provider-usage-rates-error">
-          {error}
-        </p>
-      ) : (
-        <p className="hidden" data-pw="provider-usage-rates-error" />
-      )}
+      <p
+        className={error ? "text-sm text-red-700" : "hidden"}
+        role={error ? "alert" : undefined}
+        data-pw="provider-usage-rates-error"
+      >
+        {error}
+      </p>
       <div className="space-y-1">
         <Label htmlFor="usage-rates-currency" tip="ISO 4217 currency such as USD">
           Currency

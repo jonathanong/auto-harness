@@ -11,9 +11,9 @@ describe("@auto-harness/host-daemon", () => {
         argv: ["codex"],
         failed: true,
         providerAccountId: "acct-1",
-        output: "insufficient_quota",
+        adapterUsageLimit: true,
       }),
-    ).toBe("output");
+    ).toBe("adapter");
     expect(
       parseCliUsage({
         argv: ["echo"],

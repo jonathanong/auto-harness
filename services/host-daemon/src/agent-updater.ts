@@ -68,7 +68,7 @@ export class AgentUpdater {
   private async runOnce(): Promise<UpdateState> {
     let targetVersion: string | undefined;
     let drained = false;
-    let activationAttempted = false;
+    let activated = false;
     const currentVersion = this.state.currentVersion;
     try {
       const manifest = parseAndVerifyManifest(
@@ -100,8 +100,8 @@ export class AgentUpdater {
         currentVersion,
         targetVersion,
       });
-      activationAttempted = true;
       await this.options.installer.activate(targetVersion);
+      activated = true;
       this.transition({
         phase: "restarting",
         currentVersion,
@@ -111,7 +111,7 @@ export class AgentUpdater {
       return this.transition({ phase: "complete", currentVersion: targetVersion });
     } catch (error) {
       let failure = error instanceof Error ? error.message : String(error);
-      if (activationAttempted) {
+      if (activated) {
         try {
           await this.options.installer.rollback();
         } catch (rollbackError) {

@@ -8,6 +8,7 @@ import type {
   HostServiceStatus,
 } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
+import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import {
   WINDOWS_TASK_NAME,
   renderWindowsLaunchCmd,
@@ -74,6 +75,12 @@ export function installWin32(ctx: HostServiceContext): number {
     writeMode(ctx.fs, paths.envFile, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${paths.envFile} (mode 0600)`);
   }
+  const updateRoot = resolveUpdateInstallDir(ctx.env, {
+    platform: ctx.platform,
+    home: ctx.home,
+    appData: ctx.appData,
+  });
+  const currentRoot = join(updateRoot, "current");
   writeMode(
     ctx.fs,
     paths.cmd,
@@ -81,6 +88,12 @@ export function installWin32(ctx: HostServiceContext): number {
       nodePath: ctx.nodePath,
       launcherPath: ctx.launcherPath,
       envFilePath: paths.envFile,
+      currentRoot,
+      currentLauncherPath: join(
+        currentRoot,
+        "services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      ),
+      fallbackRoot: ctx.checkoutRoot,
     }),
     0o700,
   );

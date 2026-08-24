@@ -11,9 +11,7 @@ describe("capacity model", () => {
     const estimate = estimateMonthlyCapacity(REFERENCE_WORKLOAD);
     expect(estimate.logChunksPerSession).toBe(15 * 60 * CAPACITY_CONSTANTS.daemonLogMessagesPerSec);
     expect(estimate.dynamoLogWritesPerMonth).toBe(estimate.logChunksPerSession * 100 * 30);
-    expect(estimate.dynamoLogTransactionsPerMonth).toBe(
-      Math.ceil(estimate.dynamoLogWritesPerMonth / 25),
-    );
+    expect(estimate.dynamoLogTransactionsPerMonth).toBe(estimate.dynamoLogWritesPerMonth);
     expect(estimate.schedulerInvocationsPerMonth).toBe(30 * 24 * 60);
     expect(estimate.archiveBytesPerMonth).toBe(100 * 30 * 256 * 1024);
     expect(estimate.queueAssignsPerDay).toBe(100);
@@ -31,5 +29,13 @@ describe("capacity model", () => {
     });
     expect(estimate.logChunksPerSession).toBe(CAPACITY_CONSTANTS.daemonLogMessagesPerSec);
     expect(estimate.dynamoLogWritesPerMonth).toBe(CAPACITY_CONSTANTS.daemonLogMessagesPerSec * 30);
+  });
+
+  it("includes every subscribed viewer copy in websocket volume", () => {
+    const withoutViewers = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, connectedViewers: 0 });
+    const withViewers = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, connectedViewers: 3 });
+    expect(withViewers.websocketMessagesPerMonth - withoutViewers.websocketMessagesPerMonth).toBe(
+      withoutViewers.dynamoLogWritesPerMonth * 3,
+    );
   });
 });

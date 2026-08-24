@@ -118,15 +118,15 @@ describe("claimed session cancellation", () => {
           async run(options) {
             options.onChunk({
               stream: "stdout",
-              data: "resume: native-1\nError: insufficient_quota for request",
+              data: "resume: native-1\nprovider command failed",
             });
-            return { exitCode: 1, timedOut: false, signal: null };
+            return { exitCode: 1, timedOut: false, signal: null, usageLimit: true };
           },
         },
         new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign({
-          resolvedArgv: ["codex", "exec"],
+          resolvedArgv: ["codex", "exec", "--json"],
           providerAccountId: "acct-1",
           resumeRefCapture: { stream: "stdout", linePrefix: "resume: " },
         }),

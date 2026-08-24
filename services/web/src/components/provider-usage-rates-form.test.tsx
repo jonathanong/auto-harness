@@ -54,6 +54,7 @@ describe("ProviderUsageRatesForm", () => {
     submit(field(document, "form-provider-usage-rates"));
     await act(async () => Promise.resolve());
     expect(document.querySelector('[data-pw="form-provider-usage-rates"]')).not.toBeNull();
+    expect(field(document, "provider-usage-rates-error").textContent).toBe("nope");
     field(document, "provider-usage-rates-clear").click();
     await act(async () => Promise.resolve());
     expect(document.querySelector('[data-pw="form-provider-usage-rates"]')).not.toBeNull();

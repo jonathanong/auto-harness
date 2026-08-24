@@ -19,7 +19,8 @@ const manifest = {
   ),
 };
 
-it("appends rollback and resume failures after a failed activation", async () => {
+it("does not roll back when activation fails before current is switched", async () => {
+  let rollbackCalls = 0;
   const updater = new AgentUpdater({
     currentVersion: "1.0.0",
     manifestPublicKey: publicKey,
@@ -41,12 +42,14 @@ it("appends rollback and resume failures after a failed activation", async () =>
       },
       restart: async () => undefined,
       rollback: async () => {
+        rollbackCalls += 1;
         throw new Error("rollback down");
       },
     },
   });
   await expect(updater.run()).resolves.toMatchObject({
     phase: "failed",
-    error: "activate down; rollback failed: rollback down; resume failed: resume down",
+    error: "activate down; resume failed: resume down",
   });
+  expect(rollbackCalls).toBe(0);
 });

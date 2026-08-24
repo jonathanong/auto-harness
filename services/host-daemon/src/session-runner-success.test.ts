@@ -117,19 +117,19 @@ describe("SessionRunner success paths", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it("marks usage_limit when a failed provider CLI matches vendor output", async () => {
+  it("marks usage_limit when a structured provider adapter reports quota exhaustion", async () => {
     const runner: ProcessRunner = {
       async run(opts) {
         opts.onChunk({
           stream: "stderr",
-          data: "Error: insufficient_quota for request",
+          data: "provider command failed",
         });
-        return { exitCode: 1, timedOut: false, signal: null };
+        return { exitCode: 1, timedOut: false, signal: null, usageLimit: true };
       },
     };
     const { sessionRunner, hooks } = setup(runner);
     const result = await sessionRunner.run(
-      baseAssign({ resolvedArgv: ["codex", "exec"], providerAccountId: "acct-1" }),
+      baseAssign({ resolvedArgv: ["codex", "exec", "--json"], providerAccountId: "acct-1" }),
     );
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("usage_limit");

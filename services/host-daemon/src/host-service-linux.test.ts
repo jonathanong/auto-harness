@@ -8,6 +8,7 @@ import { baseOpts, recorder, seededFs, unitTemplate } from "./host-service-test-
 import {
   LINUX_ENABLE_NOW_COMMAND,
   LINUX_ENV_DEST,
+  LINUX_LAUNCHER_DEST,
   LINUX_OPT_CURRENT,
   LINUX_RELOAD_COMMAND,
   LINUX_UNIT_DEST,
@@ -31,6 +32,7 @@ describe("install-service linux", () => {
     expect(fs.files.get(`${stagedDir}/auto-harness-host-daemon.service`)).toContain(
       "WorkingDirectory=/checkout",
     );
+    expect(fs.files.get(`${stagedDir}/run-host-daemon.sh`)).toContain("cd '/checkout'");
     expect(fs.modes.get(`${stagedDir}/host-daemon.env`)).toBe(0o600);
     expect(fs.flags.get(`${stagedDir}/host-daemon.env`)).toBe("wx");
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
@@ -58,6 +60,8 @@ describe("install-service linux", () => {
       ),
     ).toBe(0);
     expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`WorkingDirectory=${LINUX_OPT_CURRENT}`);
+    expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`ExecStart=/bin/sh "${LINUX_LAUNCHER_DEST}"`);
+    expect(fs.files.get(LINUX_LAUNCHER_DEST)).toContain(`cd '${LINUX_OPT_CURRENT}'`);
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([

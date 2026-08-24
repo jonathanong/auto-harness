@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderLaunchAgentPlist,
   renderLinuxUnit,
+  renderUnixLaunchScript,
   renderWindowsLaunchCmd,
   validateGeneratedHostServiceTemplates,
   validateHostServiceArtifacts,
@@ -18,6 +19,7 @@ const unitTemplate = `[Service]
 Type=simple
 User=harness
 WorkingDirectory=/opt/auto-harness/current
+ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start
 TimeoutStopSec=15min
 KillMode=mixed
 `;
@@ -26,6 +28,9 @@ describe("linux unit rendering", () => {
   it("rewrites WorkingDirectory and rejects unsafe values", () => {
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
       "WorkingDirectory=/home/op/src",
+    );
+    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
+      'ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
     );
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=simple");
     expect(() => renderLinuxUnit(unitTemplate, "/tmp\nEvil=1")).toThrow(/single line/);
@@ -58,8 +63,13 @@ describe("launchd plist / windows cmd", () => {
       nodePath: "C:\\Program Files\\nodejs\\node.exe",
       launcherPath: "C:\\repo\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
       envFilePath: "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\host-daemon.env",
+      currentRoot: "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\updates\\current",
+      currentLauncherPath:
+        "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\updates\\current\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
+      fallbackRoot: "C:\\repo",
     });
     expect(cmd).toContain("HARNESS_ENV_FILE=");
+    expect(cmd).toContain("if exist");
     expect(cmd).toContain(" start");
     const args = windowsCreateTaskArgs({
       taskName: "AutoHarnessHostDaemon",
@@ -80,6 +90,22 @@ describe("launchd plist / windows cmd", () => {
       "AutoHarnessHostDaemon",
       "/F",
     ]);
+  });
+
+  it("keeps a Unix supervisor launcher outside the activated tree", () => {
+    const launcher = renderUnixLaunchScript({
+      nodePath: "/usr/bin/node",
+      currentRoot: "/updates/current",
+      currentLauncherPath: "/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      fallbackRoot: "/checkout",
+      fallbackLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+    });
+    expect(launcher).toContain(
+      "if [ -f '/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs' ]",
+    );
+    expect(launcher).toContain("cd '/updates/current'");
+    expect(launcher).toContain("cd '/checkout'");
+    expect(launcher).toContain('start "$@"');
   });
 });
 
@@ -116,7 +142,9 @@ describe("template contract", () => {
 
   it("flags a unit that lost drain semantics after rewrite", () => {
     expect(
-      validateGeneratedHostServiceTemplates("WorkingDirectory=/opt/auto-harness/current\n"),
+      validateGeneratedHostServiceTemplates(
+        "WorkingDirectory=/opt/auto-harness/current\nExecStart=/old/daemon start\n",
+      ),
     ).toEqual(expect.arrayContaining(["missing unit directive: Type=simple"]));
     expect(
       workingDirectoryErrors("WorkingDirectory=/other\n", "/home/operator/auto-harness"),

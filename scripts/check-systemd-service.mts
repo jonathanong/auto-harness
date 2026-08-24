@@ -12,6 +12,10 @@ export const envExampleUrl = new URL(
   "../services/host-daemon/systemd/host-daemon.env.example",
   import.meta.url,
 );
+export const launcherUrl = new URL(
+  "../services/host-daemon/systemd/run-host-daemon.sh",
+  import.meta.url,
+);
 
 const REQUIRED_SERVICE_LINES = [
   "Documentation=https://github.com/jonathanong/auto-harness/blob/main/docs/deploy-host-daemon.md",
@@ -22,7 +26,7 @@ const REQUIRED_SERVICE_LINES = [
   "Group=harness",
   "WorkingDirectory=/opt/auto-harness/current",
   "EnvironmentFile=/etc/auto-harness/host-daemon.env",
-  "ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start",
+  'ExecStart=/bin/sh "/opt/auto-harness/run-host-daemon.sh"',
   "Restart=always",
   "RestartSec=5s",
   "TimeoutStopSec=15min",
@@ -65,11 +69,26 @@ export function validateSystemdArtifacts(service: string, envExample: string): s
   return errors;
 }
 
+export function validateSystemdLauncher(launcher: string): string[] {
+  const errors: string[] = [];
+  for (const fragment of [
+    "#!/bin/sh",
+    "current=/opt/auto-harness/current",
+    'cd "$current"',
+    'auto-harness-host-daemon.mjs start "$@"',
+  ]) {
+    if (!launcher.includes(fragment)) errors.push(`missing systemd launcher fragment: ${fragment}`);
+  }
+  return errors;
+}
+
 function main(): void {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
+  const launcher = readFileSync(launcherUrl, "utf8");
   const errors = [
     ...validateSystemdArtifacts(service, envExample),
+    ...validateSystemdLauncher(launcher),
     ...validateGeneratedHostServiceTemplates(service),
   ];
   if (errors.length > 0) throw new Error(errors.join("\n"));

@@ -224,7 +224,7 @@ operator steps.
 3. **Attach it to a host** from the control plane (pick the catalog repo, give a local path):
    - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**, or host detail → **Repositories & Worktrees**
    - Host pane (`:7422`) is debug-only and is not required for attach
-4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step; Codex is `codex exec`, not `-p`) → attach an account to the host on its detail page's Provider accounts tab.
+4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step; provider presets request structured output, and Codex is `codex exec --json`, not `-p`) → attach an account to the host on its detail page's Provider accounts tab.
 5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`). Create and host registration trigger assignment immediately. `POST /scheduler/assign` is still useful to force a manual repair sweep.
 
 Local defaults: `HARNESS_HOST_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.

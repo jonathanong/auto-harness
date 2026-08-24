@@ -4,9 +4,17 @@ import { describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
-import { startDaemon } from "./start-daemon.ts";
+import { requestSupervisorRestart, startDaemon } from "./start-daemon.ts";
 
 describe("startDaemon", () => {
+  it("queues the Linux supervisor handoff without invoking systemctl", async () => {
+    const signals: Array<[number, NodeJS.Signals]> = [];
+    requestSupervisorRestart((pid, signal) => signals.push([pid, signal]));
+    expect(signals).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(signals).toEqual([[process.pid, "SIGTERM"]]);
+  });
+
   it("times out a server that never opens the registration barrier", async () => {
     const { config, cleanup } = await makeRepo();
     const server = createServer();

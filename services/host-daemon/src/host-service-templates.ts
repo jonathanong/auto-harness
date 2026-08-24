@@ -1,7 +1,9 @@
+/* eslint-disable max-lines -- platform supervisor templates are validated together. */
 export const LINUX_ENV_DIR = "/etc/auto-harness";
 export const LINUX_ENV_DEST = "/etc/auto-harness/host-daemon.env";
 export const LINUX_UNIT_DEST = "/etc/systemd/system/auto-harness-host-daemon.service";
 export const LINUX_OPT_CURRENT = "/opt/auto-harness/current";
+export const LINUX_LAUNCHER_DEST = "/opt/auto-harness/run-host-daemon.sh";
 export const LINUX_SERVICE_NAME = "auto-harness-host-daemon.service";
 export const LINUX_RELOAD_COMMAND = "systemctl daemon-reload";
 export const LINUX_ENABLE_NOW_COMMAND = "systemctl enable --now auto-harness-host-daemon.service";
@@ -13,14 +15,52 @@ export function xmlEscape(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function renderLinuxUnit(template: string, workingDirectory: string): string {
-  if (/[\r\n]/.test(workingDirectory)) {
-    throw new Error("WorkingDirectory must be a single line");
-  }
+function singleLine(value: string, label: string): void {
+  if (/[\r\n]/.test(value)) throw new Error(`${label} must be a single line`);
+}
+
+function systemdArgument(value: string): string {
+  singleLine(value, "systemd argument");
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function shellArgument(value: string): string {
+  singleLine(value, "shell argument");
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+export function renderLinuxUnit(
+  template: string,
+  workingDirectory: string,
+  launcherPath: string = LINUX_LAUNCHER_DEST,
+): string {
+  singleLine(workingDirectory, "WorkingDirectory");
   if (!/^WorkingDirectory=/m.test(template)) {
     throw new Error("unit template missing WorkingDirectory");
   }
-  return template.replace(/^WorkingDirectory=.*$/m, `WorkingDirectory=${workingDirectory}`);
+  if (!/^ExecStart=/m.test(template)) throw new Error("unit template missing ExecStart");
+  return template
+    .replace(/^WorkingDirectory=.*$/m, `WorkingDirectory=${workingDirectory}`)
+    .replace(/^ExecStart=.*$/m, `ExecStart=/bin/sh ${systemdArgument(launcherPath)}`);
+}
+
+/** A stable supervisor entrypoint that selects the atomically activated tree. */
+export function renderUnixLaunchScript(opts: {
+  nodePath: string;
+  currentRoot: string;
+  currentLauncherPath: string;
+  fallbackRoot: string;
+  fallbackLauncherPath: string;
+}): string {
+  return `#!/bin/sh
+set -eu
+if [ -f ${shellArgument(opts.currentLauncherPath)} ]; then
+  cd ${shellArgument(opts.currentRoot)}
+  exec ${shellArgument(opts.nodePath)} ${shellArgument(opts.currentLauncherPath)} start "$@"
+fi
+cd ${shellArgument(opts.fallbackRoot)}
+exec ${shellArgument(opts.nodePath)} ${shellArgument(opts.fallbackLauncherPath)} start "$@"
+`;
 }
 
 export function renderLaunchAgentPlist(opts: {
@@ -31,8 +71,10 @@ export function renderLaunchAgentPlist(opts: {
   envFilePath: string;
   pathValue: string;
   logPath: string;
+  programArguments?: readonly string[];
 }): string {
   const s = (value: string) => `<string>${xmlEscape(value)}</string>`;
+  const programArguments = opts.programArguments ?? [opts.nodePath, opts.launcherPath, "start"];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -41,9 +83,7 @@ export function renderLaunchAgentPlist(opts: {
   ${s(DARWIN_LABEL)}
   <key>ProgramArguments</key>
   <array>
-    ${s(opts.nodePath)}
-    ${s(opts.launcherPath)}
-    ${s("start")}
+    ${programArguments.map(s).join("\n    ")}
   </array>
   <key>WorkingDirectory</key>
   ${s(opts.checkoutRoot)}
@@ -75,10 +115,19 @@ export function renderWindowsLaunchCmd(opts: {
   nodePath: string;
   launcherPath: string;
   envFilePath: string;
+  currentRoot: string;
+  currentLauncherPath: string;
+  fallbackRoot: string;
 }): string {
   return `@echo off\r
 set "HARNESS_ENV_FILE=${opts.envFilePath}"\r
-"${opts.nodePath}" "${opts.launcherPath}" start\r
+if exist "${opts.currentLauncherPath}" (\r
+  cd /d "${opts.currentRoot}"\r
+  "${opts.nodePath}" "${opts.currentLauncherPath}" start\r
+) else (\r
+  cd /d "${opts.fallbackRoot}"\r
+  "${opts.nodePath}" "${opts.launcherPath}" start\r
+)\r
 `;
 }
 
@@ -139,6 +188,9 @@ export function validateHostServiceArtifacts(input: {
   if (!windowsCmd.includes("HARNESS_ENV_FILE")) {
     errors.push("windows cmd missing HARNESS_ENV_FILE");
   }
+  if (!windowsCmd.includes("if exist")) {
+    errors.push("windows cmd does not select activated current");
+  }
   if (!windowsCmd.includes(" start")) {
     errors.push("windows cmd missing start");
   }
@@ -171,6 +223,10 @@ export function validateGeneratedHostServiceTemplates(linuxUnitTemplate: string)
     nodePath: "C:\\Program Files\\nodejs\\node.exe",
     launcherPath: "C:\\checkout\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
     envFilePath: "C:\\Users\\operator\\AppData\\Roaming\\auto-harness\\host-daemon.env",
+    currentRoot: "C:\\Users\\operator\\AppData\\Roaming\\auto-harness\\updates\\current",
+    currentLauncherPath:
+      "C:\\Users\\operator\\AppData\\Roaming\\auto-harness\\updates\\current\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
+    fallbackRoot: "C:\\checkout",
   });
   const windowsCreateArgs = windowsCreateTaskArgs({
     taskName: WINDOWS_TASK_NAME,

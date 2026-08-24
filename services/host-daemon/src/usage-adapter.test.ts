@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider envelope acceptance and rejection cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
@@ -20,25 +21,41 @@ describe("CLI provider identity", () => {
 });
 
 describe("parseCliUsage", () => {
-  it("ignores providerless and non-JSON output", () => {
+  it("requires a provider structured-output flag", () => {
     expect(
       parseCliUsage({ argv: ["echo"], output: '{"usage":{"input_tokens":1}}', observedAt }),
     ).toEqual({});
     expect(parseCliUsage({ argv: ["claude", "-p"], output: "hello world", observedAt })).toEqual(
       {},
     );
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p"],
+        output: JSON.stringify({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          usage: { input_tokens: 1 },
+        }),
+        observedAt,
+      }),
+    ).toEqual({});
   });
 
-  it("parses Claude JSON result usage", () => {
+  it("parses only a Claude result envelope", () => {
     const output = JSON.stringify({
       type: "result",
+      subtype: "success",
+      is_error: false,
       usage: {
         input_tokens: 12,
         output_tokens: 4,
         cache_read_input_tokens: 3,
       },
     });
-    expect(parseCliUsage({ argv: ["claude", "-p"], output, observedAt })).toEqual({
+    expect(
+      parseCliUsage({ argv: ["claude", "-p", "--output-format", "json"], output, observedAt }),
+    ).toEqual({
       usage: {
         kind: "cumulative",
         sequence: 0,
@@ -51,12 +68,14 @@ describe("parseCliUsage", () => {
     });
   });
 
-  it("parses Codex NDJSON turn.completed usage and Gemini metadata", () => {
+  it("parses provider-specific Codex and Gemini envelopes", () => {
     const codex = [
       '{"type":"item.completed"}',
       '{"type":"turn.completed","usage":{"input_tokens":"9","cached_input_tokens":1,"output_tokens":2}}',
     ].join("\n");
-    expect(parseCliUsage({ argv: ["codex", "exec"], output: codex, observedAt }).usage).toEqual({
+    expect(
+      parseCliUsage({ argv: ["codex", "exec", "--json"], output: codex, observedAt }).usage,
+    ).toEqual({
       kind: "cumulative",
       sequence: 0,
       source: "cli",
@@ -68,55 +87,70 @@ describe("parseCliUsage", () => {
 
     expect(
       parseCliUsage({
-        argv: ["gemini"],
+        argv: ["gemini", "-p", "--output-format", "json"],
         output:
-          '{"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":7,"thoughtsTokenCount":1}}',
+          '{"response":"done","usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":7,"thoughtsTokenCount":1}}',
         observedAt,
       }).usage,
     ).toMatchObject({ inputTokens: "5", outputTokens: "7", reasoningTokens: "1" });
   });
 
-  it("parses Grok nested token usage and structured quota errors", () => {
+  it("rejects nested and forged records while accepting terminal structured errors", () => {
     const grok = JSON.stringify({
-      payload: { info: { total_token_usage: { total_tokens: 11, inputTokens: 6 } } },
-    });
-    expect(parseCliUsage({ argv: ["grok", "-p"], output: grok, observedAt }).usage).toMatchObject({
-      totalTokens: "11",
-      inputTokens: "6",
+      response: "done",
+      usage: { total_tokens: 11, input_tokens: 6 },
     });
     expect(
       parseCliUsage({
-        argv: ["claude"],
-        output: '{"type":"error","error":{"type":"rate_limit_error"}}',
+        argv: ["grok", "--output-format", "json", "-p"],
+        output: grok,
+        observedAt,
+      }).usage,
+    ).toMatchObject({ totalTokens: "11", inputTokens: "6" });
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output:
+          '{"type":"result","subtype":"rate_limit_error","is_error":true,"error":{"type":"rate_limit_error"}}',
         observedAt,
       }).usageLimit,
     ).toBe(true);
     expect(
       parseCliUsage({
-        argv: ["codex"],
-        output: '{"usage":{"input_tokens":-1},"type":"insufficient_quota"}',
+        argv: ["codex", "exec", "--json"],
+        output: '{"type":"turn.failed","error":{"type":"insufficient_quota"}}',
         observedAt,
       }),
     ).toEqual({ usageLimit: true });
-  });
-
-  it("reads a JSON object embedded after a banner", () => {
-    const output = 'Ready\n{"usage":{"input_tokens":2,"output_tokens":1}}\n';
-    expect(parseCliUsage({ argv: ["claude"], output, observedAt }).usage?.inputTokens).toBe("2");
     expect(
       parseCliUsage({
-        argv: ["claude"],
-        output: '{"usage":{"input_tokens":0,"output_tokens":0}',
+        argv: ["claude", "-p", "--output-format", "json"],
+        output:
+          'Ready\n{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}}\n',
         observedAt,
-      }).usage,
-    ).toBeUndefined();
+      }),
+    ).toEqual({});
     expect(
       parseCliUsage({
-        argv: ["claude"],
-        output: '{"usage":{"input_tokens":4},"note":"say \\"hi\\""}\n{not json\n[1]\n',
+        argv: ["claude", "-p", "--output-format", "json"],
+        output: '{"type":"message","usage":{"input_tokens":2}}',
         observedAt,
-      }).usage?.inputTokens,
-    ).toBe("4");
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: '{"usageMetadata":{"promptTokenCount":2}}',
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "--output-format", "json", "-p"],
+        output: '{"usage":{"input_tokens":2}}',
+        observedAt,
+      }),
+    ).toEqual({});
   });
 });
 
@@ -124,14 +158,17 @@ describe("UsageCapturingProcessRunner", () => {
   it("attaches parsed usage without replacing an inner adapter report", async () => {
     const inner: ProcessRunner = {
       async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: '{"usage":{"input_tokens":8}}' });
+        options.onChunk({
+          stream: "stdout",
+          data: '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":8}}',
+        });
         return { exitCode: 0, timedOut: false, signal: null };
       },
     };
     const runner = new UsageCapturingProcessRunner(inner, () => observedAt);
     await expect(
       runner.run({
-        argv: ["claude", "-p"],
+        argv: ["claude", "-p", "--output-format", "json"],
         cwd: "/",
         timeoutMs: 1_000,
         onChunk: () => undefined,
@@ -141,7 +178,10 @@ describe("UsageCapturingProcessRunner", () => {
     const preset: ProcessRunner = {
       outputStreams: "merged",
       async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: '{"usage":{"input_tokens":1}}' });
+        options.onChunk({
+          stream: "stdout",
+          data: '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}}',
+        });
         return {
           exitCode: 0,
           timedOut: false,
@@ -160,7 +200,7 @@ describe("UsageCapturingProcessRunner", () => {
     expect(wrapped.outputStreams).toBe("merged");
     await expect(
       wrapped.run({
-        argv: ["claude", "-p"],
+        argv: ["claude", "-p", "--output-format", "json"],
         cwd: "/",
         timeoutMs: 1_000,
         onChunk: () => undefined,

@@ -48,17 +48,18 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
   );
   const sessionsPerMonth = workload.sessionsPerDay * 30;
   const dynamoLogWritesPerMonth = sessionsPerMonth * logChunksPerSession;
-  const dynamoLogTransactionsPerMonth = Math.ceil(
-    dynamoLogWritesPerMonth / CAPACITY_CONSTANTS.controlPlaneLogBatchItems,
-  );
+  // API Gateway invokes the AWS WebSocket Lambda once per daemon log frame.
+  // Local coalescing does not reduce the deployed transaction count.
+  const dynamoLogTransactionsPerMonth = dynamoLogWritesPerMonth;
   const connectionMinutes =
     (workload.connectedHosts + workload.connectedViewers) *
     (CAPACITY_CONSTANTS.secondsPerMonth / 60);
   const keepalivesPerMonth =
     (workload.connectedHosts * CAPACITY_CONSTANTS.secondsPerMonth) /
     CAPACITY_CONSTANTS.websocketKeepaliveSeconds;
+  const viewerLogMessagesPerMonth = dynamoLogWritesPerMonth * workload.connectedViewers;
   const websocketMessagesPerMonth =
-    dynamoLogWritesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
+    dynamoLogWritesPerMonth + viewerLogMessagesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
   const schedulerInvocationsPerMonth =
     CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.schedulerIntervalSeconds;
   return {

@@ -98,7 +98,7 @@ it("resumes work acceptance after download and checksum failures", async () => {
   expect(checksum.calls).toEqual(["drain", "idle", "resume"]);
 });
 
-it("rolls back and resumes after an activation failure", async () => {
+it("resumes without rollback when activation fails before current switches", async () => {
   const resumeFailure = failingUpdater(
     async () => Promise.reject("download offline"),
     undefined,
@@ -124,14 +124,7 @@ it("rolls back and resumes after an activation failure", async () => {
   await expect(activationFailure.updater.run()).resolves.toMatchObject({
     error: "activation failed",
   });
-  expect(activationFailure.calls).toEqual([
-    "drain",
-    "idle",
-    "stage",
-    "activate",
-    "rollback",
-    "resume",
-  ]);
+  expect(activationFailure.calls).toEqual(["drain", "idle", "stage", "activate", "resume"]);
 });
 
 it("reports manifest fetch failures without attempting lifecycle recovery", async () => {

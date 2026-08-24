@@ -1,20 +1,30 @@
+/* eslint-disable max-lines -- launchd installation, status, and restart scenarios share fixtures. */
 import { describe, expect, it } from "vitest";
 
-import { installHostService, uninstallHostService } from "./host-service.ts";
+import { installHostService, restartHostService, uninstallHostService } from "./host-service.ts";
 import { resolveHostService } from "./host-service-io.ts";
 import { statusDarwin } from "./host-service-darwin.ts";
-import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
 
 describe("install-service darwin", () => {
-  it("writes LaunchAgent + env and kickstarts without -k", () => {
+  it("writes a stable current-selecting launcher and force-kickstarts it", () => {
     const fs = seededFs();
-    const spawn = recorder();
+    const calls: string[][] = [];
+    let prints = 0;
+    const run = (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
+      prints += 1;
+      return prints === 1
+        ? { status: 0, stdout: "state = waiting\n", stderr: "" }
+        : { status: 0, stdout: "state = running\npid = 42\n", stderr: "" };
+    };
     expect(
       installHostService(
         baseOpts({
           platform: "darwin",
           fs,
-          run: spawn.run,
+          run,
           env: {
             HARNESS_HOST_ID: "host-1",
             HARNESS_API_URL: "https://example.cloudfront.net",
@@ -30,18 +40,24 @@ describe("install-service darwin", () => {
     expect(plist).toContain("/opt/homebrew/bin:/usr/bin");
     expect(plist).toContain("HARNESS_ENV_FILE");
     expect(plist).not.toContain("secret");
+    expect(plist).toContain("run-host-daemon.sh");
+    expect(plist).not.toContain("/checkout/services/host-daemon/bin");
+    expect(
+      fs.files.get("/Users/op/Library/Application Support/auto-harness/run-host-daemon.sh"),
+    ).toContain("/Users/op/Library/Application Support/auto-harness/updates/current");
     expect(fs.modes.get("/Users/op/Library/Application Support/auto-harness/host-daemon.env")).toBe(
       0o600,
     );
-    expect(spawn.calls.map((c) => c.args[0])).toEqual([
+    expect(calls.map((args) => args[0])).toEqual([
       "bootout",
       "bootstrap",
       "print",
       "kickstart",
       "print",
     ]);
-    expect(spawn.calls.find((c) => c.args[0] === "kickstart")?.args).toEqual([
+    expect(calls.find((args) => args[0] === "kickstart")).toEqual([
       "kickstart",
+      "-k",
       "gui/501/com.auto-harness.host-daemon",
     ]);
   });
@@ -52,19 +68,24 @@ describe("install-service darwin", () => {
       [envPath]:
         "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
     });
-    const spawn = recorder({
-      "launchctl bootstrap gui/501 /Users/op/Library/LaunchAgents/com.auto-harness.host-daemon.plist":
-        { status: 1, stdout: "", stderr: "no bootstrap" },
-    });
+    const calls: string[][] = [];
+    let prints = 0;
+    const run = (_command: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "bootstrap") return { status: 1, stdout: "", stderr: "no bootstrap" };
+      if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
+      prints += 1;
+      return prints === 1
+        ? { status: 0, stdout: "state = waiting\n", stderr: "" }
+        : { status: 0, stdout: "state = running\npid = 43\n", stderr: "" };
+    };
     const logs: string[] = [];
     expect(
-      installHostService(
-        baseOpts({ platform: "darwin", fs, run: spawn.run, log: (m) => logs.push(m) }),
-      ),
+      installHostService(baseOpts({ platform: "darwin", fs, run, log: (m) => logs.push(m) })),
     ).toBe(0);
     expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
-    expect(spawn.calls.map((call) => call.args[0])).toEqual([
+    expect(calls.map((args) => args[0])).toEqual([
       "bootout",
       "bootstrap",
       "load",
@@ -184,5 +205,54 @@ describe("status darwin", () => {
       expect(result.state).toBe(expected);
     }
     expect(seen).toEqual([{ timeoutMs: 123 }, { timeoutMs: 123 }, { timeoutMs: 123 }]);
+  });
+});
+
+describe("restart darwin", () => {
+  it("uses kickstart -k and requires a replacement running pid", () => {
+    let prints = 0;
+    const calls: string[][] = [];
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          run: (_command, args) => {
+            calls.push(args);
+            if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
+            prints += 1;
+            return prints === 1
+              ? { status: 0, stdout: "state = running\npid = 101\n", stderr: "" }
+              : { status: 0, stdout: "state = running\npid = 102\n", stderr: "" };
+          },
+        }),
+      ),
+    ).toBe(0);
+    expect(calls).toEqual([
+      ["print", "gui/501/com.auto-harness.host-daemon"],
+      ["kickstart", "-k", "gui/501/com.auto-harness.host-daemon"],
+      ["print", "gui/501/com.auto-harness.host-daemon"],
+    ]);
+  });
+
+  it("fails when launchd leaves the prior pid or returns in-progress", () => {
+    const errors: string[] = [];
+    for (const run of [
+      (_command: string, args: string[]) =>
+        args[0] === "print"
+          ? { status: 0, stdout: "state = running\npid = 101\n", stderr: "" }
+          : { status: 0, stdout: "", stderr: "" },
+      (_command: string, args: string[]) =>
+        args[0] === "print"
+          ? { status: 0, stdout: "state = running\npid = 101\n", stderr: "" }
+          : { status: 37, stdout: "", stderr: "already in progress" },
+    ]) {
+      expect(
+        restartHostService(
+          baseOpts({ platform: "darwin", fs: seededFs(), run, error: (m) => errors.push(m) }),
+        ),
+      ).toBe(1);
+    }
+    expect(errors.join("\n")).toMatch(/verification|kickstart -k/);
   });
 });

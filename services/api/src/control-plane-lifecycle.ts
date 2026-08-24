@@ -94,8 +94,20 @@ export async function reclaimStaleHostsDurable(
     if (nowMs - Date.parse(meta.lastHeartbeatAt) < state.heartbeatStaleMs) {
       continue;
     }
-    if (!meta.connectionId) continue;
     const reason = "agent heartbeat stale; requeued";
+    if (!meta.connectionId) {
+      try {
+        await enqueueHostOfflineAlert(state, {
+          hostId,
+          reason,
+          lastHeartbeatAt: meta.lastHeartbeatAt,
+        });
+        state.disconnectedHosts.delete(hostId);
+      } catch {
+        // Retain the disconnected candidate so a later sweep retries the alert.
+      }
+      continue;
+    }
     const freed = await offlineHostAndRequeueDurable(state, hostId, meta.connectionId, reason);
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) reclaimed.push(sid);
@@ -110,12 +122,17 @@ export async function reclaimStaleHostsDurable(
     }
     state.connections.delete(meta.connectionId);
     state.hostConnection.delete(hostId);
-    state.disconnectedHosts.delete(hostId);
-    await enqueueHostOfflineAlert(state, {
-      hostId,
-      reason,
-      lastHeartbeatAt: meta.lastHeartbeatAt,
-    });
+    state.disconnectedHosts.set(hostId, { lastHeartbeatAt: meta.lastHeartbeatAt });
+    try {
+      await enqueueHostOfflineAlert(state, {
+        hostId,
+        reason,
+        lastHeartbeatAt: meta.lastHeartbeatAt,
+      });
+      state.disconnectedHosts.delete(hostId);
+    } catch {
+      // The durable release already succeeded. Keep the candidate for alert retry.
+    }
   }
   return reclaimed;
 }

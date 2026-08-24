@@ -15,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Production systemd unit                  | **Packaged** — checked-in unit and environment contract; syntax and graceful drain are validated in CI           |
 | Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart))    |
 | Signed update orchestration core         | **Implemented and locally tested** behind injected fetch/install/restart boundaries                              |
-| Automatic production download / restart  | **Not wired**; updates use the manual drain procedure below                                                      |
+| Automatic production download / restart  | **Supported when explicitly configured** with a signed manifest and a stable platform supervisor launcher        |
 
 ---
 
@@ -106,7 +106,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-da
 If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
 installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
-Working directory is `/opt/auto-harness/current` when that path exists, otherwise this checkout.
+The generated Linux launcher is stable outside the activated release tree: it starts
+`/opt/auto-harness/current` when that tree exists and otherwise falls back to this checkout.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
 
 Uninstall (removes the service definition, not the checkout):
@@ -167,13 +168,15 @@ sudoedit /etc/auto-harness/host-daemon.env
 sudo install -m 0644 \
   /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
   /etc/systemd/system/auto-harness-host-daemon.service
+sudo install -m 0755 \
+  /opt/auto-harness/current/services/host-daemon/systemd/run-host-daemon.sh \
+  /opt/auto-harness/run-host-daemon.sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now auto-harness-host-daemon.service
 ```
 
-The unit runs as `harness`, starts the declared package entrypoint from
-`/opt/auto-harness/current`, restarts after exits or crashes, and sends SIGTERM only to the daemon
-first. `TimeoutStopSec=15min` plus `KillMode=mixed` lets the daemon durably enter drain and wait
+The unit runs as `harness`, invokes the stable generated launcher, restarts after exits or crashes,
+and sends SIGTERM only to the daemon first. `TimeoutStopSec=15min` plus `KillMode=mixed` lets the daemon durably enter drain and wait
 for in-flight CLIs instead of having systemd kill the whole cgroup. An operator can still use an
 explicit `systemctl kill --kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an
 acknowledged emergency; that is not the normal update path.
@@ -289,11 +292,11 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
 
 On a macOS host installed as a LaunchAgent, perform the same drain-and-wait boundary, then update
 the checkout as the current user. Re-running `install-service` keeps the existing mode-0600
-environment file, rewrites the plist to the current checkout and Node paths, and reloads the
-LaunchAgent. After `bootout`/`bootstrap`, it checks `launchctl print` and does not require
-`kickstart -k`. If launchd is already starting the job (exit 37 / "already in progress") or the
-agent is already running, install succeeds. If a restart unregisters the job, the installer
-bootstraps again instead of leaving the LaunchAgent missing.
+environment file, rewrites a stable launcher under `~/Library/Application Support/auto-harness`,
+and reloads the LaunchAgent. The plist always starts that launcher; it selects the activated
+`current` tree when present and otherwise falls back to the installation checkout. After
+`bootout`/`bootstrap`, a stopped job is started with `launchctl kickstart -k` and verified as a
+running process with a PID. Exit 37 / "already in progress" is an error, not restart success.
 
 ```bash
 git fetch --all --tags
@@ -316,14 +319,23 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, activate, request
 supervisor restart, and roll back plus resume scheduling if activation or restart fails. Concurrent
 runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
-`HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM), optional `HARNESS_UPDATE_INSTALL_DIR` (default
-`/opt/auto-harness`), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once per start) to enable the
+`HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM; use literal `\\n` in a single-line EnvironmentFile),
+optional `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
+`~/Library/Application Support/auto-harness/updates` on macOS, and
+`%APPDATA%\\auto-harness\\updates` on Windows), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once
+per start) to enable the
 production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. The
 artifact is a gzip-compressed tar archive whose root is a complete runnable checkout (including
 `package.json` and the host-daemon launcher). Verified releases are extracted below `versions/`;
 `current` is atomically switched to that directory and carries a persisted version marker so a
-restart does not reinstall the same release. The manual steps above remain valid when those
-variables are unset.
+restart does not reinstall the same release. Linux requests an asynchronous self-exit after the
+updater transaction; its already-authorized systemd supervisor restarts it, rather than the
+unprivileged service user invoking `systemctl`. macOS and Windows supervisors invoke stable
+launcher files outside the activated tree, so their next start resolves the new `current` pointer.
+On Linux, the selected update root must be writable by `harness`; the dedicated-VPS bootstrap above
+already gives `harness` ownership of `/opt/auto-harness`. The stable launcher itself is root-owned
+and is not replaced by the updater.
+The manual steps above remain valid when those variables are unset.
 
 ### Rollback
 

@@ -1,7 +1,8 @@
+/* eslint-disable max-lines -- provider envelope validation and token mapping must stay coupled. */
 import type { SessionUsage } from "@auto-harness/shared";
 
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
-import { jsonObjects } from "./usage-adapter-json.ts";
+import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
 
 const MAX_CAPTURE_BYTES = 256 * 1024;
 const PROVIDERS = ["claude", "codex", "gemini", "grok"] as const;
@@ -33,19 +34,16 @@ export function parseCliUsage(input: {
   output: string;
   observedAt: string;
 }): ParsedCliUsage {
-  if (!resolveCliProvider(input.argv)) return {};
-  const objects = jsonObjects(input.output);
-  let usage: SessionUsage | undefined;
-  let usageLimit = false;
-  for (const object of objects) {
-    if (structuredUsageLimit(object)) usageLimit = true;
-    const parsed = usageFromObject(object, input.observedAt);
-    if (parsed) usage = parsed;
+  const provider = resolveCliProvider(input.argv);
+  if (!provider || !hasStructuredOutputMode(provider, input.argv)) return {};
+  if (provider === "codex") {
+    return parseCodexRecords(jsonLines(input.output), input.observedAt);
   }
-  return {
-    ...(usage ? { usage } : {}),
-    ...(usageLimit ? { usageLimit: true } : {}),
-  };
+  const envelope = jsonObject(input.output);
+  if (!envelope) return {};
+  if (provider === "claude") return parseClaudeRecord(envelope, input.observedAt);
+  if (provider === "gemini") return parseGeminiRecord(envelope, input.observedAt);
+  return parseGrokRecord(envelope, input.observedAt);
 }
 
 export class UsageCapturingProcessRunner implements ProcessRunner {
@@ -81,53 +79,132 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
   }
 }
 
-function structuredUsageLimit(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  const type = stringify(record.type ?? record.error_type ?? record.errorType);
-  const error = record.error;
-  const errorType =
-    error && typeof error === "object"
-      ? stringify((error as Record<string, unknown>).type)
-      : stringify(error);
-  const haystack = `${type} ${errorType} ${stringify(record.subtype)}`;
-  return /rate[_ ]?limit|usage[_ ]?limit|insufficient_quota|resource_exhausted/i.test(haystack);
+type JsonRecord = Record<string, unknown>;
+
+function record(value: unknown): JsonRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : undefined;
 }
 
-function usageFromObject(value: unknown, observedAt: string): SessionUsage | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const record = value as Record<string, unknown>;
-  const nested = firstUsageObject(record);
-  if (!nested) return undefined;
-  const inputTokens = tokenString(
-    nested,
-    "input_tokens",
-    "prompt_tokens",
-    "promptTokenCount",
-    "inputTokens",
+function hasOption(argv: readonly string[], name: string, value?: string): boolean {
+  return argv.some((arg, index) => {
+    if (value !== undefined && arg === `${name}=${value}`) return true;
+    return arg === name && (value === undefined || argv[index + 1] === value);
+  });
+}
+
+function hasStructuredOutputMode(provider: CliProvider, argv: readonly string[]): boolean {
+  switch (provider) {
+    case "claude":
+      return (
+        (argv.includes("-p") || argv.includes("--print")) &&
+        hasOption(argv, "--output-format", "json")
+      );
+    case "codex":
+      return argv.includes("exec") && hasOption(argv, "--json");
+    case "gemini":
+      return (
+        (argv.includes("-p") || argv.includes("--prompt")) &&
+        hasOption(argv, "--output-format", "json")
+      );
+    case "grok":
+      return (
+        (argv.includes("-p") || argv.includes("--single")) &&
+        hasOption(argv, "--output-format", "json")
+      );
+  }
+}
+
+function parseClaudeRecord(value: JsonRecord, observedAt: string): ParsedCliUsage {
+  if (
+    value.type !== "result" ||
+    typeof value.subtype !== "string" ||
+    typeof value.is_error !== "boolean"
+  ) {
+    return {};
+  }
+  if (value.is_error) {
+    return claudeUsageLimit(value) ? { usageLimit: true } : {};
+  }
+  const usage = record(value.usage);
+  return usage ? withUsage(usageFromRecord(usage, observedAt, "claude")) : {};
+}
+
+function parseCodexRecords(values: JsonRecord[], observedAt: string): ParsedCliUsage {
+  let parsed: ParsedCliUsage = {};
+  for (const value of values) {
+    if (value.type === "turn.completed") {
+      const usage = record(value.usage);
+      if (usage) parsed = { ...parsed, ...withUsage(usageFromRecord(usage, observedAt, "codex")) };
+    }
+    if (value.type === "turn.failed" && codexUsageLimit(value)) {
+      parsed = { ...parsed, usageLimit: true };
+    }
+  }
+  return parsed;
+}
+
+function parseGeminiRecord(value: JsonRecord, observedAt: string): ParsedCliUsage {
+  if (geminiUsageLimit(value)) return { usageLimit: true };
+  if (typeof value.response !== "string") return {};
+  const stats = record(value.stats);
+  const usage =
+    record(value.usageMetadata) ?? record(stats?.usageMetadata) ?? record(stats?.tokens);
+  return usage ? withUsage(usageFromRecord(usage, observedAt, "gemini")) : {};
+}
+
+function parseGrokRecord(value: JsonRecord, observedAt: string): ParsedCliUsage {
+  if (grokUsageLimit(value)) return { usageLimit: true };
+  if (typeof value.response !== "string" && typeof value.text !== "string") return {};
+  const usage = record(value.usage);
+  return usage ? withUsage(usageFromRecord(usage, observedAt, "grok")) : {};
+}
+
+function withUsage(usage: SessionUsage | undefined): ParsedCliUsage {
+  return usage ? { usage } : {};
+}
+
+function structuredErrorCode(value: JsonRecord): string | undefined {
+  const error = record(value.error);
+  const code = error?.type ?? error?.code ?? error?.status;
+  return typeof code === "string" ? code.toLowerCase() : undefined;
+}
+
+function claudeUsageLimit(value: JsonRecord): boolean {
+  const code = structuredErrorCode(value) ?? value.subtype;
+  return (
+    typeof code === "string" && /^(?:rate_limit_error|usage_limit|insufficient_quota)$/.test(code)
   );
-  const outputTokens = tokenString(
-    nested,
-    "output_tokens",
-    "completion_tokens",
-    "candidatesTokenCount",
-    "outputTokens",
-  );
-  const cachedInputTokens = tokenString(
-    nested,
-    "cache_read_input_tokens",
-    "cached_input_tokens",
-    "cachedContentTokenCount",
-    "cachedInputTokens",
-    "cache_creation_input_tokens",
-  );
-  const reasoningTokens = tokenString(
-    nested,
-    "reasoning_tokens",
-    "thoughtsTokenCount",
-    "reasoningTokens",
-  );
-  const totalTokens = tokenString(nested, "total_tokens", "totalTokens", "totalTokenCount");
+}
+
+function codexUsageLimit(value: JsonRecord): boolean {
+  const code = structuredErrorCode(value);
+  return code === "insufficient_quota" || code === "rate_limit_error";
+}
+
+function geminiUsageLimit(value: JsonRecord): boolean {
+  const error = record(value.error);
+  return error?.status === "RESOURCE_EXHAUSTED" || error?.code === "RESOURCE_EXHAUSTED";
+}
+
+function grokUsageLimit(value: JsonRecord): boolean {
+  if (value.type !== "error" && value.status !== "error") return false;
+  const code = structuredErrorCode(value);
+  return code === "rate_limit_error" || code === "usage_limit";
+}
+
+function usageFromRecord(
+  nested: JsonRecord,
+  observedAt: string,
+  provider: CliProvider,
+): SessionUsage | undefined {
+  const fields = usageFields(provider);
+  const inputTokens = tokenString(nested, ...fields.input);
+  const outputTokens = tokenString(nested, ...fields.output);
+  const cachedInputTokens = tokenString(nested, ...fields.cached);
+  const reasoningTokens = tokenString(nested, ...fields.reasoning);
+  const totalTokens = tokenString(nested, ...fields.total);
   if (
     inputTokens === undefined &&
     outputTokens === undefined &&
@@ -150,27 +227,39 @@ function usageFromObject(value: unknown, observedAt: string): SessionUsage | und
   };
 }
 
-function firstUsageObject(record: Record<string, unknown>): Record<string, unknown> | undefined {
-  for (const key of ["usage", "token_usage", "total_token_usage", "usageMetadata"]) {
-    const candidate = record[key];
-    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
-      return candidate as Record<string, unknown>;
-    }
+function usageFields(provider: CliProvider): {
+  input: string[];
+  output: string[];
+  cached: string[];
+  reasoning: string[];
+  total: string[];
+} {
+  if (provider === "gemini") {
+    return {
+      input: ["promptTokenCount", "inputTokens"],
+      output: ["candidatesTokenCount", "outputTokens"],
+      cached: ["cachedContentTokenCount", "cachedInputTokens"],
+      reasoning: ["thoughtsTokenCount", "reasoningTokens"],
+      total: ["totalTokenCount", "totalTokens"],
+    };
   }
-  const payload = record.payload;
-  if (payload && typeof payload === "object") {
-    return firstUsageObject(payload as Record<string, unknown>);
-  }
-  const info = record.info;
-  if (info && typeof info === "object") {
-    return firstUsageObject(info as Record<string, unknown>);
-  }
-  return undefined;
+  return {
+    input: ["input_tokens", "prompt_tokens", "inputTokens"],
+    output: ["output_tokens", "completion_tokens", "outputTokens"],
+    cached: [
+      "cache_read_input_tokens",
+      "cache_creation_input_tokens",
+      "cached_input_tokens",
+      "cachedInputTokens",
+    ],
+    reasoning: ["reasoning_tokens", "reasoningTokens"],
+    total: ["total_tokens", "totalTokens"],
+  };
 }
 
-function tokenString(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+function tokenString(fields: JsonRecord, ...keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = record[key];
+    const value = fields[key];
     if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
       return BigInt(Math.trunc(value)).toString();
     }
@@ -179,8 +268,4 @@ function tokenString(record: Record<string, unknown>, ...keys: string[]): string
     }
   }
   return undefined;
-}
-
-function stringify(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }

@@ -1,69 +1,33 @@
-export function jsonObjects(output: string): unknown[] {
-  const objects: unknown[] = [];
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Parse a single provider JSON envelope, never JSON embedded in model text. */
+export function jsonObject(output: string): JsonRecord | undefined {
+  const trimmed = output.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parse Codex's JSONL event stream; each accepted line remains a full envelope. */
+export function jsonLines(output: string): JsonRecord[] {
+  const objects: JsonRecord[] = [];
   for (const line of output.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) continue;
+    if (!trimmed) continue;
     try {
-      objects.push(JSON.parse(trimmed) as unknown);
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (isRecord(parsed)) objects.push(parsed);
     } catch {
-      // Streamed CLIs mix JSON with banners; skip undecodable lines.
+      // Non-JSON diagnostics cannot become telemetry.
     }
-  }
-  const trimmed = output.trim();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      objects.push(JSON.parse(trimmed) as unknown);
-    } catch {
-      // Fall through to brace matching for concatenated JSON objects.
-    }
-  }
-  objects.push(...embeddedJsonObjects(output));
-  return objects;
-}
-
-function embeddedJsonObjects(output: string): unknown[] {
-  const objects: unknown[] = [];
-  for (let index = 0; index < output.length; index += 1) {
-    if (output[index] !== "{") continue;
-    const end = matchingBrace(output, index);
-    if (end < 0) continue;
-    try {
-      objects.push(JSON.parse(output.slice(index, end + 1)) as unknown);
-    } catch {
-      continue;
-    }
-    index = end;
   }
   return objects;
-}
-
-function matchingBrace(text: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < text.length; index += 1) {
-    const char = text[index]!;
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-      if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === "{") depth += 1;
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
 }

@@ -1071,7 +1071,7 @@ Standard CRUD. `GET /provider-accounts` returns `{ "items": [ ...accounts ] }`, 
 
 #### `POST /commands`
 
-**Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
+**Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
 
 **Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
 
@@ -1080,8 +1080,8 @@ prompt: `[...command.argv, "--", prompt]` vs `[...command.argv, prompt]`
 (`services/api/src/control-plane-session-target.ts`). If not given explicitly, it
 **defaults to `true` whenever the command has a non-null `providerId`** and `appendPrompt`
 is not `false` (`services/api/src/control-plane-commands.ts`) — a providerless command
-defaults to `false`. So `{"argv":["claude","-p"],"appendPrompt":true,"providerId":"prov-1"}`
-actually spawns `claude -p -- "<prompt>"`, not `claude -p "<prompt>"` — confirmed against a
+defaults to `false`. So `{"argv":["claude","-p","--output-format","json"],"appendPrompt":true,"providerId":"prov-1"}`
+actually spawns `claude -p --output-format json -- "<prompt>"`, not `claude -p "<prompt>"` — confirmed against a
 real session's `resolvedArgv`. This is harmless for CLIs that treat `--` as
 "end of options" (`claude`, `codex`), but will break any provider-owned command whose
 binary does not accept `--`, or a naive `printf "%s"`-style invocation where a prompt

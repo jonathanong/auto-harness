@@ -14,7 +14,8 @@ function catalogKey(name: string): string {
 /**
  * Suggested default Command for a newly created Provider, keyed by the provider
  * name the operator typed. Grok's `-p`/`--single` takes the prompt as its option
- * value, so a `--` separator makes grok 1.0.5 exit 2. Codex uses `exec`, not `-p`.
+ * value, so a `--` separator makes grok 1.0.5 exit 2. These presets request
+ * provider JSON envelopes so host telemetry never infers usage from model text.
  */
 /** Normalized catalog key, or null when the name has no preset. */
 export function catalogProviderKey(name: string): string | null {
@@ -27,7 +28,7 @@ export function catalogCommandDefaults(name: string): CatalogCommandDefaults | n
   if (key === "grok") {
     return {
       commandName: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "-p"],
+      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
     };
@@ -35,7 +36,7 @@ export function catalogCommandDefaults(name: string): CatalogCommandDefaults | n
   if (key === "claude") {
     return {
       commandName: "claude-print",
-      argv: ["claude", "-p"],
+      argv: ["claude", "-p", "--output-format", "json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     };
@@ -43,7 +44,7 @@ export function catalogCommandDefaults(name: string): CatalogCommandDefaults | n
   if (key === "codex") {
     return {
       commandName: "codex-exec",
-      argv: ["codex", "exec"],
+      argv: ["codex", "exec", "--json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     };
