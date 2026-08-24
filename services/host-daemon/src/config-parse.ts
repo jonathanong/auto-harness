@@ -1,5 +1,6 @@
 import {
   assertHostRepositoryRequiredEnvironmentLimit,
+  parseAllowedRoots,
   parseProviderAccountOverrides,
   parseProviderAccounts,
   parseRequiredEnvironment,
@@ -126,6 +127,8 @@ export function parseDaemonConfig(
     }
     config.setupScript = raw.setupScript;
   }
+  const allowedRoots = parseAllowedRoots(raw.allowedRoots);
+  if (allowedRoots?.length) config.allowedRoots = allowedRoots;
   const requiredEnvironment = parseRequiredEnvironment(raw.requiredEnvironment);
   for (const repository of config.repositories) {
     assertHostRepositoryRequiredEnvironmentLimit(

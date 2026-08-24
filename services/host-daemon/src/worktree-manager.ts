@@ -1,3 +1,4 @@
+import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 
@@ -33,6 +34,7 @@ export class WorktreeManager {
   }
 
   async ensureAll(): Promise<void> {
+    await assertDaemonPathsAllowed(this.config);
     for (const repo of this.config.repositories) {
       await this.git.ensureRepo(repo.path);
       for (const wt of repo.worktrees) {

@@ -58,6 +58,14 @@ export async function loadHostInventoryWithVersion(
     return {
       inventory: {
         ...(typeof cfg.setupScript === "string" ? { setupScript: cfg.setupScript } : {}),
+        ...(Array.isArray(cfg.allowedRoots) &&
+        cfg.allowedRoots.every((root) => typeof root === "string")
+          ? { allowedRoots: cfg.allowedRoots as string[] }
+          : {}),
+        ...(Array.isArray(cfg.requiredEnvironment) &&
+        cfg.requiredEnvironment.every((name) => typeof name === "string")
+          ? { requiredEnvironment: cfg.requiredEnvironment as string[] }
+          : {}),
         repositories: Array.isArray(cfg.repositories)
           ? (cfg.repositories as HostInventory["repositories"])
           : [],

@@ -168,8 +168,13 @@ No auto-dispatch to the agent yet — bridge with a session assign file for `run
 
 Repositories, worktrees, and which Provider Accounts (plus their per-repo/per-worktree enable/command overrides) are available on this host. Each attached `providerAccountId` must already exist in the catalog.
 
+`PUT /inventory` is ordinary fleet inventory (`fleet:inventory`): attach repos/worktrees, labels,
+and provider-account attachments. It does **not** accept setup-script or executable-path edits;
+those require `PUT /exec-config` (`fleet:exec-config`, admin).
+
 ```bash
 PUT /api/v1/hosts/:hostId/inventory
+PUT /api/v1/hosts/:hostId/exec-config
 GET /api/v1/hosts/:hostId/inventory
 GET /api/v1/host-inventories
 ```
@@ -182,7 +187,6 @@ GET /api/v1/host-inventories
       "id": "demo",
       "path": "/abs/path/to/repo",
       "defaultBranch": "main",
-      "terminalHookScript": "/abs/path/hook.sh",
       "worktrees": [
         {
           "id": "wt-1",
@@ -195,6 +199,24 @@ GET /api/v1/host-inventories
   ]
 }
 ```
+
+Exec-config (admin) is a partial merge onto that document:
+
+```bash
+curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/exec-config" \
+  -H 'content-type: application/json' \
+  -d '{
+    "setupScript": "source \"$HOME/.zshrc\"",
+    "allowedRoots": ["/abs/path/to/repo", "/usr/local"],
+    "repositories": [{
+      "id": "demo",
+      "terminalHookScript": "/abs/path/hook.sh"
+    }]
+  }'
+```
+
+When `allowedRoots` is set, the daemon `realpath`s hook and inventory paths (following
+symlinks) and refuses anything outside those roots.
 
 What a session actually runs is **named, fixed argv** (D4), resolved from the global
 Provider/Provider Account/Command catalogs, not from this document — the document above no

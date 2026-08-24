@@ -11,6 +11,7 @@ import {
   assertHostRepositoryRequiredEnvironmentLimit,
   parseRequiredEnvironment,
 } from "./environment-requirements.ts";
+import { parseAllowedRoots } from "./host-exec-config.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -129,6 +130,7 @@ export function parseHostInventory(value: unknown): HostInventory {
     throw new TypeError("body must be an object");
   }
   const setupScript = optionalString(value, "setupScript");
+  const allowedRoots = parseAllowedRoots(value.allowedRoots);
   const requiredEnvironment = parseRequiredEnvironment(value.requiredEnvironment);
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
@@ -146,6 +148,7 @@ export function parseHostInventory(value: unknown): HostInventory {
 
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(allowedRoots?.length ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),

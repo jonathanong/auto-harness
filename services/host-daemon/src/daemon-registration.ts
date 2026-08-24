@@ -75,9 +75,12 @@ export async function applyDaemonInventory(
   register: () => Promise<void>,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
+  const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
   if (next.setupScript === undefined) delete config.setupScript;
   else config.setupScript = next.setupScript;
+  if (next.allowedRoots === undefined) delete config.allowedRoots;
+  else config.allowedRoots = next.allowedRoots;
   config.repositories = next.repositories;
   try {
     await worktrees.ensureAll();
@@ -85,6 +88,8 @@ export async function applyDaemonInventory(
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
     else config.setupScript = previousSetupScript;
+    if (previousAllowedRoots === undefined) delete config.allowedRoots;
+    else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;
     throw err;
   }

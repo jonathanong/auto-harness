@@ -4,6 +4,7 @@ import { parseHostInventory } from "./host-inventory-parse.ts";
 
 const valid = {
   setupScript: "source ~/.zshrc",
+  allowedRoots: ["/opt/harness"],
   repositories: [
     {
       id: "repo-1",
@@ -65,6 +66,7 @@ describe("parseHostInventory", () => {
     [null, "body must be an object"],
     [[], "body must be an object"],
     [{ repositories: [], setupScript: 1 }, "setupScript must be a string"],
+    [{ repositories: [], allowedRoots: ["relative"] }, "absolute paths"],
     [{}, "repositories must be an array"],
     [{ repositories: [null] }, "repositories[0] must be an object"],
     [{ repositories: [{}] }, "repositories[0]: id must be a non-empty string"],

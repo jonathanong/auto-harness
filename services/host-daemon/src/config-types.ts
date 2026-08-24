@@ -36,6 +36,7 @@ export type DaemonConfig = {
   apiUrl?: string;
   apiKey?: string;
   setupScript?: string;
+  allowedRoots?: string[];
   requiredEnvironment?: string[];
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];

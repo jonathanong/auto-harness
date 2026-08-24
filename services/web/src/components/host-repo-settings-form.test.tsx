@@ -38,8 +38,10 @@ function stubInventoryFetch(current: unknown) {
   return fetch;
 }
 
-function putBody(fetch: { mock: { calls: unknown[][] } }): unknown {
-  const call = fetch.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+function putBody(fetch: { mock: { calls: unknown[][] } }, path = "/inventory"): unknown {
+  const call = fetch.mock.calls.find(
+    (c) => String(c[0]).includes(path) && (c[1] as RequestInit | undefined)?.method === "PUT",
+  );
   return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
 }
 
@@ -109,16 +111,52 @@ describe("HostRepoSettingsForm", () => {
           id: "repo-1",
           path: "/new/repo",
           defaultBranch: "main",
-          setupScript: "setup",
-          terminalHookScript: "hook",
           requiredEnvironment: ["A_TOKEN", "Z_TOKEN"],
           worktrees: [{ id: "worktree" }],
+        },
+      ],
+    });
+    expect(putBody(fetch, "/exec-config")).toMatchObject({
+      repositories: [
+        {
+          id: "repo-1",
+          setupScript: "setup",
+          terminalHookScript: "hook",
         },
       ],
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
     view.unmount();
+  });
+
+  it("surfaces exec-config save failures and hides scripts without the capability", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) =>
+        Promise.resolve(
+          String(url).includes("exec-config") && init?.method === "PUT"
+            ? new Response("denied", { status: 403 })
+            : init?.method === "PUT"
+              ? new Response(null, { status: 204 })
+              : new Response(JSON.stringify(inventory), { status: 200 }),
+        ),
+      ),
+    );
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    press(field(view.container, "repo-settings-open-repo-1"));
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain("denied");
+    view.unmount();
+
+    const hidden = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig={false} />,
+    );
+    press(field(hidden.container, "repo-settings-open-repo-1"));
+    expect(document.querySelector('[data-pw="repo-settings-setup-repo-1"]')).toBeNull();
+    hidden.unmount();
   });
 
   it("rejects invalid required environment names before saving", () => {

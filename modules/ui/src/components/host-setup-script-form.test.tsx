@@ -2,7 +2,12 @@
 
 import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { type HostInventory, type mutateInventory } from "@auto-harness/shared";
+import {
+  type HostExecConfigPatch,
+  type HostInventory,
+  type mutateExecConfig,
+  type mutateInventory,
+} from "@auto-harness/shared";
 
 import { field, mount, reset, router, setValue, submit } from "./action-form-test-helpers.ts";
 import { HostSetupScriptForm } from "./host-setup-script-form.tsx";
@@ -14,16 +19,18 @@ const current: HostInventory = {
   providerAccounts: [],
 };
 
-const failedMutation: typeof mutateInventory = async () => ({
+const failedExec: typeof mutateExecConfig = async () => ({
   ok: false,
   error: "cannot save",
 });
 
-const rejectedMutation: typeof mutateInventory = async () => {
+const rejectedExec: typeof mutateExecConfig = async () => {
   throw new Error("offline");
 };
 
-const successfulMutation: typeof mutateInventory = async () => ({ ok: true });
+const successfulExec: typeof mutateExecConfig = async () => ({ ok: true });
+const successfulInv: typeof mutateInventory = async () => ({ ok: true });
+const failedInv: typeof mutateInventory = async () => ({ ok: false, error: "env failed" });
 
 function RefreshHarness() {
   const [script, setScript] = useState("old");
@@ -35,29 +42,56 @@ function RefreshHarness() {
       <button type="button" data-pw="external-refresh" onClick={() => setScript("external value")}>
         External refresh
       </button>
-      <HostSetupScriptForm hostId="host" setupScript={script} mutate={successfulMutation} />
+      <HostSetupScriptForm
+        hostId="host"
+        setupScript={script}
+        mutateExec={successfulExec}
+        mutateInv={successfulInv}
+      />
     </>
   );
 }
 
 describe("HostSetupScriptForm", () => {
-  it("updates only the host setup script and refreshes", async () => {
+  it("updates exec-config and required environment separately", async () => {
+    let execPatch: HostExecConfigPatch | undefined;
     let written: HostInventory | undefined;
-    const calls: string[] = [];
-    const mutate: typeof mutateInventory = async (hostId, transform) => {
-      calls.push(hostId);
+    const mutateExec: typeof mutateExecConfig = async (hostId, patch) => {
+      execPatch = patch(current);
+      expect(hostId).toBe("host/one");
+      return { ok: true };
+    };
+    const mutateInv: typeof mutateInventory = async (hostId, transform) => {
+      expect(hostId).toBe("host/one");
       written = transform(current);
       return { ok: true };
     };
-    const view = mount(<HostSetupScriptForm hostId="host/one" setupScript="old" mutate={mutate} />);
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host/one"
+        setupScript="old"
+        allowedRoots={["/opt/harness"]}
+        mutateExec={mutateExec}
+        mutateInv={mutateInv}
+      />,
+    );
+    expect(field(view.container, "host-exec-config-alert").textContent).toContain(
+      "fleet:exec-config",
+    );
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe("old");
+    expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
+      "/opt/harness",
+    );
     setValue(field(view.container, "host-setup-script"), "source ~/.zshrc");
+    setValue(field(view.container, "host-allowed-roots"), "/opt/harness\n/usr/local");
     setValue(field(view.container, "host-required-environment"), " REGION\nTOKEN ");
     await submit(field(view.container, "form-host-setup-script"));
-    expect(calls).toEqual(["host/one"]);
+    expect(execPatch).toEqual({
+      setupScript: "source ~/.zshrc",
+      allowedRoots: ["/opt/harness", "/usr/local"],
+    });
     expect(written).toEqual({
       ...current,
-      setupScript: "source ~/.zshrc",
       requiredEnvironment: ["REGION", "TOKEN"],
       capabilities: [],
     });
@@ -66,17 +100,69 @@ describe("HostSetupScriptForm", () => {
     view.unmount();
   });
 
-  it("surfaces mutation failures", async () => {
-    const view = mount(<HostSetupScriptForm hostId="host" mutate={failedMutation} />);
+  it("surfaces mutation failures and invalid allowed roots", async () => {
+    const view = mount(
+      <HostSetupScriptForm hostId="host" mutateExec={failedExec} mutateInv={successfulInv} />,
+    );
     await submit(field(view.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("cannot save");
     expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
 
-    const rejected = mount(<HostSetupScriptForm hostId="host" mutate={rejectedMutation} />);
+    const rejected = mount(
+      <HostSetupScriptForm hostId="host" mutateExec={rejectedExec} mutateInv={successfulInv} />,
+    );
     await submit(field(rejected.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("offline");
     rejected.unmount();
+
+    const invalid = mount(
+      <HostSetupScriptForm hostId="host" mutateExec={successfulExec} mutateInv={successfulInv} />,
+    );
+    setValue(field(invalid.container, "host-allowed-roots"), "relative");
+    await submit(field(invalid.container, "form-host-setup-script"));
+    expect(field(document.body, "host-setup-script-error").textContent).toContain("absolute");
+    invalid.unmount();
+
+    const envFail = mount(
+      <HostSetupScriptForm hostId="host" mutateExec={successfulExec} mutateInv={failedInv} />,
+    );
+    await submit(field(envFail.container, "form-host-setup-script"));
+    expect(field(document.body, "host-setup-script-error").textContent).toBe("env failed");
+    envFail.unmount();
+  });
+
+  it("hides exec-config fields without the capability and still saves inventory", async () => {
+    let inventoryCalls = 0;
+    const mutateInv: typeof mutateInventory = async () => {
+      inventoryCalls += 1;
+      return { ok: true };
+    };
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        canWriteExecConfig={false}
+        mutateInv={mutateInv}
+        requiredEnvironment={["TOKEN"]}
+      />,
+    );
+    expect(view.container.querySelector('[data-pw="host-setup-script"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="host-exec-config-alert"]')).toBeNull();
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(inventoryCalls).toBe(1);
+    view.unmount();
+
+    expect(
+      mount(
+        <HostSetupScriptForm hostId="host" canWriteExecConfig={false} canWriteInventory={false} />,
+      ).container.textContent,
+    ).toBe("");
+
+    const execOnly = mount(
+      <HostSetupScriptForm hostId="host" canWriteInventory={false} mutateExec={successfulExec} />,
+    );
+    expect(execOnly.container.querySelector('[data-pw="host-required-environment"]')).toBeNull();
+    execOnly.unmount();
   });
 
   it("preserves Saved through its own refresh, then syncs and clears it externally", async () => {

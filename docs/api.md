@@ -1112,11 +1112,29 @@ Unified picker source for session/schedule creation: all Providers and Commands,
 
 #### Host inventory: setup and Provider Accounts
 
-`PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md)) carries
-an optional root `setupScript` for host-wide initialization. Each `repositories[]` entry may carry
-its own `setupScript` for that host/repository attachment; the host script runs first, and both are
-absent by default. See [host-daemon.md](host-daemon.md#setup-scripts) for precedence, environment
-forwarding, resume behavior, and security boundaries.
+`GET /api/v1/hosts/:hostId/inventory` still returns the full host document, including setup
+scripts, terminal hook paths, and `allowedRoots`. Ordinary inventory writes do not.
+
+`PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md), `fleet:inventory`) attaches
+repositories and worktrees, labels, required environment, and provider-account attachments.
+It **does not accept** setup-script or executable-path edits: omitted exec-config fields are
+preserved from the stored document, and a body that would change `setupScript`,
+`terminalHookScript`, or `allowedRoots` returns `403 FORBIDDEN` unless the caller also has
+`fleet:exec-config`. Admin callers with that capability may still replace those fields as part
+of a full-document PUT (the raw JSON editor); those writes also append `host-exec-config:update`.
+
+`PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`, admin only) is the structured write
+path for host-, repository-, and worktree-scoped setup scripts, repository `terminalHookScript`
+paths, and host-local `allowedRoots`. Omitted keys are left unchanged. Empty strings / empty
+`allowedRoots` clear the stored value. A host with no inventory yet is created empty, then the
+patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Successful
+writes append `host-exec-config:update` with the changed field paths (not script bodies).
+
+`allowedRoots` is a list of absolute host directories. When set, the daemon `realpath`s inventory
+filesystem paths and terminal hook paths (resolving symlinks and not-yet-created suffixes against
+the longest existing prefix) and refuses anything outside those roots. Empty/absent roots apply
+no extra restriction. See [host-daemon.md](host-daemon.md#setup-scripts) for setup-script
+precedence, environment forwarding, resume behavior, and security boundaries.
 
 The same inventory document carries
 `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an

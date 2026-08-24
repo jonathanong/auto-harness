@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mutateInventory, updateHostWorktree, type HostWorktree } from "@auto-harness/shared";
+import {
+  mutateExecConfig,
+  mutateInventory,
+  updateHostWorktree,
+  type HostWorktree,
+} from "@auto-harness/shared";
 import {
   Button,
   Dialog,
@@ -22,10 +27,12 @@ export function EditWorktreeForm({
   hostId,
   repositoryId,
   worktree,
+  canWriteExecConfig = true,
 }: {
   hostId: string;
   repositoryId: string;
   worktree: HostWorktree;
+  canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -42,7 +49,8 @@ export function EditWorktreeForm({
         <DialogHeader>
           <DialogTitle>Edit worktree</DialogTitle>
           <DialogDescription>
-            Update this worktree's absolute path, scheduler labels, and optional setup script.
+            Update this worktree's absolute path, scheduler labels, and optional setup script (setup
+            scripts require fleet:exec-config).
           </DialogDescription>
         </DialogHeader>
         <form
@@ -75,12 +83,25 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
-                  setupScript: worktreeSetupScript,
                 }),
               );
               if (!r.ok) {
                 showToast(r.error, { variant: "destructive", pw: "worktree-edit-error" });
                 return;
+              }
+              if (canWriteExecConfig) {
+                const exec = await mutateExecConfig(hostId, () => ({
+                  repositories: [
+                    {
+                      id: repositoryId,
+                      worktrees: [{ id: worktree.id, setupScript: worktreeSetupScript ?? "" }],
+                    },
+                  ],
+                }));
+                if (!exec.ok) {
+                  showToast(exec.error, { variant: "destructive", pw: "worktree-edit-error" });
+                  return;
+                }
               }
               setOpen(false);
               router.refresh();
@@ -110,22 +131,24 @@ export function EditWorktreeForm({
               data-pw="worktree-edit-labels"
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor="worktreeSetupScript"
-              tip="Optional worktree override; leave blank to inherit repository setup"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id="worktreeSetupScript"
-              name="setupScript"
-              rows={5}
-              defaultValue={worktree.setupScript ?? ""}
-              className="font-mono text-xs"
-              data-pw="worktree-edit-setup-script"
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor="worktreeSetupScript"
+                tip="Optional worktree override; leave blank to inherit repository setup. Requires fleet:exec-config."
+              >
+                Setup Script
+              </Label>
+              <Textarea
+                id="worktreeSetupScript"
+                name="setupScript"
+                rows={5}
+                defaultValue={worktree.setupScript ?? ""}
+                className="font-mono text-xs"
+                data-pw="worktree-edit-setup-script"
+              />
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this worktree">
               <Button type="submit" size="sm" disabled={pending} data-pw="worktree-edit-submit">

@@ -23,6 +23,7 @@ export function HostRepositoriesSection({
   catalogError,
   worktreesError,
   canWrite = true,
+  canWriteExecConfig = true,
 }: {
   hostId: string;
   inventory: HostInventory;
@@ -32,6 +33,7 @@ export function HostRepositoriesSection({
   catalogError?: string | null;
   worktreesError?: string | null;
   canWrite?: boolean;
+  canWriteExecConfig?: boolean;
 }) {
   const groups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
@@ -84,12 +86,17 @@ export function HostRepositoriesSection({
             if (!canWrite) return null;
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
-                <HostRepoSettingsForm hostId={hostId} repo={repo} />
+                <HostRepoSettingsForm
+                  hostId={hostId}
+                  repo={repo}
+                  canWriteExecConfig={canWriteExecConfig}
+                />
                 <div className="flex gap-2">
                   <AddWorktreeForm
                     hostId={hostId}
                     repo={repo}
                     repoName={namesById[repo.id] ?? repo.id}
+                    canWriteExecConfig={canWriteExecConfig}
                   />
                   <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
                 </div>

@@ -22,6 +22,8 @@ describe("can", () => {
     expect(can(operator, "fleet:drain")).toBe(true);
     expect(can({ ...operator, role: "author" }, "schedules:write")).toBe(false);
     expect(can({ ...operator, role: "maintainer" }, "fleet:inventory")).toBe(true);
+    expect(can({ ...operator, role: "maintainer" }, "fleet:exec-config")).toBe(false);
+    expect(can({ ...operator, role: "admin" }, "fleet:exec-config")).toBe(true);
     expect(can({ ...operator, role: "admin" }, "accounts:write")).toBe(true);
     expect(
       can(

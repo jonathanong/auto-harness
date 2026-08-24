@@ -10,6 +10,8 @@ describe("loadHostInventoryWithVersion", () => {
     setApiTransportForTests(async () =>
       Response.json({
         setupScript: "source ~/.zshrc",
+        allowedRoots: ["/opt/harness"],
+        requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
         version: 7,
@@ -19,6 +21,8 @@ describe("loadHostInventoryWithVersion", () => {
     await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
       inventory: {
         setupScript: "source ~/.zshrc",
+        allowedRoots: ["/opt/harness"],
+        requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
       },

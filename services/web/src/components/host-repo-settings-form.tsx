@@ -1,8 +1,10 @@
+/* eslint-disable max-lines -- exec-config fields are gated separately from inventory fields. */
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
+  mutateExecConfig,
   mutateInventory,
   parseRequiredEnvironment,
   upsertHostRepository,
@@ -23,7 +25,15 @@ import {
   showToast,
 } from "@auto-harness/ui";
 
-export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: HostRepository }) {
+export function HostRepoSettingsForm({
+  hostId,
+  repo,
+  canWriteExecConfig = true,
+}: {
+  hostId: string;
+  repo: HostRepository;
+  canWriteExecConfig?: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -39,7 +49,8 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
         <DialogHeader>
           <DialogTitle>Edit repository settings</DialogTitle>
           <DialogDescription>
-            Update this host's path, default branch, and optional scripts for this repository.
+            Update this host's path, default branch, and optional exec-config scripts for this
+            repository.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -87,8 +98,6 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
                     id: repo.id,
                     path,
                     defaultBranch,
-                    setupScript,
-                    terminalHookScript,
                     requiredEnvironment,
                   }),
                 );
@@ -98,6 +107,24 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
                     pw: `repo-settings-error-${repo.id}`,
                   });
                   return;
+                }
+                if (canWriteExecConfig) {
+                  const exec = await mutateExecConfig(hostId, () => ({
+                    repositories: [
+                      {
+                        id: repo.id,
+                        setupScript,
+                        terminalHookScript,
+                      },
+                    ],
+                  }));
+                  if (!exec.ok) {
+                    showToast(exec.error, {
+                      variant: "destructive",
+                      pw: `repo-settings-error-${repo.id}`,
+                    });
+                    return;
+                  }
                 }
                 setOpen(false);
                 router.refresh();
@@ -149,38 +176,42 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               data-pw={`repo-settings-branch-${repo.id}`}
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`setup-${repo.id}`}
-              tip="Optional setup script for this host's attachment"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id={`setup-${repo.id}`}
-              name="setupScript"
-              defaultValue={repo.setupScript ?? ""}
-              rows={3}
-              className="font-mono text-xs"
-              data-pw={`repo-settings-setup-${repo.id}`}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`hook-${repo.id}`}
-              tip="Optional terminal hook script for this host's attachment"
-            >
-              Terminal Hook Script
-            </Label>
-            <Textarea
-              id={`hook-${repo.id}`}
-              name="terminalHookScript"
-              defaultValue={repo.terminalHookScript ?? ""}
-              rows={3}
-              className="font-mono text-xs"
-              data-pw={`repo-settings-hook-${repo.id}`}
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <>
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`setup-${repo.id}`}
+                  tip="Optional setup script for this host's attachment. Requires fleet:exec-config."
+                >
+                  Setup Script
+                </Label>
+                <Textarea
+                  id={`setup-${repo.id}`}
+                  name="setupScript"
+                  defaultValue={repo.setupScript ?? ""}
+                  rows={3}
+                  className="font-mono text-xs"
+                  data-pw={`repo-settings-setup-${repo.id}`}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`hook-${repo.id}`}
+                  tip="Absolute path to an optional terminal hook script. Requires fleet:exec-config."
+                >
+                  Terminal Hook Script
+                </Label>
+                <Textarea
+                  id={`hook-${repo.id}`}
+                  name="terminalHookScript"
+                  defaultValue={repo.terminalHookScript ?? ""}
+                  rows={3}
+                  className="font-mono text-xs"
+                  data-pw={`repo-settings-hook-${repo.id}`}
+                />
+              </div>
+            </>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this host's repository attachment">
               <Button

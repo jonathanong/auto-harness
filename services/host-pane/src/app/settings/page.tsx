@@ -80,7 +80,12 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted-foreground">
           Optional host-wide setup run before repository and worktree setup scripts.
         </p>
-        <HostSetupScriptForm hostId={id} setupScript={inventory.setupScript} />
+        <HostSetupScriptForm
+          hostId={id}
+          setupScript={inventory.setupScript}
+          allowedRoots={inventory.allowedRoots}
+          requiredEnvironment={inventory.requiredEnvironment}
+        />
       </div>
 
       <div className="space-y-2 border-t border-border pt-6">

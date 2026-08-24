@@ -3,7 +3,13 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import type { Principal } from "./auth.ts";
 import { writeRouteAudit } from "./local-audit.ts";
-import type { HostInventory } from "@auto-harness/shared";
+import {
+  EXEC_CONFIG_CAPABILITY,
+  parseHostInventory,
+  principalHas,
+  reconcileInventoryWrite,
+  type HostInventory,
+} from "@auto-harness/shared";
 
 /** Preserve repos a scoped caller cannot see so a filtered GET+PUT cannot wipe them. */
 export function mergeHiddenRepositories(
@@ -117,14 +123,46 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
     try {
       const incoming =
         body && typeof body === "object" && !Array.isArray(body)
-          ? (body as { repositories?: unknown[] })
+          ? (body as { repositories?: unknown[]; version?: unknown })
           : undefined;
+      const existing = await plane.getHostInventoryDurable(hostId);
       if (Array.isArray(incoming?.repositories)) {
-        mergeHiddenRepositories(
-          await plane.getHostInventoryDurable(hostId),
-          incoming as { repositories: unknown[] },
-          ctx.principal,
-        );
+        mergeHiddenRepositories(existing, incoming as { repositories: unknown[] }, ctx.principal);
+      }
+      let execEdits: string[] = [];
+      try {
+        const reconciled = reconcileInventoryWrite({
+          existing,
+          incoming: parseHostInventory(body),
+          allowExecConfig: !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY),
+        });
+        if (!reconciled.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "host-exec-config:update",
+              resourceType: "host-inventory",
+              resourceId: hostId,
+              outcome: "denied",
+              metadata: { changed: reconciled.execEdits },
+            }))
+          )
+            return true;
+          send(res, 403, {
+            error: { code: "FORBIDDEN", message: reconciled.error },
+          });
+          return true;
+        }
+        execEdits = reconciled.execEdits;
+        const version =
+          typeof incoming?.version === "number" && Number.isInteger(incoming.version)
+            ? incoming.version
+            : undefined;
+        body = {
+          ...reconciled.inventory,
+          ...(version !== undefined ? { version } : {}),
+        };
+      } catch {
+        // Invalid inventory is reported by putHostInventoryDurable.
       }
       const result = await plane.putHostInventoryDurable(hostId, body);
       if (!result.ok) {
@@ -153,6 +191,16 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
           resourceType: "host-inventory",
           resourceId: hostId,
           metadata: { repositories: result.config.repositories.map((repository) => repository.id) },
+        }))
+      )
+        return true;
+      if (
+        execEdits.length &&
+        !(await writeRouteAudit(ctx, {
+          action: "host-exec-config:update",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          metadata: { changed: execEdits },
         }))
       )
         return true;

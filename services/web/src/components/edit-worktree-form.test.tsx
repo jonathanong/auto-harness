@@ -54,8 +54,10 @@ function stubInventoryFetch(current: unknown) {
   return fetch;
 }
 
-function putBody(fetch: { mock: { calls: unknown[][] } }): unknown {
-  const call = fetch.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+function putBody(fetch: { mock: { calls: unknown[][] } }, path = "/inventory"): unknown {
+  const call = fetch.mock.calls.find(
+    (c) => String(c[0]).includes(path) && (c[1] as RequestInit | undefined)?.method === "PUT",
+  );
   return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
 }
 
@@ -128,9 +130,16 @@ describe("EditWorktreeForm", () => {
               name: "feature",
               path: "/new/feature",
               labels: ["fast", "ci", "fast"],
-              setupScript: "pnpm install",
             },
           ],
+        },
+      ],
+    });
+    expect(putBody(fetch, "/exec-config")).toMatchObject({
+      repositories: [
+        {
+          id: "repo-1",
+          worktrees: [{ id: "worktree-1", setupScript: "pnpm install" }],
         },
       ],
     });
@@ -146,9 +155,44 @@ describe("EditWorktreeForm", () => {
     setValue(field(document, "worktree-edit-setup-script"), "   ");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    const body = putBody(fetch) as typeof inventory;
-    expect(body.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    expect(putBody(fetch, "/exec-config")).toMatchObject({
+      repositories: [{ worktrees: [{ id: "worktree-1", setupScript: "" }] }],
+    });
     view.unmount();
+  });
+
+  it("surfaces exec-config save failures and hides setup without the capability", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) =>
+        Promise.resolve(
+          String(url).includes("exec-config") && init?.method === "PUT"
+            ? new Response("denied", { status: 403 })
+            : init?.method === "PUT"
+              ? new Response(null, { status: 204 })
+              : new Response(JSON.stringify(inventory), { status: 200 }),
+        ),
+      ),
+    );
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(field(document, "worktree-edit-error").textContent).toContain("denied");
+    view.unmount();
+
+    const hidden = mountForm(
+      <EditWorktreeForm
+        hostId="host/one"
+        repositoryId="repo-1"
+        worktree={worktree}
+        canWriteExecConfig={false}
+      />,
+    );
+    press(field(hidden.container, "worktree-edit-open"));
+    expect(document.querySelector('[data-pw="worktree-edit-setup-script"]')).toBeNull();
+    hidden.unmount();
   });
 
   it("uses missing-label fallbacks and displays a pending request failure", async () => {

@@ -1,6 +1,13 @@
+/* eslint-disable max-lines -- inventory and exec-config client writes share fetch stubs. */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getInventory, mutateInventory, putInventory } from "./host-inventory-api.ts";
+import {
+  getInventory,
+  mutateExecConfig,
+  mutateInventory,
+  putExecConfig,
+  putInventory,
+} from "./host-inventory-api.ts";
 
 describe("getInventory / putInventory", () => {
   afterEach(() => {
@@ -27,6 +34,7 @@ describe("getInventory / putInventory", () => {
       new Response(
         JSON.stringify({
           setupScript: "source ~/.zshrc",
+          allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
@@ -37,6 +45,7 @@ describe("getInventory / putInventory", () => {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
       expect(inv.setupScript).toBe("source ~/.zshrc");
+      expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
@@ -71,6 +80,7 @@ describe("getInventory / putInventory", () => {
     try {
       const ok = await putInventory("host-1", {
         setupScript: "source ~/.zshrc",
+        allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
@@ -79,6 +89,7 @@ describe("getInventory / putInventory", () => {
       expect(ok).toEqual({ ok: true });
       expect(sentBody).toEqual({
         setupScript: "source ~/.zshrc",
+        allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
@@ -98,6 +109,48 @@ describe("getInventory / putInventory", () => {
         providerAccounts: [],
       });
       expect(failed).toEqual({ ok: false, error: "bad request" });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("putExecConfig writes the exec-config subset and reports conflicts", async () => {
+    process.env.HARNESS_API_HTTP = "http://example.test:9104";
+    const original = globalThis.fetch;
+    let sent: { url?: string; body?: unknown } = {};
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      sent = { url: String(url), body: JSON.parse(String(init?.body)) };
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
+    try {
+      await expect(
+        putExecConfig(
+          "host-1",
+          {
+            setupScript: "echo",
+            allowedRoots: ["/opt/harness"],
+            repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
+          },
+          3,
+        ),
+      ).resolves.toEqual({ ok: true });
+      expect(sent.url).toContain("/exec-config");
+      expect(sent.body).toEqual({
+        setupScript: "echo",
+        allowedRoots: ["/opt/harness"],
+        repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
+        version: 3,
+      });
+    } finally {
+      globalThis.fetch = original;
+    }
+    globalThis.fetch = (async () => new Response("conflict", { status: 409 })) as typeof fetch;
+    try {
+      await expect(putExecConfig("host-1", { setupScript: "x" })).resolves.toEqual({
+        ok: false,
+        conflict: true,
+        error: "conflict",
+      });
     } finally {
       globalThis.fetch = original;
     }
@@ -200,6 +253,70 @@ describe("mutateInventory", () => {
         error: "nope",
       });
       expect(calls.filter((call) => call.init?.method === "PUT")).toHaveLength(1);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+describe("mutateExecConfig", () => {
+  const empty = { repositories: [], providerAccounts: [], capabilities: [] };
+
+  it("sends the exec-config patch against the version it just read", async () => {
+    const original = globalThis.fetch;
+    try {
+      const calls = stubFetch((_url, init) =>
+        init?.method === "PUT"
+          ? new Response(null, { status: 204 })
+          : new Response(JSON.stringify({ ...empty, version: 4 }), { status: 200 }),
+      );
+      await expect(
+        mutateExecConfig("host-1", () => ({ setupScript: "echo", allowedRoots: ["/opt"] })),
+      ).resolves.toEqual({ ok: true });
+      const put = calls.find((call) => call.init?.method === "PUT");
+      expect(String(put?.url)).toContain("/exec-config");
+      expect(JSON.parse(String(put?.init?.body))).toMatchObject({
+        setupScript: "echo",
+        allowedRoots: ["/opt"],
+        version: 4,
+      });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("surfaces read failures and non-conflict write failures", async () => {
+    const original = globalThis.fetch;
+    try {
+      stubFetch(() => new Response("nope", { status: 500 }));
+      await expect(mutateExecConfig("host-1", () => ({}))).resolves.toMatchObject({ ok: false });
+      globalThis.fetch = (async () => {
+        throw "offline";
+      }) as typeof fetch;
+      await expect(mutateExecConfig("host-1", () => ({}))).resolves.toEqual({
+        ok: false,
+        error: "offline",
+      });
+      stubFetch((_url, init) =>
+        init?.method === "PUT"
+          ? new Response("nope", { status: 400 })
+          : new Response(JSON.stringify(empty), { status: 200 }),
+      );
+      await expect(mutateExecConfig("host-1", () => ({ setupScript: "x" }))).resolves.toEqual({
+        ok: false,
+        error: "nope",
+      });
+      stubFetch((_url, init) =>
+        init?.method === "PUT"
+          ? new Response("conflict", { status: 409 })
+          : new Response(JSON.stringify(empty), { status: 200 }),
+      );
+      await expect(mutateExecConfig("host-1", () => ({ setupScript: "x" }))).resolves.toMatchObject(
+        {
+          ok: false,
+          error: "conflict",
+        },
+      );
     } finally {
       globalThis.fetch = original;
     }

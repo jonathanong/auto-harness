@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- setup-script field is gated separately from inventory fields. */
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -5,6 +6,7 @@ import { useState, useTransition } from "react";
 import {
   addHostWorktree,
   defaultWorktreePath,
+  mutateExecConfig,
   mutateInventory,
   newId,
   type HostRepository,
@@ -25,6 +27,8 @@ export function AddWorktreeForm({
   repoName,
   browseEndpoint,
   mutate = mutateInventory,
+  mutateExec = mutateExecConfig,
+  canWriteExecConfig = true,
 }: {
   hostId: string;
   repo: HostRepository;
@@ -33,6 +37,8 @@ export function AddWorktreeForm({
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
   mutate?: typeof mutateInventory;
+  mutateExec?: typeof mutateExecConfig;
+  canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -83,7 +89,8 @@ export function AddWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
-            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
+            const worktreeSetupScript =
+              canWriteExecConfig && setupScript.trim() ? setupScript.trim() : undefined;
             start(async () => {
               try {
                 const r = await mutate(hostId, (current) =>
@@ -92,14 +99,22 @@ export function AddWorktreeForm({
                     name: wtName,
                     path: wtPath,
                     labels: requestedLabels,
-                    ...(worktreeSetupScript !== undefined
-                      ? { setupScript: worktreeSetupScript }
-                      : {}),
                   }),
                 );
                 if (!r.ok) {
                   showToast(r.error, { variant: "destructive" });
                   return;
+                }
+                if (worktreeSetupScript) {
+                  const exec = await mutateExec(hostId, () => ({
+                    repositories: [
+                      { id: repo.id, worktrees: [{ id, setupScript: worktreeSetupScript }] },
+                    ],
+                  }));
+                  if (!exec.ok) {
+                    showToast(exec.error, { variant: "destructive" });
+                    return;
+                  }
                 }
                 setOpen(false);
                 setName("");
@@ -168,22 +183,24 @@ export function AddWorktreeForm({
               data-pw={`add-worktree-labels-${repo.id}`}
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`addWorktreeSetupScript-${repo.id}`}
-              tip="Optional worktree override; leave blank to inherit repository setup"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id={`addWorktreeSetupScript-${repo.id}`}
-              value={setupScript}
-              onChange={(event) => setSetupScript(event.target.value)}
-              rows={5}
-              className="font-mono text-xs"
-              data-pw={`add-worktree-setup-script-${repo.id}`}
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <div className="space-y-1">
+              <Label
+                htmlFor={`addWorktreeSetupScript-${repo.id}`}
+                tip="Optional worktree override; leave blank to inherit repository setup. Requires fleet:exec-config."
+              >
+                Setup Script
+              </Label>
+              <Textarea
+                id={`addWorktreeSetupScript-${repo.id}`}
+                value={setupScript}
+                onChange={(event) => setSetupScript(event.target.value)}
+                rows={5}
+                className="font-mono text-xs"
+                data-pw={`add-worktree-setup-script-${repo.id}`}
+              />
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Persist this worktree on host inventory (daemon reloads within ~15s)">
               <Button

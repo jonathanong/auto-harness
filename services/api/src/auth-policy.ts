@@ -1,4 +1,9 @@
-import { principalHas, type Capability, type AuthzPrincipal } from "@auto-harness/shared";
+import {
+  EXEC_CONFIG_CAPABILITY,
+  principalHas,
+  type Capability,
+  type AuthzPrincipal,
+} from "@auto-harness/shared";
 
 import type { Principal } from "./auth.ts";
 
@@ -34,6 +39,9 @@ export function requiredCapability(
   }
   if (/^\/api\/v1\/repositories\/[^/]+\/session-drains(?:\/[^/]+(?:\/release)?)?$/.test(pathname)) {
     return write ? "sessions:write" : "authenticated";
+  }
+  if (/^\/api\/v1\/hosts\/[^/]+\/exec-config$/.test(pathname)) {
+    return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
   }
   if (
     pathname === "/api/v1/host-inventories" ||

@@ -1,4 +1,5 @@
 import type { DaemonConfig, HostIdentity } from "./config-types.ts";
+import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
 
 /** Normalize control-plane base to HTTP origin (strip trailing slash and /ws). */
@@ -38,6 +39,7 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
+    ...(config.allowedRoots !== undefined ? { allowedRoots: config.allowedRoots } : {}),
     repositories: config.repositories,
   });
 }
@@ -76,5 +78,6 @@ export async function fetchHostInventory(
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;
   }
+  await assertDaemonPathsAllowed(config);
   return config;
 }

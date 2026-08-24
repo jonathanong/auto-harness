@@ -2,7 +2,12 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type HostInventory, type mutateInventory } from "@auto-harness/shared";
+import {
+  type HostExecConfigPatch,
+  type HostInventory,
+  type mutateExecConfig,
+  type mutateInventory,
+} from "@auto-harness/shared";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
 import { input, mount, repo, reset, setValue, submit } from "./action-form-test-helpers.ts";
@@ -60,6 +65,7 @@ describe("AddWorktreeForm errors", () => {
     );
     await submit(form);
     expect(transformed?.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    // Blank override is omitted from exec-config as well as inventory.
     view.unmount();
   });
 
@@ -83,7 +89,7 @@ describe("AddWorktreeForm errors", () => {
       "pnpm install",
     );
     await submit(rejectedForm);
-    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm install");
+    expect(transformed?.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
     expect(document.body.textContent).toContain("denied");
     rejected.unmount();
 
@@ -115,5 +121,66 @@ describe("AddWorktreeForm errors", () => {
     fill();
     await submit(offlineForm);
     expect(document.body.textContent).toContain("offline");
+  });
+
+  it("writes setup scripts through exec-config after the worktree exists", async () => {
+    let execPatch: HostExecConfigPatch | undefined;
+    const mutate: typeof mutateInventory = async (_hostId, transform) => {
+      transform(withRepo);
+      return { ok: true };
+    };
+    const mutateExec: typeof mutateExecConfig = async (_hostId, patch) => {
+      execPatch = patch(withRepo);
+      return { ok: true };
+    };
+    const view = mount(
+      <AddWorktreeForm
+        hostId="host-1"
+        repo={repo}
+        repoName="Repo"
+        mutate={mutate}
+        mutateExec={mutateExec}
+      />,
+    );
+    const form = open(view);
+    fill();
+    setValue(
+      document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
+      "pnpm install",
+    );
+    await submit(form);
+    expect(execPatch?.repositories?.[0]?.worktrees?.[0]?.setupScript).toBe("pnpm install");
+    view.unmount();
+
+    const execDenied = mount(
+      <AddWorktreeForm
+        hostId="host-1"
+        repo={repo}
+        repoName="Repo"
+        mutate={async (_hostId, transform) => {
+          transform(withRepo);
+          return { ok: true };
+        }}
+        mutateExec={async () => ({ ok: false, error: "exec denied" })}
+      />,
+    );
+    const deniedForm = open(execDenied);
+    fill();
+    setValue(
+      document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
+      "pnpm install",
+    );
+    await submit(deniedForm);
+    expect(document.body.textContent).toContain("exec denied");
+    execDenied.unmount();
+  });
+
+  it("hides the setup script field without exec-config", () => {
+    const view = mount(
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" canWriteExecConfig={false} />,
+    );
+    open(view);
+    expect(document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]')).toBeNull();
+    view.unmount();
   });
 });
