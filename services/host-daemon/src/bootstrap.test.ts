@@ -68,6 +68,9 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint(empty)).not.toBe(
       inventoryFingerprint({ ...empty, setupScript: "source ~/.zshrc" }),
     );
+    expect(inventoryFingerprint({ ...empty, allowedRoots: ["/safe"] })).not.toBe(
+      inventoryFingerprint(empty),
+    );
   });
 
   it("handles empty error bodies", async () => {

@@ -141,6 +141,8 @@ describe("getInventory / putInventory", () => {
         repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
         version: 3,
       });
+      await expect(putExecConfig("host-1", {})).resolves.toEqual({ ok: true });
+      expect(sent.body).toEqual({});
     } finally {
       globalThis.fetch = original;
     }

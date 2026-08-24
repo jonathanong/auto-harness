@@ -396,6 +396,77 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     expect(withoutExec.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
   });
 
+  it("handles sparse inventories and explicit blank nested values", () => {
+    const sparse: HostInventory = {
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/opt/harness/repo",
+          defaultBranch: "main",
+          worktrees: [
+            {
+              id: "wt-1",
+              name: "wt-1",
+              path: "/opt/harness/repo/wt-1",
+              labels: [],
+            },
+          ],
+        },
+      ],
+      providerAccounts: [],
+    };
+    const patched = applyHostExecConfig(sparse, {
+      repositories: [{ id: "repo-1", worktrees: [{ id: "wt-1", setupScript: "echo wt" }] }],
+    });
+    expect(patched.repositories[0]?.worktrees[0]?.setupScript).toBe("echo wt");
+    expect(patched).not.toHaveProperty("allowedRoots");
+    expect(patched).not.toHaveProperty("requiredEnvironment");
+    const withEnvironment = applyHostExecConfig(
+      { ...sparse, requiredEnvironment: ["TOKEN"] },
+      { repositories: [{ id: "repo-1" }] },
+    );
+    expect(withEnvironment.requiredEnvironment).toEqual(["TOKEN"]);
+
+    const windows: HostInventory = {
+      ...sparse,
+      repositories: [
+        {
+          ...sparse.repositories[0]!,
+          path: "C:\\harness\\repo",
+          terminalHookScript: "C:\\harness\\hooks\\done.cmd",
+        },
+      ],
+    };
+    expect(
+      reconcileInventoryWrite({ existing: windows, incoming: windows, allowExecConfig: false }),
+    ).toMatchObject({ ok: true });
+    expect(preserveHostExecConfig(sparse, sparse).repositories[0]).not.toHaveProperty(
+      "terminalHookScript",
+    );
+
+    const cleared = preserveHostExecConfig(
+      {
+        setupScript: "",
+        allowedRoots: [],
+        repositories: [
+          {
+            ...sparse.repositories[0]!,
+            setupScript: "",
+            terminalHookScript: "",
+            worktrees: [{ ...sparse.repositories[0]!.worktrees[0]!, setupScript: "" }],
+          },
+        ],
+        providerAccounts: [],
+      },
+      sparse,
+    );
+    expect(cleared).not.toHaveProperty("setupScript");
+    expect(cleared.allowedRoots).toEqual([]);
+    expect(cleared.repositories[0]).not.toHaveProperty("setupScript");
+    expect(cleared.repositories[0]).not.toHaveProperty("terminalHookScript");
+    expect(cleared.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+  });
+
   it("rejects exec-config edits without the capability and applies them with it", () => {
     const incoming: HostInventory = { ...inventory(), setupScript: "pwn" };
     expect(
@@ -558,6 +629,38 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       reconcileInventoryWrite({
         existing: legacy,
         incoming: movedRepository,
+        allowExecConfig: true,
+      }),
+    ).toMatchObject({ ok: true });
+
+    const addedWorktree: HostInventory = {
+      ...legacy,
+      repositories: [
+        {
+          ...legacy.repositories[0]!,
+          worktrees: [
+            ...legacy.repositories[0]!.worktrees,
+            { id: "wt-2", name: "wt-2", path: "/opt/harness/repo/.worktrees/wt-2", labels: [] },
+          ],
+        },
+      ],
+    };
+    expect(
+      reconcileInventoryWrite({
+        existing: legacy,
+        incoming: addedWorktree,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({ ok: false, kind: "forbidden" });
+
+    const absoluteReplacement: HostInventory = {
+      ...legacy,
+      repositories: [{ ...legacy.repositories[0]!, terminalHookScript: "/opt/new-hook.sh" }],
+    };
+    expect(
+      reconcileInventoryWrite({
+        existing: legacy,
+        incoming: absoluteReplacement,
         allowExecConfig: true,
       }),
     ).toMatchObject({ ok: true });

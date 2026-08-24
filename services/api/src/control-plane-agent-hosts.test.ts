@@ -27,6 +27,10 @@ describe("agent host inventory", () => {
     expect(plane.getHostInventory("local-1")?.repositories[0]?.path).toBe("/repo");
     expect(plane.listWorktrees().filter((w) => w.hostId === "local-1")).toHaveLength(2);
     expect(plane.listHostInventories()).toHaveLength(1);
+    expect(plane.putHostInventory("local-1", { repositories: [], version: 0 })).toMatchObject({
+      ok: false,
+      conflict: true,
+    });
 
     // Replace inventory: drop wt-2, keep wt-1
     const replace = plane.putHostInventory("local-1", {
@@ -151,5 +155,13 @@ describe("agent host inventory", () => {
     expect(plane.deleteHostInventory("local-1").ok).toBe(true);
     expect(plane.getHostInventory("local-1")).toBeNull();
     expect(plane.deleteHostInventory("local-1").ok).toBe(false);
+
+    expect(plane.putHostInventory("delete-version", { repositories: [] })).toMatchObject({
+      ok: true,
+    });
+    expect(plane.deleteHostInventory("delete-version", 0)).toMatchObject({
+      ok: false,
+      conflict: true,
+    });
   });
 });

@@ -107,6 +107,42 @@ describe("host inventory optimistic concurrency", () => {
 
     expect(result).toMatchObject({ ok: false, committed: true });
     expect(stored()?.hostId).toBe("host-a");
+
+    const stringFailure = planeWithStorage();
+    stringFailure.state.storage!.putWorktree = async () => {
+      throw "projection unavailable";
+    };
+    await expect(
+      putHostInventoryDurable(stringFailure.state, "host-a", {
+        repositories: [
+          {
+            id: "repo-a",
+            path: "/repo-a",
+            defaultBranch: "main",
+            worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+          },
+        ],
+        commandProfiles: {},
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      committed: true,
+      error: "host inventory committed but worktree projection failed: projection unavailable",
+    });
+  });
+
+  it("rejects inventories whose deletion catalog would exceed its reference cap", async () => {
+    const { state, stored } = planeWithStorage();
+    const repositories = Array.from({ length: 100 }, (_, index) => ({
+      id: `repo-${index}`,
+      path: `/repo-${index}`,
+      defaultBranch: "main",
+      worktrees: [],
+    }));
+    await expect(
+      putHostInventoryDurable(state, "host-a", { repositories, commandProfiles: {} }),
+    ).resolves.toEqual({ ok: false, error: "host inventory has too many catalog references" });
+    expect(stored()).toBeUndefined();
   });
 
   it("advances the version on each accepted write", async () => {

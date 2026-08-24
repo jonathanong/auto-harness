@@ -254,6 +254,34 @@ describe("host inventory route outcomes", () => {
 
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ error: { code: "CONFLICT" } });
+
+    plane.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      error: "invalid inventory",
+    });
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+        commandProfiles: {},
+      }),
+    ).toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR" } },
+    });
+    plane.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      committed: true as const,
+      error: "projection unavailable",
+    });
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+        commandProfiles: {},
+      }),
+    ).toMatchObject({
+      status: 503,
+      json: { error: { code: "STORAGE_UNAVAILABLE" } },
+    });
   });
 });
 

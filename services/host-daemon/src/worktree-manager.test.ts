@@ -222,6 +222,9 @@ describe("WorktreeManager", () => {
     const claimed = await manager.claim("repo-1", "wt-1");
     manager.setAllowedRootsPolicy([]);
     await expect(claimed.currentHookTarget()).resolves.toBeNull();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
   });
 
   it("fails closed for claims and startup preparation while an empty policy is active", async () => {
