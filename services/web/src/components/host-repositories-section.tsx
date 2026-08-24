@@ -91,7 +91,7 @@ export function HostRepositoriesSection({
               selector="host-repositories-catalog"
             />
           ) : attachingRepositoryIsBlocked ? (
-            <p className="text-sm text-muted-foreground" data-pw="host-repositories-attach-blocked">
+            <p className="text-sm text-muted-foreground">
               Attaching a repository requires <code>fleet:exec-config</code> because this host runs
               setup in each repository checkout.
             </p>

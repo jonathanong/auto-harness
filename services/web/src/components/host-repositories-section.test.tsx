@@ -192,9 +192,7 @@ describe("HostRepositoriesSection", () => {
       true,
     );
     expect(view.container.querySelector('[data-pw="form-add-local-repo"]')).toBeNull();
-    expect(field(view.container, "host-repositories-attach-blocked").textContent).toContain(
-      "fleet:exec-config",
-    );
+    expect(view.container.textContent).toContain("fleet:exec-config");
     view.unmount();
   });
 });
