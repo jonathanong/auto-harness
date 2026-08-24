@@ -98,6 +98,20 @@ function entriesById<T extends { id: string }>(entries: readonly T[] | undefined
   return new Map(entries?.map((entry) => [entry.id, entry]) ?? []);
 }
 
+function duplicateInventoryIdError(inventory: HostInventory): string | undefined {
+  const repositories = new Set<string>();
+  const worktrees = new Set<string>();
+  for (const repository of inventory.repositories) {
+    if (repositories.has(repository.id)) return `duplicate repository ${repository.id}`;
+    repositories.add(repository.id);
+    for (const worktree of repository.worktrees) {
+      if (worktrees.has(worktree.id)) return `duplicate worktree ${worktree.id}`;
+      worktrees.add(worktree.id);
+    }
+  }
+  return undefined;
+}
+
 function idsInOrder<T extends { id: string }>(
   existing: readonly T[] | undefined,
   incoming: readonly T[] | undefined,
@@ -254,6 +268,10 @@ export function reconcileInventoryWrite(input: {
 }):
   | { ok: true; inventory: HostInventory; execEdits: string[] }
   | { ok: false; error: string; execEdits: string[]; kind: "forbidden" | "validation" } {
+  const duplicateError = duplicateInventoryIdError(input.incoming);
+  if (duplicateError) {
+    return { ok: false, error: duplicateError, execEdits: [], kind: "validation" };
+  }
   const inventory = preserveHostExecConfig(input.incoming, input.existing);
   const execEdits = listExecConfigEdits(input.existing, inventory);
   const legacyHookError = legacyRelativeHookError(input.existing, inventory);

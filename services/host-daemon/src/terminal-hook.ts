@@ -27,6 +27,7 @@ export async function runTerminalHook(
   input: TerminalHookInput,
   log: (message: string) => void = console.error,
 ): Promise<void> {
+  let scriptPath = input.scriptPath;
   const env: NodeJS.ProcessEnv = {
     ...createChildEnv(input.childEnvSource ?? process.env),
     HARNESS_SESSION_ID: input.sessionId,
@@ -45,10 +46,8 @@ export async function runTerminalHook(
 
   if (input.allowedRoots?.length) {
     try {
-      await assertPathWithinAllowedRoots(
-        resolveHookPath(input.repositoryPath ?? input.cwd, input.scriptPath),
-        input.allowedRoots,
-      );
+      scriptPath = resolveHookPath(input.cwd, input.scriptPath);
+      await assertPathWithinAllowedRoots(scriptPath, input.allowedRoots);
     } catch (err) {
       log(
         `terminal hook blocked for session ${input.sessionId}: ${
@@ -61,7 +60,7 @@ export async function runTerminalHook(
 
   try {
     const result = await runner.run({
-      argv: ["/bin/sh", input.scriptPath],
+      argv: ["/bin/sh", scriptPath],
       cwd: input.cwd,
       env,
       timeoutMs: input.timeoutMs ?? 60_000,

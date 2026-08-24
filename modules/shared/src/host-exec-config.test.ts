@@ -472,4 +472,28 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       error: "repository.repo-1.terminalHookScript must be an absolute path",
     });
   });
+
+  it("rejects duplicate repository and worktree IDs before reconciliation", () => {
+    const duplicateRepository = inventory();
+    duplicateRepository.repositories.push({ ...duplicateRepository.repositories[0]! });
+    expect(
+      reconcileInventoryWrite({
+        existing: inventory(),
+        incoming: duplicateRepository,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({ ok: false, kind: "validation", error: "duplicate repository repo-1" });
+
+    const duplicateWorktree = inventory();
+    duplicateWorktree.repositories[0]!.worktrees.push({
+      ...duplicateWorktree.repositories[0]!.worktrees[0]!,
+    });
+    expect(
+      reconcileInventoryWrite({
+        existing: inventory(),
+        incoming: duplicateWorktree,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({ ok: false, kind: "validation", error: "duplicate worktree wt-1" });
+  });
 });
