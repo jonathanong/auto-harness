@@ -138,6 +138,13 @@ export type LogRecord = {
   ttl?: number;
 };
 
+/** Connection fence for a SessionLogs write, optionally pinned to session attempts. */
+export type HostLogFence = {
+  hostId: string;
+  connectionId: string;
+  attempts?: ReadonlyArray<{ sessionId: string; attemptId: string }>;
+};
+
 export type ArchiveMetadata = {
   key: string;
   contentType: string;

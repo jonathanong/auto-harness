@@ -263,4 +263,141 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.getSession("sess-legacy")?.hostId).toBe("modern");
   });
+
+  it("discards stale reconnect attempts before ownership validation", () => {
+    const { plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: "wt-1",
+      attemptId: first.session.attemptId!,
+    });
+    const session = plane.getSession("sess-1")!;
+    plane.state.sessions.set("sess-1", {
+      ...session,
+      hostId: "host-2",
+      worktreeId: "wt-2",
+      attemptId: "attempt-2",
+    });
+
+    expect(
+      plane.registerHost({
+        hostId: "host-1",
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        replaceExisting: true,
+        worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
+        runningAttempts: [{ sessionId: "sess-1", attemptId: first.session.attemptId! }],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }).ok,
+    ).toBe(true);
+    expect(
+      plane.registerHost({
+        hostId: "host-3",
+        protocolVersion: HOST_PROTOCOL_VERSION,
+        worktrees: [{ id: "wt-3", name: "wt-3", repositoryId: "repo-1", path: "/w3", labels: [] }],
+        runningAttempts: [{ sessionId: "sess-1", attemptId: "attempt-2" }],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).toEqual({ ok: false, error: "running session sess-1 is not owned by host host-3" });
+  });
+
+  it("discards stale durable reconnect attempts before ownership validation", async () => {
+    const plane = new ControlPlane();
+    const inventory = [
+      { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] },
+    ];
+    plane.state.storage = {
+      getSession: async () => ({
+        id: "sess-1",
+        status: "running",
+        hostId: "host-2",
+        worktreeId: "wt-2",
+        attemptId: "attempt-2",
+        ackReceivedAt: "t",
+      }),
+      getWorktree: async () => ({
+        id: "wt-2",
+        hostId: "host-2",
+        currentSessionId: "sess-1",
+      }),
+      tryRegisterHost: async () => false,
+    } as never;
+
+    await expect(
+      plane.registerHostDurable({
+        hostId: "host-1",
+        worktrees: inventory,
+        runningAttempts: [{ sessionId: "sess-1", attemptId: "attempt-1" }],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).resolves.toEqual({ ok: false, error: "hostId host-1 already has an active connection" });
+    await expect(
+      plane.registerHostDurable({
+        hostId: "host-1",
+        worktrees: inventory,
+        runningAttempts: [{ sessionId: "sess-1", attemptId: "attempt-2" }],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "running session sess-1 is not owned by host host-1",
+    });
+  });
+
+  it("fills omitted attemptId on logs from the currently owned attempt", () => {
+    const { now, plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: "wt-1",
+      attemptId: first.session.attemptId!,
+    });
+    expect(
+      plane.handleHostMessage({
+        type: "session:log",
+        sessionId: "sess-1",
+        stream: "stdout",
+        content: "legacy",
+        timestamp: now,
+        seq: 1,
+      }),
+    ).toEqual({ ok: true });
+    expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["legacy"]);
+  });
+
+  it("fills omitted durable log attemptId from the current session row", async () => {
+    const { now, plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    const fences: Array<{ attempts?: Array<{ sessionId: string; attemptId: string }> }> = [];
+    plane.state.storage = {
+      getSession: async () => plane.getSession("sess-1"),
+      getHostLock: async () => "connection",
+      putLogFenced: async (
+        _record: unknown,
+        fence: { attempts?: Array<{ sessionId: string; attemptId: string }> },
+      ) => (fences.push(fence), true),
+    } as never;
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          stream: "stdout",
+          content: "legacy",
+          timestamp: now,
+          seq: 1,
+        },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(fences).toEqual([
+      {
+        hostId: "host-1",
+        connectionId: "connection",
+        attempts: [{ sessionId: "sess-1", attemptId: first.session.attemptId }],
+      },
+    ]);
+  });
 });

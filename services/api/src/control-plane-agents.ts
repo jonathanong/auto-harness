@@ -15,6 +15,7 @@ import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
+import { ignoreStaleReconnectClaim } from "./control-plane-reconnect-confirm.ts";
 import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
 import {
   buildRegisteredInventory,
@@ -102,6 +103,48 @@ function reportedRunningSessionIds(opts: {
     return opts.runningAttempts.map((attempt) => attempt.sessionId);
   }
   return [...(opts.runningSessions ?? [])];
+}
+
+function ownedReportedRunningSessionIds(
+  state: ControlPlaneState,
+  opts: {
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+): string[] {
+  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+    return opts.runningAttempts
+      .filter(
+        (attempt) =>
+          !ignoreStaleReconnectClaim(
+            state,
+            state.sessions.get(attempt.sessionId),
+            attempt.attemptId,
+          ),
+      )
+      .map((attempt) => attempt.sessionId);
+  }
+  return reportedRunningSessionIds(opts);
+}
+
+async function ownedReportedRunningSessionIdsDurable(
+  state: ControlPlaneState,
+  opts: {
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+): Promise<string[]> {
+  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+    const sessionIds: string[] = [];
+    for (const attempt of opts.runningAttempts) {
+      const session = await state.storage!.getSession(attempt.sessionId);
+      if (!ignoreStaleReconnectClaim(state, session, attempt.attemptId)) {
+        sessionIds.push(attempt.sessionId);
+      }
+    }
+    return sessionIds;
+  }
+  return reportedRunningSessionIds(opts);
 }
 
 function validateReportedAttempts(opts: {
@@ -371,7 +414,11 @@ export function registerHost(
   }
   const attemptsError = validateReportedAttempts(opts);
   if (attemptsError) return { ok: false, error: attemptsError };
-  const runningError = validateRunningSessions(state, opts.hostId, reportedRunningSessionIds(opts));
+  const runningError = validateRunningSessions(
+    state,
+    opts.hostId,
+    ownedReportedRunningSessionIds(state, opts),
+  );
   if (runningError) return { ok: false, error: runningError };
 
   const existing = state.hostConnection.get(opts.hostId);
@@ -528,7 +575,7 @@ export async function registerHostDurable(
   const runningError = await validateRunningSessionsDurable(
     state,
     opts.hostId,
-    reportedRunningSessionIds(opts),
+    await ownedReportedRunningSessionIdsDurable(state, opts),
   );
   if (runningError) return { ok: false, error: runningError };
   const existing = state.hostConnection.get(opts.hostId);

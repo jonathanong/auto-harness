@@ -97,7 +97,7 @@ export function logFrame(
   content: string,
   seq: number,
   stream: "stdout" | "system" = "stdout",
-  attemptId = "attempt",
+  attemptId: string,
 ): string {
   return JSON.stringify({
     type: "session:log",

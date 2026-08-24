@@ -3,6 +3,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
+  ATTEMPT_FENCED_PROTOCOL_VERSION,
   HOST_CAPABILITIES,
   isHostRuntimeReport,
   isHostCapability,
@@ -251,7 +252,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.close(1008, "message rate exceeded");
             return;
           }
-          const msg = parseHostMessage(raw);
+          const protocolVersion =
+            boundConnectionId !== null
+              ? (plane.state.connections.get(boundConnectionId)?.protocolVersion ?? 0)
+              : ATTEMPT_FENCED_PROTOCOL_VERSION;
+          const msg = parseHostMessage(raw, { protocolVersion });
           if (!msg) {
             flushLogBatch();
             accepting = false;
@@ -341,7 +346,10 @@ async function authenticateSocket(
   return token ? await auth.authenticateApiKey(token) : null;
 }
 
-export function parseHostMessage(raw: unknown): HostToServerMessage | null {
+export function parseHostMessage(
+  raw: unknown,
+  options?: { protocolVersion?: number },
+): HostToServerMessage | null {
   if (typeof raw !== "string" && !Buffer.isBuffer(raw) && (!raw || typeof raw !== "object"))
     return null;
   try {
@@ -435,8 +443,12 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
     if (message.type === "session:log") {
       const timestamp = message.timestamp;
       const stream = message.stream;
+      const protocolVersion = options?.protocolVersion ?? ATTEMPT_FENCED_PROTOCOL_VERSION;
+      const attemptIdOk =
+        boundedText(message.attemptId) ||
+        (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
       return boundedText(message.sessionId) &&
-        boundedText(message.attemptId) &&
+        attemptIdOk &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
         typeof message.content === "string" &&
         Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&

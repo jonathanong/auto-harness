@@ -53,6 +53,8 @@ export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
+type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
+
 function legacyHostRuntime() {
   return {
     daemonVersion: "legacy/unknown",
@@ -165,6 +167,24 @@ function ignoreStaleAttempt(
   );
 }
 
+function resolvedLogAttemptId(
+  session: SessionRecord | null | undefined,
+  message: LogMessage,
+): string | undefined {
+  return message.attemptId ?? session?.attemptId;
+}
+
+function logAttemptFence(
+  messages: readonly { sessionId: string; attemptId?: string }[],
+): Array<{ sessionId: string; attemptId: string }> {
+  const attempts: Array<{ sessionId: string; attemptId: string }> = [];
+  for (const message of messages) {
+    if (message.attemptId)
+      attempts.push({ sessionId: message.sessionId, attemptId: message.attemptId });
+  }
+  return attempts;
+}
+
 /** Durable log fencing must not trust a warm worker's session cache. */
 async function loadDurableSession(
   state: ControlPlaneState,
@@ -234,8 +254,6 @@ export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[
   return [...(state.logs.get(sessionId) ?? [])];
 }
 
-type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
-
 /**
  * Commit adjacent WebSocket log frames in one bounded, connection-fenced
  * transaction. Records keep their agent-assigned sort keys and are published
@@ -268,8 +286,10 @@ export async function handleHostLogBatchDurable(
       loaded.set(message.sessionId, await loadDurableSession(state, storage, message.sessionId));
     }
     const session = loaded.get(message.sessionId) ?? null;
+    const attemptId = resolvedLogAttemptId(session, message);
     if (
-      ignoreStaleAttempt(state, session, { type: "log", attemptId: message.attemptId }, "durable")
+      attemptId !== undefined &&
+      ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
     ) {
       continue;
     }
@@ -277,14 +297,21 @@ export async function handleHostLogBatchDurable(
       return { ok: false, error: "stale host connection" };
     }
     hostId = session.hostId;
-    accepted.push(message);
+    accepted.push(attemptId !== undefined ? { ...message, attemptId } : message);
   }
   if (accepted.length === 0) return { ok: true };
   if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
     return { ok: false, error: "stale host connection" };
   }
   const records = accepted.map((message) => logRecord(message));
-  if (!(await storage.putLogsFenced(records, { hostId, connectionId: sourceConnectionId }))) {
+  const attempts = logAttemptFence(accepted);
+  if (
+    !(await storage.putLogsFenced(records, {
+      hostId,
+      connectionId: sourceConnectionId,
+      ...(attempts.length > 0 ? { attempts } : {}),
+    }))
+  ) {
     return { ok: false, error: "stale host connection" };
   }
   for (const record of records) {
@@ -358,13 +385,11 @@ export function handleHostMessage(
       if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
         return { ok: false, error: "log chunk exceeds 32 KiB" };
       }
+      const session = state.sessions.get(msg.sessionId);
+      const attemptId = resolvedLogAttemptId(session, msg);
       if (
-        ignoreStaleAttempt(
-          state,
-          state.sessions.get(msg.sessionId),
-          { type: "log", attemptId: msg.attemptId },
-          "local",
-        )
+        attemptId !== undefined &&
+        ignoreStaleAttempt(state, session, { type: "log", attemptId }, "local")
       ) {
         return { ok: true };
       }
@@ -473,12 +498,26 @@ export async function handleHostMessageDurable(
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
     const session = await loadDurableSession(state, storage, msg.sessionId);
-    if (ignoreStaleAttempt(state, session, { type: "log", attemptId: msg.attemptId }, "durable")) {
+    const attemptId = resolvedLogAttemptId(session, msg);
+    if (
+      attemptId !== undefined &&
+      ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
+    ) {
       return { ok: true };
     }
     const log = logRecord(msg);
     if (fence) {
-      if (!(await storage.putLogFenced(log, fence))) {
+      const attempts = logAttemptFence([
+        attemptId !== undefined
+          ? { sessionId: msg.sessionId, attemptId }
+          : { sessionId: msg.sessionId },
+      ]);
+      if (
+        !(await storage.putLogFenced(log, {
+          ...fence,
+          ...(attempts.length > 0 ? { attempts } : {}),
+        }))
+      ) {
         return { ok: false, error: "stale host connection" };
       }
       const retained = retainLogs(state, log);

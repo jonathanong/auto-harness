@@ -168,4 +168,44 @@ describe("durable host log batches", () => {
     ).resolves.toEqual({ ok: true });
     expect(written).toEqual(["current"]);
   });
+
+  it("fences a batch by the resolved current attempt, including omitted ids", async () => {
+    const plane = new ControlPlane();
+    const fences: Array<{ attempts?: Array<{ sessionId: string; attemptId: string }> }> = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (
+        _records: unknown,
+        fence: { attempts?: Array<{ sessionId: string; attemptId: string }> },
+      ) => (fences.push(fence), true),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [
+          {
+            type: "session:log",
+            sessionId: "session",
+            stream: "stdout",
+            content: "legacy",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          },
+          message("session", 2, "current"),
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(fences).toEqual([
+      {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [
+          { sessionId: "session", attemptId: "a" },
+          { sessionId: "session", attemptId: "a" },
+        ],
+      },
+    ]);
+  });
 });

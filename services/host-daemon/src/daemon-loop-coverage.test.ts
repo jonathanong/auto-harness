@@ -204,4 +204,38 @@ describe("DaemonLoop coverage guards", () => {
       cleanup();
     }
   });
+
+  it("keeps log sequence monotonic across attempts of the same session", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: Array<{ type: string; sessionId?: string; seq?: number; attemptId?: string }> =
+        [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          sent.push(message);
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver(assign("seq-session"));
+      await loop.waitForIdle();
+      const firstLogs = sent.filter(
+        (message) => message.type === "session:log" && message.sessionId === "seq-session",
+      );
+      expect(firstLogs.length).toBeGreaterThan(0);
+      const lastSeq = firstLogs.at(-1)!.seq!;
+      transport.deliver({ ...assign("seq-session"), attemptId: "attempt-seq-session-2" });
+      await loop.waitForIdle();
+      const secondLogs = sent.filter(
+        (message) =>
+          message.type === "session:log" &&
+          message.sessionId === "seq-session" &&
+          message.attemptId === "attempt-seq-session-2",
+      );
+      expect(secondLogs[0]?.seq).toBe(lastSeq + 1);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

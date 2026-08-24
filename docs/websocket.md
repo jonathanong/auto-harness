@@ -112,9 +112,14 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 Modern daemons advertise `protocolVersion` (currently `1`) and `runningAttempts: [{ sessionId, attemptId }]`.
 A missing `protocolVersion` is a legacy daemon (version 0): it may finish the attempts it reports
-but receives no new `session:assign` once attempt-fenced scheduling is enabled. The control plane
-ignores delayed ACK, cancel, reconnect-claim, status, usage, and log frames whose `attemptId` is
-no longer current. The server confirms a durable ACK with `session:acknowledged { sessionId, attemptId }`.
+but receives no new `session:assign` once attempt-fenced scheduling is enabled. Legacy `session:log`
+frames may omit `attemptId`; the control plane accepts those only on a version-0 connection and
+fences them against that host's currently owned attempt. The control plane ignores delayed ACK,
+cancel, reconnect-claim, status, usage, and log frames whose `attemptId` is no longer current,
+including stale reconnect claims reported at `host:register`. Durable log writes condition on both
+the host connection lock and the current session `attemptId`. The server confirms a durable ACK
+with `session:acknowledged { sessionId, attemptId }`. Log `seq` is monotonic per session across
+attempts (Invariant 5).
 
 `host:register` worktree item shape:
 

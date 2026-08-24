@@ -68,6 +68,11 @@ describe("parseHostMessage exhaustive wire validation", () => {
     });
     expect(parseHostMessage({ ...status, exitCode: 0 })).toMatchObject({ exitCode: 0 });
     expect(parseHostMessage(log)).toEqual(log);
+    const legacyLog = { ...log, attemptId: undefined };
+    delete (legacyLog as { attemptId?: string }).attemptId;
+    expect(parseHostMessage(legacyLog)).toBe(null);
+    expect(parseHostMessage(legacyLog, { protocolVersion: 0 })).toEqual(legacyLog);
+    expect(parseHostMessage(legacyLog, { protocolVersion: 1 })).toBe(null);
     expect(
       parseHostMessage({
         type: "host:keepalive",

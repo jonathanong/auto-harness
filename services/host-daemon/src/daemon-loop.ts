@@ -408,11 +408,11 @@ export class DaemonLoop {
 
     const result: SessionRunResult = await this.runner.run(assign, {
       signal,
-      initialLogSeq: this.nextLogSeq.get(inflightKey(msg.sessionId, msg.attemptId)) ?? 0,
+      initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
     });
 
     if (result.logs.length > 0) {
-      this.nextLogSeq.set(inflightKey(msg.sessionId, msg.attemptId), result.logs.at(-1)!.seq + 1);
+      this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
     }
     await this.outbound.flush();
     await this.outbound.send({
