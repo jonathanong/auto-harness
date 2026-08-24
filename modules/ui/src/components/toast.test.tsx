@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RetryToast, Toast, dismissToast, showToast, withToast } from "./toast.tsx";
 
 const router = {
+  bfcacheId: "test",
   back: vi.fn(),
   forward: vi.fn(),
   refresh: vi.fn(),

@@ -22,6 +22,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mountedRoots = new Set<() => void>();
 
 const router = {
+  bfcacheId: "test",
   back: vi.fn(),
   forward: vi.fn(),
   refresh: vi.fn(),

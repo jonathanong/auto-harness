@@ -12,6 +12,7 @@ import { Toast, TooltipProvider, dismissToast } from "@auto-harness/ui";
 import { afterEach, vi } from "vitest";
 
 const router = {
+  bfcacheId: "test",
   back: vi.fn(),
   forward: vi.fn(),
   prefetch: vi.fn(),
