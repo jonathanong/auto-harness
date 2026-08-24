@@ -211,7 +211,13 @@ export function validateHostServiceArtifacts(input: {
   if (windowsCreateArgs.some((arg) => /SYSTEM/i.test(arg))) {
     errors.push("scheduled task runs as SYSTEM");
   }
-  for (const needle of ["Type=simple", "KillMode=mixed", "TimeoutStopSec=15min", "User=harness"]) {
+  for (const needle of [
+    "Type=notify",
+    "NotifyAccess=main",
+    "KillMode=mixed",
+    "TimeoutStopSec=15min",
+    "User=harness",
+  ]) {
     if (!linuxUnit.includes(needle)) errors.push(`missing unit directive: ${needle}`);
   }
   return errors;

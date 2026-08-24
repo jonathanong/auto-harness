@@ -5,7 +5,8 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=harness
 Group=harness
 # The wrapper selects HARNESS_UPDATE_INSTALL_DIR/current itself. Keep systemd from
@@ -22,6 +23,9 @@ ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-
 # install-service (or the manual copy-unit instructions) places this stable
 # wrapper outside the atomically activated update tree.
 ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"
+# systemd runs this root-owned confirmation only after the main daemon has
+# sent READY=1 following the control-plane registration barrier.
+ExecStartPost=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --confirm-ready
 Restart=always
 RestartSec=5s
 TimeoutStopSec=15min

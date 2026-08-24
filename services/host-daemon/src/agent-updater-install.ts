@@ -24,7 +24,6 @@ const PRIVILEGED_INCOMING_DIR = "incoming";
 const PRIVILEGED_MANIFEST_FILE = "manifest.json";
 const PRIVILEGED_ARTIFACT_FILE = "artifact.tgz";
 const PRIVILEGED_REQUEST_FILE = "activation-request.json";
-const PRIVILEGED_CONFIRMATION_FILE = "boot-confirmed.json";
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 // Keep validation bounded even if an otherwise verified archive has an
 // unexpectedly large table of contents. This matches Node's default
@@ -278,10 +277,9 @@ export function confirmPendingUpdateBoot(rootDir: string): boolean {
 }
 
 /**
- * The Linux daemon cannot clear a root-owned boot marker. It records a narrow
- * acknowledgement request instead; the immutable systemd pre-start helper
- * consumes that request before the next launch, clears the marker, and prunes
- * releases while it still has the required privilege.
+ * Linux confirmation is performed by the root-owned systemd ExecStartPost
+ * helper after systemd accepts READY=1 from the main daemon process. Session
+ * children cannot forge that main-PID readiness barrier.
  */
 export function confirmPrivilegedPendingUpdateBoot(rootDir: string): boolean {
   const pending = readPendingUpdateBoot(rootDir);
@@ -289,12 +287,6 @@ export function confirmPrivilegedPendingUpdateBoot(rootDir: string): boolean {
   if (!pending.attempted || readInstalledVersion(rootDir) !== pending.version) {
     throw new Error("pending update boot does not match the active release");
   }
-  const incoming = join(rootDir, PRIVILEGED_INCOMING_DIR);
-  mkdirSync(incoming, { recursive: true });
-  atomicWrite(
-    join(incoming, PRIVILEGED_CONFIRMATION_FILE),
-    `${JSON.stringify({ version: pending.version })}\n`,
-  );
   return true;
 }
 

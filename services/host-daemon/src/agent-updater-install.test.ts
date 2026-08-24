@@ -72,11 +72,10 @@ describe("file update installer", () => {
     }
   });
 
-  it("records Linux health acknowledgement for the privileged helper without clearing its marker", () => {
+  it("leaves Linux health acknowledgement to the root-owned systemd readiness helper", () => {
     const { rootDir, cleanup } = tempRoot();
     try {
       runnableExtract("", join(rootDir, "current"));
-      mkdirSync(join(rootDir, "incoming"), { recursive: true });
       writeFileSync(join(rootDir, "current", ".auto-harness-version"), "1.2.0\n");
       writeFileSync(
         join(rootDir, ".auto-harness-update-boot.json"),
@@ -84,9 +83,7 @@ describe("file update installer", () => {
       );
       expect(confirmPrivilegedPendingUpdateBoot(rootDir)).toBe(true);
       expect(existsSync(join(rootDir, ".auto-harness-update-boot.json"))).toBe(true);
-      expect(readFileSync(join(rootDir, "incoming", "boot-confirmed.json"), "utf8")).toContain(
-        "1.2.0",
-      );
+      expect(existsSync(join(rootDir, "incoming", "boot-confirmed.json"))).toBe(false);
     } finally {
       cleanup();
     }

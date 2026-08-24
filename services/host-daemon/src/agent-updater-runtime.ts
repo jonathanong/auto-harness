@@ -1,4 +1,5 @@
 import { AgentUpdater } from "./agent-updater.ts";
+import { spawnSync } from "node:child_process";
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";
 import {
   confirmPendingUpdateBoot,
@@ -107,6 +108,19 @@ export function confirmDaemonUpdateBoot(bindings: DaemonUpdateBootBindings): boo
   return usesPrivilegedLinuxActivation(bindings)
     ? confirmPrivilegedPendingUpdateBoot(rootDir)
     : confirmPendingUpdateBoot(rootDir);
+}
+
+/** Notify systemd only from the registered daemon's main process. */
+export function notifySystemdReady(bindings: DaemonUpdateBootBindings): boolean {
+  if (!usesPrivilegedLinuxActivation(bindings) || !bindings.env.NOTIFY_SOCKET) return false;
+  const result = spawnSync("/usr/bin/systemd-notify", ["--ready", "--status=registered"], {
+    env: bindings.env,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || "systemd readiness notification failed");
+  }
+  return true;
 }
 
 export function parseUpdatePollMs(raw: string | undefined): number {

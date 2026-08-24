@@ -30,7 +30,6 @@ const MAX_ARCHIVE_LISTING_BYTES = 1024 * 1024;
 const incomingName = "incoming";
 const markerName = ".auto-harness-update-boot.json";
 const requestName = "activation-request.json";
-const confirmationName = "boot-confirmed.json";
 
 class UnsafeUpdateRootPathError extends Error {}
 
@@ -199,13 +198,6 @@ function settlePriorBoot(root, incoming) {
   const markerPath = join(root, markerName);
   const marker = readJson(markerPath);
   if (!marker || !VERSION.test(marker.version) || marker.attempted !== true) return;
-  const confirmation = readJson(join(incoming, confirmationName));
-  if (confirmation?.version === marker.version && currentVersion(root) === marker.version) {
-    rmSync(markerPath, { force: true });
-    rmSync(join(incoming, confirmationName), { force: true });
-    prune(root);
-    return;
-  }
   const previous = readFileSync(join(root, "previous-version"), "utf8").trim();
   // There may be no prior activated release on a first update. In that case,
   // removing current returns the stable launcher to its checkout fallback;
@@ -218,6 +210,17 @@ function settlePriorBoot(root, incoming) {
   // constrained by VERSION, so this is always a direct child of releases.
   rmSync(join(root, "releases", marker.version), { recursive: true, force: true });
   rmSync(markerPath, { force: true });
+}
+
+function confirmReadyBoot(root) {
+  const markerPath = join(root, markerName);
+  const marker = readJson(markerPath);
+  if (!marker || !VERSION.test(marker.version) || marker.attempted !== true) return;
+  if (currentVersion(root) !== marker.version) {
+    throw new Error("ready daemon does not match the pending update release");
+  }
+  rmSync(markerPath, { force: true });
+  prune(root);
 }
 
 function promote(root, incoming) {
@@ -315,6 +318,10 @@ function main() {
     throw new UnsafeUpdateRootPathError("HARNESS_UPDATE_INSTALL_DIR must be absolute");
   assertProtectedUpdateRootPath(root);
   const incoming = join(root, incomingName);
+  if (process.argv[2] === "--confirm-ready") {
+    confirmReadyBoot(root);
+    return;
+  }
   if (!existsSync(incoming)) return;
   if (process.argv[2] === "--mark-boot-attempt") {
     const markerPath = join(root, markerName);

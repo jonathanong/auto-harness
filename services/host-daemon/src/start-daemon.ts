@@ -7,6 +7,7 @@ import { DaemonLoop } from "./daemon-loop.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import {
   confirmDaemonUpdateBoot,
+  notifySystemdReady,
   createDaemonUpdater,
   parseUpdatePollMs,
   recoverDaemonUpdateBoot,
@@ -256,6 +257,9 @@ async function acknowledgeDaemonUpdateBoot(
   try {
     if (confirmDaemonUpdateBoot({ env: update.env, service: update.service })) {
       log("updater replacement health acknowledged");
+    }
+    if (notifySystemdReady({ env: update.env, service: update.service })) {
+      log("systemd registration readiness acknowledged");
     }
   } catch (reason) {
     loop.stop();

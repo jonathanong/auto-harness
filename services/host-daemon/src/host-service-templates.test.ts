@@ -16,7 +16,8 @@ import {
 } from "./host-service-templates.ts";
 
 const unitTemplate = `[Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=harness
 WorkingDirectory=/opt/auto-harness/current
 ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start
@@ -32,9 +33,9 @@ describe("linux unit rendering", () => {
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
       'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
     );
-    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=simple");
+    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=notify");
     expect(() => renderLinuxUnit(unitTemplate, "/tmp\nEvil=1")).toThrow(/single line/);
-    expect(() => renderLinuxUnit("Type=simple\n", "/tmp")).toThrow(/WorkingDirectory/);
+    expect(() => renderLinuxUnit("Type=notify\n", "/tmp")).toThrow(/WorkingDirectory/);
   });
 });
 
@@ -120,7 +121,7 @@ describe("template contract", () => {
         plist: "LOCALSYSTEM NSSM hns_abc",
         windowsCmd: "nssm LOCALSYSTEM",
         windowsCreateArgs: ["LOCALSYSTEM"],
-        linuxUnit: "Type=notify\n",
+        linuxUnit: "Type=simple\n",
       }),
     ).toEqual(
       expect.arrayContaining([
@@ -135,7 +136,7 @@ describe("template contract", () => {
         "scheduled task is not ONLOGON",
         "scheduled task is not LIMITED",
         "scheduled task runs as SYSTEM",
-        "missing unit directive: Type=simple",
+        "missing unit directive: Type=notify",
       ]),
     );
   });
@@ -145,7 +146,7 @@ describe("template contract", () => {
       validateGeneratedHostServiceTemplates(
         "WorkingDirectory=/opt/auto-harness/current\nExecStart=/old/daemon start\n",
       ),
-    ).toEqual(expect.arrayContaining(["missing unit directive: Type=simple"]));
+    ).toEqual(expect.arrayContaining(["missing unit directive: Type=notify"]));
     expect(
       workingDirectoryErrors("WorkingDirectory=/other\n", "/home/operator/auto-harness"),
     ).toEqual(["linux unit WorkingDirectory was not rewritten"]);

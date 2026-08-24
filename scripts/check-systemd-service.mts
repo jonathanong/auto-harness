@@ -23,7 +23,8 @@ export const activationHelperUrl = new URL(
 
 const REQUIRED_SERVICE_LINES = [
   "Documentation=https://github.com/jonathanong/auto-harness/blob/main/docs/deploy-host-daemon.md",
-  "Type=simple",
+  "Type=notify",
+  "NotifyAccess=main",
   "Wants=network-online.target",
   "After=network-online.target",
   "User=harness",
@@ -33,6 +34,7 @@ const REQUIRED_SERVICE_LINES = [
   "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs",
   "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --mark-boot-attempt",
   'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
+  "ExecStartPost=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --confirm-ready",
   "Restart=always",
   "RestartSec=5s",
   "TimeoutStopSec=15min",
@@ -57,7 +59,7 @@ export function validateSystemdArtifacts(service: string, envExample: string): s
   for (const line of REQUIRED_SERVICE_LINES) {
     if (!lines.has(line)) errors.push(`missing service directive: ${line}`);
   }
-  for (const forbidden of ["Type=notify", "WatchdogSec=", "ExecReload=", "pnpm ", "sh -c"]) {
+  for (const forbidden of ["Type=simple", "WatchdogSec=", "ExecReload=", "pnpm ", "sh -c"]) {
     if (service.includes(forbidden)) errors.push(`forbidden service behavior: ${forbidden}`);
   }
 
