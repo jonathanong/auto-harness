@@ -78,6 +78,24 @@ function UnrelatedRefreshHarness() {
   );
 }
 
+function PendingExecRefreshHarness({ mutateExec }: { mutateExec: typeof mutateExecConfig }) {
+  const [roots, setRoots] = useState(["/server-root"]);
+  return (
+    <>
+      <button type="button" data-pw="pending-refresh" onClick={() => setRoots(["/submitted-root"])}>
+        Refresh after save
+      </button>
+      <HostSetupScriptForm
+        hostId="host"
+        allowedRoots={roots}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />
+    </>
+  );
+}
+
 describe("HostSetupScriptForm", () => {
   it("saves exec-config and required environment through independent forms", async () => {
     let execPatch: HostExecConfigPatch | undefined;
@@ -277,6 +295,25 @@ describe("HostSetupScriptForm", () => {
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-required-environment").value).toBe(
       "LOCAL_TOKEN",
+    );
+    view.unmount();
+  });
+
+  it("preserves edits typed while the exec save is pending", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateExec: typeof mutateExecConfig = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(<PendingExecRefreshHarness mutateExec={mutateExec} />);
+    setValue(field(view.container, "host-allowed-roots"), "/submitted-root");
+    submit(field(view.container, "form-host-setup-script"));
+    await act(async () => Promise.resolve());
+    setValue(field(view.container, "host-allowed-roots"), "/typed-while-pending");
+    await act(async () => resolveSave?.({ ok: true }));
+    act(() => field(view.container, "pending-refresh").click());
+    expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
+      "/typed-while-pending",
     );
     view.unmount();
   });

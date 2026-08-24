@@ -7,6 +7,7 @@ import {
   EXEC_CONFIG_CAPABILITY,
   EXEC_CONFIG_REQUIRED_MESSAGE,
   inventoryHasExecConfig,
+  listExecConfigEdits,
   parseHostInventory,
   principalHas,
   reconcileInventoryWrite,
@@ -289,6 +290,8 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
       return true;
     }
+    let execEdits: string[] = [];
+    let execAuditWritten = false;
     try {
       const existing = await plane.getHostInventoryDurable(hostId);
       if (
@@ -310,8 +313,34 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
+      execEdits = inventoryHasExecConfig(existing)
+        ? listExecConfigEdits(existing, { repositories: [], providerAccounts: [] })
+        : [];
+      if (execEdits.length) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "host-exec-config:update",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            metadata: { changed: execEdits },
+          }))
+        )
+          return true;
+        execAuditWritten = true;
+      }
       const result = await plane.deleteHostInventoryDurable(hostId, existing?.version ?? 0);
       if (!result.ok) {
+        if (
+          execAuditWritten &&
+          !(await writeRouteAudit(ctx, {
+            action: "host-exec-config:update",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            outcome: "failed",
+            metadata: { changed: execEdits },
+          }))
+        )
+          return true;
         if (
           !(await writeRouteAudit(ctx, {
             action: "host-inventory:delete",
@@ -340,6 +369,17 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 204, null);
       return true;
     } catch {
+      if (
+        execAuditWritten &&
+        !(await writeRouteAudit(ctx, {
+          action: "host-exec-config:update",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          outcome: "failed",
+          metadata: { changed: execEdits },
+        }))
+      )
+        return true;
       if (
         !(await writeRouteAudit(ctx, {
           action: "host-inventory:delete",

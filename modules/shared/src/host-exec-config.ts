@@ -234,27 +234,33 @@ export function preserveHostExecConfig(
     providerAccounts: incoming.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(incoming.capabilities ?? [])],
   };
-  if (next.setupScript === undefined) restoreScript(next, existing ?? undefined);
+  if (!Object.hasOwn(next, "setupScript")) restoreScript(next, existing ?? undefined);
+  else if (next.setupScript === "") delete next.setupScript;
   if (next.allowedRoots === undefined) {
     if (existing?.allowedRoots !== undefined) next.allowedRoots = [...existing.allowedRoots];
     else delete next.allowedRoots;
   }
   for (const repository of next.repositories) {
     const previous = existing?.repositories.find((entry) => entry.id === repository.id);
-    if (repository.setupScript === undefined) restoreScript(repository, previous);
-    if (repository.terminalHookScript === undefined) {
+    if (!Object.hasOwn(repository, "setupScript")) restoreScript(repository, previous);
+    else if (repository.setupScript === "") delete repository.setupScript;
+    if (!Object.hasOwn(repository, "terminalHookScript")) {
       if (previous?.terminalHookScript !== undefined) {
         repository.terminalHookScript = previous.terminalHookScript;
       } else {
         delete repository.terminalHookScript;
       }
+    } else if (repository.terminalHookScript === "") {
+      delete repository.terminalHookScript;
     }
     for (const worktree of repository.worktrees) {
-      if (worktree.setupScript === undefined) {
+      if (!Object.hasOwn(worktree, "setupScript")) {
         restoreScript(
           worktree,
           previous?.worktrees.find((entry) => entry.id === worktree.id),
         );
+      } else if (worktree.setupScript === "") {
+        delete worktree.setupScript;
       }
     }
   }

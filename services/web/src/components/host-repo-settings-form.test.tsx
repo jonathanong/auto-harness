@@ -110,6 +110,23 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
+  it("allows an unchanged legacy relative hook while saving ordinary settings", async () => {
+    const legacyRepo = { ...repo, terminalHookScript: "./hook.sh" };
+    const fetch = stubInventoryFetch({ repositories: [legacyRepo], providerAccounts: [] });
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={legacyRepo} canWriteExecConfig />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-path-repo-1"), "/new/repo");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(document.querySelector('[data-pw="repo-settings-error-repo-1"]')).toBeNull();
+    expect(putBody(fetch)).toMatchObject({
+      repositories: [{ id: "repo-1", path: "/new/repo", terminalHookScript: "./hook.sh" }],
+    });
+    view.unmount();
+  });
+
   it("saves trimmed settings with a main fallback and keeps worktrees", async () => {
     const fetch = stubInventoryFetch(inventory);
     const view = mountForm(

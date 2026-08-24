@@ -95,7 +95,11 @@ export function HostRepoSettingsForm({
             }
             if (canWriteExecConfig) {
               try {
-                parseTerminalHookScript(terminalHookScript, repo.id);
+                parseTerminalHookScript(terminalHookScript, repo.id, {
+                  // Existing inventories may contain a relative hook from before the
+                  // absolute-path requirement. Keep that value usable until it changes.
+                  allowLegacyRelative: terminalHookScript === (repo.terminalHookScript ?? ""),
+                });
               } catch (error) {
                 showToast(error instanceof Error ? error.message : String(error), {
                   variant: "destructive",

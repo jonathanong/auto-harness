@@ -138,6 +138,14 @@ describe("host exec-config isolation", () => {
 
   it("blocks inventory deletion that would erase exec-config without the capability", async () => {
     const plane = new ControlPlane();
+    const execAudits: Array<{ outcome?: string; metadata?: unknown }> = [];
+    const originalAudit = plane.appendAuditLog.bind(plane);
+    plane.appendAuditLog = async (input) => {
+      if (input.action === "host-exec-config:update") {
+        execAudits.push({ outcome: input.outcome, metadata: input.metadata });
+      }
+      return originalAudit(input);
+    };
     expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
     expect(
       await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, maintainer),
@@ -151,6 +159,18 @@ describe("host exec-config isolation", () => {
     expect(
       await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, admin),
     ).toMatchObject({ status: 204 });
+    expect(execAudits).toContainEqual({
+      outcome: "success",
+      metadata: {
+        changed: [
+          "setupScript",
+          "allowedRoots",
+          "repositories.repo-1.setupScript",
+          "repositories.repo-1.terminalHookScript",
+          "repositories.repo-1.worktrees.wt-1.setupScript",
+        ],
+      },
+    });
     expect(await plane.getHostInventoryDurable("host-1")).toBeNull();
     expect(
       (
@@ -184,6 +204,29 @@ describe("host exec-config isolation", () => {
     expect(await plane.getHostInventoryDurable("host-1")).toMatchObject({
       repositories: [expect.objectContaining({ terminalHookScript: "/opt/harness/hook.sh" })],
     });
+  });
+
+  it("treats a blank worktree override as a privileged deletion and stores inheritance", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const body = {
+      ...inventory,
+      repositories: [
+        {
+          ...inventory.repositories[0]!,
+          worktrees: [{ ...inventory.repositories[0]!.worktrees[0]!, setupScript: "" }],
+        },
+      ],
+    };
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", body, maintainer),
+    ).toMatchObject({ status: 403 });
+    expect(await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", body, admin)).toMatchObject(
+      { status: 200 },
+    );
+    const stored = await plane.getHostInventoryDurable("host-1");
+    expect(stored).toMatchObject({ repositories: [{ worktrees: [{ id: "wt-1" }] }] });
+    expect(Object.hasOwn(stored?.repositories[0]?.worktrees[0] ?? {}, "setupScript")).toBe(false);
   });
 
   it("preserves an explicit empty allowed-roots inventory value and unchanged legacy hooks", async () => {

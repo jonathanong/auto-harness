@@ -453,6 +453,31 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     ).toMatchObject({ ok: false, kind: "forbidden" });
   });
 
+  it("canonicalizes an explicit blank worktree override as a privileged deletion", () => {
+    const base = inventory();
+    const incoming: HostInventory = {
+      ...base,
+      repositories: [
+        {
+          ...base.repositories[0]!,
+          worktrees: [{ ...base.repositories[0]!.worktrees[0]!, setupScript: "" }],
+        },
+      ],
+    };
+    expect(
+      reconcileInventoryWrite({ existing: base, incoming, allowExecConfig: false }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["repositories.repo-1.worktrees.wt-1.setupScript"],
+    });
+    const allowed = reconcileInventoryWrite({ existing: base, incoming, allowExecConfig: true });
+    expect(allowed).toMatchObject({ ok: true });
+    if (allowed.ok) {
+      expect(allowed.inventory.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    }
+  });
+
   it("permits an unchanged legacy relative hook but rejects a new or changed one", () => {
     const legacy = inventory();
     legacy.repositories[0]!.terminalHookScript = "./hook.sh";

@@ -49,6 +49,8 @@ export function HostSetupScriptForm({
   const [rootsDirty, setRootsDirty] = useState(false);
   const scriptDirtyRef = useRef(false);
   const rootsDirtyRef = useRef(false);
+  const scriptValueRef = useRef(script);
+  const rootsValueRef = useRef(roots);
   const environmentDirtyRef = useRef(false);
   const savedRefreshExecRef = useRef<string | null>(null);
   const savedRefreshEnvironmentRef = useRef<string | null>(null);
@@ -91,6 +93,8 @@ export function HostSetupScriptForm({
           onSubmit={(event) => {
             event.preventDefault();
             setExecSaved(false);
+            const submittedScript = script;
+            const submittedRoots = roots;
             startExec(async () => {
               try {
                 const patch: HostExecConfigPatch = {};
@@ -124,11 +128,15 @@ export function HostSetupScriptForm({
                     return;
                   }
                 }
-                savedRefreshExecRef.current = JSON.stringify([script, roots]);
-                scriptDirtyRef.current = false;
-                rootsDirtyRef.current = false;
-                setScriptDirty(false);
-                setRootsDirty(false);
+                savedRefreshExecRef.current = JSON.stringify([submittedScript, submittedRoots]);
+                if (scriptValueRef.current === submittedScript) {
+                  scriptDirtyRef.current = false;
+                  setScriptDirty(false);
+                }
+                if (rootsValueRef.current === submittedRoots) {
+                  rootsDirtyRef.current = false;
+                  setRootsDirty(false);
+                }
                 setExecSaved(true);
                 router.refresh();
               } catch (error) {
@@ -159,6 +167,7 @@ export function HostSetupScriptForm({
               value={script}
               onChange={(event) => {
                 setScript(event.target.value);
+                scriptValueRef.current = event.target.value;
                 scriptDirtyRef.current = true;
                 setScriptDirty(true);
               }}
@@ -180,6 +189,7 @@ export function HostSetupScriptForm({
               value={roots}
               onChange={(event) => {
                 setRoots(event.target.value);
+                rootsValueRef.current = event.target.value;
                 rootsDirtyRef.current = true;
                 setRootsDirty(true);
               }}
