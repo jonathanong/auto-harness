@@ -875,6 +875,7 @@ async function applySessionStatusDurable(
         suppressedTargetIndex: suppress.targetIndex,
         ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
         ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
       releaseScheduledLeaseLocal(state, session);

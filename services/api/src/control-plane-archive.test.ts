@@ -104,7 +104,8 @@ describe("archive retry state", () => {
     });
 
     await expect(retryPendingArchives(state, 25)).resolves.toBe(1);
-    expect(uploaded).toEqual(["sessions/later/logs.jsonl"]);
+    expect(uploaded).toHaveLength(1);
+    expect(uploaded[0]).toMatch(/^sessions\/later\/logs\.[a-f0-9]{16}\.jsonl$/);
     expect(state.archives.get("sessions/failed/logs.jsonl")?.objectStored).toBe(false);
     expect(state.archives.get("sessions/later/logs.jsonl")?.objectStored).toBe(true);
   });
@@ -204,7 +205,7 @@ describe("archive retry state", () => {
     );
   });
 
-  it("restores the current logs when a stale same-key upload loses its completion fence", async () => {
+  it("does not rewrite the winner when a stale generation loses its completion fence", async () => {
     let releaseUpload!: () => void;
     const uploaded: string[] = [];
     const uploadStarted = new Promise<void>((resolve) => {
@@ -251,9 +252,7 @@ describe("archive retry state", () => {
     releaseUpload();
     await retry;
 
-    expect(uploaded).toEqual([
-      '{"timestamp":"1","stream":"stdout","content":"old"}\n',
-      '{"timestamp":"1","stream":"stdout","content":"new"}\n',
-    ]);
+    expect(uploaded).toHaveLength(1);
+    expect(uploaded[0]).toBe('{"timestamp":"1","stream":"stdout","content":"old"}\n');
   });
 });
