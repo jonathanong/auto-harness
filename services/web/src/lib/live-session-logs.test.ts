@@ -85,7 +85,12 @@ describe("live session log state", () => {
     const original = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       expect(input).toBe("/api/v1/auth/viewer-ticket");
-      expect(init).toMatchObject({ method: "POST", credentials: "same-origin" });
+      expect(init).toMatchObject({
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-store" },
+      });
       return new Response(JSON.stringify({ ticket: "one-time" }), { status: 200 });
     };
     await expect(viewerTicket()).resolves.toBe("one-time");

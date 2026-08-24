@@ -7,7 +7,7 @@ import {
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ConnectionRecord, LogRecord } from "./db/plane-storage-types.ts";
-import { parseViewerMessage } from "./viewer-ws-protocol.ts";
+import { isAllowedViewerOrigin, parseViewerMessage } from "./viewer-ws-protocol.ts";
 
 const MAX_SUBSCRIPTIONS = 8;
 const REPLAY_LIMIT = 250;
@@ -26,6 +26,7 @@ type ViewerDependencies = {
   auth: AuthService;
   management: ManagementClient;
   storage: ViewerStorage;
+  publicBaseUrl?: string;
 };
 
 function viewerPrincipal(principal: Principal | null): ConnectionRecord["viewerPrincipal"] {
@@ -66,7 +67,8 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
   };
 
   return {
-    async connect(connectionId: string, ticket: string): Promise<number> {
+    async connect(connectionId: string, ticket: string, origin?: string): Promise<number> {
+      if (!isAllowedViewerOrigin(origin, dependencies.publicBaseUrl)) return 403;
       const principal = viewerPrincipal(await dependencies.auth.authenticateViewerTicket(ticket));
       if (!principal) return 403;
       const now = new Date().toISOString();

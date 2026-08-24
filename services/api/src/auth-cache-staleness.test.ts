@@ -74,16 +74,19 @@ describe("auth account cache staleness", () => {
   it("revokes a cookie issued for an account deleted on another worker", async () => {
     const time = clock();
     const { storage, writer, reader } = await workers(30_000, time.now);
-    const created = await writer.createServiceAccount({ name: "agent", role: "operator" }, storage);
+    const created = await writer.createUser(
+      { username: "alice", password: "password", role: "operator" },
+      storage,
+    );
     let cookie = "";
     writer.issueCookie(
       { setHeader: (_name: string, value: string) => (cookie = value) } as never,
-      (await writer.authenticateApiKey(created.apiKey))!,
+      created,
     );
     const header = { cookie: cookie.split(";")[0]! };
     expect(await reader.authenticate({ headers: header } as never)).not.toBeNull();
 
-    await writer.deleteServiceAccount(created.account.id, storage);
+    await writer.deleteUser("alice", storage);
     time.advance(30_001);
 
     expect(await reader.authenticate({ headers: header } as never)).toBeNull();

@@ -13,7 +13,8 @@ export function sessionCookieValue(cookieHeader: string | null | undefined): str
 
 /**
  * Edge-compatible JWT verification for UI middleware and host-pane browse.
- * Rejects viewer-ticket audience so a 60s live-log ticket cannot unlock pages.
+ * Rejects service-account cookies and leftover viewer-ticket JWTs so neither
+ * can unlock pages.
  */
 export async function hasValidSession(
   token: string | undefined,
@@ -54,7 +55,7 @@ export async function hasValidSession(
       typeof claims?.id === "string" &&
       typeof claims.username === "string" &&
       isUserRole(claims.role) &&
-      (claims.kind === "admin" || claims.kind === "user" || claims.kind === "service-account") &&
+      (claims.kind === "admin" || claims.kind === "user") &&
       claims.audience === undefined &&
       typeof claims.exp === "number" &&
       claims.exp > Date.now() / 1000

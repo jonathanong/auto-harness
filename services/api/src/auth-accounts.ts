@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { accountGrantError, normalizeAccountGrant } from "@auto-harness/shared";
 import bcrypt from "bcryptjs";
 
-import type { AuthAccountRecord } from "./db/plane-storage-types.ts";
+import type { AuthAccountRecord, ViewerTicketRecord } from "./db/plane-storage-types.ts";
 import type { Principal, Role } from "./auth-types.ts";
 
 // Narrows Principal's shared `kind` field per variant (bootstrap admins are User-shaped,
@@ -35,6 +35,8 @@ export type AuthStorage = {
     id: string,
     fence: AuthAccountDeleteFence,
   ): Promise<FencedAuthAccountDelete>;
+  putViewerTicket?(record: ViewerTicketRecord): Promise<void>;
+  consumeViewerTicket?(ticketHash: string, nowMs: number): Promise<ViewerTicketRecord | null>;
 };
 
 export function hashApiKey(key: string): string {

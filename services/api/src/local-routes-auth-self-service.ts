@@ -4,7 +4,7 @@ import { effectiveRole, principalCapabilities } from "@auto-harness/shared";
 
 import { type AuthService, type Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
-import { readJson, send } from "./local-http.ts";
+import { readJson, send, sendInternalError } from "./local-http.ts";
 
 export type SelfServiceAuthRouteContext = {
   auth: AuthService;
@@ -36,13 +36,29 @@ export async function handleSelfServiceAuthRoutes(
   if (method === "POST" && url.pathname === "/api/v1/auth/viewer-ticket") {
     if (!ctx.principal) {
       if (auth.mode === "disabled") {
+        res.setHeader("Cache-Control", "no-store");
         send(res, 200, { ticket: null });
         return true;
       }
       send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
       return true;
     }
-    send(res, 200, { ticket: auth.issueViewerTicket(ctx.principal) });
+    if (ctx.principal.kind === "service-account") {
+      send(res, 403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "viewer tickets are only available to browser sessions",
+        },
+      });
+      return true;
+    }
+    try {
+      const ticket = await auth.issueViewerTicket(ctx.principal);
+      res.setHeader("Cache-Control", "no-store");
+      send(res, 200, { ticket });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method !== "PUT" || url.pathname !== "/api/v1/auth/password") return false;

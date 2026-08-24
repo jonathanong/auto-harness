@@ -20,6 +20,7 @@ import {
   enableTableTtl,
   rateLimitTableDefinition,
 } from "./ensure-rate-limit-table.ts";
+import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
 import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsRepositoryIndex,
@@ -261,6 +262,8 @@ export async function ensureControlPlaneTables(opts: {
 
   await createIfMissing(ddb, rateLimitTableDefinition(names.rateLimits));
   await enableRateLimitTtl(ddb, names.rateLimits);
+  await createIfMissing(ddb, viewerTicketsTableDefinition(names.viewerTickets));
+  await enableRateLimitTtl(ddb, names.viewerTickets);
   await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
   await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
   await createIfMissing(ddb, webhookDeliveriesTableDefinition(names.webhookDeliveries));

@@ -681,6 +681,20 @@ describe("Lambda runtime adapters", () => {
         queryStringParameters: { ticket: "viewer-ticket" },
         requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
       }),
+    ).resolves.toEqual({ statusCode: 403 });
+    await expect(
+      runtime.websocket({
+        headers: { Origin: "https://evil.example.test" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-2", routeKey: "$connect" },
+      }),
+    ).resolves.toEqual({ statusCode: 403 });
+    await expect(
+      runtime.websocket({
+        headers: { origin: "http://localhost:7421" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
+      }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(fixture.connections.get("viewer-1")).toMatchObject({ type: "client" });
     await expect(

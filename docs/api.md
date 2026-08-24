@@ -70,7 +70,7 @@ matrix: [roles.md](roles.md).
 
 ### `POST /auth/viewer-ticket`
 
-Issue a short-lived, single-purpose browser WebSocket credential from the authenticated session cookie. The browser presents it only as the `ticket` query parameter on `/ws/viewer`; service-account credentials are never accepted by that read-only socket.
+Issue a 60-second, one-time browser WebSocket credential from the authenticated session cookie. The response is `{ ticket }` with `Cache-Control: no-store`. The browser presents it only as the `ticket` query parameter on `/ws/viewer`, which consumes it. Service-account credentials cannot mint a ticket and are never accepted by that read-only socket.
 
 ---
 

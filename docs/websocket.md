@@ -19,10 +19,10 @@ from the deploy output, **not** the raw `WebSocketUrl`/`RestApiUrl` API Gateway 
 [aws.md](aws.md#topology) and [deploy-host-daemon.md](deploy-host-daemon.md) for why AWS always
 has two separate API Gateway APIs behind that one CloudFront hostname.
 
-| Connection | Credential                                                                          | First message       |
-| ---------- | ----------------------------------------------------------------------------------- | ------------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                 | `host:register`     |
-| Web UI     | Short-lived viewer ticket obtained with its session cookie (see [auth.md](auth.md)) | `session:subscribe` |
+| Connection | Credential                                                                           | First message       |
+| ---------- | ------------------------------------------------------------------------------------ | ------------------- |
+| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                  | `host:register`     |
+| Web UI     | One-time 60s viewer ticket obtained with its session cookie (see [auth.md](auth.md)) | `session:subscribe` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
@@ -161,10 +161,10 @@ never sent over the wire.
 
 ## Live session viewing
 
-1. `POST /auth/viewer-ticket` through the web origin with the authenticated browser session.
-2. Connect to API `/ws/viewer?ticket=…`, then `session:subscribe` for one session id (the server checks repository scope).
+1. `POST /auth/viewer-ticket` through the web origin with the authenticated browser session. The body is `{ ticket }` and the response is `Cache-Control: no-store`. Service-account credentials cannot mint a ticket.
+2. Connect to API `/ws/viewer?ticket=…` from that same web origin (the server requires a matching `Origin` and consumes the ticket once), then `session:subscribe` for one session id (the server checks repository scope).
 3. Server replays a bounded cursor page, then tails new `session:log` records.
-4. Reconnect with the last received `timestampSeq` as optional `after`; duplicate replay is safe.
+4. Reconnect with a **fresh** ticket and the last received `timestampSeq` as optional `after`; duplicate log replay is safe, ticket replay is not.
 5. `session:status` reports lifecycle changes; `session:unsubscribe` is sent on leave (or auto on disconnect).
 
 Notes:
