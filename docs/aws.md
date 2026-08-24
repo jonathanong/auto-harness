@@ -538,10 +538,14 @@ Auto-Harness resources.
 
 ## Observability
 
-HTTP and WebSocket stages emit redacted access logs (request id, route, status, latency-related
-fields, source IP — never query strings, headers, or bodies) to 14-day CloudWatch log groups and
-apply backstop throttles (HTTP 100 req/s burst 200; WebSocket 250 msg/s burst 500). Application
-rate limits in [security.md](security.md#rate-limiting) remain the primary budget.
+HTTP and WebSocket stages apply backstop throttles (HTTP 100 req/s burst 200; WebSocket 250 msg/s
+burst 500) unconditionally. Application rate limits in [security.md](security.md#rate-limiting)
+remain the primary budget.
+
+Redacted access logs (request id, route, status, latency-related fields, source IP — never query
+strings, headers, or bodies) to 14-day CloudWatch log groups are opt-in and off by default — see
+[HARNESS_ACCESS_LOGS_ENABLED](deploy-aws.md#api-gateway-access-logs-opt-in). They require a
+one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` do not provision.
 
 | Signal            | Source                                                                                       |
 | ----------------- | -------------------------------------------------------------------------------------------- |

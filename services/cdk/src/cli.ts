@@ -12,6 +12,10 @@ function contextString(app: App, key: string): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function contextBoolean(app: App, key: string): boolean {
+  return contextString(app, key) === "true";
+}
+
 function removalPolicy(value: string | undefined): RemovalPolicy {
   if (value === undefined || value === "retain") return RemovalPolicy.RETAIN;
   if (value === "destroy") return RemovalPolicy.DESTROY;
@@ -35,7 +39,11 @@ void stack;
 const runtime = new AutoHarnessRuntimeStack(
   app,
   contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
-  { foundation: stack.resources, tablePrefix },
+  {
+    foundation: stack.resources,
+    tablePrefix,
+    accessLogsEnabled: contextBoolean(app, "accessLogsEnabled"),
+  },
 );
 runtime.addStackDependency(stack);
 const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "AutoHarnessWeb", {

@@ -26,6 +26,7 @@
       "project": ["src/**/*.{ts,tsx,css}"],
     },
     "services/cdk": {
+      "entry": ["src/cli.ts", "src/apigateway-account-cli.ts"],
       "project": ["src/**/*.ts"],
     },
   },

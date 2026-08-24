@@ -60,7 +60,8 @@
     "local:phase2-post": "node scripts/phase2-post-session.mts",
     "local:manage-verify": "node scripts/manage-verify.mts",
     "deploy:aws": "bash scripts/deploy-aws.sh",
-    "deploy:host": "bash scripts/deploy-host.sh"
+    "deploy:host": "bash scripts/deploy-host.sh",
+    "bootstrap:apigateway-account": "bash scripts/bootstrap-apigateway-account.sh"
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.45.1",

@@ -37,9 +37,15 @@ const WEBSOCKET_ACCESS_LOG_FORMAT = JSON.stringify({
   status: "$context.status",
 });
 
+/**
+ * RETAINed, not DESTROYed: toggling `accessLogsEnabled` off removes this construct
+ * from the synthesized stack, and a DESTROY policy would delete up to 14 days of
+ * retained access-log history along with it. RETAIN just orphans the log group
+ * instead, matching services/cdk/src/apigateway-account-stack.ts.
+ */
 function accessLogGroup(scope: Construct, id: string): logs.LogGroup {
   const logGroup = new logs.LogGroup(scope, id, {
-    removalPolicy: RemovalPolicy.DESTROY,
+    removalPolicy: RemovalPolicy.RETAIN,
     retention: logs.RetentionDays.TWO_WEEKS,
   });
   logGroup.addToResourcePolicy(
@@ -54,17 +60,19 @@ function accessLogGroup(scope: Construct, id: string): logs.LogGroup {
 
 function configureStage(
   stage: apigatewayv2.CfnStage,
-  logGroup: logs.LogGroup,
   format: string,
   throttle: { burst: number; rate: number },
+  logGroup: logs.LogGroup | undefined,
 ): void {
-  stage.accessLogSettings = { destinationArn: logGroup.logGroupArn, format };
+  if (logGroup) {
+    stage.accessLogSettings = { destinationArn: logGroup.logGroupArn, format };
+    stage.node.addDependency(logGroup);
+  }
   stage.defaultRouteSettings = {
     detailedMetricsEnabled: true,
     throttlingBurstLimit: throttle.burst,
     throttlingRateLimit: throttle.rate,
   };
-  stage.node.addDependency(logGroup);
 }
 
 function addErrorAlarm(
@@ -134,10 +142,16 @@ function operationalMetric(
   });
 }
 
-/** Redacted access logs, stage throttles, and operational CloudWatch alarms. */
+/**
+ * Stage throttles and operational CloudWatch alarms, plus redacted access logs when
+ * `accessLogsEnabled` is set. Access logs require a one-time, account-level API Gateway
+ * CloudWatch Logs role (`scripts/bootstrap-apigateway-account.sh`) that this stack
+ * deliberately does not provision — see docs/deploy-aws.md.
+ */
 export function addRuntimeObservability(input: {
   scope: Construct;
   environment: string;
+  accessLogsEnabled: boolean;
   rest: NodejsFunction;
   websocket: NodejsFunction;
   cron: NodejsFunction;
@@ -148,15 +162,15 @@ export function addRuntimeObservability(input: {
 }): void {
   configureStage(
     input.httpStage,
-    accessLogGroup(input.scope, "HttpAccessLogs"),
     HTTP_ACCESS_LOG_FORMAT,
     HTTP_THROTTLE,
+    input.accessLogsEnabled ? accessLogGroup(input.scope, "HttpAccessLogs") : undefined,
   );
   configureStage(
     input.websocketStage,
-    accessLogGroup(input.scope, "WebSocketAccessLogs"),
     WEBSOCKET_ACCESS_LOG_FORMAT,
     WEBSOCKET_THROTTLE,
+    input.accessLogsEnabled ? accessLogGroup(input.scope, "WebSocketAccessLogs") : undefined,
   );
 
   const errors = { period: Duration.minutes(5), statistic: "Sum" } as const;

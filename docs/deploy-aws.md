@@ -15,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Item                         | Status                                                                                                                                                                                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Design / data model          | Documented in [aws.md](aws.md)                                                                                                                                                                                                                               |
-| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks. Runtime IAM is split per function; DynamoDB PITR is on; HTTP/WS stages have redacted access logs, throttles, and operational CloudWatch alarms.                                                |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks. Runtime IAM is split per function; DynamoDB PITR is on; HTTP/WS stages have throttles and operational CloudWatch alarms, plus redacted access logs when opted in.                              |
 | Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                                                                                                                                                                                                   |
 | Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17. `purge` (including a real programmatic session created, dispatched, and completed in between) verified against a disposable `qa` environment in `us-west-2` on 2026-08-18. |
 
@@ -201,11 +201,56 @@ characters.
 | `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                   |
 | `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                            |
 | `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete all four SSM parameters (three bootstrap secrets + the public base URL) |
+| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                             |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
 `AutoHarness-<environment>-*` for tables.
 The names are generic and do not depend on any repository connected later in the UI.
+
+### API Gateway access logs (opt-in)
+
+Redacted HTTP/WS access logs (`services/cdk/src/runtime-observability.ts`) are
+off by default. They require `stage.accessLogSettings`, which in turn requires
+an `AWS::ApiGateway::Account` resource — a **one-time, AWS-account-wide
+singleton** (one per account/region, shared by every stack and every repo
+deployed into that account) that points API Gateway at an IAM role with
+the required CloudWatch Logs permissions. `deploy`/`update` never provision it,
+and the account-level bootstrap below is a hard prerequisite, not a graceful
+fallback: the CDK code does not check whether the account is already
+bootstrapped, so setting `HARNESS_ACCESS_LOGS_ENABLED=1` before running it
+still synthesizes the log groups and `AccessLogSettings`, and the deployment
+itself then fails (or rolls back) because API Gateway rejects
+`AccessLogSettings` on an account with no CloudWatch Logs role configured.
+
+Provision it once per account, before the first environment that wants access
+logs:
+
+```bash
+pnpm bootstrap:apigateway-account
+```
+
+This runs a separate, environment-independent CDK app
+(`services/cdk/src/apigateway-account-cli.ts` /
+`apigateway-account-stack.ts`) that creates the IAM role and the
+`AWS::ApiGateway::Account` resource, and (via `cdk bootstrap`) the shared
+`CDKToolkit` stack if this account/region doesn't already have one. No
+application stack in the account is touched. Both the role and the account
+resource are deployed with `RemovalPolicy.RETAIN`, so destroying this
+bootstrap stack never clears the account-wide setting out from under an
+unrelated stack or repo running in the same account. Re-running the script is
+a harmless no-op.
+
+After that succeeds, opt individual environments into access logs:
+
+```bash
+HARNESS_ACCESS_LOGS_ENABLED=1 pnpm deploy:aws
+```
+
+Only the literal string `1` opts in; any other value (including `true`) keeps
+access logs off. Throttles, CloudWatch alarms, and app-emitted operational EMF
+metrics are unaffected either way — they don't depend on the account-level
+role.
 
 ## Deploy a new environment
 
@@ -376,8 +421,18 @@ environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is
 created by the Lambda service on first invocation, not by CDK**, so it is not a
 stack resource and `cdk destroy` never touches it. Runtime and web Lambdas now
 set 14-day CloudWatch log retention, so leftover
-`/aws/lambda/AutoHarness-<environment>*` groups expire after that window instead
-of living forever.
+`/aws/lambda/AutoHarness-<environment>*` groups stop accumulating events after
+that window — retention expires log _events_, not the log group resource
+itself, so the (now-empty) groups remain until deleted manually.
+
+Similarly, when access logs were ever enabled (`HARNESS_ACCESS_LOGS_ENABLED=1`),
+purge does not delete the two `HttpAccessLogs`/`WebSocketAccessLogs` CloudWatch
+log groups either: unlike the environment's tables, archive bucket, and KMS key,
+they are not retargeted to `DeletionPolicy: Delete` before the runtime stack is
+destroyed (see `services/cdk/src/runtime-observability.ts`), so `cdk destroy`
+orphans them instead of removing them. Same as the Lambda log groups above,
+their 14-day retention only stops new events from accumulating — the empty
+group itself is not deleted and remains until removed manually.
 
 Purge also does not touch the account-level CDK bootstrap assets — the
 `cdk-hnb659fds-assets-*` S3 staging bucket and the

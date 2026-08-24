@@ -54,6 +54,8 @@ export function cdkContext(config: DeploymentConfig): string[] {
     `tablePrefix=${config.tablePrefix}`,
     "-c",
     `removalPolicy=${config.removalPolicy}`,
+    "-c",
+    `accessLogsEnabled=${String(config.accessLogsEnabled)}`,
   ];
 }
 
