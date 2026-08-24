@@ -53,8 +53,6 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
-  // Durable workers consult Dynamo assignment transactions, not this cache.
-  if (state.storage) return true;
   let used = 0;
   for (const session of state.sessions.values()) {
     if (sessionHoldsHostAssignment(session, hostId)) used += 1;

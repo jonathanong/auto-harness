@@ -150,4 +150,23 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
       if (previousDraining.has(connection.hostId)) state.drainingHosts.add(connection.hostId);
     }
   }
+  await hydrateRunningSessions(state, storage);
+}
+
+async function hydrateRunningSessions(
+  state: ControlPlaneState,
+  storage: DynamoPlaneStorage,
+): Promise<void> {
+  if (typeof storage.listSessionsByStatus !== "function") return;
+  const running = (
+    await Promise.all(
+      [...Array(state.shardCount).keys()].map((shard) =>
+        storage.listSessionsByStatus("running", shard),
+      ),
+    )
+  ).flat();
+  for (const [id, session] of state.sessions) {
+    if (session.status === "running") state.sessions.delete(id);
+  }
+  for (const session of running) state.sessions.set(session.id, { ...session });
 }

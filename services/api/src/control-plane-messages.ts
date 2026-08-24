@@ -44,11 +44,12 @@ import type {
   SessionTransitionContext,
   SessionTransitionEvent,
 } from "./session-transition-planner.ts";
-import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
+import { assignQueued } from "./control-plane-assign.ts";
 import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,
 } from "./control-plane-scheduled-assign.ts";
+import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
@@ -710,6 +711,7 @@ async function applySessionStatusDurable(
         ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       });
       state.pendingAcks.delete(session.id);
+      await requestAssignment(state);
     }
     return { ok: true };
   }
@@ -754,6 +756,7 @@ async function applySessionStatusDurable(
       delete next.reconnectDeadlineAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
+      await requestAssignment(state);
     }
     return { ok: true };
   }
@@ -787,7 +790,7 @@ async function applySessionStatusDurable(
         errorCode: "usage_limit",
       });
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     if (requeue && cooldown && providerAccountId) {
@@ -822,7 +825,7 @@ async function applySessionStatusDurable(
         });
       }
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     if (suppress && requeue?.reason === "providerless") {
@@ -860,7 +863,7 @@ async function applySessionStatusDurable(
       delete next.startedAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
-      await assignScheduledQueuedDurable(state);
+      await requestAssignment(state);
       return { ok: true };
     }
     const completedAt = state.now();
@@ -900,6 +903,7 @@ async function applySessionStatusDurable(
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
     await archiveSessionLogs(state, session.id);
+    await requestAssignment(state);
     return { ok: true };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -928,7 +932,7 @@ async function applySessionStatusDurable(
       errorMessage: msg.errorMessage ?? "provider usage limit; requeued",
     });
     state.pendingAcks.delete(session.id);
-    await assignQueuedDurable(state);
+    await requestAssignment(state);
     return { ok: true };
   }
   const shouldSuppressTarget = suppress !== undefined;
@@ -949,7 +953,7 @@ async function applySessionStatusDurable(
       suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
     });
     state.pendingAcks.delete(session.id);
-    await assignQueuedDurable(state);
+    await requestAssignment(state);
     return { ok: true };
   }
   const committed = await storage.finishSession(
@@ -999,7 +1003,7 @@ async function applySessionStatusDurable(
     await archiveSessionLogs(state, msg.sessionId);
     noteSlackSessionLifecycle(state, nextSession);
   }
-  if (shouldSuppressTarget) await assignQueuedDurable(state);
+  await requestAssignment(state);
   return { ok: true };
 }
 

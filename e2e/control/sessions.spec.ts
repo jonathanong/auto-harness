@@ -253,7 +253,7 @@ test.describe("control plane sessions", () => {
         await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
         await expect(page.getByTestId("session-detail-status")).toContainText(
-          "The scheduler runs about once a minute; waiting is expected.",
+          "Assignment is attempted immediately; a one-minute repair sweep retries missed work.",
         );
         await expect(page.getByTestId("session-detail-source")).toContainText("ui");
         await expect(page.getByTestId("session-source-ui")).toBeVisible();

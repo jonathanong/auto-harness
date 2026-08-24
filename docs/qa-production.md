@@ -358,9 +358,11 @@ host, edit inventory, or change the catalog — those stay admin. Use the
 REST API once with the unbound key as the programmatic acceptance test,
 and once with the bound key to confirm trap #1.
 
-Dispatch is not synchronous — a scheduler sweep runs on its own cron
-(about once a minute). Waiting for the next sweep is expected, not a hang.
-`POST /api/v1/scheduler/assign` forces a sweep but is **admin-only**.
+Dispatch is not completion-synchronous: `POST /sessions` returns the queued
+session immediately while assignment is attempted as a best-effort side effect.
+If no host has capacity yet, a one-minute repair sweep retries. Waiting while
+queued is expected, not a hang. `POST /api/v1/scheduler/assign` forces a sweep
+but is **admin-only**.
 
 ### Prompt matrix
 

@@ -1,4 +1,3 @@
-import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 
@@ -38,7 +37,7 @@ export async function handleProviderAccountUsageRoute(ctx: RouteCtx): Promise<bo
     });
     return true;
   }
-  await assignQueuedDurable(plane.state);
+  await plane.requestAssignment();
   if (
     !(await writeRouteAudit(ctx, {
       action: "provider-account:clear-usage-limit",

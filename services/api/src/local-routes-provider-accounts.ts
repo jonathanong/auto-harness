@@ -135,6 +135,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           }))
         )
           return true;
+        if (typeof body.maxConcurrentSessions === "number") await plane.requestAssignment();
         send(res, 200, result.account);
         return true;
       } catch {

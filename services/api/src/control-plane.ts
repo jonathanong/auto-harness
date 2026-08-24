@@ -19,6 +19,7 @@ import { ControlPlaneRepositoriesService } from "./control-plane-repositories-se
 import { ControlPlaneSchedulingService } from "./control-plane-scheduling-service.ts";
 import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
 import { bindControlPlaneServices } from "./control-plane-service-bind.ts";
+import { requestAssignment } from "./request-assignment.ts";
 
 export type {
   ArchiveMetadata,
@@ -69,6 +70,11 @@ export class ControlPlane {
 
   async settleStorage(): Promise<void> {
     await settleStorage(this.state);
+  }
+
+  /** Best-effort prompt + scheduled assignment; failures leave work for the repair sweep. */
+  async requestAssignment(): Promise<void> {
+    return requestAssignment(this.state);
   }
 }
 

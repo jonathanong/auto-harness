@@ -191,6 +191,7 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
           ),
       );
     }
+    await plane.requestAssignment();
     return respondAfterCloneAudit(
       ctx,
       {

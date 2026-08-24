@@ -219,6 +219,41 @@ describe("durable runtime read-through", () => {
     expect(state.drainingHosts).toEqual(new Set(["host"]));
   });
 
+  it("hydrates running occupancy so advertised host assignment caps apply", async () => {
+    const running = {
+      ...session,
+      id: "running",
+      status: "running" as const,
+      hostId: "host",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [
+          {
+            connectionId: "connection",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+            maxConcurrentAssignments: 1,
+          },
+        ],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async (status: string) => (status === "running" ? [running] : []),
+      } as never,
+    });
+    state.sessions.set(session.id, { ...session, status: "running", hostId: "stale" });
+
+    await refreshSchedulerReadModel(state);
+    expect(state.sessions.get("running")).toMatchObject({ status: "running", hostId: "host" });
+    expect(state.sessions.has(session.id)).toBe(false);
+  });
+
   it("reads repository pages and skips pending durable connections", async () => {
     const state = createControlPlaneState({
       storage: {

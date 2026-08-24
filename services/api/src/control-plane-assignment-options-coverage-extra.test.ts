@@ -281,4 +281,23 @@ describe("assignment optional-field coverage", () => {
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
   });
+
+  it("honors advertised host assignment capacity from the durable running read model", async () => {
+    const state = providerState();
+    for (const hostId of ["host-a", "host-b"]) {
+      const connectionId = `connection-${hostId}`;
+      const connection = state.connections.get(connectionId)!;
+      state.connections.set(connectionId, { ...connection, maxConcurrentAssignments: 1 });
+      state.sessions.set(`running-${hostId}`, {
+        ...session({ id: `running-${hostId}`, status: "running", hostId }),
+      });
+    }
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+  });
 });

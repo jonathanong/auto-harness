@@ -159,6 +159,7 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
       }))
     )
       return true;
+    await plane.requestAssignment();
     send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
   } catch {
     if (

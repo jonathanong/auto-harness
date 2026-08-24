@@ -360,6 +360,7 @@ export async function createLambdaRuntime(
             hostId: message.hostId,
             connectionId: result.connectionId,
           });
+          await created.plane.requestAssignment();
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",

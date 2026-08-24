@@ -194,6 +194,8 @@ describe("provider account execution-profile leases", () => {
     });
     expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
     expect(hostHasAssignmentCapacity(state, "other")).toBe(true);
+    state.storage = {} as never;
+    expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
   });
 
   it("releases a lease idempotently", async () => {

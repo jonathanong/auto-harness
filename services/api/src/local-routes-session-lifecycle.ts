@@ -60,6 +60,7 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
         }))
       )
         return true;
+      await plane.requestAssignment();
       send(res, 200, result.session);
     } catch {
       if (

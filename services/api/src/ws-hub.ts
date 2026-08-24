@@ -151,6 +151,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 connectionId: boundConnectionId,
               }),
             );
+            await plane.requestAssignment();
           } else if (
             msg.type === "session:ack" &&
             result.sessionAcknowledged === msg.sessionId &&
