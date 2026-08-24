@@ -91,3 +91,22 @@ pnpm exec cdk deploy \
   --app "node src/apigateway-account-cli.ts" \
   AutoHarnessApiGatewayAccount \
   --require-approval never
+
+final_role_arn="$(aws apigateway get-account --region "$AWS_REGION" \
+  --query 'cloudwatchRoleArn' --output text)"
+if [[ -z "$final_role_arn" || "$final_role_arn" == "None" ]]; then
+  cat >&2 <<EOF
+'cdk deploy' reported success, but the API Gateway account in $AWS_REGION
+still has no CloudWatch Logs role configured.
+
+This happens when the AutoHarnessApiGatewayAccount stack already exists with
+an unchanged template (e.g. the account's role was cleared out of band):
+CloudFormation sees no template diff and skips reasserting the account
+resource's properties, so the deploy is a silent no-op.
+
+Force it to reapply with:
+  pnpm exec cdk deploy --app "node src/apigateway-account-cli.ts" \\
+    AutoHarnessApiGatewayAccount --require-approval never --force
+EOF
+  exit 1
+fi
