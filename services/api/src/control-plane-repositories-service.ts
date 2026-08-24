@@ -9,7 +9,11 @@ import { listRepositoryCountsDurable } from "./control-plane-facade-reads.ts";
 
 /** Repository CRUD, admission, session drains, and aggregate counts. */
 export class ControlPlaneRepositoriesService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   createRepository(
     input: Parameters<typeof repos.createRepository>[1],

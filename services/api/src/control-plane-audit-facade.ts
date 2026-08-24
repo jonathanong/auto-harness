@@ -9,7 +9,11 @@ import type {
 
 /** Immutable audit history is a facade concern, not a domain mutation helper. */
 export class ControlPlaneAuditService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   /** Callers must not acknowledge their mutation if this append rejects. */
   appendAuditLog(input: AuditLogInput): Promise<AuditLogRecord> {

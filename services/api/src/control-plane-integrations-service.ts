@@ -3,7 +3,11 @@ import * as slack from "./control-plane-slack.ts";
 
 /** Slack and other outbound integration configuration. */
 export class ControlPlaneIntegrationsService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   getSlackIntegration(): ReturnType<typeof slack.getSlackIntegration> {
     return slack.getSlackIntegration(this.state);

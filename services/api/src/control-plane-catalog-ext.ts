@@ -13,7 +13,11 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 
 /** Provider/ProviderAccount/Command catalog delegators. */
 export class ControlPlaneCatalogService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
   createProvider(input: {
     id?: string;
     name: string;

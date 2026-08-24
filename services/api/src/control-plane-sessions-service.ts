@@ -31,7 +31,11 @@ function durableListRepositoryIds(requested: sessions.ListSessionsPageQuery): st
 
 /** Session create/list/assign/resume/cancel and log/usage reads. */
 export class ControlPlaneSessionsService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   createSession(
     body: unknown,

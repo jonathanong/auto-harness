@@ -9,7 +9,11 @@ import * as reconnect from "./control-plane-reconnect.ts";
 
 /** Schedule CRUD, cron fire, and scheduled assignment. */
 export class ControlPlaneSchedulingService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   putSchedule(
     input: Parameters<typeof schedules.putSchedule>[1],

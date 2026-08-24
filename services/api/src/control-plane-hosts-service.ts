@@ -14,7 +14,11 @@ import { ensureSeededTestHost, testHostRuntime } from "./control-plane-test-host
 
 /** Host registration, inventory, worktrees, and drain/reclaim. */
 export class ControlPlaneHostsService {
-  constructor(readonly state: ControlPlaneState) {}
+  readonly state: ControlPlaneState;
+
+  constructor(state: ControlPlaneState) {
+    this.state = state;
+  }
 
   getHostConnectionId(hostId: string): string | undefined {
     return this.state.hostConnection.get(hostId);
