@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- attach, HTTP send, and bounded reconcile cases share one store. */
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -124,16 +125,14 @@ describe("Slack production runtime", () => {
             createdAt: now,
           },
         ],
-        listRepositories: async () => [
-          {
-            id: "repo-1",
-            name: "auto-harness",
-            url: "git@example.test:auto-harness.git",
-            defaultBranch: "main",
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
+        getRepository: async () => ({
+          id: "repo-1",
+          name: "auto-harness",
+          url: "git@example.test:auto-harness.git",
+          defaultBranch: "main",
+          createdAt: now,
+          updatedAt: now,
+        }),
       }) as never,
       secretEncryptor: encryptor(),
       publicBaseUrl: "https://ui.test",
@@ -168,5 +167,88 @@ describe("Slack production runtime", () => {
     });
     expect(await worker!.runOnce()).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("reconciles active and just-completed sessions and loads stderr for failures", async () => {
+    const store = new MemoryOutbox();
+    const sessions = new Map([
+      [
+        "running-1",
+        {
+          id: "running-1",
+          repositoryId: "repo-1",
+          prompt: "active",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetLabels: ["Codex"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: now,
+          timeout: 60,
+          priority: 4,
+          requiredLabels: [],
+          status: "running",
+          queueShard: 0,
+          createdAt: now,
+          startedAt: now,
+        },
+      ],
+    ]);
+    const listLogs = vi.fn(async () => [
+      { stream: "stderr", content: "boom", timestampSeq: "1", sessionId: "failed-1" },
+    ]);
+    let listRunning = true;
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listSessionsByStatus: async (status: string) =>
+          status === "running" && listRunning ? [[...sessions.values()][0]] : [],
+        getSession: async (id: string) =>
+          id === "running-1"
+            ? {
+                ...sessions.get("running-1"),
+                status: "failed",
+                completedAt: now,
+                exitCode: 1,
+              }
+            : null,
+        listLogs,
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set("ancient", {
+      id: "ancient",
+      repositoryId: "repo-1",
+      prompt: "old",
+      target: { commandId: "command-1" },
+      fallbacks: [],
+      targetLabels: ["Codex"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2016-01-01T00:00:00.000Z",
+      timeout: 60,
+      priority: 4,
+      requiredLabels: [],
+      status: "completed",
+      queueShard: 0,
+      createdAt: "2016-01-01T00:00:00.000Z",
+      completedAt: "2016-01-01T00:00:00.000Z",
+    } as never);
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "1.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now, maxOperationsPerTick: 20 },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    listRunning = false;
+    expect(await worker!.runOnce()).toBe(true);
+    expect(listLogs).toHaveBeenCalledWith("running-1");
+    expect(
+      fetchImpl.mock.calls.some((call) => String(call[1].body).includes("Session failed")),
+    ).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[1].body).includes("old"))).toBe(false);
   });
 });

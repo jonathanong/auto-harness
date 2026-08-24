@@ -6,6 +6,7 @@ import type {
 
 const SLACK_API_BASE = "https://slack.com/api";
 const SLACK_FETCH_TIMEOUT_MS = 10_000;
+const DEFAULT_CACHE_LIMIT = 256;
 
 export type SlackFetcher = (
   input: string,
@@ -21,27 +22,61 @@ type SlackHttpTransportOptions = {
   getBotToken: () => Promise<string | null>;
   fetch?: SlackFetcher;
   apiBase?: string;
+  cacheLimit?: number;
 };
 
 /**
  * Network-backed Slack adapter. Successful deliveries are cached by operation ID so
  * an ambiguous retry after a lost lease does not post a second message in-process.
+ * Overlapping deliver() calls share one in-flight request. Across Lambda invocations
+ * delivery is at-least-once.
  */
 export function createSlackHttpTransport(options: SlackHttpTransportOptions): SlackTransport {
   const sent = new Map<string, SlackTransportResult>();
+  const inflight = new Map<string, Promise<SlackTransportResult>>();
   const fetchImpl = options.fetch ?? fetch;
   const apiBase = options.apiBase ?? SLACK_API_BASE;
+  const cacheLimit = options.cacheLimit ?? DEFAULT_CACHE_LIMIT;
   return {
     async deliver(request) {
       const cached = sent.get(request.idempotencyKey);
-      if (cached) return cached;
-      const token = await options.getBotToken();
-      if (!token) throw new Error("Slack bot token is unavailable");
-      const result = await postToSlack(fetchImpl, apiBase, token, request);
-      sent.set(request.idempotencyKey, result);
-      return result;
+      if (cached) {
+        sent.delete(request.idempotencyKey);
+        sent.set(request.idempotencyKey, cached);
+        return cached;
+      }
+      const pending = inflight.get(request.idempotencyKey);
+      if (pending) return pending;
+      const work = postAndCache();
+      inflight.set(request.idempotencyKey, work);
+      return work;
+
+      async function postAndCache(): Promise<SlackTransportResult> {
+        try {
+          const token = await options.getBotToken();
+          if (!token) throw new Error("Slack bot token is unavailable");
+          const result = await postToSlack(fetchImpl, apiBase, token, request);
+          remember(sent, request.idempotencyKey, result, cacheLimit);
+          return result;
+        } finally {
+          inflight.delete(request.idempotencyKey);
+        }
+      }
     },
   };
+}
+
+function remember(
+  sent: Map<string, SlackTransportResult>,
+  key: string,
+  result: SlackTransportResult,
+  limit: number,
+): void {
+  if (sent.size >= limit) {
+    const oldest = sent.keys().next().value;
+    if (oldest !== undefined) sent.delete(oldest);
+  }
+  sent.set(key, result);
 }
 
 async function postToSlack(

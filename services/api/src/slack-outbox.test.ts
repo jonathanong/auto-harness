@@ -237,11 +237,33 @@ describe("Slack durable outbox", () => {
     expect(store.items.get("root")?.lastError).toHaveLength(500);
     store.items.get("root")!.nextAttemptAt = now;
     transport.deliver.mockRejectedValueOnce("bad");
+    const failures: Array<{ id: string; status: string; error: string }> = [];
     expect(
       await processSlackOutboxOnce(store, transport, {
         now: () => now,
         leaseToken: () => "lease-2",
+        onFailure: (event) => failures.push(event),
       }),
+    ).toBe("dead");
+    expect(failures).toEqual([
+      expect.objectContaining({ id: "root", operation: "post-root", status: "dead" }),
+    ]);
+    expect(JSON.stringify(failures)).not.toContain("xoxb-");
+    store.items.get("root")!.status = "pending";
+    store.items.get("root")!.nextAttemptAt = now;
+    store.items.get("root")!.leaseToken = undefined;
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn().mockRejectedValue("bad") },
+        {
+          now: () => now,
+          leaseToken: () => "lease-3",
+          onFailure: () => {
+            throw new Error("observer");
+          },
+        },
+      ),
     ).toBe("dead");
     expect(retryDelay(3, 10, 15)).toBe(15);
   });

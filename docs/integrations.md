@@ -5,11 +5,14 @@
 > **Current status:** Auto Harness stores an encrypted, redacted Slack configuration through the
 > admin API and Web UI, then delivers session lifecycle messages (`chat.postMessage` /
 > `chat.update`) through the durable leased outbox. The local server starts the worker when
-> storage and a decryptable bot token exist; the deployed cron Lambda drains the same outbox.
-> Delivery retries with bounded backoff and dead-letters exhausted operations. If Slack is
-> configured but this environment cannot actually send (missing token decrypt, no worker), the
-> API and UI report **configured but delivery unavailable** instead of implying the integration
-> is operational. There is still no Slack OAuth or inbound webhook verification.
+> storage plus an injected transport or secret encryptor exist; the deployed cron Lambda drains
+> the same outbox. Delivery is **at-least-once** across Lambda invocations: in-process retries
+> share a request and a bounded result cache, but a lost complete-after-send lease can post
+> again after a cold start. Retries use bounded backoff and dead-letter exhausted operations.
+> If Slack is configured but this environment cannot actually send (missing token decrypt, no
+> worker), the API and UI report **configured but delivery unavailable**. There is still no
+> Slack OAuth or inbound webhook verification. GET decrypts the bot token only as a capability
+> probe for that flag, not as a send path.
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
@@ -220,12 +223,18 @@ The delivery implementation must respect Slack API rate limits and batch updates
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
-The outbox stores one immutable operation ID per lifecycle action. The worker reconciles the
-current durable session snapshot on every sweep, conditionally leases due rows, recovers expired
+The outbox stores one immutable operation ID per lifecycle action. The worker reconciles a
+bounded set each sweep (queued/running plus sessions that just left active, and in-memory
+terminals still inside a 9-day window), conditionally leases due rows, recovers expired
 leases after a restart, retries with bounded exponential backoff, and dead-letters exhausted
-operations. Replies depend on the sent root operation, while the final root update depends on the
+operations. Failed session snapshots fetch stderr tails from durable logs when the process
+cache does not already have them. Replies depend on the sent root operation, while the final root update depends on the
 terminal reply. The HTTP transport deduplicates ambiguous in-process retries with that operation
-ID. Inbound Slack events and OAuth are not implemented.
+ID, including overlapping `deliver()` calls. Across Lambda invocations, delivery is
+at-least-once: operators should treat a duplicate lifecycle post after a lost lease as
+expected rather than exactly-once. Inbound Slack events and OAuth are not implemented.
+Failed sends store a secret-free `lastError` on the outbox row and emit a CloudWatch
+line (`slack <operation> retried|dead <id>: …`).
 
 ### Permissions Required
 

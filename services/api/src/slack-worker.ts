@@ -88,7 +88,14 @@ export class SlackLifecycleWorker {
       const result = await processSlackOutboxOnce(
         this.dependencies.store,
         this.dependencies.transport,
-        { now: this.now },
+        {
+          now: this.now,
+          onFailure: (event) => {
+            this.report(
+              new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
+            );
+          },
+        },
       );
       if (result === "idle") return;
     }

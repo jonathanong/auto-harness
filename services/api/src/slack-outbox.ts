@@ -12,6 +12,12 @@ type SlackOutboxOptions = {
   dependencyDelayMs?: number;
   baseRetryMs?: number;
   maxRetryMs?: number;
+  onFailure?: (event: {
+    id: string;
+    operation: SlackDeliveryRecord["operation"];
+    status: "retried" | "dead";
+    error: string;
+  }) => void;
 };
 
 /** Enqueues insert-only stable IDs, so replaying the same lifecycle event is idempotent. */
@@ -70,16 +76,28 @@ export async function processSlackOutboxOnce(
       current,
       retryDelay(attempts, options.baseRetryMs ?? 1_000, options.maxRetryMs ?? 60_000),
     );
+    const error = errorMessage(cause);
     await store.reschedule({
       id: claimed.id,
       leaseToken,
       status: dead ? "dead" : "pending",
       attempts,
       nextAttemptAt,
-      error: errorMessage(cause),
+      error,
       now: current,
     });
-    return dead ? "dead" : "retried";
+    const status = dead ? ("dead" as const) : ("retried" as const);
+    try {
+      options.onFailure?.({
+        id: claimed.id,
+        operation: claimed.operation,
+        status,
+        error,
+      });
+    } catch {
+      // Observability cannot block retry or dead-letter.
+    }
+    return status;
   }
 }
 

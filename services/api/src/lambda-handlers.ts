@@ -247,7 +247,8 @@ export async function createLambdaRuntime(
   const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
   const slackWorker = createSlackLifecycleWorker(created.plane, {
     worker: {
-      maxOperationsPerTick: 50,
+      // 4 * 10s Slack timeout stays inside the 60s cron budget after scheduler work.
+      maxOperationsPerTick: 4,
       onError: (error) => {
         console.error("slack delivery failed", error);
       },

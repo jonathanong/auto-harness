@@ -149,7 +149,9 @@ describe("Slack integration configuration", () => {
       ok: true,
       integration: { deliveryAvailable: false },
     });
-    expect(opaque.getSlackIntegration()).toMatchObject({ deliveryAvailable: false });
+    expect(await opaque.getSlackIntegration()).toMatchObject({ deliveryAvailable: false });
+    enableSlackOutbound(opaque);
+    expect(await opaque.getSlackIntegration()).toMatchObject({ deliveryAvailable: false });
 
     const roundTrip: SecretEncryptor = {
       encrypt: async (plaintext) => Buffer.from(plaintext, "utf8").toString("base64"),
@@ -159,6 +161,7 @@ describe("Slack integration configuration", () => {
     enableSlackOutbound(ready);
     const saved = await ready.createSlackIntegrationDurable(input());
     expect(saved).toMatchObject({ ok: true, integration: { deliveryAvailable: true } });
+    expect(await ready.getSlackIntegration()).toMatchObject({ deliveryAvailable: true });
     expect(await ready.getSlackIntegrationDurable()).toMatchObject({ deliveryAvailable: true });
 
     const broken: SecretEncryptor = {

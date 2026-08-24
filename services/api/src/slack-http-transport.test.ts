@@ -120,6 +120,37 @@ describe("Slack HTTP transport", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(JSON.parse(fetchImpl.mock.calls[1]![1].body)).toMatchObject({ thread_ts: "1.0" });
     expect(JSON.parse(fetchImpl.mock.calls[2]![1].body)).toMatchObject({ ts: "1.0" });
+
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = vi.fn<SlackFetcher>(async () => {
+      await blocked;
+      return jsonResponse({ ok: true, channel: "C123", ts: "3.0" });
+    });
+    const overlapping = createSlackHttpTransport({ getBotToken: async () => token, fetch: slow });
+    const first = overlapping.deliver(request("post-root"));
+    const second = overlapping.deliver(request("post-root"));
+    release();
+    expect(await Promise.all([first, second])).toEqual([
+      { channel: "C123", messageTs: "3.0" },
+      { channel: "C123", messageTs: "3.0" },
+    ]);
+    expect(slow).toHaveBeenCalledTimes(1);
+
+    const bounded = vi.fn<SlackFetcher>(async (_url, init) =>
+      jsonResponse({ ok: true, channel: "C123", ts: JSON.parse(init.body).text }),
+    );
+    const evicting = createSlackHttpTransport({
+      getBotToken: async () => token,
+      fetch: bounded,
+      cacheLimit: 1,
+    });
+    await evicting.deliver({ ...request("post-root"), idempotencyKey: "a", text: "a" });
+    await evicting.deliver({ ...request("post-root"), idempotencyKey: "b", text: "b" });
+    await evicting.deliver({ ...request("post-root"), idempotencyKey: "a", text: "a" });
+    expect(bounded).toHaveBeenCalledTimes(3);
   });
 
   it("uses the default Slack API and fetch, and fails closed on token or payload errors", async () => {

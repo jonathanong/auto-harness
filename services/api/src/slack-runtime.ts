@@ -1,3 +1,9 @@
+import {
+  ACTIVE_SESSION_STATUSES,
+  TERMINAL_SESSION_STATUSES,
+  type SessionStatus,
+} from "@auto-harness/shared";
+
 import type { ControlPlane } from "./control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {
@@ -12,6 +18,8 @@ import { slackSessionSnapshot, type SlackLifecycleConfig } from "./slack-session
 import { SlackLifecycleWorker, type SlackLifecycleWorkerOptions } from "./slack-worker.ts";
 
 const OUTBOX_METHODS = ["enqueue", "claimDue", "get", "complete", "reschedule"] as const;
+/** Queue TTL is 8 days; keep a day of slack so a long-queued session still gets a terminal post. */
+const SLACK_RECONCILE_WINDOW_MS = 9 * 24 * 60 * 60 * 1000;
 
 export function enableSlackOutbound(plane: ControlPlane): void {
   plane.state.slackOutboundEnabled = true;
@@ -37,12 +45,13 @@ export function createSlackLifecycleWorker(
       : undefined);
   if (!transport) return undefined;
   enableSlackOutbound(plane);
+  const trackedActive = new Set<string>();
   return new SlackLifecycleWorker(
     {
       store: storage,
       transport,
       getConfig: () => loadSlackLifecycleConfig(plane),
-      listSessions: () => listSlackSessionSnapshots(plane),
+      listSessions: () => listSlackSessionSnapshots(plane, trackedActive),
     },
     options.worker,
   );
@@ -72,20 +81,95 @@ async function loadSlackRecord(plane: ControlPlane): Promise<SlackIntegrationRec
   return plane.state.slackIntegration ?? null;
 }
 
-async function listSlackSessionSnapshots(plane: ControlPlane): Promise<SlackSessionSnapshot[]> {
+async function listSlackSessionSnapshots(
+  plane: ControlPlane,
+  trackedActive: Set<string>,
+): Promise<SlackSessionSnapshot[]> {
+  const sessions = await loadReconcileSessions(plane, trackedActive);
+  const nowMs = Date.parse(plane.state.now());
+  const snapshots: SlackSessionSnapshot[] = [];
+  for (const session of sessions.values()) {
+    if (!shouldReconcile(session, nowMs)) continue;
+    await hydrateSlackSnapshotInputs(plane, session);
+    snapshots.push(slackSessionSnapshot(plane.state, session));
+  }
+  return snapshots;
+}
+
+async function loadReconcileSessions(
+  plane: ControlPlane,
+  trackedActive: Set<string>,
+): Promise<Map<string, SessionRecord>> {
+  const sessions = new Map(plane.state.sessions);
   const storage = plane.state.storage;
-  if (storage && typeof storage.listRepositories === "function") {
-    for (const repository of await storage.listRepositories()) {
-      plane.state.repositories.set(repository.id, repository);
+  const active = await loadActiveSessions(plane);
+  for (const [id, session] of active) sessions.set(id, session);
+  if (storage && typeof storage.getSession === "function") {
+    for (const id of trackedActive) {
+      if (active.has(id)) continue;
+      const latest = await storage.getSession(id);
+      if (latest) sessions.set(id, latest);
     }
   }
-  const sessions = new Map(plane.state.sessions);
-  if (storage && typeof storage.listAllSessions === "function") {
-    for (const session of await storage.listAllSessions()) sessions.set(session.id, session);
+  trackedActive.clear();
+  for (const [id, session] of sessions) {
+    if (session.status === "queued" || session.status === "running") trackedActive.add(id);
   }
-  return [...sessions.values()].map((session: SessionRecord) =>
-    slackSessionSnapshot(plane.state, session),
-  );
+  return sessions;
+}
+
+async function loadActiveSessions(plane: ControlPlane): Promise<Map<string, SessionRecord>> {
+  const storage = plane.state.storage;
+  const sessions = new Map<string, SessionRecord>();
+  if (storage && typeof storage.listSessionsByStatus === "function") {
+    const pages = await Promise.all(
+      ACTIVE_SESSION_STATUSES.flatMap((status) =>
+        [...Array(plane.state.shardCount).keys()].map((shard) =>
+          storage.listSessionsByStatus(status, shard),
+        ),
+      ),
+    );
+    for (const session of pages.flat()) sessions.set(session.id, session);
+    return sessions;
+  }
+  const listed =
+    storage && typeof storage.listAllSessions === "function"
+      ? await storage.listAllSessions()
+      : [...plane.state.sessions.values()];
+  for (const session of listed) {
+    if (session.status === "queued" || session.status === "running")
+      sessions.set(session.id, session);
+  }
+  return sessions;
+}
+
+function shouldReconcile(session: SessionRecord, nowMs: number): boolean {
+  if (session.status === "queued" || session.status === "running") return true;
+  if (!(TERMINAL_SESSION_STATUSES as readonly SessionStatus[]).includes(session.status)) {
+    return false;
+  }
+  const at = Date.parse(session.completedAt ?? session.createdAt);
+  return Number.isFinite(at) && at >= nowMs - SLACK_RECONCILE_WINDOW_MS;
+}
+
+async function hydrateSlackSnapshotInputs(
+  plane: ControlPlane,
+  session: SessionRecord,
+): Promise<void> {
+  const storage = plane.state.storage;
+  if (!plane.state.repositories.has(session.repositoryId) && storage?.getRepository) {
+    const repository = await storage.getRepository(session.repositoryId);
+    if (repository) plane.state.repositories.set(repository.id, repository);
+  }
+  const failed = session.status === "failed" || session.status === "timed_out";
+  if (
+    failed &&
+    !plane.state.logs.has(session.id) &&
+    storage &&
+    typeof storage.listLogs === "function"
+  ) {
+    plane.state.logs.set(session.id, await storage.listLogs(session.id));
+  }
 }
 
 function isSlackOutboxStore(storage: unknown): storage is SlackOutboxStore {

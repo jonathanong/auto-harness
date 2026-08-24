@@ -126,6 +126,7 @@ describe("Slack lifecycle worker", () => {
   it("recovers retry and dependency deferrals on a later synthetic tick", async () => {
     const store = new MemoryOutbox();
     let clock = initial;
+    const onError = vi.fn();
     const deliver = vi
       .fn<SlackTransport["deliver"]>()
       .mockRejectedValueOnce(new Error("temporary"))
@@ -140,10 +141,13 @@ describe("Slack lifecycle worker", () => {
         getConfig: async () => config,
         listSessions: async () => [completed],
       },
-      { now: () => clock, maxOperationsPerTick: 20 },
+      { now: () => clock, maxOperationsPerTick: 20, onError },
     );
     worker.start();
     await worker.stop();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("retried") }),
+    );
     expect(store.items.get("slack:session-1:thread")).toMatchObject({
       status: "pending",
       attempts: 1,

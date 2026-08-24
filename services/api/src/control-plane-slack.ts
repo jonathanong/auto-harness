@@ -22,8 +22,12 @@ export type SlackConfigInput = {
 
 type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
 
-export function getSlackIntegration(state: ControlPlaneState): PublicSlackIntegration | null {
-  return state.slackIntegration ? toPublicSlackIntegration(state.slackIntegration) : null;
+export function getSlackIntegration(
+  state: ControlPlaneState,
+): Promise<PublicSlackIntegration | null> {
+  return state.slackIntegration
+    ? publicIntegration(state, state.slackIntegration)
+    : Promise.resolve(null);
 }
 
 export async function getSlackIntegrationDurable(
