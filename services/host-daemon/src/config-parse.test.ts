@@ -159,4 +159,16 @@ describe("parseDaemonConfig", () => {
       }),
     ).toThrow(/invalid/);
   });
+
+  it("rejects foreign Windows terminal-hook paths on non-Windows hosts", () => {
+    if (process.platform === "win32") return;
+    for (const terminalHookScript of ["C:\\hooks\\done.cmd", "\\\\server\\share\\done.cmd"]) {
+      expect(() =>
+        parseDaemonConfig({
+          hostId: "x",
+          repositories: [{ id: "r", path: "/r", terminalHookScript, worktrees: [] }],
+        }),
+      ).toThrow(/terminalHookScript is not valid/);
+    }
+  });
 });

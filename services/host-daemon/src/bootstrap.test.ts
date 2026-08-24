@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   emptyDaemonConfig,
   fetchHostInventory,
+  HostInventoryPolicyError,
   httpBaseFromApiUrl,
   inventoryFingerprint,
 } from "./bootstrap.ts";
@@ -18,6 +19,14 @@ describe("httpBaseFromApiUrl", () => {
 });
 
 describe("fetchHostInventory", () => {
+  it("labels both Error and primitive root-policy failures", () => {
+    expect(() => {
+      throw new HostInventoryPolicyError(new Error("outside root"));
+    }).toThrow("outside root");
+    expect(new HostInventoryPolicyError("outside root").message).toContain("outside root");
+    expect(new HostInventoryPolicyError("outside root", ["/safe"]).allowedRoots).toEqual(["/safe"]);
+  });
+
   it("maps identity and host inventory", async () => {
     const fetchFn = vi.fn(async () => Response.json({ repositories: valid.repositories }));
     const config = await fetchHostInventory(
@@ -59,6 +68,9 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint(empty)).not.toBe(
       inventoryFingerprint({ ...empty, setupScript: "source ~/.zshrc" }),
     );
+    expect(inventoryFingerprint({ ...empty, allowedRoots: ["/safe"] })).not.toBe(
+      inventoryFingerprint(empty),
+    );
   });
 
   it("handles empty error bodies", async () => {
@@ -80,19 +92,17 @@ describe("fetchHostInventory", () => {
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);
   });
 
-  it("uses the global fetch boundary and rejects a primitive inventory body", async () => {
+  it("rejects a primitive inventory body", async () => {
     const fetchFn = vi.fn(async () => Response.json("not-an-inventory"));
-    vi.stubGlobal("fetch", fetchFn);
-    try {
-      await expect(fetchHostInventory({ hostId: "a", apiUrl: "http://x" })).rejects.toThrow(
-        "config root must be an object",
-      );
-      expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
-        headers: { accept: "application/json" },
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await expect(
+      fetchHostInventory(
+        { hostId: "a", apiUrl: "http://x" },
+        { fetchFn: fetchFn as unknown as typeof fetch },
+      ),
+    ).rejects.toThrow("config root must be an object");
+    expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
+      headers: { accept: "application/json" },
+    });
   });
 
   it("preserves a non-empty bootstrap error body and omits an absent API key", async () => {

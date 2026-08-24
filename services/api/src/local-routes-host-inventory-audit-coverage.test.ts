@@ -57,6 +57,112 @@ describe("host inventory audit failures", () => {
       }),
     ).toBe(500);
   });
+
+  it("fails closed when audits fail during policy rejection and durable outcomes", async () => {
+    const denied = new ControlPlane();
+    await denied.putHostInventoryDurable("host-1", { repositories: [], setupScript: "safe" });
+    denied.appendAuditLog = failure;
+    expect(
+      await invoke(
+        denied,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { repositories: [], setupScript: "changed" },
+        scoped,
+      ),
+    ).toBe(500);
+
+    const invalid = new ControlPlane();
+    invalid.appendAuditLog = failure;
+    expect(
+      await invoke(invalid, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [
+          { id: "duplicate", path: "/one", worktrees: [] },
+          { id: "duplicate", path: "/two", worktrees: [] },
+        ],
+      }),
+    ).toBe(500);
+
+    const failedWrite = new ControlPlane();
+    await failedWrite.putHostInventoryDurable("host-1", {
+      repositories: [],
+      setupScript: "safe",
+    });
+    let failedWriteAudits = 0;
+    failedWrite.appendAuditLog = async () => {
+      failedWriteAudits += 1;
+      if (failedWriteAudits > 1) throw new Error("audit unavailable");
+    };
+    failedWrite.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      error: "invalid inventory",
+    });
+    expect(
+      await invoke(failedWrite, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+        setupScript: "changed",
+      }),
+    ).toBe(500);
+
+    const thrownWrite = new ControlPlane();
+    await thrownWrite.putHostInventoryDurable("host-1", {
+      repositories: [],
+      setupScript: "safe",
+    });
+    let thrownWriteAudits = 0;
+    thrownWrite.appendAuditLog = async () => {
+      thrownWriteAudits += 1;
+      if (thrownWriteAudits > 1) throw new Error("audit unavailable");
+    };
+    thrownWrite.putHostInventoryDurable = async () => {
+      throw new Error("write unavailable");
+    };
+    expect(
+      await invoke(thrownWrite, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+        setupScript: "changed",
+      }),
+    ).toBe(500);
+
+    const deleteAudit = new ControlPlane();
+    await deleteAudit.putHostInventoryDurable("host-1", {
+      repositories: [],
+      setupScript: "safe",
+    });
+    deleteAudit.appendAuditLog = failure;
+    expect(await invoke(deleteAudit, "DELETE", "/api/v1/hosts/host-1/inventory")).toBe(500);
+
+    const failedDelete = new ControlPlane();
+    await failedDelete.putHostInventoryDurable("host-1", {
+      repositories: [],
+      setupScript: "safe",
+    });
+    let failedDeleteAudits = 0;
+    failedDelete.appendAuditLog = async () => {
+      failedDeleteAudits += 1;
+      if (failedDeleteAudits > 1) throw new Error("audit unavailable");
+    };
+    failedDelete.deleteHostInventoryDurable = async () => ({
+      ok: false as const,
+      error: "delete unavailable",
+    });
+    expect(await invoke(failedDelete, "DELETE", "/api/v1/hosts/host-1/inventory")).toBe(500);
+
+    const thrownDelete = new ControlPlane();
+    await thrownDelete.putHostInventoryDurable("host-1", {
+      repositories: [],
+      setupScript: "safe",
+    });
+    let thrownDeleteAudits = 0;
+    thrownDelete.appendAuditLog = async () => {
+      thrownDeleteAudits += 1;
+      if (thrownDeleteAudits > 1) throw new Error("audit unavailable");
+    };
+    thrownDelete.deleteHostInventoryDurable = async () => {
+      throw new Error("delete unavailable");
+    };
+    expect(await invoke(thrownDelete, "DELETE", "/api/v1/hosts/host-1/inventory")).toBe(500);
+  });
 });
 
 async function failure(): Promise<never> {

@@ -38,14 +38,14 @@ targets are catalog Provider or Command entries ([plan.md](plan.md) D4).
 
 UI copy uses the **label**. API, JWT, and DynamoDB store the **id**.
 
-| Id           | UI label    | For                                         | Intent                                                                                                                                                                |
-| ------------ | ----------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read-only`  | Read-only   | Humans, reporting keys                      | Observe. No writes.                                                                                                                                                   |
-| `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                           |
-| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate. Not inventory, catalog, or IAM.                             |
-| `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                            |
-| `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                |
-| `admin`      | Admin       | Platform owners, bootstrap `HARNESS_ADMINS` | Everything, including catalog (arbitrary argv / setup scripts), accounts, Slack, audit, scheduler internals. **Must be unscoped** (no repository list, no host bind). |
+| Id           | UI label    | For                                         | Intent                                                                                                                                                                                          |
+| ------------ | ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read-only`  | Read-only   | Humans, reporting keys                      | Observe. No writes.                                                                                                                                                                             |
+| `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                                                     |
+| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate. Not inventory, catalog, or IAM.                                                       |
+| `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                                                      |
+| `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                                          |
+| `admin`      | Admin       | Platform owners, bootstrap `HARNESS_ADMINS` | Everything, including catalog argv, fleet exec-config (setup scripts / executable paths), accounts, Slack, audit, scheduler internals. **Must be unscoped** (no repository list, no host bind). |
 
 Humans should not be given `agent`. Service accounts may use any role; daemons
 must be `agent`.
@@ -57,23 +57,24 @@ must be `agent`.
 Internal grant ids. `GET /api/v1/auth/me` returns them as `capabilities` so the
 UI can hide buttons. REST still checks the same ids on every request.
 
-| Capability             | Meaning                                                                                                                                                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _(authenticated read)_ | Any signed-in principal may `GET` sessions, logs, usage, catalog, hosts, worktrees, schedules, session-targets. Repo/host filters still apply. Not a stored capability — `read-only` has an empty grant list and still reads. |
-| `sessions:write`       | `POST /sessions`, clone, resume, cancel (own, unless `sessions:cancel-any`), and create/poll/release the caller's repository-principal session drain. Bound keys never author; see [Object-level rules](#object-level-rules). |
-| `sessions:cancel-any`  | Cancel any in-scope session, not only `metadata.createdBy`.                                                                                                                                                                   |
-| `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                 |
-| `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                 |
-| `repositories:operate` | `POST /repositories/:id/pause`, `/drain`, and `/activate`. Repository-scoped principals may operate only repositories in their allowed scope.                                                                                 |
-| `fleet:drain`          | `POST /hosts/drain`. Bound principals: own host only.                                                                                                                                                                         |
-| `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos/worktrees and configure host-scoped setup/hook scripts). **This permits arbitrary execution on the selected host.**                               |
-| `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                 |
-| `catalog:write`        | Create/update/delete Commands, Providers, and Repositories — including command `argv` and repo `setupScript` / `terminalHookScript`. **This is arbitrary execution on the fleet** ([plan.md](plan.md) D4). Admin only.        |
-| `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                        |
-| `integrations:write`   | Slack integration CRUD (`/integrations/slack`), including `GET`.                                                                                                                                                              |
-| `audit:read`           | `GET /audit-logs`.                                                                                                                                                                                                            |
-| `scheduler:run`        | `POST /scheduler/*` (assign, ack-deadlines, reclaim-stale). Internal.                                                                                                                                                         |
-| `agent:protocol`       | `POST /host/messages` and the host WebSocket. Requires `kind=service-account` **and** `boundHostId`.                                                                                                                          |
+| Capability             | Meaning                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(authenticated read)_ | Any signed-in principal may `GET` sessions, logs, usage, catalog, hosts, worktrees, schedules, session-targets. Repo/host filters still apply. Not a stored capability — `read-only` has an empty grant list and still reads.                                                                         |
+| `sessions:write`       | `POST /sessions`, clone, resume, cancel (own, unless `sessions:cancel-any`), and create/poll/release the caller's repository-principal session drain. Bound keys never author; see [Object-level rules](#object-level-rules).                                                                         |
+| `sessions:cancel-any`  | Cancel any in-scope session, not only `metadata.createdBy`.                                                                                                                                                                                                                                           |
+| `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                                                                                         |
+| `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                                                                                         |
+| `repositories:operate` | `POST /repositories/:id/pause`, `/drain`, and `/activate`. Repository-scoped principals may operate only repositories in their allowed scope.                                                                                                                                                         |
+| `fleet:drain`          | `POST /hosts/drain`. Bound principals: own host only.                                                                                                                                                                                                                                                 |
+| `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos/worktrees, labels, required environment, and provider-account attachments). Does **not** accept setup-script or executable-path edits. Deleting inventory that currently stores exec-config requires `fleet:exec-config`. |
+| `fleet:exec-config`    | `PUT` `/hosts/:id/exec-config` (host/repository/worktree setup scripts, terminal hook paths, and host-local `allowedRoots`). Admin only. **This permits arbitrary execution on the selected host.** Changes are audited as `host-exec-config:update`.                                                 |
+| `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                                                                                         |
+| `catalog:write`        | Create/update/delete Commands, Providers, and Repositories — including command `argv` and repo `setupScript` / `terminalHookScript`. **This is arbitrary execution on the fleet** ([plan.md](plan.md) D4). Admin only.                                                                                |
+| `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                                                                                                |
+| `integrations:write`   | Slack integration CRUD (`/integrations/slack`), including `GET`.                                                                                                                                                                                                                                      |
+| `audit:read`           | `GET /audit-logs`.                                                                                                                                                                                                                                                                                    |
+| `scheduler:run`        | `POST /scheduler/*` (assign, ack-deadlines, reclaim-stale). Internal.                                                                                                                                                                                                                                 |
+| `agent:protocol`       | `POST /host/messages` and the host WebSocket. Requires `kind=service-account` **and** `boundHostId`.                                                                                                                                                                                                  |
 
 Unknown `/api/v1` **writes** that are not in this map are denied (fail closed),
 including for `admin`.
@@ -95,6 +96,7 @@ still applies to every non-admin row.
 | Schedule create / PATCH / trigger / delete                 |      ✗      |    ✗     |     ✓      |      ✓       |    ✗     |    ✓    |
 | Drain host                                                 |      ✗      |    ✗     |     ✓      |      ✓       | own host |    ✓    |
 | Host inventory write                                       |      ✗      |    ✗     |     ✗      |      ✓       |    ✗     |    ✓    |
+| Host exec-config write                                     |      ✗      |    ✗     |     ✗      |      ✗       |    ✗     |    ✓    |
 | Provider-account write                                     |      ✗      |    ✗     |     ✗      |      ✓       |    ✗     |    ✓    |
 | Command / Provider / Repository write                      |      ✗      |    ✗     |     ✗      |      ✗       |    ✗     |    ✓    |
 | User + service-account CRUD                                |      ✗      |    ✗     |     ✗      |      ✗       |    ✗     |    ✓    |
@@ -131,6 +133,7 @@ bound service-account, which `admin` is forbidden to be.
 | `/api/v1/repositories/:id/session-drains`                          | authenticated                          | `sessions:write`     |
 | `/api/v1/hosts/drain`                                              | authenticated                          | `fleet:drain`        |
 | `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`          | authenticated                          | `fleet:inventory`    |
+| `/api/v1/hosts/:id/exec-config`                                    | authenticated                          | `fleet:exec-config`  |
 | `/api/v1/provider-accounts`                                        | authenticated                          | `providers:accounts` |
 | `/api/v1/commands`, `/providers`, `/repositories`                  | authenticated                          | `catalog:write`      |
 | `/api/v1/auth/users`, `/auth/service-accounts`                     | `accounts:write`                       | `accounts:write`     |
@@ -208,24 +211,26 @@ key if CI should not rewrite schedules.
 
 ## What to assign
 
-| Job                                                     | Role         | Scope                     |
-| ------------------------------------------------------- | ------------ | ------------------------- |
-| Browse the control plane                                | `read-only`  | optional repos            |
-| GitHub Actions / repo harness `POST /sessions`          | `author`     | that repository           |
-| On-call: cancel anyone’s session, drain, edit schedules | `operator`   | usually unscoped          |
-| Attach repos, add worktrees, manage provider accounts   | `maintainer` | optional repos            |
-| Host daemon `HARNESS_API_KEY`                           | `agent`      | `boundHostId` = that host |
-| Create users/keys, Slack, catalog argv, audit           | `admin`      | none                      |
+| Job                                                              | Role         | Scope                     |
+| ---------------------------------------------------------------- | ------------ | ------------------------- |
+| Browse the control plane                                         | `read-only`  | optional repos            |
+| GitHub Actions / repo harness `POST /sessions`                   | `author`     | that repository           |
+| On-call: cancel anyone’s session, drain, edit schedules          | `operator`   | usually unscoped          |
+| Attach repos, add worktrees, manage provider accounts            | `maintainer` | optional repos            |
+| Host daemon `HARNESS_API_KEY`                                    | `agent`      | `boundHostId` = that host |
+| Create users/keys, Slack, catalog argv, fleet exec-config, audit | `admin`      | none                      |
 
 Every host still needs **two** service accounts: a bound `agent` for the
 daemon, and an unbound `author` or `operator` for anything that creates
 sessions ([auth.md](auth.md#a-bound-key-cannot-create-sessions)).
 
-Do **not** give `maintainer` or `operator` `catalog:write`. Command argv and
-repository setup scripts run on the VPS.
+Do **not** give `maintainer` or `operator` `catalog:write` or `fleet:exec-config`.
+Command argv, repository setup scripts, host/worktree setup scripts, and terminal
+hook paths run on the VPS.
 
-Likewise, give `maintainer` only to operators trusted to run code on managed hosts:
-`fleet:inventory` can configure host-, attachment-, and worktree-scoped setup scripts.
+`fleet:inventory` attaches repos and worktrees only. Setup scripts, terminal hook
+paths, and `allowedRoots` require `fleet:exec-config` (admin). The daemon enforces
+configured allowed roots with `realpath` so a symlink cannot escape the root.
 
 ---
 

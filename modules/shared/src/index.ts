@@ -122,6 +122,7 @@ export {
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
+  updateHostAllowedRoots,
   updateHostRequiredEnvironment,
   updateHostWorktree,
   upsertHostRepository,
@@ -132,6 +133,31 @@ export {
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
+export {
+  EXEC_CONFIG_CAPABILITY,
+  EXEC_CONFIG_REQUIRED_MESSAGE,
+  MAX_ALLOWED_ROOTS,
+  MAX_EXEC_PATH_LENGTH,
+  applyHostExecConfig,
+  inventoryHasExecConfig,
+  isAbsolutePathString,
+  listExecConfigEdits,
+  parseAllowedRoots,
+  parseHostExecConfig,
+  parseTerminalHookScript,
+  preserveHostExecConfig,
+  reconcileInventoryWrite,
+  type HostExecConfigPatch,
+  type HostExecRepositoryPatch,
+  type HostExecWorktreePatch,
+} from "./host-exec-config.ts";
+export {
+  getInventory,
+  mutateInventory,
+  mutateExecConfig,
+  putInventory,
+  putExecConfig,
+} from "./host-inventory-api.ts";
 export {
   assertHostRepositoryRequiredEnvironmentLimit,
   MAX_REQUIRED_ENVIRONMENT_NAMES,
@@ -166,7 +192,6 @@ export {
 
 export { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
 
-export { getInventory, mutateInventory, putInventory } from "./host-inventory-api.ts";
 export {
   attachProviderAccountToHost,
   detachProviderAccountFromHost,

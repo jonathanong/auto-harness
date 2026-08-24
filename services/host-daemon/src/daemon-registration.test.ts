@@ -1,7 +1,10 @@
+/* eslint-disable max-lines -- registration rollback and reconnect barriers share one fixture. */
 import { describe, expect, it } from "vitest";
 
+import { parseDaemonConfig } from "./config.ts";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
 import { parseExecutionProfiles } from "./execution-profiles.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("daemon registration", () => {
   it("omits optional identity and runtime while preserving drain intent", async () => {
@@ -121,8 +124,13 @@ describe("daemon registration", () => {
     expect(messages).toEqual([]);
   });
 
-  it("applies the next repositories, ensures worktrees, then registers", async () => {
-    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+  it("keeps the live inventory intact while validating and registering the candidate", async () => {
+    const config = {
+      hostId: "h",
+      setupScript: "old setup",
+      repositories: [{ id: "old", path: "/old", defaultBranch: "main", worktrees: [] }],
+      providerAccounts: [],
+    };
     const next = {
       ...config,
       setupScript: "source ~/.zshrc",
@@ -132,12 +140,64 @@ describe("daemon registration", () => {
     await applyDaemonInventory(
       config,
       next,
-      { ensureAll: async () => void calls.push("ensure") } as never,
-      async () => void calls.push("register"),
+      {
+        ensureAll: async (candidate) => {
+          calls.push("ensure");
+          expect(candidate).toBe(next);
+          expect(config).toMatchObject({
+            setupScript: "old setup",
+            repositories: [{ id: "old", path: "/old" }],
+          });
+        },
+      } as never,
+      async (candidate) => {
+        calls.push("register");
+        expect(candidate).toBe(next);
+        expect(config.repositories).toEqual([
+          { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
+        ]);
+      },
     );
     expect(config.repositories).toEqual(next.repositories);
     expect(config).toMatchObject({ setupScript: "source ~/.zshrc" });
     expect(calls).toEqual(["ensure", "register"]);
+  });
+
+  it("invalidates a claim completed while candidate registration is in flight", async () => {
+    const config = parseDaemonConfig({
+      hostId: "h",
+      setupScript: "old setup",
+      repositories: [
+        {
+          id: "repo",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "worktree", name: "worktree", path: "/repo/worktree", labels: [] }],
+        },
+      ],
+    });
+    const next = parseDaemonConfig({
+      hostId: "h",
+      setupScript: "new setup",
+      repositories: config.repositories,
+    });
+    const worktrees = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "abc",
+    });
+    let claimed: Awaited<ReturnType<typeof worktrees.claim>> | undefined;
+
+    await applyDaemonInventory(config, next, worktrees, async () => {
+      claimed = await worktrees.claim("repo", "worktree");
+      expect(claimed.hostSetupScript).toBe("old setup");
+    });
+
+    await expect(claimed!.currentExecutionTarget!()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
   });
 
   it("removes a host setup script when the next inventory omits it", async () => {
@@ -170,11 +230,13 @@ describe("daemon registration", () => {
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
+    const inventoryChanges: string[] = [];
     await expect(
       applyDaemonInventory(
         config,
         next,
         {
+          noteInventoryChange: () => void inventoryChanges.push("changed"),
           ensureAll: async () => {
             throw new Error("worktree preparation failed");
           },
@@ -186,6 +248,7 @@ describe("daemon registration", () => {
       { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
     ]);
     expect(config.setupScript).toBe("old setup");
+    expect(inventoryChanges).toEqual(["changed", "changed"]);
   });
 
   it("restores the prior inventory when registration fails", async () => {
@@ -196,12 +259,45 @@ describe("daemon registration", () => {
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
+    const inventoryChanges: string[] = [];
     await expect(
-      applyDaemonInventory(config, next, { ensureAll: async () => {} } as never, async () => {
-        throw new Error("registration failed");
-      }),
+      applyDaemonInventory(
+        config,
+        next,
+        {
+          noteInventoryChange: () => void inventoryChanges.push("changed"),
+          ensureAll: async () => {},
+        } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
     ).rejects.toThrow("registration failed");
     expect(config.repositories).toEqual([]);
     expect(config).not.toHaveProperty("setupScript");
+    expect(inventoryChanges).toEqual(["changed", "changed"]);
+  });
+
+  it("restores a previously configured allowed-roots policy on failure", async () => {
+    const config = {
+      hostId: "h",
+      allowedRoots: ["/old"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    const next = { ...config, allowedRoots: ["/new"] };
+    await expect(
+      applyDaemonInventory(
+        config,
+        next,
+        {
+          ensureAll: async () => {
+            throw new Error("invalid roots");
+          },
+        } as never,
+        async () => undefined,
+      ),
+    ).rejects.toThrow("invalid roots");
+    expect(config.allowedRoots).toEqual(["/old"]);
   });
 });

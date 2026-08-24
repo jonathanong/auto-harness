@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- inventory transformers including exec-config fields share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,6 +9,7 @@ import {
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
+  updateHostAllowedRoots,
   updateHostRequiredEnvironment,
   updateHostWorktree,
   upsertHostRepository,
@@ -32,6 +34,15 @@ describe("host-inventory", () => {
       defaultBranch: "main",
     });
     expect(inv.setupScript).toBe("source ~/.zshrc");
+  });
+
+  it("updates and clears host-local allowed roots", () => {
+    let inv = updateHostAllowedRoots(null, ["/opt/harness"]);
+    expect(inv.allowedRoots).toEqual(["/opt/harness"]);
+    inv = updateHostSetupScript(inv, "source ~/.zshrc");
+    expect(inv.allowedRoots).toEqual(["/opt/harness"]);
+    inv = updateHostAllowedRoots(inv, []);
+    expect(inv).not.toHaveProperty("allowedRoots");
   });
 
   it("adds and removes host-wide required environment names", () => {

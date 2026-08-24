@@ -115,7 +115,9 @@ describe("SessionRunner main checkout", () => {
     const second = test.runner.run(
       baseAssign({ repositoryId: "r2", worktreeId: null, sessionType: "scheduled" }),
     );
-    await viTick();
+    for (let attempt = 0; attempt < 10 && test.starts.length < 2; attempt += 1) {
+      await viTick();
+    }
     expect(test.starts).toEqual(["/repo-1", "/repo-2"]);
     r1Gate.resolve();
     await Promise.all([first, second]);
@@ -166,5 +168,34 @@ describe("SessionRunner main checkout", () => {
       baseAssign({ repositoryId: "missing", worktreeId: null, sessionType: "scheduled" }),
     );
     expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
+  });
+
+  it("acquires the main lock before taking a fresh, path-validated claim", async () => {
+    const calls: string[] = [];
+    const runner = new SessionRunner({
+      worktrees: {
+        acquireMain: async () => {
+          calls.push("lock");
+          return true;
+        },
+        mainClaim: async () => {
+          calls.push("claim");
+          throw new Error("path is outside allowed roots");
+        },
+        releaseMain: () => calls.push("release"),
+      } as unknown as WorktreeManager,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+
+    await expect(
+      runner.run(
+        baseAssign({ repositoryId: "repo-1", worktreeId: null, sessionType: "scheduled" }),
+      ),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(calls).toEqual(["lock", "claim", "release"]);
   });
 });

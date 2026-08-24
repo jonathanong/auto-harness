@@ -1,6 +1,6 @@
+/* eslint-disable max-lines -- host detail composes inventory and exec-config write gates. */
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
-
 import { HostAdvancedTab } from "../../../components/host-advanced-tab.tsx";
 import { HostDetailHeader } from "../../../components/host-detail-header.tsx";
 import { HostNotFound } from "../../../components/host-not-found.tsx";
@@ -10,13 +10,10 @@ import { HostRepositoriesSection } from "../../../components/host-repositories-s
 import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-
 export const dynamic = "force-dynamic";
-
 type Agent = {
   hostId: string;
   online: boolean;
@@ -44,8 +41,8 @@ export default async function HostDetailPage({
   const principal = await loadPrincipal();
   const canDrain = can(principal, "fleet:drain");
   const canWriteInventory = can(principal, "fleet:inventory");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
   const canWriteProviderAccounts = can(principal, "providers:accounts");
-
   let inventory: (HostInventory & { version?: number }) | null = null;
   let inventoryError: string | null = null;
   try {
@@ -59,7 +56,6 @@ export default async function HostDetailPage({
       inventoryError = errorMessage(error);
     }
   }
-
   let agents: Agent[] = [];
   let agentsError: string | null = null;
   try {
@@ -182,6 +178,7 @@ export default async function HostDetailPage({
                 catalogError={catalogError}
                 worktreesError={worktreesError}
                 canWrite={canWriteInventory}
+                canWriteExecConfig={canWriteExecConfig}
               />
             ),
           },
@@ -209,8 +206,10 @@ export default async function HostDetailPage({
                 initialJson={inventoryJson}
                 initialVersion={inventory?.version ?? 0}
                 setupScript={inv.setupScript}
+                allowedRoots={inv.allowedRoots}
                 requiredEnvironment={inv.requiredEnvironment}
-                canWrite={canWriteInventory}
+                canWriteInventory={canWriteInventory}
+                canWriteExecConfig={canWriteExecConfig}
               />
             ),
           },

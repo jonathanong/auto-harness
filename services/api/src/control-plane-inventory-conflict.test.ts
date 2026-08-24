@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
+import {
+  deleteHostInventoryDurable,
+  putHostInventoryDurable,
+} from "./control-plane-agent-hosts.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 
@@ -18,6 +21,7 @@ function planeWithStorage() {
       listAllWorktrees: async () => [],
       putWorktree: async () => undefined,
       deleteWorktree: async () => undefined,
+      getHostInventory: async () => (durable ? { ...durable } : null),
       putHostInventory: async (
         record: HostInventoryRecord,
         _markers?: unknown,
@@ -27,6 +31,11 @@ function planeWithStorage() {
           return false;
         }
         durable = record;
+        return true;
+      },
+      deleteHostInventory: async (_hostId: string, expectedVersion?: number) => {
+        if ((durable?.version ?? 0) !== expectedVersion) return false;
+        durable = undefined;
         return true;
       },
     } as never,
@@ -41,6 +50,101 @@ const body = (version?: number) => ({
 });
 
 describe("host inventory optimistic concurrency", () => {
+  it("waits for and retries the durable worktree projection before acknowledging", async () => {
+    let durable: HostInventoryRecord | undefined;
+    let projectionAttempts = 0;
+    const worktrees = new Map<string, unknown>();
+    const state = createControlPlaneState({
+      storage: {
+        listHostInventories: async () => (durable ? [{ ...durable }] : []),
+        listAllWorktrees: async () => [],
+        putHostInventory: async (record: HostInventoryRecord) => {
+          durable = record;
+          return true;
+        },
+        putWorktree: async (record: unknown) => {
+          projectionAttempts += 1;
+          if (projectionAttempts === 1) throw new Error("projection temporarily unavailable");
+          worktrees.set((record as { id: string }).id, record);
+        },
+        deleteWorktree: async () => undefined,
+      } as never,
+    });
+    const result = await putHostInventoryDurable(state, "host-a", {
+      repositories: [
+        {
+          id: "repo-a",
+          path: "/repo-a",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+        },
+      ],
+      commandProfiles: {},
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(projectionAttempts).toBe(2);
+    expect(worktrees.has("wt-a")).toBe(true);
+  });
+
+  it("does not report success when the committed projection cannot be repaired", async () => {
+    const { state, stored } = planeWithStorage();
+    state.storage!.putWorktree = async () => {
+      throw new Error("projection unavailable");
+    };
+
+    const result = await putHostInventoryDurable(state, "host-a", {
+      repositories: [
+        {
+          id: "repo-a",
+          path: "/repo-a",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+        },
+      ],
+      commandProfiles: {},
+    });
+
+    expect(result).toMatchObject({ ok: false, committed: true });
+    expect(stored()?.hostId).toBe("host-a");
+
+    const stringFailure = planeWithStorage();
+    stringFailure.state.storage!.putWorktree = async () => {
+      throw "projection unavailable";
+    };
+    await expect(
+      putHostInventoryDurable(stringFailure.state, "host-a", {
+        repositories: [
+          {
+            id: "repo-a",
+            path: "/repo-a",
+            defaultBranch: "main",
+            worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+          },
+        ],
+        commandProfiles: {},
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      committed: true,
+      error: "host inventory committed but worktree projection failed: projection unavailable",
+    });
+  });
+
+  it("rejects inventories whose deletion catalog would exceed its reference cap", async () => {
+    const { state, stored } = planeWithStorage();
+    const repositories = Array.from({ length: 100 }, (_, index) => ({
+      id: `repo-${index}`,
+      path: `/repo-${index}`,
+      defaultBranch: "main",
+      worktrees: [],
+    }));
+    await expect(
+      putHostInventoryDurable(state, "host-a", { repositories, commandProfiles: {} }),
+    ).resolves.toEqual({ ok: false, error: "host inventory has too many catalog references" });
+    expect(stored()).toBeUndefined();
+  });
+
   it("advances the version on each accepted write", async () => {
     const { state, stored } = planeWithStorage();
 
@@ -80,6 +184,17 @@ describe("host inventory optimistic concurrency", () => {
       ok: true,
     });
 
+    expect(stored()?.version).toBe(1);
+  });
+
+  it("refuses a delete whose capability check read an older version", async () => {
+    const { state, stored } = planeWithStorage();
+    await putHostInventoryDurable(state, "host-a", body());
+
+    await expect(deleteHostInventoryDurable(state, "host-a", 0)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
     expect(stored()?.version).toBe(1);
   });
 });

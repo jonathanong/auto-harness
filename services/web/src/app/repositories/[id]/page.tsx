@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- worktrees tab now threads fleet:exec-config to add-worktree. */
 import Link from "next/link";
 import {
   RepositoryDetail,
@@ -8,7 +9,6 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
-
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
 import { RepositoryDetailNotFound } from "../../../components/repository-detail-not-found.tsx";
 import { RepositoryWorktreesTab } from "../../../components/repository-worktrees-tab.tsx";
@@ -20,7 +20,6 @@ import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
-
 type Wt = {
   id: string;
   name: string;
@@ -51,7 +50,9 @@ export default async function RepositoryDetailPage({
 }) {
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
-  const canOperate = can(await loadPrincipal(), "repositories:operate");
+  const principal = await loadPrincipal();
+  const canOperate = can(principal, "repositories:operate");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
 
   let repository: RepositorySummary | undefined;
   try {
@@ -146,6 +147,7 @@ export default async function RepositoryDetailPage({
                   group={group}
                   attachedHosts={attachedHosts}
                   hostInventories={hostInventories}
+                  canWriteExecConfig={canWriteExecConfig}
                 />
               ),
             },

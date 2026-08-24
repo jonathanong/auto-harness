@@ -15,6 +15,11 @@ describe("can", () => {
     expect(can(undefined, "accounts:write")).toBe(true);
   });
 
+  it("fails closed when required authentication has no principal", () => {
+    expect(can(null, "catalog:write")).toBe(false);
+    expect(can(null, "fleet:inventory")).toBe(false);
+  });
+
   it("uses the shared role table for an authenticated principal", () => {
     const operator: MePrincipal = { username: "op", role: "operator", kind: "user" };
     expect(can(operator, "sessions:write")).toBe(true);
@@ -22,6 +27,8 @@ describe("can", () => {
     expect(can(operator, "fleet:drain")).toBe(true);
     expect(can({ ...operator, role: "author" }, "schedules:write")).toBe(false);
     expect(can({ ...operator, role: "maintainer" }, "fleet:inventory")).toBe(true);
+    expect(can({ ...operator, role: "maintainer" }, "fleet:exec-config")).toBe(false);
+    expect(can({ ...operator, role: "admin" }, "fleet:exec-config")).toBe(true);
     expect(can({ ...operator, role: "admin" }, "accounts:write")).toBe(true);
     expect(
       can(
@@ -49,13 +56,13 @@ describe("loadPrincipal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns undefined on 401 instead of redirecting to login", async () => {
+  it("returns null on 401 instead of redirecting to login", async () => {
     process.env.HARNESS_AUTH_MODE = "required";
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("{}", { status: 401 })),
     );
-    await expect(loadPrincipal()).resolves.toBeUndefined();
+    await expect(loadPrincipal()).resolves.toBeNull();
     vi.unstubAllGlobals();
   });
 

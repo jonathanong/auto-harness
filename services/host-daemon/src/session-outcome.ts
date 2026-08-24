@@ -30,6 +30,18 @@ type SessionOutcome = {
   usage?: SessionUsage;
 };
 
+type ClaimedHookTarget = {
+  worktree: { id: string };
+  cwd: string;
+  repository: { terminalHookScript?: string };
+  allowedRoots?: readonly string[];
+  currentHookTarget: () => Promise<{
+    cwd: string;
+    repository: { terminalHookScript?: string };
+    allowedRoots?: readonly string[];
+  } | null>;
+};
+
 export async function failSession(
   streamer: LogStreamer,
   logs: SessionLogChunk[],
@@ -49,7 +61,7 @@ export async function failSession(
   };
 }
 
-export async function finishSession(
+async function finishSession(
   processRunner: ProcessRunner,
   streamer: LogStreamer,
   logs: SessionLogChunk[],
@@ -59,6 +71,7 @@ export async function finishSession(
   hookScript: string | undefined,
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  allowedRoots: readonly string[] = [],
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -69,6 +82,7 @@ export async function finishSession(
       status: outcome.status as SessionStatus,
       worktreePath,
       childEnvSource,
+      ...(allowedRoots.length ? { allowedRoots } : {}),
       ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
       ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
       ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
@@ -85,4 +99,40 @@ export async function finishSession(
     ...(outcome.cliResumeRef !== undefined ? { cliResumeRef: outcome.cliResumeRef } : {}),
     ...(outcome.usage !== undefined ? { usage: outcome.usage } : {}),
   };
+}
+
+export async function finishClaimedSession(
+  processRunner: ProcessRunner,
+  streamer: LogStreamer,
+  logs: SessionLogChunk[],
+  assign: SessionAssign,
+  claimed: ClaimedHookTarget,
+  outcome: SessionOutcome,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
+): Promise<SessionRunResult> {
+  let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
+  try {
+    refreshed = await claimed.currentHookTarget?.();
+  } catch (error) {
+    streamer.write(
+      "system",
+      `terminal hook revalidation failed for session ${assign.sessionId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    refreshed = null;
+  }
+  const target = refreshed;
+  return finishSession(
+    processRunner,
+    streamer,
+    logs,
+    assign,
+    claimed.worktree.id,
+    target?.cwd ?? claimed.cwd,
+    target?.repository.terminalHookScript,
+    outcome,
+    childEnvSource,
+    target?.allowedRoots ?? [],
+  );
 }

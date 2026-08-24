@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- exec-config fields are gated separately from inventory fields. */
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -5,6 +6,7 @@ import { useState, useTransition } from "react";
 import {
   mutateInventory,
   parseRequiredEnvironment,
+  parseTerminalHookScript,
   upsertHostRepository,
   type HostRepository,
 } from "@auto-harness/shared";
@@ -23,10 +25,29 @@ import {
   showToast,
 } from "@auto-harness/ui";
 
-export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: HostRepository }) {
+export function HostRepoSettingsForm({
+  hostId,
+  repo,
+  canWriteExecConfig = false,
+  hasInheritedSetupScript = false,
+  mutate = mutateInventory,
+}: {
+  hostId: string;
+  repo: HostRepository;
+  canWriteExecConfig?: boolean;
+  /** A host setup script also executes in this repository's checkout. */
+  hasInheritedSetupScript?: boolean;
+  /** Inventory persistence boundary; injectable for isolated component tests. */
+  mutate?: typeof mutateInventory;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const pathEditingBlocked =
+    !canWriteExecConfig &&
+    (hasInheritedSetupScript ||
+      (repo.setupScript ?? "") !== "" ||
+      (repo.terminalHookScript ?? "") !== "");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -39,7 +60,8 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
         <DialogHeader>
           <DialogTitle>Edit repository settings</DialogTitle>
           <DialogDescription>
-            Update this host's path, default branch, and optional scripts for this repository.
+            Update this host's path, default branch, and optional exec-config scripts for this
+            repository.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -48,10 +70,16 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const path = String(fd.get("path") ?? "").trim();
+            // Disabled controls are omitted from FormData. Keep the stored path
+            // when executable configuration makes its checkout privileged.
+            const path = pathEditingBlocked ? repo.path : String(fd.get("path") ?? "").trim();
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
+            const setupScriptEdited =
+              canWriteExecConfig && setupScript !== (repo.setupScript ?? "");
+            const terminalHookScriptEdited =
+              canWriteExecConfig && terminalHookScript !== (repo.terminalHookScript ?? "");
             const requiredEnvironmentEntry = fd.get("requiredEnvironment");
             const requiredEnvironmentNames = (
               typeof requiredEnvironmentEntry === "string" ? requiredEnvironmentEntry : ""
@@ -78,18 +106,33 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               });
               return;
             }
+            if (canWriteExecConfig) {
+              try {
+                parseTerminalHookScript(terminalHookScript, repo.id, {
+                  // Existing inventories may contain a relative hook from before the
+                  // absolute-path requirement. Keep that value usable until it changes.
+                  allowLegacyRelative: terminalHookScript === (repo.terminalHookScript ?? ""),
+                });
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
+                  variant: "destructive",
+                  pw: `repo-settings-error-${repo.id}`,
+                });
+                return;
+              }
+            }
             start(async () => {
               try {
                 // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
                 // elsewhere is not silently reverted by this save.
-                const r = await mutateInventory(hostId, (current) =>
+                const r = await mutate(hostId, (current) =>
                   upsertHostRepository(current, {
                     id: repo.id,
                     path,
                     defaultBranch,
-                    setupScript,
-                    terminalHookScript,
                     requiredEnvironment,
+                    ...(setupScriptEdited ? { setupScript } : {}),
+                    ...(terminalHookScriptEdited ? { terminalHookScript } : {}),
                   }),
                 );
                 if (!r.ok) {
@@ -127,7 +170,14 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor={`path-${repo.id}`} tip="Absolute path on this host">
+            <Label
+              htmlFor={`path-${repo.id}`}
+              tip={
+                pathEditingBlocked
+                  ? "Changing this path requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+                  : "Absolute path on this host"
+              }
+            >
               Absolute Path
             </Label>
             <Input
@@ -135,6 +185,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               name="path"
               defaultValue={repo.path}
               required
+              disabled={pathEditingBlocked}
               data-pw={`repo-settings-path-${repo.id}`}
             />
           </div>
@@ -149,38 +200,42 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               data-pw={`repo-settings-branch-${repo.id}`}
             />
           </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`setup-${repo.id}`}
-              tip="Optional setup script for this host's attachment"
-            >
-              Setup Script
-            </Label>
-            <Textarea
-              id={`setup-${repo.id}`}
-              name="setupScript"
-              defaultValue={repo.setupScript ?? ""}
-              rows={3}
-              className="font-mono text-xs"
-              data-pw={`repo-settings-setup-${repo.id}`}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label
-              htmlFor={`hook-${repo.id}`}
-              tip="Optional terminal hook script for this host's attachment"
-            >
-              Terminal Hook Script
-            </Label>
-            <Textarea
-              id={`hook-${repo.id}`}
-              name="terminalHookScript"
-              defaultValue={repo.terminalHookScript ?? ""}
-              rows={3}
-              className="font-mono text-xs"
-              data-pw={`repo-settings-hook-${repo.id}`}
-            />
-          </div>
+          {canWriteExecConfig ? (
+            <>
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`setup-${repo.id}`}
+                  tip="Optional setup script for this host's attachment. Requires fleet:exec-config."
+                >
+                  Setup Script
+                </Label>
+                <Textarea
+                  id={`setup-${repo.id}`}
+                  name="setupScript"
+                  defaultValue={repo.setupScript ?? ""}
+                  rows={3}
+                  className="font-mono text-xs"
+                  data-pw={`repo-settings-setup-${repo.id}`}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`hook-${repo.id}`}
+                  tip="Absolute path to an optional terminal hook script. Requires fleet:exec-config."
+                >
+                  Terminal Hook Script
+                </Label>
+                <Textarea
+                  id={`hook-${repo.id}`}
+                  name="terminalHookScript"
+                  defaultValue={repo.terminalHookScript ?? ""}
+                  rows={3}
+                  className="font-mono text-xs"
+                  data-pw={`repo-settings-hook-${repo.id}`}
+                />
+              </div>
+            </>
+          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this host's repository attachment">
               <Button

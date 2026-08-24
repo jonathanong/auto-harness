@@ -14,6 +14,31 @@ import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 
 type LiveWorktree = { status?: string; online?: boolean };
 
+function hasRepositoryExecConfig(repository: HostInventory["repositories"][number]): boolean {
+  return (
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== "" ||
+    repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== "")
+  );
+}
+
+function hasWorktreeExecConfig(
+  worktree: HostInventory["repositories"][number]["worktrees"][number] | undefined,
+) {
+  return (worktree?.setupScript ?? "") !== "";
+}
+
+function repositoryExecutionCwdIsTrusted(
+  hasHostSetupScript: boolean,
+  repository: HostInventory["repositories"][number],
+): boolean {
+  return (
+    hasHostSetupScript ||
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== ""
+  );
+}
+
 export function HostRepositoriesSection({
   hostId,
   inventory,
@@ -23,6 +48,7 @@ export function HostRepositoriesSection({
   catalogError,
   worktreesError,
   canWrite = true,
+  canWriteExecConfig = false,
 }: {
   hostId: string;
   inventory: HostInventory;
@@ -32,6 +58,7 @@ export function HostRepositoriesSection({
   catalogError?: string | null;
   worktreesError?: string | null;
   canWrite?: boolean;
+  canWriteExecConfig?: boolean;
 }) {
   const groups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
@@ -49,6 +76,8 @@ export function HostRepositoriesSection({
     })),
   }));
   const reposById = Object.fromEntries(inventory.repositories.map((r) => [r.id, r]));
+  const hasHostSetupScript = (inventory.setupScript ?? "") !== "";
+  const attachingRepositoryIsBlocked = hasHostSetupScript && !canWriteExecConfig;
 
   return (
     <div className="space-y-6" data-pw="host-repositories-section">
@@ -61,6 +90,11 @@ export function HostRepositoriesSection({
               message={catalogError}
               selector="host-repositories-catalog"
             />
+          ) : attachingRepositoryIsBlocked ? (
+            <p className="text-sm text-muted-foreground">
+              Attaching a repository requires <code>fleet:exec-config</code> because this host runs
+              setup in each repository checkout.
+            </p>
           ) : (
             <HostAddRepoForm hostId={hostId} catalog={unattachedCatalog} />
           )}
@@ -81,30 +115,46 @@ export function HostRepositoriesSection({
           emptyMessage="No repositories attached to this host yet."
           renderRepoActions={(g) => {
             const repo = reposById[g.repositoryId];
+            const pathRequiresExecConfig = repositoryExecutionCwdIsTrusted(
+              hasHostSetupScript,
+              repo,
+            );
             if (!canWrite) return null;
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
-                <HostRepoSettingsForm hostId={hostId} repo={repo} />
+                <HostRepoSettingsForm
+                  hostId={hostId}
+                  repo={repo}
+                  canWriteExecConfig={canWriteExecConfig}
+                  hasInheritedSetupScript={hasHostSetupScript}
+                />
                 <div className="flex gap-2">
                   <AddWorktreeForm
                     hostId={hostId}
                     repo={repo}
                     repoName={namesById[repo.id] ?? repo.id}
+                    canWriteExecConfig={canWriteExecConfig}
+                    hasInheritedExecutionConfig={pathRequiresExecConfig}
                   />
-                  <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
+                  {canWriteExecConfig || !hasRepositoryExecConfig(repo) ? (
+                    <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
+                  ) : null}
                 </div>
               </div>
             );
           }}
-          renderWorktreeActions={(wt) =>
-            canWrite ? (
+          renderWorktreeActions={(wt) => {
+            const inventoryWorktree = reposById[wt.repositoryId]?.worktrees.find(
+              (worktree) => worktree.id === wt.id,
+            );
+            return canWrite && (canWriteExecConfig || !hasWorktreeExecConfig(inventoryWorktree)) ? (
               <RemoveWorktreeButton
                 hostId={hostId}
                 repositoryId={wt.repositoryId}
                 worktreeId={wt.id}
               />
-            ) : null
-          }
+            ) : null;
+          }}
         />
       </section>
     </div>

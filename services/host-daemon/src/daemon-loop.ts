@@ -77,6 +77,10 @@ export class DaemonLoop {
   private readonly inflight = new Map<string, InflightSession>();
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
+  /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
+  private inventoryPolicyBlocked = false;
+  /** Tracks whether the control plane has acknowledged the policy drain registration. */
+  private inventoryPolicyDrainPublished = false;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
   private drainConfirmation: Promise<void> | undefined;
@@ -165,23 +169,68 @@ export class DaemonLoop {
     await this.register();
   }
   async applyInventory(next: DaemonConfig): Promise<void> {
-    await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
+    const wasPolicyBlocked = this.inventoryPolicyBlocked;
+    const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
+    const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
+    // Validate the candidate inventory against its own roots. The prior fence
+    // remains represented by `inventoryPolicyBlocked`, which refuses new
+    // assignments and blocks pending hooks until replacement registration succeeds.
+    try {
+      await applyDaemonInventory(
+        this.config,
+        next,
+        this.worktrees,
+        async (candidate) => {
+          // Advertise the validated inventory as available while retaining the local
+          // assignment fence until that registration has been durably handed off.
+          // A peer can otherwise queue an assignment while send() is still pending.
+          await this.register({ config: candidate, inventoryPolicyBlocked: false });
+        },
+        () => {
+          this.worktrees.clearAllowedRootsPolicy();
+          this.inventoryPolicyBlocked = false;
+          this.inventoryPolicyDrainPublished = false;
+        },
+      );
+    } catch (error) {
+      this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
+      this.inventoryPolicyBlocked = wasPolicyBlocked;
+      this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
+      throw error;
+    }
   }
-  async register(): Promise<void> {
+  async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
+    this.worktrees.setAllowedRootsPolicy(allowedRoots);
+    if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
+    // Set the local gate before network I/O so an already-connected peer cannot assign work in
+    // the interval before its durable registration is marked draining.
+    this.inventoryPolicyBlocked = true;
+    try {
+      await this.register();
+    } catch (error) {
+      this.inventoryPolicyDrainPublished = false;
+      throw error;
+    }
+  }
+  async register({
+    inventoryPolicyBlocked = this.inventoryPolicyBlocked,
+    config = this.config,
+  }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
     await registerDaemon(
-      this.config,
+      config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
-      this.drainRequested || this.draining,
+      this.drainRequested || this.draining || inventoryPolicyBlocked,
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
       this.executionProfiles,
     );
+    if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {
@@ -238,7 +287,7 @@ export class DaemonLoop {
   }
 
   isDraining(): boolean {
-    return this.draining || this.isDrainingExternal?.() === true;
+    return this.draining || this.inventoryPolicyBlocked || this.isDrainingExternal?.() === true;
   }
   inflightCount(): number {
     return this.inflight.size;

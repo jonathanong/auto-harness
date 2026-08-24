@@ -1,18 +1,13 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import { createChildEnv } from "./child-env.ts";
-import type { RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
-import { finishSession, type SessionRunResult } from "./session-outcome.ts";
+import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { runSetupScript } from "./setup-script.ts";
 
-export type ClaimedWorktree = {
-  hostSetupScript?: string;
-  repository: RepositoryConfig;
-  worktree: WorktreeConfig;
-  cwd: string;
-};
+export type { ClaimedWorktree } from "./worktree-manager.ts";
+import type { ClaimedWorktree } from "./worktree-manager.ts";
 
 type SessionSetupResult = {
   environment: NodeJS.ProcessEnv;
@@ -42,14 +37,12 @@ export async function runSetupIfNeeded(
   if (signal?.aborted) {
     return {
       environment,
-      failure: await finishSession(
+      failure: await finishClaimedSession(
         processRunner,
         streamer,
         logs,
         assign,
-        claimed.worktree.id,
-        claimed.cwd,
-        claimed.repository.terminalHookScript,
+        claimed,
         { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
         childEnvSource,
       ),
@@ -57,6 +50,27 @@ export async function runSetupIfNeeded(
   }
   const setupDeadline = Date.now() + Math.min(remainingMs(), 600_000);
   for (const setupScript of setupScripts) {
+    try {
+      await claimed.currentExecutionTarget?.();
+    } catch (error) {
+      return {
+        environment,
+        failure: await finishClaimedSession(
+          processRunner,
+          streamer,
+          logs,
+          assign,
+          claimed,
+          {
+            status: "failed",
+            exitCode: null,
+            errorCode: "setup_failed",
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+          childEnvSource,
+        ),
+      };
+    }
     const setup = await runSetupScript(
       processRunner,
       setupScript,
@@ -72,14 +86,12 @@ export async function runSetupIfNeeded(
     if (setup.timedOut || timedOut()) {
       return {
         environment,
-        failure: await finishSession(
+        failure: await finishClaimedSession(
           processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           { status: "timed_out", exitCode: setup.exitCode },
           childEnvSource,
         ),
@@ -88,14 +100,12 @@ export async function runSetupIfNeeded(
     if (setup.cancelled || signal?.aborted) {
       return {
         environment,
-        failure: await finishSession(
+        failure: await finishClaimedSession(
           processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           { status: "cancelled", exitCode: setup.exitCode },
           childEnvSource,
         ),
@@ -104,14 +114,12 @@ export async function runSetupIfNeeded(
     if (setup.exitCode !== 0) {
       return {
         environment,
-        failure: await finishSession(
+        failure: await finishClaimedSession(
           processRunner,
           streamer,
           logs,
           assign,
-          claimed.worktree.id,
-          claimed.cwd,
-          claimed.repository.terminalHookScript,
+          claimed,
           {
             status: "failed",
             exitCode: setup.exitCode,

@@ -1,7 +1,7 @@
 import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
-import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
+import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { createWsTransport } from "./ws-transport.ts";
@@ -34,6 +34,8 @@ type InventoryPollOptions = {
   pollMs: number;
   log: (line: string) => void;
   error: (line: string) => void;
+  /** Make the connected host unavailable while an incoming root policy is unsafe. */
+  blockAssignments?: ((allowedRoots?: readonly string[]) => Promise<void>) | undefined;
   // `| undefined` (not just optional) so callers can pass through their own already-
   // optional fetchFn without a conditional spread at every call site.
   fetchFn?: typeof fetch | undefined;
@@ -54,6 +56,7 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
   let lastFp = inventoryFingerprint(options.config);
   let inFlight = false;
   let stopped = false;
+  let policyBlocked = false;
   let activePoll: Promise<void> | undefined;
   const timer = setInterval(() => {
     if (stopped || inFlight) return;
@@ -65,15 +68,31 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
           options.fetchFn ? { fetchFn: options.fetchFn } : {},
         );
         const fp = inventoryFingerprint(next);
-        if (fp === lastFp) {
+        if (fp === lastFp && !policyBlocked) {
           return;
         }
         await options.applyInventory(next);
         lastFp = fp;
+        policyBlocked = false;
         options.log(
           `host inventory updated from control plane (${next.repositories.length} repo(s))`,
         );
       } catch (err) {
+        if (err instanceof HostInventoryPolicyError) {
+          // Do not retain an older unrestricted configuration merely because a newly
+          // persisted root policy rejects this host's currently configured paths. The loop
+          // keeps polling; a valid subsequent document is applied and re-registers normally.
+          policyBlocked = true;
+          try {
+            await options.blockAssignments?.(err.allowedRoots);
+          } catch (blockError) {
+            options.error(
+              `inventory policy drain failed: ${
+                blockError instanceof Error ? blockError.message : String(blockError)
+              }`,
+            );
+          }
+        }
         options.error(`inventory poll failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         inFlight = false;
@@ -156,6 +175,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
       config: options.config,
       identity: options.identity,
       applyInventory: (next) => loop.applyInventory(next),
+      blockAssignments: (allowedRoots) => loop.blockAssignmentsForInvalidInventory(allowedRoots),
       pollMs,
       log,
       error,

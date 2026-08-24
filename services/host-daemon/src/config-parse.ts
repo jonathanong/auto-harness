@@ -1,11 +1,13 @@
 import {
   assertHostRepositoryRequiredEnvironmentLimit,
+  parseAllowedRoots,
   parseProviderAccountOverrides,
   parseProviderAccounts,
   parseRequiredEnvironment,
 } from "@auto-harness/shared";
 
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
+import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,6 +79,9 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
     if (typeof raw.terminalHookScript !== "string") {
       throw new Error(`repository.${id}.terminalHookScript must be a string`);
     }
+    if (isForeignWindowsAbsolutePath(raw.terminalHookScript)) {
+      throw new Error(`repository.${id}.terminalHookScript is not valid on ${process.platform}`);
+    }
     repo.terminalHookScript = raw.terminalHookScript;
   }
   const requiredEnvironment = parseRequiredEnvironment(
@@ -126,6 +131,8 @@ export function parseDaemonConfig(
     }
     config.setupScript = raw.setupScript;
   }
+  const allowedRoots = parseAllowedRoots(raw.allowedRoots);
+  if (allowedRoots?.length) config.allowedRoots = allowedRoots;
   const requiredEnvironment = parseRequiredEnvironment(raw.requiredEnvironment);
   for (const repository of config.repositories) {
     assertHostRepositoryRequiredEnvironmentLimit(

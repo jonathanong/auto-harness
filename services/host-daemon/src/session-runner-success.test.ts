@@ -1,5 +1,10 @@
+/* eslint-disable max-lines -- session success regressions cover setup, execution, and hooks. */
 import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
+import { applyDaemonInventory } from "./daemon-registration.ts";
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
@@ -22,6 +27,71 @@ describe("SessionRunner success paths", () => {
     expect(result.exitCode).toBe(0);
     expect(hooks).toEqual(["completed"]);
     expect(result.logs.some((l) => l.seq === 0)).toBe(true);
+  });
+
+  it("re-resolves terminal hooks after a live inventory reload", async () => {
+    const root = mkdtempSync(join(tmpdir(), "auto-harness-hook-"));
+    const repoPath = join(root, "repo");
+    const worktreePath = join(repoPath, "wt-1");
+    mkdirSync(worktreePath, { recursive: true });
+    const refreshedWorktreePath = join(repoPath, "wt-2");
+    mkdirSync(refreshedWorktreePath, { recursive: true });
+    writeFileSync(join(repoPath, "old-hook.sh"), "");
+    writeFileSync(join(repoPath, "current-hook.sh"), "");
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: repoPath,
+          defaultBranch: "main",
+          terminalHookScript: join(repoPath, "old-hook.sh"),
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktreePath, labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "deadbeef",
+    };
+    const worktrees = new WorktreeManager(config, git);
+    const hooks: string[] = [];
+    const hookCwds: string[] = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh") {
+          hooks.push(options.argv[1] ?? "");
+          hookCwds.push(options.cwd ?? "");
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        await applyDaemonInventory(
+          config,
+          parseDaemonConfig({
+            hostId: "a1",
+            allowedRoots: [repoPath],
+            repositories: [
+              {
+                id: "repo-1",
+                path: repoPath,
+                defaultBranch: "main",
+                terminalHookScript: join(repoPath, "current-hook.sh"),
+                worktrees: [{ id: "wt-1", name: "wt-1", path: refreshedWorktreePath, labels: [] }],
+              },
+            ],
+          }),
+          worktrees,
+          async () => undefined,
+        );
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
+    expect(result.status).toBe("completed");
+    expect(hooks).toEqual([join(realpathSync(repoPath), "current-hook.sh")]);
+    expect(hookCwds).toEqual([realpathSync(worktreePath)]);
   });
 
   it("captures a configured CLI resume reference without logging the opaque value", async () => {
