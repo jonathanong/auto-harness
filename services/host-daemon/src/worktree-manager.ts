@@ -14,6 +14,8 @@ type ClaimedWorktree = {
   worktree: WorktreeConfig;
   cwd: string;
   allowedRoots?: string[];
+  /** Re-check the live inventory policy before each filesystem/CLI execution boundary. */
+  currentExecutionTarget?: () => Promise<void>;
   /** Resolve hook policy again when a session finishes after a config reload. */
   currentHookTarget: () => Promise<{
     cwd: string;
@@ -56,11 +58,13 @@ export class WorktreeManager {
   setAllowedRootsPolicy(allowedRoots?: readonly string[]): void {
     this.allowedRootsPolicyActive = true;
     this.policyAllowedRoots = allowedRoots ? [...allowedRoots] : [];
+    this.noteInventoryChange();
   }
 
   clearAllowedRootsPolicy(): void {
     this.allowedRootsPolicyActive = false;
     this.policyAllowedRoots = [];
+    this.noteInventoryChange();
   }
 
   getAllowedRootsPolicy(): { active: boolean; roots: string[] } {
@@ -73,6 +77,7 @@ export class WorktreeManager {
   restoreAllowedRootsPolicy(policy: { active: boolean; roots: readonly string[] }): void {
     this.allowedRootsPolicyActive = policy.active;
     this.policyAllowedRoots = policy.active ? [...policy.roots] : [];
+    this.noteInventoryChange();
   }
 
   /** Invalidate claims that are waiting on filesystem validation during an inventory refresh. */
@@ -112,6 +117,7 @@ export class WorktreeManager {
     worktree: WorktreeConfig,
     cwd: string,
     paths: ClaimedPathsAllowed,
+    generation: number,
   ): ClaimedWorktree {
     const claimedRepository = { ...repository, path: paths.repositoryPath };
     const claimedWorktree = { ...worktree, path: cwd };
@@ -125,6 +131,24 @@ export class WorktreeManager {
       repository: claimedRepository,
       worktree: claimedWorktree,
       cwd,
+      currentExecutionTarget: async () => {
+        if (generation !== this.inventoryGeneration) {
+          throw new Error("host inventory changed after this checkout was claimed");
+        }
+        const roots = this.effectiveAllowedRoots();
+        if (this.allowedRootsPolicyActive && roots.length === 0) {
+          throw new Error("host inventory policy blocks execution");
+        }
+        await assertClaimedPathsAllowed({
+          cwd,
+          repositoryPath: paths.repositoryPath,
+          terminalHookScript: repository.terminalHookScript,
+          allowedRoots: roots,
+        });
+        if (generation !== this.inventoryGeneration) {
+          throw new Error("host inventory changed during execution validation");
+        }
+      },
       currentHookTarget: () => this.currentHookTarget(repository.id, cwd, paths.repositoryPath),
     };
   }
@@ -207,7 +231,7 @@ export class WorktreeManager {
           throw error;
         }
         if (generation !== this.inventoryGeneration) continue;
-        return this.claimedResult(currentRepository, currentWorktree, paths.cwd, paths);
+        return this.claimedResult(currentRepository, currentWorktree, paths.cwd, paths, generation);
       }
     } catch (error) {
       this.busy.delete(worktreeId);
@@ -231,7 +255,7 @@ export class WorktreeManager {
         throw error;
       }
       if (generation !== this.inventoryGeneration) continue;
-      return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths);
+      return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths, generation);
     }
   }
 
@@ -291,6 +315,7 @@ export class WorktreeManager {
     ref: string | undefined,
     signal?: AbortSignal,
   ): Promise<void> {
+    await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
     await this.git.checkoutRef({ cwd: claimed.cwd, ref: target, ...(signal ? { signal } : {}) });
   }
@@ -300,6 +325,7 @@ export class WorktreeManager {
     ref: string | undefined,
     signal?: AbortSignal,
   ): Promise<void> {
+    await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
     await this.git.prepareMainCheckout({
       cwd: claimed.cwd,

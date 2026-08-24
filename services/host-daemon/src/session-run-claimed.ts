@@ -35,6 +35,24 @@ export async function runClaimedSession(
   childEnvSource: NodeJS.ProcessEnv = process.env,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
 ): Promise<SessionRunResult> {
+  try {
+    await claimed.currentExecutionTarget?.();
+  } catch (error) {
+    return await finishClaimedSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      {
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+      childEnvSource,
+    );
+  }
   const setup = await runSetupIfNeeded(
     processRunner,
     streamer,
@@ -47,6 +65,25 @@ export async function runClaimedSession(
     childEnvSource,
   );
   if (setup.failure) return setup.failure;
+
+  try {
+    await claimed.currentExecutionTarget?.();
+  } catch (error) {
+    return await finishClaimedSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      {
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+      childEnvSource,
+    );
+  }
 
   if (signal?.aborted) {
     return await finishClaimedSession(

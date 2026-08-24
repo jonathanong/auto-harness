@@ -13,6 +13,8 @@ export type ClaimedWorktree = {
   worktree: WorktreeConfig;
   cwd: string;
   allowedRoots?: string[];
+  /** Re-check daemon inventory policy at each executable boundary. */
+  currentExecutionTarget?: () => Promise<void>;
 };
 
 type SessionSetupResult = {

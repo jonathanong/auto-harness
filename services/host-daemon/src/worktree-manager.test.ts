@@ -224,6 +224,34 @@ describe("WorktreeManager", () => {
     await expect(claimed.currentHookTarget()).resolves.toBeNull();
   });
 
+  it("refuses checkout when the roots policy changes after a claim", async () => {
+    const root = join(tmpdir(), `ah-claim-policy-change-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(jailed, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    manager.setAllowedRootsPolicy([]);
+    await expect(manager.prepareCheckout(claimed, undefined)).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+    expect(git.checkoutRef).not.toHaveBeenCalled();
+  });
+
   it("uses canonical paths for startup Git preparation", async () => {
     const root = join(tmpdir(), `ah-canonical-ensure-${String(Date.now())}`);
     fixtures.push(root);
