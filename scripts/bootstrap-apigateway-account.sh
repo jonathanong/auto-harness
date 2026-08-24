@@ -82,6 +82,37 @@ create to perform.
 EOF
     exit 1
   fi
+
+  if [[ -z "$(aws iam list-attached-role-policies --role-name "$role_name" \
+    --query "AttachedPolicies[?PolicyName=='AmazonAPIGatewayPushToCloudWatchLogs'].PolicyArn" \
+    --output text)" ]]; then
+    cat >&2 <<EOF
+The IAM role behind the API Gateway account in $AWS_REGION exists, but no
+longer has the AmazonAPIGatewayPushToCloudWatchLogs managed policy attached:
+  $existing_role_arn
+
+Same drift-the-template-can't-see situation as the deleted-role case above:
+re-attach the managed policy manually, or delete the
+AutoHarnessApiGatewayAccount stack so this script has a real create to
+perform, before retrying.
+EOF
+    exit 1
+  fi
+
+  trust_principals="$(aws iam get-role --role-name "$role_name" \
+    --query 'Role.AssumeRolePolicyDocument.Statement[].Principal.Service' --output text)"
+  if [[ "$trust_principals" != *apigateway.amazonaws.com* ]]; then
+    cat >&2 <<EOF
+The IAM role behind the API Gateway account in $AWS_REGION exists, but its
+trust policy no longer allows apigateway.amazonaws.com to assume it:
+  $existing_role_arn
+
+Same drift-the-template-can't-see situation as above: restore the trust
+policy manually, or delete the AutoHarnessApiGatewayAccount stack so this
+script has a real create to perform, before retrying.
+EOF
+    exit 1
+  fi
 fi
 
 account="$(aws sts get-caller-identity --query Account --output text)"
