@@ -65,15 +65,20 @@ export function createFoundationDataAccess(
   tables: Readonly<Record<string, dynamodb.Table>>,
   archiveBucket: s3.Bucket,
 ): { apiDataAccessPolicy: iam.ManagedPolicy; archiveDataAccessPolicy: iam.ManagedPolicy } {
+  // AWS IAM cannot update a managed policy's Description in place, so CloudFormation treats any
+  // change to this string as a replacement. Runtime imports these ARNs via a hard CloudFormation
+  // export, which blocks the replacement mid-deploy — do not edit these strings without first
+  // migrating Runtime off the export (e.g. SSM Parameter passing) to decouple the two stacks.
   const apiDataAccessPolicy = new iam.ManagedPolicy(scope, "ApiDataAccessPolicy", {
-    description: "Least-privilege DynamoDB item/query access, with Scan only on list tables.",
+    description:
+      "Least-privilege DynamoDB data-plane access for a future Auto Harness API runtime.",
     statements: [
       new iam.PolicyStatement({ actions: ITEM_ACTIONS, resources: itemResources(tables) }),
       new iam.PolicyStatement({ actions: ["dynamodb:Scan"], resources: scanResources(tables) }),
     ],
   });
   const archiveDataAccessPolicy = new iam.ManagedPolicy(scope, "ArchiveDataAccessPolicy", {
-    description: "Write-only session-log archive PutObject below sessions/*.",
+    description: "Least-privilege session-log archive access for a future archival runtime.",
     statements: [
       new iam.PolicyStatement({
         actions: ["s3:PutObject"],
