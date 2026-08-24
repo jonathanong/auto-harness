@@ -1,8 +1,10 @@
 /* eslint-disable max-lines -- registration rollback and reconnect barriers share one fixture. */
 import { describe, expect, it } from "vitest";
 
+import { parseDaemonConfig } from "./config.ts";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
 import { parseExecutionProfiles } from "./execution-profiles.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("daemon registration", () => {
   it("omits optional identity and runtime while preserving drain intent", async () => {
@@ -159,6 +161,43 @@ describe("daemon registration", () => {
     expect(config.repositories).toEqual(next.repositories);
     expect(config).toMatchObject({ setupScript: "source ~/.zshrc" });
     expect(calls).toEqual(["ensure", "register"]);
+  });
+
+  it("invalidates a claim completed while candidate registration is in flight", async () => {
+    const config = parseDaemonConfig({
+      hostId: "h",
+      setupScript: "old setup",
+      repositories: [
+        {
+          id: "repo",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "worktree", name: "worktree", path: "/repo/worktree", labels: [] }],
+        },
+      ],
+    });
+    const next = parseDaemonConfig({
+      hostId: "h",
+      setupScript: "new setup",
+      repositories: config.repositories,
+    });
+    const worktrees = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "abc",
+    });
+    let claimed: Awaited<ReturnType<typeof worktrees.claim>> | undefined;
+
+    await applyDaemonInventory(config, next, worktrees, async () => {
+      claimed = await worktrees.claim("repo", "worktree");
+      expect(claimed.hostSetupScript).toBe("old setup");
+    });
+
+    await expect(claimed!.currentExecutionTarget!()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
   });
 
   it("removes a host setup script when the next inventory omits it", async () => {

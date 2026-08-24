@@ -74,6 +74,48 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
+  it("validates a candidate that explicitly clears retained allowed roots", async () => {
+    const root = join(tmpdir(), `ah-candidate-clear-roots-${String(Date.now())}`);
+    fixtures.push(root);
+    const restrictedRepository = join(root, "restricted", "repository");
+    const candidateRepository = join(root, "candidate", "repository");
+    await mkdir(restrictedRepository, { recursive: true });
+    await mkdir(candidateRepository, { recursive: true });
+    const current = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [join(root, "restricted")],
+      repositories: [
+        {
+          id: "repo-1",
+          path: restrictedRepository,
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+    });
+    const candidate = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: candidateRepository,
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(current, git);
+    manager.setAllowedRootsPolicy(current.allowedRoots);
+
+    await expect(manager.ensureAll(candidate)).resolves.toBeUndefined();
+    expect(git.ensureRepo).toHaveBeenCalledWith(candidateRepository);
+
+    await expect(
+      manager.ensureAll({ ...candidate, allowedRoots: [join(root, "candidate")] }),
+    ).resolves.toBeUndefined();
+  });
+
   it("rejects unknown repo or worktree", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);

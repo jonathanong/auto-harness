@@ -107,7 +107,11 @@ export class WorktreeManager {
     // Candidate validation must not replace an active retained policy: pending
     // terminal hooks continue to read `this.config` and `effectiveAllowedRoots()`
     // until the candidate registration has succeeded.
-    const roots = candidate?.allowedRoots ?? this.effectiveAllowedRoots();
+    // An explicitly supplied candidate with no allowedRoots intentionally
+    // clears the restriction. Only a normal (non-candidate) preparation reads
+    // the active retained policy.
+    const roots =
+      candidate === undefined ? this.effectiveAllowedRoots() : (candidate.allowedRoots ?? []);
     await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
     for (const repo of config.repositories) {
       const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);

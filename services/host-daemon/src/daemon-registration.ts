@@ -97,6 +97,10 @@ export async function applyDaemonInventory(
     if (next.allowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = next.allowedRoots;
     config.repositories = next.repositories;
+    // A claim can begin after the pre-registration fence above and finish while
+    // registration is in flight. Once the candidate becomes live, advance the
+    // generation again so that claim has to revalidate against this inventory.
+    worktrees.noteInventoryChange?.();
     afterApply?.();
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
