@@ -2,10 +2,12 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
+  createApiFake,
   field,
+  json,
   mountForm,
   press,
   pressCancel,
@@ -35,34 +37,15 @@ const inventory = {
   commandProfiles: {},
 };
 
-type MutationResult = Awaited<
-  ReturnType<NonNullable<React.ComponentProps<typeof EditWorktreeForm>["mutate"]>>
->;
-type Mutation = NonNullable<React.ComponentProps<typeof EditWorktreeForm>["mutate"]>;
-
-function form(worktreeValue = worktree, mutate?: Mutation) {
+function form(worktreeValue = worktree) {
   return (
     <EditWorktreeForm
       hostId="host/one"
       repositoryId="repo-1"
       worktree={worktreeValue}
       canWriteExecConfig
-      {...(mutate ? { mutate } : {})}
     />
   );
-}
-
-/** A component-level persistence fake: no global HTTP transport is involved in these tests. */
-function inMemoryInventory(initial: typeof inventory): {
-  mutate: Mutation;
-  current: () => typeof inventory;
-} {
-  let current = structuredClone(initial);
-  const mutate = vi.fn(async (_hostId, update) => {
-    current = update(current) as typeof inventory;
-    return { ok: true } as const;
-  }) as Mutation;
-  return { mutate, current: () => current };
 }
 
 describe("EditWorktreeForm", () => {
@@ -89,15 +72,19 @@ describe("EditWorktreeForm", () => {
   });
 
   it("saves trimmed paths and labels, preserving worktree settings", async () => {
-    const persistence = inMemoryInventory(inventory);
-    const view = mountForm(form(worktree, persistence.mutate));
+    const api = createApiFake(
+      json({ ...inventory, version: 4 }),
+      new Response(null, { status: 204 }),
+    );
+    const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), " /new/feature ");
     setValue(field(document, "worktree-edit-labels"), " fast, ci, , fast ");
     setValue(field(document, "worktree-edit-setup-script"), "pnpm install");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(persistence.current()).toMatchObject({
+    expect(api.requests).toHaveLength(2);
+    expect(JSON.parse(String(api.requests[1]?.[1]?.body))).toMatchObject({
       repositories: [
         {
           worktrees: [
@@ -112,20 +99,22 @@ describe("EditWorktreeForm", () => {
         },
       ],
     });
-    expect(persistence.mutate).toHaveBeenCalledWith("host/one", expect.any(Function));
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
   });
 
   it("clears a blank setup override so repository setup is inherited", async () => {
-    const persistence = inMemoryInventory(inventory);
-    const view = mountForm(form(worktree, persistence.mutate));
+    const api = createApiFake(
+      json({ ...inventory, version: 4 }),
+      new Response(null, { status: 204 }),
+    );
+    const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-setup-script"), "   ");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(persistence.current()).toMatchObject({
+    expect(JSON.parse(String(api.requests[1]?.[1]?.body))).toMatchObject({
       repositories: [{ worktrees: [{ id: "worktree-1", setupScript: "" }] }],
     });
     view.unmount();
@@ -141,13 +130,16 @@ describe("EditWorktreeForm", () => {
         },
       ],
     };
-    const persistence = inMemoryInventory(current);
-    const view = mountForm(form(worktree, persistence.mutate));
+    const api = createApiFake(
+      json({ ...current, version: 5 }),
+      new Response(null, { status: 204 }),
+    );
+    const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), "/new/feature");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(persistence.current()).toMatchObject({
+    expect(JSON.parse(String(api.requests[1]?.[1]?.body))).toMatchObject({
       repositories: [{ worktrees: [{ setupScript: "concurrent setup" }] }],
     });
     view.unmount();
@@ -158,29 +150,33 @@ describe("EditWorktreeForm", () => {
       ...worktree,
       setupScript: "fresh concurrent setup",
     };
-    const persistence = inMemoryInventory({
+    const current = {
       ...inventory,
       repositories: [{ ...inventory.repositories[0], worktrees: [fresh] }],
-    });
-    const view = mountForm(form(worktree, persistence.mutate));
+    };
+    const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-setup-script"), "discarded setup");
     pressCancel();
     view.unmount();
-    const refreshed = mountForm(form(fresh, persistence.mutate));
+    const api = createApiFake(
+      json({ ...current, version: 6 }),
+      new Response(null, { status: 204 }),
+    );
+    const refreshed = mountForm(form(fresh));
     press(field(refreshed.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), "/new/feature");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(persistence.current()).toMatchObject({
+    expect(JSON.parse(String(api.requests[1]?.[1]?.body))).toMatchObject({
       repositories: [{ worktrees: [{ setupScript: "fresh concurrent setup" }] }],
     });
     refreshed.unmount();
   });
 
   it("surfaces inventory save failures and hides setup without the capability", async () => {
-    const failure: Mutation = vi.fn(async () => ({ ok: false, error: "denied" })) as Mutation;
-    const view = mountForm(form(worktree, failure));
+    createApiFake(json({ ...inventory, version: 4 }), json({ error: { message: "denied" } }, 403));
+    const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
@@ -202,20 +198,17 @@ describe("EditWorktreeForm", () => {
   });
 
   it("uses missing-label fallbacks and displays a pending request failure", async () => {
-    let finish: ((result: MutationResult) => void) | undefined;
-    const pendingMutation: Mutation = vi.fn(
-      () => new Promise<MutationResult>((resolve) => (finish = resolve)),
-    ) as Mutation;
+    let finish: ((result: Response) => void) | undefined;
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    createApiFake(json({ ...inventory, version: 4 }), pending);
     // Deliberately simulates malformed data (missing labels) to exercise the component's
     // `worktree.labels ?? []` fallback — the real HostWorktree type always has labels.
-    const view = mountForm(
-      form({ ...worktree, labels: undefined } as unknown as typeof worktree, pendingMutation),
-    );
+    const view = mountForm(form({ ...worktree, labels: undefined } as unknown as typeof worktree));
     press(field(view.container, "worktree-edit-open"));
     field<HTMLInputElement>(document, "worktree-edit-labels").remove();
     submit(field(document, "form-edit-worktree"));
     expect(field<HTMLButtonElement>(document, "worktree-edit-submit").disabled).toBe(true);
-    await act(async () => finish?.({ ok: false, error: "cannot save" }));
+    await act(async () => finish?.(json({ error: { message: "cannot save" } }, 500)));
     expect(field(document, "worktree-edit-error").textContent).toBe("cannot save");
     view.unmount();
   });

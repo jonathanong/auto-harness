@@ -245,6 +245,43 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("keeps the local inventory fence until the ready registration finishes", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = new DelayedRegistrationTransport();
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      await loop.blockAssignmentsForInvalidInventory();
+      transport.holdRegistrations = true;
+
+      const applying = loop.applyInventory(config);
+      await vi.waitFor(() =>
+        expect(transport.sent.filter((message) => message.type === "host:register")).toHaveLength(
+          3,
+        ),
+      );
+      expect(loop.isDraining()).toBe(true);
+      transport.deliver(assignMessage("during-ready-registration"));
+      await settle();
+      expect(
+        transport.sent.some(
+          (message) =>
+            message.type === "session:ack" && message.sessionId === "during-ready-registration",
+        ),
+      ).toBe(false);
+
+      transport.releaseRegistration();
+      await applying;
+      expect(loop.isDraining()).toBe(false);
+      expect(
+        transport.sent.filter((message) => message.type === "host:register").at(-1),
+      ).not.toHaveProperty("draining");
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("retries the policy drain registration after a failed publish", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -622,6 +659,26 @@ class EventTransport implements DaemonTransport {
   }
   deliver(message: HostWireMessage): void {
     this.message?.(message);
+  }
+}
+
+class DelayedRegistrationTransport extends EventTransport {
+  holdRegistrations = false;
+  private release: (() => void) | undefined;
+
+  override async send(message: HostToServerMessage): Promise<void> {
+    if (!this.holdRegistrations || message.type !== "host:register") {
+      await super.send(message);
+      return;
+    }
+    this.sent.push(message);
+    await new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  releaseRegistration(): void {
+    this.release?.();
   }
 }
 

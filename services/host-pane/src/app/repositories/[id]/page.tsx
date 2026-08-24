@@ -31,6 +31,18 @@ type Session = {
   source?: string;
 };
 
+function hasRepositoryExecConfig(repository: HostRepository): boolean {
+  return (
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== "" ||
+    repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== "")
+  );
+}
+
+function hasWorktreeExecConfig(worktree: HostRepository["worktrees"][number] | undefined): boolean {
+  return (worktree?.setupScript ?? "") !== "";
+}
+
 export default async function RepositoryDetailPage({
   params,
   searchParams,
@@ -111,7 +123,7 @@ export default async function RepositoryDetailPage({
                 canWriteExecConfig={canEditExecConfig}
               />
             ) : null}
-            {canEditExecConfig ? (
+            {canEditExecConfig || !hasRepositoryExecConfig(repo) ? (
               <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
             ) : null}
           </>
@@ -142,7 +154,10 @@ export default async function RepositoryDetailPage({
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees yet."
                   renderWorktreeActions={(wt) =>
-                    canEditExecConfig ? (
+                    canEditExecConfig ||
+                    !hasWorktreeExecConfig(
+                      repo.worktrees.find((worktree) => worktree.id === wt.id),
+                    ) ? (
                       <RemoveWorktreeButton
                         hostId={agent}
                         repositoryId={repo.id}

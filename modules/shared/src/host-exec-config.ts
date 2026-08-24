@@ -98,6 +98,10 @@ function hasSetupScript(value: string | undefined): boolean {
   return (value ?? "") !== "";
 }
 
+function hasTerminalHook(value: string | undefined): boolean {
+  return (value ?? "") !== "";
+}
+
 function entriesById<T extends { id: string }>(entries: readonly T[] | undefined): Map<string, T> {
   return new Map(entries?.map((entry) => [entry.id, entry]) ?? []);
 }
@@ -234,16 +238,19 @@ export function listExecConfigEdits(
       previous?.setupScript,
       next?.setupScript,
     );
-    // Host and repository setup scripts execute in the claimed checkout. Moving
-    // a repository can therefore change the executable context for a main
-    // checkout even when the script text itself is unchanged.
+    // Setup scripts and terminal hooks execute in the claimed checkout. Moving
+    // (or attaching) a repository can therefore change the executable context
+    // for a main checkout even when the executable text itself is unchanged.
+    const repositoryExecutionCwdIsTrusted =
+      hostSetupScript ||
+      hasSetupScript(previous?.setupScript) ||
+      hasSetupScript(next?.setupScript) ||
+      hasTerminalHook(previous?.terminalHookScript) ||
+      hasTerminalHook(next?.terminalHookScript);
     if (
-      previous !== undefined &&
       next !== undefined &&
-      !sameOptionalString(previous.path, next.path) &&
-      (hostSetupScript ||
-        hasSetupScript(previous?.setupScript) ||
-        hasSetupScript(next?.setupScript))
+      (previous === undefined || !sameOptionalString(previous.path, next.path)) &&
+      repositoryExecutionCwdIsTrusted
     ) {
       edits.push(`repositories.${repositoryId}.path`);
     }
@@ -264,16 +271,14 @@ export function listExecConfigEdits(
         previousWorktree?.setupScript,
         nextWorktree?.setupScript,
       );
-      // Every setup-script scope runs in this worktree's cwd, so its path is
-      // itself executable configuration when any effective setup script exists.
-      const setupApplies =
-        hostSetupScript ||
-        hasSetupScript(previous?.setupScript) ||
-        hasSetupScript(next?.setupScript) ||
+      // Setup scripts and terminal hooks run in this worktree's cwd, so its
+      // path is executable configuration whenever either trusted action applies.
+      const executionCwdIsTrusted =
+        repositoryExecutionCwdIsTrusted ||
         hasSetupScript(previousWorktree?.setupScript) ||
         hasSetupScript(nextWorktree?.setupScript);
       if (
-        setupApplies &&
+        executionCwdIsTrusted &&
         nextWorktree !== undefined &&
         (previousWorktree === undefined ||
           !sameOptionalString(previousWorktree.path, nextWorktree.path))

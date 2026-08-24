@@ -89,11 +89,13 @@ describe("claimed session cancellation", () => {
 
   it("does not start the command when policy changes after setup", async () => {
     let checks = 0;
+    let setupRuns = 0;
     let commandStarted = false;
     const logs = [];
     const outcome = await runClaimedSession(
       {
         async run() {
+          setupRuns += 1;
           return { exitCode: 0, timedOut: false, signal: null, environment: {} };
         },
       },
@@ -104,7 +106,7 @@ describe("claimed session cancellation", () => {
         ...claimed,
         currentExecutionTarget: async () => {
           checks += 1;
-          if (checks === 2) throw new Error("host inventory changed during setup");
+          if (checks === 3) throw new Error("host inventory changed during setup");
         },
       },
       undefined,
@@ -122,7 +124,8 @@ describe("claimed session cancellation", () => {
       errorCode: "setup_failed",
       errorMessage: "host inventory changed during setup",
     });
-    expect(checks).toBe(2);
+    expect(checks).toBe(3);
+    expect(setupRuns).toBe(1);
     expect(commandStarted).toBe(false);
   });
 

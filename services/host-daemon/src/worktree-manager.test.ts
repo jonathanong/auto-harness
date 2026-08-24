@@ -279,6 +279,67 @@ describe("WorktreeManager", () => {
     expect(git.checkoutRef).not.toHaveBeenCalled();
   });
 
+  it("revalidates a claim after unrelated inventory changes", async () => {
+    const root = join(tmpdir(), `ah-claim-unrelated-refresh-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const refreshed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: ["before"] }],
+        },
+      ],
+      providerAccounts: [],
+    });
+    const git = fakeGit();
+    const manager = new WorktreeManager(refreshed, git);
+    const claimed = await manager.claim("repo-1", "wt-1");
+    const mainClaim = await manager.mainClaim("repo-1");
+    refreshed.requiredEnvironment = ["TOKEN"];
+    refreshed.repositories = [
+      {
+        ...refreshed.repositories[0]!,
+        providerAccountOverrides: { "provider-1": { enabled: false } },
+        worktrees: [
+          {
+            ...refreshed.repositories[0]!.worktrees[0]!,
+            labels: ["after"],
+            providerAccountOverrides: { "provider-1": { commandId: "safe" } },
+          },
+        ],
+      },
+    ];
+    manager.noteInventoryChange();
+
+    await expect(manager.prepareCheckout(claimed, "main")).resolves.toBeUndefined();
+    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+    await expect(manager.prepareMainCheckout(mainClaim, "main")).resolves.toBeUndefined();
+    expect(git.prepareMainCheckout).toHaveBeenCalledWith({
+      cwd: await realpath(repository),
+      ref: "main",
+    });
+
+    const movedWorktree = join(repository, "moved-worktree");
+    await mkdir(movedWorktree);
+    refreshed.repositories = [
+      {
+        ...refreshed.repositories[0]!,
+        worktrees: [{ ...refreshed.repositories[0]!.worktrees[0]!, path: movedWorktree }],
+      },
+    ];
+    manager.noteInventoryChange();
+    await expect(manager.prepareCheckout(claimed, "main")).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
   it("uses canonical paths for startup Git preparation", async () => {
     const root = join(tmpdir(), `ah-canonical-ensure-${String(Date.now())}`);
     fixtures.push(root);

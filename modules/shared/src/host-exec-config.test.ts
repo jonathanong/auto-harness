@@ -259,6 +259,115 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     });
   });
 
+  it("fences newly attached repositories and hook working-directory changes", () => {
+    const hostSetup = {
+      setupScript: "pnpm install",
+      repositories: [],
+      providerAccounts: [],
+    } satisfies HostInventory;
+    const attachedRepository = {
+      ...hostSetup,
+      repositories: [
+        {
+          id: "repo-2",
+          path: "/operator-selected/repo",
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+    } satisfies HostInventory;
+    expect(listExecConfigEdits(hostSetup, attachedRepository)).toEqual([
+      "repositories.repo-2.path",
+    ]);
+    expect(
+      reconcileInventoryWrite({
+        existing: hostSetup,
+        incoming: attachedRepository,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["repositories.repo-2.path"],
+    });
+
+    const hookOnly = {
+      repositories: [
+        {
+          id: "repo-3",
+          path: "/repo-3",
+          defaultBranch: "main",
+          terminalHookScript: "/trusted/hook.sh",
+          worktrees: [{ id: "wt-3", name: "wt-3", path: "/repo-3/wt", labels: [] }],
+        },
+      ],
+      providerAccounts: [],
+    } satisfies HostInventory;
+    const movedWorktree = {
+      ...hookOnly,
+      repositories: [
+        {
+          ...hookOnly.repositories[0]!,
+          worktrees: [{ ...hookOnly.repositories[0]!.worktrees[0]!, path: "/other/wt" }],
+        },
+      ],
+    } satisfies HostInventory;
+    expect(listExecConfigEdits(hookOnly, movedWorktree)).toEqual([
+      "repositories.repo-3.worktrees.wt-3.path",
+    ]);
+
+    const empty = { repositories: [], providerAccounts: [] } satisfies HostInventory;
+    const attachedHook = {
+      ...empty,
+      repositories: [
+        {
+          id: "repo-4",
+          path: "/repo-4",
+          defaultBranch: "main",
+          terminalHookScript: "/trusted/hook.sh",
+          worktrees: [],
+        },
+      ],
+    } satisfies HostInventory;
+    expect(listExecConfigEdits(empty, attachedHook)).toEqual([
+      "repositories.repo-4.path",
+      "repositories.repo-4.terminalHookScript",
+    ]);
+
+    const worktreeSetupOnly = {
+      repositories: [
+        {
+          id: "repo-5",
+          path: "/repo-5",
+          defaultBranch: "main",
+          worktrees: [],
+        },
+      ],
+      providerAccounts: [],
+    } satisfies HostInventory;
+    const worktreeWithSetup = {
+      ...worktreeSetupOnly,
+      repositories: [
+        {
+          ...worktreeSetupOnly.repositories[0]!,
+          worktrees: [
+            {
+              id: "wt-5",
+              name: "wt-5",
+              path: "/repo-5/wt-5",
+              labels: [],
+              setupScript: "pnpm install",
+            },
+          ],
+        },
+      ],
+    } satisfies HostInventory;
+    expect(listExecConfigEdits(worktreeSetupOnly, worktreeWithSetup)).toEqual([
+      "repositories.repo-5.worktrees.wt-5.setupScript",
+      "repositories.repo-5.worktrees.wt-5.path",
+    ]);
+  });
+
   it("detects stored executable paths that inventory deletion would erase", () => {
     expect(inventoryHasExecConfig(undefined)).toBe(false);
     expect(inventoryHasExecConfig(emptyHostInventory())).toBe(false);

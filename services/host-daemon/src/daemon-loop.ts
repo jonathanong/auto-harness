@@ -178,10 +178,12 @@ export class DaemonLoop {
     this.worktrees.clearAllowedRootsPolicy();
     try {
       await applyDaemonInventory(this.config, next, this.worktrees, async () => {
-        // Worktree validation just succeeded against `next`; register the host as assignable again.
+        // Advertise the validated inventory as available while retaining the local
+        // assignment fence until that registration has been durably handed off.
+        // A peer can otherwise queue an assignment while send() is still pending.
+        await this.register({ inventoryPolicyBlocked: false });
         this.inventoryPolicyBlocked = false;
         this.inventoryPolicyDrainPublished = false;
-        await this.register();
       });
     } catch (error) {
       this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
@@ -203,7 +205,9 @@ export class DaemonLoop {
       throw error;
     }
   }
-  async register(): Promise<void> {
+  async register({
+    inventoryPolicyBlocked = this.inventoryPolicyBlocked,
+  }: { inventoryPolicyBlocked?: boolean } = {}): Promise<void> {
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
@@ -212,13 +216,13 @@ export class DaemonLoop {
       this.config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
-      this.drainRequested || this.draining || this.inventoryPolicyBlocked,
+      this.drainRequested || this.draining || inventoryPolicyBlocked,
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
       this.executionProfiles,
     );
-    if (this.inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
+    if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
   async keepalive(): Promise<void> {

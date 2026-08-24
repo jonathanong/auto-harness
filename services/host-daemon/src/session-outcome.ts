@@ -113,7 +113,13 @@ export async function finishClaimedSession(
   let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
     refreshed = await claimed.currentHookTarget?.();
-  } catch {
+  } catch (error) {
+    streamer.write(
+      "system",
+      `terminal hook revalidation failed for session ${assign.sessionId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     refreshed = null;
   }
   const target = refreshed;

@@ -36,6 +36,14 @@ const mainWorktree = (repository: RepositoryConfig): WorktreeConfig => ({
   labels: [],
 });
 
+function sameOptionalString(left: string | undefined, right: string | undefined): boolean {
+  return (left ?? "") === (right ?? "");
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export class WorktreeManager {
   private readonly busy = new Set<string>();
   private readonly mainBusy = new Set<string>();
@@ -124,32 +132,67 @@ export class WorktreeManager {
   ): ClaimedWorktree {
     const claimedRepository = { ...repository, path: paths.repositoryPath };
     const claimedWorktree = { ...worktree, path: cwd };
+    const claimedAllowedRoots = this.effectiveAllowedRoots();
+    const claimedHostSetupScript = this.config.setupScript;
     return {
-      ...(this.config.setupScript !== undefined
-        ? { hostSetupScript: this.config.setupScript }
-        : {}),
-      ...(this.effectiveAllowedRoots().length
-        ? { allowedRoots: this.effectiveAllowedRoots() }
-        : {}),
+      ...(claimedHostSetupScript !== undefined ? { hostSetupScript: claimedHostSetupScript } : {}),
+      ...(claimedAllowedRoots.length ? { allowedRoots: claimedAllowedRoots } : {}),
       repository: claimedRepository,
       worktree: claimedWorktree,
       cwd,
       currentExecutionTarget: async () => {
-        if (generation !== this.inventoryGeneration) {
-          throw new Error("host inventory changed after this checkout was claimed");
-        }
-        const roots = this.effectiveAllowedRoots();
-        if (this.allowedRootsPolicyActive && roots.length === 0) {
-          throw new Error("host inventory policy blocks execution");
-        }
-        await assertClaimedPathsAllowed({
-          cwd,
-          repositoryPath: paths.repositoryPath,
-          terminalHookScript: repository.terminalHookScript,
-          allowedRoots: roots,
-        });
-        if (generation !== this.inventoryGeneration) {
-          throw new Error("host inventory changed during execution validation");
+        while (true) {
+          const validationGeneration = this.inventoryGeneration;
+          const roots = this.effectiveAllowedRoots();
+          if (this.allowedRootsPolicyActive && roots.length === 0) {
+            throw new Error(
+              validationGeneration === generation
+                ? "host inventory policy blocks execution"
+                : "host inventory changed after this checkout was claimed",
+            );
+          }
+
+          let targetRepository = claimedRepository;
+          let targetWorktree = claimedWorktree;
+          if (validationGeneration !== generation) {
+            const currentRepository = this.config.repositories.find(
+              (candidate) => candidate.id === claimedRepository.id,
+            );
+            const currentWorktree = currentRepository
+              ? claimedWorktree.id === `main:${claimedRepository.id}`
+                ? mainWorktree(currentRepository)
+                : currentRepository.worktrees.find(
+                    (candidate) => candidate.id === claimedWorktree.id,
+                  )
+              : undefined;
+            if (
+              !currentRepository ||
+              !currentWorktree ||
+              !sameOptionalString(claimedHostSetupScript, this.config.setupScript) ||
+              !sameOptionalString(claimedRepository.setupScript, currentRepository.setupScript) ||
+              !sameOptionalString(
+                claimedRepository.terminalHookScript,
+                currentRepository.terminalHookScript,
+              ) ||
+              !sameOptionalString(claimedWorktree.setupScript, currentWorktree.setupScript) ||
+              !sameStrings(claimedAllowedRoots, roots)
+            ) {
+              throw new Error("host inventory changed after this checkout was claimed");
+            }
+            targetRepository = currentRepository;
+            targetWorktree = currentWorktree;
+          }
+
+          const currentPaths = await assertClaimedPathsAllowed({
+            cwd: targetWorktree.path,
+            repositoryPath: targetRepository.path,
+            terminalHookScript: targetRepository.terminalHookScript,
+            allowedRoots: roots,
+          });
+          if (currentPaths.cwd !== cwd || currentPaths.repositoryPath !== paths.repositoryPath) {
+            throw new Error("host inventory changed after this checkout was claimed");
+          }
+          if (validationGeneration === this.inventoryGeneration) return;
         }
       },
       currentHookTarget: () => this.currentHookTarget(repository.id, cwd, paths.repositoryPath),

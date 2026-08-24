@@ -92,9 +92,15 @@ describe("allowed roots realpath checks", () => {
     expect(claimed.terminalHookScript).toBe(
       await resolvePathForRootCheck(join(await realpath(repo), "wt", "hook.sh")),
     );
-    expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(true);
-    expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(true);
-    expect(() => resolveHookPath("/repo", "C:\\hooks\\done.cmd")).toThrow("not valid on");
+    if (process.platform === "win32") {
+      expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(false);
+      expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(false);
+      expect(resolveHookPath("C:\\repo", "C:\\hooks\\done.cmd")).toBe("C:\\hooks\\done.cmd");
+    } else {
+      expect(isForeignWindowsAbsolutePath("C:\\hooks\\done.cmd")).toBe(true);
+      expect(isForeignWindowsAbsolutePath("\\\\server\\share\\done.cmd")).toBe(true);
+      expect(() => resolveHookPath("/repo", "C:\\hooks\\done.cmd")).toThrow("not valid on");
+    }
   });
 
   it("validates inventory paths and terminal hooks against allowed roots", async () => {
