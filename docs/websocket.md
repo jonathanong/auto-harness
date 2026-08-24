@@ -113,10 +113,12 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 Daemons coalesce consecutive stdout/stderr writes to about **10 WebSocket messages/sec/session**
 (`logBatchMaxWaitMs` 100, `logBatchMaxLines` 100, plus the existing per-frame byte budget).
-Coalesced frames still carry `{sessionId, attemptId}` and keep insertion order via
-`timestampSeq` (`timestamp#seq`); the daemon never renumbers after emit. When a session
-exceeds that rate and the current coalesced frame is already at its byte/line bound, the
-daemon drops further stdout/stderr and later emits a system frame:
+A write is split on UTF-8 character and newline boundaries; later pieces never rejoin a
+batch that already rejected an earlier piece. A stream change parks one overflow batch
+instead of dropping the other stream. Coalesced frames still carry `{sessionId, attemptId}`
+and keep insertion order via `timestampSeq` (`timestamp#seq`); the daemon never renumbers
+after emit. When a session exceeds that rate and both the current frame and the overflow
+batch are at bound, the daemon drops further stdout/stderr and later emits a system frame:
 
 ```json
 {

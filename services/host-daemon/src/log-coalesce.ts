@@ -83,6 +83,33 @@ export function canAppendToBatch(
   return countLogLines(batch.content + piece) <= maxLines;
 }
 
+/** True when one more byte/line would exceed the coalesce bounds. */
+export function batchAtBound(batch: CoalesceBatch, maxBytes: number, maxLines: number): boolean {
+  return !canAppendToBatch(batch, batch.stream, "\n", 1, maxBytes, maxLines);
+}
+
+/** Split so each piece has at most `maxLines` newline-delimited lines. */
+export function splitLogLines(content: string, maxLines: number): string[] {
+  if (content.length === 0) return [];
+  if (countLogLines(content) <= maxLines) return [content];
+  const pieces: string[] = [];
+  let current = "";
+  let lines = 0;
+  for (const char of content) {
+    current += char;
+    if (char === "\n") {
+      lines += 1;
+      if (lines >= maxLines) {
+        pieces.push(current);
+        current = "";
+        lines = 0;
+      }
+    }
+  }
+  if (current.length > 0) pieces.push(current);
+  return pieces;
+}
+
 export function startBatch(stream: LogStream, content: string, timestamp: string): CoalesceBatch {
   return { stream, content, timestamp, bytes: Buffer.byteLength(content, "utf8") };
 }

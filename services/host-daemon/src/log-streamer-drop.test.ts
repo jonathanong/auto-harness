@@ -22,28 +22,28 @@ function contents(chunks: SessionLogChunk[]) {
   return chunks.map((chunk) => ({ content: chunk.content, dropped: chunk.dropped }));
 }
 
+const tight = { logBatchMaxWaitMs: 0, maxWireBytes: 1, maxMessagesPerSec: 1 };
+
 describe("LogStreamer drop telemetry", () => {
   it("enforces the coalesced byte bound and rate-limit drop counter", () => {
     const chunks: SessionLogChunk[] = [];
     const clock = createStreamerClock();
-    const streamer = createDropStreamer(
-      chunks,
-      { logBatchMaxWaitMs: 0, maxWireBytes: 1, maxMessagesPerSec: 1 },
-      clock,
-    );
+    const streamer = createDropStreamer(chunks, tight, clock);
     expect(streamer.write("stdout", "a")?.content).toBe("a");
     streamer.write("stdout", "b");
     streamer.write("stdout", "c");
     streamer.write("stdout", "d");
+    streamer.write("stdout", "e");
     expect(streamer.droppedCount()).toBe(2);
     expect(chunks.map((chunk) => chunk.content)).toEqual(["a"]);
     streamer.flush();
     expect(contents(chunks)).toEqual([
       { content: "a", dropped: undefined },
       { content: "b", dropped: undefined },
+      { content: "c", dropped: undefined },
       { content: formatDroppedLogNotice(2), dropped: 2 },
     ]);
-    expect(chunks[2]).toEqual(
+    expect(chunks[3]).toEqual(
       expect.objectContaining({
         sessionId: "sess-1",
         attemptId: "attempt-1",
@@ -67,20 +67,20 @@ describe("LogStreamer drop telemetry", () => {
   it("emits a delayed drop notice once the rate window reopens", () => {
     const chunks: SessionLogChunk[] = [];
     const clock = createStreamerClock();
-    const streamer = createDropStreamer(
-      chunks,
-      { logBatchMaxWaitMs: 0, maxWireBytes: 1, maxMessagesPerSec: 1 },
-      clock,
-    );
+    const streamer = createDropStreamer(chunks, tight, clock);
     streamer.write("stdout", "a");
     streamer.write("stdout", "b");
     streamer.write("stdout", "c");
+    streamer.write("stdout", "d");
     clock.advance(1_000);
     expect(chunks.map((chunk) => chunk.content)).toEqual(["a", "b"]);
+    clock.advance(1_000);
+    expect(chunks.map((chunk) => chunk.content)).toEqual(["a", "b", "c"]);
     clock.advance(1_000);
     expect(contents(chunks)).toEqual([
       { content: "a", dropped: undefined },
       { content: "b", dropped: undefined },
+      { content: "c", dropped: undefined },
       { content: formatDroppedLogNotice(1), dropped: 1 },
     ]);
   });
@@ -88,11 +88,7 @@ describe("LogStreamer drop telemetry", () => {
   it("still emits drop telemetry when the session chunk cap is already full", () => {
     const chunks: SessionLogChunk[] = [];
     const clock = createStreamerClock();
-    const streamer = createDropStreamer(
-      chunks,
-      { logBatchMaxWaitMs: 0, maxWireBytes: 1, maxMessagesPerSec: 1, maxChunks: 2 },
-      clock,
-    );
+    const streamer = createDropStreamer(chunks, { ...tight, maxChunks: 2 }, clock);
     streamer.write("stdout", "a");
     streamer.write("stdout", "b");
     streamer.write("stdout", "c");
@@ -143,41 +139,19 @@ describe("LogStreamer drop telemetry", () => {
   it("caps each drop notice at the wire limit and retains the remainder", () => {
     const chunks: SessionLogChunk[] = [];
     const clock = createStreamerClock();
-    const streamer = createDropStreamer(
-      chunks,
-      { logBatchMaxWaitMs: 0, maxWireBytes: 1, maxMessagesPerSec: 1, maxDroppedPerNotice: 2 },
-      clock,
-    );
+    const streamer = createDropStreamer(chunks, { ...tight, maxDroppedPerNotice: 2 }, clock);
     for (const piece of ["a", "b", "c", "d", "e", "f"]) streamer.write("stdout", piece);
-    expect(streamer.droppedCount()).toBe(4);
-    clock.advance(1_000);
+    expect(streamer.droppedCount()).toBe(3);
+    streamer.flush();
     expect(contents(chunks)).toEqual([
       { content: "a", dropped: undefined },
       { content: "b", dropped: undefined },
+      { content: "c", dropped: undefined },
+      { content: formatDroppedLogNotice(2), dropped: 2 },
+      { content: formatDroppedLogNotice(1), dropped: 1 },
     ]);
-    clock.advance(1_000);
-    expect(chunks.map((chunk) => chunk.dropped)).toEqual([undefined, undefined, 2]);
-    clock.advance(1_000);
-    expect(contents(chunks)).toEqual([
-      { content: "a", dropped: undefined },
-      { content: "b", dropped: undefined },
-      { content: formatDroppedLogNotice(2), dropped: 2 },
-      { content: formatDroppedLogNotice(2), dropped: 2 },
-    ]);
-    const forced: SessionLogChunk[] = [];
-    const forcedStreamer = createDropStreamer(forced, {
-      logBatchMaxWaitMs: 0,
-      maxWireBytes: 1,
-      maxMessagesPerSec: 1,
-      maxDroppedPerNotice: 2,
-    });
-    for (const piece of ["a", "b", "c", "d", "e", "f"]) forcedStreamer.write("stdout", piece);
-    forcedStreamer.flush();
-    expect(contents(forced)).toEqual([
-      { content: "a", dropped: undefined },
-      { content: "b", dropped: undefined },
-      { content: formatDroppedLogNotice(2), dropped: 2 },
-      { content: formatDroppedLogNotice(2), dropped: 2 },
-    ]);
+    for (const chunk of chunks) {
+      expect(chunk.dropped ?? 0).toBeLessThanOrEqual(2);
+    }
   });
 });

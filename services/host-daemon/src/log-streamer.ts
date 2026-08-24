@@ -4,6 +4,7 @@ import type { LogStream, SessionLogChunk } from "@auto-harness/shared";
 
 import {
   appendToBatch,
+  batchAtBound,
   canAppendToBatch,
   DEFAULT_LOG_BATCH_MAX_LINES,
   DEFAULT_LOG_BATCH_MAX_WAIT_MS,
@@ -11,6 +12,7 @@ import {
   DEFAULT_MAX_WIRE_BYTES,
   formatDroppedLogNotice,
   LogRateWindow,
+  splitLogLines,
   splitUtf8,
   startBatch,
   truncateUtf8,
@@ -18,6 +20,7 @@ import {
 } from "./log-coalesce.ts";
 
 type LogEmit = (chunk: SessionLogChunk) => void;
+type EnqueueResult = { chunk: SessionLogChunk | null; diverted: boolean };
 
 const DEFAULT_MAX_LOG_CHUNKS = 10_000;
 const DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024;
@@ -62,6 +65,8 @@ export class LogStreamer {
   private emittedBytes = 0;
   private pending: CoalesceBatch | null = null;
   private pendingSinceMs = 0;
+  private overflow: CoalesceBatch | null = null;
+  private overflowSinceMs = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private droppedChunks = 0;
   private unsentDropped = 0;
@@ -124,12 +129,18 @@ export class LogStreamer {
   private writeAt(stream: LogStream, content: string, timestamp: string): SessionLogChunk | null {
     const force = stream === "system";
     let last: SessionLogChunk | null = force ? this.flushPending(true) : null;
-    if (!force && this.emittedChunks >= this.maxChunks && !this.pending) return last;
+    if (!force && this.emittedChunks >= this.maxChunks && !this.pending && !this.overflow) {
+      return last;
+    }
     const bounded = force ? content : truncateUtf8(content, this.remainingBytes());
     if (bounded.length === 0) return last;
-    for (const piece of splitUtf8(bounded, this.maxWireBytes)) {
-      const emitted = this.enqueuePiece(stream, piece, timestamp, force);
-      if (emitted) last = emitted;
+    let allowPending = true;
+    for (const wirePiece of splitUtf8(bounded, this.maxWireBytes)) {
+      for (const piece of splitLogLines(wirePiece, this.logBatchMaxLines)) {
+        const result = this.enqueuePiece(stream, piece, timestamp, force, allowPending);
+        if (result.chunk) last = result.chunk;
+        if (result.diverted) allowPending = false;
+      }
     }
     if (!force) {
       const flushed = this.afterStdoutEnqueue();
@@ -138,84 +149,135 @@ export class LogStreamer {
     return last;
   }
 
+  private fits(batch: CoalesceBatch, stream: LogStream, piece: string): boolean {
+    return canAppendToBatch(
+      batch,
+      stream,
+      piece,
+      Buffer.byteLength(piece, "utf8"),
+      this.maxWireBytes,
+      this.logBatchMaxLines,
+    );
+  }
+
   private enqueuePiece(
     stream: LogStream,
     piece: string,
     timestamp: string,
     force: boolean,
-  ): SessionLogChunk | null {
-    if (
-      this.pending &&
-      canAppendToBatch(
-        this.pending,
-        stream,
-        piece,
-        Buffer.byteLength(piece, "utf8"),
-        this.maxWireBytes,
-        this.logBatchMaxLines,
-      )
-    ) {
+    allowPending: boolean,
+  ): EnqueueResult {
+    if (allowPending && this.pending && this.fits(this.pending, stream, piece)) {
       appendToBatch(this.pending, piece);
-      return null;
+      return { chunk: null, diverted: false };
+    }
+    if (allowPending && !this.pending) {
+      return { chunk: this.startPending(stream, piece, timestamp, force), diverted: false };
     }
     let last: SessionLogChunk | null = null;
-    if (this.pending) {
-      last = this.flushPending(force);
-      if (this.pending) {
-        this.droppedChunks += 1;
-        this.unsentDropped += 1;
-        return last;
-      }
+    if (this.pending) last = this.flushPending(force);
+    this.promoteOverflow();
+    if (!this.pending) {
+      return { chunk: this.startPending(stream, piece, timestamp, force) ?? last, diverted: false };
     }
-    if (!force && this.emittedChunks >= this.maxChunks) return last;
+    if (this.overflow && this.fits(this.overflow, stream, piece)) {
+      appendToBatch(this.overflow, piece);
+      return { chunk: last, diverted: true };
+    }
+    if (!this.overflow && this.emittedChunks + 1 < this.maxChunks) {
+      this.overflow = startBatch(stream, piece, timestamp);
+      this.overflowSinceMs = this.nowMs();
+      return { chunk: last, diverted: true };
+    }
+    this.recordDrop();
+    return { chunk: last, diverted: true };
+  }
+
+  private startPending(
+    stream: LogStream,
+    piece: string,
+    timestamp: string,
+    force: boolean,
+  ): SessionLogChunk | null {
+    if (!force && this.emittedChunks >= this.maxChunks) return null;
     this.pending = startBatch(stream, piece, timestamp);
     this.pendingSinceMs = this.nowMs();
-    return force ? this.flushPending(true) : last;
+    return force ? this.flushPending(true) : null;
   }
 
   private afterStdoutEnqueue(): SessionLogChunk | null {
+    this.promoteOverflow();
     if (!this.pending) return this.flushDropNotice(false);
-    if (this.logBatchMaxWaitMs === 0) return this.flushPending(false);
+    if (
+      this.logBatchMaxWaitMs === 0 ||
+      this.overflow !== null ||
+      this.unsentDropped >= this.maxDroppedPerNotice ||
+      batchAtBound(this.pending, this.maxWireBytes, this.logBatchMaxLines)
+    ) {
+      return this.flushPending(false);
+    }
     this.scheduleFlush();
     return null;
   }
 
   private remainingBytes(): number {
-    return this.maxBytes - this.emittedBytes - (this.pending?.bytes ?? 0);
+    return (
+      this.maxBytes - this.emittedBytes - (this.pending?.bytes ?? 0) - (this.overflow?.bytes ?? 0)
+    );
+  }
+
+  private promoteOverflow(): void {
+    if (this.pending || !this.overflow) return;
+    this.pending = this.overflow;
+    this.pendingSinceMs = this.overflowSinceMs;
+    this.overflow = null;
   }
 
   private flushPending(force: boolean): SessionLogChunk | null {
-    if (this.pending && !force && !this.rate.canEmit()) {
-      this.scheduleFlush();
-      return null;
-    }
-    this.clearTimer();
     let last: SessionLogChunk | null = null;
-    if (this.pending) {
+    this.promoteOverflow();
+    while (this.pending) {
+      if (!force && !this.rate.canEmit()) {
+        this.scheduleFlush();
+        return last;
+      }
+      this.clearTimer();
       const batch = this.pending;
       this.pending = null;
       last = this.emitChunk(batch.stream, batch.content, batch.timestamp);
+      this.promoteOverflow();
+      if (!force) break;
     }
-    return this.flushDropNotice(force) ?? last;
+    const notice = this.flushDropNotice(force);
+    if (!force && (this.pending || this.overflow || this.unsentDropped > 0)) this.scheduleFlush();
+    return notice ?? last;
   }
 
   private flushDropNotice(force: boolean): SessionLogChunk | null {
     let last: SessionLogChunk | null = null;
     while (this.unsentDropped > 0) {
-      if (!force && last) {
+      const mustSend =
+        force ||
+        (this.unsentDropped >= this.maxDroppedPerNotice && !this.pending && !this.overflow);
+      if (!mustSend && last) {
         this.scheduleFlush();
         return last;
       }
-      if (!force && !this.rate.canEmit()) {
+      if (!mustSend && !this.rate.canEmit()) {
         this.scheduleFlush();
         return last;
       }
-      if (!force && this.emittedChunks >= this.maxChunks) return last;
+      if (!mustSend && this.emittedChunks >= this.maxChunks) return last;
       const count = Math.min(this.unsentDropped, this.maxDroppedPerNotice);
       this.unsentDropped -= count;
       last = this.emitRaw("system", formatDroppedLogNotice(count), this.now(), count);
     }
     return last;
+  }
+
+  private recordDrop(): void {
+    this.droppedChunks += 1;
+    this.unsentDropped += 1;
   }
 
   private emitChunk(stream: LogStream, content: string, timestamp: string): SessionLogChunk {
@@ -246,10 +308,17 @@ export class LogStreamer {
   }
 
   private scheduleFlush(): void {
-    if (this.timer !== undefined || (!this.pending && this.unsentDropped === 0)) return;
+    if (this.timer !== undefined || (!this.pending && !this.overflow && this.unsentDropped === 0)) {
+      return;
+    }
     const now = this.nowMs();
+    const waitForCoalesce =
+      this.pending &&
+      !this.overflow &&
+      this.unsentDropped < this.maxDroppedPerNotice &&
+      !batchAtBound(this.pending, this.maxWireBytes, this.logBatchMaxLines);
     const due = Math.max(
-      this.pending ? this.pendingSinceMs + this.logBatchMaxWaitMs : now,
+      waitForCoalesce ? this.pendingSinceMs + this.logBatchMaxWaitMs : now,
       this.rate.nextEmitAt(now),
     );
     this.timer = this.setTimeoutFn(

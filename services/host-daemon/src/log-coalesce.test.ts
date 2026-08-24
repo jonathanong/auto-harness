@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   appendToBatch,
+  batchAtBound,
   canAppendToBatch,
   countLogLines,
   DEFAULT_LOG_BATCH_MAX_LINES,
@@ -9,6 +10,7 @@ import {
   DEFAULT_LOG_MESSAGES_PER_SEC,
   formatDroppedLogNotice,
   LogRateWindow,
+  splitLogLines,
   splitUtf8,
   startBatch,
   truncateUtf8,
@@ -46,6 +48,16 @@ describe("log coalescing helpers", () => {
     expect(canAppendToBatch(batch("abcd"), "stdout", "e", 1, 4, 10)).toBe(false);
     expect(canAppendToBatch(batch("a\n"), "stdout", "b\n", 2, 100, 1)).toBe(false);
     expect(canAppendToBatch(batch("a\n"), "stdout", "b\n", 2, 100, 2)).toBe(true);
+  });
+
+  it("detects a batch that cannot grow and splits writes on the line bound", () => {
+    expect(batchAtBound(batch("a\nb\n"), 100, 2)).toBe(true);
+    expect(batchAtBound(batch("ab"), 2, 10)).toBe(true);
+    expect(batchAtBound(batch("a"), 100, 10)).toBe(false);
+    expect(splitLogLines("", 2)).toEqual([]);
+    expect(splitLogLines("a\nb\n", 2)).toEqual(["a\nb\n"]);
+    expect(splitLogLines("a\nb\nc\n", 2)).toEqual(["a\nb\n", "c\n"]);
+    expect(splitLogLines("a\nb\nc", 2)).toEqual(["a\nb\n", "c"]);
   });
 
   it("truncates and splits on UTF-8 character boundaries", () => {

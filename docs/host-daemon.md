@@ -342,8 +342,10 @@ Account cooldown is not a general retry policy: ordinary command failures, timeo
 - Add ISO timestamps
 - **Rate limit:** default max ~10 WebSocket messages/sec/session
 - **Batch:** coalesce consecutive stdout/stderr lines up to `logBatchMaxLines` (100) or
-  `logBatchMaxWaitMs` (100ms), and up to the per-frame byte budget. A stream change or
-  system/lifecycle line flushes the current batch first. Coalesced `session:log` frames
+  `logBatchMaxWaitMs` (100ms), and up to the per-frame byte budget. A single write is
+  split on UTF-8 and newline bounds so each frame stays within those caps. A stream
+  change parks the other stream behind the current batch (it is not dropped). A
+  system/lifecycle line flushes queued batches first. Coalesced `session:log` frames
   still carry `{sessionId, attemptId}` and keep insertion order (`timestampSeq`)
 - Emit `session:log` via Connection Manager. Per-session output is capped (32 KiB per chunk, 256 KiB retained for output classification, and at most 10,000 streamed chunks / 10 MiB retained logs), and sequence numbers continue after a reassignment/retry.
 - Serialize outbound messages FIFO. The daemon flushes queued logs before it sends a terminal `session:status`; a failed send is reported but does not permanently block later messages.
