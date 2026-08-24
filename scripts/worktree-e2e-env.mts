@@ -113,11 +113,10 @@ type ContainerInspection = {
 };
 
 function inspectContainer(name: string): ContainerInspection | undefined {
-  const inspect = spawnSync(
-    "docker",
-    ["inspect", "-f", "{{.State.Running}}\t{{.Config.Image}}", name],
-    { encoding: "utf8" },
-  );
+  // This operator-run local harness intentionally inherits the same trusted PATH used to launch
+  // pnpm; the executable is a fixed literal and arguments are passed without a shell.
+  const inspectArgs = ["inspect", "-f", "{{.State.Running}}\t{{.Config.Image}}", name];
+  const inspect = spawnSync("docker", inspectArgs, { encoding: "utf8" }); // NOSONAR
   if (inspect.status !== 0) return undefined;
   const [running, image = ""] = inspect.stdout.trim().split("\t");
   return { state: running === "true" ? "running" : "stopped", image };
@@ -164,7 +163,9 @@ export function ensureDynamo(ports: WorktreePorts): void {
     return;
   }
   if (existing !== undefined) {
-    const remove = spawnSync("docker", ["rm", "-f", ports.containerName], { stdio: "inherit" });
+    // See inspectContainer: this local operator command inherits the trusted pnpm launch PATH.
+    const removeArgs = ["rm", "-f", ports.containerName];
+    const remove = spawnSync("docker", removeArgs, { stdio: "inherit" }); // NOSONAR
     if (remove.status !== 0) {
       console.error(`Failed to recreate outdated container ${ports.containerName}.`);
       process.exit(1);
