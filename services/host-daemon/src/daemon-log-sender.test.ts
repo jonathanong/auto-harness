@@ -15,20 +15,33 @@ describe("sendDaemonLog", () => {
   it("forwards logs and mirrors a readable local line", async () => {
     const lines: string[] = [];
     const sent: unknown[] = [];
+    const options: unknown[] = [];
     await sendDaemonLog(
-      { send: async (message: unknown) => void sent.push(message) } as never,
+      {
+        send: async (message: unknown, sendOptions?: unknown) => {
+          sent.push(message);
+          options.push(sendOptions);
+        },
+      } as never,
       (line) => lines.push(line),
       chunk,
     );
     expect(lines).toEqual(["[stdout#2] hello"]);
     expect(sent).toEqual([expect.objectContaining({ type: "session:log", sessionId: "s" })]);
     expect(sent[0]).not.toHaveProperty("dropped");
+    expect(options).toEqual([undefined]);
   });
 
-  it("forwards source-side drop telemetry", async () => {
+  it("forwards source-side drop telemetry as a non-droppable frame", async () => {
     const sent: unknown[] = [];
+    const options: unknown[] = [];
     await sendDaemonLog(
-      { send: async (message: unknown) => void sent.push(message) } as never,
+      {
+        send: async (message: unknown, sendOptions?: unknown) => {
+          sent.push(message);
+          options.push(sendOptions);
+        },
+      } as never,
       undefined,
       {
         ...chunk,
@@ -36,6 +49,7 @@ describe("sendDaemonLog", () => {
       },
     );
     expect(sent).toEqual([expect.objectContaining({ type: "session:log", dropped: 4 })]);
+    expect(options).toEqual([{ nonDroppable: true }]);
   });
 
   it("does not require a local logger", async () => {
