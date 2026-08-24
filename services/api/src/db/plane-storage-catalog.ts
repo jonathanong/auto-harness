@@ -12,6 +12,7 @@ import {
 import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { sessionLogsTtlEpochSeconds } from "./dynamo.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
@@ -53,6 +54,10 @@ import {
 import { auditLogItem } from "./plane-storage-audit.ts";
 import type { AuditLogRecord } from "../audit-types.ts";
 
+function sessionLogItem(rec: LogRecord): LogRecord & { ttl: number } {
+  return { ...rec, ttl: sessionLogsTtlEpochSeconds() };
+}
+
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
   if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
@@ -81,7 +86,7 @@ export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void
   await ctx.doc.send(
     new PutCommand({
       TableName: ctx.tables.sessionLogs,
-      Item: { ...rec },
+      Item: sessionLogItem(rec),
     }),
   );
 }
@@ -103,7 +108,7 @@ export async function putLogFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
-          { Put: { TableName: ctx.tables.sessionLogs, Item: { ...rec } } },
+          { Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(rec) } },
         ],
       }),
     );
@@ -141,7 +146,7 @@ export async function putLogsFenced(
             },
           },
           ...[...uniqueRecords.values()].map((record) => ({
-            Put: { TableName: ctx.tables.sessionLogs, Item: { ...record } },
+            Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(record) },
           })),
         ],
       }),

@@ -119,6 +119,7 @@ export type LogRecord = {
   content: string;
   timestamp: string;
   seq: number;
+  ttl?: number;
 };
 
 export type ArchiveMetadata = {

@@ -142,8 +142,9 @@ SessionLogs is the highest-volume table. A chatty AI agent can produce hundreds 
 chunks in one connection-fenced transaction, flushing before any later control/status frame and
 before disconnect. This reduces API calls and fence checks, not billed item writes; DynamoDB
 capacity is charged per item and transactional items use transactional capacity pricing.
-SessionLogs records do not carry a `ttl`; local table creation does not configure TTL, while the
-synthesized AWS table's TTL setting has nothing to expire without that attribute (see
+New SessionLogs writes set `ttl` to now + 7 days (Unix epoch seconds). Local table creation and
+the synthesized AWS table both enable DynamoDB TTL on that attribute, so new rows expire without
+application deletes. Rows written before this change omit `ttl` and are not backfilled (see
 [aws.md#sessionlogs-retention-and-archival](aws.md#sessionlogs-retention-and-archival)). On
 terminal status, the API serializes one
 JSONL object, retains only bounded pointer/status metadata in DynamoDB, and uploads through the
@@ -156,11 +157,11 @@ an AWS launch.
 
 **Target mitigation strategies:**
 
-| Strategy          | Impact                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| **DynamoDB TTL**  | Add a `ttl` attribute and enable table TTL so expired log entries are deleted without application deletes. |
-| **S3 archival**   | Upload completed logs to S3 as one archive object, then leave DynamoDB entries to expire via TTL.          |
-| **Rate limiting** | Bound the agent's WebSocket log-message rate so a chatty CLI cannot flood the control plane.               |
+| Strategy          | Impact                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| **DynamoDB TTL**  | New writes carry `ttl` (7-day expiry); DynamoDB deletes expired items without application deletes. |
+| **S3 archival**   | Upload completed logs to S3 as one archive object, then leave DynamoDB entries to expire via TTL.  |
+| **Rate limiting** | Bound the agent's WebSocket log-message rate so a chatty CLI cannot flood the control plane.       |
 
 **Cost comparison:**
 
