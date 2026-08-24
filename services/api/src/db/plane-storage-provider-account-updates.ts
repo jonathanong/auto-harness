@@ -1,6 +1,10 @@
 /* eslint-disable max-lines -- provider account updates share transactional cap fencing. */
 
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  TransactWriteCommand,
+  UpdateCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   MAX_CONCURRENT_SESSIONS_LIMIT,
@@ -10,7 +14,8 @@ import {
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
-type LeaseFence = {
+type TransactWriteItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
+type LeaseFence = TransactWriteItem & {
   ConditionCheck: {
     TableName: string;
     Key: { concurrencyId: string };

@@ -29,6 +29,7 @@ import {
   retrySessionArchiveIfNeeded,
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
+import { emitCooldown, emitLogDrops } from "./operational-metrics.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
   providerAccountLeaseWriteOpts,
@@ -228,6 +229,7 @@ export function appendLog(
   },
 ): LogRecord {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   state.logs.set(opts.sessionId, retainLogs(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
@@ -252,6 +254,7 @@ export async function appendLogDurable(
   },
 ): Promise<LogRecord> {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   if (state.storage) {
     await state.storage.putLog(rec);
   }
@@ -545,6 +548,7 @@ export async function handleHostMessageDurable(
       ) {
         return { ok: false, error: "stale host connection" };
       }
+      emitLogDrops(msg.dropped);
       const retained = retainLogs(state, log);
       state.logs.set(log.sessionId, retained);
       state.onLogCommitted?.(log);
@@ -834,6 +838,7 @@ async function applySessionStatusDurable(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!requeued) return { ok: true };
+      emitCooldown();
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
@@ -937,6 +942,7 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    emitCooldown();
     releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
@@ -1136,6 +1142,7 @@ function applySessionStatus(
     const suppress = transitionEffect(plan, "suppress_target");
     const finish = transitionEffect(plan, "finish");
     if (cooldown) {
+      emitCooldown();
       const account = state.providerAccounts.get(cooldown.providerAccountId);
       if (account) {
         account.usageLimitedUntil = cooldown.usageLimitedUntil;

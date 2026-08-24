@@ -10,6 +10,7 @@ export {
   listArchives,
   queueSessionArchive,
   retrySessionArchiveIfNeeded,
+  retryPendingArchives,
 } from "./control-plane-archive.ts";
 
 /**

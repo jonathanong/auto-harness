@@ -195,6 +195,18 @@ export class ControlPlaneSessionsService {
     return lifecycle.archiveSessionLogs(this.state, sessionId);
   }
 
+  retryPendingArchivesDurable(limit = 25, shouldContinue?: () => boolean): Promise<number> {
+    return lifecycle.retryPendingArchives(this.state, limit, shouldContinue);
+  }
+
+  /** Scheduler-owned, bounded bootstrap for archive rows written before the retry GSI. */
+  migrateArchiveRetryIndexPage(): Promise<boolean> {
+    const migrate = this.state.storage?.migrateArchiveRetryIndexPage;
+    return typeof migrate === "function"
+      ? migrate.call(this.state.storage)
+      : Promise.resolve(false);
+  }
+
   getArchive(sessionId: string): ArchiveMetadata | null {
     return lifecycle.getArchive(this.state, sessionId);
   }

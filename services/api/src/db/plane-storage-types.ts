@@ -160,6 +160,9 @@ export type ArchiveMetadata = {
   status: "pending" | "complete";
   objectStored: boolean;
   updatedAt: string;
+  /** Internal GSI fields; present on every not-yet-stored archive. */
+  retryState?: "pending" | "processing";
+  retryOrder?: string;
 };
 
 export type RepositoryRecord = {
