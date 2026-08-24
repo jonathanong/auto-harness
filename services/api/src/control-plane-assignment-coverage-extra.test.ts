@@ -216,120 +216,101 @@ describe("assignment residual coverage", () => {
     expect(state.pendingAcks.has(row.id)).toBe(false);
   });
 
-  it("sorts eligible provider routes after their cached account was evicted", () => {
-    const state = createControlPlaneState({
-      now: () => NOW,
-      attemptIdFactory: () => "attempt",
-      shardCount: 1,
-    });
-    state.providers.set("provider", {
-      id: "provider",
-      name: "provider",
-      defaultCommandId: "provider-command",
-    });
-    state.providerAccounts.set("account", {
-      id: "account",
-      providerId: "provider",
-      label: "account",
-    });
-    state.commands.set("provider-command", {
-      id: "provider-command",
-      name: "provider command",
-      argv: ["tool"],
-      appendPrompt: true,
-      providerId: "provider",
-    });
-    for (const hostId of ["host-a", "host-b"]) {
-      const id = `worktree-${hostId}`;
-      state.worktrees.set(id, { ...worktree, id, name: id, hostId });
-      const connectionId = `connection-${hostId}`;
-      state.connections.set(connectionId, {
-        hostId,
-        connectionId,
-        type: "host",
-        connectedAt: NOW,
-        lastHeartbeatAt: NOW,
-        capabilities: [],
-        repositoryIds: ["repo"],
-        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-        protocolVersion: 1,
-      });
-      state.hostConnection.set(hostId, connectionId);
-      state.hostInventories.set(hostId, {
-        hostId,
-        repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
-        providerAccounts: [{ providerAccountId: "account" }],
-        commandProfiles: {},
-        updatedAt: NOW,
-      });
-    }
-    state.sessions.set("s", session({ target: { commandId: "provider-command" } }));
-    state.providerAccounts.get = () => undefined;
+  it("records a live account assignment then skips the write after a cache miss", () => {
+    const state = providerAssignmentState();
+    state.sessions.set(
+      "s",
+      session({ target: { commandId: "provider-command" }, targetLabels: ["provider-command"] }),
+    );
+    expect(assignQueued(state)).toHaveLength(1);
+    expect(state.providerAccounts.get("account")?.lastAssignedAt).toBe(NOW);
 
+    state.sessions.set(
+      "s2",
+      session({
+        id: "s2",
+        target: { commandId: "provider-command" },
+        targetLabels: ["provider-command"],
+      }),
+    );
+    state.providerAccounts.get = () => undefined;
     expect(assignQueued(state)).toHaveLength(1);
   });
 
-  it("assigns durably after the claimed provider account disappears", async () => {
-    const state = createControlPlaneState({
-      now: () => NOW,
-      attemptIdFactory: () => "attempt",
-      shardCount: 1,
+  it("durably records then skips account writes across a claim-time cache miss", async () => {
+    const state = providerAssignmentState();
+    state.sessions.set(
+      "s",
+      session({ target: { commandId: "provider-command" }, targetLabels: ["provider-command"] }),
+    );
+    setDurableReadStorage(state, {
+      expireQueuedSession: async () => false,
+      tryAssignSession: async () => true,
     });
-    state.providers.set("provider", {
-      id: "provider",
-      name: "provider",
-      defaultCommandId: "provider-command",
-    });
-    state.providerAccounts.set("account", {
-      id: "account",
-      providerId: "provider",
-      label: "account",
-    });
-    state.commands.set("provider-command", {
-      id: "provider-command",
-      name: "provider command",
-      argv: ["tool"],
-      appendPrompt: true,
-      providerId: "provider",
-    });
-    state.worktrees.set("w", worktree);
-    state.connections.set("connection", {
-      hostId: "host",
-      connectionId: "connection",
+    await expect(assignQueuedDurable(state)).resolves.toMatchObject([
+      { session: { resolvedRoute: { providerAccountId: "account" } } },
+    ]);
+    expect(state.providerAccounts.get("account")?.lastAssignedAt).toBe(NOW);
+
+    state.sessions.set(
+      "s2",
+      session({
+        id: "s2",
+        target: { commandId: "provider-command" },
+        targetLabels: ["provider-command"],
+      }),
+    );
+    state.providerAccounts.get = () => undefined;
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+  });
+});
+
+function providerAssignmentState() {
+  const state = createControlPlaneState({
+    now: () => NOW,
+    attemptIdFactory: () => "attempt",
+    shardCount: 1,
+  });
+  state.providers.set("provider", {
+    id: "provider",
+    name: "provider",
+    defaultCommandId: "provider-command",
+  });
+  state.providerAccounts.set("account", {
+    id: "account",
+    providerId: "provider",
+    label: "account",
+  });
+  state.commands.set("provider-command", {
+    id: "provider-command",
+    name: "provider command",
+    argv: ["tool"],
+    appendPrompt: true,
+    providerId: "provider",
+  });
+  for (const hostId of ["host-a", "host-b"]) {
+    const id = `worktree-${hostId}`;
+    state.worktrees.set(id, { ...worktree, id, name: id, hostId });
+    const connectionId = `connection-${hostId}`;
+    state.connections.set(connectionId, {
+      hostId,
+      connectionId,
       type: "host",
       connectedAt: NOW,
       lastHeartbeatAt: NOW,
-      commandProfiles: [],
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       protocolVersion: 1,
     });
-    state.hostConnection.set("host", "connection");
-    state.hostInventories.set("host", {
-      hostId: "host",
+    state.hostConnection.set(hostId, connectionId);
+    state.hostInventories.set(hostId, {
+      hostId,
       repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
       providerAccounts: [{ providerAccountId: "account" }],
       commandProfiles: {},
       updatedAt: NOW,
     });
-    state.sessions.set(
-      "s",
-      session({
-        target: { commandId: "provider-command" },
-        targetLabels: ["provider-command"],
-      }),
-    );
-    setDurableReadStorage(state, {
-      expireQueuedSession: async () => false,
-      tryAssignSession: async () => {
-        state.providerAccounts.delete("account");
-        return true;
-      },
-    });
-    await expect(assignQueuedDurable(state)).resolves.toMatchObject([
-      { session: { resolvedRoute: { providerAccountId: "account" } } },
-    ]);
-    expect(state.providerAccounts.has("account")).toBe(false);
-  });
-});
+  }
+  return state;
+}

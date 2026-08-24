@@ -216,4 +216,29 @@ describe("scheduled terminal and retry message branches", () => {
       mainCheckoutLease: true,
     });
   });
+
+  it("requeues a providerless leased usage limit without optional report fields", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const state = durable(session(), {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return true;
+      },
+    });
+    await handleHostMessageDurable(state, status("s", "failed", { errorCode: "usage_limit" }));
+    expect(calls[0]).toMatchObject({
+      status: "queued",
+      suppressedTargetIndex: 0,
+      errorCode: "usage_limit",
+    });
+    expect(calls[0]).not.toHaveProperty("exitCode");
+    expect(calls[0]).not.toHaveProperty("cliResumeRef");
+    expect(state.sessions.get("s")).toMatchObject({
+      status: "queued",
+      errorCode: "usage_limit",
+      suppressedTargetIndexes: [0],
+    });
+    expect(state.sessions.get("s")).not.toHaveProperty("errorMessage");
+    expect(state.sessions.get("s")).not.toHaveProperty("exitCode");
+  });
 });

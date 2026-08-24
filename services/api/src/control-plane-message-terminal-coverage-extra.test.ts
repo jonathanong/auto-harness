@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
-import { handleHostMessageDurable } from "./control-plane-messages.ts";
+import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -221,5 +221,68 @@ describe("durable terminal message residual coverage", () => {
       }),
     ).resolves.toEqual({ ok: true });
     expect(state.sessions.get("s")?.status).toBe("running");
+  });
+
+  it("finishes a leased scheduled attempt without optional report fields", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set(
+      "s",
+      row({
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "cmd",
+          hostId: "host",
+          worktreeId: null,
+          attemptId: "attempt",
+        },
+      }),
+    );
+    let input: Record<string, unknown> = {};
+    setDurableReadStorage(state, {
+      releaseMainCheckoutSession: async (next: Record<string, unknown>) => {
+        input = next;
+        return true;
+      },
+      putArchive: async () => undefined,
+    });
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(input).toMatchObject({ status: "completed", completedAt: NOW });
+    expect(input).not.toHaveProperty("exitCode");
+    expect(input).not.toHaveProperty("errorCode");
+    expect(input).not.toHaveProperty("reason");
+    expect(input).not.toHaveProperty("cliResumeRef");
+    expect(state.sessions.get("s")).toMatchObject({ status: "completed", completedAt: NOW });
+    expect(state.sessions.get("s")).not.toHaveProperty("exitCode");
+    expect(state.sessions.get("s")).not.toHaveProperty("errorMessage");
+  });
+
+  it("ignores a local stale terminal report without mutating the running session", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const running = row({
+      type: "prompt",
+      source: "api",
+      worktreeId: "w",
+      mainCheckoutLease: undefined,
+      assignmentConnectionId: undefined,
+    });
+    state.sessions.set("s", running);
+    expect(
+      handleHostMessage(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "other",
+        status: "completed",
+      }),
+    ).toEqual({ ok: true });
+    expect(state.sessions.get("s")).toEqual(running);
   });
 });

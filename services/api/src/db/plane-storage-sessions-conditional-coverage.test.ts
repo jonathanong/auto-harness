@@ -111,4 +111,49 @@ describe("session storage conditional outcomes", () => {
       "dynamo unavailable",
     );
   });
+
+  it("treats a vanished session after a finish race as a lost claim and rethrows expiry errors", async () => {
+    const vanished = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(conditional)
+      .mockResolvedValueOnce({});
+    await expect(
+      finishSession(ctx(vanished), {
+        sessionId: "session",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "completed",
+        queueShard: 0,
+        completedAt: "done",
+      }),
+    ).resolves.toBe(false);
+
+    const boomExpire = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(
+      expireQueuedSession(ctx(boomExpire), {
+        sessionId: "session",
+        queueShard: 0,
+        queueExpiresAt: "expiry",
+        completedAt: "done",
+      }),
+    ).rejects.toThrow("dynamo unavailable");
+    const boomFinish = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(
+      finishSession(ctx(boomFinish), {
+        sessionId: "session",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "completed",
+        queueShard: 0,
+        completedAt: "done",
+      }),
+    ).rejects.toThrow("dynamo unavailable");
+  });
 });
