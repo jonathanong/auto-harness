@@ -38,7 +38,6 @@ import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
  */
 export class DynamoPlaneStorageBase {
   protected readonly ctx: PlaneStorageCtx;
-  private queueOrderBackfilled = false;
 
   constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
     this.ctx = { doc, tables };
@@ -49,11 +48,9 @@ export class DynamoPlaneStorageBase {
     return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
   }
 
-  /** Populate `queueOrder` on active queued rows before assignment reads the new GSI. */
+  /** Repair queued rows missing `queueOrder`. Safe to repeat; later requeues are also written. */
   async backfillQueuedSessionQueueOrder(shardCount?: number): Promise<void> {
-    if (this.queueOrderBackfilled) return;
     await backfillQueuedSessionQueueOrder(this.ctx.doc, this.ctx.tables.sessions, shardCount);
-    this.queueOrderBackfilled = true;
   }
 
   putSession(session: SessionRecord): Promise<void> {

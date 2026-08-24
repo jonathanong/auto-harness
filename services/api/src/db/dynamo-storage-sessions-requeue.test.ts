@@ -1,5 +1,8 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { queueOrderKey } from "../control-plane-ordering.ts";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
@@ -92,6 +95,11 @@ describe("DynamoDB Local requeue and acknowledgement races", () => {
       }),
     ).toBe(true);
     expect((await getSession(ctx, "run"))?.status).toBe("queued");
+    expect(
+      (
+        await ctx.doc.send(new GetCommand({ TableName: tables.sessions, Key: { id: "run" } }))
+      ).Item?.queueOrder,
+    ).toBe(queueOrderKey({ id: "run", priority: base.priority, createdAt: base.createdAt }));
     expect((await getWorktree(ctx, "wt"))?.online).toBe(false);
     await putSession(ctx, {
       ...base,

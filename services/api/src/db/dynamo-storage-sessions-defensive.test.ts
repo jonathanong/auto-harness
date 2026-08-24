@@ -9,6 +9,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  SESSIONS_QUEUE_ORDER_INDEX,
+  SESSIONS_STATUS_CREATED_INDEX,
+} from "../control-plane-ordering.ts";
+import {
   listAllSessions,
   listAllWorktrees,
   listSessionsByStatus,
@@ -42,6 +46,53 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
       expect.any(ScanCommand),
       expect.any(QueryCommand),
     ]);
+  });
+
+  it("lists non-queued sessions from the createdAt index", async () => {
+    const commands: QueryCommand[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(QueryCommand);
+          commands.push(command as QueryCommand);
+          return { Items: [{ id: "running", status: "running", createdAt: "t", priority: 0 }] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatus(ctx, "running", 0)).resolves.toMatchObject([{ id: "running" }]);
+    expect(commands).toHaveLength(1);
+    expect(commands[0]?.input.IndexName).toBe(SESSIONS_STATUS_CREATED_INDEX);
+  });
+
+  it("unions createdAt rows missing from the live queue-order index and repairs them", async () => {
+    const commands: unknown[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          commands.push(command);
+          if (command instanceof QueryCommand) {
+            const index = (command as QueryCommand).input.IndexName;
+            if (index === SESSIONS_QUEUE_ORDER_INDEX) {
+              return { Items: [{ id: "high", status: "queued", priority: 5, createdAt: "t2", queueOrder: "x" }] };
+            }
+            return {
+              Items: [
+                { id: "high", status: "queued", priority: 5, createdAt: "t2", queueOrder: "x" },
+                { id: "low", status: "queued", priority: 0, createdAt: "t1" },
+              ],
+            };
+          }
+          return {};
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatus(ctx, "queued", 0)).resolves.toMatchObject([
+      { id: "high" },
+      { id: "low" },
+    ]);
+    expect(commands.some((command) => command instanceof UpdateCommand)).toBe(true);
   });
 
   it("falls back to the createdAt index while the queue-order GSI is backfilling", async () => {

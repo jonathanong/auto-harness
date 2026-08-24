@@ -1,11 +1,16 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
+import { queueOrderKey } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import {
   readSessionDrainActivity,
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
-import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  isConditionalTransactionFailed,
+  itemToSession,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
 
 type ReleaseMainCheckoutOptions = {
   sessionId: string;
@@ -22,6 +27,7 @@ type ReleaseMainCheckoutOptions = {
   retryCount?: number;
   retryAfter?: string;
   suppressedTargetIndex?: number;
+  queueOrder?: string;
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
   concurrencyId?: string | undefined;
@@ -30,11 +36,28 @@ type ReleaseMainCheckoutOptions = {
   requireUnacknowledged?: boolean;
 };
 
+async function queueOrderForSession(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+): Promise<string | undefined> {
+  const res = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.sessions,
+      Key: { id: sessionId },
+      ConsistentRead: true,
+    }),
+  );
+  return res.Item ? queueOrderKey(itemToSession(res.Item as Record<string, unknown>)) : undefined;
+}
+
 export async function releaseMainCheckoutSession(
   ctx: PlaneStorageCtx,
   opts: ReleaseMainCheckoutOptions,
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
+  const queueOrder = isQueued
+    ? (opts.queueOrder ?? (await queueOrderForSession(ctx, opts.sessionId)))
+    : undefined;
   const before = isQueued ? null : await readSessionDrainActivity(ctx, opts.sessionId);
   const cleanup =
     isQueued || before?.session.cancelledByDrainOperationId
@@ -66,7 +89,7 @@ export async function releaseMainCheckoutSession(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: updateExpression(opts, isQueued),
+              UpdateExpression: updateExpression(opts, isQueued, queueOrder),
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
@@ -75,7 +98,7 @@ export async function releaseMainCheckoutSession(
                   ? " AND attribute_not_exists(cancelledByDrainOperationId)"
                   : ""),
               ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: expressionValues(opts),
+              ExpressionAttributeValues: expressionValues(opts, queueOrder),
             },
           },
           ...(opts.concurrencyId && !isQueued
@@ -113,9 +136,15 @@ export async function releaseMainCheckoutSession(
   }
 }
 
-function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): string {
+function updateExpression(
+  opts: ReleaseMainCheckoutOptions,
+  isQueued: boolean,
+  queueOrder: string | undefined,
+): string {
   return (
-    "SET #s = :status, statusShard = :statusShard, worktreeId = :null" +
+    "SET #s = :status, statusShard = :statusShard" +
+    (queueOrder ? ", queueOrder = :queueOrder" : "") +
+    ", worktreeId = :null" +
     (isQueued ? ", hostId = :null" : "") +
     (opts.reason ? ", errorMessage = :reason" : "") +
     (opts.completedAt ? ", completedAt = :completedAt" : "") +
@@ -132,10 +161,14 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
   );
 }
 
-function expressionValues(opts: ReleaseMainCheckoutOptions): Record<string, unknown> {
+function expressionValues(
+  opts: ReleaseMainCheckoutOptions,
+  queueOrder: string | undefined,
+): Record<string, unknown> {
   return {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
+    ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
     ":expectedStatus": opts.expectedStatus ?? "running",
     ":hostId": opts.hostId,
     ":connectionId": opts.connectionId,

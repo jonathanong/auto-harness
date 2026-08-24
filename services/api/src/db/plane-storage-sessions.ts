@@ -12,6 +12,7 @@ import type { SessionStatus } from "@auto-harness/shared";
 
 import {
   compareSessionsForQueue,
+  queueOrderKey,
   SESSIONS_QUEUE_ORDER_INDEX,
   SESSIONS_STATUS_CREATED_INDEX,
 } from "../control-plane-ordering.ts";
@@ -502,6 +503,12 @@ export async function listSessionsByStatus(
   status: SessionStatus,
   shard: number,
 ): Promise<SessionRecord[]> {
+  // Only queued rows are backfilled onto statusShard-queueOrder. Running/terminal
+  // listings (timeouts, drain) must keep using the createdAt index so pre-index
+  // rows are not silently omitted.
+  if (status !== "queued") {
+    return querySessionsByStatusIndex(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard);
+  }
   try {
     return await querySessionsByStatusIndex(ctx, SESSIONS_QUEUE_ORDER_INDEX, status, shard);
   } catch (error) {
@@ -510,6 +517,14 @@ export async function listSessionsByStatus(
       await querySessionsByStatusIndex(ctx, SESSIONS_STATUS_CREATED_INDEX, status, shard)
     ).toSorted(compareSessionsForQueue);
   }
+}
+
+async function queueOrderForSession(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+): Promise<string | undefined> {
+  const session = await getSession(ctx, sessionId, true);
+  return session ? queueOrderKey(session) : undefined;
 }
 
 export async function putWorktree(ctx: PlaneStorageCtx, wt: WorktreeRecord): Promise<void> {
@@ -1179,6 +1194,7 @@ export async function tryRequeueSession(
     requireUnacknowledged?: boolean;
   },
 ): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1236,7 +1252,9 @@ export async function tryRequeueSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
+                "SET #s = :queued, statusShard = :statusShard" +
+                (queueOrder ? ", queueOrder = :queueOrder" : "") +
+                ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
               ConditionExpression:
                 "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId" +
                 (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
@@ -1252,6 +1270,7 @@ export async function tryRequeueSession(
                 ":queued": "queued",
                 ":running": "running",
                 ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
                 ":null": null,
                 ":reason": opts.reason ?? "agent disconnected; requeued",
                 ...(opts.expectedHostId ? { ":hostId": opts.expectedHostId } : {}),
@@ -1603,6 +1622,7 @@ export async function requeueUsageLimitedSession(
     errorMessage?: string;
   },
 ): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1632,7 +1652,9 @@ export async function requeueUsageLimitedSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, ackReceivedAt",
+                "SET #s = :queued, statusShard = :statusShard" +
+                (queueOrder ? ", queueOrder = :queueOrder" : "") +
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, ackReceivedAt",
               ConditionExpression:
                 "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
@@ -1640,6 +1662,7 @@ export async function requeueUsageLimitedSession(
                 ":queued": "queued",
                 ":running": "running",
                 ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
                 ":null": null,
                 ":code": "usage_limit",
                 ":message": opts.errorMessage ?? "provider usage limit; requeued",
@@ -1670,6 +1693,7 @@ export async function suppressProviderlessUsageLimit(
     errorMessage?: string;
   },
 ): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1689,7 +1713,9 @@ export async function suppressProviderlessUsageLimit(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message, suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index) REMOVE startedAt, ackReceivedAt",
+                "SET #s = :queued, statusShard = :statusShard" +
+                (queueOrder ? ", queueOrder = :queueOrder" : "") +
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message, suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index) REMOVE startedAt, ackReceivedAt",
               ConditionExpression:
                 "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
@@ -1697,6 +1723,7 @@ export async function suppressProviderlessUsageLimit(
                 ":queued": "queued",
                 ":running": "running",
                 ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
                 ":null": null,
                 ":code": "usage_limit",
                 ":message": opts.errorMessage ?? "providerless usage limit; trying fallback",

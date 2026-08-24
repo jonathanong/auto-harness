@@ -242,7 +242,7 @@ describe("ensureSessionsQueueOrderIndex", () => {
     );
   });
 
-  it("backfills queued rows at most once per storage instance", async () => {
+  it("rescans queued rows on each backfill so requeued legacy sessions get queueOrder", async () => {
     let queries = 0;
     const storage = new DynamoPlaneStorage(
       {
@@ -258,6 +258,6 @@ describe("ensureSessionsQueueOrderIndex", () => {
     );
     await storage.backfillQueuedSessionQueueOrder(1);
     await storage.backfillQueuedSessionQueueOrder(1);
-    expect(queries).toBe(1);
+    expect(queries).toBe(2);
   });
 });
