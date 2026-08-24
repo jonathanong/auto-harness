@@ -1,0 +1,4 @@
+# Strict vars.* checking: only repository variables actually read by workflows.
+config-variables:
+  - VITEST_SHARDS
+  - PLAYWRIGHT_E2E_SHARDS
