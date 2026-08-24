@@ -279,7 +279,8 @@ export function handleHostMessage(
       return r.ok ? { ok: true } : { ok: false, error: r.error };
     }
     case "session:ack": {
-      const session = state.sessions.get(msg.sessionId) ?? null;
+      const session = state.sessions.get(msg.sessionId);
+      if (!session) return { ok: false, error: "session not found" };
       const plan = planSessionTransition(
         session,
         { type: "ack", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
@@ -287,7 +288,6 @@ export function handleHostMessage(
       );
       const rejected = transitionEffect(plan, "reject");
       if (rejected) return { ok: false, error: rejected.error };
-      if (!session) return { ok: false, error: "session not found" };
       if (!transitionEffect(plan, "ack")) return { ok: true };
       session.ackReceivedAt = state.now();
       state.pendingAcks.delete(msg.sessionId);
@@ -446,14 +446,14 @@ export async function handleHostMessageDurable(
     // Any API node can receive this frame. The process map is only a cache;
     // fetch the authoritative row before testing an execution fence.
     const session = await state.storage.getSession(msg.sessionId);
+    if (!session) return { ok: false, error: "session not found" };
     const plan = planSessionTransition(
-      session ?? null,
+      session,
       { type: "ack", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
       plannerContext(state, "durable"),
     );
     const rejected = transitionEffect(plan, "reject");
     if (rejected) return { ok: false, error: rejected.error };
-    if (!session) return { ok: false, error: "session not found" };
     state.sessions.set(msg.sessionId, session);
     if (!transitionEffect(plan, "ack")) return { ok: true };
     const acknowledgedAt = state.now();
@@ -515,7 +515,7 @@ async function applySessionStatusDurable(
   }
   state.sessions.set(session.id, session);
   let providerAccount: SessionTransitionContext["providerAccount"];
-  let loadedAccount: { usageLimitCooldownSeconds: number } | null | undefined;
+  let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
   if (
     msg.status === "failed" &&
@@ -764,10 +764,9 @@ async function applySessionStatusDurable(
     if (!committed) return { ok: true };
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
-    const account = loadedAccount ?? state.providerAccounts.get(cooldown.providerAccountId);
-    if (account) {
+    if (loadedAccount) {
       state.providerAccounts.set(cooldown.providerAccountId, {
-        ...account,
+        ...loadedAccount,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         lastUsageLimitedAt: now,
         updatedAt: now,
@@ -836,11 +835,11 @@ async function applySessionStatusDurable(
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-    ...(shouldSuppressTarget
+    ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
             ...(session.suppressedTargetIndexes ?? []),
-            session.resolvedRoute?.targetIndex ?? 0,
+            suppress.targetIndex,
           ],
         }
       : {}),
@@ -868,7 +867,8 @@ function applySessionStatus(
     });
     if (!usageResult.ok) return usageResult;
   }
-  const session = state.sessions.get(msg.sessionId) ?? null;
+  const session = state.sessions.get(msg.sessionId);
+  if (!session) return { ok: false, error: "session not found" };
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
@@ -876,8 +876,7 @@ function applySessionStatus(
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };
-  if (!session || transitionEffect(plan, "ignore"))
-    return session ? { ok: true } : { ok: false, error: "session not found" };
+  if (transitionEffect(plan, "ignore")) return { ok: true };
 
   const terminal = isTerminalSessionStatus(msg.status);
   const patch = transitionEffect(plan, "patch_report");
