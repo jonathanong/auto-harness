@@ -123,7 +123,14 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
     const lease = session.providerAccountLease;
-    if (!lease || session.status !== "running") continue;
+    // Cancelled running work retains the assignment until the daemon reports
+    // terminal; queued leftover lease fields must not occupy a slot.
+    if (
+      !lease ||
+      (session.status !== "running" && !(session.status === "cancelled" && session.hostId))
+    ) {
+      continue;
+    }
     state.providerAccountLeases.set(lease.concurrencyId, {
       sessionId: session.id,
       attemptId: lease.attemptId,

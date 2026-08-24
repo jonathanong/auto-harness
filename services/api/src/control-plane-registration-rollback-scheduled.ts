@@ -1,5 +1,9 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 
 export async function protectScheduledRunsForFailedRegistration(
   state: ControlPlaneState,
@@ -40,8 +44,10 @@ export async function protectScheduledRunsForFailedRegistration(
       status: "queued",
       queueShard: session.queueShard,
       reason: "replacement registration failed; requeued",
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "replacement registration failed; requeued"),

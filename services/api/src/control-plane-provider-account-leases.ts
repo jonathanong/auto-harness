@@ -37,6 +37,16 @@ export function hostProviderAccountReady(
   );
 }
 
+function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boolean {
+  if (session.hostId !== hostId) return false;
+  return (
+    session.status === "running" ||
+    session.providerAccountLease !== undefined ||
+    session.worktreeId != null ||
+    session.mainCheckoutLease === true
+  );
+}
+
 export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
   const cap = connectionId
@@ -45,7 +55,7 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
   if (cap === undefined) return true;
   let used = 0;
   for (const session of state.sessions.values()) {
-    if (session.status === "running" && session.hostId === hostId) used += 1;
+    if (sessionHoldsHostAssignment(session, hostId)) used += 1;
   }
   return used < cap;
 }
@@ -69,10 +79,12 @@ export function tryAcquireProviderAccountLeaseLocal(
   providerAccountId: string | undefined,
   attemptId: string,
   hostId: string,
+  occupiedSlots: ReadonlySet<number> = new Set(),
 ): ProviderAccountLease | undefined {
   if (!providerAccountId) return undefined;
   const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
   for (let slot = 0; slot < max; slot += 1) {
+    if (occupiedSlots.has(slot)) continue;
     const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
     if (state.providerAccountLeases.has(concurrencyId)) continue;
     const lease: ProviderAccountLease = {
@@ -91,6 +103,12 @@ export function tryAcquireProviderAccountLeaseLocal(
     return lease;
   }
   return undefined;
+}
+
+export function providerAccountLeaseWriteOpts(
+  session: Pick<SessionRecord, "providerAccountLease">,
+): { providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]> } {
+  return session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {};
 }
 
 /** Idempotent: a second release for the same attempt is a no-op. */

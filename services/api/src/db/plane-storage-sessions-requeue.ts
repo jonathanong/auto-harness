@@ -3,6 +3,10 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { statusShardAttr } from "./dynamo.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import { queueOrderForSession } from "./plane-storage-sessions-queue.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
 
 type RequeueOpts = {
   sessionId: string;
@@ -18,6 +22,7 @@ type RequeueOpts = {
   requireNoHostLock?: string;
   fence?: { hostId: string; connectionId: string };
   requireUnacknowledged?: boolean;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
 };
 
 function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<string, unknown>> {
@@ -123,6 +128,11 @@ export async function tryRequeueSession(ctx: PlaneStorageCtx, opts: RequeueOpts)
           ...hostLockChecks(ctx, opts),
           requeueWorktreeUpdate(ctx, opts),
           requeueSessionUpdate(ctx, opts, queueOrder),
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
         ],
       }),
     );

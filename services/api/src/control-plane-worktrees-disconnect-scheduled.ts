@@ -1,6 +1,10 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 
 export async function disconnectScheduledMainCheckouts(
   state: ControlPlaneState,
@@ -30,9 +34,11 @@ export async function disconnectScheduledMainCheckouts(
         status: "queued",
         queueShard: session.queueShard,
         reason,
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (released) {
         releaseScheduledLeaseLocal(state, session);
+        releaseProviderAccountLease(state, session);
         state.sessions.set(session.id, queueReconnectSession(session, reason));
         state.pendingAcks.delete(session.id);
         requeued.push(session.id);

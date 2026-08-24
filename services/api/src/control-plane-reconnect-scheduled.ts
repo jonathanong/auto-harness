@@ -1,5 +1,9 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 
 export type ScheduledReconnectConfirmation = {
@@ -68,9 +72,11 @@ export async function requeueOmittedScheduled(
           status: "queued",
           queueShard: session.queueShard,
           reason: "daemon did not report session after reconnect; requeued",
+          ...providerAccountLeaseWriteOpts(session),
         })
       : releaseScheduledLeaseLocal(state, session);
     if (released) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
@@ -137,10 +143,12 @@ export async function reclaimScheduledReconnect(
           : "daemon reconnect deadline exceeded; requeued",
         ...(cancelled ? { expectedStatus: "cancelled" as const } : {}),
         ...(cancelled && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       })
     : releaseScheduledLeaseLocal(state, session);
   if (released) {
     if (state.storage) releaseScheduledLeaseLocal(state, session);
+    releaseProviderAccountLease(state, session);
     if (cancelled) {
       const next = { ...session };
       delete next.mainCheckoutLease;

@@ -58,7 +58,14 @@ describe("host capabilities", () => {
     ).toBeNull();
     expect(parseHostCapabilitiesAdvertisement({ features: "scheduled-main-checkout" })).toBeNull();
     expect(parseHostCapabilitiesAdvertisement({ maxConcurrentAssignments: 1.5 })).toBeNull();
-    expect(parseHostCapabilitiesAdvertisement({})).toEqual({ features: [] });
+    expect(parseHostCapabilitiesAdvertisement({})).toEqual({
+      features: [],
+      maxConcurrentAssignments: 64,
+    });
+    expect(parseHostCapabilitiesAdvertisement({ features: ["scheduled-main-checkout"] })).toEqual({
+      features: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 64,
+    });
     expect(defaultMaxConcurrentAssignments(undefined)).toBe(64);
     expect(defaultMaxConcurrentAssignments(8)).toBe(8);
   });

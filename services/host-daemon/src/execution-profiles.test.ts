@@ -31,6 +31,32 @@ describe("execution profiles", () => {
     });
     expect(executionProfileFingerprint(parsed.profiles.get("acct-b")!)).toMatch(/^[0-9a-f]{64}$/);
     expect(executionProfileFingerprint(parsed.profiles.get("acct-b")!)).not.toContain("secret-b");
+    expect(
+      executionProfileFingerprint({
+        providerAccountId: "acct-b",
+        home: "/homes/b",
+        env: { TOKEN: "secret-b" },
+      }),
+    ).toEqual(
+      executionProfileFingerprint({
+        providerAccountId: "acct-b",
+        home: "/homes/b",
+        env: { TOKEN: "other-secret" },
+      }),
+    );
+    expect(
+      executionProfileFingerprint({
+        providerAccountId: "acct-b",
+        home: "/homes/b",
+        env: { TOKEN: "secret-b" },
+      }),
+    ).not.toEqual(
+      executionProfileFingerprint({
+        providerAccountId: "acct-b",
+        home: "/homes/b",
+        env: { OTHER: "secret-b" },
+      }),
+    );
     expect(resolveExecutionProfile(parsed, "acct-b")?.home).toBe("/homes/b");
     expect(resolveExecutionProfile(parsed, undefined)).toBeUndefined();
   });

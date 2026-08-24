@@ -128,6 +128,26 @@ describe("assignment optional-field coverage", () => {
     ]);
   });
 
+  it("retries the next account slot when a durable lease put is lost", async () => {
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 2,
+    });
+    const slots: number[] = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return opts.providerAccountLease?.slot === 1;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(slots).toEqual([0, 1]);
+    expect(state.sessions.get("s")?.providerAccountLease?.slot).toBe(1);
+  });
+
   it("uses legacy metadata ownership for the durable assignment drain fence", async () => {
     const state = providerState();
     state.sessions.set("s", session({ metadata: { createdBy: "principal-legacy" } }));

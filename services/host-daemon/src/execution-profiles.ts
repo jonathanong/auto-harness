@@ -103,11 +103,11 @@ export function loadExecutionProfiles(env: NodeJS.ProcessEnv = process.env): Exe
   return parsed === undefined ? loaded : { ...loaded, maxConcurrentAssignments: parsed };
 }
 
-/** Opaque SHA-256 of the local home and env; secrets stay hashed. */
+/** Opaque SHA-256 of home plus extra-env key names; values stay off the hash. */
 export function executionProfileFingerprint(profile: ExecutionProfile): string {
   const canonical = JSON.stringify({
     home: profile.home,
-    env: Object.fromEntries(Object.entries(profile.env).toSorted(([a], [b]) => a.localeCompare(b))),
+    envKeys: Object.keys(profile.env).toSorted(),
   });
   return createHash("sha256").update(canonical).digest("hex");
 }

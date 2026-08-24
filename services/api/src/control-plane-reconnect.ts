@@ -14,7 +14,10 @@ import {
   confirmReportedSession,
   ignoreStaleReconnectClaim,
 } from "./control-plane-reconnect-confirm.ts";
-import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
@@ -113,6 +116,7 @@ export async function reconcileHostRunningSessions(
             ? { expectedConnectionId: session.assignmentConnectionId }
             : {}),
           fence: { hostId, connectionId: connectionId! },
+          ...providerAccountLeaseWriteOpts(session),
         })
       ) {
         releaseProviderAccountLease(state, session);
@@ -194,6 +198,7 @@ export async function reclaimReconnectDeadlines(
           : {}),
         ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
         ...(!connectionId ? { requireNoHostLock: session.hostId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       })
     ) {
       releaseProviderAccountLease(state, session);

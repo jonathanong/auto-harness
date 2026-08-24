@@ -2,7 +2,7 @@ import type { HostWireMessage, SessionAssign } from "@auto-harness/shared";
 
 type AssignMessage = Extract<HostWireMessage, { type: "session:assign" }>;
 
-/** Non-secret routing breadcrumbs for logs and diagnostics only. */
+/** Profile key plus non-secret routing breadcrumbs for logs. */
 type ResolvedRouteMetadata = Pick<SessionAssign, "targetIndex" | "commandId" | "providerAccountId">;
 
 export function resolvedRouteMetadata(message: AssignMessage): ResolvedRouteMetadata {
@@ -38,8 +38,8 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
       ? { resumeRefCapture: message.resumeRefCapture }
       : {}),
     ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
-    // Route metadata is intentionally informational.  It is not consulted by
-    // SessionRunner, which always spawns the scheduler-provided resolvedArgv.
+    // commandId/targetIndex are informational. providerAccountId selects the
+    // daemon-local CLI home/env profile in runClaimedSession.
     ...(route.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
     ...(route.commandId !== undefined ? { commandId: route.commandId } : {}),
     ...(route.providerAccountId !== undefined

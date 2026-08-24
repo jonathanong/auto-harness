@@ -1,5 +1,10 @@
+/* eslint-disable max-lines -- durable disconnect must release every held lease. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { disconnectScheduledMainCheckouts } from "./control-plane-worktrees-disconnect-scheduled.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 
 export async function offlineHostAndRequeueDurableImpl(
   state: ControlPlaneState,
@@ -47,8 +52,10 @@ export async function offlineHostAndRequeueDurableImpl(
         fence: { hostId, connectionId },
         attemptId: session.attemptId!,
         ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (released) {
+        releaseProviderAccountLease(state, session);
         state.sessions.set(sessionId, { ...session, worktreeId: null });
         state.worktrees.set(wt.id, {
           ...wt,
@@ -98,8 +105,10 @@ export async function offlineHostAndRequeueDurableImpl(
             expectedHostId: hostId,
             expectedConnectionId: connectionId,
             fence: { hostId, connectionId },
+            ...providerAccountLeaseWriteOpts(latestSession),
           }));
         if (requeuedNow) {
+          releaseProviderAccountLease(state, latestSession);
           const {
             ackReceivedAt: _,
             assignmentConnectionId: __,
@@ -146,8 +155,10 @@ export async function offlineHostAndRequeueDurableImpl(
       forceOffline: true,
       expectedConnectionId: connectionId,
       fence: { hostId, connectionId },
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (won) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(sessionId, {
         ...session,
         status: "queued",

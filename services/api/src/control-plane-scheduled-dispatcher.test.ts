@@ -228,6 +228,8 @@ describe("scheduled main-checkout dispatcher", () => {
       repositoryId: "repo-1",
       resolvedArgv: ["claude", "--", "review the repository"],
       worktreeId: null,
+      providerAccountId: "account",
+      commandId: "provider-cmd",
     });
     plane.handleHostMessage({
       type: "session:status",

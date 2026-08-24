@@ -135,6 +135,67 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionDrain" }
         default: { $ref: "#/components/responses/Error" }
+  /provider-accounts:
+    get:
+      operationId: listProviderAccounts
+      summary: List provider accounts
+      responses:
+        "200":
+          description: Provider accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProviderAccount" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createProviderAccount
+      summary: Create a provider account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProviderAccount" }
+      responses:
+        "201":
+          description: Provider account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccount" }
+        default: { $ref: "#/components/responses/Error" }
+  /provider-accounts/{providerAccountId}:
+    parameters:
+      - $ref: "#/components/parameters/ProviderAccountId"
+    get:
+      operationId: getProviderAccount
+      responses:
+        "200":
+          description: Provider account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccount" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateProviderAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProviderAccount" }
+      responses:
+        "200":
+          description: Provider account updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccount" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteProviderAccount
+      responses:
+        "204":
+          description: Provider account deleted
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /repositories/{repositoryId}/session-drains/{operationId}/release:
     parameters:
       - $ref: "#/components/parameters/RepositoryId"
@@ -163,6 +224,11 @@ components:
       schema: { type: string }
     RepositoryId:
       name: repositoryId
+      in: path
+      required: true
+      schema: { type: string }
+    ProviderAccountId:
+      name: providerAccountId
       in: path
       required: true
       schema: { type: string }
@@ -336,6 +402,48 @@ components:
         completedAt: { type: string, format: date-time }
         releasedAt: { type: string, format: date-time }
         failureCode: { type: string }
+    ProviderAccount:
+      type: object
+      required: [id, providerId, label, maxConcurrentSessions, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        providerId: { type: string }
+        label: { type: string }
+        maxConcurrentSessions:
+          type: integer
+          minimum: 1
+          maximum: 64
+          default: 1
+          description: Attempt-owned concurrent session cap for this account.
+        usageLimitCooldownSeconds: { type: integer, minimum: 1 }
+        usageLimitedUntil: { type: [string, "null"], format: date-time }
+        lastUsageLimitedAt: { type: [string, "null"], format: date-time }
+        lastAssignedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateProviderAccount:
+      type: object
+      required: [providerId, label]
+      properties:
+        providerId: { type: string, minLength: 1 }
+        label: { type: string, minLength: 1 }
+        maxConcurrentSessions:
+          type: integer
+          minimum: 1
+          maximum: 64
+          default: 1
+        usageLimitCooldownSeconds: { type: integer, minimum: 1 }
+      additionalProperties: false
+    UpdateProviderAccount:
+      type: object
+      properties:
+        label: { type: string, minLength: 1 }
+        maxConcurrentSessions:
+          type: integer
+          minimum: 1
+          maximum: 64
+        usageLimitCooldownSeconds: { type: integer, minimum: 1 }
+      additionalProperties: false
     Error:
       type: object
       required: [error]

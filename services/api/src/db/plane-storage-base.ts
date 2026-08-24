@@ -355,6 +355,7 @@ export class DynamoPlaneStorageBase {
     attemptId?: string;
     concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -370,6 +371,7 @@ export class DynamoPlaneStorageBase {
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string | undefined;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return mainCheckout.requeueMainCheckoutUsageLimitedSession(this.ctx, opts);
   }
@@ -457,6 +459,7 @@ export class DynamoPlaneStorageBase {
     fence?: { hostId: string; connectionId: string } | undefined;
     attemptId: string;
     concurrencyId?: string | undefined;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -475,6 +478,7 @@ export class DynamoPlaneStorageBase {
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
     requireUnacknowledged?: boolean;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -520,6 +524,7 @@ export class DynamoPlaneStorageBase {
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return sessions.requeueUsageLimitedSession(this.ctx, opts);
   }
@@ -531,6 +536,7 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     targetIndex: number;
     errorMessage?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
   }
@@ -579,6 +585,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
     concurrencyId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

@@ -21,6 +21,7 @@ import { planPromptPlacement } from "./queue-placement-planner.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
+  providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
@@ -200,49 +201,53 @@ export async function assignQueuedDurable(
         continue;
       }
       const attemptId = state.attemptIdFactory();
-      const lease = tryAcquireProviderAccountLeaseLocal(
-        state,
-        session,
-        route.providerAccountId,
-        attemptId,
-        candidate.hostId,
-      );
-      if (route.providerAccountId && !lease) {
-        continue;
-      }
+      const occupiedSlots = new Set<number>();
+      let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
+      let won = false;
       const principalId = sessionPrincipalId(session);
-      const won = await state.storage.tryAssignSession({
-        sessionId: session.id,
-        repositoryId: session.repositoryId,
-        worktreeId: candidate.id,
-        hostId: candidate.hostId,
-        ...(principalId ? { principalId } : {}),
-        hostInventoryVersion: state.hostInventories.has(candidate.hostId)
-          ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
-          : null,
-        connectionId,
-        now: nowIso,
-        resolvedArgv: route.resolvedArgv,
-        resumeSpec: route.resumeSpec,
-        resolvedRoute: {
-          targetIndex: route.targetIndex,
-          commandId: route.commandId,
-          ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-          hostId: candidate.hostId,
-          worktreeId: candidate.id,
+      while (true) {
+        lease = tryAcquireProviderAccountLeaseLocal(
+          state,
+          session,
+          route.providerAccountId,
           attemptId,
-        },
-        attemptId,
-        ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-        ...(lease ? { providerAccountLease: lease } : {}),
-        queueShard: session.queueShard,
-      });
-      if (!won) {
-        if (lease) {
-          state.providerAccountLeases.delete(lease.concurrencyId);
+          candidate.hostId,
+          occupiedSlots,
+        );
+        if (route.providerAccountId && !lease) {
+          break;
         }
-        continue;
+        won = await state.storage.tryAssignSession({
+          sessionId: session.id,
+          repositoryId: session.repositoryId,
+          worktreeId: candidate.id,
+          hostId: candidate.hostId,
+          ...(principalId ? { principalId } : {}),
+          hostInventoryVersion: state.hostInventories.has(candidate.hostId)
+            ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
+            : null,
+          connectionId,
+          now: nowIso,
+          resolvedArgv: route.resolvedArgv,
+          resumeSpec: route.resumeSpec,
+          resolvedRoute: {
+            targetIndex: route.targetIndex,
+            commandId: route.commandId,
+            ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+            hostId: candidate.hostId,
+            worktreeId: candidate.id,
+            attemptId,
+          },
+          attemptId,
+          ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+          ...(lease ? { providerAccountLease: lease } : {}),
+          queueShard: session.queueShard,
+        });
+        if (won || !lease) break;
+        state.providerAccountLeases.delete(lease.concurrencyId);
+        occupiedSlots.add(lease.slot);
       }
+      if (!won) continue;
       const resumeSpec = session.resumeSpec ?? route.resumeSpec;
       const nextSession = {
         ...session,
@@ -464,6 +469,7 @@ export async function enforceAckDeadlinesDurable(
           queueShard: session.queueShard,
           reason: "agent did not acknowledge assignment; requeued",
           requireUnacknowledged: true,
+          ...providerAccountLeaseWriteOpts(session),
         })
       : session.hostId && session.assignmentConnectionId
         ? await state.storage.releaseMainCheckoutSession({
@@ -476,6 +482,7 @@ export async function enforceAckDeadlinesDurable(
             queueShard: session.queueShard,
             reason: "agent did not acknowledge assignment; requeued",
             requireUnacknowledged: true,
+            ...providerAccountLeaseWriteOpts(session),
           })
         : false;
     if (!won) {

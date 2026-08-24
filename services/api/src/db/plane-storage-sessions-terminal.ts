@@ -7,6 +7,10 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
 
 type FinishSessionOpts = {
   sessionId: string;
@@ -21,6 +25,7 @@ type FinishSessionOpts = {
   cliResumeRef?: string;
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
+  providerAccountLease?: ProviderAccountLeaseKey;
 };
 
 function setOptional(
@@ -73,7 +78,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     names: { "#s": "status" },
     values,
     sets,
-    removes: ["reconnectDeadlineAt", "assignmentConnectionId"],
+    removes: ["reconnectDeadlineAt", "assignmentConnectionId", "providerAccountLease"],
   };
 }
 
@@ -130,7 +135,14 @@ function finishSessionItems(
       },
     });
   }
-  items.push(...cleanup);
+  items.push(
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...cleanup,
+  );
   return items;
 }
 

@@ -120,4 +120,32 @@ describe("DaemonLoop execution profiles", () => {
       cleanup();
     }
   });
+
+  it("refuses assignments beyond the advertised concurrent assignment cap", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({ sendToServer: () => undefined }),
+        onLog: (line) => lines.push(line),
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      const inflight = (loop as unknown as { inflight: Map<string, unknown> }).inflight;
+      inflight.set("active-0", {
+        controller: new AbortController(),
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      await (
+        loop as unknown as {
+          handleServerMessage(message: HostWireMessage): Promise<void>;
+        }
+      ).handleServerMessage(assign({ sessionId: "over-capacity", attemptId: "a-over" }));
+      expect(lines).toContain("session capacity reached: refused assign over-capacity");
+    } finally {
+      cleanup();
+    }
+  });
 });

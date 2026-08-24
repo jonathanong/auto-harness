@@ -30,7 +30,10 @@ import {
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
-import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
+import {
+  providerAccountLeaseWriteOpts,
+  releaseProviderAccountLease,
+} from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
   requeueUsageLimitedSessionOptsFromPlan,
@@ -459,6 +462,12 @@ export async function handleHostMessageDurable(
       worktrees: msg.worktrees,
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
+      ...(msg.maxConcurrentAssignments !== undefined
+        ? { maxConcurrentAssignments: msg.maxConcurrentAssignments }
+        : {}),
+      ...(msg.providerAccountReadiness
+        ? { providerAccountReadiness: msg.providerAccountReadiness }
+        : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
       ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
@@ -676,6 +685,7 @@ async function applySessionStatusDurable(
       fence,
       attemptId: msg.attemptId,
       concurrencyId: session.concurrencyId,
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
       releaseProviderAccountLease(state, session);
@@ -719,9 +729,11 @@ async function applySessionStatusDurable(
       reason: msg.errorMessage,
       cliResumeRef: msg.cliResumeRef,
       concurrencyId: session.concurrencyId,
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (released) {
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
         worktreeId: null,
@@ -759,6 +771,7 @@ async function applySessionStatusDurable(
         queueShard: session.queueShard,
         reason: "provider account missing; requeued",
         errorCode: "usage_limit",
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!requeued) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
@@ -784,6 +797,7 @@ async function applySessionStatusDurable(
         now,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         errorMessage: msg.errorMessage,
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!requeued) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
@@ -858,6 +872,7 @@ async function applySessionStatusDurable(
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      ...providerAccountLeaseWriteOpts(session),
     });
     if (!committed) return { ok: true };
     releaseScheduledLeaseLocal(state, session);

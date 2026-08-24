@@ -66,7 +66,6 @@ type InflightSession = {
   // explicit type under exactOptionalPropertyTypes.
   resolveAcknowledgement?: (() => void) | undefined;
 };
-const MAX_INFLIGHT_SESSIONS = 64;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -345,7 +344,7 @@ export class DaemonLoop {
 
     this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
     const live = [...this.inflight.values()].filter((entry) => !entry.controller.signal.aborted);
-    if (live.length >= MAX_INFLIGHT_SESSIONS) {
+    if (live.length >= this.executionProfiles.maxConcurrentAssignments) {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
       return;
     }

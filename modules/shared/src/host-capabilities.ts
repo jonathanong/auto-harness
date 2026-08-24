@@ -81,7 +81,9 @@ export function parseHostCapabilitiesAdvertisement(
     }
     features = normalizeHostCapabilities(advertised.features);
   }
-  if (advertised.maxConcurrentAssignments === undefined) return { features };
+  if (advertised.maxConcurrentAssignments === undefined) {
+    return { features, maxConcurrentAssignments: DEFAULT_MAX_CONCURRENT_ASSIGNMENTS };
+  }
   if (!isPositiveAssignmentCap(advertised.maxConcurrentAssignments)) return null;
   return { features, maxConcurrentAssignments: advertised.maxConcurrentAssignments };
 }

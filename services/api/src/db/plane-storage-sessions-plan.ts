@@ -49,6 +49,7 @@ export function finishSessionOptsFromPlan(
     ...reportFieldsFromPlan(plan),
     ...(extras.fence ? { fence: extras.fence } : {}),
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
   };
 }
 
@@ -69,6 +70,7 @@ export function requeueUsageLimitedSessionOptsFromPlan(
     now: extras.now,
     usageLimitedUntil: cooldown.usageLimitedUntil,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
   };
 }
 
@@ -87,5 +89,6 @@ export function suppressProviderlessUsageLimitOptsFromPlan(
     queueShard: session.queueShard,
     targetIndex: suppress.targetIndex,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
   };
 }

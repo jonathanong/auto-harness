@@ -3,6 +3,10 @@ import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
+import {
   isConditionalTransactionFailed,
   itemToSession,
   type PlaneStorageCtx,
@@ -22,6 +26,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string | undefined;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
   },
 ): Promise<boolean> {
   const current = await ctx.doc.send(
@@ -69,7 +74,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
               Key: { id: opts.sessionId },
               UpdateExpression:
                 "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt",
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt, providerAccountLease",
               ConditionExpression:
                 "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
@@ -88,6 +93,11 @@ export async function requeueMainCheckoutUsageLimitedSession(
               },
             },
           },
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
         ],
       }),
     );

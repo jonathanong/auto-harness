@@ -7,6 +7,10 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
+import {
   isConditionalTransactionFailed,
   itemToSession,
   type PlaneStorageCtx,
@@ -34,6 +38,7 @@ type ReleaseMainCheckoutOptions = {
   /** Used by the assignment ACK deadline only: do not release a run whose
    * acknowledgement committed after this scheduler read its local cache. */
   requireUnacknowledged?: boolean;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -116,6 +121,11 @@ export async function releaseMainCheckoutSession(
                 },
               ]
             : []),
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
           ...cleanup,
         ],
       }),
@@ -154,7 +164,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, providerAccountLease" +
     (isQueued ? ", startedAt" : "")
   );
 }

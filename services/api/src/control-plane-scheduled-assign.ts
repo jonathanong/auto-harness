@@ -72,6 +72,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
 }
 
 function wire(session: import("./db/types.ts").SessionRecord, now: string): HostWireMessage {
+  const route = session.resolvedRoute;
   return {
     type: "session:assign",
     sessionId: session.id,
@@ -85,6 +86,9 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
     attemptId: session.attemptId!,
     ...(session.ref ? { ref: session.ref } : {}),
     ...(session.metadata ? { metadata: session.metadata } : {}),
+    ...(route?.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+    ...(route?.commandId ? { commandId: route.commandId } : {}),
+    ...(route?.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
   };
 }
 
@@ -141,46 +145,54 @@ export async function assignScheduledQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
-      const lease = tryAcquireProviderAccountLeaseLocal(
-        state,
-        session,
-        target.providerAccountId,
-        attemptId,
-        hostId,
-      );
-      if (target.providerAccountId && !lease) continue;
-      const won = state.storage
-        ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
-          (await state.storage.tryAssignMainCheckoutSession({
-            sessionId: session.id,
-            hostId,
-            principalId,
-            hostInventoryVersion: state.hostInventories.has(hostId)
-              ? (state.hostInventories.get(hostId)!.version ?? 0)
-              : null,
-            repositoryId: session.repositoryId,
-            connectionId,
-            now,
-            resolvedArgv: target.resolvedArgv,
-            resumeSpec: target.resumeSpec,
-            resolvedRoute: {
-              targetIndex: target.targetIndex,
-              commandId: target.commandId,
-              ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+      const occupiedSlots = new Set<number>();
+      let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
+      let won = false;
+      while (true) {
+        lease = tryAcquireProviderAccountLeaseLocal(
+          state,
+          session,
+          target.providerAccountId,
+          attemptId,
+          hostId,
+          occupiedSlots,
+        );
+        if (target.providerAccountId && !lease) break;
+        won = state.storage
+          ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
+            (await state.storage.tryAssignMainCheckoutSession({
+              sessionId: session.id,
               hostId,
-              worktreeId: null,
+              principalId,
+              hostInventoryVersion: state.hostInventories.has(hostId)
+                ? (state.hostInventories.get(hostId)!.version ?? 0)
+                : null,
+              repositoryId: session.repositoryId,
+              connectionId,
+              now,
+              resolvedArgv: target.resolvedArgv,
+              resumeSpec: target.resumeSpec,
+              resolvedRoute: {
+                targetIndex: target.targetIndex,
+                commandId: target.commandId,
+                ...(target.providerAccountId
+                  ? { providerAccountId: target.providerAccountId }
+                  : {}),
+                hostId,
+                worktreeId: null,
+                attemptId,
+              },
+              ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+              ...(lease ? { providerAccountLease: lease } : {}),
+              queueShard: session.queueShard,
               attemptId,
-            },
-            ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
-            ...(lease ? { providerAccountLease: lease } : {}),
-            queueShard: session.queueShard,
-            attemptId,
-          }))
-        : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
-      if (!won) {
-        if (lease) state.providerAccountLeases.delete(lease.concurrencyId);
-        continue;
+            }))
+          : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
+        if (won || !lease) break;
+        state.providerAccountLeases.delete(lease.concurrencyId);
+        occupiedSlots.add(lease.slot);
       }
+      if (!won) continue;
       placed = { hostId, connectionId, target, attemptId, lease };
       break;
     }

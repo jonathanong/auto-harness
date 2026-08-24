@@ -74,6 +74,28 @@ describe("host capability advertisements", () => {
     expect(capped?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
   });
 
+  it("forwards assignment capacity and readiness through durable registration", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "durable-ready" });
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "host:register",
+          hostId: "durable-ready",
+          worktrees: [
+            { id: "wt-d", name: "wt-d", repositoryId: "repo", path: "/repo/wt", labels: [] },
+          ],
+          maxConcurrentAssignments: 3,
+          providerAccountReadiness: [
+            { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+          ],
+        })
+      ).ok,
+    ).toBe(true);
+    const conn = plane.state.connections.get("durable-ready");
+    expect(conn?.maxConcurrentAssignments).toBe(3);
+    expect(conn?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
+  });
+
   it("replaces a capability with an older reconnect advertisement", () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "first" });
     expect(

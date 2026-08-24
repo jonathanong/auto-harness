@@ -34,11 +34,11 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 
 ### Server → agent
 
-| Type             | Payload                                                                                                                                                                                | Purpose                                                                                                                                                                                                                                                                                         |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `session:assign` | `sessionId`, `attemptId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`attemptId` is an immutable assignment fence that must be echoed in ACK/status; `worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it |
-| `session:cancel` | `sessionId`, `attemptId`                                                                                                                                                               | Stop that exact assignment attempt; delayed cancels for an old attempt are ignored                                                                                                                                                                                                              |
-| `ping`           | `{}`                                                                                                                                                                                   | Keepalive                                                                                                                                                                                                                                                                                       |
+| Type             | Payload                                                                                                                                                                                                                                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session:assign` | `sessionId`, `attemptId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?`, `providerAccountId?`, `commandId?`, `targetIndex?` | Run or **resume** a session (`attemptId` is an immutable assignment fence that must be echoed in ACK/status; `worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it. `providerAccountId` is the daemon-local execution-profile key (CLI `HOME`/extra env); omit it only for providerless commands |
+| `session:cancel` | `sessionId`, `attemptId`                                                                                                                                                                                                                   | Stop that exact assignment attempt; delayed cancels for an old attempt are ignored                                                                                                                                                                                                                                                                                                                                            |
+| `ping`           | `{}`                                                                                                                                                                                                                                       | Keepalive                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Scheduled main-checkout assignments use `sessionType: "scheduled"` and
 `worktreeId: null`; hosts must not route them through worktree handling.
@@ -54,7 +54,10 @@ Scheduled main-checkout assignments use `sessionType: "scheduled"` and
   "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",
-  "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
+  "setupScript": "git fetch && git reset --hard origin/main && pnpm install",
+  "providerAccountId": "acct-claude-work",
+  "commandId": "cmd-claude-print",
+  "targetIndex": 0
 }
 ```
 
@@ -172,9 +175,11 @@ assignment. `maxConcurrentAssignments` is the host-wide concurrent assignment ca
 (default 64 when the daemon advertises the object form without an override).
 
 `providerAccountReadiness` is a bounded list of `{ providerAccountId, ready, fingerprint }`.
-`fingerprint` is an opaque SHA-256 of the daemon-local execution profile. Credentials, CLI
-homes, and env values never cross the wire. Assignment of a provider-backed session fails
-closed unless this host advertised `ready: true` for that exact account.
+`fingerprint` is an opaque SHA-256 of the local CLI home plus extra-env **key names** (values
+are omitted so secrets are not a confirmation oracle). Credentials, CLI homes, and env values
+never cross the wire. Scheduling uses `ready`, not the fingerprint; the hash is operator
+drift display only. Assignment of a provider-backed session fails closed unless this host
+advertised `ready: true` for that exact account.
 
 Modern daemons include `runtime: { daemonVersion, gitVersion, gitReady, gitReadinessReason?,
 environmentNames?, environmentNamesCaseSensitive? }`. `environmentNames` includes names only, and

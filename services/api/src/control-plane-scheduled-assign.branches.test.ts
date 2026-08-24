@@ -328,4 +328,55 @@ describe("scheduled assignment branch coverage", () => {
     }
     expect(versions).toEqual([null, 0]);
   });
+
+  it("retries the next account slot when a durable scheduled lease put is lost", async () => {
+    const current = state();
+    current.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "cmd",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 2,
+    });
+    current.commands.set("cmd", {
+      ...current.commands.get("cmd")!,
+      providerId: "provider",
+    });
+    current.hostInventories.set("h1", {
+      ...current.hostInventories.get("h1")!,
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    const host = connection("h1", "c1");
+    current.connections.set("c1", {
+      ...host,
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    current.hostConnection.set("h1", "c1");
+    current.sessions.set("s", session({ target: { providerId: "provider" } }));
+    const slots: number[] = [];
+    setDurableReadStorage(current, {
+      getMainCheckoutCursor: async () => "",
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return opts.providerAccountLease?.slot === 1;
+      },
+    });
+    const messages: unknown[] = [];
+    current.onHostMessage = (_host, message) => messages.push(message);
+    expect(await assignScheduledQueuedDurable(current)).toHaveLength(1);
+    expect(slots).toEqual([0, 1]);
+    expect(current.sessions.get("s")?.providerAccountLease?.slot).toBe(1);
+    expect(messages[0]).toMatchObject({
+      type: "session:assign",
+      providerAccountId: "account",
+      commandId: "cmd",
+    });
+  });
 });

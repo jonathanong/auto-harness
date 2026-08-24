@@ -6,6 +6,10 @@ import {
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  type ProviderAccountLeaseKey,
+} from "./plane-storage-provider-account-leases.ts";
 
 type ReleaseCancelledOpts = {
   sessionId: string;
@@ -17,6 +21,7 @@ type ReleaseCancelledOpts = {
   fence?: { hostId: string; connectionId: string } | undefined;
   attemptId: string;
   concurrencyId?: string | undefined;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
 };
 
 function releaseFenceCheck(ctx: PlaneStorageCtx, fence?: { hostId: string; connectionId: string }) {
@@ -44,7 +49,7 @@ function releaseSessionUpdate(
       Key: { id: opts.sessionId },
       UpdateExpression:
         `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
-        "REMOVE assignmentConnectionId, reconnectDeadlineAt",
+        "REMOVE assignmentConnectionId, reconnectDeadlineAt, providerAccountLease",
       ConditionExpression:
         "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId" +
         (requireNoDrainCancellation
@@ -145,6 +150,11 @@ export async function releaseCancelledSessionWorktree(
           releaseSessionUpdate(ctx, opts, requireNoDrainCancellation),
           releaseWorktreeUpdate(ctx, opts),
           ...releaseConcurrencyDelete(ctx, opts),
+          ...providerAccountLeaseDeleteItems(
+            ctx.tables.concurrencyLocks,
+            opts.sessionId,
+            opts.providerAccountLease,
+          ),
           ...cleanup,
         ],
       }),

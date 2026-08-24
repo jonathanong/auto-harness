@@ -39,8 +39,9 @@ export type SessionAssign = {
   cliResumeRef?: string;
   resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
   metadata?: Record<string, unknown>;
-  /** Non-secret resolved route metadata for observability. */
+  /** Daemon-local execution profile key; selects CLI HOME/env on the host. */
   providerAccountId?: string;
+  /** Non-secret resolved route breadcrumb for observability. */
   commandId?: string;
   targetIndex?: number;
 };

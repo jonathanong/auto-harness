@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { releaseProviderAccountLease } from "./plane-storage-provider-account-leases.ts";
+import {
+  providerAccountLeaseDeleteItems,
+  releaseProviderAccountLease,
+} from "./plane-storage-provider-account-leases.ts";
 
 describe("provider account lease storage", () => {
   it("deletes the attempt-owned lock and ignores a lost condition", async () => {
@@ -27,5 +30,15 @@ describe("provider account lease storage", () => {
         { concurrencyId: "provider-account:acct:0", sessionId: "sess", attemptId: "attempt" },
       ),
     ).rejects.toThrow("boom");
+  });
+
+  it("omits transact deletes when no lease is held", () => {
+    expect(providerAccountLeaseDeleteItems("Locks", "sess", undefined)).toEqual([]);
+    expect(
+      providerAccountLeaseDeleteItems("Locks", "sess", {
+        concurrencyId: "provider-account:acct:0",
+        attemptId: "attempt",
+      }),
+    ).toHaveLength(1);
   });
 });
