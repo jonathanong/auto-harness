@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -148,6 +148,7 @@ describe("WorktreeManager", () => {
     const root = join(tmpdir(), `ah-claim-root-${String(Date.now())}`);
     fixtures.push(root);
     await mkdir(root, { recursive: true });
+    await mkdir(join(root, "repo"), { recursive: true });
     const jailed = parseDaemonConfig({
       hostId: "a1",
       allowedRoots: [root],
@@ -163,6 +164,43 @@ describe("WorktreeManager", () => {
     const mgr = new WorktreeManager(jailed, fakeGit());
     await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/outside allowed roots/);
     expect(mgr.isBusy("wt-1")).toBe(false);
-    await expect(mgr.mainClaim("repo-1")).resolves.toMatchObject({ cwd: join(root, "repo") });
+    await expect(mgr.mainClaim("repo-1")).resolves.toMatchObject({
+      cwd: await realpath(join(root, "repo")),
+    });
+  });
+
+  it("propagates canonical repository and worktree paths into a claim", async () => {
+    const root = join(tmpdir(), `ah-canonical-claim-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const repositoryLink = join(root, "repository-link");
+    const worktreeLink = join(root, "worktree-link");
+    await symlink(repository, repositoryLink);
+    await symlink(worktree, worktreeLink);
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repositoryLink,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktreeLink, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    const claimed = await new WorktreeManager(jailed, git).claim("repo-1", "wt-1");
+    expect(claimed.cwd).toBe(await realpath(worktree));
+    expect(claimed.repository.path).toBe(await realpath(repository));
+    expect(claimed.worktree.path).toBe(await realpath(worktree));
+    const outside = join(root, "outside");
+    await mkdir(outside);
+    await rm(worktreeLink);
+    await symlink(outside, worktreeLink);
+    await new WorktreeManager(jailed, git).prepareCheckout(claimed, "main");
+    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
   });
 });

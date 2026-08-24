@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- session success regressions cover setup, execution, and hooks. */
 import { describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -86,7 +86,7 @@ describe("SessionRunner success paths", () => {
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(hooks).toEqual([join(repoPath, "current-hook.sh")]);
+    expect(hooks).toEqual([join(realpathSync(repoPath), "current-hook.sh")]);
   });
 
   it("captures a configured CLI resume reference without logging the opaque value", async () => {

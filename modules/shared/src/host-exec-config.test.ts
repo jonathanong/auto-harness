@@ -533,6 +533,28 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     ).toMatchObject({ ok: true });
   });
 
+  it("fences foreign-platform hook spellings when their host base moves", () => {
+    const legacy = inventory();
+    legacy.repositories[0]!.terminalHookScript = "C:\\hooks\\done.cmd";
+    const moved: HostInventory = {
+      ...legacy,
+      repositories: [
+        {
+          ...legacy.repositories[0]!,
+          worktrees: [
+            { ...legacy.repositories[0]!.worktrees[0]!, path: "/opt/other/.worktrees/wt-1" },
+          ],
+        },
+      ],
+    };
+    expect(
+      reconcileInventoryWrite({ existing: legacy, incoming: moved, allowExecConfig: false }),
+    ).toMatchObject({ ok: false, kind: "forbidden" });
+    expect(
+      reconcileInventoryWrite({ existing: legacy, incoming: moved, allowExecConfig: true }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("rejects duplicate repository and worktree IDs before reconciliation", () => {
     const duplicateRepository = inventory();
     duplicateRepository.repositories.push({ ...duplicateRepository.repositories[0]! });

@@ -61,3 +61,26 @@ it("executes the canonical hook path returned by the allowed-root check", async 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("uses host-native absoluteness for foreign hook path spellings", async () => {
+  if (process.platform === "win32") return;
+  const root = join(tmpdir(), `ah-foreign-hook-${String(Date.now())}`);
+  await mkdir(root, { recursive: true });
+  try {
+    const run = vi.fn(async () => ({ exitCode: 0, timedOut: false, signal: null }));
+    await runTerminalHook(
+      { run },
+      {
+        scriptPath: "C:\\hooks\\done.cmd",
+        cwd: root,
+        sessionId: "session",
+        status: "completed",
+        worktreePath: root,
+        allowedRoots: [root],
+      },
+    );
+    expect(run).not.toHaveBeenCalled();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

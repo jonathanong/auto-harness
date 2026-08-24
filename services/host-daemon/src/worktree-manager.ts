@@ -1,4 +1,9 @@
-import { assertClaimedPathsAllowed, assertDaemonPathsAllowed } from "./allowed-roots.ts";
+/* eslint-disable max-lines -- claim, checkout, and allowed-root policy share one manager. */
+import {
+  assertClaimedPathsAllowed,
+  assertDaemonPathsAllowed,
+  type ClaimedPathsAllowed,
+} from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 
@@ -9,11 +14,11 @@ type ClaimedWorktree = {
   cwd: string;
   allowedRoots?: string[];
   /** Resolve hook policy again when a session finishes after a config reload. */
-  currentHookTarget: () => {
+  currentHookTarget: () => Promise<{
     cwd: string;
     repository: RepositoryConfig;
     allowedRoots?: string[];
-  } | null;
+  } | null>;
 };
 
 type MainWaiter = {
@@ -62,15 +67,18 @@ export class WorktreeManager {
     repository: RepositoryConfig,
     worktree: WorktreeConfig,
     cwd: string,
+    paths: ClaimedPathsAllowed,
     main = false,
   ): ClaimedWorktree {
+    const claimedRepository = { ...repository, path: paths.repositoryPath };
+    const claimedWorktree = { ...worktree, path: cwd };
     return {
       ...(this.config.setupScript !== undefined
         ? { hostSetupScript: this.config.setupScript }
         : {}),
       ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
-      repository,
-      worktree,
+      repository: claimedRepository,
+      worktree: claimedWorktree,
       cwd,
       currentHookTarget: () =>
         this.currentHookTarget(repository.id, main ? undefined : worktree.id),
@@ -81,34 +89,50 @@ export class WorktreeManager {
    * Resolve terminal-hook inputs from the live daemon config, not the assignment snapshot.
    * A session may remain pending while an inventory reload tightens or removes its policy.
    */
-  private currentHookTarget(
+  private async currentHookTarget(
     repositoryId: string,
     worktreeId: string | undefined,
-  ): {
+  ): Promise<{
     cwd: string;
     repository: RepositoryConfig;
     allowedRoots?: string[];
-  } | null {
+  } | null> {
     const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
     if (!repository) return null;
+    const roots = this.config.allowedRoots ?? [];
     if (worktreeId !== undefined) {
       const worktree = repository.worktrees.find((candidate) => candidate.id === worktreeId);
       if (!worktree) return null;
-      return {
+      const paths = await assertClaimedPathsAllowed({
         cwd: worktree.path,
-        repository,
-        ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
+        repositoryPath: repository.path,
+        terminalHookScript: repository.terminalHookScript,
+        allowedRoots: roots,
+      });
+      return {
+        cwd: paths.cwd,
+        repository: { ...repository, path: paths.repositoryPath },
+        ...(roots.length ? { allowedRoots: roots } : {}),
       };
     }
-    return {
+    const paths = await assertClaimedPathsAllowed({
       cwd: repository.path,
-      repository,
-      ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
+      repositoryPath: repository.path,
+      terminalHookScript: repository.terminalHookScript,
+      allowedRoots: roots,
+    });
+    return {
+      cwd: paths.cwd,
+      repository: { ...repository, path: paths.repositoryPath },
+      ...(roots.length ? { allowedRoots: roots } : {}),
     };
   }
 
-  private async assertClaimPaths(repository: RepositoryConfig, cwd: string): Promise<void> {
-    await assertClaimedPathsAllowed({
+  private async assertClaimPaths(
+    repository: RepositoryConfig,
+    cwd: string,
+  ): Promise<ClaimedPathsAllowed> {
+    return await assertClaimedPathsAllowed({
       cwd,
       repositoryPath: repository.path,
       terminalHookScript: repository.terminalHookScript,
@@ -130,12 +154,12 @@ export class WorktreeManager {
     }
     this.busy.add(worktreeId);
     try {
-      await this.assertClaimPaths(repository, worktree.path);
+      const paths = await this.assertClaimPaths(repository, worktree.path);
+      return this.claimedResult(repository, worktree, paths.cwd, paths);
     } catch (error) {
       this.busy.delete(worktreeId);
       throw error;
     }
-    return this.claimedResult(repository, worktree, worktree.path);
   }
 
   async mainClaim(repositoryId: string): Promise<ClaimedWorktree> {
@@ -143,8 +167,8 @@ export class WorktreeManager {
     if (!repository) {
       throw new Error(`Unknown repository: ${repositoryId}`);
     }
-    await this.assertClaimPaths(repository, repository.path);
-    return this.claimedResult(repository, mainWorktree(repository), repository.path, true);
+    const paths = await this.assertClaimPaths(repository, repository.path);
+    return this.claimedResult(repository, mainWorktree(repository), paths.cwd, paths, true);
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {

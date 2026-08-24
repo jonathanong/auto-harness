@@ -146,6 +146,22 @@ function sameHookResolutionBases(previous: HostRepository, incoming: HostReposit
   return true;
 }
 
+function isWindowsPath(path: string): boolean {
+  return path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+/**
+ * The control plane accepts either platform's absolute spelling, but a host
+ * executes paths using its own platform rules. Use the repository spelling as
+ * the host hint so a foreign absolute-looking hook remains fenced like a
+ * relative hook without rejecting inventories from the other platform.
+ */
+function isAbsoluteHookForRepository(hook: string, repositoryPath: string): boolean {
+  if (!isAbsolutePathString(hook)) return false;
+  if (isWindowsPath(hook) !== isWindowsPath(repositoryPath)) return false;
+  return true;
+}
+
 /**
  * A relative hook is accepted only when a legacy document supplies the exact
  * same value. New or changed hooks must be absolute even for admins. Since a
@@ -160,8 +176,13 @@ function legacyRelativeHookError(
   const previousRepositories = entriesById(existing?.repositories);
   for (const repository of incoming.repositories) {
     const hook = repository.terminalHookScript;
-    if (hook === undefined || hook.length === 0 || isAbsolutePathString(hook)) continue;
     const previous = previousRepositories.get(repository.id);
+    if (
+      hook === undefined ||
+      hook.length === 0 ||
+      isAbsoluteHookForRepository(hook, previous?.path ?? repository.path)
+    )
+      continue;
     if (previous?.terminalHookScript === hook) {
       if (allowExecConfig || sameHookResolutionBases(previous, repository)) continue;
       return { error: EXEC_CONFIG_REQUIRED_MESSAGE, kind: "forbidden" };

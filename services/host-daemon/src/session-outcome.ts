@@ -35,11 +35,11 @@ type ClaimedHookTarget = {
   cwd: string;
   repository: { path: string; terminalHookScript?: string };
   allowedRoots?: readonly string[];
-  currentHookTarget?: () => {
+  currentHookTarget?: () => Promise<{
     cwd: string;
     repository: { path: string; terminalHookScript?: string };
     allowedRoots?: readonly string[];
-  } | null;
+  } | null>;
 };
 
 export async function failSession(
@@ -112,7 +112,14 @@ export async function finishClaimedSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
-  const refreshed = claimed.currentHookTarget?.();
+  let refreshed:
+    | Awaited<ReturnType<NonNullable<ClaimedHookTarget["currentHookTarget"]>>>
+    | undefined;
+  try {
+    refreshed = await claimed.currentHookTarget?.();
+  } catch {
+    refreshed = null;
+  }
   const target = refreshed ?? (claimed.currentHookTarget ? null : claimed);
   return finishSession(
     processRunner,

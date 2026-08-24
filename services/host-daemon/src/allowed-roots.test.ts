@@ -1,4 +1,4 @@
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 
@@ -9,6 +9,7 @@ import {
   assertDaemonPathsAllowed,
   assertPathWithinAllowedRoots,
   isWithinRoot,
+  resolveHookPath,
   resolvePathForRootCheck,
 } from "./allowed-roots.ts";
 import type { DaemonConfig } from "./config-types.ts";
@@ -63,6 +64,26 @@ describe("allowed roots realpath checks", () => {
       "no usable allowed roots",
     );
     await expect(assertPathWithinAllowedRoots("relative", ["/tmp"])).rejects.toThrow("absolute");
+  });
+
+  it("returns canonical claimed paths and uses native hook absoluteness", async () => {
+    const root = await tempDir("canonical-claim");
+    const repo = join(root, "repo");
+    await mkdir(repo);
+    const claimed = await assertClaimedPathsAllowed({
+      cwd: join(repo, "wt"),
+      repositoryPath: repo,
+      terminalHookScript: "hook.sh",
+      allowedRoots: [root],
+    });
+    expect(claimed.cwd).toBe(await resolvePathForRootCheck(join(repo, "wt")));
+    expect(claimed.repositoryPath).toBe(await realpath(repo));
+    expect(claimed.terminalHookScript).toBe(
+      await resolvePathForRootCheck(join(await realpath(repo), "wt", "hook.sh")),
+    );
+    expect(resolveHookPath("/repo", "C:\\hooks\\done.cmd")).toBe(
+      join("/repo", "C:\\hooks\\done.cmd"),
+    );
   });
 
   it("validates inventory paths and terminal hooks against allowed roots", async () => {

@@ -70,7 +70,7 @@ export async function assertPathWithinAllowedRoots(
   realpathFn: RealpathFn = realpath,
 ): Promise<string> {
   if (!allowedRoots.length) return path;
-  if (!isAbsolute(path) && !isAbsolutePathString(path)) {
+  if (!isAbsolute(path)) {
     throw new Error(`path must be absolute: ${path}`);
   }
   const resolved = await resolvePathForRootCheck(path, realpathFn);
@@ -90,10 +90,19 @@ export async function assertPathWithinAllowedRoots(
 }
 
 export function resolveHookPath(repositoryPath: string, terminalHookScript: string): string {
-  return isAbsolute(terminalHookScript) || isAbsolutePathString(terminalHookScript)
+  // The daemon must use host-native path rules. The control plane accepts
+  // both POSIX and Windows spellings because it cannot know the host OS, but
+  // a foreign spelling is relative to this daemon and must be fenced as such.
+  return isAbsolute(terminalHookScript)
     ? terminalHookScript
     : join(repositoryPath, terminalHookScript);
 }
+
+export type ClaimedPathsAllowed = {
+  cwd: string;
+  repositoryPath: string;
+  terminalHookScript?: string;
+};
 
 /** Re-check claimed cwd, repo path, and terminal hook immediately before use. */
 export async function assertClaimedPathsAllowed(
@@ -104,18 +113,30 @@ export async function assertClaimedPathsAllowed(
     allowedRoots?: readonly string[] | undefined;
   },
   realpathFn: RealpathFn = realpath,
-): Promise<void> {
+): Promise<ClaimedPathsAllowed> {
   const roots = input.allowedRoots ?? [];
-  if (!roots.length) return;
-  await assertPathWithinAllowedRoots(input.cwd, roots, realpathFn);
-  await assertPathWithinAllowedRoots(input.repositoryPath, roots, realpathFn);
-  if (input.terminalHookScript) {
-    await assertPathWithinAllowedRoots(
-      resolveHookPath(input.repositoryPath, input.terminalHookScript),
-      roots,
-      realpathFn,
-    );
+  if (!roots.length) {
+    return {
+      cwd: input.cwd,
+      repositoryPath: input.repositoryPath,
+      ...(input.terminalHookScript
+        ? { terminalHookScript: resolveHookPath(input.cwd, input.terminalHookScript) }
+        : {}),
+    };
   }
+  const cwd = await assertPathWithinAllowedRoots(input.cwd, roots, realpathFn);
+  const repositoryPath = await assertPathWithinAllowedRoots(
+    input.repositoryPath,
+    roots,
+    realpathFn,
+  );
+  if (!input.terminalHookScript) return { cwd, repositoryPath };
+  const terminalHookScript = await assertPathWithinAllowedRoots(
+    resolveHookPath(cwd, input.terminalHookScript),
+    roots,
+    realpathFn,
+  );
+  return { cwd, repositoryPath, terminalHookScript };
 }
 
 /** Fail closed when exec-config names allowed roots the host cannot honor. */
