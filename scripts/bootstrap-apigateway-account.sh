@@ -60,6 +60,27 @@ EOF
   exit 1
 fi
 
+if [[ -n "$existing_role_arn" && "$existing_role_arn" != "None" ]]; then
+  role_name="${existing_role_arn##*/}"
+  if ! aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+    cat >&2 <<EOF
+The API Gateway account in $AWS_REGION points at an IAM role that no longer
+exists:
+  $existing_role_arn
+
+This looks like drift from outside this stack (e.g. the role was deleted
+manually). Re-running this script will not repair it: the CDK template is
+unchanged, so 'cdk deploy' has nothing to update and would report success
+without restoring a usable role.
+
+Delete the AutoHarnessApiGatewayAccount stack (or otherwise clear the
+account-level role) out of band before retrying, so this script has a real
+create to perform.
+EOF
+    exit 1
+  fi
+fi
+
 account="$(aws sts get-caller-identity --query Account --output text)"
 pnpm exec cdk bootstrap "aws://$account/$AWS_REGION"
 
