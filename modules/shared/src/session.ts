@@ -185,7 +185,7 @@ export type HostToServerMessage =
       type: "session:log";
       sessionId: string;
       /** Required at protocol version 1+. Legacy daemons may omit it. */
-      attemptId?: string;
+      attemptId?: string | undefined;
       stream: LogStream;
       content: string;
       timestamp: string;

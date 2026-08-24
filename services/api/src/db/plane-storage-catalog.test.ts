@@ -1021,6 +1021,17 @@ describe("session log ttl", () => {
       await putLogFenced(ctx, rec, {
         hostId: "host",
         connectionId: "connection",
+        attempts: [
+          { sessionId: "session-1", attemptId: "attempt-1" },
+          { sessionId: "session-1", attemptId: "attempt-1" },
+        ],
+      }),
+    ).toBe(true);
+    commands.length = 0;
+    expect(
+      await putLogFenced(ctx, rec, {
+        hostId: "host",
+        connectionId: "connection",
         attempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
       }),
     ).toBe(true);

@@ -175,7 +175,7 @@ function resolvedLogAttemptId(
 }
 
 function logAttemptFence(
-  messages: readonly { sessionId: string; attemptId?: string }[],
+  messages: readonly { sessionId: string; attemptId?: string | undefined }[],
 ): Array<{ sessionId: string; attemptId: string }> {
   const attempts: Array<{ sessionId: string; attemptId: string }> = [];
   for (const message of messages) {

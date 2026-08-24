@@ -94,7 +94,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
       message: {
         type: "session:log",
         sessionId: log.sessionId,
-        attemptId: log.attemptId,
+        ...(log.attemptId !== undefined ? { attemptId: log.attemptId } : {}),
         stream: "system",
         content: "1 log chunk(s) dropped while disconnected",
         timestamp: new Date().toISOString(),
