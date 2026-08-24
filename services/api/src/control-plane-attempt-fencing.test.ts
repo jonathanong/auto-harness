@@ -502,4 +502,34 @@ describe("ControlPlane assignment-attempt fencing", () => {
       }),
     ).resolves.toEqual({ ok: false, error: "running session missing is not owned by host host-4" });
   });
+
+  it("writes an unfenced durable log when the session has no attempt id", async () => {
+    const { now, plane } = assignedPlane();
+    plane.assignQueued();
+    const session = plane.getSession("sess-1")!;
+    const { attemptId: _attemptId, ...withoutAttempt } = session;
+    plane.state.sessions.set("sess-1", withoutAttempt);
+    const fences: Array<{ attempts?: unknown }> = [];
+    plane.state.storage = {
+      getHostLock: async () => "connection",
+      putLogFenced: async (_record: unknown, fence: { attempts?: unknown }) => (
+        fences.push(fence), true
+      ),
+    } as never;
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          stream: "stdout",
+          content: "no-attempt",
+          timestamp: now,
+          seq: 1,
+        },
+        "connection",
+      ),
+    ).toEqual({ ok: true });
+    expect(fences).toEqual([{ hostId: "host-1", connectionId: "connection" }]);
+    expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["no-attempt"]);
+  });
 });
