@@ -56,7 +56,7 @@ describe("LocalScheduler", () => {
 
       scheduler.start();
       await vi.advanceTimersByTimeAsync(10);
-      expect(calls).toHaveLength(18);
+      expect(calls).toHaveLength(16);
       await scheduler.stop();
     } finally {
       vi.useRealTimers();

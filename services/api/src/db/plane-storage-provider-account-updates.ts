@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- provider account updates share transactional cap fencing. */
+
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,

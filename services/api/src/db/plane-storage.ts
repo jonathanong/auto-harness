@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- storage facade methods share one persistence boundary. */
+
 import {
   type CommandRecord,
   type ProviderAccountRecord,
