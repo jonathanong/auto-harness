@@ -46,8 +46,7 @@ test("host setup and validated raw inventory editor preserve conflict semantics"
   );
   await expect(page.getByTestId("host-config-submit")).toBeEnabled();
 
-  // Land another valid inventory write after the page's read so the editor's version is
-  // genuinely stale. Omit exec-config keys so this remains a maintainer-legal inventory PUT.
+  // Inventory-only PUT so a maintainer could still bump the editor's version.
   await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
     data: { repositories: [], providerAccounts: [] },
   });

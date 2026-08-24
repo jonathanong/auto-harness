@@ -6,7 +6,6 @@ import {
   listExecConfigEdits,
   parseHostExecConfig,
   principalHas,
-  type HostInventory,
 } from "@auto-harness/shared";
 
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
@@ -21,27 +20,6 @@ function versionFrom(body: unknown): number | undefined {
 
 function allowsExecConfig(ctx: RouteCtx): boolean {
   return !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY);
-}
-
-/** Best-effort undo after a successful write whose success audit could not be persisted. */
-async function restoreInventory(
-  plane: RouteCtx["plane"],
-  hostId: string,
-  previous: HostInventory | null,
-  version: number | undefined,
-): Promise<void> {
-  try {
-    if (!previous) {
-      await plane.deleteHostInventoryDurable(hostId);
-      return;
-    }
-    await plane.putHostInventoryDurable(hostId, {
-      ...previous,
-      ...(version !== undefined ? { version } : {}),
-    });
-  } catch {
-    // Handler already failed closed; a crash between write and undo can still publish.
-  }
 }
 
 /** Admin-only setup scripts, terminal hook paths, and host-local allowed roots. */
@@ -127,6 +105,16 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
       return true;
     }
     const version = versionFrom(body);
+    // Audit first: a failed success-audit must not publish exec-config.
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: "host-exec-config:update",
+        resourceType: "host-inventory",
+        resourceId: hostId,
+        metadata: { changed: listExecConfigEdits(existing, merged) },
+      }))
+    )
+      return true;
     const result = await plane.putHostInventoryDurable(hostId, {
       ...merged,
       ...(version !== undefined ? { version } : {}),
@@ -147,17 +135,6 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
           message: result.error,
         },
       });
-      return true;
-    }
-    if (
-      !(await writeRouteAudit(ctx, {
-        action: "host-exec-config:update",
-        resourceType: "host-inventory",
-        resourceId: hostId,
-        metadata: { changed: listExecConfigEdits(existing, merged) },
-      }))
-    ) {
-      await restoreInventory(plane, hostId, stored, result.config.version);
       return true;
     }
     const config = result.config;
