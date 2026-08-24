@@ -343,4 +343,61 @@ describe("queue placement planner", () => {
       ),
     ).toMatchObject({ action: "skip", reason: "admission_closed" });
   });
+
+  it("selects a later ready account on the same worktree", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    plane.state.providers.set("prov", { id: "prov", name: "prov", defaultCommandId: "cmd" });
+    plane.state.commands.set("cmd", {
+      id: "cmd",
+      name: "cmd",
+      argv: ["tool"],
+      appendPrompt: false,
+      providerId: "prov",
+    });
+    plane.state.providerAccounts.set("acct-a", {
+      id: "acct-a",
+      providerId: "prov",
+      label: "a",
+      lastAssignedAt: "2025-01-01T00:00:00.000Z",
+    });
+    plane.state.providerAccounts.set("acct-b", {
+      id: "acct-b",
+      providerId: "prov",
+      label: "b",
+      lastAssignedAt: "2025-06-01T00:00:00.000Z",
+    });
+    markHostReady(plane, "host");
+    const connection = plane.state.connections.get("host-connection")!;
+    plane.state.connections.set("host-connection", {
+      ...connection,
+      providerAccountReadiness: [
+        { providerAccountId: "acct-a", ready: false, fingerprint: "a".repeat(64) },
+        { providerAccountId: "acct-b", ready: true, fingerprint: "b".repeat(64) },
+      ],
+    });
+    plane.state.hostInventories.set("host", {
+      ...plane.state.hostInventories.get("host")!,
+      providerAccounts: [{ providerAccountId: "acct-a" }, { providerAccountId: "acct-b" }],
+    });
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    const plan = planPromptPlacement(
+      plane.state,
+      buildProviderCatalog(plane.state),
+      session({ target: { providerId: "prov" }, targetLabels: ["prov"] }),
+      Date.parse(NOW),
+    );
+    expect(plan).toMatchObject({
+      action: "assign",
+      candidates: [{ route: { providerAccountId: "acct-b" } }],
+    });
+  });
 });

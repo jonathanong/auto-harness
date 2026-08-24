@@ -1,7 +1,13 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
-import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  assignmentLeaseCollision,
+  isConditionalTransactionFailed,
+  type AssignmentWriteResult,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
+import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
 import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
 import type { SessionRecord } from "./types.ts";
 
@@ -33,7 +39,7 @@ export async function tryAssignSession(
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
   },
-): Promise<boolean> {
+): Promise<AssignmentWriteResult> {
   const sessionSets = [
     "#s = :running",
     "statusShard = :statusShard",
@@ -66,116 +72,114 @@ export async function tryAssignSession(
     sessionValues[":providerAccountLease"] = opts.providerAccountLease;
   }
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
+  const transactItems = [
+    {
+      ConditionCheck: {
+        TableName: ctx.tables.repositories,
+        Key: { id: opts.repositoryId },
+        ConditionExpression:
+          "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+        ExpressionAttributeValues: { ":active": "active" },
+      },
+    },
+    ...(drainCheck ? [drainCheck] : []),
+    {
+      ConditionCheck: {
+        TableName: ctx.tables.hostInventories,
+        Key: { hostId: opts.hostId },
+        ConditionExpression:
+          opts.hostInventoryVersion === null
+            ? "attribute_not_exists(hostId)"
+            : "version = :inventoryVersion OR (attribute_not_exists(version) AND :inventoryVersion = :zero)",
+        ...(opts.hostInventoryVersion === null
+          ? {}
+          : {
+              ExpressionAttributeValues: {
+                ":inventoryVersion": opts.hostInventoryVersion,
+                ":zero": 0,
+              },
+            }),
+      },
+    },
+    {
+      Update: {
+        TableName: ctx.tables.worktrees,
+        Key: { id: opts.worktreeId },
+        UpdateExpression:
+          "SET #s = :busy, currentSessionId = :sid, lastAssignedAt = :now, connectionId = :connectionId",
+        ConditionExpression: "#s = :idle AND #o = :true",
+        ExpressionAttributeNames: { "#s": "status", "#o": "online" },
+        ExpressionAttributeValues: {
+          ":busy": "busy",
+          ":idle": "idle",
+          ":true": true,
+          ":sid": opts.sessionId,
+          ":now": opts.now,
+          ":connectionId": opts.connectionId,
+        },
+      },
+    },
+    {
+      Update: {
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt`,
+        ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: sessionValues,
+      },
+    },
+    {
+      // A hydrated scheduler can retain an online worktree after a
+      // different process disconnects its host. The lease is the
+      // authority for reachability, so require the exact connection
+      // that was live when this candidate was selected.
+      ConditionCheck: {
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        ConditionExpression:
+          "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
+        ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
+      },
+    },
+    ...(opts.providerAccountId
+      ? [
+          providerAccountLastAssignedTransactItem(ctx, {
+            providerAccountId: opts.providerAccountId,
+            now: opts.now,
+            ...(opts.providerAccountLease ? { slot: opts.providerAccountLease.slot } : {}),
+          }),
+        ]
+      : []),
+    ...(opts.providerAccountLease
+      ? [
+          {
+            Put: {
+              TableName: ctx.tables.concurrencyLocks,
+              Item: {
+                concurrencyId: opts.providerAccountLease.concurrencyId,
+                sessionId: opts.sessionId,
+                attemptId: opts.attemptId,
+                providerAccountId: opts.providerAccountLease.providerAccountId,
+                slot: opts.providerAccountLease.slot,
+                hostId: opts.hostId,
+              },
+              ConditionExpression: "attribute_not_exists(concurrencyId)",
+            },
+          },
+        ]
+      : []),
+  ];
+  const leaseIndex = opts.providerAccountLease ? transactItems.length - 1 : undefined;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
-        TransactItems: [
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.repositories,
-              Key: { id: opts.repositoryId },
-              ConditionExpression:
-                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
-              ExpressionAttributeValues: { ":active": "active" },
-            },
-          },
-          ...(drainCheck ? [drainCheck] : []),
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.hostInventories,
-              Key: { hostId: opts.hostId },
-              ConditionExpression:
-                opts.hostInventoryVersion === null
-                  ? "attribute_not_exists(hostId)"
-                  : "version = :inventoryVersion OR (attribute_not_exists(version) AND :inventoryVersion = :zero)",
-              ...(opts.hostInventoryVersion === null
-                ? {}
-                : {
-                    ExpressionAttributeValues: {
-                      ":inventoryVersion": opts.hostInventoryVersion,
-                      ":zero": 0,
-                    },
-                  }),
-            },
-          },
-          {
-            Update: {
-              TableName: ctx.tables.worktrees,
-              Key: { id: opts.worktreeId },
-              UpdateExpression:
-                "SET #s = :busy, currentSessionId = :sid, lastAssignedAt = :now, connectionId = :connectionId",
-              ConditionExpression: "#s = :idle AND #o = :true",
-              ExpressionAttributeNames: { "#s": "status", "#o": "online" },
-              ExpressionAttributeValues: {
-                ":busy": "busy",
-                ":idle": "idle",
-                ":true": true,
-                ":sid": opts.sessionId,
-                ":now": opts.now,
-                ":connectionId": opts.connectionId,
-              },
-            },
-          },
-          {
-            Update: {
-              TableName: ctx.tables.sessions,
-              Key: { id: opts.sessionId },
-              UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt`,
-              ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
-              ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: sessionValues,
-            },
-          },
-          {
-            // A hydrated scheduler can retain an online worktree after a
-            // different process disconnects its host. The lease is the
-            // authority for reachability, so require the exact connection
-            // that was live when this candidate was selected.
-            ConditionCheck: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              ConditionExpression:
-                "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
-            },
-          },
-          ...(opts.providerAccountId
-            ? [
-                {
-                  Update: {
-                    TableName: ctx.tables.providerAccounts,
-                    Key: { id: opts.providerAccountId },
-                    UpdateExpression: "SET lastAssignedAt = :now, updatedAt = :now",
-                    ConditionExpression:
-                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
-                    ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
-                  },
-                },
-              ]
-            : []),
-          ...(opts.providerAccountLease
-            ? [
-                {
-                  Put: {
-                    TableName: ctx.tables.concurrencyLocks,
-                    Item: {
-                      concurrencyId: opts.providerAccountLease.concurrencyId,
-                      sessionId: opts.sessionId,
-                      attemptId: opts.attemptId,
-                      providerAccountId: opts.providerAccountLease.providerAccountId,
-                      slot: opts.providerAccountLease.slot,
-                      hostId: opts.hostId,
-                    },
-                    ConditionExpression: "attribute_not_exists(concurrencyId)",
-                  },
-                },
-              ]
-            : []),
-        ],
+        TransactItems: transactItems,
       }),
     );
     return true;
   } catch (err) {
+    if (assignmentLeaseCollision(err, leaseIndex)) return "lease_collision";
     if (isConditionalTransactionFailed(err)) {
       return false;
     }

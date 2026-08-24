@@ -140,6 +140,11 @@ export function serviceEnv(env: NodeJS.ProcessEnv, apiUrl: string | undefined): 
   return apiUrl === undefined ? env : { ...env, HARNESS_API_URL: apiUrl };
 }
 
+const PERSISTED_DAEMON_ENV_KEYS = [
+  "HARNESS_EXECUTION_PROFILES",
+  "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
+] as const;
+
 function filledValue(
   key: string,
   fallback: string,
@@ -198,6 +203,13 @@ export function renderEnvFile(
   for (const key of extras.keys) {
     const value = env[key];
     if (value === undefined || seen.has(key)) continue;
+    assertSingleLine(key, value);
+    seen.add(key);
+    out.push(`${key}=${value}`);
+  }
+  for (const key of PERSISTED_DAEMON_ENV_KEYS) {
+    const value = env[key];
+    if (value === undefined || value === "" || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
     out.push(`${key}=${value}`);

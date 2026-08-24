@@ -25,6 +25,7 @@ import {
   releaseProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
+import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -203,7 +204,7 @@ export async function assignQueuedDurable(
       const attemptId = state.attemptIdFactory();
       const occupiedSlots = new Set<number>();
       let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
-      let won = false;
+      let won: AssignmentWriteResult = false;
       const principalId = sessionPrincipalId(session);
       while (true) {
         lease = tryAcquireProviderAccountLeaseLocal(
@@ -244,11 +245,12 @@ export async function assignQueuedDurable(
           ...(lease ? { providerAccountLease: lease } : {}),
           queueShard: session.queueShard,
         });
-        if (won || !lease) break;
+        if (won === true || !lease) break;
         state.providerAccountLeases.delete(lease.concurrencyId);
+        if (won !== "lease_collision") break;
         occupiedSlots.add(lease.slot);
       }
-      if (!won) continue;
+      if (won !== true) continue;
       const resumeSpec = session.resumeSpec ?? route.resumeSpec;
       const nextSession = {
         ...session,

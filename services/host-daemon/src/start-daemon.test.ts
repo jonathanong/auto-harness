@@ -31,6 +31,30 @@ describe("startDaemon", () => {
     }
   });
 
+  it("loads execution profiles before opening the WebSocket", async () => {
+    const { config, cleanup } = await makeRepo();
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    let connections = 0;
+    wss.on("connection", () => {
+      connections += 1;
+    });
+    try {
+      await listen(server);
+      await expect(
+        startDaemon({
+          config,
+          wsUrl: `ws://127.0.0.1:${port(server)}/ws`,
+          childEnvSource: { HARNESS_EXECUTION_PROFILES: "/no/such/profiles.json" },
+        }),
+      ).rejects.toThrow(/ENOENT|no such file/i);
+      expect(connections).toBe(0);
+    } finally {
+      await close(wss, server);
+      cleanup();
+    }
+  });
+
   it("commits a drain notification before closing the daemon connection", async () => {
     const { config, cleanup } = await makeRepo();
     const server = createServer();

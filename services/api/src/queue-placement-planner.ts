@@ -17,7 +17,8 @@ import { repositoryAdmissionOpen } from "./control-plane-repository-admission-st
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import {
   resolveSessionTargetRouteAt,
-  resolveScheduledSessionTarget,
+  resolveSessionTargetRoutesAt,
+  resolveScheduledSessionTargets,
   type ResolvedSessionRoute,
 } from "./control-plane-session-target.ts";
 
@@ -99,17 +100,11 @@ function eligibleRoutes(
   targetIndex: number,
 ): Array<{ candidate: WorktreeRecord; route: ResolvedSessionRoute }> {
   return worktrees
-    .flatMap((candidate) => {
-      const route = resolveSessionTargetRouteAt(
-        state,
-        catalog,
-        session,
-        candidate,
-        nowMs,
-        targetIndex,
-      );
-      return route ? [{ candidate, route }] : [];
-    })
+    .flatMap((candidate) =>
+      resolveSessionTargetRoutesAt(state, catalog, session, candidate, nowMs, targetIndex).map(
+        (route) => ({ candidate, route }),
+      ),
+    )
     .toSorted((left, right) => {
       const leftAssigned = left.route.providerAccountId
         ? (state.providerAccounts.get(left.route.providerAccountId)?.lastAssignedAt ?? "")
@@ -210,13 +205,13 @@ export function planScheduledPlacement(
     route: ResolvedSessionRoute;
   }> = [];
   for (const host of hosts) {
-    const route = resolveScheduledSessionTarget(state, catalog, session, host.hostId);
-    if (
-      route &&
-      hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
-      accountHasLeaseCapacity(state, route.providerAccountId)
-    ) {
-      candidates.push({ ...host, route });
+    for (const route of resolveScheduledSessionTargets(state, catalog, session, host.hostId)) {
+      if (
+        hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
+        accountHasLeaseCapacity(state, route.providerAccountId)
+      ) {
+        candidates.push({ ...host, route });
+      }
     }
   }
   if (candidates.length === 0) {

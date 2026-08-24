@@ -106,6 +106,31 @@ describe("install-service linux", () => {
     expect(errors.join("\n")).toMatch(/enable failed/);
   });
 
+  it("persists execution profile settings from the install environment", () => {
+    const fs = seededFs();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+            HARNESS_EXECUTION_PROFILES: "/etc/auto-harness/profiles.json",
+            HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "3",
+          },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain(
+      "HARNESS_EXECUTION_PROFILES=/etc/auto-harness/profiles.json",
+    );
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
+  });
+
   it("reports split enable and restart failures for an existing root environment update", () => {
     const existing = {
       [LINUX_ENV_DEST]:

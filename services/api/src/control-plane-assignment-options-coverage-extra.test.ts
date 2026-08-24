@@ -138,7 +138,7 @@ describe("assignment optional-field coverage", () => {
     setDurableReadStorage(state, {
       tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
         slots.push(opts.providerAccountLease?.slot ?? -1);
-        return opts.providerAccountLease?.slot === 1;
+        return opts.providerAccountLease?.slot === 1 ? true : "lease_collision";
       },
       expireQueuedSession: async () => false,
       clearResumePin: async () => true,
@@ -146,6 +146,26 @@ describe("assignment optional-field coverage", () => {
     await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
     expect(slots).toEqual([0, 1]);
     expect(state.sessions.get("s")?.providerAccountLease?.slot).toBe(1);
+  });
+
+  it("does not retry remaining slots when assignment lost a non-lease condition", async () => {
+    const state = providerState();
+    state.providerAccounts.set("account", {
+      ...state.providerAccounts.get("account")!,
+      maxConcurrentSessions: 4,
+    });
+    const slots: number[] = [];
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { providerAccountLease?: { slot: number } }) => {
+        slots.push(opts.providerAccountLease?.slot ?? -1);
+        return false;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(0);
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.every((slot) => slot === 0)).toBe(true);
   });
 
   it("uses legacy metadata ownership for the durable assignment drain fence", async () => {

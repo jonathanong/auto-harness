@@ -326,6 +326,17 @@ export function isConditionalTransactionFailureAt(err: unknown, index: number): 
   return reasons?.[index]?.Code === "ConditionalCheckFailed";
 }
 
+export type AssignmentWriteResult = boolean | "lease_collision";
+
+/** True only when the provider-account lease Put was the sole failed condition. */
+export function assignmentLeaseCollision(err: unknown, leaseIndex: number | undefined): boolean {
+  if (leaseIndex === undefined || !isConditionalTransactionFailureAt(err, leaseIndex)) {
+    return false;
+  }
+  const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
+  return reasons?.filter((reason) => reason.Code === "ConditionalCheckFailed").length === 1;
+}
+
 /**
  * Normalize a DynamoDB pagination cursor.
  *

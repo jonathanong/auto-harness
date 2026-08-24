@@ -154,10 +154,12 @@ is durable local observability only: it neither restarts the host nor sends an e
 - Validate unique worktree ids, non-overlapping paths, non-empty `hostId`
 - Expose immutable config snapshot to other modules
 - Load daemon-local execution profiles from `HARNESS_EXECUTION_PROFILES` (JSON). Each profile is
-  keyed by Provider Account ID and owns that account's CLI home and extra environment. Registration
-  advertises only `ready` plus an opaque SHA-256 fingerprint of the home path and extra-env key
-  names (values omitted) — never credentials, home paths, or env values. Assignment of a
-  provider-backed session is refused (no ACK) when the exact account
+  keyed by Provider Account ID and owns that account's CLI home and extra environment. Extra env
+  may not set `HOME` or `USERPROFILE`; the isolated profile home always wins. `install-service`
+  persists `HARNESS_EXECUTION_PROFILES` and `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` in the service
+  environment file. Registration advertises only `ready` plus an opaque SHA-256 fingerprint of
+  the home path and extra-env key names (values omitted) — never credentials, home paths, or env
+  values. Assignment of a provider-backed session is refused (no ACK) when the exact account
   profile is missing or its home is not a directory.
 
 ```json

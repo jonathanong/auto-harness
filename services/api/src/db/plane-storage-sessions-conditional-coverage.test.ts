@@ -7,8 +7,9 @@ import {
   finishSession,
   requeueUsageLimitedSession,
   suppressProviderlessUsageLimit,
+  tryAssignSession,
 } from "./plane-storage-sessions.ts";
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { assignmentLeaseCollision, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const conditional = Object.assign(new Error("lost"), {
   name: "ConditionalCheckFailedException",
@@ -24,6 +25,15 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
       sessionDrainActivity: "SessionDrainActivity",
     } as never,
   } as PlaneStorageCtx;
+}
+
+function cancelled(failedIndex: number, extraFailed?: number) {
+  return Object.assign(new Error("canceled"), {
+    name: "TransactionCanceledException",
+    CancellationReasons: Array.from({ length: 8 }, (_, index) => ({
+      Code: index === failedIndex || index === extraFailed ? "ConditionalCheckFailed" : "None",
+    })),
+  });
 }
 
 describe("session storage conditional outcomes", () => {
@@ -110,5 +120,46 @@ describe("session storage conditional outcomes", () => {
     await expect(suppressProviderlessUsageLimit(ctx(boomSuppress), suppress)).rejects.toThrow(
       "dynamo unavailable",
     );
+  });
+
+  it("retries only a sole provider-lease Put collision", async () => {
+    const assignOpts = {
+      sessionId: "session",
+      repositoryId: "repo",
+      worktreeId: "worktree",
+      hostId: "host",
+      hostInventoryVersion: null,
+      connectionId: "connection",
+      now: "now",
+      attemptId: "attempt",
+      resolvedArgv: ["echo"],
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: "worktree",
+        attemptId: "attempt",
+      },
+      providerAccountId: "account",
+      providerAccountLease: {
+        concurrencyId: "acct:account:0",
+        providerAccountId: "account",
+        slot: 0,
+        attemptId: "attempt",
+      },
+      queueShard: 0,
+    };
+    const collision = vi.fn(async (command: { input?: { TransactItems?: unknown[] } }) => {
+      const leaseIndex = (command.input?.TransactItems ?? []).length - 1;
+      throw cancelled(leaseIndex);
+    });
+    await expect(tryAssignSession(ctx(collision), assignOpts)).resolves.toBe("lease_collision");
+    const doomed = vi.fn(async (command: { input?: { TransactItems?: unknown[] } }) => {
+      const leaseIndex = (command.input?.TransactItems ?? []).length - 1;
+      throw cancelled(leaseIndex, 3);
+    });
+    await expect(tryAssignSession(ctx(doomed), assignOpts)).resolves.toBe(false);
+    expect(assignmentLeaseCollision(cancelled(7), undefined)).toBe(false);
+    expect(assignmentLeaseCollision(new Error("unavailable"), 0)).toBe(false);
   });
 });

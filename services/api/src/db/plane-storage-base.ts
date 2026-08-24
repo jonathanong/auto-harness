@@ -6,6 +6,7 @@ import type { SessionResumeSpec } from "@auto-harness/shared";
 import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
 import {
+  type AssignmentWriteResult,
   type HostInventoryRecord,
   type ArchiveMetadata,
   type ConnectionRecord,
@@ -276,7 +277,7 @@ export class DynamoPlaneStorageBase {
     providerAccountId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
-  }): Promise<boolean> {
+  }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
   }
 
@@ -318,7 +319,7 @@ export class DynamoPlaneStorageBase {
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;
-  }): Promise<boolean> {
+  }): Promise<AssignmentWriteResult> {
     return mainCheckout.tryAssignMainCheckoutSession(this.ctx, opts);
   }
 

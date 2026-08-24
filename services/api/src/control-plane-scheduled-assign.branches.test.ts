@@ -365,7 +365,7 @@ describe("scheduled assignment branch coverage", () => {
       ensureMainCheckoutLeaseMap: async () => true,
       tryAssignMainCheckoutSession: async (opts: { providerAccountLease?: { slot: number } }) => {
         slots.push(opts.providerAccountLease?.slot ?? -1);
-        return opts.providerAccountLease?.slot === 1;
+        return opts.providerAccountLease?.slot === 1 ? true : "lease_collision";
       },
     });
     const messages: unknown[] = [];

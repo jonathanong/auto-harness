@@ -46,7 +46,8 @@ function parseProfileEnv(raw: unknown, ctx: string): Record<string, string> {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       throw new Error(`${ctx} has an invalid name`);
     }
-    if (key.toUpperCase().startsWith("HARNESS_")) {
+    const upper = key.toUpperCase();
+    if (upper.startsWith("HARNESS_") || upper === "HOME" || upper === "USERPROFILE") {
       throw new Error(`${ctx} reserved name: ${key}`);
     }
     if (typeof value !== "string") throw new Error(`${ctx}.${key} must be a string`);
@@ -165,10 +166,13 @@ export function applyExecutionProfile(
   base: NodeJS.ProcessEnv,
   profile: ExecutionProfile,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base, HOME: profile.home, USERPROFILE: profile.home };
+  const env: NodeJS.ProcessEnv = { ...base };
   for (const [key, value] of Object.entries(profile.env)) {
-    if (key.toUpperCase().startsWith("HARNESS_")) continue;
+    const upper = key.toUpperCase();
+    if (upper.startsWith("HARNESS_") || upper === "HOME" || upper === "USERPROFILE") continue;
     env[key] = value;
   }
+  env.HOME = profile.home;
+  env.USERPROFILE = profile.home;
   return env;
 }

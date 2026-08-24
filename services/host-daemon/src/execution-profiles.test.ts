@@ -88,6 +88,12 @@ describe("execution profiles", () => {
       parseExecutionProfiles({ accounts: { a: { home: "/x", env: { HARNESS_API_KEY: "x" } } } }),
     ).toThrow(/reserved name/);
     expect(() =>
+      parseExecutionProfiles({ accounts: { a: { home: "/x", env: { HOME: "/other" } } } }),
+    ).toThrow(/reserved name/);
+    expect(() =>
+      parseExecutionProfiles({ accounts: { a: { home: "/x", env: { userprofile: "/other" } } } }),
+    ).toThrow(/reserved name/);
+    expect(() =>
       parseExecutionProfiles({ accounts: { a: { home: "/x", env: { "bad-name": "x" } } } }),
     ).toThrow(/invalid name/);
     expect(() =>
@@ -169,5 +175,15 @@ describe("execution profiles", () => {
         { providerAccountId: "c", home: "/homes/c", env: { HARNESS_SKIP: "nope", OK: "yes" } },
       ),
     ).toMatchObject({ HOME: "/homes/c", OK: "yes" });
+    expect(
+      applyExecutionProfile(
+        { PATH: "/bin" },
+        {
+          providerAccountId: "d",
+          home: "/homes/d",
+          env: { HOME: "/injected", USERPROFILE: "/injected", FOO: "ok" },
+        },
+      ),
+    ).toMatchObject({ HOME: "/homes/d", USERPROFILE: "/homes/d", FOO: "ok" });
   });
 });

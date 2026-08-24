@@ -23,6 +23,7 @@ import {
   hostProviderAccountReady,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
+import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -147,7 +148,7 @@ export async function assignScheduledQueuedDurable(
       const attemptId = state.attemptIdFactory();
       const occupiedSlots = new Set<number>();
       let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
-      let won = false;
+      let won: AssignmentWriteResult = false;
       while (true) {
         lease = tryAcquireProviderAccountLeaseLocal(
           state,
@@ -189,11 +190,12 @@ export async function assignScheduledQueuedDurable(
               attemptId,
             }))
           : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
-        if (won || !lease) break;
+        if (won === true || !lease) break;
         state.providerAccountLeases.delete(lease.concurrencyId);
+        if (won !== "lease_collision") break;
         occupiedSlots.add(lease.slot);
       }
-      if (!won) continue;
+      if (won !== true) continue;
       placed = { hostId, connectionId, target, attemptId, lease };
       break;
     }
