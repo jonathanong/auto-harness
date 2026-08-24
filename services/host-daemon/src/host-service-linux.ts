@@ -167,7 +167,16 @@ function activateLinux(ctx: HostServiceContext, envExists: boolean): number {
   return 0;
 }
 
-export function installLinux(ctx: HostServiceContext): number {
+type LinuxInstall = {
+  envExists: boolean;
+  preparedEnv: ReturnType<typeof preparePersistedEnv>;
+  paths: LinuxPaths;
+  unit: string;
+  launcher: string;
+  writeEnv: boolean;
+};
+
+function prepareLinuxInstall(ctx: HostServiceContext): LinuxInstall | undefined {
   const envExists = ctx.fs.existsSync(LINUX_ENV_DEST);
   if (ctx.uid !== 0 && envExists) {
     ctx.error(
@@ -175,7 +184,7 @@ export function installLinux(ctx: HostServiceContext): number {
         ? "Refusing non-root install with an existing service env: rerun install-service with sudo so the persisted environment can be validated safely."
         : "Refusing --api-url update as non-root: rerun install-service with sudo to retain the persisted service key safely.",
     );
-    return 1;
+    return undefined;
   }
   const existingEnv = envExists ? ctx.fs.readFileSync(LINUX_ENV_DEST) : undefined;
   const preparedEnv = preparePersistedEnv({
@@ -187,96 +196,88 @@ export function installLinux(ctx: HostServiceContext): number {
   });
   if (preparedEnv.errors.length > 0) {
     ctx.error(persistedEnvError(preparedEnv.errors));
-    return 1;
+    return undefined;
   }
   const paths = linuxPaths(ctx);
   const unit = renderedUnit(ctx, paths);
   const launcher = renderedLauncher(ctx, paths);
   const writeEnv = !envExists || ctx.apiUrl !== undefined || preparedEnv.contents !== existingEnv;
-  if (ctx.uid !== 0) {
-    return stageLinux(ctx, paths, unit, launcher, writeEnv ? preparedEnv.contents : undefined);
-  }
+  return { envExists, preparedEnv, paths, unit, launcher, writeEnv };
+}
 
-  ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });
-  const updateRoot = ctx.run("install", [
-    "-d",
-    "-o",
-    "root",
-    "-g",
-    "root",
-    "-m",
-    "0755",
-    paths.updateRoot,
-  ]);
-  if (updateRoot.status !== 0) {
-    return failedCommand(ctx.error, "install writable update root", updateRoot);
+function installLinuxDirectory(
+  ctx: HostServiceContext,
+  target: string,
+  owner: string,
+  mode: string,
+  description: string,
+): boolean {
+  const result = ctx.run("install", ["-d", "-o", owner, "-g", owner, "-m", mode, target]);
+  return result.status === 0 || (failedCommand(ctx.error, description, result), false);
+}
+
+function installLinuxRoots(ctx: HostServiceContext, paths: LinuxPaths): boolean {
+  return (
+    installLinuxDirectory(ctx, paths.updateRoot, "root", "0755", "install writable update root") &&
+    installLinuxDirectory(
+      ctx,
+      join(paths.updateRoot, "incoming"),
+      LINUX_SERVICE_USER,
+      "0700",
+      "install writable update incoming directory",
+    ) &&
+    installLinuxDirectory(
+      ctx,
+      dirname(paths.launcher),
+      "root",
+      "0755",
+      "install root-owned launcher directory",
+    ) &&
+    installLinuxDirectory(
+      ctx,
+      join(paths.updateRoot, "releases"),
+      "root",
+      "0755",
+      "install immutable update release directory",
+    )
+  );
+}
+
+function lockLinuxReleaseTree(ctx: HostServiceContext, path: string, description: string): boolean {
+  const ownership = ctx.run("chown", ["-R", "root:root", path]);
+  if (ownership.status !== 0) {
+    failedCommand(ctx.error, `lock ${description} ownership`, ownership);
+    return false;
   }
-  const incomingRoot = ctx.run("install", [
-    "-d",
-    "-o",
-    LINUX_SERVICE_USER,
-    "-g",
-    LINUX_SERVICE_USER,
-    "-m",
-    "0700",
-    join(paths.updateRoot, "incoming"),
-  ]);
-  if (incomingRoot.status !== 0) {
-    return failedCommand(ctx.error, "install writable update incoming directory", incomingRoot);
-  }
-  const launcherRoot = ctx.run("install", [
-    "-d",
-    "-o",
-    "root",
-    "-g",
-    "root",
-    "-m",
-    "0755",
-    dirname(paths.launcher),
-  ]);
-  if (launcherRoot.status !== 0) {
-    return failedCommand(ctx.error, "install root-owned launcher directory", launcherRoot);
-  }
-  const releasesRoot = ctx.run("install", [
-    "-d",
-    "-o",
-    "root",
-    "-g",
-    "root",
-    "-m",
-    "0755",
-    join(paths.updateRoot, "releases"),
-  ]);
-  if (releasesRoot.status !== 0) {
-    return failedCommand(ctx.error, "install immutable update release directory", releasesRoot);
-  }
+  const permissions = ctx.run("chmod", ["-R", "go-w", path]);
+  return (
+    permissions.status === 0 ||
+    (failedCommand(ctx.error, `lock ${description} permissions`, permissions), false)
+  );
+}
+
+function lockLegacyLinuxReleaseTrees(ctx: HostServiceContext, paths: LinuxPaths): boolean {
   // Migrate a checkout installed by earlier versions, where `current` was
   // harness-owned. A root-owned wrapper must never execute a release that a
   // session CLI can still replace between service starts.
-  if (ctx.fs.existsSync(paths.currentRoot)) {
-    const ownCurrent = ctx.run("chown", ["-R", "root:root", paths.currentRoot]);
-    if (ownCurrent.status !== 0) {
-      return failedCommand(ctx.error, "lock existing current release ownership", ownCurrent);
-    }
-    const lockCurrent = ctx.run("chmod", ["-R", "go-w", paths.currentRoot]);
-    if (lockCurrent.status !== 0) {
-      return failedCommand(ctx.error, "lock existing current release permissions", lockCurrent);
-    }
+  if (
+    ctx.fs.existsSync(paths.currentRoot) &&
+    !lockLinuxReleaseTree(ctx, paths.currentRoot, "existing current release")
+  ) {
+    return false;
   }
   // Earlier automatic-update builds used current -> versions/<version>.
   // `chown -R current` deliberately does not dereference that pointer, so
   // lock its target tree explicitly before a root-owned wrapper may follow it.
   const legacyVersions = join(paths.updateRoot, "versions");
-  if (ctx.fs.existsSync(legacyVersions)) {
-    const ownLegacyVersions = ctx.run("chown", ["-R", "root:root", legacyVersions]);
-    if (ownLegacyVersions.status !== 0) {
-      return failedCommand(ctx.error, "lock legacy update release ownership", ownLegacyVersions);
-    }
-    const lockLegacyVersions = ctx.run("chmod", ["-R", "go-w", legacyVersions]);
-    if (lockLegacyVersions.status !== 0) {
-      return failedCommand(ctx.error, "lock legacy update release permissions", lockLegacyVersions);
-    }
-  }
+  return (
+    !ctx.fs.existsSync(legacyVersions) ||
+    lockLinuxReleaseTree(ctx, legacyVersions, "legacy update release")
+  );
+}
+
+function writeLinuxServiceFiles(ctx: HostServiceContext, install: LinuxInstall): void {
+  const { envExists, preparedEnv, paths, unit, launcher, writeEnv } = install;
   if (writeEnv) {
     writeMode(ctx.fs, LINUX_ENV_DEST, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${LINUX_ENV_DEST} (mode 0600)`);
@@ -294,6 +295,19 @@ export function installLinux(ctx: HostServiceContext): number {
   ctx.log(`Wrote ${LINUX_ACTIVATION_HELPER_DEST}`);
   writeMode(ctx.fs, LINUX_UNIT_DEST, unit, 0o644);
   ctx.log(`Wrote ${LINUX_UNIT_DEST}`);
+}
+
+export function installLinux(ctx: HostServiceContext): number {
+  const install = prepareLinuxInstall(ctx);
+  if (!install) return 1;
+  const { envExists, preparedEnv, paths, unit, launcher, writeEnv } = install;
+  if (ctx.uid !== 0) {
+    return stageLinux(ctx, paths, unit, launcher, writeEnv ? preparedEnv.contents : undefined);
+  }
+
+  ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });
+  if (!installLinuxRoots(ctx, paths) || !lockLegacyLinuxReleaseTrees(ctx, paths)) return 1;
+  writeLinuxServiceFiles(ctx, install);
   const reload = ctx.run("systemctl", ["daemon-reload"]);
   if (reload.status !== 0) return failedCommand(ctx.error, "systemctl daemon-reload", reload);
   return activateLinux(ctx, envExists);

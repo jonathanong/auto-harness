@@ -101,6 +101,7 @@ export function validateSystemdActivationHelper(helper: string): string[] {
     'switchCurrent(root, join("releases", manifest.version))',
     'process.argv[2] === "--mark-boot-attempt"',
     "settlePriorBoot(root, incoming)",
+    'rmSync(join(root, "releases", marker.version), { recursive: true, force: true })',
     "promote(root, incoming)",
     "rootStat.uid !== 0",
   ]) {

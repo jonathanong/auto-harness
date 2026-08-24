@@ -171,6 +171,11 @@ function settlePriorBoot(root, incoming) {
   // leaving the failed first release selected would create an endless loop.
   if (previous) switchCurrent(root, previous);
   else rmSync(join(root, "current"), { force: true });
+  // A failed release is never selected after the rollback above. Remove this
+  // version's root-owned immutable tree so a corrected artifact for the same
+  // version can be promoted on a later supervisor start. `marker.version` is
+  // constrained by VERSION, so this is always a direct child of releases.
+  rmSync(join(root, "releases", marker.version), { recursive: true, force: true });
   rmSync(markerPath, { force: true });
 }
 

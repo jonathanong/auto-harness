@@ -231,6 +231,11 @@ describe("resolveSessionTargetArgv", () => {
     const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
     const cases = [
       ["claude", ["claude", "-p"], ["claude", "--output-format", "json", "-p"]],
+      [
+        "windows-claude",
+        ["C:\\Tools\\claude.exe", "-p"],
+        ["C:\\Tools\\claude.exe", "--output-format", "json", "-p"],
+      ],
       ["codex", ["codex", "exec"], ["codex", "exec", "--json"]],
       [
         "gemini",

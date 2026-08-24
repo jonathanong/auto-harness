@@ -50,13 +50,7 @@ function objectEnd(value: string, start: number): number | undefined {
   for (let index = start; index < value.length; index += 1) {
     const char = value[index]!;
     if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
+      ({ inString, escaped } = nextStringState(char, escaped));
       continue;
     }
     if (char === '"') {
@@ -70,6 +64,18 @@ function objectEnd(value: string, start: number): number | undefined {
     }
   }
   return undefined;
+}
+
+function nextStringState(
+  char: string,
+  escaped: boolean,
+): {
+  inString: boolean;
+  escaped: boolean;
+} {
+  if (escaped) return { inString: true, escaped: false };
+  if (char === "\\") return { inString: true, escaped: true };
+  return { inString: char !== '"', escaped: false };
 }
 
 /** Parse Codex's JSONL event stream; each accepted line remains a full envelope. */

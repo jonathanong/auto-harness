@@ -409,7 +409,7 @@ function migrateLegacyProviderArgv(argv: readonly string[]): string[] {
 
 function executableStem(value: string | undefined): string {
   if (!value) return "";
-  const normalized = value.replaceAll("\\\\", "/");
+  const normalized = value.replaceAll("\\", "/");
   const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
   return basename.replace(/\.(?:exe|cmd|bat)$/iu, "").toLowerCase();
 }

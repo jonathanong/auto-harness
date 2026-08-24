@@ -17,26 +17,30 @@ function assertSafeSymlinks(root: string, current = root, resolvedRoot = realpat
   )) {
     const path = join(current, entry.name);
     if (entry.isSymbolicLink()) {
-      if (!isPnpmDependencyPath(root, path)) {
-        throw new Error("update archive contains a symbolic link outside node_modules");
-      }
-      const target = readlinkSync(path);
-      const lexicalTarget = resolve(dirname(path), target);
-      if (isAbsolute(target) || !isContainedPath(root, lexicalTarget)) {
-        throw new Error("update archive contains a symbolic link outside its staging directory");
-      }
-      let resolvedTarget: string;
-      try {
-        resolvedTarget = realpathSync(path);
-      } catch {
-        throw new Error("update archive contains a broken symbolic link");
-      }
-      if (!isContainedPath(resolvedRoot, resolvedTarget)) {
-        throw new Error("update archive contains a symbolic link outside its staging directory");
-      }
+      assertSafeSymlink(root, path, resolvedRoot);
       continue;
     }
     if (entry.isDirectory()) assertSafeSymlinks(root, path, resolvedRoot);
+  }
+}
+
+function assertSafeSymlink(root: string, path: string, resolvedRoot: string): void {
+  if (!isPnpmDependencyPath(root, path)) {
+    throw new Error("update archive contains a symbolic link outside node_modules");
+  }
+  const target = readlinkSync(path);
+  const lexicalTarget = resolve(dirname(path), target);
+  if (isAbsolute(target) || !isContainedPath(root, lexicalTarget)) {
+    throw new Error("update archive contains a symbolic link outside its staging directory");
+  }
+  let resolvedTarget: string;
+  try {
+    resolvedTarget = realpathSync(path);
+  } catch {
+    throw new Error("update archive contains a broken symbolic link");
+  }
+  if (!isContainedPath(resolvedRoot, resolvedTarget)) {
+    throw new Error("update archive contains a symbolic link outside its staging directory");
   }
 }
 

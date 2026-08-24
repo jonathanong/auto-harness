@@ -61,6 +61,17 @@ export function parseHostUpdateConfig(value: unknown): HostUpdateConfig {
   if (!isRecord(value) || typeof value.enabled !== "boolean") {
     throw new TypeError("updateConfig.enabled must be a boolean");
   }
+  assertPermittedUpdateConfigFields(value);
+  if (!value.enabled) {
+    if (Object.keys(value).length !== 1) {
+      throw new TypeError("disabled updateConfig cannot include update settings");
+    }
+    return { enabled: false };
+  }
+  return parseEnabledUpdateConfig(value);
+}
+
+function assertPermittedUpdateConfigFields(value: Record<string, unknown>): void {
   const permitted = new Set([
     "enabled",
     "manifestUrl",
@@ -72,13 +83,9 @@ export function parseHostUpdateConfig(value: unknown): HostUpdateConfig {
   if (Object.keys(value).some((key) => !permitted.has(key))) {
     throw new TypeError("updateConfig contains an unsupported field");
   }
-  if (!value.enabled) {
-    if (Object.keys(value).length !== 1) {
-      throw new TypeError("disabled updateConfig cannot include update settings");
-    }
-    return { enabled: false };
-  }
+}
 
+function parseEnabledUpdateConfig(value: Record<string, unknown>): HostUpdateConfig {
   const manifestUrl = optionalString(value, "manifestUrl", MAX_UPDATE_URL_LENGTH);
   const publicKey = optionalString(value, "publicKey", MAX_UPDATE_PUBLIC_KEY_LENGTH);
   if (!manifestUrl || !publicKey) {
