@@ -6,6 +6,20 @@ import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared"
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
+function seqAssign(attemptId: string): HostWireMessage {
+  return {
+    type: "session:assign",
+    sessionId: "seq-session",
+    attemptId,
+    repositoryId: "demo",
+    prompt: "hello",
+    resolvedArgv: ["printf", "%s", "hello"],
+    timeout: 30,
+    worktreeId: "wt-1",
+    assignedAt: new Date().toISOString(),
+  };
+}
+
 describe("DaemonLoop outbound delivery", () => {
   it("delivers all logs before exactly one terminal status", async () => {
     const { config, cleanup } = await makeRepo();
@@ -279,25 +293,14 @@ describe("DaemonLoop outbound delivery", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      const assign = (attemptId: string): HostWireMessage => ({
-        type: "session:assign",
-        sessionId: "seq-session",
-        attemptId,
-        repositoryId: "demo",
-        prompt: "hello",
-        resolvedArgv: ["printf", "%s", "hello"],
-        timeout: 30,
-        worktreeId: "wt-1",
-        assignedAt: new Date().toISOString(),
-      });
-      transport.deliver(assign("attempt-seq-1"));
+      transport.deliver(seqAssign("attempt-seq-1"));
       await loop.waitForIdle();
       const firstLogs = sent.filter(
         (message) => message.type === "session:log" && message.sessionId === "seq-session",
       );
       expect(firstLogs.length).toBeGreaterThan(0);
       const lastSeq = firstLogs.at(-1)!.seq;
-      transport.deliver(assign("attempt-seq-2"));
+      transport.deliver(seqAssign("attempt-seq-2"));
       await loop.waitForIdle();
       const secondLogs = sent.filter(
         (message) =>

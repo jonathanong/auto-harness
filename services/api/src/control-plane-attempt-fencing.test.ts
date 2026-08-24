@@ -440,4 +440,66 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(writes).toBe(0);
     expect(plane.getLogs("sess-1")).toEqual([]);
   });
+
+  it("rejects a current-attempt durable log from a connection that does not own the host", async () => {
+    const { now, plane } = assignedPlane();
+    plane.assignQueued();
+    plane.state.storage = {
+      getSession: async (sessionId: string) =>
+        sessionId === "sess-1" ? plane.getSession("sess-1") : null,
+      getHostLock: async () => "owner-connection",
+      putLogFenced: async () => true,
+      putLog: async () => undefined,
+    } as never;
+    expect(
+      await plane.handleHostMessageDurable(
+        {
+          type: "session:log",
+          sessionId: "sess-1",
+          attemptId: plane.getSession("sess-1")?.attemptId,
+          stream: "stdout",
+          content: "unowned",
+          timestamp: now,
+          seq: 1,
+        },
+        "other-connection",
+      ),
+    ).toEqual({ ok: false, error: "stale host connection" });
+    expect(
+      await plane.handleHostMessageDurable({
+        type: "session:log",
+        sessionId: "missing",
+        attemptId: "attempt-1",
+        stream: "stdout",
+        content: "missing",
+        timestamp: now,
+        seq: 1,
+      }),
+    ).toEqual({ ok: true });
+    expect(plane.getLogs("missing").map((record) => record.content)).toEqual(["missing"]);
+  });
+
+  it("still validates legacy runningSessions when runningAttempts is empty", async () => {
+    const { plane } = assignedPlane();
+    expect(
+      plane.registerHost({
+        hostId: "host-1",
+        replaceExisting: true,
+        worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
+        runningSessions: ["missing"],
+        runningAttempts: [],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).toEqual({ ok: false, error: "running session missing is not owned by host host-1" });
+    plane.state.storage = { getSession: async () => null } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "host-4",
+        worktrees: [{ id: "wt-4", name: "wt-4", repositoryId: "repo-1", path: "/w4", labels: [] }],
+        runningSessions: ["missing"],
+        runningAttempts: [],
+        runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).resolves.toEqual({ ok: false, error: "running session missing is not owned by host host-4" });
+  });
 });
