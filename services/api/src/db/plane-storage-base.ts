@@ -275,6 +275,7 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
@@ -316,6 +317,7 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;

@@ -14,6 +14,7 @@ export type SessionRecord = {
   /** The route used for the current or most recent assignment. */
   resolvedRoute?: {
     targetIndex: number;
+    providerId?: string;
     providerAccountId?: string;
     commandId: string;
     hostId: string;

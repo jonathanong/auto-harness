@@ -47,6 +47,18 @@ describe("host capability advertisements", () => {
         type: "host:register",
         hostId: "host",
         worktrees,
+        capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 4,
+      }),
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 4,
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
         providerAccountReadiness: [
           {
             providerAccountId: "acct",

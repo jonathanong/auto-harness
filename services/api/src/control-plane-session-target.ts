@@ -14,6 +14,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 
 export type ResolvedSessionRoute = {
   targetIndex: number;
+  providerId?: string;
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
@@ -119,6 +120,7 @@ function resolveNativeResumeRoute(
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
+    ...(accountId ? { providerId: catalog.providerAccounts[accountId]?.providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(
@@ -192,6 +194,7 @@ function resolveTargets(
       nowMs,
       pinnedProviderAccountId,
     ).map((account) => ({
+      providerId: command.providerId,
       providerAccountId: account.id,
       commandId: command.id,
       resolvedArgv,
@@ -221,6 +224,7 @@ function resolveTargets(
     const resolvedArgv = buildArgv(command, prompt);
     if (resolvedArgv && commandId && command) {
       routes.push({
+        providerId: target.providerId,
         providerAccountId: account.id,
         commandId,
         resolvedArgv,

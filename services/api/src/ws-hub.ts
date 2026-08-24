@@ -428,10 +428,9 @@ export function parseHostMessage(
         features: [],
       };
       const maxConcurrentAssignments =
-        advertised.maxConcurrentAssignments ??
-        (typeof message.maxConcurrentAssignments === "number"
+        typeof message.maxConcurrentAssignments === "number"
           ? message.maxConcurrentAssignments
-          : undefined);
+          : advertised.maxConcurrentAssignments;
       const normalized: HostToServerMessage = {
         ...(message as HostToServerMessage),
         type: "host:register",

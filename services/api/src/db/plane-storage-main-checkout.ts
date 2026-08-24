@@ -57,6 +57,7 @@ export async function tryAssignMainCheckoutSession(
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;
@@ -156,6 +157,7 @@ export async function tryAssignMainCheckoutSession(
       ? [
           providerAccountLastAssignedTransactItem(ctx, {
             providerAccountId: opts.providerAccountId,
+            ...(opts.providerId ? { providerId: opts.providerId } : {}),
             now: opts.now,
             ...(opts.providerAccountLease ? { slot: opts.providerAccountLease.slot } : {}),
           }),

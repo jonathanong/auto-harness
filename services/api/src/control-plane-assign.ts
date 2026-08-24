@@ -87,6 +87,7 @@ export function assignQueued(
       }
       session.resolvedRoute = {
         targetIndex: route.targetIndex,
+        ...(route.providerId ? { providerId: route.providerId } : {}),
         commandId: route.commandId,
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         hostId: candidate.hostId,
@@ -241,6 +242,7 @@ export async function assignQueuedDurable(
           resumeSpec: route.resumeSpec,
           resolvedRoute: {
             targetIndex: route.targetIndex,
+            ...(route.providerId ? { providerId: route.providerId } : {}),
             commandId: route.commandId,
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             hostId: candidate.hostId,
@@ -249,6 +251,7 @@ export async function assignQueuedDurable(
           },
           attemptId,
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+          ...(route.providerId ? { providerId: route.providerId } : {}),
           ...(lease ? { providerAccountLease: lease } : {}),
           queueShard: session.queueShard,
         });
@@ -269,6 +272,7 @@ export async function assignQueuedDurable(
         resumeSpec,
         resolvedRoute: {
           targetIndex: route.targetIndex,
+          ...(route.providerId ? { providerId: route.providerId } : {}),
           commandId: route.commandId,
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
           hostId: candidate.hostId,
