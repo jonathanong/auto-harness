@@ -264,9 +264,9 @@ describe("DynamoDB Local session assignment", () => {
       queueShard: 0,
       attemptId: "attempt",
     };
-    expect(
-      await tryAcquireHostLock(ctx, { hostId, connectionId, replaceExisting: false }),
-    ).toBe(true);
+    expect(await tryAcquireHostLock(ctx, { hostId, connectionId, replaceExisting: false })).toBe(
+      true,
+    );
     await ctx.doc.send(
       new PutCommand({
         TableName: tables.connections,
