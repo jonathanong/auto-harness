@@ -83,8 +83,11 @@ EOF
     exit 1
   fi
 
+  partition="${existing_role_arn#arn:}"
+  partition="${partition%%:*}"
+  required_policy_arn="arn:$partition:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
   if [[ -z "$(aws iam list-attached-role-policies --role-name "$role_name" \
-    --query "AttachedPolicies[?PolicyName=='AmazonAPIGatewayPushToCloudWatchLogs'].PolicyArn" \
+    --query "AttachedPolicies[?PolicyArn=='$required_policy_arn'].PolicyArn" \
     --output text)" ]]; then
     cat >&2 <<EOF
 The IAM role behind the API Gateway account in $AWS_REGION exists, but no
