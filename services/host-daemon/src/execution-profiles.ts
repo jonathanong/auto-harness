@@ -107,7 +107,7 @@ export function loadExecutionProfiles(env: NodeJS.ProcessEnv = process.env): Exe
 export function executionProfileFingerprint(profile: ExecutionProfile): string {
   const canonical = JSON.stringify({
     home: profile.home,
-    envKeys: Object.keys(profile.env).toSorted(),
+    envKeys: Object.keys(profile.env).toSorted((left, right) => left.localeCompare(right)),
   });
   return createHash("sha256").update(canonical).digest("hex");
 }
