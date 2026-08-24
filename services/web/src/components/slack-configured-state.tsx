@@ -1,5 +1,12 @@
 import type { PublicSlackIntegration } from "./slack-settings.ts";
 
+function slackDeliveryStateLabel(config?: PublicSlackIntegration): string {
+  if (!config) return "Not configured";
+  if (!config.enabled) return "Disabled";
+  if (config.deliveryAvailable) return "Available";
+  return "Configured but delivery unavailable";
+}
+
 export function SlackConfiguredState({ config }: { config?: PublicSlackIntegration }) {
   return (
     <div className="rounded-md border border-border p-3 text-sm" data-pw="slack-configured-state">
@@ -24,6 +31,10 @@ export function SlackConfiguredState({ config }: { config?: PublicSlackIntegrati
         <div>
           <dt className="text-muted-foreground">Enabled</dt>
           <dd data-pw="slack-enabled-state">{config?.enabled ? "Yes" : "No"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Delivery</dt>
+          <dd data-pw="slack-delivery-state">{slackDeliveryStateLabel(config)}</dd>
         </div>
       </dl>
       <p className="mt-3 text-xs text-muted-foreground">

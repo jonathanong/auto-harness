@@ -2,14 +2,17 @@
 
 ## Slack
 
-> **Current status:** Auto Harness can create, read, replace, and delete an encrypted, redacted
-> Slack configuration through the admin API and Web UI. A local-only delivery core now formats
-> lifecycle messages and provides a durable, leased outbox with retry, dependency ordering, and
-> stable idempotency keys behind a transport interface. An opt-in local worker reconciles durable
-> session snapshots into queued, running, and terminal operations, but it starts only when a
-> transport is explicitly injected. Production supplies no transport, so no Slack messages are
-> sent and there is deliberately no Slack HTTP, OAuth, inbound verification, or token use. The
-> network-backed delivery flow below remains the promised end state.
+> **Current status:** Auto Harness stores an encrypted, redacted Slack configuration through the
+> admin API and Web UI, then delivers session lifecycle messages (`chat.postMessage` /
+> `chat.update`) through the durable leased outbox. The local server starts the worker when
+> storage plus an injected transport or secret encryptor exist; the deployed cron Lambda drains
+> the same outbox. Delivery is **at-least-once** across Lambda invocations: in-process retries
+> share a request and a bounded result cache, but a lost complete-after-send lease can post
+> again after a cold start. Retries use bounded backoff and dead-letter exhausted operations.
+> If Slack is configured but this environment cannot actually send (missing token decrypt, no
+> worker), the API and UI report **configured but delivery unavailable**. There is still no
+> Slack OAuth or inbound webhook verification. GET decrypts the bot token only as a capability
+> probe for that flag, not as a send path.
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
@@ -18,7 +21,7 @@ For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit)
 | **Slack**  | Target: session lifecycle thread (queued → running → done/fail) from Auto Harness                         |
 | **GitHub** | PRs, issue/PR comments, reviews, checks—repo updates produced by the agent session (or follow-on tooling) |
 
-Auto Harness will own the **Slack** session thread once delivery is implemented. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
+Auto Harness owns the **Slack** session thread when delivery is available. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
 
 The target delivery behavior posts real-time session updates to Slack: each session gets a thread in a configured channel, updated as the session progresses.
 
@@ -69,15 +72,17 @@ Configure Slack integration. **Admin only.**
 
 #### `GET /api/v1/integrations/slack`
 
-Get current Slack configuration (token is redacted).
+Get current Slack configuration (token is redacted). The response includes
+`deliveryAvailable`. When the integration is stored but this environment cannot
+decrypt the bot token or run the outbound worker, that flag is `false` and the
+UI reports **configured but delivery unavailable**.
 
 #### `PUT /api/v1/integrations/slack`
 
 Update Slack configuration. **Admin only.**
 
 `PUT` replaces the complete configuration and therefore includes `botToken`.
-This slice configures storage only: it does not implement Slack OAuth, incoming
-event verification, message delivery, or session-thread lifecycle.
+There is no Slack OAuth or inbound event verification.
 
 #### `DELETE /api/v1/integrations/slack`
 
@@ -218,13 +223,19 @@ The delivery implementation must respect Slack API rate limits and batch updates
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
-The prepared outbox stores one immutable operation ID per lifecycle action. The injected-transport
-worker reconciles the current durable session snapshot on every sweep, conditionally leases due
-rows, recovers expired leases after a restart, retries with bounded exponential backoff, and
-dead-letters exhausted operations. Replies depend on the sent root operation, while the final root
-update depends on the terminal reply. A future Slack transport must deduplicate every ambiguous
-retry using the operation ID. Implementing and approving that real transport remains a separate
-step; without it, the worker is inactive and makes no network requests.
+The outbox stores one immutable operation ID per lifecycle action. REST/WS/cron session
+writers enqueue those ids on create and status transitions so a session that is created and
+cancelled between ticks is still in the outbox. The worker then leases due rows, recovers
+expired leases after a restart, retries with bounded exponential backoff, and dead-letters
+exhausted operations. A same-process sweep of queued/running sessions remains a safety net;
+cron does not have to observe the session as active to deliver it. Failed snapshots fetch
+stderr tails from durable logs when the process cache does not already have them. Replies depend on the sent root operation, while the final root update depends on the
+terminal reply. The HTTP transport deduplicates ambiguous in-process retries with that operation
+ID, including overlapping `deliver()` calls. Across Lambda invocations, delivery is
+at-least-once: operators should treat a duplicate lifecycle post after a lost lease as
+expected rather than exactly-once. Inbound Slack events and OAuth are not implemented.
+Failed sends store a secret-free `lastError` on the outbox row and emit a CloudWatch
+line (`slack <operation> retried|dead <id>: …`).
 
 ### Permissions Required
 
@@ -245,12 +256,12 @@ The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`
 1. Event triggers a short workflow (failure, comment, schedule, …).
 2. Workflow calls Auto Harness **`POST /sessions`** (service account).
 3. Workflow **exits**; it does not poll session status.
-4. Today, humans follow **GitHub** (PRs/comments/checks) and the UI/logs. Once Slack delivery ships,
-   its session thread becomes the fire-and-forget notification path.
+4. Humans follow **Slack** (session thread) when delivery is available, plus **GitHub**
+   (PRs/comments/checks) and the UI/logs.
 
 **Target requirements:** Slack delivery enabled for unattended runs; session id returned on create;
-no need for GHA to poll. Until delivery ships, use GitHub activity or the UI instead. Worked
-examples: [harness.md](harness.md).
+no need for GHA to poll. If Slack is configured but delivery is unavailable, use GitHub activity
+or the UI instead. Worked examples: [harness.md](harness.md).
 
 ### Custom Webhooks (Outbound)
 

@@ -7,7 +7,7 @@ import { createLocalApp } from "./local-app.ts";
 import { resolvePublicBaseUrl, type LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
-import { slackSessionSnapshot } from "./slack-session-runtime.ts";
+import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { SlackLifecycleWorker } from "./slack-worker.ts";
 import { WebhookWorker } from "./webhook-worker.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
@@ -157,27 +157,10 @@ function createSlackWorker(
   plane: ControlPlane,
   options: LocalServerOptions,
 ): SlackLifecycleWorker | undefined {
-  const storage = plane.state.storage;
-  if (!options.slackTransport || !storage) return undefined;
-  return new SlackLifecycleWorker(
-    {
-      store: storage,
-      transport: options.slackTransport,
-      getConfig: async () => {
-        const config = await plane.getSlackIntegrationDurable();
-        return config
-          ? {
-              enabled: config.enabled,
-              defaultChannel: config.defaultChannel,
-              notifications: config.notifications,
-            }
-          : null;
-      },
-      listSessions: async () =>
-        plane.listSessions().map((session) => slackSessionSnapshot(plane.state, session)),
-    },
-    options.slackWorker,
-  );
+  return createSlackLifecycleWorker(plane, {
+    ...(options.slackTransport ? { transport: options.slackTransport } : {}),
+    ...(options.slackWorker ? { worker: options.slackWorker } : {}),
+  });
 }
 
 function isLoopback(host: string): boolean {

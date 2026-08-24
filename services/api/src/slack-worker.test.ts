@@ -126,6 +126,7 @@ describe("Slack lifecycle worker", () => {
   it("recovers retry and dependency deferrals on a later synthetic tick", async () => {
     const store = new MemoryOutbox();
     let clock = initial;
+    const onError = vi.fn();
     const deliver = vi
       .fn<SlackTransport["deliver"]>()
       .mockRejectedValueOnce(new Error("temporary"))
@@ -140,10 +141,13 @@ describe("Slack lifecycle worker", () => {
         getConfig: async () => config,
         listSessions: async () => [completed],
       },
-      { now: () => clock, maxOperationsPerTick: 20 },
+      { now: () => clock, maxOperationsPerTick: 20, onError },
     );
     worker.start();
     await worker.stop();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("retried") }),
+    );
     expect(store.items.get("slack:session-1:thread")).toMatchObject({
       status: "pending",
       attempts: 1,
@@ -223,5 +227,32 @@ describe("Slack lifecycle worker", () => {
     await pending;
     await bounded.stop();
     expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
+  });
+
+  it("runs a one-shot drain without starting the interval timer", async () => {
+    const store = new MemoryOutbox();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deliver = vi.fn(async (request: { channel: string; idempotencyKey: string }) => {
+      await blocked;
+      return { channel: request.channel, messageTs: `ts-${request.idempotencyKey}` };
+    });
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+      },
+      { now: () => initial },
+    );
+    const first = worker.runOnce();
+    expect(await worker.runOnce()).toBe(false);
+    expect(await worker.tick()).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(deliver).toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import {
   type SlackNotifications,
 } from "./slack-integration-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { isSlackBotToken, slackDeliveryAvailable } from "./slack-secrets.ts";
 
 type SlackSecretConfig = { botToken: string; signingSecret?: string };
 
@@ -21,17 +22,23 @@ export type SlackConfigInput = {
 
 type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
 
-export function getSlackIntegration(state: ControlPlaneState): PublicSlackIntegration | null {
-  return state.slackIntegration ? toPublicSlackIntegration(state.slackIntegration) : null;
+export function getSlackIntegration(
+  state: ControlPlaneState,
+): Promise<PublicSlackIntegration | null> {
+  return state.slackIntegration
+    ? publicIntegration(state, state.slackIntegration)
+    : Promise.resolve(null);
 }
 
 export async function getSlackIntegrationDurable(
   state: ControlPlaneState,
 ): Promise<PublicSlackIntegration | null> {
-  if (!state.storage) return getSlackIntegration(state);
+  if (!state.storage) {
+    return state.slackIntegration ? publicIntegration(state, state.slackIntegration) : null;
+  }
   const record = await state.storage.getSlackIntegration();
   state.slackIntegration = record ? { ...record } : undefined;
-  return record ? toPublicSlackIntegration(record) : null;
+  return record ? publicIntegration(state, record) : null;
 }
 
 export async function createSlackIntegrationDurable(
@@ -50,14 +57,14 @@ export async function createSlackIntegrationDurable(
   const record = await makeRecord(input, encryptor, at, 1, at);
   if (!state.storage) {
     state.slackIntegration = record;
-    return { ok: true, integration: toPublicSlackIntegration(record) };
+    return { ok: true, integration: await publicIntegration(state, record) };
   }
   if (!(await state.storage.putSlackIntegration(record, null))) {
     await getSlackIntegrationDurable(state);
     return conflict();
   }
   state.slackIntegration = record;
-  return { ok: true, integration: toPublicSlackIntegration(record) };
+  return { ok: true, integration: await publicIntegration(state, record) };
 }
 
 export async function updateSlackIntegrationDurable(
@@ -81,14 +88,14 @@ export async function updateSlackIntegrationDurable(
   );
   if (!state.storage) {
     state.slackIntegration = record;
-    return { ok: true, integration: toPublicSlackIntegration(record) };
+    return { ok: true, integration: await publicIntegration(state, record) };
   }
   if (!(await state.storage.putSlackIntegration(record, current.version))) {
     await getSlackIntegrationDurable(state);
     return conflict();
   }
   state.slackIntegration = record;
-  return { ok: true, integration: toPublicSlackIntegration(record) };
+  return { ok: true, integration: await publicIntegration(state, record) };
 }
 
 export async function deleteSlackIntegrationDurable(
@@ -177,10 +184,13 @@ function isSlackChannel(value: string): boolean {
   return /^#[a-z0-9][a-z0-9_-]{0,79}$/.test(value) || /^[CGD][A-Z0-9]{8,}$/.test(value);
 }
 
-function isSlackBotToken(value: string): boolean {
-  return /^xoxb-[A-Za-z0-9-]{10,}$/.test(value);
-}
-
 function isSigningSecret(value: string): boolean {
   return /^[a-fA-F0-9]{32,128}$/.test(value);
+}
+
+async function publicIntegration(
+  state: ControlPlaneState,
+  record: SlackIntegrationRecord,
+): Promise<PublicSlackIntegration> {
+  return toPublicSlackIntegration(record, await slackDeliveryAvailable(state, record));
 }

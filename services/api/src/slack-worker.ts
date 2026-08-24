@@ -23,7 +23,7 @@ type SlackLifecycleWorkerDependencies = {
   listSessions: () => Promise<SlackSessionSnapshot[]>;
 };
 
-/** Polling runtime around the durable outbox. It can only send through an injected transport. */
+/** Polling runtime around the durable outbox. Local and cron inject the HTTP transport. */
 export class SlackLifecycleWorker {
   private readonly dependencies: SlackLifecycleWorkerDependencies;
   private readonly intervalMs: number;
@@ -68,6 +68,40 @@ export class SlackLifecycleWorker {
 
   async tick(): Promise<boolean> {
     if (!this.started || this.inFlight) return false;
+    return this.executeTick();
+  }
+
+  /** One-shot drain for cron / Lambda. Does not start the interval timer. */
+  async runOnce(): Promise<boolean> {
+    if (this.inFlight) return false;
+    return this.executeTick();
+  }
+
+  private async runTick(): Promise<void> {
+    const config = await this.dependencies.getConfig();
+    if (!config?.enabled) return;
+    const now = this.now();
+    for (const session of await this.dependencies.listSessions()) {
+      await reconcileSlackSession({ store: this.dependencies.store, config, session, now });
+    }
+    for (let count = 0; count < this.maxOperationsPerTick; count += 1) {
+      const result = await processSlackOutboxOnce(
+        this.dependencies.store,
+        this.dependencies.transport,
+        {
+          now: this.now,
+          onFailure: (event) => {
+            this.report(
+              new Error(`slack ${event.operation} ${event.status} ${event.id}: ${event.error}`),
+            );
+          },
+        },
+      );
+      if (result === "idle") return;
+    }
+  }
+
+  private async executeTick(): Promise<boolean> {
     const tick = this.runTick();
     this.inFlight = tick;
     try {
@@ -78,23 +112,6 @@ export class SlackLifecycleWorker {
       return false;
     } finally {
       if (this.inFlight === tick) this.inFlight = undefined;
-    }
-  }
-
-  private async runTick(): Promise<void> {
-    const config = await this.dependencies.getConfig();
-    if (!config?.enabled) return;
-    const now = this.now();
-    for (const session of await this.dependencies.listSessions()) {
-      await reconcileSlackSession({ store: this.dependencies.store, config, session, now });
-    }
-    for (let count = 0; count < this.maxOperationsPerTick && this.started; count += 1) {
-      const result = await processSlackOutboxOnce(
-        this.dependencies.store,
-        this.dependencies.transport,
-        { now: this.now },
-      );
-      if (result === "idle") return;
     }
   }
 

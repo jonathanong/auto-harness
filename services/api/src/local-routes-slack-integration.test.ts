@@ -132,7 +132,7 @@ describe("Slack integration routes", () => {
     expect(
       (await invokeHandler(handler, "POST", "/api/v1/integrations/slack", body())).status,
     ).toBe(500);
-    expect(plane.getSlackIntegration()).not.toBeNull();
+    expect(await plane.getSlackIntegration()).not.toBeNull();
   });
 
   it("maps durable Slack read, write, update, and delete failure variants", async () => {

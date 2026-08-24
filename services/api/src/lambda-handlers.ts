@@ -12,6 +12,7 @@ import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
+import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 
 import {
@@ -223,11 +224,19 @@ export async function createLambdaRuntime(
       return resolved;
     },
   });
+  const flushPendingWrites = async (): Promise<void> => {
+    try {
+      await created.plane.settleStorage();
+    } catch (error) {
+      console.error("durable write failed after invocation", error);
+    }
+  };
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();
     return deliveryContext.run(deliveries, async () => {
       const result = await operation();
       while (deliveries.size > 0) await Promise.all(deliveries);
+      await flushPendingWrites();
       return result;
     });
   };
@@ -244,6 +253,15 @@ export async function createLambdaRuntime(
     );
   };
   const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
+  const slackWorker = createSlackLifecycleWorker(created.plane, {
+    worker: {
+      // 4 * 10s Slack timeout stays inside the 60s cron budget after scheduler work.
+      maxOperationsPerTick: 4,
+      onError: (error) => {
+        console.error("slack delivery failed", error);
+      },
+    },
+  });
 
   return {
     async cron() {
@@ -259,6 +277,8 @@ export async function createLambdaRuntime(
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
+        await flushPendingWrites();
+        if (slackWorker) await slackWorker.runOnce();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,

@@ -9,6 +9,7 @@ import {
   loadBootstrapSecrets,
   type LambdaRuntime,
 } from "./lambda-handlers.ts";
+import * as slackRuntime from "./slack-runtime.ts";
 
 function hostPrincipal(hostId = "host-1") {
   return {
@@ -987,6 +988,25 @@ describe("Lambda runtime adapters", () => {
       ]);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("drains Slack deliveries from cron and reports worker errors", async () => {
+    const runOnce = vi.fn(async () => true);
+    const spy = vi
+      .spyOn(slackRuntime, "createSlackLifecycleWorker")
+      .mockImplementation((_plane, options) => {
+        options.worker?.onError?.(new Error("slack down"));
+        return { runOnce } as never;
+      });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await (await runtimeFixture().runtime).cron();
+      expect(runOnce).toHaveBeenCalledOnce();
+      expect(consoleError).toHaveBeenCalledWith("slack delivery failed", expect.any(Error));
+    } finally {
+      spy.mockRestore();
+      consoleError.mockRestore();
     }
   });
 

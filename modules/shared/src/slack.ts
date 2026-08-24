@@ -26,6 +26,8 @@ export type PublicSlackIntegration = {
   notifications: SlackNotifications;
   botTokenConfigured: boolean;
   signingSecretConfigured: boolean;
+  /** False when config exists but this environment cannot actually send. */
+  deliveryAvailable: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

@@ -1,6 +1,6 @@
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistSession } from "./control-plane-state.ts";
+import { noteSlackSessionLifecycle, persistSession } from "./control-plane-state.ts";
 import { queueSessionArchive } from "./control-plane-archive.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
@@ -87,6 +87,7 @@ function rememberDurableTimeout(
   delete next.reconnectDeadlineAt;
   state.sessions.set(session.id, next);
   queueSessionArchive(state, session.id);
+  noteSlackSessionLifecycle(state, next);
 }
 
 function canCommitDurableTimeout(
