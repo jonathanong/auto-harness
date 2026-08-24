@@ -12,6 +12,11 @@ import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
+import {
+  emitAssignmentFailure,
+  emitCronSweepMetrics,
+  queuedSessionAgeSeconds,
+} from "./operational-metrics.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
@@ -154,6 +159,7 @@ async function postToHost(
       await plane.disconnectHostDurable(connectionId);
       return;
     }
+    emitAssignmentFailure();
     throw error;
   }
 }
@@ -279,6 +285,11 @@ export async function createLambdaRuntime(
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
+        emitCronSweepMetrics({
+          ackTimeouts: ackDeadlinesEnforced.length,
+          staleHosts: staleHostsReclaimed.length,
+          queueAgeSeconds: queuedSessionAgeSeconds(created.plane.listSessions(), Date.now()),
+        });
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,

@@ -88,12 +88,15 @@ graph TB
 ```
 services/cdk/
 └── src/
-    ├── cli.ts                  # CDK app; reads documented CDK context
-    ├── foundation-stack.ts      # DynamoDB, archive S3, KMS, and bounded IAM policies
-    ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, and EventBridge cron
-    ├── web-stack.ts             # CloudFront + Next.js Lambda image; caches /_next/static/*
-    ├── tables.ts                # durable-table catalog shared by synthesis metadata
-    └── foundation-stack.test.ts # deterministic CloudFormation assertions
+    ├── cli.ts                       # CDK app; reads documented CDK context
+    ├── foundation-stack.ts          # DynamoDB, archive S3, KMS, PITR, deletion protection
+    ├── foundation-data-access.ts    # Split DynamoDB item/query vs Scan and archive PutObject
+    ├── runtime-stack.ts             # HTTP/WS APIs, Lambdas, and EventBridge cron
+    ├── lambda-iam.ts                # Per-function archive, KMS, and connection grants
+    ├── runtime-observability.ts     # Access logs, throttles, and CloudWatch alarms
+    ├── web-stack.ts                 # CloudFront + Next.js Lambda image; caches /_next/static/*
+    ├── tables.ts                    # durable-table catalog shared by synthesis metadata
+    └── foundation-stack.test.ts     # deterministic CloudFormation assertions
 ```
 
 The CDK app emits a persistence foundation and separately deployable runtime and
@@ -219,9 +222,10 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | `HARNESS_SESSION_SECRET_SSM_PARAM` | ✓         | SSM SecureString parameter _name_ holding the UI session-cookie JWT signing secret                                                                              |
 | `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable list cursors                                                                           |
 | `TABLE_*` or single table prefix   | ✓         | DynamoDB table names (from CDK)                                                                                                                                 |
-| `ARCHIVE_BUCKET`                   | ✓         | S3 bucket name                                                                                                                                                  |
+| `ARCHIVE_BUCKET`                   | REST/Cron | S3 bucket name. WebSocket omits this so it cannot write archives                                                                                                |
 | `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |
-| `KMS_KEY_ID`                       | for Slack | Encrypt integration secrets                                                                                                                                     |
+| `KMS_KEY_ID`                       | REST/Cron | Encrypt/decrypt integration secrets. WebSocket omits this                                                                                                       |
+| `HARNESS_METRIC_ENVIRONMENT`       | ✓         | CloudWatch EMF `Environment` dimension (table prefix)                                                                                                           |
 | `AWS_REGION`                       | auto      | Region                                                                                                                                                          |
 
 ---
@@ -258,7 +262,9 @@ continuations. Scoped principals use strongly consistent keyed reads of only the
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
-**Capacity:** on-demand for all tables.
+**Capacity:** on-demand for all tables. CDK enables DynamoDB point-in-time recovery on every
+table. Deletion protection is on when the foundation uses the default `retain` policy and off
+for disposable `destroy` environments so purge can remove the tables.
 
 Direct table setup starts the `Schedules.repositoryId-id` migration without waiting for a
 potentially long backfill. Repository-scoped schedule counts temporarily fall back to one strongly
@@ -280,14 +286,15 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
    backfilled — do not expire this way (see
    [costs.md](costs.md#sessionlogs-cost-control)).
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
-   archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
-   write policy; terminal-session processing:
+   archive policy (`s3:PutObject` only below `sessions/*`). REST and Cron receive the bucket
+   name and that write policy; the WebSocket worker does not. Terminal-session processing:
    - Query all SessionLogs for `sessionId`
    - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed state
    - Leave DynamoDB rows intact after upload; this archive path never deletes them
-     The runtime writes directly from those workers; there is no separate archival Lambda. Its
-     policy permits bucket metadata/listing and `s3:PutObject` only below `sessions/*`. It does not
-     grant `s3:GetObject`, `s3:DeleteObject`, or bucket deletion.
+     REST and Cron write the object from those workers; there is no separate archival Lambda.
+     WebSocket terminal transitions persist pending archive metadata without S3 access; Cron
+     retries the same idempotent key. The archive policy does not grant `s3:GetObject`,
+     `s3:DeleteObject`, `s3:GetBucketLocation`, or bucket deletion.
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
    parameters. Archived-object retrieval is not part of the foundation or its
    archive-write policy; add a separately scoped read policy when that
@@ -486,7 +493,8 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 | Lifecycle     | Standard → IA @ 30d → Glacier @ 90d                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Public access | Blocked                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
-IAM: only archival Lambda role can `s3:PutObject`; optional read role for UI “download archive”.
+IAM: only REST and Cron can `s3:PutObject` below `sessions/*`. There is no download-archive
+read role yet.
 
 The API archive boundary writes terminal logs to this key as JSONL when `ARCHIVE_BUCKET` is
 configured. It also retains the archive metadata row in DynamoDB. Uploads use SSE-S3 and reject
@@ -501,39 +509,51 @@ pending row survives an interrupted S3 PUT so the same idempotent object key can
 - Slack bot token stored in Integrations table as ciphertext (`encryptedConfig`)
 - Encrypt on write with `KMS_KEY_ID`. Decrypt when posting messages, and on GET as a
   capability probe for `deliveryAvailable` (the plaintext token is never returned).
-- REST, WebSocket, and Cron Lambdas all receive `kms:Decrypt` / `kms:Encrypt` on the
-  integration key so GET availability and cron send cannot diverge by IAM.
+- REST receives `kms:Encrypt` and `kms:Decrypt` on the integration key (config writes and GET
+  `deliveryAvailable`). Cron receives `kms:Decrypt` only (outbox send). WebSocket has neither
+  the key id nor those grants.
 
 See [integrations.md](integrations.md).
 
 ---
 
-## IAM (least privilege sketch)
+## IAM (least privilege)
 
-| Role            | Permissions                                                                      |
-| --------------- | -------------------------------------------------------------------------------- |
-| REST Lambda     | DynamoDB R/W on app tables including NotificationDeliveries; KMS encrypt/decrypt |
-| WS Lambda       | DynamoDB R/W; `execute-api:ManageConnections` on this API; KMS encrypt/decrypt   |
-| Cron Lambda     | DynamoDB R/W Sessions, Schedules, NotificationDeliveries; KMS encrypt/decrypt    |
-| Archival Lambda | DynamoDB read/delete SessionLogs; S3 put on archive bucket                       |
-| EventBridge     | `lambda:InvokeFunction` on Cron only                                             |
+| Role        | Permissions                                                                                                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST Lambda | DynamoDB item/query/transact on app tables; Scan only on list/hydrate tables (not SessionLogs); archive `s3:PutObject`; integration KMS encrypt/decrypt; `ManageConnections` |
+| WS Lambda   | Same DynamoDB item/query/Scan split; `execute-api:ManageConnections`. No archive policy, no integration KMS                                                                  |
+| Cron Lambda | Same DynamoDB split; archive `s3:PutObject`; integration KMS decrypt; `ManageConnections`                                                                                    |
+| EventBridge | `lambda:InvokeFunction` on Cron only                                                                                                                                         |
 
-No Lambda role gets S3/DynamoDB access outside Auto-Harness resources.
+Shared DynamoDB grants include `TransactWriteItems` / `TransactGetItems`. Scan is omitted from
+SessionLogs, AuditLogs, RateLimits, ViewerTickets, HostLocks, ConcurrencyLocks, Integrations,
+NotificationDeliveries, and SessionUsageKinds. No Lambda role gets S3/DynamoDB access outside
+Auto-Harness resources.
 
 ---
 
 ## Observability
 
-| Signal                  | Source                                                        |
-| ----------------------- | ------------------------------------------------------------- |
-| API latency / 4xx / 5xx | API Gateway + Lambda metrics                                  |
-| Queue depth             | Custom metric or periodic count of `status=queued`            |
-| Connected agents        | Count Connections `type=agent`                                |
-| Assign failures         | Log + metric when `postToConnection` fails                    |
-| Cron lag                | `nextRunAt` age for due schedules                             |
-| Logs                    | CloudWatch Logs per function; retention 7–14 days recommended |
+HTTP and WebSocket stages emit redacted access logs (request id, route, status, latency-related
+fields, source IP — never query strings, headers, or bodies) to 14-day CloudWatch log groups and
+apply backstop throttles (HTTP 100 req/s burst 200; WebSocket 250 msg/s burst 500). Application
+rate limits in [security.md](security.md#rate-limiting) remain the primary budget.
 
-Alarms (recommended): Lambda errors, API 5xx, zero agents for N minutes, DLQ if used.
+| Signal            | Source                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| API latency / 5xx | API Gateway `5xx` + Lambda `Errors`                                                          |
+| Queue age         | Cron EMF `QueueAgeSeconds` (oldest `queued` session)                                         |
+| Assign failures   | EMF `AssignmentFailures` when `postToConnection` fails for a reason other than a gone socket |
+| ACK timeouts      | Cron EMF `AckTimeouts`                                                                       |
+| Stale hosts       | Cron EMF `StaleHosts`                                                                        |
+| Cooldowns         | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                               |
+| Log drops         | EMF `LogDrops` from persisted `session:log.dropped` telemetry                                |
+| Function logs     | CloudWatch Logs per Lambda; retention 14 days                                                |
+
+Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
+missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
+ACK timeouts, stale hosts, cooldowns, and log drops.
 
 ---
 
