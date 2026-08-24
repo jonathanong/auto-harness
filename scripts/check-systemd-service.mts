@@ -16,6 +16,10 @@ export const launcherUrl = new URL(
   "../services/host-daemon/systemd/run-host-daemon.sh",
   import.meta.url,
 );
+export const activationHelperUrl = new URL(
+  "../services/host-daemon/systemd/promote-host-daemon-update.mjs",
+  import.meta.url,
+);
 
 const REQUIRED_SERVICE_LINES = [
   "Documentation=https://github.com/jonathanong/auto-harness/blob/main/docs/deploy-host-daemon.md",
@@ -26,6 +30,8 @@ const REQUIRED_SERVICE_LINES = [
   "Group=harness",
   "WorkingDirectory=/",
   "EnvironmentFile=/etc/auto-harness/host-daemon.env",
+  "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs",
+  "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --mark-boot-attempt",
   'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
   "Restart=always",
   "RestartSec=5s",
@@ -84,13 +90,38 @@ export function validateSystemdLauncher(launcher: string): string[] {
   return errors;
 }
 
+/** Contract-test the root-owned handoff boundary without executing privileged code in CI. */
+export function validateSystemdActivationHelper(helper: string): string[] {
+  const errors: string[] = [];
+  for (const fragment of [
+    'const incomingName = "incoming"',
+    'const releases = join(root, "releases")',
+    "lockTree(extracted)",
+    "assertSafeArchive(archive)",
+    'switchCurrent(root, join("releases", manifest.version))',
+    'process.argv[2] === "--mark-boot-attempt"',
+    "settlePriorBoot(root, incoming)",
+    "promote(root, incoming)",
+    "rootStat.uid !== 0",
+  ]) {
+    if (!helper.includes(fragment))
+      errors.push(`missing update promotion helper fragment: ${fragment}`);
+  }
+  if (helper.includes('from "../src/') || helper.includes('from "./')) {
+    errors.push("promotion helper must not import daemon-writable activated code");
+  }
+  return errors;
+}
+
 function main(): void {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
   const launcher = readFileSync(launcherUrl, "utf8");
+  const activationHelper = readFileSync(activationHelperUrl, "utf8");
   const errors = [
     ...validateSystemdArtifacts(service, envExample),
     ...validateSystemdLauncher(launcher),
+    ...validateSystemdActivationHelper(activationHelper),
     ...validateGeneratedHostServiceTemplates(service),
   ];
   if (errors.length > 0) throw new Error(errors.join("\n"));

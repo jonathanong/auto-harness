@@ -39,6 +39,15 @@ describe("parseEnvFile / applyEnvFile", () => {
       HARNESS_API_KEY: "from-file",
     });
   });
+
+  it("keeps explicitly blank updater settings instead of restoring a persisted value", () => {
+    expect(
+      applyEnvFile(
+        "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json\nHARNESS_UPDATE_PUBLIC_KEY=key\n",
+        { HARNESS_UPDATE_MANIFEST_URL: "", HARNESS_UPDATE_PUBLIC_KEY: "" },
+      ),
+    ).toEqual({ HARNESS_UPDATE_MANIFEST_URL: "", HARNESS_UPDATE_PUBLIC_KEY: "" });
+  });
 });
 
 describe("renderEnvFile", () => {

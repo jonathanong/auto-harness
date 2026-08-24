@@ -107,10 +107,14 @@ sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-da
 If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
 installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
-The generated Linux launcher is root-owned at
-`/usr/local/lib/auto-harness/run-host-daemon.sh`, outside both the activated release tree
-and the daemon-writable update root. It starts `/opt/auto-harness/current` when that tree
-exists and otherwise falls back to this checkout.
+The generated Linux launcher and its update-promotion helper are root-owned under
+`/usr/local/lib/auto-harness/`. The helper is run by systemd before each daemon start: it
+independently verifies the signed staged artifact, extracts it into a root-owned release tree,
+and atomically switches `current`. The daemon (and every session CLI it starts) can write only
+the private `incoming/` request directory; it cannot modify `current` or runnable releases.
+When run with `sudo`, `install-service` also converts an existing legacy `current` checkout to
+root ownership and removes group/world write permission before enabling the unit, including a
+legacy `current -> versions/<version>` target.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
 
 Uninstall (removes the service definition, not the checkout):
@@ -133,9 +137,11 @@ On the agent host:
 
    ```bash
    sudo useradd --create-home --shell /usr/sbin/nologin harness
-   sudo install -d -o harness -g harness /opt/auto-harness
-   sudo -u harness git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/current
-   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
+   sudo install -d -o root -g root -m 0755 /opt/auto-harness
+   sudo git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/current
+   sudo env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
+   sudo chown -R root:root /opt/auto-harness/current
+   sudo chmod -R go-w /opt/auto-harness/current
    ```
 
    The checked-in package uses Node's native TypeScript execution, so deploy the complete checkout and
@@ -154,9 +160,17 @@ On the agent host:
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
 | `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                            |
 | `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                            |
-| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the root-owned stable launcher selects its `current` directory.                                                                             |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; the root and its `current`/`releases` contents must stay root-owned, while only its `incoming` directory is writable by `harness`.                                                                                 |
 | `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
 | `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
+
+For a managed Host, configure these as structured **Host daemon updates** controls on the
+control-plane Host’s Advanced tab. Those settings are authenticated, audited, and take precedence
+over legacy service-environment values. After saving, rerun `install-service` on that Host so the
+root-owned systemd promotion helper and the daemon agree on the selected install directory; then
+restart the Host daemon. Leaving the control-plane setting absent retains the local environment as
+the compatibility fallback, while an explicit disabled setting overrides an existing local update
+configuration.
 
 If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
 supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
@@ -181,15 +195,18 @@ sudo install -m 0644 \
 # update root; it reads the env-file's HARNESS_UPDATE_INSTALL_DIR and selects that tree's
 # current pointer.
 sudo install -d -o root -g root -m 0755 /usr/local/lib/auto-harness
-# The daemon switches UPDATE_ROOT/current and writes releases below versions/.
-# Provision both paths for the service user, including on a reinstall where
-# versions/ was previously root-owned:
-# UPDATE_ROOT is /opt/auto-harness by default and must remain harness-writable.
-sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT"
-sudo install -d -o harness -g harness -m 0755 "$UPDATE_ROOT/versions"
+# UPDATE_ROOT/current and releases/ are immutable service inputs. The daemon
+# writes only a signed activation request below incoming/; systemd's root-owned
+# pre-start helper verifies and promotes it.
+sudo install -d -o root -g root -m 0755 "$UPDATE_ROOT"
+sudo install -d -o harness -g harness -m 0700 "$UPDATE_ROOT/incoming"
+sudo install -d -o root -g root -m 0755 "$UPDATE_ROOT/releases"
 sudo install -m 0755 \
   "$UPDATE_ROOT/current/services/host-daemon/systemd/run-host-daemon.sh" \
   /usr/local/lib/auto-harness/run-host-daemon.sh
+sudo install -m 0755 \
+  "$UPDATE_ROOT/current/services/host-daemon/systemd/promote-host-daemon-update.mjs" \
+  /usr/local/lib/auto-harness/promote-host-daemon-update.mjs
 sudo systemctl daemon-reload
 sudo systemctl enable --now auto-harness-host-daemon.service
 ```
@@ -352,17 +369,18 @@ Linux, the checked-in manual unit uses a stable wrapper outside the activated tr
 reads the persisted `HARNESS_UPDATE_INSTALL_DIR`, so set `UPDATE_ROOT` above to the same path when
 using a non-default root. The
 artifact is a gzip-compressed tar archive whose root is a complete runnable checkout (including
-`package.json` and the host-daemon launcher). Verified releases are extracted below `versions/`;
-`current` is atomically switched to that directory and carries a persisted version marker so a
-restart does not reinstall the same release. Linux requests an asynchronous self-exit after the
-updater transaction; its already-authorized systemd supervisor restarts it, rather than the
-unprivileged service user invoking `systemctl`. macOS and Windows supervisors invoke stable
+`package.json` and the host-daemon launcher). On Linux, the unprivileged daemon writes the
+already-verified artifact and manifest only to `incoming/`; systemd's root-owned pre-start helper
+verifies both again, extracts the release below root-owned `releases/`, and atomically switches
+`current`. Linux then requests an asynchronous self-exit after the updater transaction; its
+already-authorized systemd supervisor restarts it, rather than the unprivileged service user
+invoking `systemctl`. macOS and Windows supervisors invoke stable
 launcher files outside the activated tree, so their next start resolves the new `current` pointer.
 On Windows, a detached handoff owns the scheduled task's stop/start sequence rather than asking
 the running daemon to terminate its own task before it can request the replacement.
-On Linux, the selected update root and its `versions/` directory must be writable by `harness`; the
-dedicated-VPS bootstrap above provisions both, including after a root-driven reinstall. The stable
-launcher itself is root-owned and is not replaced by the updater.
+On Linux, the selected update root, `current`, and `releases/` must remain root-owned; only
+`incoming/` is writable by `harness`. Both stable launcher and promotion helper are root-owned and
+are never replaced by the updater.
 The manual steps above remain valid when those variables are unset.
 
 ### Rollback

@@ -12,6 +12,7 @@ import {
   parseRequiredEnvironment,
 } from "./environment-requirements.ts";
 import { parseAllowedRoots, parseTerminalHookScript } from "./host-exec-config.ts";
+import { parseHostUpdateConfig } from "./host-update-config.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -148,6 +149,8 @@ export function parseHostInventory(
   const setupScript = optionalString(value, "setupScript");
   const allowedRoots = parseAllowedRoots(value.allowedRoots);
   const requiredEnvironment = parseRequiredEnvironment(value.requiredEnvironment);
+  const updateConfig =
+    value.updateConfig === undefined ? undefined : parseHostUpdateConfig(value.updateConfig);
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
   }
@@ -166,6 +169,7 @@ export function parseHostInventory(
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
+    ...(updateConfig !== undefined ? { updateConfig } : {}),
     repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),

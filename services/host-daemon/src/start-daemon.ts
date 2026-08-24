@@ -11,6 +11,7 @@ import {
   parseUpdatePollMs,
   recoverDaemonUpdateBoot,
   startUpdatePoll,
+  withHostUpdateConfig,
 } from "./agent-updater-runtime.ts";
 import { restartHostService, type HostServiceOpts } from "./host-service.ts";
 import { requestWindowsTaskRestart } from "./windows-task-handoff.ts";
@@ -186,7 +187,17 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
 }> {
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
-  const updaterEnv = options.childEnvSource ?? process.env;
+  const updaterEnvSource = options.childEnvSource ?? process.env;
+  const updaterEnv = withHostUpdateConfig(updaterEnvSource, options.config.updateConfig, {
+    // systemd's root-owned promotion helper reads the persisted environment
+    // before this daemon fetches host configuration. Do not stage below a
+    // newly edited control-plane root until install-service has persisted
+    // that same root for the helper and stable launcher.
+    useConfiguredInstallDir:
+      options.config.updateConfig?.installDir === undefined ||
+      options.config.updateConfig.installDir ===
+        updaterEnvSource.HARNESS_UPDATE_INSTALL_DIR?.trim(),
+  });
   const updaterService = options.updateService ?? daemonUpdateService(updaterEnv, log, error);
   if (!options.updateBootPrepared) {
     await prepareDaemonUpdateBoot({ env: updaterEnv, log, error, service: updaterService });

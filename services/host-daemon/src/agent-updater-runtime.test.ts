@@ -5,12 +5,60 @@ import {
   createDaemonUpdater,
   parseUpdatePollMs,
   startUpdatePoll,
+  withHostUpdateConfig,
 } from "./agent-updater-runtime.ts";
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
 import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
 
 describe("daemon updater runtime", () => {
+  it("gives host-scoped update settings precedence over the service environment", () => {
+    const legacy = {
+      HARNESS_UPDATE_MANIFEST_URL: "https://old.example.test/manifest.json",
+      HARNESS_UPDATE_PUBLIC_KEY: "old-key",
+      HARNESS_UPDATE_INSTALL_DIR: "/old",
+      HARNESS_UPDATE_POLL_MS: "60000",
+      HARNESS_DAEMON_VERSION: "1.0.0",
+      PATH: "/usr/bin",
+    };
+    expect(
+      withHostUpdateConfig(legacy, {
+        enabled: true,
+        manifestUrl: "https://updates.example.test/manifest.json",
+        publicKey: "new-key",
+        installDir: "/opt/auto-harness",
+        pollMs: 0,
+        daemonVersion: "1.2.3",
+      }),
+    ).toMatchObject({
+      HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+      HARNESS_UPDATE_PUBLIC_KEY: "new-key",
+      HARNESS_UPDATE_INSTALL_DIR: "/opt/auto-harness",
+      HARNESS_UPDATE_POLL_MS: "0",
+      HARNESS_DAEMON_VERSION: "1.2.3",
+      PATH: "/usr/bin",
+    });
+    expect(withHostUpdateConfig(legacy, { enabled: false })).toMatchObject({
+      HARNESS_UPDATE_MANIFEST_URL: "",
+      HARNESS_UPDATE_PUBLIC_KEY: "",
+      HARNESS_UPDATE_INSTALL_DIR: "",
+      HARNESS_UPDATE_POLL_MS: "",
+      HARNESS_DAEMON_VERSION: "",
+      PATH: "/usr/bin",
+    });
+    expect(
+      withHostUpdateConfig(legacy, {
+        enabled: true,
+        manifestUrl: "https://updates.example.test/manifest.json",
+        publicKey: "new-key",
+      }),
+    ).toMatchObject({
+      HARNESS_UPDATE_INSTALL_DIR: "",
+      HARNESS_UPDATE_POLL_MS: "",
+      HARNESS_DAEMON_VERSION: "",
+    });
+  });
+
   it("parses poll intervals and stays disabled without update env", () => {
     expect(parseUpdatePollMs(undefined)).toBe(60 * 60_000);
     expect(parseUpdatePollMs("")).toBe(60 * 60_000);

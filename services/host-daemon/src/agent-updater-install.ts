@@ -14,11 +14,17 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import type { UpdateInstaller } from "./agent-updater.ts";
+import type { UpdateInstaller, UpdateManifest } from "./agent-updater.ts";
 import { assertRunnableTree } from "./agent-updater-install-tree.ts";
 
 const VERSION_FILE = ".auto-harness-version";
 const BOOT_MARKER_FILE = ".auto-harness-update-boot.json";
+/** Files in this directory are deliberately the only daemon-writable update state on Linux. */
+const PRIVILEGED_INCOMING_DIR = "incoming";
+const PRIVILEGED_MANIFEST_FILE = "manifest.json";
+const PRIVILEGED_ARTIFACT_FILE = "artifact.tgz";
+const PRIVILEGED_REQUEST_FILE = "activation-request.json";
+const PRIVILEGED_CONFIRMATION_FILE = "boot-confirmed.json";
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 // Keep validation bounded even if an otherwise verified archive has an
 // unexpectedly large table of contents. This matches Node's default
@@ -271,6 +277,27 @@ export function confirmPendingUpdateBoot(rootDir: string): boolean {
   return true;
 }
 
+/**
+ * The Linux daemon cannot clear a root-owned boot marker. It records a narrow
+ * acknowledgement request instead; the immutable systemd pre-start helper
+ * consumes that request before the next launch, clears the marker, and prunes
+ * releases while it still has the required privilege.
+ */
+export function confirmPrivilegedPendingUpdateBoot(rootDir: string): boolean {
+  const pending = readPendingUpdateBoot(rootDir);
+  if (!pending) return false;
+  if (!pending.attempted || readInstalledVersion(rootDir) !== pending.version) {
+    throw new Error("pending update boot does not match the active release");
+  }
+  const incoming = join(rootDir, PRIVILEGED_INCOMING_DIR);
+  mkdirSync(incoming, { recursive: true });
+  atomicWrite(
+    join(incoming, PRIVILEGED_CONFIRMATION_FILE),
+    `${JSON.stringify({ version: pending.version })}\n`,
+  );
+  return true;
+}
+
 function versionAtPointer(rootDir: string, target: string): string | undefined {
   const versions = join(rootDir, "versions");
   const resolvedTarget = isAbsolute(target) ? target : resolve(rootDir, target);
@@ -330,6 +357,12 @@ export function createFileUpdateInstaller(options: {
   extract?: ExtractArchive;
   run?: ArchiveRun;
   platform?: NodeJS.Platform;
+  /**
+   * Linux systemd installs use a root-owned activation helper. The daemon may
+   * write only a verified artifact request; it never changes `current` or a
+   * runnable release itself.
+   */
+  privilegedActivation?: boolean;
   /** Test seam for emulating Windows' no-overwrite junction rename semantics. */
   renamePath?: RenamePath;
 }): UpdateInstaller {
@@ -341,9 +374,34 @@ export function createFileUpdateInstaller(options: {
     ((archivePath, destination) =>
       defaultExtract(archivePath, destination, options.run ?? defaultRun));
   const renamePath = options.renamePath ?? renameSync;
+  const incoming = join(options.rootDir, PRIVILEGED_INCOMING_DIR);
+
+  function stagePrivileged(input: {
+    version: string;
+    artifact: Uint8Array;
+    manifest?: UpdateManifest;
+  }): void {
+    if (!input.manifest || input.manifest.version !== input.version) {
+      throw new Error("privileged activation requires the verified update manifest");
+    }
+    mkdirSync(incoming, { recursive: true });
+    const artifactPath = join(incoming, PRIVILEGED_ARTIFACT_FILE);
+    const manifestPath = join(incoming, PRIVILEGED_MANIFEST_FILE);
+    const requestPath = join(incoming, PRIVILEGED_REQUEST_FILE);
+    // A prior request is no longer valid once either signed input changes.
+    rmSync(requestPath, { force: true });
+    atomicWrite(manifestPath, `${JSON.stringify(input.manifest)}\n`);
+    const nextArtifact = `${artifactPath}.next`;
+    writeFileSync(nextArtifact, input.artifact);
+    renameSync(nextArtifact, artifactPath);
+  }
 
   return {
     async stage(input) {
+      if (options.privilegedActivation) {
+        stagePrivileged(input);
+        return;
+      }
       requireVersion(input.version);
       const staged = join(versions, `${input.version}.staging`);
       const target = join(versions, input.version);
@@ -364,6 +422,17 @@ export function createFileUpdateInstaller(options: {
       }
     },
     async activate(version) {
+      if (options.privilegedActivation) {
+        requireVersion(version);
+        const manifest = JSON.parse(
+          readFileSync(join(incoming, PRIVILEGED_MANIFEST_FILE), "utf8"),
+        ) as { version?: unknown };
+        if (manifest.version !== version) {
+          throw new Error("staged update version marker does not match");
+        }
+        atomicWrite(join(incoming, PRIVILEGED_REQUEST_FILE), `${JSON.stringify({ version })}\n`);
+        return;
+      }
       requireVersion(version);
       if (readPendingUpdateBoot(options.rootDir)) {
         throw new Error("an update boot is still awaiting health acknowledgement");
@@ -407,6 +476,13 @@ export function createFileUpdateInstaller(options: {
       }
     },
     async rollback() {
+      if (options.privilegedActivation) {
+        // Until systemd's root-owned pre-start helper consumes it, activation
+        // is only a request. Removing that request preserves the running
+        // immutable release when the old process cannot hand off safely.
+        rmSync(join(incoming, PRIVILEGED_REQUEST_FILE), { force: true });
+        return;
+      }
       const oldTarget = readFileSync(previous, "utf8");
       if (!oldTarget) {
         rmSync(current, { recursive: true, force: true });

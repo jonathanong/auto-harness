@@ -7,6 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  confirmPrivilegedPendingUpdateBoot,
   confirmPendingUpdateBoot,
   createFileUpdateInstaller,
   readInstalledVersion,
@@ -27,6 +28,71 @@ function tempRoot(): { rootDir: string; cleanup: () => void } {
 }
 
 describe("file update installer", () => {
+  it("leaves Linux activation as a signed request in the daemon-writable incoming directory", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, privilegedActivation: true });
+      const manifest = {
+        version: "1.2.0",
+        artifactUrl: "https://updates.example.test/1.2.0.tgz",
+        sha256: "a".repeat(64),
+        signature: "signature",
+      };
+      await installer.stage({
+        version: manifest.version,
+        artifact: new Uint8Array([1, 2]),
+        manifest,
+      });
+      await installer.activate(manifest.version);
+      expect(existsSync(join(rootDir, "current"))).toBe(false);
+      expect(readFileSync(join(rootDir, "incoming", "manifest.json"), "utf8")).toContain(
+        manifest.sha256,
+      );
+      expect(readFileSync(join(rootDir, "incoming", "activation-request.json"), "utf8")).toContain(
+        manifest.version,
+      );
+      await installer.rollback();
+      expect(existsSync(join(rootDir, "incoming", "activation-request.json"))).toBe(false);
+      await expect(
+        createFileUpdateInstaller({ rootDir, privilegedActivation: true }).stage({
+          version: "1.2.1",
+          artifact: new Uint8Array(),
+        }),
+      ).rejects.toThrow("requires the verified update manifest");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("records Linux health acknowledgement for the privileged helper without clearing its marker", () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      runnableExtract("", join(rootDir, "current"));
+      mkdirSync(join(rootDir, "incoming"), { recursive: true });
+      writeFileSync(join(rootDir, "current", ".auto-harness-version"), "1.2.0\n");
+      writeFileSync(
+        join(rootDir, ".auto-harness-update-boot.json"),
+        '{"version":"1.2.0","attempted":true}\n',
+      );
+      expect(confirmPrivilegedPendingUpdateBoot(rootDir)).toBe(true);
+      expect(existsSync(join(rootDir, ".auto-harness-update-boot.json"))).toBe(true);
+      expect(readFileSync(join(rootDir, "incoming", "boot-confirmed.json"), "utf8")).toContain(
+        "1.2.0",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("has no privileged acknowledgement to record without a boot marker", () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      expect(confirmPrivilegedPendingUpdateBoot(rootDir)).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("stages runnable directories, switches a pointer, and rolls back", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {

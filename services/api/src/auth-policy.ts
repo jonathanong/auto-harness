@@ -40,7 +40,7 @@ export function requiredCapability(
   if (/^\/api\/v1\/repositories\/[^/]+\/session-drains(?:\/[^/]+(?:\/release)?)?$/.test(pathname)) {
     return write ? "sessions:write" : "authenticated";
   }
-  if (/^\/api\/v1\/hosts\/[^/]+\/exec-config$/.test(pathname)) {
+  if (/^\/api\/v1\/hosts\/[^/]+\/(?:exec-config|update-config)$/.test(pathname)) {
     return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
   }
   if (

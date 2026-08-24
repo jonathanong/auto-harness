@@ -1,3 +1,5 @@
+import { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
+
 export const EXEC_CONFIG_REQUIRED_MESSAGE =
   "fleet:exec-config is required to change setup scripts or executable paths";
 
@@ -7,6 +9,7 @@ export const MAX_EXEC_PATH_LENGTH = 4096;
 export type HostExecConfigPatch = {
   setupScript?: string | undefined;
   allowedRoots?: string[] | undefined;
+  updateConfig?: HostUpdateConfig | undefined;
   repositories?: HostExecRepositoryPatch[] | undefined;
 };
 
@@ -141,6 +144,9 @@ export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   const allowedRoots = Object.hasOwn(value, "allowedRoots")
     ? (parseAllowedRoots(value.allowedRoots) ?? [])
     : undefined;
+  const updateConfig = Object.hasOwn(value, "updateConfig")
+    ? parseHostUpdateConfig(value.updateConfig)
+    : undefined;
   let repositories: HostExecRepositoryPatch[] | undefined;
   if (Object.hasOwn(value, "repositories")) {
     if (!Array.isArray(value.repositories)) throw new TypeError("repositories must be an array");
@@ -151,6 +157,7 @@ export function parseHostExecConfig(value: unknown): HostExecConfigPatch {
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
+    ...(updateConfig !== undefined ? { updateConfig } : {}),
     ...(repositories !== undefined ? { repositories } : {}),
   };
 }

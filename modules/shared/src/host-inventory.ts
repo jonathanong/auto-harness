@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- inventory transformations share one immutable update surface. */
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 import type { HostCapability } from "./host-capabilities.ts";
+import type { HostUpdateConfig } from "./host-update-config.ts";
 import {
   assertHostRepositoryRequiredEnvironmentLimit,
   parseRequiredEnvironment,
@@ -57,6 +58,8 @@ export type HostInventory = {
    */
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
+  /** Signed-update settings managed from the control plane for this host daemon. */
+  updateConfig?: HostUpdateConfig | undefined;
   repositories: HostRepository[];
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
@@ -81,6 +84,7 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
     ...(existing?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
       : {}),
+    ...(existing?.updateConfig !== undefined ? { updateConfig: { ...existing.updateConfig } } : {}),
     repositories: existing?.repositories
       ? existing.repositories.map((r) => ({
           ...r,

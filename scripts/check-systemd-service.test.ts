@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { validateGeneratedHostServiceTemplates } from "../services/host-daemon/src/host-service-templates.ts";
 import {
+  activationHelperUrl,
   envExampleUrl,
   launcherUrl,
   serviceUrl,
+  validateSystemdActivationHelper,
   validateSystemdArtifacts,
   validateSystemdLauncher,
 } from "./check-systemd-service.mts";
@@ -14,10 +16,12 @@ describe("production host systemd artifacts", () => {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
   const launcher = readFileSync(launcherUrl, "utf8");
+  const activationHelper = readFileSync(activationHelperUrl, "utf8");
 
   it("keeps the checked-in service and environment contracts safe", () => {
     expect(validateSystemdArtifacts(service, envExample)).toEqual([]);
     expect(validateSystemdLauncher(launcher)).toEqual([]);
+    expect(validateSystemdActivationHelper(activationHelper)).toEqual([]);
     expect(validateGeneratedHostServiceTemplates(service)).toEqual([]);
     expect(envExample).toContain("mode 0600");
     expect(envExample).toContain("REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY");
@@ -68,6 +72,25 @@ describe("production host systemd artifacts", () => {
         'missing systemd launcher fragment: current="$update_root/current"',
         'missing systemd launcher fragment: cd "$current"',
         'missing systemd launcher fragment: auto-harness-host-daemon.mjs start "$@"',
+      ]),
+    );
+  });
+
+  it("rejects a promotion helper that can run activated daemon code or skip its immutable fence", () => {
+    expect(
+      validateSystemdActivationHelper(
+        activationHelper
+          .replace("lockTree(extracted)", "")
+          .replaceAll("assertSafeArchive(archive)", "")
+          .replace('process.argv[2] === "--mark-boot-attempt"', "false")
+          .replace('from "node:crypto"', 'from "./current/daemon.mjs"'),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "missing update promotion helper fragment: lockTree(extracted)",
+        "missing update promotion helper fragment: assertSafeArchive(archive)",
+        'missing update promotion helper fragment: process.argv[2] === "--mark-boot-attempt"',
+        "promotion helper must not import daemon-writable activated code",
       ]),
     );
   });

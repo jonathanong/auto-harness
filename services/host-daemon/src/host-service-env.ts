@@ -34,7 +34,10 @@ export function loadEnvFileIfPresent(
 export function applyEnvFile(contents: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };
   for (const [key, value] of Object.entries(parseEnvFile(contents))) {
-    if (out[key] === undefined || out[key] === "") {
+    // An explicitly blank updater value disables an already-persisted update
+    // configuration. Other historical identity fields retain their existing
+    // "empty means load the env file" behavior.
+    if (out[key] === undefined || (out[key] === "" && !UPDATER_ENV_KEYS.has(key))) {
       out[key] = value;
     }
   }
@@ -159,6 +162,14 @@ export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_DAEMON_VERSION",
 ] as const;
 
+const UPDATER_ENV_KEYS = new Set<string>([
+  "HARNESS_UPDATE_MANIFEST_URL",
+  "HARNESS_UPDATE_PUBLIC_KEY",
+  "HARNESS_UPDATE_INSTALL_DIR",
+  "HARNESS_UPDATE_POLL_MS",
+  "HARNESS_DAEMON_VERSION",
+]);
+
 function filledValue(
   key: string,
   fallback: string,
@@ -193,7 +204,7 @@ function assertSingleLine(key: string, value: string): void {
  * escaping the backslash for the EnvironmentFile parser.
  */
 export function formatPersistedEnvValue(key: string, value: string): string {
-  if (key !== "HARNESS_UPDATE_PUBLIC_KEY") return value;
+  if (key !== "HARNESS_UPDATE_PUBLIC_KEY" || value === "") return value;
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 

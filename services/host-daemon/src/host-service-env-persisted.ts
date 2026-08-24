@@ -13,9 +13,19 @@ function assertSingleLine(key: string, value: string): void {
 
 function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): string {
   const updates = new Map<string, string>();
+  const updaterKeys = new Set([
+    "HARNESS_UPDATE_MANIFEST_URL",
+    "HARNESS_UPDATE_PUBLIC_KEY",
+    "HARNESS_UPDATE_INSTALL_DIR",
+    "HARNESS_UPDATE_POLL_MS",
+    "HARNESS_DAEMON_VERSION",
+  ]);
   for (const key of PERSISTED_DAEMON_ENV_KEYS) {
     const value = env[key];
-    if (value !== undefined && value !== "") updates.set(key, value);
+    // An explicitly empty updater setting is a supported disable/reset action.
+    // Preserve the empty assignment so an install cannot silently retain the
+    // previous non-empty update configuration.
+    if (value !== undefined && (value !== "" || updaterKeys.has(key))) updates.set(key, value);
   }
   if (updates.size === 0) return contents;
   const seen = new Set<string>();

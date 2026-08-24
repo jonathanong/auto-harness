@@ -132,6 +132,7 @@ export {
   type HostWorktree,
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
+export { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
   EXEC_CONFIG_CAPABILITY,
@@ -155,8 +156,10 @@ export {
   getInventory,
   mutateInventory,
   mutateExecConfig,
+  mutateHostUpdateConfig,
   putInventory,
   putExecConfig,
+  putHostUpdateConfig,
 } from "./host-inventory-api.ts";
 export {
   assertHostRepositoryRequiredEnvironmentLimit,

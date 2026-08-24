@@ -12,6 +12,13 @@ Group=harness
 # requiring the default update root when an operator configures another location.
 WorkingDirectory=/
 EnvironmentFile=/etc/auto-harness/host-daemon.env
+# This root-owned verifier consumes only a signed artifact request from the
+# daemon-writable incoming/ directory and atomically promotes an immutable
+# release before the unprivileged daemon starts.
+ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs
+# Record the replacement's first real boot after promotion and immediately
+# before ExecStart. A later unacknowledged launch rolls back in the first phase.
+ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --mark-boot-attempt
 # install-service (or the manual copy-unit instructions) places this stable
 # wrapper outside the atomically activated update tree.
 ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"

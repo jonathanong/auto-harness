@@ -97,6 +97,7 @@ export type HostServiceContext = {
   uid: number;
   envExamplePath: string;
   unitTemplatePath: string;
+  activationHelperTemplatePath: string;
   launcherPath: string;
   timeoutMs?: number;
   restartHandoff?: () => void;
@@ -213,6 +214,10 @@ export function resolveHostService(opts: HostServiceOpts): HostServiceContext {
     unitTemplatePath: join(
       checkoutRoot,
       "services/host-daemon/systemd/auto-harness-host-daemon.service",
+    ),
+    activationHelperTemplatePath: join(
+      checkoutRoot,
+      "services/host-daemon/systemd/promote-host-daemon-update.mjs",
     ),
     launcherPath: join(checkoutRoot, "services/host-daemon/bin/auto-harness-host-daemon.mjs"),
   };

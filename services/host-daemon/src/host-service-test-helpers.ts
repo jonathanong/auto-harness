@@ -10,6 +10,10 @@ export const envExample = readFileSync(
   new URL("../systemd/host-daemon.env.example", import.meta.url),
   "utf8",
 );
+export const activationHelperTemplate = readFileSync(
+  new URL("../systemd/promote-host-daemon-update.mjs", import.meta.url),
+  "utf8",
+);
 
 export type MemoryFs = HostServiceFs & {
   files: Map<string, string>;
@@ -115,6 +119,8 @@ export function seededFs(extra: Record<string, string> = {}): MemoryFs {
   return memFs({
     "/checkout/services/host-daemon/systemd/auto-harness-host-daemon.service": unitTemplate,
     "/checkout/services/host-daemon/systemd/host-daemon.env.example": envExample,
+    "/checkout/services/host-daemon/systemd/promote-host-daemon-update.mjs":
+      activationHelperTemplate,
     ...extra,
   });
 }

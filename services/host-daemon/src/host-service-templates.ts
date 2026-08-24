@@ -10,6 +10,9 @@ export const LINUX_OPT_CURRENT = "/opt/auto-harness/current";
  * replacement.
  */
 export const LINUX_LAUNCHER_DEST = "/usr/local/lib/auto-harness/run-host-daemon.sh";
+/** Root-owned verifier/promoter run by systemd before the daemon service. */
+export const LINUX_ACTIVATION_HELPER_DEST =
+  "/usr/local/lib/auto-harness/promote-host-daemon-update.mjs";
 export const LINUX_SERVICE_NAME = "auto-harness-host-daemon.service";
 export const LINUX_RELOAD_COMMAND = "systemctl daemon-reload";
 export const LINUX_ENABLE_NOW_COMMAND = "systemctl enable --now auto-harness-host-daemon.service";

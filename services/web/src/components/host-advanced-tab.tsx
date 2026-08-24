@@ -1,4 +1,5 @@
-import { HostConfigForm, HostSetupScriptForm } from "@auto-harness/ui";
+import type { HostUpdateConfig } from "@auto-harness/shared";
+import { HostConfigForm, HostSetupScriptForm, HostUpdateConfigForm } from "@auto-harness/ui";
 
 export function HostAdvancedTab({
   hostId,
@@ -7,6 +8,7 @@ export function HostAdvancedTab({
   setupScript,
   allowedRoots,
   requiredEnvironment,
+  updateConfig,
   canWriteInventory = true,
   canWriteExecConfig = false,
 }: Readonly<{
@@ -16,6 +18,7 @@ export function HostAdvancedTab({
   setupScript: string | undefined;
   allowedRoots: string[] | undefined;
   requiredEnvironment: string[] | undefined;
+  updateConfig?: HostUpdateConfig | undefined;
   canWriteInventory?: boolean;
   canWriteExecConfig?: boolean;
 }>) {
@@ -36,6 +39,11 @@ export function HostAdvancedTab({
             requiredEnvironment={requiredEnvironment}
             canWriteExecConfig={canWriteExecConfig}
             canWriteInventory={canWriteInventory}
+          />
+          <HostUpdateConfigForm
+            hostId={hostId}
+            updateConfig={updateConfig}
+            canWriteExecConfig={canWriteExecConfig}
           />
           {canWriteInventory ? (
             <section className="space-y-2 border-t border-border pt-6">

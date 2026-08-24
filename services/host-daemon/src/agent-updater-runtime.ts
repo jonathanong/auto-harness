@@ -2,6 +2,7 @@ import { AgentUpdater } from "./agent-updater.ts";
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";
 import {
   confirmPendingUpdateBoot,
+  confirmPrivilegedPendingUpdateBoot,
   createFileUpdateInstaller,
   recoverPendingUpdateBoot,
   readInstalledVersion,
@@ -10,6 +11,7 @@ import {
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
 import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import type { DaemonLoop } from "./daemon-loop.ts";
+import type { HostUpdateConfig } from "@auto-harness/shared";
 
 const DEFAULT_POLL_MS = 60 * 60_000;
 export const MAX_UPDATE_POLL_MS = 2_147_483_647;
@@ -26,12 +28,56 @@ type DaemonUpdaterBindings = {
 
 type DaemonUpdateBootBindings = Pick<DaemonUpdaterBindings, "env" | "service">;
 
+const UPDATE_ENV_KEYS = [
+  "HARNESS_UPDATE_MANIFEST_URL",
+  "HARNESS_UPDATE_PUBLIC_KEY",
+  "HARNESS_UPDATE_INSTALL_DIR",
+  "HARNESS_UPDATE_POLL_MS",
+  "HARNESS_DAEMON_VERSION",
+] as const;
+
+/**
+ * Host-scoped control-plane settings override legacy service-file update
+ * settings. Copy rather than mutate process.env because startup also uses the
+ * original environment to construct child-process policy.
+ */
+export function withHostUpdateConfig(
+  env: NodeJS.ProcessEnv,
+  updateConfig: HostUpdateConfig | undefined,
+  options: { useConfiguredInstallDir?: boolean } = {},
+): NodeJS.ProcessEnv {
+  if (updateConfig === undefined) return env;
+  const next = { ...env };
+  // Preserve explicit empty assignments: install-service passes this object to
+  // the persisted environment writer, where an empty updater value is the
+  // deliberate instruction to remove an older service-file setting. Merely
+  // deleting a key here would let that older value survive the reinstall.
+  for (const key of UPDATE_ENV_KEYS) next[key] = "";
+  if (!updateConfig.enabled) {
+    return next;
+  }
+  next.HARNESS_UPDATE_MANIFEST_URL = updateConfig.manifestUrl!;
+  next.HARNESS_UPDATE_PUBLIC_KEY = updateConfig.publicKey!;
+  if (updateConfig.installDir !== undefined && options.useConfiguredInstallDir !== false) {
+    next.HARNESS_UPDATE_INSTALL_DIR = updateConfig.installDir;
+  }
+  if (updateConfig.pollMs !== undefined) next.HARNESS_UPDATE_POLL_MS = String(updateConfig.pollMs);
+  if (updateConfig.daemonVersion !== undefined) {
+    next.HARNESS_DAEMON_VERSION = updateConfig.daemonVersion;
+  }
+  return next;
+}
+
 function daemonUpdateInstallDir(bindings: DaemonUpdateBootBindings): string {
   return resolveUpdateInstallDir(bindings.env, {
     ...(bindings.service?.platform !== undefined ? { platform: bindings.service.platform } : {}),
     ...(bindings.service?.home !== undefined ? { home: bindings.service.home } : {}),
     ...(bindings.service?.appData !== undefined ? { appData: bindings.service.appData } : {}),
   });
+}
+
+function usesPrivilegedLinuxActivation(bindings: DaemonUpdateBootBindings): boolean {
+  return (bindings.service?.platform ?? process.platform) === "linux";
 }
 
 /**
@@ -43,6 +89,10 @@ function daemonUpdateInstallDir(bindings: DaemonUpdateBootBindings): string {
 export function recoverDaemonUpdateBoot(
   bindings: DaemonUpdateBootBindings,
 ): Promise<UpdateBootRecovery> {
+  // The root-owned systemd ExecStartPre helper performs the Linux rollback
+  // before this daemon can execute. Letting the unprivileged process touch the
+  // immutable pointer here would both fail and weaken that boundary.
+  if (usesPrivilegedLinuxActivation(bindings)) return Promise.resolve("none");
   return recoverPendingUpdateBoot({
     rootDir: daemonUpdateInstallDir(bindings),
     ...(bindings.service?.platform !== undefined
@@ -53,7 +103,10 @@ export function recoverDaemonUpdateBoot(
 
 /** A connected-and-registered daemon is the durable health acknowledgement for its release. */
 export function confirmDaemonUpdateBoot(bindings: DaemonUpdateBootBindings): boolean {
-  return confirmPendingUpdateBoot(daemonUpdateInstallDir(bindings));
+  const rootDir = daemonUpdateInstallDir(bindings);
+  return usesPrivilegedLinuxActivation(bindings)
+    ? confirmPrivilegedPendingUpdateBoot(rootDir)
+    : confirmPendingUpdateBoot(rootDir);
 }
 
 export function parseUpdatePollMs(raw: string | undefined): number {
@@ -86,6 +139,7 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
   const files = createFileUpdateInstaller({
     rootDir: installDir,
     currentVersion,
+    privilegedActivation: usesPrivilegedLinuxActivation(bindings),
   });
   const installer = createSupervisorRestartInstaller(files, bindings.service);
   return new AgentUpdater({

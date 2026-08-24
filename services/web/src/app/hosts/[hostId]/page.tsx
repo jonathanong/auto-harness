@@ -208,6 +208,7 @@ export default async function HostDetailPage({
                 setupScript={inv.setupScript}
                 allowedRoots={inv.allowedRoots}
                 requiredEnvironment={inv.requiredEnvironment}
+                updateConfig={inv.updateConfig}
                 canWriteInventory={canWriteInventory}
                 canWriteExecConfig={canWriteExecConfig}
               />

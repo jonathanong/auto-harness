@@ -4,6 +4,7 @@ import {
   parseProviderAccountOverrides,
   parseProviderAccounts,
   parseRequiredEnvironment,
+  parseHostUpdateConfig,
 } from "@auto-harness/shared";
 
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
@@ -142,6 +143,7 @@ export function parseDaemonConfig(
     );
   }
   if (requiredEnvironment.length) config.requiredEnvironment = requiredEnvironment;
+  if (raw.updateConfig !== undefined) config.updateConfig = parseHostUpdateConfig(raw.updateConfig);
   if (typeof raw.apiUrl === "string") {
     config.apiUrl = raw.apiUrl;
   }

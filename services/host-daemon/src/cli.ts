@@ -233,7 +233,22 @@ export async function runCli(
       deps.error("--api-url requires an HTTPS production control-plane URL");
       return 1;
     }
-    return deps.installService({ env: resolvedEnv, log: deps.log, error: deps.error, apiUrl });
+    let serviceEnv = resolvedEnv;
+    try {
+      const config = await deps.loadConfig({ env: resolvedEnv });
+      const { withHostUpdateConfig } = await import("./agent-updater-runtime.ts");
+      serviceEnv = withHostUpdateConfig(resolvedEnv, config.updateConfig);
+    } catch (error) {
+      // A host can still reinstall its known-good local service while the
+      // control plane is unavailable. It will retain the existing persisted
+      // update configuration rather than partially applying a remote edit.
+      deps.error(
+        `Could not load host update settings; keeping local service settings: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return deps.installService({ env: serviceEnv, log: deps.log, error: deps.error, apiUrl });
   }
   if (command === "uninstall-service") {
     return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });

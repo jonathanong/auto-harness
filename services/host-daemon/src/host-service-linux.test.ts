@@ -6,6 +6,7 @@ import { resolveHostService } from "./host-service-io.ts";
 import { statusLinux } from "./host-service-linux.ts";
 import { baseOpts, recorder, seededFs, unitTemplate } from "./host-service-test-helpers.ts";
 import {
+  LINUX_ACTIVATION_HELPER_DEST,
   LINUX_ENABLE_NOW_COMMAND,
   LINUX_ENV_DEST,
   LINUX_LAUNCHER_DEST,
@@ -38,11 +39,9 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_RELOAD_COMMAND}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_ENABLE_NOW_COMMAND}`);
+    expect(logs.join("\n")).toContain("sudo install -d -o root -g root -m 0755 /opt/auto-harness");
     expect(logs.join("\n")).toContain(
-      "sudo install -d -o harness -g harness -m 0755 /opt/auto-harness",
-    );
-    expect(logs.join("\n")).toContain(
-      "sudo install -d -o harness -g harness -m 0755 /opt/auto-harness/versions",
+      "sudo install -d -o harness -g harness -m 0700 /opt/auto-harness/incoming",
     );
     expect(logs.join("\n")).toContain(
       "sudo install -d -o root -g root -m 0755 /usr/local/lib/auto-harness",
@@ -71,12 +70,24 @@ describe("install-service linux", () => {
     expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`WorkingDirectory=${LINUX_OPT_CURRENT}`);
     expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`ExecStart=/bin/sh "${LINUX_LAUNCHER_DEST}"`);
     expect(fs.files.get(LINUX_LAUNCHER_DEST)).toContain(`cd '${LINUX_OPT_CURRENT}'`);
+    expect(fs.files.get(LINUX_ACTIVATION_HELPER_DEST)).toContain("activation request");
+    const unit = fs.files.get(LINUX_UNIT_DEST)!;
+    expect(unit).toContain(
+      "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs",
+    );
+    expect(unit).toContain("--mark-boot-attempt");
+    expect(unit.indexOf("--mark-boot-attempt")).toBeGreaterThan(
+      unit.indexOf("promote-host-daemon-update.mjs\n"),
+    );
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([
-      "install -d -o harness -g harness -m 0755 /opt/auto-harness",
-      "install -d -o harness -g harness -m 0755 /opt/auto-harness/versions",
+      "install -d -o root -g root -m 0755 /opt/auto-harness",
+      "install -d -o harness -g harness -m 0700 /opt/auto-harness/incoming",
       "install -d -o root -g root -m 0755 /usr/local/lib/auto-harness",
+      "install -d -o root -g root -m 0755 /opt/auto-harness/releases",
+      "chown -R root:root /opt/auto-harness/current",
+      "chmod -R go-w /opt/auto-harness/current",
       "systemctl daemon-reload",
       "systemctl enable auto-harness-host-daemon.service",
       "systemctl restart auto-harness-host-daemon.service",
@@ -105,9 +116,53 @@ describe("install-service linux", () => {
     expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`ExecStart=/bin/sh "${LINUX_LAUNCHER_DEST}"`);
     expect(fs.files.get(LINUX_LAUNCHER_DEST)).toContain(`cd '${updateRoot}/current'`);
     expect(fs.files.get(LINUX_ENV_DEST)).toContain(`HARNESS_UPDATE_INSTALL_DIR=${updateRoot}`);
+    // Reinstalling migrates the conventional mutable checkout before the
+    // root-owned launcher can execute it.
+    expect(fs.files.get(LINUX_LAUNCHER_DEST)).toContain("exec");
   });
 
-  it("provisions a custom update root for the unprivileged daemon before writing the root-owned launcher", () => {
+  it("refuses to enable a migrated service when its current release cannot be locked", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs({ [LINUX_OPT_CURRENT]: "" }),
+          error: (message) => errors.push(message),
+          run: (command) =>
+            command === "chown"
+              ? { status: 1, stdout: "", stderr: "permission denied" }
+              : { status: 0, stdout: "", stderr: "" },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["lock existing current release ownership failed: permission denied"]);
+  });
+
+  it("locks a legacy current-pointer target before enabling the root-owned wrapper", () => {
+    const spawn = recorder();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs({ [LINUX_OPT_CURRENT]: "", "/opt/auto-harness/versions": "" }),
+          run: spawn.run,
+        }),
+      ),
+    ).toBe(0);
+    expect(spawn.calls).toContainEqual({
+      command: "chown",
+      args: ["-R", "root:root", "/opt/auto-harness/versions"],
+    });
+    expect(spawn.calls).toContainEqual({
+      command: "chmod",
+      args: ["-R", "go-w", "/opt/auto-harness/versions"],
+    });
+  });
+
+  it("provisions only a private incoming update directory for the unprivileged daemon", () => {
     const updateRoot = "/srv/auto-harness";
     const spawn = recorder();
     expect(
@@ -129,11 +184,11 @@ describe("install-service linux", () => {
     expect(spawn.calls.slice(0, 3)).toEqual([
       {
         command: "install",
-        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0755", updateRoot],
+        args: ["-d", "-o", "root", "-g", "root", "-m", "0755", updateRoot],
       },
       {
         command: "install",
-        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0755", `${updateRoot}/versions`],
+        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0700", `${updateRoot}/incoming`],
       },
       {
         command: "install",
@@ -142,7 +197,7 @@ describe("install-service linux", () => {
     ]);
   });
 
-  it("does not install a service when the update root cannot be made writable by harness", () => {
+  it("does not install a service when the update root cannot be made root-owned", () => {
     const errors: string[] = [];
     expect(
       installHostService(
@@ -161,7 +216,7 @@ describe("install-service linux", () => {
     expect(errors).toEqual(["install writable update root failed: permission denied"]);
   });
 
-  it("does not install a service when an existing release directory cannot be made writable", () => {
+  it("does not install a service when the daemon incoming directory cannot be made writable", () => {
     const errors: string[] = [];
     expect(
       installHostService(
@@ -171,13 +226,15 @@ describe("install-service linux", () => {
           fs: seededFs(),
           error: (message) => errors.push(message),
           run: (_command, args) =>
-            args.at(-1) === "/opt/auto-harness/versions"
+            args.at(-1) === "/opt/auto-harness/incoming"
               ? { status: 1, stdout: "", stderr: "permission denied" }
               : { status: 0, stdout: "", stderr: "" },
         }),
       ),
     ).toBe(1);
-    expect(errors).toEqual(["install writable update release directory failed: permission denied"]);
+    expect(errors).toEqual([
+      "install writable update incoming directory failed: permission denied",
+    ]);
   });
 
   it("does not install a service when the root-owned launcher directory cannot be provisioned", () => {

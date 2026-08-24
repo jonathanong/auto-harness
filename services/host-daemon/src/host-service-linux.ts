@@ -8,6 +8,7 @@ import { failedCommand, writeMode } from "./host-service-io.ts";
 import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import {
   LINUX_ENABLE_NOW_COMMAND,
+  LINUX_ACTIVATION_HELPER_DEST,
   LINUX_ENV_DEST,
   LINUX_ENV_DIR,
   LINUX_LAUNCHER_DEST,
@@ -108,10 +109,19 @@ function stageLinux(
   const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
   const stagedEnv = join(stagedDir, "host-daemon.env");
   const stagedLauncher = join(stagedDir, "run-host-daemon.sh");
+  const stagedHelper = join(stagedDir, "promote-host-daemon-update.mjs");
   writeMode(ctx.fs, stagedUnit, unit, 0o644, true);
   writeMode(ctx.fs, stagedLauncher, launcher, 0o755, true);
+  writeMode(
+    ctx.fs,
+    stagedHelper,
+    ctx.fs.readFileSync(ctx.activationHelperTemplatePath),
+    0o755,
+    true,
+  );
   ctx.log(`Wrote ${stagedUnit}`);
   ctx.log(`Wrote ${stagedLauncher}`);
+  ctx.log(`Wrote ${stagedHelper}`);
   if (envContents !== undefined) {
     writeMode(ctx.fs, stagedEnv, envContents, 0o600, true);
     ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
@@ -119,17 +129,16 @@ function stageLinux(
   ctx.log(`Staged in ephemeral directory ${stagedDir}`);
   ctx.log("Not running as root. Run:");
   ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
+  ctx.log(`  sudo install -d -o root -g root -m 0755 ${paths.updateRoot}`);
   ctx.log(
-    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${paths.updateRoot}`,
-  );
-  ctx.log(
-    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0755 ${join(paths.updateRoot, "versions")}`,
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${join(paths.updateRoot, "incoming")}`,
   );
   ctx.log(`  sudo install -d -o root -g root -m 0755 ${dirname(paths.launcher)}`);
   if (envContents !== undefined) {
     ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
   }
   ctx.log(`  sudo install -m 0755 ${stagedLauncher} ${paths.launcher}`);
+  ctx.log(`  sudo install -m 0755 ${stagedHelper} ${LINUX_ACTIVATION_HELPER_DEST}`);
   ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
   ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
   ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
@@ -185,9 +194,9 @@ export function installLinux(ctx: HostServiceContext): number {
   const updateRoot = ctx.run("install", [
     "-d",
     "-o",
-    LINUX_SERVICE_USER,
+    "root",
     "-g",
-    LINUX_SERVICE_USER,
+    "root",
     "-m",
     "0755",
     paths.updateRoot,
@@ -195,18 +204,18 @@ export function installLinux(ctx: HostServiceContext): number {
   if (updateRoot.status !== 0) {
     return failedCommand(ctx.error, "install writable update root", updateRoot);
   }
-  const releaseRoot = ctx.run("install", [
+  const incomingRoot = ctx.run("install", [
     "-d",
     "-o",
     LINUX_SERVICE_USER,
     "-g",
     LINUX_SERVICE_USER,
     "-m",
-    "0755",
-    join(paths.updateRoot, "versions"),
+    "0700",
+    join(paths.updateRoot, "incoming"),
   ]);
-  if (releaseRoot.status !== 0) {
-    return failedCommand(ctx.error, "install writable update release directory", releaseRoot);
+  if (incomingRoot.status !== 0) {
+    return failedCommand(ctx.error, "install writable update incoming directory", incomingRoot);
   }
   const launcherRoot = ctx.run("install", [
     "-d",
@@ -221,6 +230,46 @@ export function installLinux(ctx: HostServiceContext): number {
   if (launcherRoot.status !== 0) {
     return failedCommand(ctx.error, "install root-owned launcher directory", launcherRoot);
   }
+  const releasesRoot = ctx.run("install", [
+    "-d",
+    "-o",
+    "root",
+    "-g",
+    "root",
+    "-m",
+    "0755",
+    join(paths.updateRoot, "releases"),
+  ]);
+  if (releasesRoot.status !== 0) {
+    return failedCommand(ctx.error, "install immutable update release directory", releasesRoot);
+  }
+  // Migrate a checkout installed by earlier versions, where `current` was
+  // harness-owned. A root-owned wrapper must never execute a release that a
+  // session CLI can still replace between service starts.
+  if (ctx.fs.existsSync(paths.currentRoot)) {
+    const ownCurrent = ctx.run("chown", ["-R", "root:root", paths.currentRoot]);
+    if (ownCurrent.status !== 0) {
+      return failedCommand(ctx.error, "lock existing current release ownership", ownCurrent);
+    }
+    const lockCurrent = ctx.run("chmod", ["-R", "go-w", paths.currentRoot]);
+    if (lockCurrent.status !== 0) {
+      return failedCommand(ctx.error, "lock existing current release permissions", lockCurrent);
+    }
+  }
+  // Earlier automatic-update builds used current -> versions/<version>.
+  // `chown -R current` deliberately does not dereference that pointer, so
+  // lock its target tree explicitly before a root-owned wrapper may follow it.
+  const legacyVersions = join(paths.updateRoot, "versions");
+  if (ctx.fs.existsSync(legacyVersions)) {
+    const ownLegacyVersions = ctx.run("chown", ["-R", "root:root", legacyVersions]);
+    if (ownLegacyVersions.status !== 0) {
+      return failedCommand(ctx.error, "lock legacy update release ownership", ownLegacyVersions);
+    }
+    const lockLegacyVersions = ctx.run("chmod", ["-R", "go-w", legacyVersions]);
+    if (lockLegacyVersions.status !== 0) {
+      return failedCommand(ctx.error, "lock legacy update release permissions", lockLegacyVersions);
+    }
+  }
   if (writeEnv) {
     writeMode(ctx.fs, LINUX_ENV_DEST, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${LINUX_ENV_DEST} (mode 0600)`);
@@ -229,6 +278,13 @@ export function installLinux(ctx: HostServiceContext): number {
   }
   writeMode(ctx.fs, paths.launcher, launcher, 0o755);
   ctx.log(`Wrote ${paths.launcher}`);
+  writeMode(
+    ctx.fs,
+    LINUX_ACTIVATION_HELPER_DEST,
+    ctx.fs.readFileSync(ctx.activationHelperTemplatePath),
+    0o755,
+  );
+  ctx.log(`Wrote ${LINUX_ACTIVATION_HELPER_DEST}`);
   writeMode(ctx.fs, LINUX_UNIT_DEST, unit, 0o644);
   ctx.log(`Wrote ${LINUX_UNIT_DEST}`);
   const reload = ctx.run("systemctl", ["daemon-reload"]);

@@ -3,8 +3,7 @@ import {
   emptyHostInventory,
   EXEC_CONFIG_CAPABILITY,
   EXEC_CONFIG_REQUIRED_MESSAGE,
-  listExecConfigEdits,
-  parseHostExecConfig,
+  parseHostUpdateConfig,
   principalHas,
 } from "@auto-harness/shared";
 
@@ -18,21 +17,20 @@ function versionFrom(body: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
-function allowsExecConfig(ctx: RouteCtx): boolean {
+function permitted(ctx: RouteCtx): boolean {
   return !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY);
 }
 
-/** Admin-only setup scripts, terminal hook paths, and host-local allowed roots. */
-export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean> {
+/** Host-scoped signed-update settings, protected like other executable configuration. */
+export async function handleHostUpdateConfigRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
-  const match = /^\/api\/v1\/hosts\/([^/]+)\/exec-config$/.exec(url.pathname);
+  const match = /^\/api\/v1\/hosts\/([^/]+)\/update-config$/.exec(url.pathname);
   if (!match) return false;
   const hostId = decodeURIComponent(match[1]!);
-
   if (!mayAccessHost(ctx.principal, hostId)) {
     if (
       !(await writeRouteAudit(ctx, {
-        action: "host-exec-config:update",
+        action: "host-update-config:update",
         resourceType: "host-inventory",
         resourceId: hostId,
         outcome: "denied",
@@ -42,9 +40,26 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
     send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
     return true;
   }
-
+  if (method === "GET") {
+    try {
+      const config = await plane.getHostInventoryDurable(hostId);
+      if (
+        !config ||
+        (ctx.principal?.allowedRepositoryIds &&
+          !config.repositories.some((repository) =>
+            mayAccessRepository(ctx.principal, repository.id),
+          ))
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+        return true;
+      }
+      send(res, 200, { updateConfig: config.updateConfig, version: config.version });
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
   if (method !== "PUT") return false;
-
   let body: unknown;
   try {
     body = await readJson(req);
@@ -52,7 +67,6 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
     return true;
   }
-
   try {
     const stored = await plane.getHostInventoryDurable(hostId);
     const existing = stored ?? emptyHostInventory();
@@ -63,81 +77,46 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
       send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
       return true;
     }
-    if (!allowsExecConfig(ctx)) {
+    if (!permitted(ctx)) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "host-exec-config:update",
+          action: "host-update-config:update",
           resourceType: "host-inventory",
           resourceId: hostId,
           outcome: "denied",
         }))
       )
         return true;
-      send(res, 403, {
-        error: {
-          code: "FORBIDDEN",
-          message: EXEC_CONFIG_REQUIRED_MESSAGE,
-        },
-      });
+      send(res, 403, { error: { code: "FORBIDDEN", message: EXEC_CONFIG_REQUIRED_MESSAGE } });
       return true;
     }
-    let patch;
-    let merged;
-    try {
-      patch = parseHostExecConfig(body);
-      merged = applyHostExecConfig(existing, patch);
-    } catch (error) {
-      if (
-        !(await writeRouteAudit(ctx, {
-          action: "host-exec-config:update",
-          resourceType: "host-inventory",
-          resourceId: hostId,
-          outcome: "failed",
-        }))
-      )
-        return true;
-      send(res, 400, {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return true;
+    if (!body || typeof body !== "object" || !Object.hasOwn(body, "updateConfig")) {
+      throw new TypeError("updateConfig is required");
     }
-    // Versionless patches are still fenced: the server has just read this exact document.
+    const updateConfig = parseHostUpdateConfig((body as { updateConfig: unknown }).updateConfig);
     const version = versionFrom(body) ?? stored?.version ?? 0;
-    const changed = listExecConfigEdits(existing, merged);
-    // Audit first: a failed success-audit must not publish exec-config.
     if (
       !(await writeRouteAudit(ctx, {
-        action: "host-exec-config:update",
+        action: "host-update-config:update",
         resourceType: "host-inventory",
         resourceId: hostId,
-        metadata: { changed },
+        metadata: { changed: ["updateConfig"] },
       }))
     )
       return true;
     const result = await plane.putHostInventoryDurable(
       hostId,
-      {
-        ...merged,
-        version,
-      },
-      {
-        // applyHostExecConfig can carry an untouched pre-policy relative hook forward.
-        // New values are still rejected by parseHostExecConfig.
-        allowLegacyRelativeTerminalHooks: true,
-        awaitProjection: false,
-      },
+      { ...applyHostExecConfig(existing, { updateConfig }), version },
+      { allowLegacyRelativeTerminalHooks: true, awaitProjection: false },
     );
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "host-exec-config:update",
+          action: "host-update-config:update",
           resourceType: "host-inventory",
           resourceId: hostId,
           outcome: "failed",
-          metadata: { changed },
+          metadata: { changed: ["updateConfig"] },
         }))
       )
         return true;
@@ -149,36 +128,23 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
       });
       return true;
     }
-    const config = result.config;
-    send(res, 200, {
-      setupScript: config.setupScript,
-      allowedRoots: config.allowedRoots,
-      updateConfig: config.updateConfig,
-      repositories: config.repositories
-        .filter((repository) => mayAccessRepository(ctx.principal, repository.id))
-        .map((repository) => ({
-          id: repository.id,
-          setupScript: repository.setupScript,
-          terminalHookScript: repository.terminalHookScript,
-          worktrees: repository.worktrees.map((worktree) => ({
-            id: worktree.id,
-            setupScript: worktree.setupScript,
-          })),
-        })),
-      version: config.version,
-    });
+    send(res, 200, { updateConfig: result.config.updateConfig, version: result.config.version });
     return true;
-  } catch {
+  } catch (error) {
     if (
       !(await writeRouteAudit(ctx, {
-        action: "host-exec-config:update",
+        action: "host-update-config:update",
         resourceType: "host-inventory",
         resourceId: hostId,
         outcome: "failed",
       }))
     )
       return true;
-    sendInternalError(res);
+    if (error instanceof TypeError) {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+    } else {
+      sendInternalError(res);
+    }
     return true;
   }
 }

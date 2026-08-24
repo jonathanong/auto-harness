@@ -35,6 +35,54 @@ describe("install-service CLI", () => {
     expect(received?.apiUrl).toBe("https://new.example.com");
   });
 
+  it("persists host-scoped update settings during service installation", async () => {
+    let received: NodeJS.ProcessEnv | undefined;
+    const a = deps({
+      loadConfig: async () => ({
+        ...sampleConfig,
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "public key",
+          installDir: "/srv/auto-harness",
+          pollMs: 0,
+          daemonVersion: "1.2.3",
+        },
+      }),
+      installService: ({ env }) => {
+        received = env;
+        return 0;
+      },
+    });
+    expect(await runCli(["node", "x", "install-service"], {}, a)).toBe(0);
+    expect(received).toMatchObject({
+      HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+      HARNESS_UPDATE_PUBLIC_KEY: "public key",
+      HARNESS_UPDATE_INSTALL_DIR: "/srv/auto-harness",
+      HARNESS_UPDATE_POLL_MS: "0",
+      HARNESS_DAEMON_VERSION: "1.2.3",
+    });
+  });
+
+  it("clears every persisted updater setting when Host updates are disabled", async () => {
+    let received: NodeJS.ProcessEnv | undefined;
+    const a = deps({
+      loadConfig: async () => ({ ...sampleConfig, updateConfig: { enabled: false } }),
+      installService: ({ env }) => {
+        received = env;
+        return 0;
+      },
+    });
+    expect(await runCli(["node", "x", "install-service"], {}, a)).toBe(0);
+    expect(received).toMatchObject({
+      HARNESS_UPDATE_MANIFEST_URL: "",
+      HARNESS_UPDATE_PUBLIC_KEY: "",
+      HARNESS_UPDATE_INSTALL_DIR: "",
+      HARNESS_UPDATE_POLL_MS: "",
+      HARNESS_DAEMON_VERSION: "",
+    });
+  });
+
   it("requires a value after --api-url", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "install-service", "--api-url"], {}, a)).toBe(1);

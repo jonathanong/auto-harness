@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- persisted identity and updater reset cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { persistedEnvError, validatePersistedEnvFile } from "./host-service-env.ts";
@@ -173,6 +174,29 @@ describe("persisted service environment validation", () => {
     expect(updated).toContain(
       'HARNESS_UPDATE_PUBLIC_KEY="-----BEGIN KEY-----\\\\nabc\\\\n-----END KEY-----"',
     );
+  });
+
+  it("clears persisted updater settings when explicitly set to blank", () => {
+    const original =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nHARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json\nHARNESS_UPDATE_PUBLIC_KEY=old-key\nHARNESS_UPDATE_INSTALL_DIR=/srv/updates\nHARNESS_UPDATE_POLL_MS=60000\nHARNESS_DAEMON_VERSION=1.2.3\n";
+    const updated = preparePersistedEnv({
+      existing: original,
+      example: "",
+      env: {
+        HARNESS_UPDATE_MANIFEST_URL: "",
+        HARNESS_UPDATE_PUBLIC_KEY: "",
+        HARNESS_UPDATE_INSTALL_DIR: "",
+        HARNESS_UPDATE_POLL_MS: "",
+        HARNESS_DAEMON_VERSION: "",
+      },
+    }).contents;
+    expect(updated).toContain("HARNESS_UPDATE_MANIFEST_URL=\n");
+    expect(updated).toContain("HARNESS_UPDATE_PUBLIC_KEY=\n");
+    expect(updated).toContain("HARNESS_UPDATE_INSTALL_DIR=\n");
+    expect(updated).toContain("HARNESS_UPDATE_POLL_MS=\n");
+    expect(updated).toContain("HARNESS_DAEMON_VERSION=\n");
+    expect(updated).not.toContain("old-key");
+    expect(updated).not.toContain("updates.example.test");
   });
 
   it("rejects multiline URL replacements before editing persisted contents", () => {

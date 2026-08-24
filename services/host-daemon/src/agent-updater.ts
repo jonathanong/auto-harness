@@ -8,7 +8,12 @@ export type UpdateManifest = {
 };
 
 export type UpdateInstaller = {
-  stage(input: { version: string; artifact: Uint8Array }): Promise<void>;
+  /**
+   * `manifest` accompanies the artifact so a privileged Linux activation
+   * helper can independently re-verify the signed bytes it promotes. Other
+   * installers may ignore it.
+   */
+  stage(input: { version: string; artifact: Uint8Array; manifest?: UpdateManifest }): Promise<void>;
   activate(version: string): Promise<void>;
   restart(): Promise<void>;
   rollback(): Promise<void>;
@@ -99,7 +104,7 @@ export class AgentUpdater {
       });
       const artifact = await this.options.fetcher.fetchArtifact(manifest.artifactUrl);
       if (sha256(artifact) !== manifest.sha256) throw new Error("artifact checksum mismatch");
-      await this.options.installer.stage({ version: targetVersion, artifact });
+      await this.options.installer.stage({ version: targetVersion, artifact, manifest });
       this.transition({
         phase: "staged",
         currentVersion,
