@@ -235,6 +235,28 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       kind: "forbidden",
       execEdits: ["repositories.repo-1.path", "repositories.repo-1.worktrees.wt-1.path"],
     });
+
+    const withNewWorktree = inventory();
+    withNewWorktree.repositories[0]!.worktrees.push({
+      id: "wt-2",
+      name: "wt-2",
+      path: "/opt/harness/repo/.worktrees/wt-2",
+      labels: [],
+    });
+    expect(listExecConfigEdits(inventory(), withNewWorktree)).toEqual([
+      "repositories.repo-1.worktrees.wt-2.path",
+    ]);
+    expect(
+      reconcileInventoryWrite({
+        existing: inventory(),
+        incoming: withNewWorktree,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["repositories.repo-1.worktrees.wt-2.path"],
+    });
   });
 
   it("detects stored executable paths that inventory deletion would erase", () => {

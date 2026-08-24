@@ -50,6 +50,27 @@ export async function runSetupIfNeeded(
   }
   const setupDeadline = Date.now() + Math.min(remainingMs(), 600_000);
   for (const setupScript of setupScripts) {
+    try {
+      await claimed.currentExecutionTarget?.();
+    } catch (error) {
+      return {
+        environment,
+        failure: await finishClaimedSession(
+          processRunner,
+          streamer,
+          logs,
+          assign,
+          claimed,
+          {
+            status: "failed",
+            exitCode: null,
+            errorCode: "setup_failed",
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+          childEnvSource,
+        ),
+      };
+    }
     const setup = await runSetupScript(
       processRunner,
       setupScript,

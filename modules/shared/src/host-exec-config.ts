@@ -266,15 +266,17 @@ export function listExecConfigEdits(
       );
       // Every setup-script scope runs in this worktree's cwd, so its path is
       // itself executable configuration when any effective setup script exists.
+      const setupApplies =
+        hostSetupScript ||
+        hasSetupScript(previous?.setupScript) ||
+        hasSetupScript(next?.setupScript) ||
+        hasSetupScript(previousWorktree?.setupScript) ||
+        hasSetupScript(nextWorktree?.setupScript);
       if (
-        previousWorktree !== undefined &&
+        setupApplies &&
         nextWorktree !== undefined &&
-        !sameOptionalString(previousWorktree.path, nextWorktree.path) &&
-        (hostSetupScript ||
-          hasSetupScript(previous?.setupScript) ||
-          hasSetupScript(next?.setupScript) ||
-          hasSetupScript(previousWorktree?.setupScript) ||
-          hasSetupScript(nextWorktree?.setupScript))
+        (previousWorktree === undefined ||
+          !sameOptionalString(previousWorktree.path, nextWorktree.path))
       ) {
         edits.push(`repositories.${repositoryId}.worktrees.${worktreeId}.path`);
       }

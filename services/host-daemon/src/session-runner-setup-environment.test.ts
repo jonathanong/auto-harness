@@ -77,6 +77,61 @@ describe("SessionRunner setup environment", () => {
     });
   });
 
+  it("revalidates the execution target before each setup scope", async () => {
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      setupScript: "host-setup",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          setupScript: "repository-setup",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    };
+    const setupOrder: string[] = [];
+    let commandStarted = false;
+    const worktrees = new WorktreeManager(config, git);
+    const runner: ProcessRunner = {
+      async run(options) {
+        const shellScript = options.argv[1] === "-c" ? options.argv[2] : undefined;
+        if (shellScript?.includes("host-setup")) {
+          setupOrder.push("host");
+          worktrees.noteInventoryChange();
+          return {
+            exitCode: 0,
+            timedOut: false,
+            signal: null,
+            environment: { ...options.env },
+          };
+        }
+        if (shellScript?.includes("repository-setup")) {
+          setupOrder.push("repository");
+          return { exitCode: 0, timedOut: false, signal: null, environment: { ...options.env } };
+        }
+        commandStarted = true;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "host inventory changed after this checkout was claimed",
+    });
+    expect(setupOrder).toEqual(["host"]);
+    expect(commandStarted).toBe(false);
+  });
+
   it("forwards persisted allowlisted variables when resume skips setup", async () => {
     const config = parseDaemonConfig({
       hostId: "a1",
