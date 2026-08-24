@@ -156,6 +156,7 @@ export async function assignScheduledQueuedDurable(
           attemptId,
           hostId,
           occupiedSlots,
+          !state.storage,
         );
         if (target.providerAccountId && !lease) break;
         won = state.storage

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign, testExecutionProfiles } from "./session-runner-test-helpers.ts";
 
 const claimed = {
   repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
@@ -25,6 +25,9 @@ async function runClaimed(
     undefined,
     () => false,
     () => 100,
+    undefined,
+    undefined,
+    testExecutionProfiles,
   );
 }
 

@@ -1,10 +1,18 @@
+import { tmpdir } from "node:os";
+
 import type { SessionAssign } from "@auto-harness/shared";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
+import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+
+export const testExecutionProfiles: ExecutionProfiles = {
+  maxConcurrentAssignments: 1,
+  profiles: new Map([["acct-1", { providerAccountId: "acct-1", home: tmpdir(), env: {} }]]),
+};
 
 export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
   return {
@@ -60,6 +68,7 @@ export function setup(runner: ProcessRunner) {
     sessionRunner: new SessionRunner({
       worktrees,
       processRunner: wrapped,
+      executionProfiles: testExecutionProfiles,
       now: () => "2026-08-01T00:00:00.000Z",
     }),
   };

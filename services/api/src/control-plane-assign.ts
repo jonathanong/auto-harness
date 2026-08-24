@@ -213,6 +213,7 @@ export async function assignQueuedDurable(
           attemptId,
           candidate.hostId,
           occupiedSlots,
+          false,
         );
         if (route.providerAccountId && !lease) {
           break;

@@ -53,6 +53,8 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
+  // Durable workers consult Dynamo assignment transactions, not this cache.
+  if (state.storage) return true;
   let used = 0;
   for (const session of state.sessions.values()) {
     if (sessionHoldsHostAssignment(session, hostId)) used += 1;
@@ -65,6 +67,7 @@ export function accountHasLeaseCapacity(
   providerAccountId: string | undefined,
 ): boolean {
   if (!providerAccountId) return true;
+  if (state.storage) return true;
   const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
   let used = 0;
   for (const lease of state.providerAccountLeases.values()) {
@@ -80,13 +83,14 @@ export function tryAcquireProviderAccountLeaseLocal(
   attemptId: string,
   hostId: string,
   occupiedSlots: ReadonlySet<number> = new Set(),
+  consultLocalMap = true,
 ): ProviderAccountLease | undefined {
   if (!providerAccountId) return undefined;
   const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
   for (let slot = 0; slot < max; slot += 1) {
     if (occupiedSlots.has(slot)) continue;
     const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
-    if (state.providerAccountLeases.has(concurrencyId)) continue;
+    if (consultLocalMap && state.providerAccountLeases.has(concurrencyId)) continue;
     const lease: ProviderAccountLease = {
       concurrencyId,
       providerAccountId,

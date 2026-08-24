@@ -90,6 +90,16 @@ describe("execution profiles", () => {
     expect(() =>
       parseExecutionProfiles({ accounts: { a: { home: "/x", env: { "bad-name": "x" } } } }),
     ).toThrow(/invalid name/);
+    expect(() =>
+      parseExecutionProfiles({
+        accounts: { a: { home: "/homes/shared" }, b: { home: "/homes/shared" } },
+      }),
+    ).toThrow(/reuses home/);
+    const tooMany: Record<string, { home: string }> = {};
+    for (let index = 0; index < 257; index += 1) {
+      tooMany[`acct-${String(index)}`] = { home: `/homes/${String(index)}` };
+    }
+    expect(() => parseExecutionProfiles({ accounts: tooMany })).toThrow(/at most 256/);
   });
 
   it("loads a file and env override, and reports directory readiness", () => {

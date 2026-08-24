@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, normalize } from "node:path";
 
 import {
   DEFAULT_MAX_CONCURRENT_ASSIGNMENTS,
   MAX_CONCURRENT_ASSIGNMENTS_LIMIT,
+  MAX_PROVIDER_ACCOUNT_READINESS,
   type ProviderAccountReadiness,
 } from "@auto-harness/shared";
 
@@ -82,9 +83,22 @@ export function parseExecutionProfiles(raw: unknown): ExecutionProfiles {
   const accounts = raw.accounts;
   if (accounts === undefined) return { maxConcurrentAssignments, profiles: new Map() };
   if (!isRecord(accounts)) throw new Error("execution profiles.accounts must be an object");
+  const ids = Object.keys(accounts);
+  if (ids.length > MAX_PROVIDER_ACCOUNT_READINESS) {
+    throw new Error(
+      `execution profiles.accounts must have at most ${String(MAX_PROVIDER_ACCOUNT_READINESS)} entries`,
+    );
+  }
   const profiles = new Map<string, ExecutionProfile>();
-  for (const [providerAccountId, profile] of Object.entries(accounts)) {
-    profiles.set(providerAccountId, parseAccountProfile(providerAccountId, profile));
+  const homes = new Set<string>();
+  for (const providerAccountId of ids) {
+    const profile = parseAccountProfile(providerAccountId, accounts[providerAccountId]);
+    const home = normalize(profile.home);
+    if (homes.has(home)) {
+      throw new Error(`execution profile ${providerAccountId} reuses home ${home}`);
+    }
+    homes.add(home);
+    profiles.set(providerAccountId, { ...profile, home });
   }
   return { maxConcurrentAssignments, profiles };
 }

@@ -586,6 +586,23 @@ describe("provider account execution-profile leases", () => {
         new Set([0]),
       )?.slot,
     ).toBe(1);
+    expect(
+      tryAcquireProviderAccountLeaseLocal(state, session as never, "acct", "fill", "host")?.slot,
+    ).toBe(0);
+    expect(
+      tryAcquireProviderAccountLeaseLocal(
+        state,
+        session as never,
+        "acct",
+        "retry",
+        "host",
+        new Set(),
+        false,
+      )?.slot,
+    ).toBe(0);
+    state.storage = { putSession: async () => undefined } as never;
+    expect(accountHasLeaseCapacity(state, "acct")).toBe(true);
+    expect(hostHasAssignmentCapacity(state, "host")).toBe(true);
     expect(providerAccountLeaseWriteOpts({})).toEqual({});
     expect(
       providerAccountLeaseWriteOpts({

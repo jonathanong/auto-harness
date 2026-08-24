@@ -1,9 +1,11 @@
+/* eslint-disable max-lines -- claimed run covers setup, profile env, and terminal outcomes. */
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
 import {
   applyExecutionProfile,
   emptyExecutionProfiles,
+  executionProfileReady,
   resolveExecutionProfile,
   type ExecutionProfiles,
 } from "./execution-profiles.ts";
@@ -120,6 +122,23 @@ async function runProcessAndFinish(
       : assign.resumeRefCapture;
   const resumeRef = new ResumeRefCaptureReader(capturePolicy);
   const profile = resolveExecutionProfile(executionProfiles, assign.providerAccountId);
+  if (assign.providerAccountId && (!profile || !executionProfileReady(profile))) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      {
+        status: "failed",
+        exitCode: null,
+        errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
+      },
+      environment,
+    );
+  }
   const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
   const result = await commandRunner.run({
     argv,
