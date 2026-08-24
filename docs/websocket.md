@@ -19,10 +19,10 @@ from the deploy output, **not** the raw `WebSocketUrl`/`RestApiUrl` API Gateway 
 [aws.md](aws.md#topology) and [deploy-host-daemon.md](deploy-host-daemon.md) for why AWS always
 has two separate API Gateway APIs behind that one CloudFront hostname.
 
-| Connection | Credential                                                                           | First message       |
-| ---------- | ------------------------------------------------------------------------------------ | ------------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                  | `host:register`     |
-| Web UI     | One-time 60s viewer ticket obtained with its session cookie (see [auth.md](auth.md)) | `session:subscribe` |
+| Connection | Credential                                                                                                          | First message       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                                                 | `host:register`     |
+| Web UI     | One-time 60s viewer ticket obtained with a browser session cookie or user/admin Basic auth (see [auth.md](auth.md)) | `session:subscribe` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 

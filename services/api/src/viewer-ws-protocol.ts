@@ -26,9 +26,14 @@ export async function authenticateViewer(
   const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
   if (!isAllowedViewerOrigin(origin, publicBaseUrl)) return null;
   const ticket = new URL(req.url ?? "/", "http://localhost").searchParams.get("ticket");
-  const principal = ticket
-    ? await auth.authenticateViewerTicket(ticket)
-    : await auth.authenticate(req);
+  if (!ticket) {
+    if (auth.mode === "required") return null;
+    const principal = await auth.authenticate(req);
+    return principal && (principal.kind === "admin" || principal.kind === "user")
+      ? principal
+      : null;
+  }
+  const principal = await auth.authenticateViewerTicket(ticket);
   return principal && (principal.kind === "admin" || principal.kind === "user") ? principal : null;
 }
 

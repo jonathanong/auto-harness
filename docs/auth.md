@@ -192,7 +192,7 @@ Live log viewing uses a separate credential from the session cookie. `POST /api/
 
 The API stores only a hash of the ticket (DynamoDB `ViewerTickets` with TTL, or the in-memory equivalent on a local ControlPlane). Connecting to `/ws/viewer?ticket=…` consumes that hash transactionally, so a replay — including two concurrent consumes — succeeds at most once. The raw ticket is never logged.
 
-The viewer WebSocket also requires a browser `Origin` that matches the configured web origin. Locally that is `HARNESS_PUBLIC_BASE_URL` (ControlPlane `publicBaseUrl`); on AWS it is the deployed `PUBLIC_BASE_URL`. It must be the control UI origin, not the API listen address. A missing or mismatched `Origin` is rejected.
+The viewer WebSocket also requires a browser `Origin` that matches the configured web origin. Locally that is `HARNESS_PUBLIC_BASE_URL` (ControlPlane `publicBaseUrl`); on AWS it is the deployed `PUBLIC_BASE_URL`. It must be the control UI origin, not the API listen address. A missing or mismatched `Origin` is rejected. When `HARNESS_AUTH_MODE=required`, `/ws/viewer` requires the one-time ticket and does not accept the session cookie.
 
 ---
 

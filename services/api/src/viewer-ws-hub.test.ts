@@ -87,8 +87,10 @@ describe("browser session log websocket", () => {
     await listen(server);
 
     const code = await receiveError(
-      wsUrl(server),
-      issuedCookie(auth, { ...principal, allowedRepositoryIds: ["repo-a"] }),
+      ticketUrl(
+        wsUrl(server),
+        await auth.issueViewerTicket({ ...principal, allowedRepositoryIds: ["repo-a"] }),
+      ),
       "session-b",
     );
     expect(code).toBe("NOT_FOUND");
@@ -158,9 +160,10 @@ describe("browser session log websocket", () => {
       authorization: `Bearer ${agent.apiKey}`,
     });
 
+    const invalidFrameTicket = await auth.issueViewerTicket(principal);
     const closeCode = await new Promise<number>((resolve, reject) => {
-      const ws = new WebSocket(url, {
-        headers: { ...viewerOrigin(), cookie: issuedCookie(auth, principal) },
+      const ws = new WebSocket(ticketUrl(url, invalidFrameTicket), {
+        headers: viewerOrigin(),
       });
       ws.on("open", () => ws.send(JSON.stringify({ type: "session:log", sessionId: "session-a" })));
       ws.on("close", resolve);
@@ -168,9 +171,10 @@ describe("browser session log websocket", () => {
     });
     expect(closeCode).toBe(1008);
 
+    const limitTicket = await auth.issueViewerTicket(principal);
     const limit = await new Promise<string>((resolve, reject) => {
-      const ws = new WebSocket(url, {
-        headers: { ...viewerOrigin(), cookie: issuedCookie(auth, principal) },
+      const ws = new WebSocket(ticketUrl(url, limitTicket), {
+        headers: viewerOrigin(),
       });
       ws.on("open", () => {
         for (const sessionId of [
@@ -217,12 +221,13 @@ describe("browser session log websocket", () => {
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
     await listen(server);
 
+    const cursorTicket = await auth.issueViewerTicket(principal);
     const messages = await new Promise<
       Array<{ type: string; status?: string; timestampSeq?: string }>
     >((resolve, reject) => {
       const received: Array<{ type: string; status?: string; timestampSeq?: string }> = [];
-      const ws = new WebSocket(wsUrl(server), {
-        headers: { ...viewerOrigin(), cookie: issuedCookie(auth, principal) },
+      const ws = new WebSocket(ticketUrl(wsUrl(server), cursorTicket), {
+        headers: viewerOrigin(),
       });
       ws.on("open", () =>
         ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
@@ -279,10 +284,11 @@ describe("browser session log websocket", () => {
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 60_000 });
     await listen(server);
 
+    const replayTicket = await auth.issueViewerTicket(principal);
     const received = new Promise<string[]>((resolve, reject) => {
       const records: string[] = [];
-      const ws = new WebSocket(wsUrl(server), {
-        headers: { ...viewerOrigin(), cookie: issuedCookie(auth, principal) },
+      const ws = new WebSocket(ticketUrl(wsUrl(server), replayTicket), {
+        headers: viewerOrigin(),
       });
       ws.on("open", () =>
         ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
@@ -324,9 +330,10 @@ describe("browser session log websocket", () => {
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
     await listen(server);
 
+    const goneTicket = await auth.issueViewerTicket(principal);
     const closeCode = await new Promise<number>((resolve, reject) => {
-      const ws = new WebSocket(wsUrl(server), {
-        headers: { ...viewerOrigin(), cookie: issuedCookie(auth, principal) },
+      const ws = new WebSocket(ticketUrl(wsUrl(server), goneTicket), {
+        headers: viewerOrigin(),
       });
       ws.on("open", () =>
         ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
@@ -360,8 +367,29 @@ describe("browser session log websocket", () => {
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
     await listen(server);
 
-    const code = await receiveError(wsUrl(server), issuedCookie(auth, principal), "session-a");
+    const code = await receiveError(
+      ticketUrl(wsUrl(server), await auth.issueViewerTicket(principal)),
+      "session-a",
+    );
     expect(code).toBe("TEMPORARY_FAILURE");
+    hub.close();
+    await close(server);
+  });
+
+  it("rejects a session cookie without a one-time ticket when auth is required", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const server = createServer();
+    const hub = attachViewerWsHub(server, planeWithSessions(), auth);
+    await listen(server);
+    await expectUnauthorizedUpgrade(wsUrl(server), {
+      ...viewerOrigin(),
+      cookie: issuedCookie(auth, principal),
+    });
     hub.close();
     await close(server);
   });
@@ -542,6 +570,10 @@ function wsUrl(server: ReturnType<typeof createServer>): string {
   return `ws://127.0.0.1:${address.port}/ws/viewer`;
 }
 
+function ticketUrl(url: string, ticket: string): string {
+  return `${url}?ticket=${encodeURIComponent(ticket)}`;
+}
+
 async function expectUnauthorizedUpgrade(
   url: string,
   headers?: Record<string, string>,
@@ -558,9 +590,9 @@ async function expectUnauthorizedUpgrade(
   });
 }
 
-async function receiveError(url: string, cookie: string, sessionId: string): Promise<string> {
+async function receiveError(url: string, sessionId: string): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
-    const ws = new WebSocket(url, { headers: { ...viewerOrigin(), cookie } });
+    const ws = new WebSocket(url, { headers: viewerOrigin() });
     ws.on("open", () => ws.send(JSON.stringify({ type: "session:subscribe", sessionId })));
     ws.on("message", (raw) => {
       const message = JSON.parse(String(raw)) as { type: string; code?: string };

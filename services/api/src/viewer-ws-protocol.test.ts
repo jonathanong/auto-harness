@@ -79,7 +79,7 @@ describe("viewer origin allowlist", () => {
 });
 
 describe("viewer websocket authentication", () => {
-  it("falls back to request authentication when the URL is absent", async () => {
+  it("requires a one-time ticket when auth is required and falls back only when disabled", async () => {
     const authenticate = vi.fn(async () => ({
       id: "viewer",
       username: "viewer",
@@ -88,15 +88,23 @@ describe("viewer websocket authentication", () => {
     }));
     await expect(
       authenticateViewer(
+        { url: undefined, headers: { origin: "http://ui" } } as never,
+        { authenticate, mode: "required" } as never,
+        "http://ui",
+      ),
+    ).resolves.toBeNull();
+    expect(authenticate).not.toHaveBeenCalled();
+    await expect(
+      authenticateViewer(
         { url: undefined, headers: {} } as never,
-        { authenticate } as never,
+        { authenticate, mode: "disabled" } as never,
         "http://ui",
       ),
     ).resolves.toBeNull();
     await expect(
       authenticateViewer(
         { url: undefined, headers: { origin: "http://ui" } } as never,
-        { authenticate } as never,
+        { authenticate, mode: "disabled" } as never,
         "http://ui",
       ),
     ).resolves.toMatchObject({ id: "viewer" });
