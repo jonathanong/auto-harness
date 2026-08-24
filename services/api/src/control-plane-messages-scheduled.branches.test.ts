@@ -26,6 +26,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     assignmentConnectionId: "old",
     assignmentSentAt: NOW,
     ackReceivedAt: NOW,
+    startedAt: NOW,
     mainCheckoutLease: true,
     worktreeId: null,
     attemptId: "attempt",
