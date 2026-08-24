@@ -750,6 +750,26 @@ describe("Lambda runtime adapters", () => {
     };
     fixture.plane.state.onLogCommitted?.(record);
     expect(previous).toHaveBeenCalledWith(record);
+    fixture.connections.set("viewer-1", {
+      connectionId: "viewer-1",
+      type: "client",
+      hostId: "user:viewer",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+      viewerSubscriptions: [
+        { sessionId: "session-1", repositoryId: "repository-1", status: "running" },
+      ],
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    fixture.management.send.mockRejectedValueOnce(new Error("gone"));
+    fixture.plane.state.onLogCommitted?.(record);
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        "failed to deliver API Gateway viewer message",
+        expect.any(Error),
+      ),
+    );
+    error.mockRestore();
 
     fixture.connections.set("client-without-principal", {
       connectionId: "client-without-principal",

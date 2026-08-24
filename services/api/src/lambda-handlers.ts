@@ -165,7 +165,7 @@ export async function createLambdaRuntime(
     dependencies.created && dependencies.auth
       ? undefined
       : await loadBootstrapSecrets(dependencies.ssmClient);
-  /* v8 ignore next 2 -- production SSM fetch is exercised through the public-base-url suite */
+  /* v8 ignore next 3 -- production SSM fetch is exercised through the public-base-url suite */
   const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
@@ -207,7 +207,7 @@ export async function createLambdaRuntime(
     );
     track(delivery);
   };
-  /* v8 ignore next -- production origin is the fetched public base URL and fails closed when absent */
+  /* v8 ignore next 3 -- production origin is the fetched public base URL and fails closed when absent */
   const viewerPublicBaseUrl = dependencies.created
     ? created.plane.state.publicBaseUrl
     : fetchedPublicBaseUrl;

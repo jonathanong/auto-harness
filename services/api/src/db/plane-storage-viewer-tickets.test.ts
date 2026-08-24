@@ -184,5 +184,15 @@ describe("durable viewer tickets", () => {
       principal: { ...principal, boundHostId: "host-a" },
     });
     expect(send.mock.calls[2]?.[0].input.Item).toMatchObject({ boundHostId: "host-a" });
+    await putViewerTicket(ctx(send), {
+      ...record("hash-3"),
+      principal: {
+        id: principal.id,
+        username: principal.username,
+        role: principal.role,
+        kind: "user",
+      },
+    });
+    expect(send.mock.calls[3]?.[0].input.Item).not.toHaveProperty("allowedRepositoryIds");
   });
 });
