@@ -1,0 +1,58 @@
+# Path labels for pull requests. Label names must exist or the workflow needs
+# issues: write so actions/labeler can create them.
+area/api:
+  - changed-files:
+      - any-glob-to-any-file: services/api/**
+
+area/web:
+  - changed-files:
+      - any-glob-to-any-file: services/web/**
+
+area/host-pane:
+  - changed-files:
+      - any-glob-to-any-file: services/host-pane/**
+
+area/host-daemon:
+  - changed-files:
+      - any-glob-to-any-file: services/host-daemon/**
+
+area/cdk:
+  - changed-files:
+      - any-glob-to-any-file: services/cdk/**
+
+area/shared:
+  - changed-files:
+      - any-glob-to-any-file: modules/shared/**
+
+area/ui:
+  - changed-files:
+      - any-glob-to-any-file: modules/ui/**
+
+area/client:
+  - changed-files:
+      - any-glob-to-any-file: modules/client/**
+
+area/e2e:
+  - changed-files:
+      - any-glob-to-any-file: e2e/**
+
+area/integration:
+  - changed-files:
+      - any-glob-to-any-file: integration/**
+
+area/scripts:
+  - changed-files:
+      - any-glob-to-any-file: scripts/**
+
+area/ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - actions/**
+          - docker-compose.yml
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - "**/*.md"
