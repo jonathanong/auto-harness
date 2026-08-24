@@ -144,6 +144,9 @@ describe("allowed roots realpath checks", () => {
     expect(isWithinRoot("/root", "/etc")).toBe(false);
     expect(isWithinRoot("/root", "/root/..hidden")).toBe(true);
     expect(isWithinRoot("/root", "/root/..")).toBe(false);
+    // A POSIX host treats this as an ordinary child name; foreign-platform syntax must not
+    // override the injected host-native relative/absolute result.
+    expect(isWithinRoot("/root", "/root/C:\\windows")).toBe(true);
   });
 
   it("re-checks claimed cwd and hooks before use", async () => {

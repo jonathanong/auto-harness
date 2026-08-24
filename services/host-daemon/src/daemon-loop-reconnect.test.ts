@@ -270,6 +270,37 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("restores the restrictive roots fence when a valid inventory registration rolls back", async () => {
+    const { root, config, cleanup } = await makeRepo();
+    try {
+      let registrations = 0;
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type !== "host:register") return;
+          registrations += 1;
+          if (registrations === 3) throw new Error("registration failed");
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      await loop.blockAssignmentsForInvalidInventory([root]);
+
+      await expect(loop.applyInventory({ ...config, allowedRoots: [root] })).rejects.toThrow(
+        "registration failed",
+      );
+      const policy = (
+        loop as unknown as {
+          worktrees: { getAllowedRootsPolicy(): { active: boolean; roots: string[] } };
+        }
+      ).worktrees.getAllowedRootsPolicy();
+      expect(policy).toEqual({ active: true, roots: [root] });
+      expect(loop.isDraining()).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("refreshes reconnect and inventory registration snapshots ahead of held outbound traffic", async () => {
     const { config, cleanup } = await makeRepo();
     try {

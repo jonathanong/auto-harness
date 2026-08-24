@@ -1,8 +1,6 @@
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { isAbsolutePathString } from "@auto-harness/shared";
-
 import type { DaemonConfig } from "./config-types.ts";
 
 export type RealpathFn = (path: string) => Promise<string>;
@@ -28,11 +26,7 @@ export function isWithinRoot(
 ): boolean {
   const rel = pathApi.relative(root, candidate);
   return (
-    rel === "" ||
-    (rel !== ".." &&
-      !rel.startsWith(`..${pathApi.sep}`) &&
-      !pathApi.isAbsolute(rel) &&
-      !isAbsolutePathString(rel))
+    rel === "" || (rel !== ".." && !rel.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(rel))
   );
 }
 

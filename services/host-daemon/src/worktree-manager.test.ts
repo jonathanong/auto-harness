@@ -223,4 +223,36 @@ describe("WorktreeManager", () => {
     manager.setAllowedRootsPolicy([]);
     await expect(claimed.currentHookTarget()).resolves.toBeNull();
   });
+
+  it("uses canonical paths for startup Git preparation", async () => {
+    const root = join(tmpdir(), `ah-canonical-ensure-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const repositoryLink = join(root, "repository-link");
+    const worktreeLink = join(root, "worktree-link");
+    await symlink(repository, repositoryLink);
+    await symlink(worktree, worktreeLink);
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repositoryLink,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktreeLink, labels: [] }],
+        },
+      ],
+    });
+    const git = fakeGit();
+    await new WorktreeManager(jailed, git).ensureAll();
+    expect(git.ensureRepo).toHaveBeenCalledWith(await realpath(repository));
+    expect(git.ensureWorktree).toHaveBeenCalledWith({
+      repoPath: await realpath(repository),
+      worktreePath: await realpath(worktree),
+      branch: "main",
+    });
+  });
 });

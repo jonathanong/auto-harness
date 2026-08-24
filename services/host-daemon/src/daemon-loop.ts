@@ -169,6 +169,7 @@ export class DaemonLoop {
   async applyInventory(next: DaemonConfig): Promise<void> {
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
     const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
+    const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
     await applyDaemonInventory(this.config, next, this.worktrees, async () => {
       this.worktrees.clearAllowedRootsPolicy();
       // Worktree validation just succeeded against `next`; register the host as assignable again.
@@ -177,6 +178,7 @@ export class DaemonLoop {
       try {
         await this.register();
       } catch (error) {
+        this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
         this.inventoryPolicyBlocked = wasPolicyBlocked;
         this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
         throw error;

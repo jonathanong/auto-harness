@@ -2,6 +2,7 @@
 import {
   assertClaimedPathsAllowed,
   assertDaemonPathsAllowed,
+  assertPathWithinAllowedRoots,
   type ClaimedPathsAllowed,
 } from "./allowed-roots.ts";
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
@@ -61,6 +62,18 @@ export class WorktreeManager {
     this.policyAllowedRoots = [];
   }
 
+  getAllowedRootsPolicy(): { active: boolean; roots: string[] } {
+    return {
+      active: this.allowedRootsPolicyActive,
+      roots: [...this.policyAllowedRoots],
+    };
+  }
+
+  restoreAllowedRootsPolicy(policy: { active: boolean; roots: readonly string[] }): void {
+    this.allowedRootsPolicyActive = policy.active;
+    this.policyAllowedRoots = policy.active ? [...policy.roots] : [];
+  }
+
   private effectiveAllowedRoots(): string[] {
     return this.allowedRootsPolicyActive
       ? this.policyAllowedRoots
@@ -69,12 +82,15 @@ export class WorktreeManager {
 
   async ensureAll(): Promise<void> {
     await assertDaemonPathsAllowed(this.config);
+    const roots = this.effectiveAllowedRoots();
     for (const repo of this.config.repositories) {
-      await this.git.ensureRepo(repo.path);
+      const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);
+      await this.git.ensureRepo(repositoryPath);
       for (const wt of repo.worktrees) {
+        const worktreePath = await assertPathWithinAllowedRoots(wt.path, roots);
         await this.git.ensureWorktree({
-          repoPath: repo.path,
-          worktreePath: wt.path,
+          repoPath: repositoryPath,
+          worktreePath,
           branch: repo.defaultBranch,
         });
       }
