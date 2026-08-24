@@ -25,7 +25,7 @@ type FinishSessionOpts = {
   cliResumeRef?: string;
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
-  providerAccountLease?: ProviderAccountLeaseKey;
+  providerAccountLease?: ProviderAccountLeaseKey | undefined;
 };
 
 function setOptional(

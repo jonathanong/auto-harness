@@ -89,7 +89,7 @@ export async function requeueUsageLimitedSession(
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string;
-    providerAccountLease?: ProviderAccountLeaseKey;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
@@ -131,7 +131,7 @@ export async function suppressProviderlessUsageLimit(
     queueShard: number;
     targetIndex: number;
     errorMessage?: string;
-    providerAccountLease?: ProviderAccountLeaseKey;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
