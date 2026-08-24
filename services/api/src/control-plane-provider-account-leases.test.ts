@@ -204,6 +204,7 @@ describe("provider account execution-profile leases", () => {
       worktreeId: "wt",
     };
     expect(sessionOccupiesHostAssignment(cancelled)).toBe(true);
+    expect(sessionOccupiesHostAssignment({ ...cancelled, hostId: undefined })).toBe(false);
     expect(sessionOccupiesHostAssignment({ ...cancelled, worktreeId: null, hostId: "host" })).toBe(
       false,
     );
@@ -245,6 +246,12 @@ describe("provider account execution-profile leases", () => {
     ).toEqual(session.providerAccountLease);
     expect(releaseProviderAccountLeaseLocal(state, session)).toBe(true);
     expect(releaseProviderAccountLeaseLocal(state, session)).toBe(false);
+    expect(
+      releaseProviderAccountLeaseLocal(state, { ...session, providerAccountLease: undefined }),
+    ).toBe(false);
+    expect(
+      tryAcquireProviderAccountLeaseLocal(state, session as never, undefined, "attempt", "host"),
+    ).toBeUndefined();
     expect(state.providerAccountLeases.size).toBe(0);
     expect(
       tryAcquireProviderAccountLeaseLocal(state, session as never, "acct", "attempt", "host"),

@@ -165,6 +165,26 @@ describe("ControlPlane provider account CRUD", () => {
     );
   });
 
+  it("uses the default cap when a legacy cached account omits it", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    plane.state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(
+      plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "account" }).ok,
+    ).toBe(true);
+    delete (plane.state.providerAccounts.get("acct-1") as { maxConcurrentSessions?: number })
+      .maxConcurrentSessions;
+
+    expect(plane.updateProviderAccount("acct-1", { maxConcurrentSessions: 1 })).toMatchObject({
+      ok: true,
+    });
+  });
+
   it("surfaces a durable cooldown-clear conflict and refreshes the cache", async () => {
     const stale = {
       id: "acct-1",

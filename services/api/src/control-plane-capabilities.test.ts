@@ -16,7 +16,10 @@ describe("host capability advertisements", () => {
         commandProfiles: [],
         capabilities: ["scheduled-main-checkout"],
       }),
-    ).toMatchObject({ capabilities: ["scheduled-main-checkout"] });
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 64,
+    });
     expect(
       parseHostMessage({
         type: "host:register",
