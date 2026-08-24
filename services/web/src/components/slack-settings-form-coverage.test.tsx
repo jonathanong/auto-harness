@@ -59,6 +59,14 @@ describe("SlackSettingsForm", () => {
     expect(field(view.container, "slack-signing-secret-state").textContent).toBe("Configured");
   });
 
+  it("does not promise delivery when the integration is disabled", () => {
+    const view = mountForm(
+      <SlackSettingsForm initial={{ ...configured, enabled: false, deliveryAvailable: true }} />,
+    );
+    expect(field(view.container, "slack-delivery-state").textContent).toBe("Disabled");
+    expect(field(view.container, "slack-delivery-warning").textContent).toContain("disabled");
+  });
+
   it("validates, creates, and surfaces save failures", async () => {
     createApiFake(json({ error: { message: "unavailable" } }, 503), json(configured));
     const view = mountForm(<SlackSettingsForm />);

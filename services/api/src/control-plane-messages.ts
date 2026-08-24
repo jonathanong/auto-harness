@@ -7,7 +7,12 @@ import {
 
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistSession, queueWrite, trackLogPersist } from "./control-plane-state.ts";
+import {
+  noteSlackSessionLifecycle,
+  persistSession,
+  queueWrite,
+  trackLogPersist,
+} from "./control-plane-state.ts";
 import { sessionLogsTtlEpochSeconds } from "./db/dynamo.ts";
 import {
   heartbeat,
@@ -801,6 +806,7 @@ async function applySessionStatusDurable(
   state.pendingAcks.delete(msg.sessionId);
   if (!shouldSuppressTarget) {
     await archiveSessionLogs(state, msg.sessionId);
+    noteSlackSessionLifecycle(state, nextSession);
   }
   if (shouldSuppressTarget) await assignQueuedDurable(state);
   return { ok: true };

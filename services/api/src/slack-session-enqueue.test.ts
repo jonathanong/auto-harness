@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { settleStorage } from "./control-plane-state.ts";
 import { seedBaseCommand, baseSessionBody } from "./control-plane-test-helpers.ts";
+import type { SessionRecord } from "./db/types.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
@@ -14,6 +15,7 @@ const token = "xoxb-1234567890-abcdefghij";
 
 class SessionOutbox implements SlackOutboxStore {
   readonly items = new Map<string, SlackDeliveryRecord>();
+  readonly sessions = new Map<string, SessionRecord>();
   slack: SlackIntegrationRecord | null = null;
 
   async enqueue(value: SlackDeliveryRecord) {
@@ -60,7 +62,38 @@ class SessionOutbox implements SlackOutboxStore {
     return true;
   }
 
-  async putSession() {}
+  async putSession(session: SessionRecord) {
+    this.sessions.set(session.id, structuredClone(session));
+  }
+
+  async getSession(id: string) {
+    return structuredClone(this.sessions.get(id) ?? null);
+  }
+
+  async finishSession(input: {
+    sessionId: string;
+    status: SessionRecord["status"];
+    completedAt?: string;
+    exitCode?: number;
+  }) {
+    const session = this.sessions.get(input.sessionId);
+    if (!session) return false;
+    this.sessions.set(input.sessionId, {
+      ...session,
+      status: input.status,
+      worktreeId: null,
+      hostId: null,
+      ...(input.completedAt ? { completedAt: input.completedAt } : {}),
+      ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
+    });
+    return true;
+  }
+
+  async listLogs() {
+    return [];
+  }
+
+  async putArchive() {}
 
   async putCommand() {}
 
@@ -81,28 +114,33 @@ function encryptor(): SecretEncryptor {
   };
 }
 
+async function slackPlane(sessionId: string) {
+  const store = new SessionOutbox();
+  const plane = new ControlPlane({
+    storage: store as never,
+    secretEncryptor: encryptor(),
+    now: () => now,
+    idFactory: () => sessionId,
+  });
+  seedBaseCommand(plane);
+  plane.state.repositories.set("repo-1", {
+    id: "repo-1",
+    name: "auto-harness",
+    url: "git@example.test:auto-harness.git",
+    defaultBranch: "main",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await plane.createSlackIntegrationDurable({
+    botToken: token,
+    defaultChannel: "#harness",
+  });
+  return { store, plane };
+}
+
 describe("Slack enqueue on session transitions", () => {
   it("records outbox rows for create-then-cancel even if this worker never saw the session as active", async () => {
-    const store = new SessionOutbox();
-    const plane = new ControlPlane({
-      storage: store as never,
-      secretEncryptor: encryptor(),
-      now: () => now,
-      idFactory: () => "session-short",
-    });
-    seedBaseCommand(plane);
-    plane.state.repositories.set("repo-1", {
-      id: "repo-1",
-      name: "auto-harness",
-      url: "git@example.test:auto-harness.git",
-      defaultBranch: "main",
-      createdAt: now,
-      updatedAt: now,
-    });
-    await plane.createSlackIntegrationDurable({
-      botToken: token,
-      defaultChannel: "#harness",
-    });
+    const { store, plane } = await slackPlane("session-short");
     expect(plane.createSession(baseSessionBody()).ok).toBe(true);
     expect(plane.cancelSession("session-short")).toMatchObject({
       ok: true,
@@ -140,5 +178,44 @@ describe("Slack enqueue on session transitions", () => {
       "post-reply",
       "update-root",
     ]);
+  });
+
+  it("enqueues terminal lifecycle rows from a durable WebSocket completion", async () => {
+    const { store, plane } = await slackPlane("session-ws");
+    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
+    await settleStorage(plane.state);
+    const created = plane.state.sessions.get("session-ws");
+    expect(created).toBeDefined();
+    const running = {
+      ...created!,
+      status: "running" as const,
+      worktreeId: "wt-1",
+      attemptId: "attempt-1",
+      hostId: "host-1",
+      startedAt: now,
+    };
+    plane.state.sessions.set(running.id, running);
+    store.sessions.set(running.id, structuredClone(running));
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "session:status",
+          sessionId: running.id,
+          worktreeId: "wt-1",
+          attemptId: "attempt-1",
+          status: "completed",
+          exitCode: 0,
+        })
+      ).ok,
+    ).toBe(true);
+    await settleStorage(plane.state);
+    expect([...store.items.keys()]).toEqual(
+      expect.arrayContaining([
+        "slack:session-ws:thread",
+        "slack:session-ws:session_started:reply",
+        "slack:session-ws:session_completed:reply",
+        "slack:session-ws:session_completed:update",
+      ]),
+    );
   });
 });

@@ -199,13 +199,23 @@ describe("Slack HTTP transport", () => {
         fetch: async () =>
           jsonResponse({ ok: false }, { status: 429, headers: { "retry-after": "7" } }),
       }).deliver(request()),
-    ).rejects.toThrow("retry after 7s");
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("retry after 7s"),
+      retryAfterMs: 7_000,
+    });
     await expect(
       createSlackHttpTransport({
         getBotToken: async () => token,
         fetch: async () => jsonResponse({ ok: false }, { status: 429 }),
       }).deliver(request()),
     ).rejects.toThrow("rate-limited");
+    await expect(
+      createSlackHttpTransport({
+        getBotToken: async () => token,
+        fetch: async () =>
+          jsonResponse({ ok: false }, { status: 429, headers: { "retry-after": "soon" } }),
+      }).deliver(request()),
+    ).rejects.not.toHaveProperty("retryAfterMs");
     await expect(
       createSlackHttpTransport({
         getBotToken: async () => token,

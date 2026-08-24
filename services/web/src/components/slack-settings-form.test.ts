@@ -138,6 +138,21 @@ describe("Slack settings form", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
       }),
     ).toContain("configured but delivery is unavailable");
+    const disabled = {
+      id: "slack" as const,
+      type: "slack" as const,
+      defaultChannel: "#harness",
+      enabled: false,
+      notifications: { ...DEFAULT_SLACK_NOTIFICATIONS },
+      botTokenConfigured: true,
+      signingSecretConfigured: false,
+      deliveryAvailable: true,
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(slackDeliveryWarning(disabled)).toContain("disabled");
+    expect(slackSaveSuccessMessage(disabled)).toContain("will not be delivered");
   });
 
   it("uses a server error message only when it is safe to display", async () => {

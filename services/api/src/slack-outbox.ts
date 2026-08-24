@@ -72,10 +72,12 @@ export async function processSlackOutboxOnce(
   } catch (cause) {
     const attempts = claimed.attempts + 1;
     const dead = attempts >= claimed.maxAttempts;
-    const nextAttemptAt = addMs(
-      current,
-      retryDelay(attempts, options.baseRetryMs ?? 1_000, options.maxRetryMs ?? 60_000),
+    const backoffMs = retryDelay(
+      attempts,
+      options.baseRetryMs ?? 1_000,
+      options.maxRetryMs ?? 60_000,
     );
+    const nextAttemptAt = addMs(current, Math.max(backoffMs, retryAfterMsFrom(cause)));
     const error = errorMessage(cause);
     await store.reschedule({
       id: claimed.id,
@@ -145,6 +147,12 @@ function transportRequest(
 
 export function retryDelay(attempts: number, baseMs: number, maxMs: number): number {
   return Math.min(maxMs, baseMs * 2 ** Math.max(0, attempts - 1));
+}
+
+function retryAfterMsFrom(cause: unknown): number {
+  if (!cause || typeof cause !== "object" || !("retryAfterMs" in cause)) return 0;
+  const value = cause.retryAfterMs;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function addMs(iso: string, milliseconds: number): string {

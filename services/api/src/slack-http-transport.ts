@@ -97,7 +97,7 @@ async function postToSlack(
   });
   const payload = await readSlackPayload(response);
   if (!payload.ok) {
-    throw new Error(slackFailure(method, response.status, payload.error, response.headers));
+    throw slackError(method, response.status, payload.error, response.headers);
   }
   if (!payload.channel || !payload.ts) {
     throw new Error(`Slack ${method} succeeded without a channel or timestamp`);
@@ -135,18 +135,34 @@ async function readSlackPayload(
   }
 }
 
-function slackFailure(
+function slackError(
   method: string,
   status: number,
   error: string | undefined,
   headers: Pick<Headers, "get">,
-): string {
+): Error {
   const retryAfter = headers.get("retry-after");
+  let message = `Slack ${method} failed (${status})`;
   if (status === 429) {
-    return retryAfter
+    message = retryAfter
       ? `Slack ${method} rate-limited; retry after ${retryAfter}s`
       : `Slack ${method} rate-limited`;
+  } else if (error) {
+    message = `Slack ${method} failed: ${error}`;
   }
-  if (error) return `Slack ${method} failed: ${error}`;
-  return `Slack ${method} failed (${status})`;
+  const failure = new Error(message);
+  if (status === 429) {
+    const retryAfterMs = parseRetryAfterMs(retryAfter);
+    if (retryAfterMs !== undefined) {
+      (failure as Error & { retryAfterMs: number }).retryAfterMs = retryAfterMs;
+    }
+  }
+  return failure;
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return seconds * 1000;
 }
