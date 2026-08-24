@@ -291,9 +291,13 @@ function planStatus(
   );
 }
 
-function planAttemptId(session: SessionRecord, attemptId: string): SessionTransitionPlan {
+function planAttemptId(
+  session: SessionRecord,
+  attemptId: string,
+  requireRunning = false,
+): SessionTransitionPlan {
   if (
-    session.status !== "running" ||
+    (requireRunning && session.status !== "running") ||
     (session.attemptId !== undefined && session.attemptId !== attemptId)
   ) {
     return planOf({ type: "ignore", reason: "stale_attempt" });
@@ -397,6 +401,6 @@ export function planSessionTransition(
     case "log":
       return planAttemptId(session, event.attemptId);
     case "reconnect_claim":
-      return planAttemptId(session, event.attemptId);
+      return planAttemptId(session, event.attemptId, true);
   }
 }
