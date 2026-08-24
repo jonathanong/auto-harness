@@ -319,6 +319,10 @@ export class DynamoPlaneStorageBase {
     return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
   }
 
+  releaseLegacyHostAssignment(opts: { hostId: string; connectionId: string }): Promise<boolean> {
+    return hostAssignment.releaseLegacyHostAssignment(this.ctx, opts);
+  }
+
   backfillProviderAccountLease(
     opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
   ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {

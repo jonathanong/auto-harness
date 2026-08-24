@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   finishSessionOptsFromPlan,
+  legacyProviderlessHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
@@ -547,7 +548,10 @@ describe("session-transition planner", () => {
         { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
         { attemptId: "attempt" },
       ).hostAssignmentLease,
-    ).toEqual({ hostId: "host" });
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(session({ assignmentConnectionId: "conn" })),
+    ).toEqual({ hostId: "host", connectionId: "conn" });
     expect(
       finishSessionOptsFromPlan(
         session({

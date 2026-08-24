@@ -1,4 +1,4 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
   isConditionalFailed,
@@ -43,6 +43,35 @@ export function hostAssignmentReleaseItem(ctx: PlaneStorageCtx, lease: HostAssig
       ExpressionAttributeValues: { ":one": 1 },
     },
   };
+}
+
+/**
+ * Reconcile capacity for a legacy providerless assignment that has no
+ * persisted lease. This is deliberately separate from terminal writes: a
+ * missing/zero legacy counter must not abort the session transition.
+ */
+export async function releaseLegacyHostAssignment(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        UpdateExpression: "SET assignmentCount = assignmentCount - :one",
+        ConditionExpression: "connectionId = :connectionId AND assignmentCount >= :one",
+        ExpressionAttributeValues: {
+          ":connectionId": opts.connectionId,
+          ":one": 1,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
 }
 
 /** Release a timeout-preserved host slot when no provider-account lease exists. */

@@ -1,10 +1,11 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { tryAcquireHostLock } from "./plane-storage-locks.ts";
+import { releaseLegacyHostAssignment } from "./plane-storage-host-assignment.ts";
 import { finishSession, getSession, putSession } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -94,5 +95,33 @@ describe("DynamoDB Local terminal options", () => {
         concurrencyId: "key",
       }),
     ).toBe(true);
+  });
+
+  it("reconciles legacy host capacity without failing a zero-count row", async () => {
+    const hostId = "legacy-host";
+    const connectionId = "legacy-connection";
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId,
+        connectionId,
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    expect(await releaseLegacyHostAssignment(ctx, { hostId, connectionId })).toBe(false);
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: tables.hostLocks,
+        Key: { hostId },
+        UpdateExpression: "SET assignmentCount = :one",
+        ExpressionAttributeValues: { ":one": 1 },
+      }),
+    );
+    expect(await releaseLegacyHostAssignment(ctx, { hostId, connectionId })).toBe(true);
+    await expect(
+      releaseLegacyHostAssignment(
+        { ...ctx, tables: { ...tables, hostLocks: "missing-host-locks" } },
+        { hostId, connectionId },
+      ),
+    ).rejects.toThrow();
   });
 });

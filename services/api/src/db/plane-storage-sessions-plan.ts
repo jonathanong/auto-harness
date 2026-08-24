@@ -14,10 +14,33 @@ function firstDefined<T>(primary: T | undefined, fallback: T | undefined): T | u
 function hostLeaseForSession(session: SessionRecord): SessionRecord["hostAssignmentLease"] {
   return (
     session.hostAssignmentLease ??
-    (session.hostId && (session.status === "running" || session.status === "cancelled")
+    ((session.providerAccountLease || session.resolvedRoute?.providerAccountId) &&
+    session.hostId &&
+    (session.status === "running" || session.status === "cancelled")
       ? { hostId: session.hostId }
       : undefined)
   );
+}
+
+/**
+ * Legacy providerless assignments predate the persisted host lease. Their
+ * capacity release cannot be part of the terminal transaction: old hosts may
+ * have no assignmentCount (or may already have released their zero count).
+ */
+export function legacyProviderlessHostAssignmentForSession(
+  session: SessionRecord,
+): { hostId: string; connectionId: string } | undefined {
+  if (
+    session.hostAssignmentLease ||
+    session.providerAccountLease ||
+    session.resolvedRoute?.providerAccountId ||
+    !session.hostId ||
+    !session.assignmentConnectionId ||
+    (session.status !== "running" && session.status !== "cancelled")
+  ) {
+    return undefined;
+  }
+  return { hostId: session.hostId, connectionId: session.assignmentConnectionId };
 }
 
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -99,5 +99,30 @@ describe("durable worktree terminal branches", () => {
       terminal("cancelled", "timed_out", { cliResumeRef: "late" }),
     );
     expect(cancelled.worktrees.get("w")).toMatchObject({ status: "idle", currentSessionId: null });
+  });
+
+  it("does not fail a legacy providerless terminal when host capacity is already zero", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => false);
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      finishSession: async () => true,
+      releaseLegacyHostAssignment,
+      putArchive: async () => undefined,
+    });
+    state.sessions.set(
+      "legacy",
+      row("legacy", { assignmentConnectionId: "connection", worktreeId: null }),
+    );
+
+    await handleHostMessageDurable(state, {
+      ...terminal("legacy", "completed"),
+      worktreeId: null,
+    });
+
+    expect(state.sessions.get("legacy")).toMatchObject({ status: "completed" });
+    expect(releaseLegacyHostAssignment).toHaveBeenCalledWith({
+      hostId: "host",
+      connectionId: "connection",
+    });
   });
 });
