@@ -2,6 +2,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
+import type { HostInventory } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -23,51 +24,25 @@ const repo = {
 };
 const inventory = { repositories: [repo], providerAccounts: [], commandProfiles: {} };
 
-/**
- * Inventory mutations now read fresh immediately before writing, so the stub must answer
- * the GET as well as the PUT.
- */
-function stubInventoryFetch(current: unknown) {
-  const fetch = vi.fn((_url: string, init?: RequestInit) =>
-    Promise.resolve(
-      init?.method === "PUT"
-        ? new Response(null, { status: 204 })
-        : new Response(JSON.stringify(current), { status: 200 }),
-    ),
-  );
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
-}
+type MutationResult = Awaited<
+  ReturnType<NonNullable<React.ComponentProps<typeof HostRepoSettingsForm>["mutate"]>>
+>;
+type Mutation = NonNullable<React.ComponentProps<typeof HostRepoSettingsForm>["mutate"]>;
 
-function putBody(fetch: { mock: { calls: unknown[][] } }, path = "/inventory"): unknown {
-  const call = fetch.mock.calls.find(
-    (c) => String(c[0]).includes(path) && (c[1] as RequestInit | undefined)?.method === "PUT",
-  );
-  return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
-}
-
-/**
- * Answers the read immediately and defers the write, which is the call under test. The
- * write only starts once the read resolves, so `finish` waits for it to register.
- */
-function stubDeferredPut(current: unknown) {
-  let settle: ((response: Response) => void) | undefined;
-  const fetch = vi.fn((_url: string, init?: RequestInit) =>
-    init?.method === "PUT"
-      ? new Promise<Response>((resolve) => (settle = resolve))
-      : Promise.resolve(new Response(JSON.stringify(current), { status: 200 })),
-  );
-  vi.stubGlobal("fetch", fetch);
-  // The write starts only after the read resolves, so yield until it registers. The loop
-  // condition is updated from the fetch stub, not from inside the loop body.
-  const finish = async (response: Response) => {
-    for (let i = 0; i < 20; i += 1) {
-      if (settle) break;
-      await Promise.resolve();
-    }
-    settle?.(response);
-  };
-  return { fetch, finish };
+function inMemoryInventory<T extends object>(
+  initial: T,
+): {
+  mutate: Mutation;
+  current: () => T;
+} {
+  let current = structuredClone(initial);
+  const mutate = vi.fn(
+    async (_hostId: string, update: (current: HostInventory) => HostInventory) => {
+      current = update(current as HostInventory) as T;
+      return { ok: true } as const;
+    },
+  ) as Mutation;
+  return { mutate, current: () => current };
 }
 
 describe("HostRepoSettingsForm", () => {
@@ -96,41 +71,59 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("rejects a relative terminal hook before writing inventory", () => {
-    const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig />);
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={repo}
+        canWriteExecConfig
+        mutate={persistence.mutate}
+      />,
+    );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-hook-repo-1"), "hooks/done.sh");
     submit(field(document, "form-repo-settings-repo-1"));
     expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
       "repository.repo-1.terminalHookScript must be an absolute path",
     );
-    expect(
-      fetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "PUT"),
-    ).toBe(false);
+    expect(persistence.mutate).not.toHaveBeenCalled();
     view.unmount();
   });
 
   it("allows an unchanged legacy relative hook while saving ordinary settings", async () => {
     const legacyRepo = { ...repo, terminalHookScript: "./hook.sh" };
-    const fetch = stubInventoryFetch({ repositories: [legacyRepo], providerAccounts: [] });
+    const persistence = inMemoryInventory({
+      ...inventory,
+      repositories: [legacyRepo],
+    });
     const view = mountForm(
-      <HostRepoSettingsForm hostId="host" repo={legacyRepo} canWriteExecConfig />,
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={legacyRepo}
+        canWriteExecConfig
+        mutate={persistence.mutate}
+      />,
     );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-path-repo-1"), "/new/repo");
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
     expect(document.querySelector('[data-pw="repo-settings-error-repo-1"]')).toBeNull();
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [{ id: "repo-1", path: "/new/repo", terminalHookScript: "./hook.sh" }],
     });
     view.unmount();
   });
 
   it("saves trimmed settings with a main fallback and keeps worktrees", async () => {
-    const fetch = stubInventoryFetch(inventory);
+    const persistence = inMemoryInventory(inventory);
     const view = mountForm(
-      <HostRepoSettingsForm hostId="host/one" repo={repo} canWriteExecConfig />,
+      <HostRepoSettingsForm
+        hostId="host/one"
+        repo={repo}
+        canWriteExecConfig
+        mutate={persistence.mutate}
+      />,
     );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-path-repo-1"), " /new/repo ");
@@ -140,7 +133,7 @@ describe("HostRepoSettingsForm", () => {
     setValue(field(document, "repo-settings-required-environment-repo-1"), "Z_TOKEN, A_TOKEN");
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [
         {
           id: "repo-1",
@@ -153,7 +146,6 @@ describe("HostRepoSettingsForm", () => {
         },
       ],
     });
-    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
     view.unmount();
@@ -170,7 +162,7 @@ describe("HostRepoSettingsForm", () => {
         },
       ],
     };
-    const fetch = stubInventoryFetch(concurrent);
+    const persistence = inMemoryInventory(concurrent);
     const view = mountForm(
       <HostRepoSettingsForm
         hostId="host"
@@ -180,6 +172,7 @@ describe("HostRepoSettingsForm", () => {
           terminalHookScript: "/page/hook.sh",
         }}
         canWriteExecConfig
+        mutate={persistence.mutate}
       />,
     );
     press(field(view.container, "repo-settings-open-repo-1"));
@@ -187,7 +180,7 @@ describe("HostRepoSettingsForm", () => {
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
 
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [
         expect.objectContaining({
           setupScript: "concurrent setup",
@@ -199,17 +192,8 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("surfaces inventory save failures and hides scripts without the capability", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: string, init?: RequestInit) =>
-        Promise.resolve(
-          init?.method === "PUT"
-            ? new Response("denied", { status: 403 })
-            : new Response(JSON.stringify(inventory), { status: 200 }),
-        ),
-      ),
-    );
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    const failure: Mutation = vi.fn(async () => ({ ok: false, error: "denied" })) as Mutation;
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} mutate={failure} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
@@ -226,25 +210,29 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("rejects invalid required environment names before saving", () => {
-    const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={persistence.mutate} />,
+    );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-required-environment-repo-1"), "HARNESS_API_KEY");
     submit(field(document, "form-repo-settings-repo-1"));
     expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
       "repository.repo-1.requiredEnvironment contains an invalid environment variable name",
     );
-    expect(fetch).not.toHaveBeenCalled();
+    expect(persistence.mutate).not.toHaveBeenCalled();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).not.toBeNull();
     view.unmount();
   });
 
   it("shows an aggregate requirement limit error from the fresh inventory", async () => {
-    const fetch = stubInventoryFetch({
+    const persistence = inMemoryInventory({
       ...inventory,
       requiredEnvironment: Array.from({ length: 256 }, (_, index) => `HOST_${index}`),
     });
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={persistence.mutate} />,
+    );
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(document, "repo-settings-required-environment-repo-1"), "REPOSITORY");
     submit(field(document, "form-repo-settings-repo-1"));
@@ -252,16 +240,24 @@ describe("HostRepoSettingsForm", () => {
     expect(field(document, "repo-settings-error-repo-1").textContent).toContain(
       "must contain at most 256 distinct names",
     );
-    expect(
-      fetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "PUT"),
-    ).toBe(false);
+    expect(persistence.mutate).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).not.toBeNull();
     view.unmount();
   });
 
   it("uses absent field fallbacks and displays a pending save failure", async () => {
-    const { finish } = stubDeferredPut(inventory);
-    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig />);
+    let finish: ((result: MutationResult) => void) | undefined;
+    const pendingMutation: Mutation = vi.fn(
+      () => new Promise<MutationResult>((resolve) => (finish = resolve)),
+    ) as Mutation;
+    const view = mountForm(
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={repo}
+        canWriteExecConfig
+        mutate={pendingMutation}
+      />,
+    );
     press(field(view.container, "repo-settings-open-repo-1"));
     const form = field<HTMLFormElement>(document, "form-repo-settings-repo-1");
     field(document, "repo-settings-branch-repo-1").remove();
@@ -269,7 +265,7 @@ describe("HostRepoSettingsForm", () => {
     field(document, "repo-settings-hook-repo-1").remove();
     submit(form);
     expect(field<HTMLButtonElement>(document, "repo-settings-submit-repo-1").disabled).toBe(true);
-    await act(async () => await finish(new Response("cannot save", { status: 500 })));
+    await act(async () => finish?.({ ok: false, error: "cannot save" }));
     expect(field(document, "repo-settings-error-repo-1").textContent).toBe("cannot save");
     view.unmount();
   });

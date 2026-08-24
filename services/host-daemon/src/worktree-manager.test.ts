@@ -224,6 +224,30 @@ describe("WorktreeManager", () => {
     await expect(claimed.currentHookTarget()).resolves.toBeNull();
   });
 
+  it("fails closed for claims and startup preparation while an empty policy is active", async () => {
+    const manager = new WorktreeManager(config, fakeGit());
+    manager.setAllowedRootsPolicy([]);
+    await expect(manager.claim("repo-1", "wt-1")).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+    await expect(manager.mainClaim("repo-1")).rejects.toThrow(
+      "host inventory policy blocks execution",
+    );
+    await expect(manager.ensureAll()).rejects.toThrow("host inventory policy blocks execution");
+  });
+
+  it("stops claim retries when the session is already cancelled", async () => {
+    const signal = AbortSignal.abort();
+    const manager = new WorktreeManager(config, fakeGit());
+    await expect(manager.claim("repo-1", "wt-1", signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(manager.mainClaim("repo-1", signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(manager.isBusy("wt-1")).toBe(false);
+  });
+
   it("refuses checkout when the roots policy changes after a claim", async () => {
     const root = join(tmpdir(), `ah-claim-policy-change-${String(Date.now())}`);
     fixtures.push(root);

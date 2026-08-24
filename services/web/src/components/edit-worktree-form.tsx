@@ -23,11 +23,14 @@ export function EditWorktreeForm({
   repositoryId,
   worktree,
   canWriteExecConfig = false,
+  mutate = mutateInventory,
 }: {
   hostId: string;
   repositoryId: string;
   worktree: HostWorktree;
   canWriteExecConfig?: boolean;
+  /** Inventory persistence boundary; injectable for isolated component tests. */
+  mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -78,7 +81,7 @@ export function EditWorktreeForm({
             start(async () => {
               // Built from a fresh read, not the page-load `inventory` prop: another tab may
               // have changed the document since this page rendered.
-              const r = await mutateInventory(hostId, (current) =>
+              const r = await mutate(hostId, (current) =>
                 updateHostWorktree(current, repositoryId, {
                   id: worktree.id,
                   name: worktree.name,
@@ -93,7 +96,7 @@ export function EditWorktreeForm({
                 showToast(r.error, { variant: "destructive", pw: "worktree-edit-error" });
                 return;
               }
-              setOpen(false);
+              handleOpenChange(false);
               router.refresh();
             });
           }}
@@ -146,7 +149,12 @@ export function EditWorktreeForm({
                 {pending ? "Saving…" : "Save"}
               </Button>
             </WithTooltip>
-            <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
           </div>

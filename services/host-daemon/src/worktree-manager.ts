@@ -8,7 +8,7 @@ import {
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 
-type ClaimedWorktree = {
+export type ClaimedWorktree = {
   hostSetupScript?: string;
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
@@ -92,8 +92,11 @@ export class WorktreeManager {
   }
 
   async ensureAll(): Promise<void> {
-    await assertDaemonPathsAllowed(this.config);
+    if (this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
+      throw new Error("host inventory policy blocks execution");
+    }
     const roots = this.effectiveAllowedRoots();
+    await assertDaemonPathsAllowed({ ...this.config, allowedRoots: roots });
     for (const repo of this.config.repositories) {
       const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);
       await this.git.ensureRepo(repositoryPath);
@@ -189,6 +192,9 @@ export class WorktreeManager {
     repository: RepositoryConfig,
     cwd: string,
   ): Promise<ClaimedPathsAllowed> {
+    if (this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
+      throw new Error("host inventory policy blocks execution");
+    }
     return await assertClaimedPathsAllowed({
       cwd,
       repositoryPath: repository.path,
@@ -197,7 +203,12 @@ export class WorktreeManager {
     });
   }
 
-  async claim(repositoryId: string, worktreeId: string): Promise<ClaimedWorktree> {
+  async claim(
+    repositoryId: string,
+    worktreeId: string,
+    signal?: AbortSignal,
+  ): Promise<ClaimedWorktree> {
+    signal?.throwIfAborted();
     if (this.busy.has(worktreeId)) {
       throw new Error(`Worktree already busy: ${worktreeId}`);
     }
@@ -212,6 +223,7 @@ export class WorktreeManager {
     this.busy.add(worktreeId);
     try {
       while (true) {
+        signal?.throwIfAborted();
         const generation = this.inventoryGeneration;
         const currentRepository = this.config.repositories.find((r) => r.id === repositoryId);
         const currentWorktree = currentRepository?.worktrees.find((w) => w.id === worktreeId);
@@ -226,6 +238,7 @@ export class WorktreeManager {
         let paths: ClaimedPathsAllowed;
         try {
           paths = await this.assertClaimPaths(currentRepository, currentWorktree.path);
+          signal?.throwIfAborted();
         } catch (error) {
           if (generation !== this.inventoryGeneration) continue;
           throw error;
@@ -239,8 +252,9 @@ export class WorktreeManager {
     }
   }
 
-  async mainClaim(repositoryId: string): Promise<ClaimedWorktree> {
+  async mainClaim(repositoryId: string, signal?: AbortSignal): Promise<ClaimedWorktree> {
     while (true) {
+      signal?.throwIfAborted();
       const generation = this.inventoryGeneration;
       const repository = this.config.repositories.find((r) => r.id === repositoryId);
       if (!repository) {
@@ -250,6 +264,7 @@ export class WorktreeManager {
       let paths: ClaimedPathsAllowed;
       try {
         paths = await this.assertClaimPaths(repository, repository.path);
+        signal?.throwIfAborted();
       } catch (error) {
         if (generation !== this.inventoryGeneration) continue;
         throw error;

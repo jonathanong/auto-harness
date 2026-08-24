@@ -29,10 +29,13 @@ export function HostRepoSettingsForm({
   hostId,
   repo,
   canWriteExecConfig = false,
+  mutate = mutateInventory,
 }: {
   hostId: string;
   repo: HostRepository;
   canWriteExecConfig?: boolean;
+  /** Inventory persistence boundary; injectable for isolated component tests. */
+  mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -112,7 +115,7 @@ export function HostRepoSettingsForm({
               try {
                 // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
                 // elsewhere is not silently reverted by this save.
-                const r = await mutateInventory(hostId, (current) =>
+                const r = await mutate(hostId, (current) =>
                   upsertHostRepository(current, {
                     id: repo.id,
                     path,

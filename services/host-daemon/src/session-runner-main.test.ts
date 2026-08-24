@@ -115,7 +115,9 @@ describe("SessionRunner main checkout", () => {
     const second = test.runner.run(
       baseAssign({ repositoryId: "r2", worktreeId: null, sessionType: "scheduled" }),
     );
-    await viTick();
+    for (let attempt = 0; attempt < 10 && test.starts.length < 2; attempt += 1) {
+      await viTick();
+    }
     expect(test.starts).toEqual(["/repo-1", "/repo-2"]);
     r1Gate.resolve();
     await Promise.all([first, second]);

@@ -97,12 +97,22 @@ async function assertExistingPathWithinAllowedRoots(
 }
 
 export function resolveHookPath(repositoryPath: string, terminalHookScript: string): string {
-  // The daemon must use host-native path rules. The control plane accepts
-  // both POSIX and Windows spellings because it cannot know the host OS, but
-  // a foreign spelling is relative to this daemon and must be fenced as such.
+  // The control plane accepts both POSIX and Windows spellings because it cannot
+  // know the host OS. Once a value reaches the daemon, however, a foreign
+  // absolute spelling is ambiguous and must not be silently reinterpreted as a
+  // relative filename (for example, C:\\hooks\\done.cmd on POSIX).
+  if (isForeignWindowsAbsolutePath(terminalHookScript)) {
+    throw new Error(
+      `terminal hook path is not valid on ${process.platform}: ${terminalHookScript}`,
+    );
+  }
   return isAbsolute(terminalHookScript)
     ? terminalHookScript
     : join(repositoryPath, terminalHookScript);
+}
+
+export function isForeignWindowsAbsolutePath(path: string): boolean {
+  return process.platform !== "win32" && (path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path));
 }
 
 export type ClaimedPathsAllowed = {

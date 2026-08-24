@@ -16,7 +16,6 @@ type TerminalHookInput = {
   timeoutMs?: number;
   childEnvSource?: NodeJS.ProcessEnv;
   allowedRoots?: readonly string[];
-  repositoryPath?: string;
 };
 
 /**
@@ -44,21 +43,21 @@ export async function runTerminalHook(
     env.HARNESS_METADATA = JSON.stringify(input.metadata);
   }
 
-  if (input.allowedRoots?.length) {
-    try {
-      scriptPath = resolveHookPath(input.cwd, input.scriptPath);
+  try {
+    scriptPath = resolveHookPath(input.cwd, input.scriptPath);
+    if (input.allowedRoots?.length) {
       // Execute the exact canonical path that was checked. Keeping the
       // symlink spelling here would re-open a TOCTOU window between the
       // containment check and spawning the shell.
       scriptPath = await assertPathWithinAllowedRoots(scriptPath, input.allowedRoots);
-    } catch (err) {
-      log(
-        `terminal hook blocked for session ${input.sessionId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return;
     }
+  } catch (err) {
+    log(
+      `terminal hook blocked for session ${input.sessionId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return;
   }
 
   try {

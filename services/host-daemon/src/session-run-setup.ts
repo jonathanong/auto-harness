@@ -1,21 +1,13 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import { createChildEnv } from "./child-env.ts";
-import type { RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { runSetupScript } from "./setup-script.ts";
 
-export type ClaimedWorktree = {
-  hostSetupScript?: string;
-  repository: RepositoryConfig;
-  worktree: WorktreeConfig;
-  cwd: string;
-  allowedRoots?: string[];
-  /** Re-check daemon inventory policy at each executable boundary. */
-  currentExecutionTarget?: () => Promise<void>;
-};
+export type { ClaimedWorktree } from "./worktree-manager.ts";
+import type { ClaimedWorktree } from "./worktree-manager.ts";
 
 type SessionSetupResult = {
   environment: NodeJS.ProcessEnv;

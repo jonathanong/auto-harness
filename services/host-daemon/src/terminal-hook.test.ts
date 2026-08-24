@@ -147,7 +147,6 @@ describe("runTerminalHook", () => {
         sessionId: "sess-1",
         status: "completed",
         worktreePath: "/wt",
-        repositoryPath: "/repo",
         allowedRoots: ["/repo"],
       },
       log,
@@ -184,7 +183,6 @@ describe("runTerminalHook", () => {
         sessionId: "sess-3",
         status: "completed",
         worktreePath: root,
-        repositoryPath: root,
         allowedRoots: [root],
       },
     );

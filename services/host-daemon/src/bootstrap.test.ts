@@ -89,19 +89,17 @@ describe("fetchHostInventory", () => {
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);
   });
 
-  it("uses the global fetch boundary and rejects a primitive inventory body", async () => {
+  it("rejects a primitive inventory body", async () => {
     const fetchFn = vi.fn(async () => Response.json("not-an-inventory"));
-    vi.stubGlobal("fetch", fetchFn);
-    try {
-      await expect(fetchHostInventory({ hostId: "a", apiUrl: "http://x" })).rejects.toThrow(
-        "config root must be an object",
-      );
-      expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
-        headers: { accept: "application/json" },
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await expect(
+      fetchHostInventory(
+        { hostId: "a", apiUrl: "http://x" },
+        { fetchFn: fetchFn as unknown as typeof fetch },
+      ),
+    ).rejects.toThrow("config root must be an object");
+    expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
+      headers: { accept: "application/json" },
+    });
   });
 
   it("preserves a non-empty bootstrap error body and omits an absent API key", async () => {

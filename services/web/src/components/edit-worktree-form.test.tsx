@@ -35,62 +35,34 @@ const inventory = {
   commandProfiles: {},
 };
 
-function form(worktreeValue = worktree) {
+type MutationResult = Awaited<
+  ReturnType<NonNullable<React.ComponentProps<typeof EditWorktreeForm>["mutate"]>>
+>;
+type Mutation = NonNullable<React.ComponentProps<typeof EditWorktreeForm>["mutate"]>;
+
+function form(worktreeValue = worktree, mutate?: Mutation) {
   return (
     <EditWorktreeForm
       hostId="host/one"
       repositoryId="repo-1"
       worktree={worktreeValue}
       canWriteExecConfig
+      {...(mutate ? { mutate } : {})}
     />
   );
 }
 
-/**
- * Inventory mutations now read fresh immediately before writing, so the stub must answer
- * the GET as well as the PUT.
- */
-function stubInventoryFetch(current: unknown) {
-  const fetch = vi.fn((_url: string, init?: RequestInit) =>
-    Promise.resolve(
-      init?.method === "PUT"
-        ? new Response(null, { status: 204 })
-        : new Response(JSON.stringify(current), { status: 200 }),
-    ),
-  );
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
-}
-
-function putBody(fetch: { mock: { calls: unknown[][] } }, path = "/inventory"): unknown {
-  const call = fetch.mock.calls.find(
-    (c) => String(c[0]).includes(path) && (c[1] as RequestInit | undefined)?.method === "PUT",
-  );
-  return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
-}
-
-/**
- * Answers the read immediately and defers the write, which is the call under test. The
- * write only starts once the read resolves, so `finish` waits for it to register.
- */
-function stubDeferredPut(current: unknown) {
-  let settle: ((response: Response) => void) | undefined;
-  const fetch = vi.fn((_url: string, init?: RequestInit) =>
-    init?.method === "PUT"
-      ? new Promise<Response>((resolve) => (settle = resolve))
-      : Promise.resolve(new Response(JSON.stringify(current), { status: 200 })),
-  );
-  vi.stubGlobal("fetch", fetch);
-  // The write starts only after the read resolves, so yield until it registers. The loop
-  // condition is updated from the fetch stub, not from inside the loop body.
-  const finish = async (response: Response) => {
-    for (let i = 0; i < 20; i += 1) {
-      if (settle) break;
-      await Promise.resolve();
-    }
-    settle?.(response);
-  };
-  return { fetch, finish };
+/** A component-level persistence fake: no global HTTP transport is involved in these tests. */
+function inMemoryInventory(initial: typeof inventory): {
+  mutate: Mutation;
+  current: () => typeof inventory;
+} {
+  let current = structuredClone(initial);
+  const mutate = vi.fn(async (_hostId, update) => {
+    current = update(current) as typeof inventory;
+    return { ok: true } as const;
+  }) as Mutation;
+  return { mutate, current: () => current };
 }
 
 describe("EditWorktreeForm", () => {
@@ -117,19 +89,15 @@ describe("EditWorktreeForm", () => {
   });
 
   it("saves trimmed paths and labels, preserving worktree settings", async () => {
-    const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(form());
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(form(worktree, persistence.mutate));
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), " /new/feature ");
     setValue(field(document, "worktree-edit-labels"), " fast, ci, , fast ");
     setValue(field(document, "worktree-edit-setup-script"), "pnpm install");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/hosts/host%2Fone/inventory",
-      expect.objectContaining({ method: "PUT" }),
-    );
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [
         {
           worktrees: [
@@ -144,23 +112,22 @@ describe("EditWorktreeForm", () => {
         },
       ],
     });
-    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
+    expect(persistence.mutate).toHaveBeenCalledWith("host/one", expect.any(Function));
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
   });
 
   it("clears a blank setup override so repository setup is inherited", async () => {
-    const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(form());
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(form(worktree, persistence.mutate));
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-setup-script"), "   ");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [{ worktrees: [{ id: "worktree-1", setupScript: "" }] }],
     });
-    expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     view.unmount();
   });
 
@@ -174,46 +141,46 @@ describe("EditWorktreeForm", () => {
         },
       ],
     };
-    const fetch = stubInventoryFetch(current);
-    const view = mountForm(form());
+    const persistence = inMemoryInventory(current);
+    const view = mountForm(form(worktree, persistence.mutate));
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), "/new/feature");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(putBody(fetch)).toMatchObject({
+    expect(persistence.current()).toMatchObject({
       repositories: [{ worktrees: [{ setupScript: "concurrent setup" }] }],
     });
     view.unmount();
   });
 
-  it("does not carry setup-script dirtiness across a cancelled edit", async () => {
-    const fetch = stubInventoryFetch(inventory);
-    const view = mountForm(form());
+  it("does not carry setup-script dirtiness across a cancelled edit after a fresh script arrives", async () => {
+    const fresh = {
+      ...worktree,
+      setupScript: "fresh concurrent setup",
+    };
+    const persistence = inMemoryInventory({
+      ...inventory,
+      repositories: [{ ...inventory.repositories[0], worktrees: [fresh] }],
+    });
+    const view = mountForm(form(worktree, persistence.mutate));
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-setup-script"), "discarded setup");
     pressCancel();
-    press(field(view.container, "worktree-edit-open"));
+    view.unmount();
+    const refreshed = mountForm(form(fresh, persistence.mutate));
+    press(field(refreshed.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), "/new/feature");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
-    expect(putBody(fetch)).toMatchObject({
-      repositories: [{ worktrees: [{ setupScript: "old setup" }] }],
+    expect(persistence.current()).toMatchObject({
+      repositories: [{ worktrees: [{ setupScript: "fresh concurrent setup" }] }],
     });
-    view.unmount();
+    refreshed.unmount();
   });
 
   it("surfaces inventory save failures and hides setup without the capability", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: string, init?: RequestInit) =>
-        Promise.resolve(
-          init?.method === "PUT"
-            ? new Response("denied", { status: 403 })
-            : new Response(JSON.stringify(inventory), { status: 200 }),
-        ),
-      ),
-    );
-    const view = mountForm(form());
+    const failure: Mutation = vi.fn(async () => ({ ok: false, error: "denied" })) as Mutation;
+    const view = mountForm(form(worktree, failure));
     press(field(view.container, "worktree-edit-open"));
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
@@ -235,15 +202,20 @@ describe("EditWorktreeForm", () => {
   });
 
   it("uses missing-label fallbacks and displays a pending request failure", async () => {
-    const { finish } = stubDeferredPut(inventory);
+    let finish: ((result: MutationResult) => void) | undefined;
+    const pendingMutation: Mutation = vi.fn(
+      () => new Promise<MutationResult>((resolve) => (finish = resolve)),
+    ) as Mutation;
     // Deliberately simulates malformed data (missing labels) to exercise the component's
     // `worktree.labels ?? []` fallback — the real HostWorktree type always has labels.
-    const view = mountForm(form({ ...worktree, labels: undefined } as unknown as typeof worktree));
+    const view = mountForm(
+      form({ ...worktree, labels: undefined } as unknown as typeof worktree, pendingMutation),
+    );
     press(field(view.container, "worktree-edit-open"));
     field<HTMLInputElement>(document, "worktree-edit-labels").remove();
     submit(field(document, "form-edit-worktree"));
     expect(field<HTMLButtonElement>(document, "worktree-edit-submit").disabled).toBe(true);
-    await act(async () => await finish(new Response("cannot save", { status: 500 })));
+    await act(async () => finish?.({ ok: false, error: "cannot save" }));
     expect(field(document, "worktree-edit-error").textContent).toBe("cannot save");
     view.unmount();
   });

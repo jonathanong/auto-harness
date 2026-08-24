@@ -61,7 +61,7 @@ describe("parseAllowedRoots", () => {
     expect(() => parseAllowedRoots("nope")).toThrow("string array");
     expect(() => parseAllowedRoots(["relative"])).toThrow("absolute");
     expect(() => parseAllowedRoots([""])).toThrow("non-empty");
-    expect(() => parseAllowedRoots([`/${"a".repeat(4097)}`])).toThrow("non-empty");
+    expect(() => parseAllowedRoots([`/${"a".repeat(4097)}`])).toThrow("at most 4096 characters");
     expect(() => parseAllowedRoots(Array.from({ length: 33 }, (_, i) => `/${String(i)}`))).toThrow(
       "at most 32",
     );

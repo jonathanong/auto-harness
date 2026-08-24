@@ -20,7 +20,6 @@ it("resolves and executes a legacy relative hook from the actual execution cwd",
         sessionId: "session",
         status: "completed",
         worktreePath: cwd,
-        repositoryPath: root,
         allowedRoots: [root],
       },
     );
@@ -50,7 +49,6 @@ it("executes the canonical hook path returned by the allowed-root check", async 
         sessionId: "session",
         status: "completed",
         worktreePath: root,
-        repositoryPath: root,
         allowedRoots: [root],
       },
     );

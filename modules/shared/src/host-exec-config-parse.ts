@@ -59,8 +59,13 @@ export function parseAllowedRoots(value: unknown, ctx = "allowedRoots"): string[
   const roots: string[] = [];
   const seen = new Set<string>();
   for (const raw of value) {
-    if (raw.length === 0 || raw.length > MAX_EXEC_PATH_LENGTH) {
+    if (raw.length === 0) {
       throw new TypeError(`${ctx} entries must be non-empty paths`);
+    }
+    if (raw.length > MAX_EXEC_PATH_LENGTH) {
+      throw new TypeError(
+        `${ctx} entries must be at most ${String(MAX_EXEC_PATH_LENGTH)} characters`,
+      );
     }
     if (!isAbsolutePathString(raw)) {
       throw new TypeError(`${ctx} entries must be absolute paths`);

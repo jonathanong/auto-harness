@@ -110,6 +110,33 @@ export async function putExecConfig(
 /** How many times a losing writer re-reads and reapplies before giving up. */
 const MUTATE_ATTEMPTS = 3;
 
+type MutationResult = { ok: true } | { ok: false; error: string; conflict?: true };
+
+async function mutateWithFence<T>(
+  hostId: string,
+  mutate: (current: HostInventory) => T,
+  write: (hostId: string, payload: T, version: number) => Promise<MutationResult>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let last: { ok: false; error: string; conflict?: true } = {
+    ok: false,
+    error: "host inventory changed while saving; try again",
+  };
+  for (let attempt = 0; attempt < MUTATE_ATTEMPTS; attempt += 1) {
+    let inventory: HostInventory;
+    let version: number;
+    try {
+      ({ inventory, version } = await readInventory(hostId));
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    const result = await write(hostId, mutate(inventory), version);
+    if (result.ok) return result;
+    if (!result.conflict) return result;
+    last = result;
+  }
+  return { ok: false, error: last.error };
+}
+
 /**
  * Read-modify-write an inventory safely.
  *
@@ -123,24 +150,7 @@ export async function mutateInventory(
   hostId: string,
   mutate: (current: HostInventory) => HostInventory,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  let last: { ok: false; error: string; conflict?: true } = {
-    ok: false,
-    error: "host inventory changed while saving; try again",
-  };
-  for (let attempt = 0; attempt < MUTATE_ATTEMPTS; attempt += 1) {
-    let inventory: HostInventory;
-    let version: number;
-    try {
-      ({ inventory, version } = await readInventory(hostId));
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-    const result = await putInventory(hostId, mutate(inventory), version);
-    if (result.ok) return result;
-    if (!result.conflict) return result;
-    last = result;
-  }
-  return { ok: false, error: last.error };
+  return mutateWithFence(hostId, mutate, putInventory);
 }
 
 /**
@@ -151,22 +161,5 @@ export async function mutateExecConfig(
   hostId: string,
   patch: (current: HostInventory) => HostExecConfigPatch,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  let last: { ok: false; error: string; conflict?: true } = {
-    ok: false,
-    error: "host inventory changed while saving; try again",
-  };
-  for (let attempt = 0; attempt < MUTATE_ATTEMPTS; attempt += 1) {
-    let inventory: HostInventory;
-    let version: number;
-    try {
-      ({ inventory, version } = await readInventory(hostId));
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-    const result = await putExecConfig(hostId, patch(inventory), version);
-    if (result.ok) return result;
-    if (!result.conflict) return result;
-    last = result;
-  }
-  return { ok: false, error: last.error };
+  return mutateWithFence(hostId, patch, putExecConfig);
 }

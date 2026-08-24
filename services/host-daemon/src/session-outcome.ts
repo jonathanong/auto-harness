@@ -33,11 +33,11 @@ type SessionOutcome = {
 type ClaimedHookTarget = {
   worktree: { id: string };
   cwd: string;
-  repository: { path: string; terminalHookScript?: string };
+  repository: { terminalHookScript?: string };
   allowedRoots?: readonly string[];
-  currentHookTarget?: () => Promise<{
+  currentHookTarget: () => Promise<{
     cwd: string;
-    repository: { path: string; terminalHookScript?: string };
+    repository: { terminalHookScript?: string };
     allowedRoots?: readonly string[];
   } | null>;
 };
@@ -72,7 +72,6 @@ async function finishSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
   allowedRoots: readonly string[] = [],
-  repositoryPath?: string,
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -84,7 +83,6 @@ async function finishSession(
       worktreePath,
       childEnvSource,
       ...(allowedRoots.length ? { allowedRoots } : {}),
-      ...(repositoryPath !== undefined ? { repositoryPath } : {}),
       ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
       ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
       ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
@@ -112,15 +110,13 @@ export async function finishClaimedSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
-  let refreshed:
-    | Awaited<ReturnType<NonNullable<ClaimedHookTarget["currentHookTarget"]>>>
-    | undefined;
+  let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
     refreshed = await claimed.currentHookTarget?.();
   } catch {
     refreshed = null;
   }
-  const target = refreshed ?? (claimed.currentHookTarget ? null : claimed);
+  const target = refreshed;
   return finishSession(
     processRunner,
     streamer,
@@ -132,6 +128,5 @@ export async function finishClaimedSession(
     outcome,
     childEnvSource,
     target?.allowedRoots ?? [],
-    target?.repository.path ?? claimed.repository.path,
   );
 }
