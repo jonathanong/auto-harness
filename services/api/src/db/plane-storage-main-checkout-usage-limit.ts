@@ -1,6 +1,6 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
-import { queueOrderKey } from "../control-plane-ordering.ts";
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import {
   isConditionalTransactionFailed,
@@ -31,9 +31,10 @@ export async function requeueMainCheckoutUsageLimitedSession(
       ConsistentRead: true,
     }),
   );
-  const queueOrder = current.Item
-    ? queueOrderKey(itemToSession(current.Item as Record<string, unknown>))
-    : undefined;
+  const queueOrder = queueOrderKeyForWrite(
+    current.Item ? itemToSession(current.Item as Record<string, unknown>) : undefined,
+    opts.sessionId,
+  );
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -67,8 +68,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard" +
-                (queueOrder ? ", queueOrder = :queueOrder" : "") +
+                "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
                 ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt",
               ConditionExpression:
                 "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true AND attemptId = :attemptId",
@@ -77,7 +77,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
                 ":queued": "queued",
                 ":running": "running",
                 ":statusShard": statusShardAttr("queued", opts.queueShard),
-                ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
+                ":queueOrder": queueOrder,
                 ":null": null,
                 ":code": "usage_limit",
                 ":message": opts.errorMessage ?? "provider usage limit; requeued",

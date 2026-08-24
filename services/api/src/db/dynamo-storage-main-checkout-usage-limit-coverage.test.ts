@@ -2,6 +2,7 @@ import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamod
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { requeueMainCheckoutUsageLimitedSession } from "./plane-storage-main-checkout-usage-limit.ts";
@@ -103,7 +104,7 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
       errorMessage: opts.errorMessage,
       hostId: null,
       worktreeId: null,
-      queueOrder: expect.any(String),
+      queueOrder: queueOrderKeyForWrite({ id: opts.sessionId }, opts.sessionId),
     });
     expect(await requeueMainCheckoutUsageLimitedSession(ctx, opts)).toBe(false);
   });

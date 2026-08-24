@@ -3,6 +3,7 @@ import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamod
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
@@ -108,6 +109,7 @@ describe("DynamoDB Local main-checkout release", () => {
       cliResumeRef: opts.cliResumeRef,
       retryCount: 0,
       retryAfter: opts.retryAfter,
+      queueOrder: queueOrderKeyForWrite({ id: opts.sessionId }, opts.sessionId),
     });
     expect(await releaseMainCheckoutSession(ctx, opts)).toBe(false);
   });

@@ -32,6 +32,18 @@ export function queueOrderKey(
   return `${String(scaled).padStart(QUEUE_ORDER_KEY_WIDTH, "0")}#${session.createdAt}#${session.id}`;
 }
 
+/** Always produce a GSI key for a requeue write, even if a pre-read omitted fields. */
+export function queueOrderKeyForWrite(
+  session: { id?: unknown; priority?: unknown; createdAt?: unknown } | null | undefined,
+  fallbackId: string,
+): string {
+  return queueOrderKey({
+    id: typeof session?.id === "string" && session.id.length > 0 ? session.id : fallbackId,
+    priority: typeof session?.priority === "number" ? session.priority : 0,
+    createdAt: typeof session?.createdAt === "string" ? session.createdAt : "",
+  });
+}
+
 /** Consume already-sorted shard heads in global priority/FIFO order. */
 export function mergeQueuedShardHeads<
   T extends Pick<SessionRecord, "id" | "priority" | "createdAt">,

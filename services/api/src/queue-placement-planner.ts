@@ -207,6 +207,16 @@ export function planScheduledPlacement(
   return { action: "assign", candidates };
 }
 
+function sessionWithClearedPin(session: SessionRecord): SessionRecord {
+  const cleared = { ...session, resumeFallback: true };
+  delete cleared.pinnedHostId;
+  delete cleared.pinnedProviderAccountId;
+  delete cleared.pinnedTargetIndex;
+  delete cleared.pinnedCommandId;
+  delete cleared.pinExpiresAt;
+  return cleared;
+}
+
 export function explainPromptPlacement(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
@@ -214,7 +224,10 @@ export function explainPromptPlacement(
   nowMs: number,
 ): PlacementWaitReason | "assignable" {
   const plan = planPromptPlacement(state, catalog, session, nowMs);
-  if (plan.action === "assign" || plan.action === "clear_pin") return "assignable";
+  if (plan.action === "clear_pin") {
+    return explainPromptPlacement(state, catalog, sessionWithClearedPin(session), nowMs);
+  }
+  if (plan.action === "assign") return "assignable";
   if (plan.action === "expire") return "queue_expired";
   return plan.reason;
 }

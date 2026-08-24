@@ -1,6 +1,6 @@
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
-import { queueOrderKey } from "../control-plane-ordering.ts";
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import {
   readSessionDrainActivity,
@@ -36,10 +36,7 @@ type ReleaseMainCheckoutOptions = {
   requireUnacknowledged?: boolean;
 };
 
-async function queueOrderForSession(
-  ctx: PlaneStorageCtx,
-  sessionId: string,
-): Promise<string | undefined> {
+async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
   const res = await ctx.doc.send(
     new GetCommand({
       TableName: ctx.tables.sessions,
@@ -47,7 +44,10 @@ async function queueOrderForSession(
       ConsistentRead: true,
     }),
   );
-  return res.Item ? queueOrderKey(itemToSession(res.Item as Record<string, unknown>)) : undefined;
+  return queueOrderKeyForWrite(
+    res.Item ? itemToSession(res.Item as Record<string, unknown>) : undefined,
+    sessionId,
+  );
 }
 
 export async function releaseMainCheckoutSession(
@@ -56,7 +56,9 @@ export async function releaseMainCheckoutSession(
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
   const queueOrder = isQueued
-    ? (opts.queueOrder ?? (await queueOrderForSession(ctx, opts.sessionId)))
+    ? opts.queueOrder && opts.queueOrder.length > 0
+      ? opts.queueOrder
+      : await queueOrderForSession(ctx, opts.sessionId)
     : undefined;
   const before = isQueued ? null : await readSessionDrainActivity(ctx, opts.sessionId);
   const cleanup =
@@ -89,7 +91,7 @@ export async function releaseMainCheckoutSession(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: updateExpression(opts, isQueued, queueOrder),
+              UpdateExpression: updateExpression(opts, isQueued),
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
@@ -136,14 +138,10 @@ export async function releaseMainCheckoutSession(
   }
 }
 
-function updateExpression(
-  opts: ReleaseMainCheckoutOptions,
-  isQueued: boolean,
-  queueOrder: string | undefined,
-): string {
+function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): string {
   return (
     "SET #s = :status, statusShard = :statusShard" +
-    (queueOrder ? ", queueOrder = :queueOrder" : "") +
+    (isQueued ? ", queueOrder = :queueOrder" : "") +
     ", worktreeId = :null" +
     (isQueued ? ", hostId = :null" : "") +
     (opts.reason ? ", errorMessage = :reason" : "") +
@@ -168,7 +166,7 @@ function expressionValues(
   return {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
-    ...(queueOrder ? { ":queueOrder": queueOrder } : {}),
+    ...(opts.status === "queued" ? { ":queueOrder": queueOrder } : {}),
     ":expectedStatus": opts.expectedStatus ?? "running",
     ":hostId": opts.hostId,
     ":connectionId": opts.connectionId,

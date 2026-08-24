@@ -6,6 +6,7 @@ import {
   mergeQueuedShardHeads,
   orderedQueuedSessions,
   queueOrderKey,
+  queueOrderKeyForWrite,
   QUEUE_ORDER_PRIORITY_OFFSET,
 } from "./control-plane-ordering.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -70,6 +71,12 @@ describe("compare helpers", () => {
       queueOrderKey({ id: "one", priority: 1, createdAt: "t" }) <
         queueOrderKey({ id: "half", priority: 0.5, createdAt: "t" }),
     ).toBe(true);
+    expect(queueOrderKeyForWrite({ id: "s", priority: 3, createdAt: "t" }, "fallback")).toBe(
+      queueOrderKey({ id: "s", priority: 3, createdAt: "t" }),
+    );
+    expect(queueOrderKeyForWrite(undefined, "legacy")).toBe(
+      queueOrderKey({ id: "legacy", priority: 0, createdAt: "" }),
+    );
   });
 
   it("merges already-sorted shard heads in global priority/FIFO order", () => {

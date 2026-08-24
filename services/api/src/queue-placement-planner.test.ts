@@ -174,6 +174,22 @@ describe("queue placement planner", () => {
       "assign",
     );
     expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ pinnedHostId: "missing", pinExpiresAt: "2025-01-01T00:00:00.000Z" }),
+        Date.parse(NOW),
+      ),
+    ).toBe("assignable");
+    expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ pinnedHostId: "ghost", requiredLabels: ["gpu"] }),
+        Date.parse(NOW),
+      ),
+    ).toBe("no_idle_worktree");
+    expect(
       targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
     ).toBe(true);
   });
