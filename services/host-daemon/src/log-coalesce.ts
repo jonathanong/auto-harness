@@ -6,7 +6,7 @@ export const DEFAULT_LOG_MESSAGES_PER_SEC = 10;
 export const DEFAULT_LOG_BATCH_MAX_WAIT_MS = 100;
 /** Newline-delimited lines allowed in one coalesced frame. */
 export const DEFAULT_LOG_BATCH_MAX_LINES = 100;
-export const RATE_WINDOW_MS = 1_000;
+const RATE_WINDOW_MS = 1_000;
 
 // API Gateway's WebSocket limit is 128 KB per *message*, but only 32 KB per *frame*.
 // The daemon `ws` client sends every payload as a single frame (`fin` defaults true),
