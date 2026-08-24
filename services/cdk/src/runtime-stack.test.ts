@@ -27,8 +27,8 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          ARCHIVE_BUCKET: Match.anyValue(),
           HARNESS_DDB_PREFIX: "ReviewRuntime",
+          HARNESS_METRIC_ENVIRONMENT: "ReviewRuntime",
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
@@ -77,11 +77,19 @@ describe("AutoHarnessRuntimeStack", () => {
       expect(JSON.stringify(integration.Properties?.IntegrationUri)).toContain(":lambda:");
     }
     const functions = Object.values(template.findResources("AWS::Lambda::Function")).filter(
-      (fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET,
+      (fn) => fn.Properties?.Environment?.Variables?.HARNESS_DDB_PREFIX,
     );
     expect(functions).toHaveLength(3);
+    const archiveFunctions = functions.filter(
+      (fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET,
+    );
+    expect(archiveFunctions).toHaveLength(2);
+    expect(
+      functions
+        .filter((fn) => fn.Properties?.Handler === "index.websocket")
+        .map((fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET),
+    ).toEqual([undefined]);
     for (const fn of functions) {
-      expect(fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET).toBeDefined();
       expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
         Ref: "HarnessCursorSecretSsmParam",
       });
@@ -89,7 +97,7 @@ describe("AutoHarnessRuntimeStack", () => {
     const roles = Object.values(template.findResources("AWS::IAM::Role")).filter((role) =>
       JSON.stringify(role.Properties?.ManagedPolicyArns ?? []).includes("ArchiveDataAccessPolicy"),
     );
-    expect(roles).toHaveLength(3);
+    expect(roles).toHaveLength(2);
     template.resourcePropertiesCountIs(
       "AWS::IAM::Policy",
       {

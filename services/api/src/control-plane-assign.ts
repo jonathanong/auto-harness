@@ -253,6 +253,12 @@ export async function assignQueuedDurable(
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
           ...(route.providerId ? { providerId: route.providerId } : {}),
           ...(lease ? { providerAccountLease: lease } : {}),
+          ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
+            ? {
+                hostAssignmentLease: { hostId: candidate.hostId },
+                hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments,
+              }
+            : {}),
           queueShard: session.queueShard,
         });
         if (won === true || !lease) break;
@@ -281,6 +287,9 @@ export async function assignQueuedDurable(
         },
         attemptId,
         ...(lease ? { providerAccountLease: lease } : {}),
+        ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
+          ? { hostAssignmentLease: { hostId: candidate.hostId } }
+          : {}),
       };
       const nextWorktree = {
         ...candidate,

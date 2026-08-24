@@ -156,7 +156,7 @@ export function installDarwin(ctx: HostServiceContext): number {
   }
   ctx.fs.mkdirSync(paths.agentsDir, { recursive: true, mode: 0o755 });
   ctx.fs.mkdirSync(paths.supportDir, { recursive: true, mode: 0o755 });
-  if (envExists && ctx.apiUrl === undefined) {
+  if (envExists && ctx.apiUrl === undefined && preparedEnv.contents === existingEnv) {
     ctx.log(`Keeping existing env file ${paths.envFile}`);
   } else {
     writeMode(ctx.fs, paths.envFile, preparedEnv.contents, 0o600, !envExists);

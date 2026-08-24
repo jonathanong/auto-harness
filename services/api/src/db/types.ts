@@ -84,6 +84,12 @@ export type SessionRecord = {
     slot: number;
     attemptId: string;
   };
+  /** Host that owned a provider lease when a timeout cleared the assignment. */
+  timedOutHostId?: string;
+  /** Transactional host-wide assignment-cap reservation, when advertised. */
+  hostAssignmentLease?: {
+    hostId: string;
+  };
 };
 
 export type WorktreeRecord = {

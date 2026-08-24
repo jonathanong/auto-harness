@@ -29,10 +29,12 @@ import {
   retrySessionArchiveIfNeeded,
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
+import { emitCooldown, emitLogDrops } from "./operational-metrics.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
@@ -227,6 +229,7 @@ export function appendLog(
   },
 ): LogRecord {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   state.logs.set(opts.sessionId, retainLogs(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
@@ -251,6 +254,7 @@ export async function appendLogDurable(
   },
 ): Promise<LogRecord> {
   const rec = logRecord(opts);
+  emitLogDrops(opts.dropped);
   if (state.storage) {
     await state.storage.putLog(rec);
   }
@@ -501,7 +505,15 @@ export async function handleHostMessageDurable(
     // `onHostMessage`. Keeping it out of this result prevents a local WS hub
     // from delivering the same confirmation once through its bridge and once
     // as a direct socket response.
-    return handleHostMessage(state, msg, sourceConnectionId);
+    const result = handleHostMessage(state, msg, sourceConnectionId);
+    if (
+      result.ok &&
+      msg.type === "session:status" &&
+      (isTerminalSessionStatus(msg.status) || msg.errorCode === "usage_limit")
+    ) {
+      await requestAssignment(state);
+    }
+    return result;
   }
   const storage = state.storage;
   if (msg.type === "session:log") {
@@ -536,6 +548,7 @@ export async function handleHostMessageDurable(
       ) {
         return { ok: false, error: "stale host connection" };
       }
+      emitLogDrops(msg.dropped);
       const retained = retainLogs(state, log);
       state.logs.set(log.sessionId, retained);
       state.onLogCommitted?.(log);
@@ -650,6 +663,22 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    session.providerAccountLease?.attemptId === msg.attemptId
+  ) {
+    if (state.storage) {
+      await releaseTimedOutProviderAccountLease(state, session);
+      if (typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
+        persistSession(state, session);
+      }
+    } else {
+      releaseProviderAccountLease(state, session);
+      persistSession(state, session);
+    }
+    return { ok: true };
+  }
   let providerAccount: SessionTransitionContext["providerAccount"];
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
@@ -809,6 +838,7 @@ async function applySessionStatusDurable(
         ...providerAccountLeaseWriteOpts(session),
       });
       if (!requeued) return { ok: true };
+      emitCooldown();
       releaseScheduledLeaseLocal(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
@@ -912,6 +942,7 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    emitCooldown();
     releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
@@ -1023,6 +1054,15 @@ function applySessionStatus(
   }
   const session = state.sessions.get(msg.sessionId);
   if (!session) return { ok: false, error: "session not found" };
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    session.providerAccountLease?.attemptId === msg.attemptId
+  ) {
+    releaseProviderAccountLease(state, session);
+    persistSession(state, session);
+    return { ok: true };
+  }
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
@@ -1102,6 +1142,7 @@ function applySessionStatus(
     const suppress = transitionEffect(plan, "suppress_target");
     const finish = transitionEffect(plan, "finish");
     if (cooldown) {
+      emitCooldown();
       const account = state.providerAccounts.get(cooldown.providerAccountId);
       if (account) {
         account.usageLimitedUntil = cooldown.usageLimitedUntil;

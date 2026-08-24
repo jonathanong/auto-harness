@@ -11,6 +11,10 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 type FinishSessionOpts = {
   sessionId: string;
@@ -26,6 +30,10 @@ type FinishSessionOpts = {
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
+  /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
+  preserveProviderAccountLease?: boolean;
+  timedOutHostId?: string;
 };
 
 function setOptional(
@@ -74,11 +82,17 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   setOptional(sets, values, "errorMessage", opts.errorMessage);
   setOptional(sets, values, "exitCode", opts.exitCode);
   setOptional(sets, values, "cliResumeRef", opts.cliResumeRef);
+  setOptional(sets, values, "timedOutHostId", opts.timedOutHostId);
   return {
     names: { "#s": "status" },
     values,
     sets,
-    removes: ["reconnectDeadlineAt", "assignmentConnectionId", "providerAccountLease"],
+    removes: [
+      "reconnectDeadlineAt",
+      "assignmentConnectionId",
+      "hostAssignmentLease",
+      ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
+    ],
   };
 }
 
@@ -89,7 +103,7 @@ function finishSessionItems(
   cleanup: ReturnType<typeof sessionDrainActivityDelete>,
 ): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [
-    ...(opts.fence
+    ...(!opts.hostAssignmentLease && opts.fence
       ? [
           {
             ConditionCheck: {
@@ -136,11 +150,14 @@ function finishSessionItems(
     });
   }
   items.push(
-    ...providerAccountLeaseDeleteItems(
-      ctx.tables.concurrencyLocks,
-      opts.sessionId,
-      opts.providerAccountLease,
-    ),
+    ...(opts.preserveProviderAccountLease
+      ? []
+      : providerAccountLeaseDeleteItems(
+          ctx.tables.concurrencyLocks,
+          opts.sessionId,
+          opts.providerAccountLease,
+        )),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
     ...cleanup,
   );
   return items;

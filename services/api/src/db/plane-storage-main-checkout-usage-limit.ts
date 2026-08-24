@@ -6,6 +6,7 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import type { HostAssignmentLease } from "./plane-storage-host-assignment.ts";
 import {
   isConditionalTransactionFailed,
   itemToSession,
@@ -27,6 +28,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
     usageLimitedUntil: string;
     errorMessage?: string | undefined;
     providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
   },
 ): Promise<boolean> {
   const current = await ctx.doc.send(
@@ -58,13 +60,17 @@ export async function requeueMainCheckoutUsageLimitedSession(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              UpdateExpression: "REMOVE mainCheckoutLeases.#repo",
+              UpdateExpression:
+                (opts.hostAssignmentLease ? "SET assignmentCount = assignmentCount - :one " : "") +
+                "REMOVE mainCheckoutLeases.#repo",
               ConditionExpression:
-                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId",
+                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
+                (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
               ExpressionAttributeNames: { "#repo": opts.repositoryId },
               ExpressionAttributeValues: {
                 ":sessionId": opts.sessionId,
                 ":connectionId": opts.connectionId,
+                ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
               },
             },
           },
@@ -74,7 +80,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
               Key: { id: opts.sessionId },
               UpdateExpression:
                 "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt, providerAccountLease",
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt, providerAccountLease, hostAssignmentLease",
               ConditionExpression:
                 "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- assignment and checkout lease transactions share one adapter. */
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -10,6 +11,7 @@ import {
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
+import type { HostAssignmentLease } from "./plane-storage-host-assignment.ts";
 import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
 export {
   confirmMainCheckoutReconnect,
@@ -59,6 +61,8 @@ export async function tryAssignMainCheckoutSession(
     providerAccountId?: string;
     providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+    hostAssignmentCap?: number;
     queueShard: number;
     attemptId: string;
   },
@@ -111,15 +115,25 @@ export async function tryAssignMainCheckoutSession(
       Update: {
         TableName: ctx.tables.hostLocks,
         Key: { hostId: opts.hostId },
-        UpdateExpression: "SET mainCheckoutLeases.#repo = :lease, lastScheduledAssignedAt = :now",
+        UpdateExpression:
+          "SET mainCheckoutLeases.#repo = :lease, lastScheduledAssignedAt = :now" +
+          (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+            ? ", assignmentCount = if_not_exists(assignmentCount, :zero) + :one"
+            : ""),
         ConditionExpression:
-          "connectionId = :connectionId AND (attribute_not_exists(draining) OR draining = :false) AND attribute_not_exists(mainCheckoutLeases.#repo)",
+          "connectionId = :connectionId AND (attribute_not_exists(draining) OR draining = :false) AND attribute_not_exists(mainCheckoutLeases.#repo)" +
+          (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+            ? " AND (attribute_not_exists(assignmentCount) OR assignmentCount < :cap)"
+            : ""),
         ExpressionAttributeNames: { "#repo": opts.repositoryId },
         ExpressionAttributeValues: {
           ":connectionId": opts.connectionId,
           ":false": false,
           ":lease": lease,
           ":now": opts.now,
+          ...(opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+            ? { ":zero": 0, ":one": 1, ":cap": opts.hostAssignmentCap }
+            : {}),
         },
       },
     },
@@ -131,6 +145,9 @@ export async function tryAssignMainCheckoutSession(
           "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
+          (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+            ? ", hostAssignmentLease = :hostAssignmentLease"
+            : "") +
           " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter",
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
@@ -149,6 +166,9 @@ export async function tryAssignMainCheckoutSession(
           ...(opts.resumeSpec ? { ":resumeSpec": opts.resumeSpec } : {}),
           ...(opts.providerAccountLease
             ? { ":providerAccountLease": opts.providerAccountLease }
+            : {}),
+          ...(opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+            ? { ":hostAssignmentLease": opts.hostAssignmentLease }
             : {}),
         },
       },

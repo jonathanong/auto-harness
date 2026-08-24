@@ -167,6 +167,7 @@ export {
   isHostRepositoryRegistration,
   isHostRunningAttempt,
   isProviderAccountReadiness,
+  MAX_PROVIDER_ACCOUNT_ID_LENGTH,
   MAX_PROVIDER_ACCOUNT_READINESS,
   PROVIDER_ACCOUNT_FINGERPRINT_PATTERN,
   PROVIDER_ACCOUNT_LEASE_PREFIX,

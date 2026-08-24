@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider-account capacity and lease lifecycle share one state helper. */
 import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   providerAccountLeaseConcurrencyId,
@@ -83,13 +84,54 @@ export function accountHasLeaseCapacity(
   providerAccountId: string | undefined,
 ): boolean {
   if (!providerAccountId) return true;
-  if (state.storage) return true;
+  if (state.storage) return !accountHasLeaseCapacityOverCap(state, providerAccountId);
+  return accountHasLeaseCapacityFromReadModel(state, providerAccountId);
+}
+
+/** Legacy hydration can temporarily leave leases in slots beyond a new cap. */
+export function accountHasLeaseCapacityOverCap(
+  state: ControlPlaneState,
+  providerAccountId: string,
+): boolean {
   const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
-  let used = 0;
+  const holders = new Set<string>();
   for (const lease of state.providerAccountLeases.values()) {
-    if (lease.providerAccountId === providerAccountId) used += 1;
+    if (lease.providerAccountId !== providerAccountId) continue;
+    if (lease.slot >= max) return true;
+    holders.add(lease.sessionId);
   }
-  return used < max;
+  return holders.size > max;
+}
+
+/** Availability hints use the running-session read model even in durable mode. */
+export function accountHasLeaseCapacityFromReadModel(
+  state: ControlPlaneState,
+  providerAccountId: string | undefined,
+): boolean {
+  if (!providerAccountId) return true;
+  const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
+  const holders = new Set<string>();
+  for (const lease of state.providerAccountLeases.values()) {
+    if (lease.providerAccountId === providerAccountId) holders.add(lease.sessionId);
+  }
+  for (const session of state.sessions.values()) {
+    const ownsLease =
+      session.status === "running" ||
+      (session.status === "cancelled" && session.hostId != null) ||
+      (session.status === "timed_out" && session.timedOutHostId != null);
+    if (ownsLease && session.providerAccountLease?.providerAccountId === providerAccountId) {
+      holders.add(session.id);
+      continue;
+    }
+    if (
+      (session.status === "running" ||
+        (session.status === "cancelled" && session.hostId != null)) &&
+      session.resolvedRoute?.providerAccountId === providerAccountId
+    ) {
+      holders.add(session.id);
+    }
+  }
+  return holders.size < max;
 }
 
 export function tryAcquireProviderAccountLeaseLocal(
@@ -126,9 +168,16 @@ export function tryAcquireProviderAccountLeaseLocal(
 }
 
 export function providerAccountLeaseWriteOpts(
-  session: Pick<SessionRecord, "providerAccountLease">,
-): { providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]> } {
-  return session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {};
+  session: Pick<SessionRecord, "providerAccountLease"> &
+    Partial<Pick<SessionRecord, "hostAssignmentLease">>,
+): {
+  providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]>;
+  hostAssignmentLease?: NonNullable<SessionRecord["hostAssignmentLease"]>;
+} {
+  return {
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+  };
 }
 
 /** Idempotent: a second release for the same attempt is a no-op. */
@@ -150,9 +199,13 @@ export function releaseProviderAccountLease(
   session: SessionRecord,
 ): void {
   const lease = session.providerAccountLease;
-  if (!lease) return;
+  if (!lease) {
+    delete session.hostAssignmentLease;
+    return;
+  }
   releaseProviderAccountLeaseLocal(state, session);
   delete session.providerAccountLease;
+  delete session.hostAssignmentLease;
   if (state.storage) {
     queueWrite(state, (storage) =>
       storage!.releaseProviderAccountLease({
@@ -164,6 +217,43 @@ export function releaseProviderAccountLease(
   }
 }
 
+/** Clear a timeout-preserved lease only after the durable lock/session transaction succeeds. */
+export async function releaseTimedOutProviderAccountLease(
+  state: ControlPlaneState,
+  session: SessionRecord,
+): Promise<boolean> {
+  const lease = session.providerAccountLease;
+  if (!lease) return false;
+  if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
+    releaseProviderAccountLease(state, session);
+    delete session.timedOutHostId;
+    return true;
+  }
+  const released = await state.storage.releaseTimedOutProviderAccountLease({
+    concurrencyId: lease.concurrencyId,
+    sessionId: session.id,
+    attemptId: lease.attemptId,
+  });
+  if (!released) return false;
+  releaseProviderAccountLeaseLocal(state, session);
+  delete session.providerAccountLease;
+  delete session.hostAssignmentLease;
+  delete session.timedOutHostId;
+  return true;
+}
+
+export async function releaseTimedOutProviderAccountLeasesForHost(
+  state: ControlPlaneState,
+  hostId: string,
+): Promise<string[]> {
+  const released: string[] = [];
+  for (const session of state.sessions.values()) {
+    if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
+    if (await releaseTimedOutProviderAccountLease(state, session)) released.push(session.id);
+  }
+  return released;
+}
+
 /** Requeue/terminal paths must drop the attempt-owned slot even if the map was rebuilt. */
 export function releaseProviderAccountLeaseForSession(
   state: ControlPlaneState,
@@ -171,6 +261,6 @@ export function releaseProviderAccountLeaseForSession(
 ): SessionRecord {
   if (!session.providerAccountLease) return session;
   releaseProviderAccountLease(state, session);
-  const { providerAccountLease: _, ...next } = session;
+  const { providerAccountLease: _, hostAssignmentLease: __, ...next } = session;
   return next;
 }

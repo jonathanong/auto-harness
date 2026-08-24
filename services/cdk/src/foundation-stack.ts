@@ -5,6 +5,7 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 
+import { createFoundationDataAccess } from "./foundation-data-access.ts";
 import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 
 export type FoundationStackProps = StackProps & {
@@ -91,6 +92,8 @@ export class AutoHarnessFoundationStack extends Stack {
           ? { sortKey: { name: definition.sortKey.name, type: dynamodb.AttributeType.STRING } }
           : {}),
         ...(definition.ttlAttribute ? { timeToLiveAttribute: definition.ttlAttribute } : {}),
+        deletionProtection: removalPolicy === RemovalPolicy.RETAIN,
+        pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
         removalPolicy,
       });
       addIndexes(table, definition);
@@ -136,50 +139,11 @@ export class AutoHarnessFoundationStack extends Stack {
     });
     integrationKey.applyRemovalPolicy(removalPolicy);
 
-    const tableResources = DYNAMO_TABLES.flatMap((definition) => {
-      const table = tables[definition.name];
-      if (!table) throw new Error(`missing DynamoDB table definition: ${definition.name}`);
-      return [table.tableArn, ...(definition.gsis?.length ? [`${table.tableArn}/index/*`] : [])];
-    });
-    const apiDataAccessPolicy = new iam.ManagedPolicy(this, "ApiDataAccessPolicy", {
-      description:
-        "Least-privilege DynamoDB data-plane access for a future Auto Harness API runtime.",
-      statements: [
-        new iam.PolicyStatement({
-          actions: [
-            "dynamodb:BatchGetItem",
-            "dynamodb:BatchWriteItem",
-            "dynamodb:ConditionCheckItem",
-            "dynamodb:DeleteItem",
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:Query",
-            "dynamodb:Scan",
-            "dynamodb:UpdateItem",
-          ],
-          resources: tableResources,
-        }),
-      ],
-    });
-    const sessionLogs = tables.SessionLogs;
-    if (!sessionLogs) throw new Error("missing DynamoDB table definition: SessionLogs");
-    const archiveDataAccessPolicy = new iam.ManagedPolicy(this, "ArchiveDataAccessPolicy", {
-      description: "Least-privilege session-log archive access for a future archival runtime.",
-      statements: [
-        new iam.PolicyStatement({
-          actions: ["dynamodb:Query"],
-          resources: [sessionLogs.tableArn],
-        }),
-        new iam.PolicyStatement({
-          actions: ["s3:GetBucketLocation"],
-          resources: [archiveBucket.bucketArn],
-        }),
-        new iam.PolicyStatement({
-          actions: ["s3:AbortMultipartUpload", "s3:PutObject"],
-          resources: [archiveBucket.arnForObjects("sessions/*")],
-        }),
-      ],
-    });
+    const { apiDataAccessPolicy, archiveDataAccessPolicy } = createFoundationDataAccess(
+      this,
+      tables,
+      archiveBucket,
+    );
 
     addOutput(this, "TablePrefix", {
       description:

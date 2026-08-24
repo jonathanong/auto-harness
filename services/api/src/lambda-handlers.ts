@@ -12,9 +12,15 @@ import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
+import {
+  emitAssignmentFailure,
+  emitCronSweepMetrics,
+  queuedSessionAgeSeconds,
+} from "./operational-metrics.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
+import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 
 import {
   createLambdaResponseCapture,
@@ -37,13 +43,19 @@ type PlaneBundle = Awaited<ReturnType<typeof createControlPlane>>;
 type ManagementClient = Pick<ApiGatewayManagementApiClient, "send">;
 
 export type LambdaRuntime = {
-  cron: () => Promise<CronResult>;
+  /** Accept direct test/runtime context or the real AWS (event, context) pair. */
+  cron: (eventOrContext?: unknown, context?: LambdaCronContext) => Promise<CronResult>;
   rest: (event: HttpApiEvent) => Promise<HttpApiResponse>;
   websocket: (event: WebSocketEvent) => Promise<{ statusCode: number }>;
 };
 
+export type LambdaCronContext = {
+  getRemainingTimeInMillis?: () => number;
+};
+
 export type CronResult = {
   ackDeadlinesEnforced: number;
+  archivesRetried: number;
   runningTimeoutsEnforced: number;
   repositoriesReconciled: number;
   sessionDrainsReconciled: number;
@@ -154,6 +166,7 @@ async function postToHost(
       await plane.disconnectHostDurable(connectionId);
       return;
     }
+    if (message.type === "session:assign") emitAssignmentFailure();
     throw error;
   }
 }
@@ -265,10 +278,13 @@ export async function createLambdaRuntime(
   });
 
   return {
-    async cron() {
+    async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      const context =
+        lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
         // Bounded and resumable: never make Lambda initialization scan history.
         await created.plane.migrateSessionDrainActivityLedgerPage();
+        await created.plane.migrateArchiveRetryIndexPage();
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
@@ -277,10 +293,21 @@ export async function createLambdaRuntime(
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
+        const archivesRetried = await created.plane.retryPendingArchivesDurable(
+          25,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
+        );
+        const queuedForMetrics = await listQueuedSessionsDurableForMetric(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
+        emitCronSweepMetrics({
+          ackTimeouts: ackDeadlinesEnforced.length,
+          staleHosts: staleHostsReclaimed.length,
+          queueAgeSeconds: queuedSessionAgeSeconds(queuedForMetrics, Date.now()),
+        });
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
+          archivesRetried,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: assignments.queuedAssigned.length,
           repositoriesReconciled: repositoriesReconciled.length,
@@ -379,6 +406,14 @@ export async function createLambdaRuntime(
   };
 }
 
+function isLambdaCronContext(value: unknown): value is LambdaCronContext {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { getRemainingTimeInMillis?: unknown }).getRemainingTimeInMillis === "function"
+  );
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required in the Lambda runtime`);
@@ -403,8 +438,8 @@ export function createLambdaHandlers(
     return runtime;
   };
   return {
-    async cron() {
-      return (await getRuntime()).cron();
+    async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      return (await getRuntime()).cron(eventOrContext, lambdaContext);
     },
     async rest(event) {
       return (await getRuntime()).rest(event);

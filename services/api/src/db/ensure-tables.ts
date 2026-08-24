@@ -31,6 +31,7 @@ import {
 } from "./ensure-session-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
+import { ensureArchivesRetryIndex } from "./ensure-archive-retry-index.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
@@ -230,9 +231,24 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, {
     TableName: names.archives,
     BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [{ AttributeName: "key", AttributeType: ScalarAttributeType.S }],
+    AttributeDefinitions: [
+      { AttributeName: "key", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "retryState", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "retryOrder", AttributeType: ScalarAttributeType.S },
+    ],
     KeySchema: [{ AttributeName: "key", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "retryState-retryOrder",
+        KeySchema: [
+          { AttributeName: "retryState", KeyType: KeyType.HASH },
+          { AttributeName: "retryOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
   });
+  await ensureArchivesRetryIndex(ddb, names.archives);
 
   await createIfMissing(ddb, {
     TableName: names.hostInventories,

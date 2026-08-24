@@ -47,6 +47,33 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getHeartbeatStaleMs()).toBeLessThan(3600 * 1000);
   });
 
+  it("dispatches the next local session after a terminal host report", async () => {
+    let nextId = 0;
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      idFactory: () => `sess-${++nextId}`,
+      connectionIdFactory: () => "conn-1",
+      shardCount: 1,
+    });
+    seedBaseCommand(plane);
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/wt", labels: [] }],
+    });
+    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
+    expect(plane.assignQueued()).toHaveLength(1);
+    const first = plane.getSession("sess-1")!;
+    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
+    await plane.handleHostMessageDurable({
+      type: "session:status",
+      sessionId: first.id,
+      worktreeId: first.worktreeId!,
+      attemptId: first.attemptId!,
+      status: "completed",
+    });
+    expect(plane.getSession("sess-2")?.status).toBe("running");
+  });
+
   it("disconnect frees busy worktrees and prevents zombie assigns", () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",

@@ -10,6 +10,7 @@ import type {
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
+import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import type {
   ArchiveMetadata,
   ConnectionRecord,
@@ -120,6 +121,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
   state.providerAccountLeases.clear();
+  await backfillLegacyProviderAccountLeases(state, sessions);
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
     const lease = session.providerAccountLease;
@@ -127,7 +129,9 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     // terminal; queued leftover lease fields must not occupy a slot.
     if (
       !lease ||
-      (session.status !== "running" && !(session.status === "cancelled" && session.hostId))
+      (session.status !== "running" &&
+        !(session.status === "cancelled" && session.hostId) &&
+        !(session.status === "timed_out" && session.timedOutHostId))
     ) {
       continue;
     }
@@ -135,7 +139,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
       sessionId: session.id,
       attemptId: lease.attemptId,
       slot: lease.slot,
-      hostId: session.hostId ?? "",
+      hostId: session.hostId ?? session.timedOutHostId ?? "",
       providerAccountId: lease.providerAccountId,
     });
   }

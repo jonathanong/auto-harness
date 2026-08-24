@@ -12,7 +12,7 @@ import {
 
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistWorktree, queueWrite } from "./control-plane-state.ts";
+import { persistSession, persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
@@ -25,6 +25,10 @@ import {
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
+import {
+  releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLeasesForHost,
+} from "./control-plane-provider-account-leases.ts";
 
 type ListedHostRuntime = {
   daemonVersion: string | null;
@@ -810,7 +814,14 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
     state.drainingHosts.delete(hostId);
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
-  return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  const requeued = offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  for (const session of state.sessions.values()) {
+    if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
+    releaseProviderAccountLease(state, session);
+    delete session.timedOutHostId;
+    persistSession(state, session);
+  }
+  return requeued;
 }
 
 /** Durable disconnect cleans only work stamped by its exact lease, then
@@ -841,6 +852,7 @@ export async function disconnectHostDurable(
     connectionId,
     "agent disconnected; requeued",
   );
+  await releaseTimedOutProviderAccountLeasesForHost(state, conn.hostId);
   const released = await state.storage.releaseHostConnection(conn.hostId, connectionId);
   // releaseHostConnection's transaction cannot delete the connection row if
   // a replacement won its lock condition. The old connection id is globally
