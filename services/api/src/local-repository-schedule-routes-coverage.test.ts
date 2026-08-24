@@ -474,6 +474,68 @@ describe("repository and schedule route coverage", () => {
       ).status,
     ).toBe(404);
   });
+
+  it("stops scoped route mutations when their failure audit cannot be stored", async () => {
+    const denied = seededPlane();
+    denied.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const principal: Principal = {
+      id: "scoped",
+      kind: "service-account",
+      role: "operator",
+      allowedRepositoryIds: ["elsewhere"],
+    };
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          denied,
+          "POST",
+          "/api/v1/repositories/repository/pause",
+          {},
+          principal,
+        )
+      ).status,
+    ).toBe(500);
+
+    const repositoryDelete = seededPlane();
+    repositoryDelete.appendAuditLog = denied.appendAuditLog;
+    expect(
+      (await invoke(repositoryDelete, "DELETE", "/api/v1/repositories/repository")).status,
+    ).toBe(500);
+
+    const trigger = seededPlane();
+    trigger.appendAuditLog = denied.appendAuditLog;
+    trigger.triggerScheduleDurable = async () =>
+      ({
+        ok: true,
+        created: true,
+        session: { id: "session", repositoryId: "elsewhere" },
+      }) as never;
+    expect(
+      (
+        await invokeDirect(
+          handleScheduleRoutes,
+          trigger,
+          "POST",
+          "/api/v1/schedules/schedule/trigger",
+          {},
+          { ...principal, allowedRepositoryIds: ["repository"] },
+        )
+      ).status,
+    ).toBe(500);
+
+    const legacyDelete = seededPlane();
+    legacyDelete.getScheduleDurable = async () =>
+      ({
+        ...legacyDelete.state.schedules.get("schedule")!,
+        repositoryId: undefined,
+      }) as never;
+    legacyDelete.deleteScheduleDurable = async () => ({ ok: false, error: "missing" });
+    legacyDelete.appendAuditLog = denied.appendAuditLog;
+    expect((await invoke(legacyDelete, "DELETE", "/api/v1/schedules/schedule")).status).toBe(500);
+  });
 });
 
 async function invokeDirect(

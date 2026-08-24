@@ -1,6 +1,7 @@
+/* eslint-disable max-lines -- real start signal coverage shares one loopback harness. */
 import { createServer } from "node:http";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { emptyDaemonConfig } from "./bootstrap.ts";
@@ -155,6 +156,44 @@ describe("runCli start signal handling", () => {
       proc.fire("SIGINT");
       expect(await resultPromise).toBe(0);
     } finally {
+      await server.close();
+    }
+  });
+
+  it.each([
+    ["default timeout", {}],
+    ["invalid timeout", { HARNESS_SHUTDOWN_TIMEOUT_MS: "invalid" }],
+    ["positive timeout", { HARNESS_SHUTDOWN_TIMEOUT_MS: "1000" }],
+  ])("handles %s without optional start wiring", async (_name, timeoutEnv) => {
+    const server = await acceptingServer();
+    const on = vi.spyOn(process, "on");
+    const off = vi.spyOn(process, "off");
+    try {
+      const result = runCli(
+        ["node", "x", "start"],
+        {
+          ...timeoutEnv,
+          HARNESS_CHILD_ENV_ALLOWLIST: "",
+        },
+        minimalDeps({
+          loadConfig: async () =>
+            emptyDaemonConfig({
+              hostId: "cli-start-optional-test",
+              apiUrl: `http://127.0.0.1:${server.port}`,
+              logLevel: "info",
+            }),
+          ensureReady: async () => undefined,
+        }),
+      );
+      await waitFor(() => on.mock.calls.some(([event]) => event === "SIGINT"));
+      const handler = on.mock.calls.find(([event]) => event === "SIGINT")?.[1] as
+        | (() => void)
+        | undefined;
+      handler?.();
+      expect(await result).toBe(0);
+    } finally {
+      on.mockRestore();
+      off.mockRestore();
       await server.close();
     }
   });

@@ -447,4 +447,121 @@ describe("archive retry state", () => {
       '{"timestamp":"1","stream":"stdout","content":"new"}\n',
     ]);
   });
+
+  it("keeps a retry pointer if the archive writer disappears after uploading", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const writer = { putArchive };
+    const state = createControlPlaneState({
+      archiveWriter: writer,
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    let writerReads = 0;
+    Object.defineProperty(state, "archiveWriter", {
+      configurable: true,
+      get() {
+        writerReads += 1;
+        return writerReads <= 3 ? writer : undefined;
+      },
+    });
+
+    await archiveSessionLogs(state, "writer-gone");
+    expect(putArchive).toHaveBeenCalledOnce();
+    expect(state.archives.get("sessions/writer-gone/logs.jsonl")).toMatchObject({
+      status: "complete",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "2026-01-01T00:00:00.000Z#sessions/writer-gone/logs.jsonl",
+    });
+  });
+
+  it("includes processing retries and sorts missing retry orders by archive key", async () => {
+    const uploaded: string[] = [];
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async ({ key }) => void uploaded.push(key) },
+    });
+    for (const [sessionId, retryState] of [
+      ["missing-order-processing", "processing"],
+      ["missing-order-pending", "pending"],
+    ] as const) {
+      const key = `sessions/${sessionId}/logs.jsonl`;
+      state.archives.set(key, {
+        key,
+        contentType: "application/x-ndjson",
+        bodyBytes: 0,
+        status: "pending",
+        objectStored: false,
+        retryState,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    }
+
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(uploaded).toEqual([]);
+  });
+
+  it("stops a sweep before the next candidate and skips a declined durable claim", async () => {
+    const uploaded: string[] = [];
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async ({ key }) => void uploaded.push(key) },
+    });
+    state.archives.set("sessions/stopped/logs.jsonl", {
+      key: "sessions/stopped/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "one",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(retryPendingArchives(state, 25, () => false)).resolves.toBe(0);
+
+    const claimArchiveRetry = vi.fn(async () => false);
+    state.storage = {
+      listPendingArchives: async () => [
+        {
+          key: "sessions/declined/logs.jsonl",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "pending",
+          retryOrder: "two",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      claimArchiveRetry,
+    } as never;
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(claimArchiveRetry).toHaveBeenCalledOnce();
+    expect(uploaded).toEqual([]);
+  });
+
+  it("skips a local retry whose claim was replaced after the candidate page was read", async () => {
+    const uploaded: string[] = [];
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async ({ key }) => void uploaded.push(key) },
+    });
+    const key = "sessions/replaced-local-claim/logs.jsonl";
+    const original = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending" as const,
+      objectStored: false,
+      retryState: "pending" as const,
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    state.archives.set(key, original);
+
+    await expect(
+      retryPendingArchives(state, 25, () => {
+        state.archives.set(key, { ...original, retryOrder: "new-claim" });
+        return true;
+      }),
+    ).resolves.toBe(0);
+    expect(uploaded).toEqual([]);
+    expect(state.archives.get(key)?.retryOrder).toBe("new-claim");
+  });
 });
