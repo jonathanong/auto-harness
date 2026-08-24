@@ -4,7 +4,7 @@ type ClassPrototype = { prototype: object };
 export function bindServicePrototype(target: ClassPrototype, source: ClassPrototype): void {
   for (const name of Object.getOwnPropertyNames(source.prototype)) {
     if (name === "constructor") continue;
-    if (Object.prototype.hasOwnProperty.call(target.prototype, name)) continue;
+    if (Object.hasOwn(target.prototype, name)) continue;
     const descriptor = Object.getOwnPropertyDescriptor(source.prototype, name);
     if (!descriptor || typeof descriptor.value !== "function") continue;
     Object.defineProperty(target.prototype, name, descriptor);

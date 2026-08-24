@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import { ControlPlane, ControlPlaneBase } from "./control-plane.ts";
 
 describe("composed control-plane services", () => {
+  it("defaults host registration protocolVersion through the composed facade", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(plane.registerHost({ hostId: "host", worktrees: [], commandProfiles: [] })).toEqual({
+      ok: true,
+      connectionId: "connection",
+    });
+    expect(plane.state.connections.get("connection")?.protocolVersion).toBe(HOST_PROTOCOL_VERSION);
+  });
+
   it("exposes domain services and keeps facade method compatibility", async () => {
     const plane = new ControlPlane();
     expect(plane.sessions.state).toBe(plane.state);

@@ -6,6 +6,11 @@ import {
   suppressProviderlessUsageLimit,
 } from "./plane-storage-sessions-usage-limit.ts";
 
+function firstDefined<T>(primary: T | undefined, fallback: T | undefined): T | undefined {
+  if (primary !== undefined) return primary;
+  return fallback;
+}
+
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   exitCode?: number | null;
   errorCode?: string;
@@ -14,12 +19,10 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
 } {
   const finish = transitionEffect(plan, "finish");
   const requeue = transitionEffect(plan, "requeue");
-  const exitCode = finish?.exitCode !== undefined ? finish.exitCode : requeue?.exitCode;
-  const errorCode = finish?.errorCode !== undefined ? finish.errorCode : requeue?.errorCode;
-  const errorMessage =
-    finish?.errorMessage !== undefined ? finish.errorMessage : requeue?.errorMessage;
-  const cliResumeRef =
-    finish?.cliResumeRef !== undefined ? finish.cliResumeRef : requeue?.cliResumeRef;
+  const exitCode = firstDefined(finish?.exitCode, requeue?.exitCode);
+  const errorCode = firstDefined(finish?.errorCode, requeue?.errorCode);
+  const errorMessage = firstDefined(finish?.errorMessage, requeue?.errorMessage);
+  const cliResumeRef = firstDefined(finish?.cliResumeRef, requeue?.cliResumeRef);
   return {
     ...(exitCode !== undefined ? { exitCode } : {}),
     ...(errorCode !== undefined ? { errorCode } : {}),

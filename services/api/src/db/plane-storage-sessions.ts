@@ -15,7 +15,7 @@ export {
   listSessionsByRepository,
   countSessionsByRepository,
 } from "./plane-storage-sessions-query.ts";
-export { listSessionsByStatus } from "./plane-storage-sessions-queue.ts";
+export { expireQueuedSession, listSessionsByStatus } from "./plane-storage-sessions-queue.ts";
 export {
   putWorktree,
   deleteWorktree,
@@ -35,7 +35,7 @@ export {
 } from "./plane-storage-sessions-cancel.ts";
 export { releaseCancelledSessionWorktree } from "./plane-storage-sessions-cancel-release.ts";
 export { tryRequeueSession } from "./plane-storage-sessions-requeue.ts";
-export { finishSession, expireQueuedSession } from "./plane-storage-sessions-terminal.ts";
+export { finishSession } from "./plane-storage-sessions-terminal.ts";
 export {
   requeueUsageLimitedSession,
   suppressProviderlessUsageLimit,

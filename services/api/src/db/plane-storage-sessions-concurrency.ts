@@ -30,8 +30,69 @@ import {
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 
-function waitForCreateSessionRetry(attempt: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 2 ** attempt));
+type CreateSessionAdmissionParts = {
+  drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>;
+  activityPut: ReturnType<typeof sessionDrainActivityPut>;
+  principalCheck: ReturnType<typeof principalExistsCheck>;
+};
+
+async function throwIfCreateAdmissionConflict(
+  ctx: PlaneStorageCtx,
+  err: unknown,
+  session: SessionRecord,
+  markers: readonly DeletionMarker[],
+  parts: CreateSessionAdmissionParts,
+): Promise<void> {
+  if (!isConditionalTransactionFailed(err)) throw err;
+  const { drainCheck, principalCheck } = parts;
+  if (
+    markers.length > 0 &&
+    Array.from({ length: markers.length }, (_, index) => index).some((index) =>
+      isConditionalTransactionFailureAt(err, index),
+    )
+  ) {
+    throw new CatalogDeletionInProgressError();
+  }
+  const principalIndex = markers.length;
+  if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
+    throw new CatalogDeletionInProgressError();
+  }
+  const repositoryIndex = principalIndex + Number(!!principalCheck);
+  if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
+    throw new RepositoryAdmissionClosedError();
+  }
+  const drainIndex = repositoryIndex + 1;
+  if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
+    throw await activeSessionDrainError(ctx, session);
+  }
+}
+
+async function resolveConcurrencyLockConflict(
+  ctx: PlaneStorageCtx,
+  err: unknown,
+  session: SessionRecord,
+  lockIndex: number,
+): Promise<CreateSessionResult | "retry"> {
+  const lockConditionFailed = isConditionalTransactionFailureAt(err, lockIndex);
+  const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, lockIndex + 1);
+  // When both conditions lose, the active lock is authoritative: it may
+  // already own this same session ID and should still be returned as the
+  // duplicate. A session-only collision can never succeed on retry.
+  if (!lockConditionFailed && sessionIdConditionFailed) {
+    throw new SessionIdCollisionError(session.id);
+  }
+  const lock = await getConcurrencyLock(ctx, session.concurrencyId!);
+  if (!lock) {
+    if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
+    return "retry";
+  }
+  const current = await getSession(ctx, lock.sessionId, true);
+  if (current && (current.status === "queued" || current.status === "running")) {
+    return { created: false, session: current };
+  }
+  await releaseConcurrencyLock(ctx, session.concurrencyId!, lock.sessionId);
+  if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
+  return "retry";
 }
 
 export async function getConcurrencyLock(
@@ -75,11 +136,7 @@ export async function createSessionWithConcurrency(
   ctx: PlaneStorageCtx,
   session: SessionRecord,
   markers: readonly DeletionMarker[],
-  parts: {
-    drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>;
-    activityPut: ReturnType<typeof sessionDrainActivityPut>;
-    principalCheck: ReturnType<typeof principalExistsCheck>;
-  },
+  parts: CreateSessionAdmissionParts,
 ): Promise<CreateSessionResult> {
   const concurrencyId = session.concurrencyId!;
   const { drainCheck, activityPut, principalCheck } = parts;
@@ -120,52 +177,17 @@ export async function createSessionWithConcurrency(
       );
       return { created: true, session };
     } catch (err) {
-      if (!isConditionalTransactionFailed(err)) {
-        throw err;
+      await throwIfCreateAdmissionConflict(ctx, err, session, markers, parts);
+      const resolved = await resolveConcurrencyLockConflict(
+        ctx,
+        err,
+        session,
+        markers.length + Number(!!principalCheck) + 1 + Number(!!drainCheck),
+      );
+      if (resolved !== "retry") return resolved;
+      if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt));
       }
-      const markerCount = markers.length;
-      if (
-        markerCount &&
-        [...Array(markerCount).keys()].some((index) =>
-          isConditionalTransactionFailureAt(err, index),
-        )
-      ) {
-        throw new CatalogDeletionInProgressError();
-      }
-      const principalIndex = markerCount;
-      if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
-        throw new CatalogDeletionInProgressError();
-      }
-      const repositoryIndex = principalIndex + Number(!!principalCheck);
-      if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
-        throw new RepositoryAdmissionClosedError();
-      }
-      const drainIndex = repositoryIndex + 1;
-      if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
-        throw await activeSessionDrainError(ctx, session);
-      }
-      const lockIndex = drainIndex + Number(!!drainCheck);
-      const lockConditionFailed = isConditionalTransactionFailureAt(err, lockIndex);
-      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, lockIndex + 1);
-      // When both conditions lose, the active lock is authoritative: it may
-      // already own this same session ID and should still be returned as the
-      // duplicate. A session-only collision can never succeed on retry.
-      if (!lockConditionFailed && sessionIdConditionFailed) {
-        throw new SessionIdCollisionError(session.id);
-      }
-      const lock = await getConcurrencyLock(ctx, concurrencyId);
-      if (!lock) {
-        if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
-        if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) await waitForCreateSessionRetry(attempt);
-        continue;
-      }
-      const current = await getSession(ctx, lock.sessionId, true);
-      if (current && (current.status === "queued" || current.status === "running")) {
-        return { created: false, session: current };
-      }
-      await releaseConcurrencyLock(ctx, concurrencyId, lock.sessionId);
-      if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
-      if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) await waitForCreateSessionRetry(attempt);
     }
   }
   throw new CreateSessionRetryExhaustedError(concurrencyId);

@@ -21,6 +21,14 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
 
+function durableListRepositoryIds(requested: sessions.ListSessionsPageQuery): string[] | undefined {
+  if (!requested.repositoryId) return requested.scope?.repositoryIds;
+  if (!requested.scope?.repositoryIds) return [requested.repositoryId];
+  return requested.scope.repositoryIds.includes(requested.repositoryId)
+    ? [requested.repositoryId]
+    : [];
+}
+
 /** Session create/list/assign/resume/cancel and log/usage reads. */
 export class ControlPlaneSessionsService {
   constructor(readonly state: ControlPlaneState) {}
@@ -63,13 +71,7 @@ export class ControlPlaneSessionsService {
     query?: sessions.ListSessionsPageQuery,
   ): Promise<sessions.ListSessionsPageResult> {
     const requested = query ?? {};
-    const repositoryIds = requested.repositoryId
-      ? requested.scope?.repositoryIds
-        ? requested.scope.repositoryIds.includes(requested.repositoryId)
-          ? [requested.repositoryId]
-          : []
-        : [requested.repositoryId]
-      : requested.scope?.repositoryIds;
+    const repositoryIds = durableListRepositoryIds(requested);
     if (repositoryIds !== undefined) {
       const records = await durableRuntime.listSessionsForRepositoriesDurable(
         this.state,

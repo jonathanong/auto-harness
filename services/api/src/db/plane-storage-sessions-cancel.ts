@@ -12,6 +12,11 @@ import {
   sessionDrainActivityDelete,
   sessionDrainActivityForScope,
 } from "./plane-storage-session-drain-activity.ts";
+import {
+  drainCancelScope,
+  drainCancelledByClause,
+  writeCancelledSessionUpdate,
+} from "./plane-storage-session-cancel-write.ts";
 
 /** Atomically cancel queued work and release only the lock it owns. */
 export async function cancelQueuedSession(
@@ -101,14 +106,13 @@ export async function cancelRunningSession(
     drainPrincipalId?: string;
   },
 ): Promise<boolean> {
-  const drainUpdate = opts.drainOperationId
-    ? ", cancelledByDrainOperationId = :drainOperationId"
-    : "";
-  try {
-    const update = {
+  const drain = drainCancelScope(opts);
+  return writeCancelledSessionUpdate(
+    ctx,
+    {
       TableName: ctx.tables.sessions,
       Key: { id: opts.sessionId },
-      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainUpdate}`,
+      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)}`,
       ConditionExpression:
         "#s = :running AND worktreeId = :worktreeId AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId",
       ExpressionAttributeNames: { "#s": "status" },
@@ -124,26 +128,9 @@ export async function cancelRunningSession(
         ":attemptId": opts.attemptId,
         ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
       },
-    };
-    if (opts.drainOperationId && opts.drainRepositoryId && opts.drainPrincipalId) {
-      await ctx.doc.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            { Update: update },
-            ...sessionDrainCancellationUpdates(ctx, {
-              repositoryId: opts.drainRepositoryId,
-              principalId: opts.drainPrincipalId,
-              operationId: opts.drainOperationId,
-            }),
-          ],
-        }),
-      );
-    } else await ctx.doc.send(new UpdateCommand(update));
-    return true;
-  } catch (error) {
-    if (isConditionalFailed(error) || isConditionalTransactionFailed(error)) return false;
-    throw error;
-  }
+    },
+    drain,
+  );
 }
 
 /**

@@ -41,6 +41,39 @@ export async function putSession(ctx: PlaneStorageCtx, session: SessionRecord): 
  * rows are committed together, so separate control-plane processes cannot
  * both enqueue the same active task.
  */
+async function throwCreateSessionTransactionFailure(
+  ctx: PlaneStorageCtx,
+  err: unknown,
+  session: SessionRecord,
+  markers: readonly DeletionMarker[],
+  principalCheck: ReturnType<typeof principalExistsCheck>,
+  drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>,
+): Promise<never> {
+  if (!isConditionalTransactionFailed(err)) throw err;
+  const principalIndex = markers.length;
+  const repositoryIndex = principalIndex + Number(!!principalCheck);
+  const drainIndex = repositoryIndex + 1;
+  const sessionIndex = drainIndex + Number(!!drainCheck);
+  const markerFailed =
+    markers.length > 0 &&
+    Array.from({ length: markers.length }, (_, index) => index).some((index) =>
+      isConditionalTransactionFailureAt(err, index),
+    );
+  if ((principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) || markerFailed) {
+    throw new CatalogDeletionInProgressError();
+  }
+  if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
+    throw new RepositoryAdmissionClosedError();
+  }
+  if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
+    throw await activeSessionDrainError(ctx, session);
+  }
+  if (isConditionalTransactionFailureAt(err, sessionIndex)) {
+    throw new SessionIdCollisionError(session.id);
+  }
+  throw new CatalogDeletionInProgressError();
+}
+
 export async function createSession(
   ctx: PlaneStorageCtx,
   session: SessionRecord,
@@ -88,32 +121,14 @@ export async function createSession(
       }),
     );
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) {
-      const principalIndex = markers.length;
-      const repositoryIndex = principalIndex + Number(!!principalCheck);
-      const drainIndex = repositoryIndex + 1;
-      const sessionIndex = drainIndex + Number(!!drainCheck);
-      if (
-        (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) ||
-        (markers.length &&
-          Array.from({ length: markers.length }, (_, index) => index).some((index) =>
-            isConditionalTransactionFailureAt(err, index),
-          ))
-      ) {
-        throw new CatalogDeletionInProgressError();
-      }
-      if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
-        throw new RepositoryAdmissionClosedError();
-      }
-      if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
-        throw await activeSessionDrainError(ctx, session);
-      }
-      if (isConditionalTransactionFailureAt(err, sessionIndex)) {
-        throw new SessionIdCollisionError(session.id);
-      }
-      throw new CatalogDeletionInProgressError();
-    }
-    throw err;
+    await throwCreateSessionTransactionFailure(
+      ctx,
+      err,
+      session,
+      markers,
+      principalCheck,
+      drainCheck,
+    );
   }
   return { created: true, session };
 }

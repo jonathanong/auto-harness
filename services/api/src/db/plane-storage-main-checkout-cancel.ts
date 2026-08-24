@@ -1,12 +1,10 @@
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-
 import { statusShardAttr } from "./dynamo.ts";
+import { type PlaneStorageCtx } from "./plane-storage-types.ts";
 import {
-  isConditionalFailed,
-  isConditionalTransactionFailed,
-  type PlaneStorageCtx,
-} from "./plane-storage-types.ts";
-import { sessionDrainCancellationUpdates } from "./plane-storage-session-drains.ts";
+  drainCancelScope,
+  drainCancelledByClause,
+  writeCancelledSessionUpdate,
+} from "./plane-storage-session-cancel-write.ts";
 
 /** Mark one exact running main-checkout attempt cancelled without releasing its lease. */
 export async function cancelRunningMainCheckoutSession(
@@ -25,14 +23,12 @@ export async function cancelRunningMainCheckoutSession(
     drainPrincipalId?: string;
   },
 ): Promise<boolean> {
-  const drainUpdate = opts.drainOperationId
-    ? ", cancelledByDrainOperationId = :drainOperationId"
-    : "";
-  try {
-    const update = {
+  return writeCancelledSessionUpdate(
+    ctx,
+    {
       TableName: ctx.tables.sessions,
       Key: { id: opts.sessionId },
-      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage${drainUpdate}`,
+      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)}`,
       ConditionExpression:
         "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId AND worktreeId = :null AND mainCheckoutLease = :true",
       ExpressionAttributeNames: { "#s": "status" },
@@ -50,24 +46,7 @@ export async function cancelRunningMainCheckoutSession(
         ":true": true,
         ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
       },
-    };
-    if (opts.drainOperationId && opts.drainRepositoryId && opts.drainPrincipalId) {
-      await ctx.doc.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            { Update: update },
-            ...sessionDrainCancellationUpdates(ctx, {
-              repositoryId: opts.drainRepositoryId,
-              principalId: opts.drainPrincipalId,
-              operationId: opts.drainOperationId,
-            }),
-          ],
-        }),
-      );
-    } else await ctx.doc.send(new UpdateCommand(update));
-    return true;
-  } catch (error) {
-    if (isConditionalFailed(error) || isConditionalTransactionFailed(error)) return false;
-    throw error;
-  }
+    },
+    drainCancelScope(opts),
+  );
 }
