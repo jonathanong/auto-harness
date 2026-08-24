@@ -103,6 +103,7 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
       errorMessage: opts.errorMessage,
       hostId: null,
       worktreeId: null,
+      queueOrder: expect.any(String),
     });
     expect(await requeueMainCheckoutUsageLimitedSession(ctx, opts)).toBe(false);
   });
