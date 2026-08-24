@@ -8,6 +8,7 @@
     "restriction": "off"
   },
   "rules": {
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "max-lines": [
       "error",
       {
