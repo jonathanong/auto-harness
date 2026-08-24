@@ -131,10 +131,12 @@ daemon drops further stdout/stderr and later emits a system frame:
 }
 ```
 
-`dropped` is bounded machine-readable telemetry (`0…1_000_000`). Control-plane alarming on
-it is follow-up work; ingest already persists the field. System/lifecycle lines are not
-dropped and flush any coalesced stdout/stderr ahead of themselves so a terminal
-`session:status` cannot overtake logs.
+`dropped` is bounded machine-readable telemetry (`0…1_000_000`). If more chunks were
+dropped than that, the daemon sends further notices with the remainder. Control-plane
+alarming on it is follow-up work; ingest already persists the field. System/lifecycle
+lines are not dropped (including after session-wide stdout/stderr caps) and flush any
+coalesced stdout/stderr ahead of themselves so a terminal `session:status` cannot
+overtake logs.
 
 Modern daemons advertise `protocolVersion` (currently `1`) and `runningAttempts: [{ sessionId, attemptId }]`.
 A missing `protocolVersion` is a legacy daemon (version 0): it may finish the attempts it reports

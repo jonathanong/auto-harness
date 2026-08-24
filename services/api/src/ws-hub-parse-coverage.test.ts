@@ -1,6 +1,8 @@
 /* eslint-disable max-lines -- protocolVersion/runningAttempts invalid cases. */
 import { describe, expect, it } from "vitest";
 
+import { MAX_SESSION_LOG_DROPPED } from "@auto-harness/shared";
+
 import { parseHostMessage } from "./ws-hub.ts";
 
 const worktree = {
@@ -69,6 +71,10 @@ describe("parseHostMessage exhaustive wire validation", () => {
     expect(parseHostMessage({ ...status, exitCode: 0 })).toMatchObject({ exitCode: 0 });
     expect(parseHostMessage(log)).toEqual(log);
     expect(parseHostMessage({ ...log, dropped: 4 })).toEqual({ ...log, dropped: 4 });
+    expect(parseHostMessage({ ...log, dropped: MAX_SESSION_LOG_DROPPED })).toEqual({
+      ...log,
+      dropped: MAX_SESSION_LOG_DROPPED,
+    });
     const legacyLog = { ...log, attemptId: undefined };
     delete (legacyLog as { attemptId?: string }).attemptId;
     expect(parseHostMessage(legacyLog)).toBe(null);
@@ -217,7 +223,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...log, dropped: -1 },
       { ...log, dropped: 1.5 },
       { ...log, dropped: "1" },
-      { ...log, dropped: 1_000_001 },
+      { ...log, dropped: MAX_SESSION_LOG_DROPPED + 1 },
       { type: "host:keepalive", hostId: "", at: "2026-08-11T00:00:00.000Z" },
       { type: "host:keepalive", hostId: "h", at: "" },
       { type: "host:keepalive", hostId: "h", at: "not-a-time" },

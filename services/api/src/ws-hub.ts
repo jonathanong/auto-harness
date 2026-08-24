@@ -5,6 +5,7 @@ import type { Duplex } from "node:stream";
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
   HOST_CAPABILITIES,
+  MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostCapability,
   isHostRunningAttempt,
@@ -453,7 +454,7 @@ export function parseHostMessage(
         (typeof dropped === "number" &&
           Number.isSafeInteger(dropped) &&
           dropped >= 0 &&
-          dropped <= 1_000_000);
+          dropped <= MAX_SESSION_LOG_DROPPED);
       return boundedText(message.sessionId) &&
         attemptIdOk &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&

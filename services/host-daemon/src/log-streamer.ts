@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- coalescing, rate, and drop telemetry share one pending batch. */
-import { formatLogSortKey } from "@auto-harness/shared";
+import { formatLogSortKey, MAX_SESSION_LOG_DROPPED } from "@auto-harness/shared";
 import type { LogStream, SessionLogChunk } from "@auto-harness/shared";
 
 import {
@@ -29,6 +29,7 @@ export type LogLimits = {
   logBatchMaxLines?: number;
   logBatchMaxWaitMs?: number;
   maxMessagesPerSec?: number;
+  maxDroppedPerNotice?: number;
 };
 
 export type LogStreamerTimers = {
@@ -55,6 +56,7 @@ export class LogStreamer {
   private readonly maxWireBytes: number;
   private readonly logBatchMaxLines: number;
   private readonly logBatchMaxWaitMs: number;
+  private readonly maxDroppedPerNotice: number;
   private readonly rate: LogRateWindow;
   private emittedChunks = 0;
   private emittedBytes = 0;
@@ -86,6 +88,7 @@ export class LogStreamer {
     this.maxWireBytes = limits.maxWireBytes ?? DEFAULT_MAX_WIRE_BYTES;
     this.logBatchMaxLines = limits.logBatchMaxLines ?? DEFAULT_LOG_BATCH_MAX_LINES;
     this.logBatchMaxWaitMs = limits.logBatchMaxWaitMs ?? DEFAULT_LOG_BATCH_MAX_WAIT_MS;
+    this.maxDroppedPerNotice = Math.max(1, limits.maxDroppedPerNotice ?? MAX_SESSION_LOG_DROPPED);
     this.rate = new LogRateWindow(
       limits.maxMessagesPerSec ?? DEFAULT_LOG_MESSAGES_PER_SEC,
       this.nowMs,
@@ -121,8 +124,8 @@ export class LogStreamer {
   private writeAt(stream: LogStream, content: string, timestamp: string): SessionLogChunk | null {
     const force = stream === "system";
     let last: SessionLogChunk | null = force ? this.flushPending(true) : null;
-    if (this.emittedChunks >= this.maxChunks && !this.pending) return last;
-    const bounded = truncateUtf8(content, this.remainingBytes());
+    if (!force && this.emittedChunks >= this.maxChunks && !this.pending) return last;
+    const bounded = force ? content : truncateUtf8(content, this.remainingBytes());
     if (bounded.length === 0) return last;
     for (const piece of splitUtf8(bounded, this.maxWireBytes)) {
       const emitted = this.enqueuePiece(stream, piece, timestamp, force);
@@ -164,7 +167,7 @@ export class LogStreamer {
         return last;
       }
     }
-    if (this.emittedChunks >= this.maxChunks) return last;
+    if (!force && this.emittedChunks >= this.maxChunks) return last;
     this.pending = startBatch(stream, piece, timestamp);
     this.pendingSinceMs = this.nowMs();
     return force ? this.flushPending(true) : last;
@@ -197,15 +200,22 @@ export class LogStreamer {
   }
 
   private flushDropNotice(force: boolean): SessionLogChunk | null {
-    if (this.unsentDropped === 0) return null;
-    if (!force && !this.rate.canEmit()) {
-      this.scheduleFlush();
-      return null;
+    let last: SessionLogChunk | null = null;
+    while (this.unsentDropped > 0) {
+      if (!force && last) {
+        this.scheduleFlush();
+        return last;
+      }
+      if (!force && !this.rate.canEmit()) {
+        this.scheduleFlush();
+        return last;
+      }
+      if (!force && this.emittedChunks >= this.maxChunks) return last;
+      const count = Math.min(this.unsentDropped, this.maxDroppedPerNotice);
+      this.unsentDropped -= count;
+      last = this.emitRaw("system", formatDroppedLogNotice(count), this.now(), count);
     }
-    if (this.emittedChunks >= this.maxChunks && !force) return null;
-    const count = this.unsentDropped;
-    this.unsentDropped = 0;
-    return this.emitRaw("system", formatDroppedLogNotice(count), this.now(), count);
+    return last;
   }
 
   private emitChunk(stream: LogStream, content: string, timestamp: string): SessionLogChunk {

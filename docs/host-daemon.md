@@ -351,7 +351,9 @@ Account cooldown is not a general retry policy: ordinary command failures, timeo
   bound and the ~10 msg/s budget is exhausted, drop further stdout/stderr and emit a
   system warning `N log chunk(s) dropped` with machine-readable `dropped: N` telemetry
   the control plane can later alarm on. Session-wide chunk/byte caps remain silent (no
-  `dropped` counter); they bound retained logs, not the live rate.
+  `dropped` counter); they bound retained stdout/stderr, not the live rate. System and
+  lifecycle lines still stream after those caps so failure/completion messages are not lost.
+  Each `dropped` notice is capped at 1_000_000; remainder is sent on later notices.
 
 Control plane persists logs and fans out to UI subscribers ([aws.md](aws.md)).
 
