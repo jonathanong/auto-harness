@@ -314,4 +314,30 @@ describe("DaemonLoop outbound delivery", () => {
       cleanup();
     }
   });
+
+  it("refuses a new assignment when git is not ready", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const logs: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => logs.push(line),
+        runtime: {
+          daemonVersion: "test",
+          gitVersion: null,
+          gitReady: false,
+          gitReadinessReason: "git_not_found",
+        },
+      });
+      await loop.start();
+      transport.deliver(seqAssign("attempt-seq-unready"));
+      await loop.waitForIdle();
+      expect(logs.some((line) => line.includes("git not ready"))).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

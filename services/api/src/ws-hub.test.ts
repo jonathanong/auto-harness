@@ -627,4 +627,50 @@ describe("createPlaneWsBridge", () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
   });
+
+  it("rejects a log for a session that is not in the control plane", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "orphan-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        ws.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "missing",
+            attemptId: "attempt-1",
+            stream: "stdout",
+            content: "orphan",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+      });
+      ws.on("close", (code) => resolve(code));
+      ws.on("error", reject);
+    });
+    expect(closeCode).toBe(1008);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
 });
