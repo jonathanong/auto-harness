@@ -44,6 +44,8 @@ export type ProcessResult = {
   signal: NodeJS.Signals | null;
   /** Supplied by a provider-aware CLI adapter; never inferred from output. */
   usage?: SessionUsage;
+  /** Adapter-supplied vendor quota; never inferred from untrusted output. */
+  usageLimit?: boolean;
   /** Exported environment captured after a trusted setup script succeeds. */
   environment?: NodeJS.ProcessEnv;
 };

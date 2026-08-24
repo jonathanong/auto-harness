@@ -117,7 +117,7 @@ describe("SessionRunner success paths", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it("marks usage_limit when output matches", async () => {
+  it("marks usage_limit when a failed provider CLI matches vendor output", async () => {
     const runner: ProcessRunner = {
       async run(opts) {
         opts.onChunk({
@@ -128,7 +128,9 @@ describe("SessionRunner success paths", () => {
       },
     };
     const { sessionRunner, hooks } = setup(runner);
-    const result = await sessionRunner.run(baseAssign({ resolvedArgv: ["usage"] }));
+    const result = await sessionRunner.run(
+      baseAssign({ resolvedArgv: ["codex", "exec"], providerAccountId: "acct-1" }),
+    );
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("usage_limit");
     expect(hooks).toEqual(["failed"]);
