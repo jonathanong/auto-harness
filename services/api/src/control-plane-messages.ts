@@ -81,6 +81,7 @@ function logRecord(opts: {
   content: string;
   timestamp: string;
   seq: number;
+  dropped?: number;
 }): LogRecord {
   return {
     sessionId: opts.sessionId,
@@ -89,6 +90,7 @@ function logRecord(opts: {
     content: opts.content,
     timestamp: opts.timestamp,
     seq: opts.seq,
+    ...(opts.dropped !== undefined ? { dropped: opts.dropped } : {}),
     ttl: sessionLogsTtlEpochSeconds(),
   };
 }
@@ -216,6 +218,7 @@ export function appendLog(
     content: string;
     timestamp: string;
     seq: number;
+    dropped?: number;
   },
 ): LogRecord {
   const rec = logRecord(opts);
@@ -239,6 +242,7 @@ export async function appendLogDurable(
     content: string;
     timestamp: string;
     seq: number;
+    dropped?: number;
   },
 ): Promise<LogRecord> {
   const rec = logRecord(opts);
@@ -399,6 +403,7 @@ export function handleHostMessage(
         content: msg.content,
         timestamp: msg.timestamp,
         seq: msg.seq,
+        ...(msg.dropped !== undefined ? { dropped: msg.dropped } : {}),
       });
       return { ok: true };
     }

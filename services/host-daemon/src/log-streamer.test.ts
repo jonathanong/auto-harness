@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { LogStreamer } from "./log-streamer.ts";
+import { LogStreamer, type LogLimits } from "./log-streamer.ts";
+
+const immediate: LogLimits = { logBatchMaxWaitMs: 0, maxMessagesPerSec: 10_000 };
 
 describe("LogStreamer", () => {
   it("assigns monotonic seq for same timestamp", () => {
@@ -12,6 +14,8 @@ describe("LogStreamer", () => {
         chunks.push({ seq: c.seq, sk: streamer.sortKey(c) });
       },
       () => "2026-08-01T12:00:00.000Z",
+      0,
+      immediate,
     );
     streamer.write("stdout", "a");
     streamer.write("stdout", "b");
@@ -27,6 +31,8 @@ describe("LogStreamer", () => {
       "attempt-1",
       (chunk) => chunks.push(chunk),
       () => "2026-08-01T12:00:05.000Z",
+      0,
+      immediate,
     );
     streamer.writeTimestampedSystem("Session started");
     expect(chunks).toEqual([
@@ -46,7 +52,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
-      { maxChunks: 2, maxBytes: 5 },
+      { ...immediate, maxChunks: 2, maxBytes: 5 },
     );
     streamer.write("stdout", "ééé");
     streamer.write("stdout", "x");
@@ -57,6 +63,7 @@ describe("LogStreamer", () => {
 
   it("drops a character that cannot fit into the remaining byte budget", () => {
     const streamer = new LogStreamer("sess-1", "attempt-1", () => undefined, undefined, 0, {
+      ...immediate,
       maxBytes: 1,
     });
     expect(streamer.write("stdout", "é")).toBeNull();
@@ -70,7 +77,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push(chunk.seq),
       undefined,
       10_000,
-      { maxChunks: 2 },
+      { ...immediate, maxChunks: 2 },
     );
     streamer.write("stdout", "a");
     streamer.write("stdout", "b");
@@ -86,7 +93,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push({ content: chunk.content, seq: chunk.seq }),
       () => "2026-08-01T12:00:00.000Z",
       0,
-      { maxWireBytes: 10 },
+      { ...immediate, maxWireBytes: 10 },
     );
     const last = streamer.write("stdout", "abcdefghijklmnopqrstuvwxyz");
     // 26 bytes split into 10-byte pieces: three full pieces of 10 plus a final 6.
@@ -105,7 +112,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
-      { maxWireBytes: 5 },
+      { ...immediate, maxWireBytes: 5 },
     );
     // "éé" is 4 bytes (2 each); "é" landing 5th would overflow a 5-byte piece, so it must
     // start a new piece rather than being split mid-character.
@@ -124,7 +131,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
-      { maxWireBytes: 1, maxChunks: 2 },
+      { ...immediate, maxWireBytes: 1, maxChunks: 2 },
     );
     const last = streamer.write("stdout", "abcd");
     expect(chunks).toEqual(["a", "b"]);
@@ -139,7 +146,7 @@ describe("LogStreamer", () => {
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
-      { maxWireBytes: 3, maxBytes: 7 },
+      { ...immediate, maxWireBytes: 3, maxBytes: 7 },
     );
     const last = streamer.write("stdout", "abcdefghij");
     // The 10-char write is first bounded to the 7-byte session budget ("abcdefg"), then that
@@ -151,7 +158,14 @@ describe("LogStreamer", () => {
 
   it("keeps the default wire budget under API Gateway's 32 KB per-frame limit even for worst-case JSON-escaped content", () => {
     const chunks: string[] = [];
-    const streamer = new LogStreamer("sess-1", "attempt-1", (chunk) => chunks.push(chunk.content));
+    const streamer = new LogStreamer(
+      "sess-1",
+      "attempt-1",
+      (chunk) => chunks.push(chunk.content),
+      undefined,
+      0,
+      immediate,
+    );
     // Every char here JSON-escapes to a six-byte \u00XX sequence — the adversarial case
     // the default budget is sized against, not typical CLI/terminal output.
     const controlByte = String.fromCharCode(1);

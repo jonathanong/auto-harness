@@ -37,6 +37,7 @@ export async function failSession(
   errorMessage: string,
   exitCode: number | null,
 ): Promise<SessionRunResult> {
+  streamer.flush();
   streamer.write("system", errorMessage);
   streamer.writeTimestampedSystem("Session failed");
   return {
@@ -59,6 +60,7 @@ export async function finishSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
+  streamer.flush();
   if (hookScript) {
     await runTerminalHook(processRunner, {
       scriptPath: hookScript,

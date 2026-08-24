@@ -53,6 +53,8 @@ export type SessionLogChunk = {
   content: string;
   timestamp: string;
   seq: number;
+  /** Source-side chunks dropped immediately before this frame. */
+  dropped?: number;
 };
 
 export type SessionTerminalStatus = Extract<
@@ -190,6 +192,8 @@ export type HostToServerMessage =
       content: string;
       timestamp: string;
       seq: number;
+      /** Source-side chunks dropped immediately before this frame. */
+      dropped?: number;
     }
   /** One-way, connection-fenced request to remove this host from scheduling. */
   | { type: "host:status"; hostId: string; draining: true }

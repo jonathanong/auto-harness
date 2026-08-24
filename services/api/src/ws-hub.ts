@@ -5,6 +5,7 @@ import type { Duplex } from "node:stream";
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
   HOST_CAPABILITIES,
+  MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostCapability,
   isHostRunningAttempt,
@@ -447,6 +448,13 @@ export function parseHostMessage(
       const attemptIdOk =
         boundedText(message.attemptId) ||
         (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
+      const dropped = message.dropped;
+      const droppedOk =
+        dropped === undefined ||
+        (typeof dropped === "number" &&
+          Number.isSafeInteger(dropped) &&
+          dropped >= 0 &&
+          dropped <= MAX_SESSION_LOG_DROPPED);
       return boundedText(message.sessionId) &&
         attemptIdOk &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
@@ -455,7 +463,8 @@ export function parseHostMessage(
         boundedText(timestamp, 128) &&
         Number.isSafeInteger(message.seq) &&
         (message.seq as number) >= 0 &&
-        Number.isFinite(Date.parse(timestamp))
+        Number.isFinite(Date.parse(timestamp)) &&
+        droppedOk
         ? (message as HostToServerMessage)
         : null;
     }

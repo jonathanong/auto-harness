@@ -75,6 +75,9 @@ export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 /** Current host control-channel protocol advertised by modern daemons. */
 export const HOST_PROTOCOL_VERSION = 1;
 
+/** Wire bound for `session:log.dropped` (docs/websocket.md). */
+export const MAX_SESSION_LOG_DROPPED = 1_000_000;
+
 /**
  * Daemons below this version may finish `runningAttempts` but receive no new
  * `session:assign` once attempt-fenced scheduling is enabled.

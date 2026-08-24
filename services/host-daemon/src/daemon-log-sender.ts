@@ -9,15 +9,19 @@ export async function sendDaemonLog(
 ): Promise<void> {
   onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
   await outbound
-    .send({
-      type: "session:log",
-      sessionId: chunk.sessionId,
-      attemptId: chunk.attemptId,
-      stream: chunk.stream,
-      content: chunk.content,
-      timestamp: chunk.timestamp,
-      seq: chunk.seq,
-    })
+    .send(
+      {
+        type: "session:log",
+        sessionId: chunk.sessionId,
+        attemptId: chunk.attemptId,
+        stream: chunk.stream,
+        content: chunk.content,
+        timestamp: chunk.timestamp,
+        seq: chunk.seq,
+        ...(chunk.dropped !== undefined ? { dropped: chunk.dropped } : {}),
+      },
+      chunk.stream === "system" ? { nonDroppable: true } : undefined,
+    )
     .catch((err: unknown) => {
       onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);
     });
