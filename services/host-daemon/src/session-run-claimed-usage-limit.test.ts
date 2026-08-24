@@ -96,6 +96,21 @@ describe("claimed session usage-limit classification", () => {
     expect(outcome.errorCode).toBeUndefined();
   });
 
+  it("reports usage_limit for Claude CLI weekly-limit stdout", async () => {
+    await expect(
+      runClaimed(
+        baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }),
+        outputRunner("You've hit your weekly limit · resets 12pm (America/Los_Angeles)\n", {
+          exitCode: 1,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "Usage limit detected in CLI output",
+    });
+  });
+
   it("reports usage_limit for a genuine Codex limit on a failed run", async () => {
     await expect(
       runClaimed(

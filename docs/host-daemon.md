@@ -314,12 +314,12 @@ Providerless commands (`providerId: null`, no `providerAccountId`) and unknown e
 
 Classification keys off a provider-backed assignment (`providerAccountId`) plus the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
 
-| Trusted executable | Example signals in failed CLI output                                                   |
-| ------------------ | -------------------------------------------------------------------------------------- |
-| `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`          |
-| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your session/weekly/Opus limit`  |
-| `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota` |
-| `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`         |
+| Trusted executable | Example signals in failed CLI output                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`                                |
+| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your weekly limit · resets 12pm (America/Los_Angeles)` |
+| `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota`                       |
+| `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`                               |
 
 Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success, on unknown/providerless argv, and when the assignment has no `providerAccountId`.
 

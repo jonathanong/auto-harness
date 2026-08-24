@@ -91,6 +91,11 @@ describe("detectUsageLimit", () => {
       { argv: ["claude"], output: "You have hit your monthly limit", expected: "output" },
       { argv: ["claude"], output: "You've hit your session limit", expected: "output" },
       { argv: ["claude"], output: "You've hit your weekly limit", expected: "output" },
+      {
+        argv: ["claude"],
+        output: "You've hit your weekly limit · resets 12pm (America/Los_Angeles)\n",
+        expected: "output",
+      },
       { argv: ["claude"], output: "You've hit your Opus limit", expected: "output" },
       { argv: ["gemini"], output: '{"error":{"status":"RESOURCE_EXHAUSTED"}}', expected: "output" },
       {
