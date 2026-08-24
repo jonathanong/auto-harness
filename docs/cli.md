@@ -41,7 +41,8 @@ pnpm local:cli-e2e
 Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`. Optional
 `HARNESS_EXECUTION_PROFILES` points at a daemon-local JSON file of per-account CLI homes
 (credentials never leave the host). For `install-service`, use an absolute profile path; relative
-paths are refused rather than being tied to the supervisor working directory. Optional
+paths are refused rather than being tied to the supervisor working directory. Unknown top-level
+or per-profile JSON keys are rejected. Optional
 `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
 host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`.
 

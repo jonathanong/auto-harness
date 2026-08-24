@@ -162,7 +162,8 @@ is durable local observability only: it neither restarts the host nor sends an e
   advertises only `ready` plus an opaque SHA-256 fingerprint of
   the home path and extra-env key names (values omitted) — never credentials, home paths, or env
   values. Assignment of a provider-backed session is refused (no ACK) when the exact account
-  profile is missing or its home is not a directory.
+  profile is missing or its home is not a directory. Unknown top-level or per-profile JSON keys
+  are rejected so misspelled configuration cannot silently disable a profile.
 
 ```json
 {

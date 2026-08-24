@@ -4,6 +4,7 @@ import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { compareSessionsForQueue } from "./control-plane-ordering.ts";
 import { refreshAssignmentReadinessDurable } from "./control-plane-assignment-readiness.ts";
+import { refreshAssignmentCommandsDurable } from "./control-plane-assignment-command-refresh.ts";
 import {
   listQueuedSessionsDurable,
   refreshSchedulerReadModel,
@@ -61,6 +62,7 @@ export async function assignQueuedAndScheduledDurable(
       // Bound event-path reads while making every unrefreshed profile fail
       // closed until the complete cron repair refreshes the whole model.
       await refreshAssignmentReadinessDurable(state, maxSessions);
+      await refreshAssignmentCommandsDurable(state, [...promptQueued, ...scheduledQueued]);
     }
     queued = [...promptQueued, ...scheduledQueued].toSorted(compareSessionsForQueue);
   } else {

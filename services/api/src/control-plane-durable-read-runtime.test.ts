@@ -12,6 +12,7 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
+import { refreshAssignmentCommandsDurable } from "./control-plane-durable-read-catalog.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import { accountHasLeaseCapacity } from "./control-plane-provider-account-leases.ts";
@@ -45,6 +46,15 @@ const worktree = {
   status: "idle" as const,
   online: true,
 };
+const commandRecord = (id: string) => ({
+  id,
+  name: id,
+  argv: [id],
+  appendPrompt: true,
+  providerId: null,
+  createdAt: "now",
+  updatedAt: "now",
+});
 
 describe("durable runtime read-through", () => {
   it("keeps the base durable session facade available to subclasses", async () => {
@@ -52,6 +62,111 @@ describe("durable runtime read-through", () => {
     plane.state.sessions.set(session.id, { ...session });
 
     await expect(plane.getSessionDurable(session.id)).resolves.toMatchObject({ id: session.id });
+  });
+
+  it("refreshes only command rows referenced by bounded assignment candidates", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    const command = {
+      id: "command",
+      name: "fresh",
+      argv: ["fresh"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    state.commands.set(command.id, { ...command, name: "stale" });
+    state.storage = {
+      getCommand: async (id: string) => (id === command.id ? command : null),
+    } as never;
+
+    await refreshAssignmentCommandsDurable(state, [
+      { ...session, target: { commandId: command.id } },
+    ]);
+
+    expect(state.commands.get(command.id)).toEqual(command);
+    state.storage = { getCommand: async () => null } as never;
+    await refreshAssignmentCommandsDurable(state, [
+      { ...session, target: { commandId: command.id } },
+    ]);
+    expect(state.commands.has(command.id)).toBe(false);
+  });
+
+  it("refreshes the provider command cascade for a bounded candidate", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    state.connections.set("connection", {
+      connectionId: "connection",
+      type: "host",
+      hostId: "host",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+      repositoryIds: ["repository"],
+    });
+    state.worktrees.set("worktree", {
+      id: "worktree",
+      name: "worktree",
+      hostId: "host",
+      repositoryId: "repository",
+      path: "/worktree",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    const inventory = {
+      hostId: "host",
+      repositories: [
+        {
+          id: "repository",
+          path: "/repo",
+          defaultBranch: "main",
+          providerAccountOverrides: { account: { commandId: "cmd-repository" } },
+          worktrees: [
+            {
+              id: "worktree",
+              name: "worktree",
+              path: "/worktree",
+              labels: [],
+              providerAccountOverrides: { account: { commandId: "cmd-worktree" } },
+            },
+          ],
+        },
+      ],
+      providerAccounts: [{ providerAccountId: "account", commandId: "cmd-host" }],
+      updatedAt: "now",
+    };
+    state.storage = {
+      getHostInventory: async () => inventory,
+      getProviderAccount: async () => ({
+        id: "account",
+        providerId: "provider",
+        label: "account",
+        usageLimitCooldownSeconds: 60,
+        maxConcurrentSessions: 1,
+        usageLimitedUntil: null,
+        lastUsageLimitedAt: null,
+        lastAssignedAt: null,
+        createdAt: "now",
+        updatedAt: "now",
+      }),
+      getProvider: async () => ({
+        id: "provider",
+        name: "provider",
+        defaultCommandId: "cmd-default",
+        createdAt: "now",
+        updatedAt: "now",
+      }),
+      getCommand: async (id: string) => commandRecord(id),
+    } as never;
+
+    const refreshed = await refreshAssignmentCommandsDurable(
+      state,
+      [{ ...session, target: { providerId: "provider" } }],
+      10,
+    );
+
+    expect([...refreshed]).toEqual(
+      expect.arrayContaining(["cmd-host", "cmd-repository", "cmd-worktree", "cmd-default"]),
+    );
   });
 
   it("reads the base durable session facade from storage", async () => {
@@ -464,6 +579,44 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
     expect(state.sessions.get(session.id)).toEqual(assigned);
+  });
+
+  it("strongly revalidates a queued GSI row whose cache says running", async () => {
+    const gsiRow = { ...session, id: "requeued", status: "queued" as const };
+    const authoritative = { ...gsiRow, errorMessage: "requeued" };
+    const getSession = async (id: string, consistent?: boolean) => {
+      expect(consistent).toBe(true);
+      return id === gsiRow.id ? authoritative : null;
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, { ...gsiRow, status: "running" });
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([
+      authoritative,
+    ]);
+    expect(state.sessions.get(gsiRow.id)).toEqual(authoritative);
+  });
+
+  it("drops a stale queued GSI row when its authoritative row is still running", async () => {
+    const gsiRow = { ...session, id: "stale-running", status: "queued" as const };
+    const authoritative = { ...gsiRow, status: "running" as const };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession: async () => authoritative,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, authoritative);
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([]);
+    expect(state.sessions.get(gsiRow.id)).toEqual(authoritative);
   });
 
   it("uses only durable queue rows for queue age metrics", async () => {

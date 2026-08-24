@@ -136,11 +136,16 @@ describe("requestAssignment", () => {
       }).ok,
     ).toBe(true);
     const connection = [...plane.state.connections.values()][0]!;
+    let commandReads = 0;
     setDurableReadStorage(plane.state, {
       getConnection: async () => ({
         ...connection,
         providerAccountReadiness: [{ providerAccountId: "account", ready: false }],
       }),
+      getCommand: async () => {
+        commandReads += 1;
+        return plane.state.commands.get("command") ?? null;
+      },
     });
 
     await requestAssignment(plane.state);
@@ -149,6 +154,7 @@ describe("requestAssignment", () => {
     expect(plane.state.connections.get(connection.connectionId)?.providerAccountReadiness).toEqual([
       { providerAccountId: "account", ready: false },
     ]);
+    expect(commandReads).toBeGreaterThan(0);
   });
 
   it("handles scheduled queue entries and isolates a per-session failure", async () => {

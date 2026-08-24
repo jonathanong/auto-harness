@@ -68,6 +68,9 @@ describe("execution profiles", () => {
       3,
     );
     expect(() => parseExecutionProfiles([])).toThrow(/must be an object/);
+    expect(() => parseExecutionProfiles({ account: {} })).toThrow(
+      /execution profiles has unknown key: account/,
+    );
     expect(() => parseExecutionProfiles({ maxConcurrentAssignments: 0 })).toThrow(/positive/);
     expect(() => parseExecutionProfiles({ maxConcurrentAssignments: 257 })).toThrow(/at most/);
     expect(() => parseExecutionProfiles({ accounts: "nope" })).toThrow(
@@ -78,6 +81,9 @@ describe("execution profiles", () => {
       parseExecutionProfiles({ accounts: { ["a".repeat(513)]: { home: "/x" } } }),
     ).toThrow(/id must be at most 512 characters/);
     expect(() => parseExecutionProfiles({ accounts: { a: "nope" } })).toThrow(/must be an object/);
+    expect(() =>
+      parseExecutionProfiles({ accounts: { a: { home: "/x", environment: {} } } }),
+    ).toThrow(/execution profile a has unknown key: environment/);
     expect(() => parseExecutionProfiles({ accounts: { a: { home: "relative" } } })).toThrow(
       /absolute path/,
     );

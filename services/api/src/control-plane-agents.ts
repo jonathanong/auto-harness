@@ -651,6 +651,16 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, []);
     throw err;
   }
+  let registrationInventory = buildRegisteredInventory(
+    opts.hostId,
+    registeredRepositories,
+    opts.worktrees,
+    conn.capabilities,
+    at,
+    previousInventory,
+    opts.daemonIdentity,
+    opts.runtime,
+  );
   // The transaction committed. Finish all related row writes before changing
   // this process's cache; a failed inventory/worktree write must not make the
   // cache claim a state that was never durably persisted.
@@ -665,7 +675,7 @@ export async function registerHostDurable(
       repositoryId: wt.repositoryId,
       path: wt.path,
       labels:
-        previousInventory?.repositories
+        registrationInventory.repositories
           .find((repository) => repository.id === wt.repositoryId)
           ?.worktrees.find((worktree) => worktree.id === wt.id)?.labels ?? wt.labels,
       status: "idle" as const,
@@ -733,16 +743,6 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
-  let registrationInventory = buildRegisteredInventory(
-    opts.hostId,
-    registeredRepositories,
-    opts.worktrees,
-    conn.capabilities,
-    at,
-    previousInventory,
-    opts.daemonIdentity,
-    opts.runtime,
-  );
   try {
     // The version this registration read is only as fresh as the strongly-consistent
     // read taken above, before the worktree-publishing and reconciliation round-trips
@@ -781,6 +781,25 @@ export async function registerHostDurable(
         opts.daemonIdentity,
         opts.runtime,
       );
+      // The worktree projection was published before the inventory fence. If a
+      // UI edit won that fence, republish the reconciled effective labels too;
+      // otherwise the inventory and worktree read models would disagree.
+      for (const next of nextWorktrees) {
+        const labels = registrationInventory.repositories
+          .find((repository) => repository.id === next.repositoryId)
+          ?.worktrees.find((worktree) => worktree.id === next.id)?.labels;
+        if (labels !== undefined) next.labels = [...labels];
+        if (!(await state.storage.putWorktreeFenced(next, { hostId: opts.hostId, connectionId }))) {
+          await rollbackDurableRegistration(
+            state,
+            opts.hostId,
+            connectionId,
+            at,
+            publishedWorktrees,
+          );
+          return { ok: false, error: "host connection changed while publishing inventory" };
+        }
+      }
     }
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);

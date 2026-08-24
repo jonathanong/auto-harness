@@ -68,8 +68,28 @@ export async function listQueuedSessionsDurable(
   );
   const pageSessions = pages.flat();
   const pageIds = new Set(pageSessions.map((session) => session.id));
+  const revalidatedIds = new Set<string>();
+  if (bounded && typeof state.storage.getSession === "function") {
+    const cachedNonQueued = pageSessions
+      .filter((candidate) => candidate.type === type)
+      .map((candidate) => state.sessions.get(candidate.id))
+      .filter((cached): cached is SessionRecord => cached !== undefined)
+      .filter((cached) => cached.status !== "queued");
+    const refreshed = await Promise.all(
+      cachedNonQueued.map(async (cached) => ({
+        id: cached.id,
+        session: await state.storage!.getSession(cached.id, true),
+      })),
+    );
+    for (const { id, session } of refreshed) {
+      revalidatedIds.add(id);
+      if (session) state.sessions.set(id, { ...session });
+      else state.sessions.delete(id);
+    }
+  }
   for (const session of pageSessions) {
     if (session.type !== type) continue;
+    if (revalidatedIds.has(session.id)) continue;
     const existing = state.sessions.get(session.id);
     if (existing && existing.status !== "queued") continue;
     state.sessions.set(session.id, { ...session });
