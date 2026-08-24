@@ -30,6 +30,7 @@ function persistTimedOutSession(state: ControlPlaneState, session: SessionRecord
 }
 
 function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRecord): void {
+  const timedOutHostId = session.providerAccountLease ? session.hostId : undefined;
   session.status = "timed_out";
   session.errorMessage = TIMEOUT_ERROR;
   session.completedAt = state.now();
@@ -56,6 +57,7 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
   }
   session.worktreeId = null;
   session.hostId = null;
+  if (timedOutHostId) session.timedOutHostId = timedOutHostId;
   persistTimedOutSession(state, session);
   queueSessionArchive(state, session.id);
 }
@@ -88,6 +90,9 @@ function rememberDurableTimeout(
     completedAt,
     worktreeId: null,
     hostId: null,
+    ...(session.providerAccountLease && session.hostId
+      ? { timedOutHostId: session.hostId }
+      : {}),
   };
   delete next.mainCheckoutLease;
   delete next.assignmentConnectionId;
@@ -128,6 +133,9 @@ async function commitDurableTimeout(
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
       preserveProviderAccountLease: true,
       ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+      ...(session.providerAccountLease && session.hostId
+        ? { timedOutHostId: session.hostId }
+        : {}),
     });
   }
   return storage.finishSession({

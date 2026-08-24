@@ -115,7 +115,11 @@ export function accountHasLeaseCapacityFromReadModel(
     if (lease.providerAccountId === providerAccountId) holders.add(lease.sessionId);
   }
   for (const session of state.sessions.values()) {
-    if (session.providerAccountLease?.providerAccountId === providerAccountId) {
+    const ownsLease =
+      session.status === "running" ||
+      (session.status === "cancelled" && session.hostId != null) ||
+      (session.status === "timed_out" && session.timedOutHostId != null);
+    if (ownsLease && session.providerAccountLease?.providerAccountId === providerAccountId) {
       holders.add(session.id);
       continue;
     }
@@ -211,6 +215,43 @@ export function releaseProviderAccountLease(
       }),
     );
   }
+}
+
+/** Clear a timeout-preserved lease only after the durable lock/session transaction succeeds. */
+export async function releaseTimedOutProviderAccountLease(
+  state: ControlPlaneState,
+  session: SessionRecord,
+): Promise<boolean> {
+  const lease = session.providerAccountLease;
+  if (!lease) return false;
+  if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
+    releaseProviderAccountLease(state, session);
+    delete session.timedOutHostId;
+    return true;
+  }
+  const released = await state.storage.releaseTimedOutProviderAccountLease({
+    concurrencyId: lease.concurrencyId,
+    sessionId: session.id,
+    attemptId: lease.attemptId,
+  });
+  if (!released) return false;
+  releaseProviderAccountLeaseLocal(state, session);
+  delete session.providerAccountLease;
+  delete session.hostAssignmentLease;
+  delete session.timedOutHostId;
+  return true;
+}
+
+export async function releaseTimedOutProviderAccountLeasesForHost(
+  state: ControlPlaneState,
+  hostId: string,
+): Promise<string[]> {
+  const released: string[] = [];
+  for (const session of state.sessions.values()) {
+    if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
+    if (await releaseTimedOutProviderAccountLease(state, session)) released.push(session.id);
+  }
+  return released;
 }
 
 /** Requeue/terminal paths must drop the attempt-owned slot even if the map was rebuilt. */

@@ -6,6 +6,7 @@ import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-pro
 import {
   accountHasLeaseCapacity,
   accountHasLeaseCapacityOverCap,
+  accountHasLeaseCapacityFromReadModel,
   hostHasAssignmentCapacity,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
@@ -303,6 +304,42 @@ describe("provider account execution-profile leases", () => {
     expect(accountHasLeaseCapacity(state, "acct")).toBe(false);
     state.providerAccountLeases.clear();
     expect(accountHasLeaseCapacity(state, "acct")).toBe(true);
+  });
+
+  it("does not count queued leftover lease fields as active capacity holders", () => {
+    const state = createControlPlaneState();
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "prov",
+      label: "account",
+      maxConcurrentSessions: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.sessions.set("queued", {
+      id: "queued",
+      repositoryId: "repo",
+      prompt: "p",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetLabels: [],
+      queueTtlSeconds: 1,
+      queueExpiresAt: NOW,
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: NOW,
+      providerAccountLease: {
+        concurrencyId: "provider-lease:acct:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "old",
+      },
+    });
+    expect(accountHasLeaseCapacityFromReadModel(state, "acct")).toBe(true);
   });
 
   it("treats missing readiness as unavailable and honors host assignment caps", () => {

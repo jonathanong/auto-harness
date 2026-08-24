@@ -33,6 +33,7 @@ type FinishSessionOpts = {
   hostAssignmentLease?: HostAssignmentLease | undefined;
   /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
   preserveProviderAccountLease?: boolean;
+  timedOutHostId?: string;
 };
 
 function setOptional(
@@ -81,6 +82,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   setOptional(sets, values, "errorMessage", opts.errorMessage);
   setOptional(sets, values, "exitCode", opts.exitCode);
   setOptional(sets, values, "cliResumeRef", opts.cliResumeRef);
+  setOptional(sets, values, "timedOutHostId", opts.timedOutHostId);
   return {
     names: { "#s": "status" },
     values,

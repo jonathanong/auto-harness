@@ -107,4 +107,30 @@ describe("acknowledged running sessions converge or time out", () => {
     ).toBe(true);
     expect(plane.state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
   });
+
+  it("releases a preserved lease when the timed-out host disconnects", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const { sessionId } = startAcknowledgedRunning(plane);
+    const session = plane.state.sessions.get(sessionId)!;
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: session.attemptId!,
+    };
+    session.providerAccountLease = lease;
+    plane.state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: "host",
+      providerAccountId: lease.providerAccountId,
+    });
+    expect(plane.enforceRunningTimeouts(runningDeadlineMs(plane, sessionId))).toEqual([sessionId]);
+    expect(plane.getSession(sessionId)).toMatchObject({ timedOutHostId: "host" });
+    expect(plane.disconnectHost(plane.state.hostConnection.get("host")!)).toEqual([]);
+    expect(plane.state.providerAccountLeases.size).toBe(0);
+    expect(plane.getSession(sessionId)).not.toHaveProperty("providerAccountLease");
+    expect(plane.getSession(sessionId)).not.toHaveProperty("timedOutHostId");
+  });
 });

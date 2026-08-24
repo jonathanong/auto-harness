@@ -33,6 +33,7 @@ import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
@@ -663,8 +664,15 @@ async function applySessionStatusDurable(
     isTerminalSessionStatus(msg.status) &&
     session.providerAccountLease?.attemptId === msg.attemptId
   ) {
-    releaseProviderAccountLease(state, session);
-    persistSession(state, session);
+    if (state.storage) {
+      await releaseTimedOutProviderAccountLease(state, session);
+      if (typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
+        persistSession(state, session);
+      }
+    } else {
+      releaseProviderAccountLease(state, session);
+      persistSession(state, session);
+    }
     return { ok: true };
   }
   let providerAccount: SessionTransitionContext["providerAccount"];

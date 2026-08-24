@@ -79,6 +79,45 @@ describe("durable terminal message residual coverage", () => {
     expect(releases[0]).toMatchObject({ expectedStatus: "cancelled", status: "cancelled" });
   });
 
+  it("keeps a timed-out lease in the session when durable cleanup loses its condition", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const lease = {
+      concurrencyId: "provider-lease:account:0",
+      providerAccountId: "account",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    state.sessions.set(
+      "s",
+      row({
+        status: "timed_out",
+        hostId: null,
+        timedOutHostId: "host",
+        providerAccountLease: lease,
+      }),
+    );
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: "s",
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: "host",
+      providerAccountId: lease.providerAccountId,
+    });
+    let attempts = 0;
+    setDurableReadStorage(state, {
+      releaseTimedOutProviderAccountLease: async () => {
+        attempts += 1;
+        return attempts > 1;
+      },
+    });
+    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    expect(state.sessions.get("s")).toHaveProperty("providerAccountLease", lease);
+    expect(state.providerAccountLeases.has(lease.concurrencyId)).toBe(true);
+    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    expect(state.sessions.get("s")).not.toHaveProperty("providerAccountLease");
+    expect(state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
+  });
+
   it("finishes a leased scheduled attempt with every optional report field", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     state.sessions.set("s", row({ concurrencyId: "concurrency" }));

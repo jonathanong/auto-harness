@@ -129,7 +129,9 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     // terminal; queued leftover lease fields must not occupy a slot.
     if (
       !lease ||
-      (session.status !== "running" && !(session.status === "cancelled" && session.hostId))
+      (session.status !== "running" &&
+        !(session.status === "cancelled" && session.hostId) &&
+        !(session.status === "timed_out" && session.timedOutHostId))
     ) {
       continue;
     }
@@ -137,7 +139,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
       sessionId: session.id,
       attemptId: lease.attemptId,
       slot: lease.slot,
-      hostId: session.hostId ?? "",
+      hostId: session.hostId ?? session.timedOutHostId ?? "",
       providerAccountId: lease.providerAccountId,
     });
   }

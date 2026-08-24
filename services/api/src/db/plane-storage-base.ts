@@ -292,6 +292,14 @@ export class DynamoPlaneStorageBase {
     return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
   }
 
+  releaseTimedOutProviderAccountLease(opts: {
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+  }): Promise<boolean> {
+    return providerAccountLeases.releaseTimedOutProviderAccountLease(this.ctx, opts);
+  }
+
   backfillProviderAccountLease(
     opts: Parameters<typeof providerAccountLeases.backfillProviderAccountLease>[1],
   ): ReturnType<typeof providerAccountLeases.backfillProviderAccountLease> {
