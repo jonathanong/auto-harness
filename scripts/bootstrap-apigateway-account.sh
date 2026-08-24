@@ -103,7 +103,8 @@ EOF
   fi
 
   trust_principals="$(aws iam get-role --role-name "$role_name" \
-    --query 'Role.AssumeRolePolicyDocument.Statement[].Principal.Service' --output text)"
+    --query "Role.AssumeRolePolicyDocument.Statement[?Effect=='Allow' && contains(Action, 'sts:AssumeRole')].Principal.Service" \
+    --output text)"
   if [[ "$trust_principals" != *apigateway.amazonaws.com* ]]; then
     cat >&2 <<EOF
 The IAM role behind the API Gateway account in $AWS_REGION exists, but its
