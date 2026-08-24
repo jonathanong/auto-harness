@@ -1122,14 +1122,21 @@ admin / unauthenticated local callers. A body that would change `setupScript`,
 `terminalHookScript`, or `allowedRoots` returns `403 FORBIDDEN` unless the caller also has
 `fleet:exec-config`. Callers with that capability may include those fields in a full-document
 PUT (the raw JSON editor) to change them; omitted keys still stay stored. Those writes also
-append `host-exec-config:update`.
+append `host-exec-config:update`. Removing a repository or worktree that contains one of those
+fields is also an exec-config edit. Every inventory replacement is fenced by the version the
+server just read (including versionless requests), so a concurrent write returns `409 CONFLICT`
+rather than restoring stale executable configuration; deletes use the same fence. The successful
+exec-config audit is persisted before a full-document inventory replacement can commit.
 
 `PUT /api/v1/hosts/:hostId/exec-config` (`fleet:exec-config`, admin only) is the structured write
 path for host-, repository-, and worktree-scoped setup scripts, repository `terminalHookScript`
 paths, and host-local `allowedRoots`. Omitted keys are left unchanged. Empty strings / empty
 `allowedRoots` clear the stored value. A host with no inventory yet is created empty, then the
 patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
-`terminalHookScript` values must be absolute paths on both this route and `PUT /inventory`.
+new or changed `terminalHookScript` values must be absolute paths on both this route and
+`PUT /inventory`. A relative hook persisted by an earlier release may be carried through an
+otherwise unrelated write only when it is exactly unchanged; replacing or clearing it migrates
+the document to the current rule.
 The success audit is recorded **before** the durable write; if that audit cannot be persisted the
 document is left unchanged (HTTP 500). If the following write fails, a failed
 `host-exec-config:update` is also recorded. Successful writes include the changed field paths

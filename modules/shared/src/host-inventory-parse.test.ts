@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- exhaustive inventory parser coverage shares one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { parseHostInventory } from "./host-inventory-parse.ts";
@@ -45,6 +46,27 @@ describe("parseHostInventory", () => {
       ],
       providerAccounts: [],
       capabilities: [],
+    });
+  });
+
+  it("preserves an explicit empty allowed-roots list and can read a legacy hook unchanged", () => {
+    expect(
+      parseHostInventory({
+        allowedRoots: [],
+        repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
+      }),
+    ).toMatchObject({ allowedRoots: [] });
+    expect(
+      parseHostInventory(
+        {
+          repositories: [
+            { id: "repo", path: "/repo", terminalHookScript: "./hook.sh", worktrees: [] },
+          ],
+        },
+        { allowLegacyRelativeTerminalHooks: true },
+      ),
+    ).toMatchObject({
+      repositories: [expect.objectContaining({ terminalHookScript: "./hook.sh" })],
     });
   });
 

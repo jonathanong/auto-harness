@@ -184,8 +184,23 @@ describe("applyHostExecConfig", () => {
 });
 
 describe("listExecConfigEdits / preserve / reconcile", () => {
-  it("treats omitted keys as non-edits and equal values as non-edits", () => {
-    expect(listExecConfigEdits(inventory(), emptyHostInventory())).toEqual([]);
+  it("reports full-state removals and ignores values restored for ordinary inventory writes", () => {
+    expect(listExecConfigEdits(inventory(), emptyHostInventory())).toEqual([
+      "setupScript",
+      "allowedRoots",
+      "repositories.repo-1.setupScript",
+      "repositories.repo-1.terminalHookScript",
+      "repositories.repo-1.worktrees.wt-1.setupScript",
+    ]);
+    const ordinaryInventoryWrite = inventory();
+    delete ordinaryInventoryWrite.setupScript;
+    delete ordinaryInventoryWrite.allowedRoots;
+    delete ordinaryInventoryWrite.repositories[0]!.setupScript;
+    delete ordinaryInventoryWrite.repositories[0]!.terminalHookScript;
+    delete ordinaryInventoryWrite.repositories[0]!.worktrees[0]!.setupScript;
+    expect(
+      listExecConfigEdits(inventory(), preserveHostExecConfig(ordinaryInventoryWrite, inventory())),
+    ).toEqual([]);
     expect(
       listExecConfigEdits(inventory(), {
         ...emptyHostInventory(),
@@ -358,6 +373,7 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       ok: false,
       error: "fleet:exec-config is required to change setup scripts or executable paths",
       execEdits: ["setupScript"],
+      kind: "forbidden",
     });
     expect(
       reconcileInventoryWrite({ existing: inventory(), incoming, allowExecConfig: true }),
@@ -417,5 +433,43 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       expect(allowed.inventory.repositories[0]?.path).toBe("/new");
       expect(allowed.inventory.repositories[0]?.setupScript).toBe("pnpm install");
     }
+  });
+
+  it("detects clears and removal of exec-config-bearing subtrees from the full state", () => {
+    const cleared = {
+      repositories: [],
+      providerAccounts: [],
+      allowedRoots: [],
+    } satisfies HostInventory;
+    expect(listExecConfigEdits(inventory(), cleared)).toEqual([
+      "setupScript",
+      "allowedRoots",
+      "repositories.repo-1.setupScript",
+      "repositories.repo-1.terminalHookScript",
+      "repositories.repo-1.worktrees.wt-1.setupScript",
+    ]);
+    expect(
+      reconcileInventoryWrite({ existing: inventory(), incoming: cleared, allowExecConfig: false }),
+    ).toMatchObject({ ok: false, kind: "forbidden" });
+  });
+
+  it("permits an unchanged legacy relative hook but rejects a new or changed one", () => {
+    const legacy = inventory();
+    legacy.repositories[0]!.terminalHookScript = "./hook.sh";
+    expect(
+      reconcileInventoryWrite({ existing: legacy, incoming: legacy, allowExecConfig: false }),
+    ).toMatchObject({ ok: true, execEdits: [] });
+
+    const changed: HostInventory = {
+      ...legacy,
+      repositories: [{ ...legacy.repositories[0]!, terminalHookScript: "./replacement.sh" }],
+    };
+    expect(
+      reconcileInventoryWrite({ existing: legacy, incoming: changed, allowExecConfig: true }),
+    ).toMatchObject({
+      ok: false,
+      kind: "validation",
+      error: "repository.repo-1.terminalHookScript must be an absolute path",
+    });
   });
 });

@@ -104,21 +104,31 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
       });
       return true;
     }
-    const version = versionFrom(body);
+    // Versionless patches are still fenced: the server has just read this exact document.
+    const version = versionFrom(body) ?? stored?.version ?? 0;
+    const changed = listExecConfigEdits(existing, merged);
     // Audit first: a failed success-audit must not publish exec-config.
     if (
       !(await writeRouteAudit(ctx, {
         action: "host-exec-config:update",
         resourceType: "host-inventory",
         resourceId: hostId,
-        metadata: { changed: listExecConfigEdits(existing, merged) },
+        metadata: { changed },
       }))
     )
       return true;
-    const result = await plane.putHostInventoryDurable(hostId, {
-      ...merged,
-      ...(version !== undefined ? { version } : {}),
-    });
+    const result = await plane.putHostInventoryDurable(
+      hostId,
+      {
+        ...merged,
+        version,
+      },
+      {
+        // applyHostExecConfig can carry an untouched pre-policy relative hook forward.
+        // New values are still rejected by parseHostExecConfig.
+        allowLegacyRelativeTerminalHooks: true,
+      },
+    );
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
@@ -126,6 +136,7 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
           resourceType: "host-inventory",
           resourceId: hostId,
           outcome: "failed",
+          metadata: { changed },
         }))
       )
         return true;

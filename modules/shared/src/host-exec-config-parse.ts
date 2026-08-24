@@ -35,13 +35,14 @@ export function isAbsolutePathString(path: string): boolean {
 export function parseTerminalHookScript(
   value: string | undefined,
   repositoryId: string,
+  options: { allowLegacyRelative?: boolean } = {},
 ): string | undefined {
   if (value === undefined) return undefined;
   if (value.length === 0) return value;
   if (value.length > MAX_EXEC_PATH_LENGTH) {
     throw new TypeError(`repository.${repositoryId}.terminalHookScript is too long`);
   }
-  if (!isAbsolutePathString(value)) {
+  if (!options.allowLegacyRelative && !isAbsolutePathString(value)) {
     throw new TypeError(`repository.${repositoryId}.terminalHookScript must be an absolute path`);
   }
   return value;

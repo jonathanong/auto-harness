@@ -70,7 +70,20 @@ function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string
   };
 }
 
-function parseRepository(rawRepository: unknown, index: number): HostRepository {
+type ParseHostInventoryOptions = {
+  /**
+   * Existing documents written before terminal hooks were restricted can be
+   * read-modify-written unchanged. Reconciliation verifies that a relative
+   * value really is unchanged before it reaches durable storage.
+   */
+  allowLegacyRelativeTerminalHooks?: boolean;
+};
+
+function parseRepository(
+  rawRepository: unknown,
+  index: number,
+  options: ParseHostInventoryOptions,
+): HostRepository {
   if (!isRecord(rawRepository)) {
     throw new TypeError(`repositories[${index}] must be an object`);
   }
@@ -87,6 +100,7 @@ function parseRepository(rawRepository: unknown, index: number): HostRepository 
   const terminalHookScript = parseTerminalHookScript(
     optionalString(rawRepository, "terminalHookScript", `repository.${id}`),
     id,
+    { allowLegacyRelative: options.allowLegacyRelativeTerminalHooks === true },
   );
   const requiredEnvironment = parseRequiredEnvironment(
     rawRepository.requiredEnvironment,
@@ -124,7 +138,10 @@ function parseCapabilities(value: unknown): HostCapability[] {
 }
 
 /** Strictly parse the operator-editable host inventory document. */
-export function parseHostInventory(value: unknown): HostInventory {
+export function parseHostInventory(
+  value: unknown,
+  options: ParseHostInventoryOptions = {},
+): HostInventory {
   if (!isRecord(value)) {
     throw new TypeError("body must be an object");
   }
@@ -135,7 +152,7 @@ export function parseHostInventory(value: unknown): HostInventory {
     throw new TypeError("repositories must be an array");
   }
   const repositories = value.repositories.map((repository, index) =>
-    parseRepository(repository, index),
+    parseRepository(repository, index, options),
   );
   for (const repository of repositories) {
     assertHostRepositoryRequiredEnvironmentLimit(
@@ -147,7 +164,7 @@ export function parseHostInventory(value: unknown): HostInventory {
 
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
-    ...(allowedRoots?.length ? { allowedRoots } : {}),
+    ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),

@@ -930,8 +930,8 @@ export class DynamoPlaneStorageBase {
     return catalog.listHostInventories(this.ctx);
   }
 
-  deleteHostInventory(hostId: string): Promise<void> {
-    return catalog.deleteHostInventory(this.ctx, hostId);
+  deleteHostInventory(hostId: string, expectedVersion?: number): Promise<boolean> {
+    return catalog.deleteHostInventory(this.ctx, hostId, expectedVersion);
   }
 
   putAuthAccount(rec: AuthAccountRecord): Promise<void> {

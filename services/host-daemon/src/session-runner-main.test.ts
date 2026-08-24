@@ -167,4 +167,33 @@ describe("SessionRunner main checkout", () => {
     );
     expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
   });
+
+  it("acquires the main lock before taking a fresh, path-validated claim", async () => {
+    const calls: string[] = [];
+    const runner = new SessionRunner({
+      worktrees: {
+        acquireMain: async () => {
+          calls.push("lock");
+          return true;
+        },
+        mainClaim: async () => {
+          calls.push("claim");
+          throw new Error("path is outside allowed roots");
+        },
+        releaseMain: () => calls.push("release"),
+      } as unknown as WorktreeManager,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+
+    await expect(
+      runner.run(
+        baseAssign({ repositoryId: "repo-1", worktreeId: null, sessionType: "scheduled" }),
+      ),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(calls).toEqual(["lock", "claim", "release"]);
+  });
 });

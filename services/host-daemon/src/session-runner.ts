@@ -79,7 +79,6 @@ export class SessionRunner {
       if (assign.worktreeId) {
         claimed = await this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId);
       } else {
-        claimed = await this.deps.worktrees.mainClaim(assign.repositoryId);
         if (!(await this.deps.worktrees.acquireMain(assign.repositoryId, signal))) {
           clearTimeout(timeoutTimer);
           const status = expired ? "timed_out" : "cancelled";
@@ -87,8 +86,12 @@ export class SessionRunner {
           return { status, exitCode: null, logs };
         }
         mainClaimed = true;
+        // The lock can wait behind another session. Resolve the current repository object and
+        // realpath-check it only after that wait, immediately before it is used.
+        claimed = await this.deps.worktrees.mainClaim(assign.repositoryId);
       }
     } catch (err) {
+      if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId);
       clearTimeout(timeoutTimer);
       return failSession(
         streamer,

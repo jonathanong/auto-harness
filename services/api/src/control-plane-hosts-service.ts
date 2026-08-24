@@ -118,15 +118,17 @@ export class ControlPlaneHostsService {
   putHostInventory(
     hostId: string,
     body: unknown,
-  ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
-    return agentHosts.putHostInventory(this.state, hostId, body);
+    options?: { allowLegacyRelativeTerminalHooks?: boolean },
+  ): ReturnType<typeof agentHosts.putHostInventory> {
+    return agentHosts.putHostInventory(this.state, hostId, body, options);
   }
 
   putHostInventoryDurable(
     hostId: string,
     body: unknown,
+    options?: { allowLegacyRelativeTerminalHooks?: boolean },
   ): Promise<ReturnType<typeof agentHosts.putHostInventory>> {
-    return agentHosts.putHostInventoryDurable(this.state, hostId, body);
+    return agentHosts.putHostInventoryDurable(this.state, hostId, body, options);
   }
 
   getHostInventory(hostId: string): HostInventoryRecord | null {
@@ -146,13 +148,17 @@ export class ControlPlaneHostsService {
     return agentHosts.listHostInventories(this.state);
   }
 
-  deleteHostInventory(hostId: string): ReturnType<typeof agentHosts.deleteHostInventory> {
-    return agentHosts.deleteHostInventory(this.state, hostId);
+  deleteHostInventory(
+    hostId: string,
+    expectedVersion?: number,
+  ): ReturnType<typeof agentHosts.deleteHostInventory> {
+    return agentHosts.deleteHostInventory(this.state, hostId, expectedVersion);
   }
 
   deleteHostInventoryDurable(
     hostId: string,
+    expectedVersion?: number,
   ): Promise<ReturnType<typeof agentHosts.deleteHostInventory>> {
-    return agentHosts.deleteHostInventoryDurable(this.state, hostId);
+    return agentHosts.deleteHostInventoryDurable(this.state, hostId, expectedVersion);
   }
 }

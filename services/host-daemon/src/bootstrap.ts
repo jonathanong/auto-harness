@@ -21,6 +21,18 @@ export type FetchHostInventoryDeps = {
   fetchFn?: typeof fetch;
 };
 
+/** A fetched inventory is syntactically valid but unsafe under its allowed-roots policy. */
+export class HostInventoryPolicyError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `host inventory violates its allowed-roots policy: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+    this.name = "HostInventoryPolicyError";
+  }
+}
+
 /** Identity only — no host inventory yet (register first, attach repos via UI). */
 export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
   const config: DaemonConfig = {
@@ -78,6 +90,10 @@ export async function fetchHostInventory(
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;
   }
-  await assertDaemonPathsAllowed(config);
+  try {
+    await assertDaemonPathsAllowed(config);
+  } catch (error) {
+    throw new HostInventoryPolicyError(error);
+  }
   return config;
 }

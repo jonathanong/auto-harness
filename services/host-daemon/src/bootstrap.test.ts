@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   emptyDaemonConfig,
   fetchHostInventory,
+  HostInventoryPolicyError,
   httpBaseFromApiUrl,
   inventoryFingerprint,
 } from "./bootstrap.ts";
@@ -18,6 +19,13 @@ describe("httpBaseFromApiUrl", () => {
 });
 
 describe("fetchHostInventory", () => {
+  it("labels both Error and primitive root-policy failures", () => {
+    expect(() => {
+      throw new HostInventoryPolicyError(new Error("outside root"));
+    }).toThrow("outside root");
+    expect(new HostInventoryPolicyError("outside root").message).toContain("outside root");
+  });
+
   it("maps identity and host inventory", async () => {
     const fetchFn = vi.fn(async () => Response.json({ repositories: valid.repositories }));
     const config = await fetchHostInventory(

@@ -1474,6 +1474,21 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
   return records;
 }
 
-export async function deleteHostInventory(ctx: PlaneStorageCtx, hostId: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }));
+/** Delete an inventory only if it is still the version its caller inspected. */
+export async function deleteHostInventory(
+  ctx: PlaneStorageCtx,
+  hostId: string,
+  expectedVersion?: number,
+): Promise<boolean> {
+  const input = {
+    TableName: ctx.tables.hostInventories,
+    Key: { hostId },
+    ...inventoryVersionCondition(expectedVersion),
+  };
+  try {
+    await ctx.doc.send(new DeleteCommand(input));
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -60,14 +61,22 @@ export function putHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
+  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): InventoryWriteResult {
-  const result = prepareHostInventory(state, hostId, body);
+  const expectedVersion =
+    expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
+  if ((state.hostInventories.get(hostId)?.version ?? 0) !== expectedVersion) {
+    return inventoryVersionConflict();
+  }
+  const result = prepareHostInventory(state, hostId, body, options);
   if (!result.ok) return result;
   const rec = result.config;
   state.hostInventories.set(hostId, rec);
   state.hostInventoryRevision += 1;
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.putHostInventory({ ...rec }));
+    queueWrite(state, (storage) =>
+      storage!.putHostInventory({ ...rec }, undefined, expectedVersion),
+    );
   }
   syncWorktreesFromHost(state, rec);
   return { ok: true, config: { ...rec } };
@@ -77,9 +86,21 @@ type InventoryWriteResult =
   | { ok: true; config: HostInventoryRecord }
   | { ok: false; error: string; conflict?: true };
 
+type InventoryDeleteResult = { ok: true } | { ok: false; error: string; conflict?: true };
+
+type InventoryVersionConflict = { ok: false; error: string; conflict: true };
+
+function inventoryVersionConflict(): InventoryVersionConflict {
+  return {
+    ok: false,
+    conflict: true,
+    error: "host inventory changed since it was read; re-read and retry",
+  };
+}
+
 /**
- * The version the caller claims to have read, if it sent one. Absent means an
- * unconditional replace, which is what pre-versioning clients get.
+ * The version a caller read, when it has one. Routes that receive a versionless
+ * request supply the freshly read version before calling this storage boundary.
  */
 function expectedVersionFrom(body: unknown): number | undefined {
   if (!body || typeof body !== "object") return undefined;
@@ -91,9 +112,10 @@ function prepareHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
+  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
   try {
-    const parsed = parseHostBody(hostId, body);
+    const parsed = parseHostBody(hostId, body, options);
     const unknownAccount = parsed.providerAccounts.find(
       (account) => !state.providerAccounts.has(account.providerAccountId),
     );
@@ -121,31 +143,26 @@ export async function putHostInventoryDurable(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
+  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
 ): Promise<InventoryWriteResult> {
-  if (!state.storage) return putHostInventory(state, hostId, body);
+  if (!state.storage) return putHostInventory(state, hostId, body, options);
   await Promise.all([listHostInventoriesDurable(state), listWorktreesDurable(state)]);
-  const result = prepareHostInventory(state, hostId, body);
+  const expectedVersion =
+    expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
+  const result = prepareHostInventory(state, hostId, body, options);
   if (!result.ok) return result;
   const markers = inventoryReferenceMarkers(state.now(), result.config);
   if (markers.length > 99) {
     return { ok: false, error: "host inventory has too many catalog references" };
   }
   const projection = projectHostWorktrees(state, result.config);
-  const expectedVersion = expectedVersionFrom(body);
   const stored = await state.storage.putHostInventory(
     { ...result.config },
     markers,
     expectedVersion,
   );
-  // Only a conditional write can lose. An unconditional one has no condition to fail, and
-  // its result is not meaningful — storage doubles here return nothing at all.
-  if (expectedVersion !== undefined && !stored) {
-    return {
-      ok: false,
-      conflict: true,
-      error: "host inventory changed since it was read; re-read and retry",
-    };
-  }
+  // Older storage doubles return void; only an explicit false means the conditional write lost.
+  if (stored === false) return inventoryVersionConflict();
   await Promise.all([
     ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
     ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),
@@ -174,14 +191,18 @@ export function listHostInventories(state: ControlPlaneState): HostInventoryReco
 export function deleteHostInventory(
   state: ControlPlaneState,
   hostId: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.hostInventories.has(hostId)) {
+  expectedVersion?: number,
+): InventoryDeleteResult {
+  const existing = state.hostInventories.get(hostId);
+  if (!existing) {
     return { ok: false, error: "agent host config not found" };
   }
+  const expected = expectedVersion ?? existing.version ?? 0;
+  if ((existing.version ?? 0) !== expected) return inventoryVersionConflict();
   state.hostInventories.delete(hostId);
   state.hostInventoryRevision += 1;
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.deleteHostInventory(hostId));
+    queueWrite(state, (storage) => storage!.deleteHostInventory(hostId, expected));
   }
   // The host is gone entirely, so its worktree names must be released too —
   // otherwise they stay permanently reserved against a host that no longer exists.
@@ -197,16 +218,20 @@ export function deleteHostInventory(
 export async function deleteHostInventoryDurable(
   state: ControlPlaneState,
   hostId: string,
-): Promise<ReturnType<typeof deleteHostInventory>> {
-  if (!state.storage) return deleteHostInventory(state, hostId);
-  if (!(await getHostInventoryDurable(state, hostId))) {
+  expectedVersion?: number,
+): Promise<InventoryDeleteResult> {
+  if (!state.storage) return deleteHostInventory(state, hostId, expectedVersion);
+  const existing = await getHostInventoryDurable(state, hostId);
+  if (!existing) {
     return { ok: false, error: "agent host config not found" };
   }
+  const expected = expectedVersion ?? existing.version ?? 0;
   await listWorktreesDurable(state);
   const worktreeIds = [...state.worktrees.values()]
     .filter((worktree) => worktree.hostId === hostId)
     .map((worktree) => worktree.id);
-  await state.storage.deleteHostInventory(hostId);
+  const deleted = await state.storage.deleteHostInventory(hostId, expected);
+  if (deleted === false) return inventoryVersionConflict();
   await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
   state.hostInventoryRevision += 1;
   state.hostInventories.delete(hostId);

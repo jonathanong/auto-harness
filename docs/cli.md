@@ -217,7 +217,8 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/exec-config" \
 
 When `allowedRoots` is set, the daemon `realpath`s hook and inventory paths (following
 symlinks) and refuses anything outside those roots. Non-empty `terminalHookScript` values must
-be absolute; relative hooks are rejected on both `PUT /exec-config` and `PUT /inventory`.
+be absolute when created or changed; an exactly unchanged legacy relative hook may be preserved
+during an unrelated inventory edit so older documents remain migratable.
 
 What a session actually runs is **named, fixed argv** (D4), resolved from the global
 Provider/Provider Account/Command catalogs, not from this document — the document above no

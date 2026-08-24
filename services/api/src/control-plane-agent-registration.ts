@@ -156,6 +156,7 @@ export function buildRegisteredInventory(
   return {
     hostId,
     ...(previous?.setupScript !== undefined ? { setupScript: previous.setupScript } : {}),
+    ...(previous?.allowedRoots !== undefined ? { allowedRoots: [...previous.allowedRoots] } : {}),
     ...(previous?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...previous.requiredEnvironment] }
       : {}),

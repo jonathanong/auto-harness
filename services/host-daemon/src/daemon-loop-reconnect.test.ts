@@ -218,6 +218,33 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("marks a policy-violating host unavailable, then resumes after a valid inventory applies", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+
+      await loop.blockAssignmentsForInvalidInventory();
+      expect(loop.isDraining()).toBe(true);
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).toMatchObject({
+        draining: true,
+      });
+
+      await loop.applyInventory(config);
+      expect(loop.isDraining()).toBe(false);
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).not.toHaveProperty(
+        "draining",
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("refreshes reconnect and inventory registration snapshots ahead of held outbound traffic", async () => {
     const { config, cleanup } = await makeRepo();
     try {

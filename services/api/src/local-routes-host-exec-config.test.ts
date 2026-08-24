@@ -169,6 +169,87 @@ describe("host exec-config isolation", () => {
     });
   });
 
+  it("treats removal of exec-config-bearing repositories and worktrees as privileged edits", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { repositories: [], providerAccounts: [] },
+        maintainer,
+      ),
+    ).toMatchObject({ status: 403 });
+    expect(await plane.getHostInventoryDurable("host-1")).toMatchObject({
+      repositories: [expect.objectContaining({ terminalHookScript: "/opt/harness/hook.sh" })],
+    });
+  });
+
+  it("preserves an explicit empty allowed-roots inventory value and unchanged legacy hooks", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, allowedRoots: [] },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+    expect((await plane.getHostInventoryDurable("host-1"))?.allowedRoots).toEqual([]);
+
+    const legacy = {
+      hostId: "host-legacy",
+      ...inventory,
+      repositories: [
+        {
+          ...inventory.repositories[0]!,
+          id: "repo-legacy",
+          terminalHookScript: "./hook.sh",
+          worktrees: [
+            {
+              ...inventory.repositories[0]!.worktrees[0]!,
+              id: "wt-legacy",
+              name: "wt-legacy",
+            },
+          ],
+        },
+      ],
+      updatedAt: "2026-08-23T00:00:00.000Z",
+      version: 1,
+    };
+    plane.state.hostInventories.set("host-legacy", legacy);
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-legacy/inventory",
+        {
+          ...legacy,
+          repositories: [{ ...legacy.repositories[0]!, path: "/opt/harness/renamed" }],
+        },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-legacy/inventory",
+        {
+          ...legacy,
+          repositories: [{ ...legacy.repositories[0]!, terminalHookScript: "./changed.sh" }],
+        },
+        admin,
+      ),
+    ).toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR", message: expect.stringContaining("absolute") } },
+    });
+  });
+
   it("lets admin inventory writes change exec-config and records both audits", async () => {
     const plane = new ControlPlane();
     const actions: string[] = [];
@@ -190,6 +271,69 @@ describe("host exec-config isolation", () => {
     expect(actions).toContain("host-inventory:update");
     expect(actions).toContain("host-exec-config:update");
     expect((await plane.getHostInventoryDurable("host-1"))?.setupScript).toBe("echo host");
+  });
+
+  it("writes the exec-config audit before an inventory commit and records a failed CAS", async () => {
+    const plane = new ControlPlane();
+    const events: Array<{ action: string; outcome?: string }> = [];
+    const originalAudit = plane.appendAuditLog.bind(plane);
+    plane.appendAuditLog = async (input) => {
+      events.push({ action: input.action, outcome: input.outcome });
+      return await originalAudit(input);
+    };
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const originalPut = plane.putHostInventoryDurable.bind(plane);
+    plane.putHostInventoryDurable = async (...args) => {
+      expect(events).toContainEqual({ action: "host-exec-config:update", outcome: "success" });
+      return await originalPut(...args);
+    };
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, setupScript: "echo audited" },
+        admin,
+      ),
+    ).toMatchObject({ status: 200 });
+
+    plane.putHostInventoryDurable = async () => ({
+      ok: false as const,
+      conflict: true as const,
+      error: "host inventory changed since it was read; re-read and retry",
+    });
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, setupScript: "echo conflict" },
+        admin,
+      ),
+    ).toMatchObject({ status: 409 });
+    expect(events).toContainEqual({ action: "host-exec-config:update", outcome: "failed" });
+  });
+
+  it("fails closed before an inventory exec-config change when its audit cannot persist", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const originalAudit = plane.appendAuditLog.bind(plane);
+    plane.appendAuditLog = async (input) => {
+      if (input.action === "host-exec-config:update" && input.outcome === "success") {
+        throw new Error("audit unavailable");
+      }
+      return await originalAudit(input);
+    };
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, setupScript: "must not commit" },
+        admin,
+      ),
+    ).toMatchObject({ status: 500 });
+    expect((await plane.getHostInventoryDurable("host-1"))?.setupScript).toBe("source ~/.zshrc");
   });
 
   it("preserves omitted exec-config on capable inventory PUTs", async () => {
@@ -383,6 +527,53 @@ describe("host exec-config isolation", () => {
     ).toMatchObject({ status: 409 });
   });
 
+  it("uses the server-read version for versionless inventory and exec-config writes", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const version = (await plane.getHostInventoryDurable("host-1"))?.version;
+    const bodies: Array<Record<string, unknown>> = [];
+    plane.putHostInventoryDurable = async (_hostId, body) => {
+      bodies.push(body as Record<string, unknown>);
+      return {
+        ok: false as const,
+        conflict: true as const,
+        error: "host inventory changed since it was read; re-read and retry",
+      };
+    };
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, repositories: [] },
+        admin,
+      ),
+    ).toMatchObject({ status: 409 });
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "echo versioned" },
+        admin,
+      ),
+    ).toMatchObject({ status: 409 });
+    expect(bodies.map((body) => body.version)).toEqual([version, version]);
+  });
+
+  it("returns a conflict instead of deleting an inventory that changed after the capability check", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    plane.deleteHostInventoryDurable = async () => ({
+      ok: false as const,
+      conflict: true as const,
+      error: "host inventory changed since it was read; re-read and retry",
+    });
+    expect(
+      await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory", undefined, admin),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+  });
+
   it("audits only fields whose exec-config values actually changed", async () => {
     const plane = new ControlPlane();
     const metadata: unknown[] = [];
@@ -412,6 +603,10 @@ describe("host exec-config isolation", () => {
       ),
     ).toMatchObject({ status: 200 });
     expect(metadata.at(-1)).toEqual({ changed: ["setupScript"] });
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", { allowedRoots: [] }, admin),
+    ).toMatchObject({ status: 200 });
+    expect(metadata.at(-1)).toEqual({ changed: ["allowedRoots"] });
   });
 
   it("fails closed when durable writes or audits throw", async () => {

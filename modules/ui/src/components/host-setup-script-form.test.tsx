@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- independent form mutations and refresh behavior share fixtures. */
 // @vitest-environment happy-dom
 
 import { act, useState } from "react";
@@ -54,7 +55,7 @@ function RefreshHarness() {
 }
 
 describe("HostSetupScriptForm", () => {
-  it("updates exec-config and required environment separately", async () => {
+  it("saves exec-config and required environment through independent forms", async () => {
     let execPatch: HostExecConfigPatch | undefined;
     let written: HostInventory | undefined;
     const mutateExec: typeof mutateExecConfig = async (hostId, patch) => {
@@ -92,13 +93,16 @@ describe("HostSetupScriptForm", () => {
       setupScript: "source ~/.zshrc",
       allowedRoots: ["/opt/harness", "/usr/local"],
     });
+    expect(written).toBeUndefined();
+    expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");
+    await submit(field(view.container, "form-host-required-environment"));
     expect(written).toEqual({
       ...current,
       requiredEnvironment: ["REGION", "TOKEN"],
       capabilities: [],
     });
-    expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(field(view.container, "host-required-environment-ok").textContent).toBe("Saved.");
+    expect(router.refresh).toHaveBeenCalledTimes(2);
     view.unmount();
   });
 
@@ -111,6 +115,7 @@ describe("HostSetupScriptForm", () => {
         canWriteExecConfig
       />,
     );
+    setValue(field(view.container, "host-setup-script"), "change");
     await submit(field(view.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("cannot save");
     expect(router.refresh).not.toHaveBeenCalled();
@@ -124,6 +129,7 @@ describe("HostSetupScriptForm", () => {
         canWriteExecConfig
       />,
     );
+    setValue(field(rejected.container, "host-setup-script"), "change");
     await submit(field(rejected.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("offline");
     rejected.unmount();
@@ -149,8 +155,8 @@ describe("HostSetupScriptForm", () => {
         canWriteExecConfig
       />,
     );
-    await submit(field(envFail.container, "form-host-setup-script"));
-    expect(field(document.body, "host-setup-script-error").textContent).toBe("env failed");
+    await submit(field(envFail.container, "form-host-required-environment"));
+    expect(field(document.body, "host-required-environment-error").textContent).toBe("env failed");
     envFail.unmount();
   });
 
@@ -170,7 +176,7 @@ describe("HostSetupScriptForm", () => {
     );
     expect(view.container.querySelector('[data-pw="host-setup-script"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="host-exec-config-alert"]')).toBeNull();
-    await submit(field(view.container, "form-host-setup-script"));
+    await submit(field(view.container, "form-host-required-environment"));
     expect(inventoryCalls).toBe(1);
     view.unmount();
 
@@ -206,6 +212,28 @@ describe("HostSetupScriptForm", () => {
     act(() => field<HTMLButtonElement>(view.container, "external-refresh").click());
     expect(textarea.value).toBe("external value");
     expect(view.container.querySelector('[data-pw="host-setup-script-ok"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("patches only fields edited in the exec form, preserving freshly read siblings", async () => {
+    let execPatch: HostExecConfigPatch | undefined;
+    const mutateExec: typeof mutateExecConfig = async (_hostId, patch) => {
+      execPatch = patch({ ...current, allowedRoots: ["/newer-root"] });
+      return { ok: true };
+    };
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupScript="old"
+        allowedRoots={["/old-root"]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-setup-script"), "new script");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(execPatch).toEqual({ setupScript: "new script" });
     view.unmount();
   });
 });

@@ -122,6 +122,8 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     }
+    let execEdits: string[] = [];
+    let execAuditWritten = false;
     try {
       const incoming =
         body && typeof body === "object" && !Array.isArray(body)
@@ -131,26 +133,40 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       if (Array.isArray(incoming?.repositories)) {
         mergeHiddenRepositories(existing, incoming as { repositories: unknown[] }, ctx.principal);
       }
-      let execEdits: string[] = [];
       try {
         const reconciled = reconcileInventoryWrite({
           existing,
-          incoming: parseHostInventory(body),
+          incoming: parseHostInventory(body, { allowLegacyRelativeTerminalHooks: true }),
           allowExecConfig: !ctx.principal || principalHas(ctx.principal, EXEC_CONFIG_CAPABILITY),
         });
         if (!reconciled.ok) {
+          if (reconciled.kind === "forbidden") {
+            if (
+              !(await writeRouteAudit(ctx, {
+                action: "host-exec-config:update",
+                resourceType: "host-inventory",
+                resourceId: hostId,
+                outcome: "denied",
+                metadata: { changed: reconciled.execEdits },
+              }))
+            )
+              return true;
+            send(res, 403, {
+              error: { code: "FORBIDDEN", message: reconciled.error },
+            });
+            return true;
+          }
           if (
             !(await writeRouteAudit(ctx, {
-              action: "host-exec-config:update",
+              action: "host-inventory:update",
               resourceType: "host-inventory",
               resourceId: hostId,
-              outcome: "denied",
-              metadata: { changed: reconciled.execEdits },
+              outcome: "failed",
             }))
           )
             return true;
-          send(res, 403, {
-            error: { code: "FORBIDDEN", message: reconciled.error },
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: reconciled.error },
           });
           return true;
         }
@@ -158,16 +174,43 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         const version =
           typeof incoming?.version === "number" && Number.isInteger(incoming.version)
             ? incoming.version
-            : undefined;
+            : (existing?.version ?? 0);
         body = {
           ...reconciled.inventory,
-          ...(version !== undefined ? { version } : {}),
+          version,
         };
       } catch {
         // Invalid inventory is reported by putHostInventoryDurable.
       }
-      const result = await plane.putHostInventoryDurable(hostId, body);
+      if (execEdits.length) {
+        // A successful privileged audit must exist before an executable configuration can
+        // commit. Audit storage failure therefore leaves the inventory unchanged.
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "host-exec-config:update",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            metadata: { changed: execEdits },
+          }))
+        )
+          return true;
+        execAuditWritten = true;
+      }
+      const result = await plane.putHostInventoryDurable(hostId, body, {
+        allowLegacyRelativeTerminalHooks: true,
+      });
       if (!result.ok) {
+        if (
+          execAuditWritten &&
+          !(await writeRouteAudit(ctx, {
+            action: "host-exec-config:update",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            outcome: "failed",
+            metadata: { changed: execEdits },
+          }))
+        )
+          return true;
         if (
           !(await writeRouteAudit(ctx, {
             action: "host-inventory:update",
@@ -196,16 +239,6 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         }))
       )
         return true;
-      if (
-        execEdits.length &&
-        !(await writeRouteAudit(ctx, {
-          action: "host-exec-config:update",
-          resourceType: "host-inventory",
-          resourceId: hostId,
-          metadata: { changed: execEdits },
-        }))
-      )
-        return true;
       const config = result.config;
       send(res, 200, {
         ...config,
@@ -215,6 +248,17 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     } catch {
+      if (
+        execAuditWritten &&
+        !(await writeRouteAudit(ctx, {
+          action: "host-exec-config:update",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          outcome: "failed",
+          metadata: { changed: execEdits },
+        }))
+      )
+        return true;
       if (
         !(await writeRouteAudit(ctx, {
           action: "host-inventory:update",
@@ -264,7 +308,7 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
-      const result = await plane.deleteHostInventoryDurable(hostId);
+      const result = await plane.deleteHostInventoryDurable(hostId, existing?.version ?? 0);
       if (!result.ok) {
         if (
           !(await writeRouteAudit(ctx, {
@@ -275,8 +319,11 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
           }))
         )
           return true;
-        send(res, 404, {
-          error: { code: "NOT_FOUND", message: result.error },
+        send(res, result.conflict ? 409 : 404, {
+          error: {
+            code: result.conflict ? "CONFLICT" : "NOT_FOUND",
+            message: result.error,
+          },
         });
         return true;
       }

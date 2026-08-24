@@ -26,11 +26,12 @@ describe("host registration repository inventory", () => {
     });
   });
 
-  it("preserves the configured host setup script across daemon registration", () => {
+  it("preserves configured root-level exec policy across daemon registration", () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
     expect(
       plane.putHostInventory("host", {
         setupScript: "source ~/.zshrc",
+        allowedRoots: ["/harness"],
         requiredEnvironment: ["GLOBAL_TOKEN"],
         repositories: [
           {
@@ -51,10 +52,30 @@ describe("host registration repository inventory", () => {
       }),
     ).toEqual({ ok: true, connectionId: "connection" });
     expect(plane.getHostInventory("host")?.setupScript).toBe("source ~/.zshrc");
+    expect(plane.getHostInventory("host")?.allowedRoots).toEqual(["/harness"]);
     expect(plane.getHostInventory("host")?.requiredEnvironment).toEqual(["GLOBAL_TOKEN"]);
     expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([
       "REPO_TOKEN",
     ]);
+  });
+
+  it("retains an explicit empty allowed-roots list across daemon registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.putHostInventory("host", {
+        allowedRoots: [],
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")).toMatchObject({ allowedRoots: [] });
   });
 
   it("derives older registrations from worktrees and rejects malformed input", () => {

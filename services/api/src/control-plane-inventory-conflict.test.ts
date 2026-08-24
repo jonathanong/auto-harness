@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
+import {
+  deleteHostInventoryDurable,
+  putHostInventoryDurable,
+} from "./control-plane-agent-hosts.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 
@@ -18,6 +21,7 @@ function planeWithStorage() {
       listAllWorktrees: async () => [],
       putWorktree: async () => undefined,
       deleteWorktree: async () => undefined,
+      getHostInventory: async () => (durable ? { ...durable } : null),
       putHostInventory: async (
         record: HostInventoryRecord,
         _markers?: unknown,
@@ -27,6 +31,11 @@ function planeWithStorage() {
           return false;
         }
         durable = record;
+        return true;
+      },
+      deleteHostInventory: async (_hostId: string, expectedVersion?: number) => {
+        if ((durable?.version ?? 0) !== expectedVersion) return false;
+        durable = undefined;
         return true;
       },
     } as never,
@@ -80,6 +89,17 @@ describe("host inventory optimistic concurrency", () => {
       ok: true,
     });
 
+    expect(stored()?.version).toBe(1);
+  });
+
+  it("refuses a delete whose capability check read an older version", async () => {
+    const { state, stored } = planeWithStorage();
+    await putHostInventoryDurable(state, "host-a", body());
+
+    await expect(deleteHostInventoryDurable(state, "host-a", 0)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
     expect(stored()?.version).toBe(1);
   });
 });

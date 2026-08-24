@@ -466,7 +466,10 @@ When `allowedRoots` is set, the daemon `realpath`s inventory filesystem paths an
 paths (including at worktree claim and hook spawn) and refuses anything outside those roots.
 Unset or empty roots apply no extra restriction. Catalog command argv is not checked against
 these roots. Control-plane inventory and exec-config writes reject a relative `terminalHookScript`;
-empty string clears the stored hook.
+an unchanged legacy relative hook is preserved only for compatibility, while new or changed hooks
+must be absolute. An empty string clears the stored hook. If a polled `allowedRoots` policy makes
+the current repository or worktree paths invalid, the daemon immediately re-registers as draining
+and refuses assignments; it continues polling and resumes only after a valid inventory applies.
 
 For a fresh session, the host script runs first, followed by one effective scoped script using the
 existing precedence `session assignment > worktree > host/repository attachment`. Both run in the

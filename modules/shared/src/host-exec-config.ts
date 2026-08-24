@@ -2,6 +2,7 @@
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
 import {
   EXEC_CONFIG_REQUIRED_MESSAGE,
+  isAbsolutePathString,
   type HostExecConfigPatch,
 } from "./host-exec-config-parse.ts";
 
@@ -93,6 +94,51 @@ function sameRoots(left: string[] | undefined, right: string[] | undefined): boo
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+function entriesById<T extends { id: string }>(entries: readonly T[] | undefined): Map<string, T> {
+  return new Map(entries?.map((entry) => [entry.id, entry]) ?? []);
+}
+
+function idsInOrder<T extends { id: string }>(
+  existing: readonly T[] | undefined,
+  incoming: readonly T[] | undefined,
+): string[] {
+  const ids = new Set<string>();
+  const ordered: string[] = [];
+  for (const entry of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (ids.has(entry.id)) continue;
+    ids.add(entry.id);
+    ordered.push(entry.id);
+  }
+  return ordered;
+}
+
+function addOptionalStringEdit(
+  edits: string[],
+  path: string,
+  existing: string | undefined,
+  incoming: string | undefined,
+): void {
+  if (!sameOptionalString(existing, incoming)) edits.push(path);
+}
+
+/**
+ * A relative hook is accepted only when a legacy document supplies the exact
+ * same value. New or changed hooks must be absolute even for admins.
+ */
+function legacyRelativeHookError(
+  existing: HostInventory | null | undefined,
+  incoming: HostInventory,
+): string | undefined {
+  const previousRepositories = entriesById(existing?.repositories);
+  for (const repository of incoming.repositories) {
+    const hook = repository.terminalHookScript;
+    if (hook === undefined || hook.length === 0 || isAbsolutePathString(hook)) continue;
+    if (previousRepositories.get(repository.id)?.terminalHookScript === hook) continue;
+    return `repository.${repository.id}.terminalHookScript must be an absolute path`;
+  }
+  return undefined;
+}
+
 /** True when deleting this inventory would erase admin-controlled executable paths. */
 export function inventoryHasExecConfig(inventory: HostInventory | null | undefined): boolean {
   if (!inventory) return false;
@@ -106,49 +152,41 @@ export function inventoryHasExecConfig(inventory: HostInventory | null | undefin
   );
 }
 
-/**
- * Field paths the incoming inventory document would change. Omitted keys are not edits;
- * they are preserved by ordinary inventory writes.
- */
+/** Field paths whose final persisted exec-config values differ from the existing document. */
 export function listExecConfigEdits(
   existing: HostInventory | null | undefined,
   incoming: HostInventory,
 ): string[] {
   const edits: string[] = [];
-  if (
-    incoming.setupScript !== undefined &&
-    !sameOptionalString(incoming.setupScript, existing?.setupScript)
-  ) {
-    edits.push("setupScript");
-  }
-  if (
-    incoming.allowedRoots !== undefined &&
-    !sameRoots(incoming.allowedRoots, existing?.allowedRoots)
-  ) {
-    edits.push("allowedRoots");
-  }
-  for (const repository of incoming.repositories) {
-    const previous = existing?.repositories.find((entry) => entry.id === repository.id);
-    if (
-      repository.setupScript !== undefined &&
-      !sameOptionalString(repository.setupScript, previous?.setupScript)
-    ) {
-      edits.push(`repositories.${repository.id}.setupScript`);
-    }
-    if (
-      repository.terminalHookScript !== undefined &&
-      !sameOptionalString(repository.terminalHookScript, previous?.terminalHookScript)
-    ) {
-      edits.push(`repositories.${repository.id}.terminalHookScript`);
-    }
-    for (const worktree of repository.worktrees) {
-      const previousWorktree = previous?.worktrees.find((entry) => entry.id === worktree.id);
-      if (
-        worktree.setupScript !== undefined &&
-        !sameOptionalString(worktree.setupScript, previousWorktree?.setupScript)
-      ) {
-        edits.push(`repositories.${repository.id}.worktrees.${worktree.id}.setupScript`);
-      }
+  addOptionalStringEdit(edits, "setupScript", existing?.setupScript, incoming.setupScript);
+  if (!sameRoots(existing?.allowedRoots, incoming.allowedRoots)) edits.push("allowedRoots");
+
+  const previousRepositories = entriesById(existing?.repositories);
+  const incomingRepositories = entriesById(incoming.repositories);
+  for (const repositoryId of idsInOrder(existing?.repositories, incoming.repositories)) {
+    const previous = previousRepositories.get(repositoryId);
+    const next = incomingRepositories.get(repositoryId);
+    addOptionalStringEdit(
+      edits,
+      `repositories.${repositoryId}.setupScript`,
+      previous?.setupScript,
+      next?.setupScript,
+    );
+    addOptionalStringEdit(
+      edits,
+      `repositories.${repositoryId}.terminalHookScript`,
+      previous?.terminalHookScript,
+      next?.terminalHookScript,
+    );
+    const previousWorktrees = entriesById(previous?.worktrees);
+    const nextWorktrees = entriesById(next?.worktrees);
+    for (const worktreeId of idsInOrder(previous?.worktrees, next?.worktrees)) {
+      addOptionalStringEdit(
+        edits,
+        `repositories.${repositoryId}.worktrees.${worktreeId}.setupScript`,
+        previousWorktrees.get(worktreeId)?.setupScript,
+        nextWorktrees.get(worktreeId)?.setupScript,
+      );
     }
   }
   return edits;
@@ -184,7 +222,7 @@ export function preserveHostExecConfig(
   };
   if (next.setupScript === undefined) restoreScript(next, existing ?? undefined);
   if (next.allowedRoots === undefined) {
-    if (existing?.allowedRoots?.length) next.allowedRoots = [...existing.allowedRoots];
+    if (existing?.allowedRoots !== undefined) next.allowedRoots = [...existing.allowedRoots];
     else delete next.allowedRoots;
   }
   for (const repository of next.repositories) {
@@ -215,14 +253,24 @@ export function reconcileInventoryWrite(input: {
   allowExecConfig: boolean;
 }):
   | { ok: true; inventory: HostInventory; execEdits: string[] }
-  | { ok: false; error: string; execEdits: string[] } {
-  const execEdits = listExecConfigEdits(input.existing, input.incoming);
+  | { ok: false; error: string; execEdits: string[]; kind: "forbidden" | "validation" } {
+  const inventory = preserveHostExecConfig(input.incoming, input.existing);
+  const execEdits = listExecConfigEdits(input.existing, inventory);
+  const legacyHookError = legacyRelativeHookError(input.existing, inventory);
+  if (legacyHookError) {
+    return { ok: false, error: legacyHookError, execEdits, kind: "validation" };
+  }
   if (execEdits.length && !input.allowExecConfig) {
-    return { ok: false, error: EXEC_CONFIG_REQUIRED_MESSAGE, execEdits };
+    return {
+      ok: false,
+      error: EXEC_CONFIG_REQUIRED_MESSAGE,
+      execEdits,
+      kind: "forbidden",
+    };
   }
   return {
     ok: true,
     execEdits,
-    inventory: preserveHostExecConfig(input.incoming, input.existing),
+    inventory,
   };
 }
