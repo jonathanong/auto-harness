@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository settings and concurrency cases share fixtures. */
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
@@ -138,6 +139,45 @@ describe("HostRepoSettingsForm", () => {
     expect(fetch.mock.calls.some((call) => String(call[0]).includes("/exec-config"))).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("does not overwrite concurrent exec fields during an ordinary repository save", async () => {
+    const concurrent = {
+      ...inventory,
+      repositories: [
+        {
+          ...repo,
+          setupScript: "concurrent setup",
+          terminalHookScript: "/concurrent/hook.sh",
+        },
+      ],
+    };
+    const fetch = stubInventoryFetch(concurrent);
+    const view = mountForm(
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={{
+          ...repo,
+          setupScript: "page setup",
+          terminalHookScript: "/page/hook.sh",
+        }}
+        canWriteExecConfig
+      />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-path-repo-1"), "/new/repo");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+
+    expect(putBody(fetch)).toMatchObject({
+      repositories: [
+        expect.objectContaining({
+          setupScript: "concurrent setup",
+          terminalHookScript: "/concurrent/hook.sh",
+        }),
+      ],
+    });
     view.unmount();
   });
 

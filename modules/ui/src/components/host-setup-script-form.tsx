@@ -49,6 +49,7 @@ export function HostSetupScriptForm({
   const [rootsDirty, setRootsDirty] = useState(false);
   const scriptDirtyRef = useRef(false);
   const rootsDirtyRef = useRef(false);
+  const environmentDirtyRef = useRef(false);
   const savedRefreshExecRef = useRef<string | null>(null);
   const savedRefreshEnvironmentRef = useRef<string | null>(null);
 
@@ -73,7 +74,9 @@ export function HostSetupScriptForm({
     const nextEnvironment = (requiredEnvironment ?? []).join("\n");
     const preserveSavedFeedback = savedRefreshEnvironmentRef.current === nextEnvironment;
     savedRefreshEnvironmentRef.current = null;
-    setEnvironment(nextEnvironment);
+    if (!environmentDirtyRef.current) {
+      setEnvironment(nextEnvironment);
+    }
     if (!preserveSavedFeedback) setEnvironmentSaved(false);
   }, [requiredEnvironment]);
 
@@ -221,6 +224,7 @@ export function HostSetupScriptForm({
                   return;
                 }
                 savedRefreshEnvironmentRef.current = environment;
+                environmentDirtyRef.current = false;
                 setEnvironmentSaved(true);
                 router.refresh();
               } catch (error) {
@@ -244,7 +248,10 @@ export function HostSetupScriptForm({
               name="requiredEnvironment"
               rows={4}
               value={environment}
-              onChange={(event) => setEnvironment(event.target.value)}
+              onChange={(event) => {
+                setEnvironment(event.target.value);
+                environmentDirtyRef.current = true;
+              }}
               className="font-mono text-xs"
               data-pw="host-required-environment"
             />

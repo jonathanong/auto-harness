@@ -63,6 +63,10 @@ export function HostRepoSettingsForm({
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
+            const setupScriptEdited =
+              canWriteExecConfig && setupScript !== (repo.setupScript ?? "");
+            const terminalHookScriptEdited =
+              canWriteExecConfig && terminalHookScript !== (repo.terminalHookScript ?? "");
             const requiredEnvironmentEntry = fd.get("requiredEnvironment");
             const requiredEnvironmentNames = (
               typeof requiredEnvironmentEntry === "string" ? requiredEnvironmentEntry : ""
@@ -110,7 +114,8 @@ export function HostRepoSettingsForm({
                     path,
                     defaultBranch,
                     requiredEnvironment,
-                    ...(canWriteExecConfig ? { setupScript, terminalHookScript } : {}),
+                    ...(setupScriptEdited ? { setupScript } : {}),
+                    ...(terminalHookScriptEdited ? { terminalHookScript } : {}),
                   }),
                 );
                 if (!r.ok) {

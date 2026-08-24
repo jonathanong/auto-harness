@@ -265,6 +265,7 @@ describe("HostSetupScriptForm", () => {
     const view = mount(<UnrelatedRefreshHarness />);
     setValue(field(view.container, "host-setup-script"), "new script");
     setValue(field(view.container, "host-allowed-roots"), "/new-root");
+    setValue(field(view.container, "host-required-environment"), "LOCAL_TOKEN");
 
     act(() => field<HTMLButtonElement>(view.container, "unrelated-refresh").click());
 
@@ -273,6 +274,9 @@ describe("HostSetupScriptForm", () => {
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/new-root",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "host-required-environment").value).toBe(
+      "LOCAL_TOKEN",
     );
     view.unmount();
   });
