@@ -135,12 +135,18 @@ function minimalDeps(overrides: Partial<RunSessionDeps>): RunSessionDeps {
 }
 
 describe("runCli start signal handling", () => {
-  it("records a replacement boot before a config preflight failure", async () => {
+  it("keeps a Linux replacement recoverable after a config preflight failure", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "ah-cli-update-"));
     try {
       const installer = createFileUpdateInstaller({ rootDir, extract: runnableUpdateTree });
       await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
       await installer.activate("1.0.0");
+      if (process.platform === "linux") {
+        // Linux's root-owned ExecStartPre helper records this attempt immediately
+        // before invoking the daemon. The unprivileged CLI intentionally leaves
+        // that immutable marker alone, including when its local preflight fails.
+        await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      }
       const errors: string[] = [];
 
       await expect(
@@ -157,8 +163,8 @@ describe("runCli start signal handling", () => {
       ).resolves.toBe(1);
       expect(errors).toEqual(["config preflight failed"]);
 
-      // The failed first replacement has consumed its boot attempt, so a
-      // supervisor relaunch restores the predecessor instead of crash-looping.
+      // The replacement is still unacknowledged, so the next supervisor launch
+      // restores the predecessor instead of crash-looping.
       await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("rolled-back");
       expect(readInstalledVersion(rootDir)).toBeUndefined();
     } finally {

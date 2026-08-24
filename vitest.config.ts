@@ -67,7 +67,10 @@ export default defineConfig({
             "services/**/*.test.{ts,tsx}",
             "scripts/**/*.test.ts",
           ],
-          exclude: dynamoUnitTests,
+          // Supplying an explicit exclude list replaces Vitest's defaults. Keep
+          // dependencies out of the unit project while moving the Dynamo-backed
+          // files into their serialized project below.
+          exclude: ["**/node_modules/**", ...dynamoUnitTests],
           testTimeout: 60_000,
           hookTimeout: 60_000,
         },
