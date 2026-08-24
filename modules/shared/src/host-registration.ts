@@ -24,6 +24,8 @@ export type ProviderAccountReadiness = {
 export const MAX_PROVIDER_ACCOUNT_READINESS = 256;
 /** Keep account identifiers bounded across daemon configuration and readiness advertisements. */
 export const MAX_PROVIDER_ACCOUNT_ID_LENGTH = 512;
+/** Leave headroom below the WebSocket frame limit for registration inventory and framing. */
+export const MAX_HOST_REGISTRATION_BYTES = 120 * 1024;
 export const PROVIDER_ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
 
 /** Validate the non-worktree portion of a host registration advertisement. */

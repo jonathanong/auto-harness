@@ -96,6 +96,31 @@ describe("daemon registration", () => {
     expect(JSON.stringify(messages[0])).not.toContain("/homes/acct");
   });
 
+  it("rejects a registration that cannot fit in one WebSocket frame", async () => {
+    const messages: unknown[] = [];
+    const profiles = parseExecutionProfiles({
+      accounts: Object.fromEntries(
+        Array.from({ length: 256 }, (_, index) => [
+          `account-${String(index)}-${"x".repeat(500)}`,
+          { home: `/homes/${String(index)}` },
+        ]),
+      ),
+    });
+    await expect(
+      registerDaemon(
+        { hostId: "h", repositories: [], providerAccounts: [] },
+        { send: async (message: unknown) => void messages.push(message) } as never,
+        [],
+        false,
+        undefined,
+        undefined,
+        [],
+        profiles,
+      ),
+    ).rejects.toThrow(/WebSocket limit/);
+    expect(messages).toEqual([]);
+  });
+
   it("applies the next repositories, ensures worktrees, then registers", async () => {
     const config = { hostId: "h", repositories: [], providerAccounts: [] };
     const next = {

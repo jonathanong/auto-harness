@@ -105,7 +105,7 @@ describe("archive retry state", () => {
 
     await expect(retryPendingArchives(state, 25)).resolves.toBe(1);
     expect(uploaded).toHaveLength(1);
-    expect(uploaded[0]).toMatch(/^sessions\/later\/logs\.[a-f0-9]{16}\.jsonl$/);
+    expect(uploaded[0]).toBe("sessions/later/logs.jsonl");
     expect(state.archives.get("sessions/failed/logs.jsonl")?.objectStored).toBe(false);
     expect(state.archives.get("sessions/later/logs.jsonl")?.objectStored).toBe(true);
   });
@@ -205,7 +205,7 @@ describe("archive retry state", () => {
     );
   });
 
-  it("does not rewrite the winner when a stale generation loses its completion fence", async () => {
+  it("does not rewrite a newer pending generation when a stale upload loses its fence", async () => {
     let releaseUpload!: () => void;
     const uploaded: string[] = [];
     const uploadStarted = new Promise<void>((resolve) => {
@@ -246,7 +246,9 @@ describe("archive retry state", () => {
       contentType: "application/x-ndjson",
       bodyBytes: 0,
       status: "complete",
-      objectStored: true,
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "new-claim",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     releaseUpload();
@@ -254,5 +256,60 @@ describe("archive retry state", () => {
 
     expect(uploaded).toHaveLength(1);
     expect(uploaded[0]).toBe('{"timestamp":"1","stream":"stdout","content":"old"}\n');
+  });
+
+  it("republishes the newer winner after a stale canonical upload loses its fence", async () => {
+    let releaseUpload!: () => void;
+    const uploadStarted = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const uploaded: string[] = [];
+    const key = "sessions/fenced-winner/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async ({ body }) => {
+          uploaded.push(body);
+          if (uploaded.length === 1) await uploadStarted;
+        },
+      },
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    state.logs.set("fenced-winner", [
+      { timestamp: "1", stream: "stdout", content: "old" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const retry = retrySessionArchiveIfNeeded(state, "fenced-winner", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    await Promise.resolve();
+    state.logs.set("fenced-winner", [
+      { timestamp: "1", stream: "stdout", content: "new" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    releaseUpload();
+    await retry;
+
+    expect(uploaded).toEqual([
+      '{"timestamp":"1","stream":"stdout","content":"old"}\n',
+      '{"timestamp":"1","stream":"stdout","content":"new"}\n',
+    ]);
   });
 });

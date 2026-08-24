@@ -547,7 +547,7 @@ describe("session-transition planner", () => {
         { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
         { attemptId: "attempt" },
       ).hostAssignmentLease,
-    ).toBeUndefined();
+    ).toEqual({ hostId: "host" });
     expect(
       finishSessionOptsFromPlan(
         session({
