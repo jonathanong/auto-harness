@@ -72,8 +72,8 @@ function addErrorAlarm(
   id: string,
   metric: cloudwatch.IMetric,
   threshold: number,
-): void {
-  const alarm = new cloudwatch.Alarm(scope, id, {
+): cloudwatch.Alarm {
+  return new cloudwatch.Alarm(scope, id, {
     comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     datapointsToAlarm: 1,
     evaluationPeriods: 1,
@@ -81,7 +81,6 @@ function addErrorAlarm(
     threshold,
     treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
   });
-  void alarm;
 }
 
 function apiGateway5xx(apiId: string, stage: string): cloudwatch.Metric {

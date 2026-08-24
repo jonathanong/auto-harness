@@ -90,5 +90,8 @@ describe("runtime Lambda IAM split", () => {
       },
       3,
     );
+    expect(policyActions(template, "index.rest")).toContain("execute-api:ManageConnections");
+    expect(policyActions(template, "index.cron")).toContain("execute-api:ManageConnections");
+    expect(policyActions(template, "index.websocket")).toContain("execute-api:ManageConnections");
   });
 });
