@@ -1,6 +1,7 @@
 export type DeploymentOperation = "deploy" | "purge" | "teardown" | "update";
 
 export type DeploymentConfig = {
+  accessLogsEnabled: boolean;
   accountId?: string;
   adminsSsmParam: string;
   cursorSecretSsmParam: string;
@@ -44,6 +45,10 @@ export function deploymentConfig(
   }
   const base = `/auto-harness/${environment}`;
   return {
+    // Default-safe opt-in, matching HARNESS_DEPLOY_PURGE_SSM: only the literal "1" enables it.
+    // Access logs need a one-time, account-wide API Gateway CloudWatch Logs role that this
+    // deploy does not provision — see scripts/bootstrap-apigateway-account.sh.
+    accessLogsEnabled: env.HARNESS_ACCESS_LOGS_ENABLED?.trim() === "1",
     adminsSsmParam: env.HARNESS_ADMINS_SSM_PARAM?.trim() || `${base}/harness-admins`,
     cursorSecretSsmParam:
       env.HARNESS_CURSOR_SECRET_SSM_PARAM?.trim() || `${base}/harness-cursor-secret`,

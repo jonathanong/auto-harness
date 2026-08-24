@@ -75,6 +75,28 @@ describe("deploymentConfig", () => {
     expect(unopted.purgeSsmParameters).toBe(false);
   });
 
+  it('keeps access logs off unless explicitly opted in with the literal "1"', () => {
+    const defaultOff = deploymentConfig("deploy", {
+      AWS_REGION: "us-west-2",
+      HARNESS_DEPLOY_ENVIRONMENT: "review",
+    });
+    expect(defaultOff.accessLogsEnabled).toBe(false);
+
+    const optedIn = deploymentConfig("deploy", {
+      AWS_REGION: "us-west-2",
+      HARNESS_ACCESS_LOGS_ENABLED: "1",
+      HARNESS_DEPLOY_ENVIRONMENT: "review",
+    });
+    expect(optedIn.accessLogsEnabled).toBe(true);
+
+    const notOne = deploymentConfig("deploy", {
+      AWS_REGION: "us-west-2",
+      HARNESS_ACCESS_LOGS_ENABLED: "true",
+      HARNESS_DEPLOY_ENVIRONMENT: "review",
+    });
+    expect(notOne.accessLogsEnabled).toBe(false);
+  });
+
   it("accepts explicit account and parameter-name overrides", () => {
     expect(
       deploymentConfig("deploy", {

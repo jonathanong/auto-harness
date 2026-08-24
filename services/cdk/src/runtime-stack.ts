@@ -19,6 +19,8 @@ import { addRuntimeObservability } from "./runtime-observability.ts";
 export type RuntimeStackProps = StackProps & {
   foundation: FoundationResources;
   tablePrefix: string;
+  /** Defaults to false — see addRuntimeObservability's account-role prerequisite. */
+  accessLogsEnabled?: boolean;
 };
 
 export type RuntimeResources = {
@@ -152,6 +154,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     addRuntimeObservability({
       scope: this,
       environment: props.tablePrefix,
+      accessLogsEnabled: props.accessLogsEnabled ?? false,
       rest: restFunction,
       websocket: websocketFunction,
       cron: cronFunction,

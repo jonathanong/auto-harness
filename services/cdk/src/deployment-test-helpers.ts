@@ -4,6 +4,7 @@ import type { DeploymentConfig } from "./deployment-config.ts";
 import type { DeploymentDependencies } from "./deployment-support.ts";
 
 export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
+  accessLogsEnabled: false,
   adminsSsmParam: "/auto-harness/review/harness-admins",
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",

@@ -15,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Item                         | Status                                                                                                                                                                                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Design / data model          | Documented in [aws.md](aws.md)                                                                                                                                                                                                                               |
-| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks. Runtime IAM is split per function; DynamoDB PITR is on; HTTP/WS stages have redacted access logs, throttles, and operational CloudWatch alarms.                                                |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks. Runtime IAM is split per function; DynamoDB PITR is on; HTTP/WS stages have throttles and operational CloudWatch alarms, plus redacted access logs when opted in.                              |
 | Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                                                                                                                                                                                                   |
 | Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17. `purge` (including a real programmatic session created, dispatched, and completed in between) verified against a disposable `qa` environment in `us-west-2` on 2026-08-18. |
 
@@ -201,11 +201,50 @@ characters.
 | `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                   |
 | `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                            |
 | `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete all four SSM parameters (three bootstrap secrets + the public base URL) |
+| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                             |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
 `AutoHarness-<environment>-*` for tables.
 The names are generic and do not depend on any repository connected later in the UI.
+
+### API Gateway access logs (opt-in)
+
+Redacted HTTP/WS access logs (`services/cdk/src/runtime-observability.ts`) are
+off by default. They require `stage.accessLogSettings`, which in turn requires
+an `AWS::ApiGateway::Account` resource — a **one-time, AWS-account-wide
+singleton** (one per account/region, shared by every stack and every repo
+deployed into that account) that points API Gateway at an IAM role with
+`logs:*` permissions. `deploy`/`update` never provision it, so enabling access
+logs on a fresh account fails closed (no log groups, `AccessLogSettings`
+absent) rather than requiring an account-wide IAM change on every deploy.
+
+Provision it once per account, before the first environment that wants access
+logs:
+
+```bash
+pnpm bootstrap:apigateway-account
+```
+
+This runs a separate, environment-independent CDK app
+(`services/cdk/src/apigateway-account-cli.ts` /
+`apigateway-account-stack.ts`) that creates only the IAM role and the
+`AWS::ApiGateway::Account` resource — nothing else in the account is touched.
+Both are deployed with `RemovalPolicy.RETAIN`, so destroying this bootstrap
+stack never clears the account-wide setting out from under an unrelated stack
+or repo running in the same account. Re-running the script is a harmless
+no-op.
+
+After that succeeds, opt individual environments into access logs:
+
+```bash
+HARNESS_ACCESS_LOGS_ENABLED=1 pnpm deploy:aws
+```
+
+Only the literal string `1` opts in; any other value (including `true`) keeps
+access logs off. Throttles, CloudWatch alarms, and app-emitted operational EMF
+metrics are unaffected either way — they don't depend on the account-level
+role.
 
 ## Deploy a new environment
 
