@@ -30,6 +30,7 @@ import {
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
 import {
   finishSessionOptsFromPlan,
   requeueUsageLimitedSessionOptsFromPlan,
@@ -336,7 +337,19 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
-        ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
+        ...(msg.capabilities
+          ? {
+              capabilities: Array.isArray(msg.capabilities)
+                ? msg.capabilities
+                : msg.capabilities.features,
+            }
+          : {}),
+        ...(msg.maxConcurrentAssignments !== undefined
+          ? { maxConcurrentAssignments: msg.maxConcurrentAssignments }
+          : {}),
+        ...(msg.providerAccountReadiness
+          ? { providerAccountReadiness: msg.providerAccountReadiness }
+          : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
         ...(msg.runningAttempts ? { runningAttempts: msg.runningAttempts } : {}),
         ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
@@ -665,6 +678,7 @@ async function applySessionStatusDurable(
       concurrencyId: session.concurrencyId,
     });
     if (released) {
+      releaseProviderAccountLease(state, session);
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
         state.worktrees.set(worktreeId, {
@@ -748,6 +762,7 @@ async function applySessionStatusDurable(
       });
       if (!requeued) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
         ...queueReconnectSession(session, "provider account missing; requeued"),
         errorCode: "usage_limit",
@@ -772,6 +787,7 @@ async function applySessionStatusDurable(
       });
       if (!requeued) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, {
         ...queueReconnectSession(session, msg.errorMessage ?? "provider usage limit; requeued"),
         errorCode: "usage_limit",
@@ -845,6 +861,7 @@ async function applySessionStatusDurable(
     });
     if (!committed) return { ok: true };
     releaseScheduledLeaseLocal(state, session);
+    releaseProviderAccountLease(state, session);
     const { mainCheckoutLease: _, ...next } = {
       ...session,
       status: msg.status,
@@ -870,6 +887,7 @@ async function applySessionStatusDurable(
       requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    releaseProviderAccountLease(state, session);
     const wt = state.worktrees.get(session.worktreeId);
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
     if (loadedAccount) {
@@ -898,6 +916,7 @@ async function applySessionStatusDurable(
       suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
     );
     if (!committed) return { ok: true };
+    releaseProviderAccountLease(state, session);
     const worktree = state.worktrees.get(session.worktreeId);
     if (worktree)
       state.worktrees.set(worktree.id, { ...worktree, status: "idle", currentSessionId: null });
@@ -921,6 +940,7 @@ async function applySessionStatusDurable(
   if (!committed) {
     return { ok: true };
   }
+  releaseProviderAccountLease(state, session);
   const worktreeId = session.worktreeId;
   if (worktreeId) {
     const wt = state.worktrees.get(worktreeId);
@@ -989,6 +1009,9 @@ function applySessionStatus(
   const patch = transitionEffect(plan, "patch_report");
 
   if (session.status !== "running") {
+    if (transitionEffect(plan, "release_lease") || transitionEffect(plan, "release_worktree")) {
+      releaseProviderAccountLease(state, session);
+    }
     if (transitionEffect(plan, "release_lease") && session.mainCheckoutLease) {
       releaseScheduledLeaseLocal(state, session);
       delete session.mainCheckoutLease;
@@ -1038,6 +1061,7 @@ function applySessionStatus(
   if (terminal) {
     session.completedAt = state.now();
     state.pendingAcks.delete(msg.sessionId);
+    releaseProviderAccountLease(state, session);
     if (session.mainCheckoutLease) {
       delete session.mainCheckoutLease;
       delete session.assignmentConnectionId;

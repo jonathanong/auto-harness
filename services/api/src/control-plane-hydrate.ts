@@ -1,4 +1,4 @@
-import { normalizeHostCapabilities } from "@auto-harness/shared";
+import { DEFAULT_MAX_CONCURRENT_SESSIONS, normalizeHostCapabilities } from "@auto-harness/shared";
 
 import type {
   CommandRecord,
@@ -39,6 +39,16 @@ type HydratableState = {
   archives: Map<string, ArchiveMetadata>;
   pendingAcks: { clear(): void };
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
+  providerAccountLeases: Map<
+    string,
+    {
+      sessionId: string;
+      attemptId: string;
+      slot: number;
+      hostId: string;
+      providerAccountId: string;
+    }
+  >;
   drainingHosts: Set<string>;
   disconnectedHosts: Map<string, { lastHeartbeatAt: string }>;
 };
@@ -109,7 +119,19 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.archives.clear();
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
+  state.providerAccountLeases.clear();
   hydrateScheduledState(state, sessions);
+  for (const session of sessions) {
+    const lease = session.providerAccountLease;
+    if (!lease || session.status !== "running") continue;
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: session.id,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: session.hostId ?? "",
+      providerAccountId: lease.providerAccountId,
+    });
+  }
   for (const worktree of worktrees) state.worktrees.set(worktree.id, worktree);
   for (const record of connections) {
     if (record.registered === false) continue;
@@ -140,7 +162,12 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     });
   }
   for (const record of providers) state.providers.set(record.id, record);
-  for (const record of accounts) state.providerAccounts.set(record.id, record);
+  for (const record of accounts) {
+    state.providerAccounts.set(record.id, {
+      ...record,
+      maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
+    });
+  }
   for (const record of commands) state.commands.set(record.id, record);
   state.slackIntegration = slackIntegration ?? undefined;
   for (const record of auditLogs) state.auditLogs.set(record.id, record);

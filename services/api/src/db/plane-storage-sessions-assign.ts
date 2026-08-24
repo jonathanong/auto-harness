@@ -30,6 +30,7 @@ export async function tryAssignSession(
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
   },
 ): Promise<boolean> {
@@ -59,6 +60,10 @@ export async function tryAssignSession(
   if (opts.resumeSpec !== undefined) {
     sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
     sessionValues[":resumeSpec"] = opts.resumeSpec;
+  }
+  if (opts.providerAccountLease) {
+    sessionSets.push("providerAccountLease = :providerAccountLease");
+    sessionValues[":providerAccountLease"] = opts.providerAccountLease;
   }
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   try {
@@ -144,6 +149,24 @@ export async function tryAssignSession(
                     ConditionExpression:
                       "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
                     ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
+                  },
+                },
+              ]
+            : []),
+          ...(opts.providerAccountLease
+            ? [
+                {
+                  Put: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Item: {
+                      concurrencyId: opts.providerAccountLease.concurrencyId,
+                      sessionId: opts.sessionId,
+                      attemptId: opts.attemptId,
+                      providerAccountId: opts.providerAccountLease.providerAccountId,
+                      slot: opts.providerAccountLease.slot,
+                      hostId: opts.hostId,
+                    },
+                    ConditionExpression: "attribute_not_exists(concurrencyId)",
                   },
                 },
               ]

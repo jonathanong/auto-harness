@@ -18,6 +18,12 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
+import {
+  accountHasLeaseCapacity,
+  hostProviderAccountReady,
+  releaseProviderAccountLease,
+  tryAcquireProviderAccountLeaseLocal,
+} from "./control-plane-provider-account-leases.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -47,9 +53,26 @@ export function assignQueued(
     }
     if (plan.action !== "assign") continue;
     for (const { worktree: candidate, route } of plan.candidates) {
+      if (
+        !hostProviderAccountReady(state, candidate.hostId, route.providerAccountId) ||
+        !accountHasLeaseCapacity(state, route.providerAccountId)
+      ) {
+        continue;
+      }
       const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
       if (!won) continue;
       const attemptId = state.attemptIdFactory();
+      const lease = tryAcquireProviderAccountLeaseLocal(
+        state,
+        session,
+        route.providerAccountId,
+        attemptId,
+        candidate.hostId,
+      );
+      if (route.providerAccountId && !lease) {
+        releaseWorktree(state, candidate.id);
+        continue;
+      }
       session.status = "running";
       session.worktreeId = candidate.id;
       session.hostId = candidate.hostId;
@@ -67,6 +90,8 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
+      if (lease) session.providerAccountLease = lease;
+      else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
       delete session.ackReceivedAt;
       state.pendingAcks.set(session.id, {
@@ -168,7 +193,23 @@ export async function assignQueuedDurable(
       if (!connectionId) {
         continue;
       }
+      if (
+        !hostProviderAccountReady(state, candidate.hostId, route.providerAccountId) ||
+        !accountHasLeaseCapacity(state, route.providerAccountId)
+      ) {
+        continue;
+      }
       const attemptId = state.attemptIdFactory();
+      const lease = tryAcquireProviderAccountLeaseLocal(
+        state,
+        session,
+        route.providerAccountId,
+        attemptId,
+        candidate.hostId,
+      );
+      if (route.providerAccountId && !lease) {
+        continue;
+      }
       const principalId = sessionPrincipalId(session);
       const won = await state.storage.tryAssignSession({
         sessionId: session.id,
@@ -193,9 +234,13 @@ export async function assignQueuedDurable(
         },
         attemptId,
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+        ...(lease ? { providerAccountLease: lease } : {}),
         queueShard: session.queueShard,
       });
       if (!won) {
+        if (lease) {
+          state.providerAccountLeases.delete(lease.concurrencyId);
+        }
         continue;
       }
       const resumeSpec = session.resumeSpec ?? route.resumeSpec;
@@ -216,6 +261,7 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
+        ...(lease ? { providerAccountLease: lease } : {}),
       };
       const nextWorktree = {
         ...candidate,
@@ -347,6 +393,7 @@ export function enforceAckDeadlines(
     }
     if (pending.worktreeId) releaseWorktree(state, pending.worktreeId);
     else releaseScheduledLeaseLocal(state, session);
+    releaseProviderAccountLease(state, session);
     if (!pending.worktreeId)
       state.sessions.set(
         sessionId,
@@ -444,6 +491,7 @@ export async function enforceAckDeadlinesDurable(
       });
     }
     const reason = "agent did not acknowledge assignment; requeued";
+    releaseProviderAccountLease(state, session);
     const queued = pending.worktreeId
       ? {
           ...session,
@@ -453,6 +501,7 @@ export async function enforceAckDeadlinesDurable(
           errorMessage: reason,
         }
       : queueReconnectSession(session, reason);
+    delete queued.providerAccountLease;
     state.sessions.set(sessionId, queued);
     if (!pending.worktreeId) releaseScheduledLeaseLocal(state, session);
     state.pendingAcks.delete(sessionId);

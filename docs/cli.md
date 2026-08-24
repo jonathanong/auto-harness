@@ -38,7 +38,10 @@ pnpm local:e2e
 pnpm local:cli-e2e
 ```
 
-Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`.
+Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`. Optional
+`HARNESS_EXECUTION_PROFILES` points at a daemon-local JSON file of per-account CLI homes
+(credentials never leave the host). Optional `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
+host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`.
 
 ---
 
@@ -200,7 +203,7 @@ D4 landed):
 
 ```bash
 POST /api/v1/providers            # {name} — creates the provider AND its default command
-POST /api/v1/provider-accounts    # {providerId, label}
+POST /api/v1/provider-accounts    # {providerId, label, maxConcurrentSessions?}
 POST /api/v1/commands             # {name, argv, appendPrompt, providerId} — providerId: null for standalone
 GET  /api/v1/session-targets      # unified picker: Providers + Commands (including providerless)
 ```

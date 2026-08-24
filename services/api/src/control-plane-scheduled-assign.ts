@@ -17,6 +17,12 @@ import {
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planScheduledPlacement } from "./queue-placement-planner.ts";
+import {
+  accountHasLeaseCapacity,
+  hostHasAssignmentCapacity,
+  hostProviderAccountReady,
+  tryAcquireProviderAccountLeaseLocal,
+} from "./control-plane-provider-account-leases.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -32,6 +38,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
       connection.runtime?.gitReady === true &&
       hostAcceptsNewAssignments(state, connection.hostId) &&
+      hostHasAssignmentCapacity(state, connection.hostId) &&
       hostEnvironmentReady(state, connection.hostId, repositoryId) &&
       connection.repositoryIds?.includes(repositoryId)
     )
@@ -121,13 +128,27 @@ export async function assignScheduledQueuedDurable(
           connectionId: string;
           target: (typeof plan.candidates)[number]["route"];
           attemptId: string;
+          lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
         }
       | undefined;
     for (const { hostId, connectionId, route: target } of plan.candidates) {
       const connection = state.connections.get(connectionId);
       if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
         continue;
+      if (
+        !hostProviderAccountReady(state, hostId, target.providerAccountId) ||
+        !accountHasLeaseCapacity(state, target.providerAccountId)
+      )
+        continue;
       const attemptId = state.attemptIdFactory();
+      const lease = tryAcquireProviderAccountLeaseLocal(
+        state,
+        session,
+        target.providerAccountId,
+        attemptId,
+        hostId,
+      );
+      if (target.providerAccountId && !lease) continue;
       const won = state.storage
         ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
           (await state.storage.tryAssignMainCheckoutSession({
@@ -151,16 +172,20 @@ export async function assignScheduledQueuedDurable(
               attemptId,
             },
             ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
+            ...(lease ? { providerAccountLease: lease } : {}),
             queueShard: session.queueShard,
             attemptId,
           }))
         : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
-      if (!won) continue;
-      placed = { hostId, connectionId, target, attemptId };
+      if (!won) {
+        if (lease) state.providerAccountLeases.delete(lease.concurrencyId);
+        continue;
+      }
+      placed = { hostId, connectionId, target, attemptId, lease };
       break;
     }
     if (!placed) continue;
-    const { hostId, connectionId, target, attemptId } = placed;
+    const { hostId, connectionId, target, attemptId, lease } = placed;
     const next = {
       ...session,
       status: "running" as const,
@@ -183,6 +208,7 @@ export async function assignScheduledQueuedDurable(
       assignmentConnectionId: connectionId,
       mainCheckoutLease: true,
       attemptId,
+      ...(lease ? { providerAccountLease: lease } : {}),
     };
     delete next.completedAt;
     delete next.exitCode;

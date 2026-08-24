@@ -14,6 +14,7 @@ import {
   confirmReportedSession,
   ignoreStaleReconnectClaim,
 } from "./control-plane-reconnect-confirm.ts";
+import { releaseProviderAccountLease } from "./control-plane-provider-account-leases.ts";
 import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
@@ -90,6 +91,7 @@ export async function reconcileHostRunningSessions(
       if (!session || session.status !== "running" || session.hostId !== hostId) continue;
       if (running.has(session.id)) continue;
       if (!state.storage) {
+        releaseProviderAccountLease(state, session);
         state.sessions.set(
           session.id,
           queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
@@ -113,6 +115,7 @@ export async function reconcileHostRunningSessions(
           fence: { hostId, connectionId: connectionId! },
         })
       ) {
+        releaseProviderAccountLease(state, session);
         state.sessions.set(
           session.id,
           queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
@@ -168,6 +171,7 @@ export async function reclaimReconnectDeadlines(
       ? await state.storage.getHostLock(session.hostId)
       : undefined;
     if (!state.storage) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
@@ -192,6 +196,7 @@ export async function reclaimReconnectDeadlines(
         ...(!connectionId ? { requireNoHostLock: session.hostId } : {}),
       })
     ) {
+      releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
         queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),

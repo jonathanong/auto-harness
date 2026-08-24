@@ -36,6 +36,11 @@ function register(
     capability?: boolean;
     repositoryId?: string;
     worktrees?: Array<{ id: string; name: string }>;
+    providerAccountReadiness?: Array<{
+      providerAccountId: string;
+      ready: boolean;
+      fingerprint: string;
+    }>;
   } = {},
 ) {
   const repositoryId = opts.repositoryId ?? "repo-1";
@@ -51,6 +56,9 @@ function register(
     repositories: [{ id: repositoryId, path: `/repos/${repositoryId}`, defaultBranch: "main" }],
     commandProfiles: [],
     capabilities: opts.capability === false ? [] : ["scheduled-main-checkout"],
+    ...(opts.providerAccountReadiness
+      ? { providerAccountReadiness: opts.providerAccountReadiness }
+      : {}),
   });
 }
 
@@ -187,7 +195,12 @@ describe("scheduled main-checkout dispatcher", () => {
         providerId: "provider",
       }),
     ).toMatchObject({ ok: true });
-    register(plane, "provider-host");
+    register(plane, "provider-host", {
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+        { providerAccountId: "account-b", ready: true, fingerprint: "b".repeat(64) },
+      ],
+    });
     const inventory = plane.state.hostInventories.get("provider-host")!;
     plane.state.hostInventories.set("provider-host", {
       ...inventory,

@@ -1061,13 +1061,13 @@ provider. The response identifies every live dependency; deletion never cascades
 
 #### `POST /provider-accounts`
 
-**Request:** `{ "providerId": "prov-1", "label": "jonathanrichardong@gmail.com" }`
+**Request:** `{ "providerId": "prov-1", "label": "jonathanrichardong@gmail.com", "maxConcurrentSessions"?: 1 }`
 
-**Response:** `201 Created` — `{ "id", "providerId", "label", "createdAt", "updatedAt" }`. `providerId` must reference an existing provider (`400` otherwise).
+**Response:** `201 Created` — `{ "id", "providerId", "label", "maxConcurrentSessions", "createdAt", "updatedAt" }`. `providerId` must reference an existing provider (`400` otherwise). `maxConcurrentSessions` defaults to `1` (integer 1–64).
 
 #### `GET /provider-accounts`, `GET /provider-accounts/:id`, `PATCH /provider-accounts/:id`, `DELETE /provider-accounts/:id`
 
-Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours), and responses include `usageLimitedUntil`, `lastUsageLimitedAt`, and `lastAssignedAt`. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
+Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours) and `maxConcurrentSessions` (default `1`). Responses include `usageLimitedUntil`, `lastUsageLimitedAt`, `lastAssignedAt`, and `maxConcurrentSessions`. The scheduler enforces the cap with attempt-owned durable leases (same conditional-put pattern as `concurrencyId` locks). Assignment fails closed when a host has not advertised a ready execution profile for that exact account. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
 
 #### `POST /commands`
 

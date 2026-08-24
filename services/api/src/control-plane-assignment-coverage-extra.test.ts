@@ -253,6 +253,9 @@ describe("assignment residual coverage", () => {
         repositoryIds: ["repo"],
         runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         protocolVersion: 1,
+        providerAccountReadiness: [
+          { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+        ],
       });
       state.hostConnection.set(hostId, connectionId);
       state.hostInventories.set(hostId, {

@@ -21,6 +21,23 @@ describe("host capability advertisements", () => {
         type: "host:register",
         hostId: "host",
         worktrees,
+        capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 4 },
+        providerAccountReadiness: [
+          { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+        ],
+      }),
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 4,
+      providerAccountReadiness: [
+        { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
         commandProfiles: [],
         capabilities: ["not-real"],
       }),
@@ -34,6 +51,27 @@ describe("host capability advertisements", () => {
         capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"],
       }),
     ).toBeNull();
+  });
+
+  it("stores assignment capacity and provider-account readiness on the connection", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "capped" });
+    expect(
+      plane.registerHost({
+        hostId: "capped",
+        worktrees: [
+          { id: "wt-cap", name: "wt-cap", repositoryId: "repo", path: "/repo/wt", labels: [] },
+        ],
+        commandProfiles: [],
+        capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 2,
+        providerAccountReadiness: [
+          { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+        ],
+      }).ok,
+    ).toBe(true);
+    const capped = plane.state.connections.get("capped");
+    expect(capped?.maxConcurrentAssignments).toBe(2);
+    expect(capped?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
   });
 
   it("replaces a capability with an older reconnect advertisement", () => {

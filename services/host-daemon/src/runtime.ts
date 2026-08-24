@@ -8,6 +8,7 @@ import { createGitClient } from "./git.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 
 export async function ensureDaemonReady(
@@ -41,6 +42,7 @@ export async function runAssignedSession(
     processRunner,
     commandRunner,
     childEnvSource,
+    executionProfiles: loadExecutionProfiles(childEnvSource),
     onLog: (c) => {
       onLog(`[${c.stream}#${c.seq}] ${c.content}`);
     },

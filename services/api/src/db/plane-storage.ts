@@ -178,7 +178,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     patch: Partial<
       Pick<
         ProviderAccountRecord,
-        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
+        | "providerId"
+        | "label"
+        | "usageLimitCooldownSeconds"
+        | "usageLimitedUntil"
+        | "maxConcurrentSessions"
       >
     >;
   }): Promise<boolean> {

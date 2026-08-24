@@ -91,7 +91,7 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
       Key: { id: opts.sessionId },
       UpdateExpression:
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
+        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, providerAccountLease",
       ConditionExpression: requeueSessionCondition(opts),
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {

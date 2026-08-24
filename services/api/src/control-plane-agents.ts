@@ -388,6 +388,8 @@ export function registerHost(
     }>;
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
+    maxConcurrentAssignments?: number;
+    providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
     runningSessions?: string[];
     runningAttempts?: HostRunningAttempt[];
     protocolVersion?: number;
@@ -464,6 +466,12 @@ export function registerHost(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.maxConcurrentAssignments !== undefined
+      ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
+      : {}),
+    ...(opts.providerAccountReadiness
+      ? { providerAccountReadiness: opts.providerAccountReadiness.map((entry) => ({ ...entry })) }
+      : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };
@@ -543,6 +551,8 @@ export async function registerHostDurable(
     }>;
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
+    maxConcurrentAssignments?: number;
+    providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
     runningSessions?: string[];
     runningAttempts?: HostRunningAttempt[];
     protocolVersion?: number;
@@ -598,6 +608,12 @@ export async function registerHostDurable(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.maxConcurrentAssignments !== undefined
+      ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
+      : {}),
+    ...(opts.providerAccountReadiness
+      ? { providerAccountReadiness: opts.providerAccountReadiness.map((entry) => ({ ...entry })) }
+      : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };

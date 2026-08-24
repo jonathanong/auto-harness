@@ -13,7 +13,11 @@ export async function updateProviderAccount(
     patch: Partial<
       Pick<
         ProviderAccountRecord,
-        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
+        | "providerId"
+        | "label"
+        | "usageLimitCooldownSeconds"
+        | "usageLimitedUntil"
+        | "maxConcurrentSessions"
       >
     >;
   },
@@ -39,6 +43,10 @@ export async function updateProviderAccount(
   if (opts.patch.usageLimitedUntil !== undefined) {
     sets.push("usageLimitedUntil = :usageLimitedUntil");
     values[":usageLimitedUntil"] = opts.patch.usageLimitedUntil;
+  }
+  if (opts.patch.maxConcurrentSessions !== undefined) {
+    sets.push("maxConcurrentSessions = :maxConcurrentSessions");
+    values[":maxConcurrentSessions"] = opts.patch.maxConcurrentSessions;
   }
   const common = {
     id: opts.id,

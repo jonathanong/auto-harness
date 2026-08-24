@@ -19,6 +19,7 @@ import { ProviderAccountUnattachedWarning } from "../../../components/provider-a
 import { ProviderDefaultCommandForm } from "../../../components/provider-default-command-form.tsx";
 import { RemoveProviderAccountButton } from "../../../components/remove-provider-account-button.tsx";
 import { ProviderAccountCooldownForm } from "../../../components/provider-account-cooldown-form.tsx";
+import { ProviderAccountConcurrencyForm } from "../../../components/provider-account-concurrency-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +115,7 @@ export default async function ProviderDetailPage({
                         <TableCell>{attachedHostCount(a.id)}</TableCell>
                         <TableCell>
                           <ProviderAccountCooldownForm account={a} />
+                          <ProviderAccountConcurrencyForm account={a} />
                         </TableCell>
                         <TableCell>
                           <RemoveProviderAccountButton

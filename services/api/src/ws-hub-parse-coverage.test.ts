@@ -113,6 +113,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, capabilities: Array(20).fill("scheduled-main-checkout") },
       { ...registration, capabilities: ["unknown"] },
       { ...registration, capabilities: ["scheduled-main-checkout", "scheduled-main-checkout"] },
+      { ...registration, maxConcurrentAssignments: 0 },
+      { ...registration, providerAccountReadiness: [{ providerAccountId: "acct" }] },
       { ...registration, runningSessions: "session-1" },
       { ...registration, runningSessions: Array(1_001).fill("session-1") },
       { ...registration, runningSessions: [""] },

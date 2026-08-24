@@ -41,6 +41,9 @@ function providerPlane(): ControlPlane {
       { id: "worktree", name: "worktree", repositoryId: "repo", path: "/work", labels: [] },
     ],
     commandProfiles: [],
+    providerAccountReadiness: [
+      { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+    ],
   });
   plane.putHostInventory("host", {
     repositories: [

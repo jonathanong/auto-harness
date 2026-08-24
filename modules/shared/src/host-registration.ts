@@ -11,6 +11,19 @@ export type HostRunningAttempt = {
   attemptId: string;
 };
 
+/**
+ * Daemon-local execution-profile advertisement. Credentials and CLI homes never
+ * leave the host; the control plane only sees readiness and an opaque hash.
+ */
+export type ProviderAccountReadiness = {
+  providerAccountId: string;
+  ready: boolean;
+  fingerprint: string;
+};
+
+export const MAX_PROVIDER_ACCOUNT_READINESS = 256;
+export const PROVIDER_ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
+
 /** Validate the non-worktree portion of a host registration advertisement. */
 export function isHostRepositoryRegistration(value: unknown): value is HostRepositoryRegistration {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -60,4 +73,42 @@ export function validateHostRunningAttempts(
     seen.add(attempt.sessionId);
   }
   return null;
+}
+
+export function isProviderAccountReadiness(value: unknown): value is ProviderAccountReadiness {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.providerAccountId === "string" &&
+    entry.providerAccountId.length > 0 &&
+    entry.providerAccountId.length <= 512 &&
+    typeof entry.ready === "boolean" &&
+    typeof entry.fingerprint === "string" &&
+    PROVIDER_ACCOUNT_FINGERPRINT_PATTERN.test(entry.fingerprint)
+  );
+}
+
+/** Reject duplicate account IDs while retaining the daemon's ordering. */
+export function validateProviderAccountReadiness(
+  readiness: readonly ProviderAccountReadiness[],
+): string | null {
+  if (readiness.length > MAX_PROVIDER_ACCOUNT_READINESS) {
+    return "too many provider account readiness entries";
+  }
+  const seen = new Set<string>();
+  for (const entry of readiness) {
+    if (!isProviderAccountReadiness(entry)) return "invalid provider account readiness";
+    if (seen.has(entry.providerAccountId)) {
+      return `duplicate provider account ${entry.providerAccountId}`;
+    }
+    seen.add(entry.providerAccountId);
+  }
+  return null;
+}
+
+/** Attempt-owned account leases share the concurrency-lock table under this prefix. */
+export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-account:";
+
+export function providerAccountLeaseConcurrencyId(providerAccountId: string, slot: number): string {
+  return `${PROVIDER_ACCOUNT_LEASE_PREFIX}${providerAccountId}:${String(slot)}`;
 }

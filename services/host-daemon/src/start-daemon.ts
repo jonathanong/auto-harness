@@ -3,6 +3,7 @@ import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -128,6 +129,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     transport,
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
+    executionProfiles: loadExecutionProfiles(options.childEnvSource ?? process.env),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();

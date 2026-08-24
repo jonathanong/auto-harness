@@ -76,6 +76,13 @@ export type SessionRecord = {
   resumeFallback?: boolean;
   /** The repository main checkout is held by this scheduled session. */
   mainCheckoutLease?: boolean;
+  /** Attempt-owned provider-account concurrency lease, if this route is gated. */
+  providerAccountLease?: {
+    concurrencyId: string;
+    providerAccountId: string;
+    slot: number;
+    attemptId: string;
+  };
 };
 
 export type WorktreeRecord = {

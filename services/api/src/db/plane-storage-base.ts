@@ -20,6 +20,7 @@ import {
   type ViewerTicketRecord,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
+import * as providerAccountLeases from "./plane-storage-provider-account-leases.ts";
 import * as reconnect from "./plane-storage-reconnect.ts";
 import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
@@ -273,9 +274,18 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
+  }
+
+  releaseProviderAccountLease(opts: {
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+  }): Promise<void> {
+    return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
   }
 
   ensureMainCheckoutLeaseMap(hostId: string, connectionId: string): Promise<boolean> {
@@ -305,6 +315,7 @@ export class DynamoPlaneStorageBase {
     resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;
   }): Promise<boolean> {

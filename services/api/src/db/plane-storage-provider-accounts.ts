@@ -10,6 +10,8 @@ import {
   type OwnedDeletionMarker,
   withMarkerTable,
 } from "./plane-storage-deletion-markers.ts";
+import { DEFAULT_MAX_CONCURRENT_SESSIONS } from "@auto-harness/shared";
+
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 
@@ -153,7 +155,13 @@ export async function ensureProviderAccountCount(
 }
 
 function normalize(record: ProviderAccountRecord | undefined): ProviderAccountRecord | null {
-  return record ? { ...record, version: record.version ?? 0 } : null;
+  return record
+    ? {
+        ...record,
+        version: record.version ?? 0,
+        maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
+      }
+    : null;
 }
 
 function versionCondition(expectedVersion: number): string {

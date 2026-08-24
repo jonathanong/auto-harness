@@ -6,6 +6,7 @@ import type {
   HostRuntimeReport,
   Provider,
   ProviderAccount,
+  ProviderAccountReadiness,
   RepositoryAdmissionState,
   TargetRef,
   UserRole,
@@ -72,6 +73,10 @@ export type ConnectionRecord = {
   repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
+  /** Host-wide concurrent assignment cap advertised with capabilities. */
+  maxConcurrentAssignments?: number;
+  /** Ready local execution profiles; credentials never appear here. */
+  providerAccountReadiness?: ProviderAccountReadiness[];
   /** Present only when this daemon has completed the checkout-recovery preflight. */
   runtime?: HostRuntimeReport;
   /** Host control-channel protocol. Missing means a legacy daemon (version 0). */

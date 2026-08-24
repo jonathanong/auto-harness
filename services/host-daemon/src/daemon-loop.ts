@@ -15,6 +15,12 @@ import {
 } from "./daemon-registration.ts";
 import { sendDaemonLog } from "./daemon-log-sender.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
+import {
+  emptyExecutionProfiles,
+  executionProfileReady,
+  resolveExecutionProfile,
+  type ExecutionProfiles,
+} from "./execution-profiles.ts";
 import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
@@ -28,6 +34,8 @@ export type DaemonLoopOptions = {
   commandRunner?: ProcessRunner;
   /** Daemon environment after loading the persisted service environment file. */
   childEnvSource?: NodeJS.ProcessEnv;
+  /** Daemon-local execution profiles keyed by provider account. */
+  executionProfiles?: ExecutionProfiles;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -88,6 +96,7 @@ export class DaemonLoop {
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
+  private readonly executionProfiles: ExecutionProfiles;
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -109,6 +118,7 @@ export class DaemonLoop {
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
     this.runtime = options.runtime;
+    this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
     const commandRunner =
       options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
     const git = createGitClient(processRunner);
@@ -118,6 +128,7 @@ export class DaemonLoop {
       processRunner,
       commandRunner,
       ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
+      executionProfiles: this.executionProfiles,
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });
@@ -167,6 +178,7 @@ export class DaemonLoop {
       this.daemonIdentity,
       this.runtime,
       runningAttempts,
+      this.executionProfiles,
     );
   }
   async keepalive(): Promise<void> {
@@ -314,6 +326,15 @@ export class DaemonLoop {
     if (!this.runtime?.gitReady) {
       this.onLog?.(`git not ready: refused assign ${msg.sessionId}`);
       return;
+    }
+    if (msg.providerAccountId) {
+      const profile = resolveExecutionProfile(this.executionProfiles, msg.providerAccountId);
+      if (!profile || !executionProfileReady(profile)) {
+        this.onLog?.(
+          `execution profile unavailable: refused assign ${msg.sessionId} account ${msg.providerAccountId}`,
+        );
+        return;
+      }
     }
 
     const key = inflightKey(msg.sessionId, msg.attemptId);

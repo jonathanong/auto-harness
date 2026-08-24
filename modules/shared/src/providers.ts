@@ -22,6 +22,11 @@ export type ProviderAccount = {
   label: string;
   /** Global pause duration applied when this account reports a vendor usage limit. */
   usageLimitCooldownSeconds: number;
+  /**
+   * Attempt-owned durable leases cap concurrent sessions for this account.
+   * Missing on legacy rows means 1.
+   */
+  maxConcurrentSessions: number;
   /** The account cannot receive new work before this time. */
   usageLimitedUntil: string | null;
   lastUsageLimitedAt: string | null;

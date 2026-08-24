@@ -8,6 +8,11 @@ import {
   hostAcceptsNewAssignments,
   hostEnvironmentReady,
 } from "./control-plane-host-environment.ts";
+import {
+  accountHasLeaseCapacity,
+  hostHasAssignmentCapacity,
+  hostProviderAccountReady,
+} from "./control-plane-provider-account-leases.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import {
@@ -69,6 +74,7 @@ function isSchedulableWorktree(
     worktree.online &&
     hostGitReady(state, worktree.hostId) &&
     hostAcceptsNewAssignments(state, worktree.hostId) &&
+    hostHasAssignmentCapacity(state, worktree.hostId) &&
     hostEnvironmentReady(state, worktree.hostId, worktree.repositoryId) &&
     !state.drainingHosts.has(worktree.hostId) &&
     !state.disconnectedHosts.has(worktree.hostId)
@@ -166,6 +172,12 @@ export function planPromptPlacement(
       nowMs,
       targetIndex,
     )) {
+      if (
+        !hostProviderAccountReady(state, candidate.hostId, route.providerAccountId) ||
+        !accountHasLeaseCapacity(state, route.providerAccountId)
+      ) {
+        continue;
+      }
       candidates.push({ worktree: candidate, route });
     }
   }
@@ -199,7 +211,13 @@ export function planScheduledPlacement(
   }> = [];
   for (const host of hosts) {
     const route = resolveScheduledSessionTarget(state, catalog, session, host.hostId);
-    if (route) candidates.push({ ...host, route });
+    if (
+      route &&
+      hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
+      accountHasLeaseCapacity(state, route.providerAccountId)
+    ) {
+      candidates.push({ ...host, route });
+    }
   }
   if (candidates.length === 0) {
     return {
@@ -243,30 +261,33 @@ export function targetIsAvailable(
 ): boolean {
   return [...state.worktrees.values()].some((worktree) => {
     if (!isSchedulableWorktree(state, worktree)) return false;
-    return Boolean(
-      resolveSessionTargetRouteAt(
-        state,
-        catalog,
-        {
-          id: "availability-probe",
-          repositoryId: worktree.repositoryId,
-          prompt: "",
-          target,
-          fallbacks: [],
-          targetLabels: [],
-          queueTtlSeconds: 1,
-          queueExpiresAt: "9999-01-01T00:00:00.000Z",
-          timeout: 1,
-          priority: 0,
-          requiredLabels: [],
-          status: "queued",
-          queueShard: 0,
-          createdAt: "1970-01-01T00:00:00.000Z",
-        },
-        worktree,
-        nowMs,
-        0,
-      ),
+    const route = resolveSessionTargetRouteAt(
+      state,
+      catalog,
+      {
+        id: "availability-probe",
+        repositoryId: worktree.repositoryId,
+        prompt: "",
+        target,
+        fallbacks: [],
+        targetLabels: [],
+        queueTtlSeconds: 1,
+        queueExpiresAt: "9999-01-01T00:00:00.000Z",
+        timeout: 1,
+        priority: 0,
+        requiredLabels: [],
+        status: "queued",
+        queueShard: 0,
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+      worktree,
+      nowMs,
+      0,
+    );
+    return (
+      Boolean(route) &&
+      hostProviderAccountReady(state, worktree.hostId, route?.providerAccountId) &&
+      accountHasLeaseCapacity(state, route?.providerAccountId)
     );
   });
 }

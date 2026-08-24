@@ -29,6 +29,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         ...(typeof body.usageLimitCooldownSeconds === "number"
           ? { usageLimitCooldownSeconds: body.usageLimitCooldownSeconds }
           : {}),
+        ...(typeof body.maxConcurrentSessions === "number"
+          ? { maxConcurrentSessions: body.maxConcurrentSessions }
+          : {}),
       });
       if (!result.ok) {
         if (
@@ -99,6 +102,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           ...(typeof body.label === "string" ? { label: body.label } : {}),
           ...(typeof body.usageLimitCooldownSeconds === "number"
             ? { usageLimitCooldownSeconds: body.usageLimitCooldownSeconds }
+            : {}),
+          ...(typeof body.maxConcurrentSessions === "number"
+            ? { maxConcurrentSessions: body.maxConcurrentSessions }
             : {}),
         });
         if (!result.ok) {

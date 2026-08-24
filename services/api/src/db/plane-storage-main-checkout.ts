@@ -54,6 +54,7 @@ export async function tryAssignMainCheckoutSession(
     resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
     queueShard: number;
     attemptId: string;
   },
@@ -129,6 +130,9 @@ export async function tryAssignMainCheckoutSession(
               UpdateExpression:
                 "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
                 (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
+                (opts.providerAccountLease
+                  ? ", providerAccountLease = :providerAccountLease"
+                  : "") +
                 " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter",
               ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
               ExpressionAttributeNames: { "#s": "status" },
@@ -145,6 +149,9 @@ export async function tryAssignMainCheckoutSession(
                 ":true": true,
                 ":attemptId": opts.attemptId,
                 ...(opts.resumeSpec ? { ":resumeSpec": opts.resumeSpec } : {}),
+                ...(opts.providerAccountLease
+                  ? { ":providerAccountLease": opts.providerAccountLease }
+                  : {}),
               },
             },
           },
@@ -158,6 +165,24 @@ export async function tryAssignMainCheckoutSession(
                     ConditionExpression:
                       "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
                     ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
+                  },
+                },
+              ]
+            : []),
+          ...(opts.providerAccountLease
+            ? [
+                {
+                  Put: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Item: {
+                      concurrencyId: opts.providerAccountLease.concurrencyId,
+                      sessionId: opts.sessionId,
+                      attemptId: opts.attemptId,
+                      providerAccountId: opts.providerAccountLease.providerAccountId,
+                      slot: opts.providerAccountLease.slot,
+                      hostId: opts.hostId,
+                    },
+                    ConditionExpression: "attribute_not_exists(concurrencyId)",
                   },
                 },
               ]

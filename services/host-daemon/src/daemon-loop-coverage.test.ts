@@ -1,3 +1,8 @@
+/* eslint-disable max-lines -- existing coverage table for daemon loop branches. */
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
@@ -47,7 +52,17 @@ describe("DaemonLoop coverage guards", () => {
     try {
       const lines: string[] = [];
       const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
-      const loop = new DaemonLoop({ config, transport, onLog: (line) => lines.push(line) });
+      const home = mkdtempSync(join(tmpdir(), "ah-profile-"));
+      mkdirSync(home, { recursive: true });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => lines.push(line),
+        executionProfiles: {
+          maxConcurrentAssignments: 4,
+          profiles: new Map([["account-1", { providerAccountId: "account-1", home, env: {} }]]),
+        },
+      });
       await loop.start();
       transport.deliver({
         ...assign("routed"),
