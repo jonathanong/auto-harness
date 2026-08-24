@@ -1,6 +1,6 @@
 FROM node:26.7.0-bookworm-slim AS builder
 WORKDIR /build
-RUN corepack enable
+RUN npm install --global corepack@0.34.6 && corepack enable
 COPY . .
 RUN pnpm install --filter @auto-harness/web... --frozen-lockfile
 ENV HARNESS_WEB_CLOUD=1
