@@ -300,4 +300,49 @@ describe("assignment optional-field coverage", () => {
     await expect(assignQueuedDurable(state)).resolves.toEqual([]);
     expect(state.sessions.get("s")?.status).toBe("queued");
   });
+
+  it("assigns a just-created queued session when the status GSI has not caught up", async () => {
+    const state = providerState();
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+      listSessionsByStatus: async () => [],
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(state.sessions.get("s")?.status).toBe("running");
+  });
+
+  it("does not assign onto a cap-1 host that still holds a cancelled worktree", async () => {
+    const state = providerState();
+    const connection = state.connections.get("connection-host-a")!;
+    state.connections.set("connection-host-a", { ...connection, maxConcurrentAssignments: 1 });
+    state.worktrees.delete("worktree-host-b");
+    state.hostConnection.delete("host-b");
+    const held = state.worktrees.get("worktree-host-a")!;
+    state.worktrees.set("worktree-host-a", {
+      ...held,
+      status: "busy",
+      currentSessionId: "cancelled-hold",
+    });
+    state.worktrees.set("worktree-host-a-idle", {
+      id: "worktree-host-a-idle",
+      name: "worktree-host-a-idle",
+      hostId: "host-a",
+      repositoryId: "repo",
+      path: "/repo/idle",
+      labels: [],
+      status: "idle",
+      online: true,
+      connectionId: "connection-host-a",
+    });
+    setDurableReadStorage(state, {
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+      listSessionsByStatus: async (status: string) => (status === "queued" ? [session()] : []),
+    });
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(state.sessions.get("s")?.status).toBe("queued");
+  });
 });

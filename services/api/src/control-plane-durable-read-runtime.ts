@@ -57,11 +57,17 @@ export async function listQueuedSessionsDurable(
       state.storage!.listSessionsByStatus("queued", shard),
     ),
   );
-  for (const [id, session] of state.sessions)
-    if (session.status === "queued" && session.type === type) state.sessions.delete(id);
-  const queued = pages.flat().filter((session) => session.type === type);
-  for (const session of queued) state.sessions.set(session.id, { ...session });
-  return queued;
+  // Status GSIs are eventually consistent and can omit a row this process just
+  // wrote. Union with the in-memory queued set instead of delete-then-replace.
+  for (const session of pages.flat()) {
+    if (session.type !== type) continue;
+    const existing = state.sessions.get(session.id);
+    if (existing && existing.status !== "queued") continue;
+    state.sessions.set(session.id, { ...session });
+  }
+  return [...state.sessions.values()].filter(
+    (session) => session.status === "queued" && session.type === type,
+  );
 }
 
 export async function getLogsDurable(
@@ -177,12 +183,25 @@ async function hydrateRunningSessions(
     listSessionsByStatusAcrossShards(state, storage, "running"),
     listSessionsByStatusAcrossShards(state, storage, "cancelled"),
   ]);
-  const occupying = [
-    ...running,
-    ...cancelled.filter((session) => sessionOccupiesHostAssignment(session)),
-  ];
+  const occupying = new Map(
+    [...running, ...cancelled.filter(sessionOccupiesHostAssignment)].map((session) => [
+      session.id,
+      session,
+    ]),
+  );
+  const localHolders = [...state.sessions.values()].filter(sessionOccupiesHostAssignment);
+  const extras: SessionRecord[] = [];
+  for (const session of localHolders) {
+    if (occupying.has(session.id)) continue;
+    const fresh =
+      typeof storage.getSession === "function"
+        ? await storage.getSession(session.id, true)
+        : session;
+    if (fresh && sessionOccupiesHostAssignment(fresh)) extras.push(fresh);
+  }
   for (const [id, session] of state.sessions) {
     if (session.status === "running" || session.status === "cancelled") state.sessions.delete(id);
   }
-  for (const session of occupying) state.sessions.set(session.id, { ...session });
+  for (const session of occupying.values()) state.sessions.set(session.id, { ...session });
+  for (const session of extras) state.sessions.set(session.id, { ...session });
 }
