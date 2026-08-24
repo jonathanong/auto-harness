@@ -94,6 +94,10 @@ function sameRoots(left: string[] | undefined, right: string[] | undefined): boo
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+function hasSetupScript(value: string | undefined): boolean {
+  return (value ?? "") !== "";
+}
+
 function entriesById<T extends { id: string }>(entries: readonly T[] | undefined): Map<string, T> {
   return new Map(entries?.map((entry) => [entry.id, entry]) ?? []);
 }
@@ -219,6 +223,8 @@ export function listExecConfigEdits(
 
   const previousRepositories = entriesById(existing?.repositories);
   const incomingRepositories = entriesById(incoming.repositories);
+  const hostSetupScript =
+    hasSetupScript(existing?.setupScript) || hasSetupScript(incoming.setupScript);
   for (const repositoryId of idsInOrder(existing?.repositories, incoming.repositories)) {
     const previous = previousRepositories.get(repositoryId);
     const next = incomingRepositories.get(repositoryId);
@@ -228,6 +234,19 @@ export function listExecConfigEdits(
       previous?.setupScript,
       next?.setupScript,
     );
+    // Host and repository setup scripts execute in the claimed checkout. Moving
+    // a repository can therefore change the executable context for a main
+    // checkout even when the script text itself is unchanged.
+    if (
+      previous !== undefined &&
+      next !== undefined &&
+      !sameOptionalString(previous.path, next.path) &&
+      (hostSetupScript ||
+        hasSetupScript(previous?.setupScript) ||
+        hasSetupScript(next?.setupScript))
+    ) {
+      edits.push(`repositories.${repositoryId}.path`);
+    }
     addOptionalStringEdit(
       edits,
       `repositories.${repositoryId}.terminalHookScript`,
@@ -237,12 +256,28 @@ export function listExecConfigEdits(
     const previousWorktrees = entriesById(previous?.worktrees);
     const nextWorktrees = entriesById(next?.worktrees);
     for (const worktreeId of idsInOrder(previous?.worktrees, next?.worktrees)) {
+      const previousWorktree = previousWorktrees.get(worktreeId);
+      const nextWorktree = nextWorktrees.get(worktreeId);
       addOptionalStringEdit(
         edits,
         `repositories.${repositoryId}.worktrees.${worktreeId}.setupScript`,
-        previousWorktrees.get(worktreeId)?.setupScript,
-        nextWorktrees.get(worktreeId)?.setupScript,
+        previousWorktree?.setupScript,
+        nextWorktree?.setupScript,
       );
+      // Every setup-script scope runs in this worktree's cwd, so its path is
+      // itself executable configuration when any effective setup script exists.
+      if (
+        previousWorktree !== undefined &&
+        nextWorktree !== undefined &&
+        !sameOptionalString(previousWorktree.path, nextWorktree.path) &&
+        (hostSetupScript ||
+          hasSetupScript(previous?.setupScript) ||
+          hasSetupScript(next?.setupScript) ||
+          hasSetupScript(previousWorktree?.setupScript) ||
+          hasSetupScript(nextWorktree?.setupScript))
+      ) {
+        edits.push(`repositories.${repositoryId}.worktrees.${worktreeId}.path`);
+      }
     }
   }
   return edits;

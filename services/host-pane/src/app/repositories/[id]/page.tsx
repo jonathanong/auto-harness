@@ -111,7 +111,9 @@ export default async function RepositoryDetailPage({
                 canWriteExecConfig={canEditExecConfig}
               />
             ) : null}
-            <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+            {canEditExecConfig ? (
+              <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+            ) : null}
           </>
         }
       >
@@ -139,13 +141,15 @@ export default async function RepositoryDetailPage({
                   groups={[group]}
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees yet."
-                  renderWorktreeActions={(wt) => (
-                    <RemoveWorktreeButton
-                      hostId={agent}
-                      repositoryId={repo.id}
-                      worktreeId={wt.id}
-                    />
-                  )}
+                  renderWorktreeActions={(wt) =>
+                    canEditExecConfig ? (
+                      <RemoveWorktreeButton
+                        hostId={agent}
+                        repositoryId={repo.id}
+                        worktreeId={wt.id}
+                      />
+                    ) : null
+                  }
                 />
               ),
             },

@@ -184,7 +184,7 @@ describe("applyHostExecConfig", () => {
 });
 
 describe("listExecConfigEdits / preserve / reconcile", () => {
-  it("reports full-state removals and ignores values restored for ordinary inventory writes", () => {
+  it("reports full-state removals and execution-base changes for setup scripts", () => {
     expect(listExecConfigEdits(inventory(), emptyHostInventory())).toEqual([
       "setupScript",
       "allowedRoots",
@@ -201,31 +201,40 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
     expect(
       listExecConfigEdits(inventory(), preserveHostExecConfig(ordinaryInventoryWrite, inventory())),
     ).toEqual([]);
+    const moved = {
+      ...emptyHostInventory(),
+      setupScript: "source ~/.zshrc",
+      allowedRoots: ["/opt/harness"],
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/elsewhere",
+          defaultBranch: "main",
+          setupScript: "pnpm install",
+          terminalHookScript: "/opt/harness/hooks/done.sh",
+          worktrees: [
+            {
+              id: "wt-1",
+              name: "wt-1",
+              path: "/elsewhere",
+              labels: [],
+              setupScript: "pnpm build",
+            },
+          ],
+        },
+      ],
+    };
+    expect(listExecConfigEdits(inventory(), moved)).toEqual([
+      "repositories.repo-1.path",
+      "repositories.repo-1.worktrees.wt-1.path",
+    ]);
     expect(
-      listExecConfigEdits(inventory(), {
-        ...emptyHostInventory(),
-        setupScript: "source ~/.zshrc",
-        allowedRoots: ["/opt/harness"],
-        repositories: [
-          {
-            id: "repo-1",
-            path: "/elsewhere",
-            defaultBranch: "main",
-            setupScript: "pnpm install",
-            terminalHookScript: "/opt/harness/hooks/done.sh",
-            worktrees: [
-              {
-                id: "wt-1",
-                name: "wt-1",
-                path: "/elsewhere",
-                labels: [],
-                setupScript: "pnpm build",
-              },
-            ],
-          },
-        ],
-      }),
-    ).toEqual([]);
+      reconcileInventoryWrite({ existing: inventory(), incoming: moved, allowExecConfig: false }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["repositories.repo-1.path", "repositories.repo-1.worktrees.wt-1.path"],
+    });
   });
 
   it("detects stored executable paths that inventory deletion would erase", () => {
@@ -422,17 +431,16 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       ],
       providerAccounts: [],
     };
-    const allowed = reconcileInventoryWrite({
+    const blocked = reconcileInventoryWrite({
       existing: inventory(),
       incoming: ordinary,
       allowExecConfig: false,
     });
-    expect(allowed.ok).toBe(true);
-    if (allowed.ok) {
-      expect(allowed.inventory.setupScript).toBe("source ~/.zshrc");
-      expect(allowed.inventory.repositories[0]?.path).toBe("/new");
-      expect(allowed.inventory.repositories[0]?.setupScript).toBe("pnpm install");
-    }
+    expect(blocked).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["repositories.repo-1.path", "repositories.repo-1.worktrees.wt-1.path"],
+    });
   });
 
   it("detects clears and removal of exec-config-bearing subtrees from the full state", () => {
