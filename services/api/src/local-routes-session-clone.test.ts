@@ -54,6 +54,8 @@ describe("session clone route", () => {
     const plane = new ControlPlane({ idFactory: () => `session-${++id}` });
     seedBaseCommand(plane);
     plane.createSession(baseSessionBody());
+    let assignmentCalls = 0;
+    plane.requestAssignment = async () => void assignmentCalls++;
     plane.appendAuditLog = async () => {
       throw new Error("audit unavailable");
     };
@@ -66,6 +68,7 @@ describe("session clone route", () => {
         )
       ).status,
     ).toBe(500);
+    expect(assignmentCalls).toBe(0);
   });
 
   it("audits durable read failures and enforces clone repository scope", async () => {
