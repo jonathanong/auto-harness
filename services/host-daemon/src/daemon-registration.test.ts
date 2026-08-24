@@ -218,4 +218,27 @@ describe("daemon registration", () => {
     expect(config).not.toHaveProperty("setupScript");
     expect(inventoryChanges).toEqual(["changed", "changed"]);
   });
+
+  it("restores a previously configured allowed-roots policy on failure", async () => {
+    const config = {
+      hostId: "h",
+      allowedRoots: ["/old"],
+      repositories: [],
+      providerAccounts: [],
+    };
+    const next = { ...config, allowedRoots: ["/new"] };
+    await expect(
+      applyDaemonInventory(
+        config,
+        next,
+        {
+          ensureAll: async () => {
+            throw new Error("invalid roots");
+          },
+        } as never,
+        async () => undefined,
+      ),
+    ).rejects.toThrow("invalid roots");
+    expect(config.allowedRoots).toEqual(["/old"]);
+  });
 });

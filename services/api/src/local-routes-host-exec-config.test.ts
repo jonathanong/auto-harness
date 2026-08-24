@@ -654,6 +654,24 @@ describe("host exec-config isolation", () => {
       ),
     ).toMatchObject({ status: 409 });
     expect(bodies.map((body) => body.version)).toEqual([version, version]);
+
+    for (const invalidVersion of [null, -1, 1.5, "1"]) {
+      expect(
+        await invoke(
+          plane,
+          "PUT",
+          "/api/v1/hosts/host-1/exec-config",
+          { setupScript: "echo versioned", version: invalidVersion },
+          admin,
+        ),
+      ).toMatchObject({ status: 409 });
+    }
+    expect(bodies.slice(2).map((body) => body.version)).toEqual([
+      version,
+      version,
+      version,
+      version,
+    ]);
   });
 
   it("replaces a negative inventory version with the server-read version", async () => {

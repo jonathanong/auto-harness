@@ -59,6 +59,14 @@ describe("allowed roots realpath checks", () => {
     ).rejects.toThrow("dangling symlink");
   });
 
+  it("propagates a root-level resolution failure", async () => {
+    await expect(
+      resolvePathForRootCheck("/", async () => {
+        throw new Error("root unavailable");
+      }),
+    ).rejects.toThrow("root unavailable");
+  });
+
   it("skips the check when no roots are configured and fails closed if none resolve", async () => {
     expect(await assertPathWithinAllowedRoots("/tmp/x", [])).toBe("/tmp/x");
     await expect(assertPathWithinAllowedRoots("/tmp/x", ["/no/such/root-ah"])).rejects.toThrow(

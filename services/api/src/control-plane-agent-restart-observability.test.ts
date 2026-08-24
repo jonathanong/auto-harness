@@ -59,6 +59,14 @@ describe("daemon restart observability", () => {
       lastRestartDetectedAt: now,
     });
 
+    // A reconnect from the same daemon process must retain the prior restart marker.
+    expect(plane.registerHost(registration(SECOND)).ok).toBe(true);
+    expect(plane.getHostInventory("host")).toMatchObject({
+      daemonInstanceId: SECOND.instanceId,
+      restartCount: 1,
+      lastRestartDetectedAt: now,
+    });
+
     expect(plane.putHostInventory("host", { repositories: [] }).ok).toBe(true);
     expect(plane.registerHost(registration()).ok).toBe(true);
     expect(plane.getHostInventory("host")).toMatchObject({

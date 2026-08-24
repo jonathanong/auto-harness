@@ -37,5 +37,17 @@ describe("host-pane principal", () => {
         "fleet:exec-config",
       ),
     ).toBe(false);
+    expect(can({ username: "admin", role: "admin", kind: "user" }, "fleet:inventory")).toBe(true);
+  });
+
+  it("treats an expired authenticated session as unauthenticated", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    setApiTransportForTests(async () => new Response("{}", { status: 401 }));
+    await expect(loadPrincipal()).resolves.toBeUndefined();
+
+    setApiTransportForTests(async () => {
+      throw new Error("network unavailable");
+    });
+    await expect(loadPrincipal()).rejects.toThrow("network unavailable");
   });
 });
