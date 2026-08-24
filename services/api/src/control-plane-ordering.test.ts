@@ -69,6 +69,9 @@ describe("compare helpers", () => {
     expect(queueOrderKeyForWrite(undefined, "legacy")).toBe(
       queueOrderKey({ id: "legacy", priority: 0, createdAt: "" }),
     );
+    expect(queueOrderKeyForWrite({ id: "", priority: "x", createdAt: 1 }, "legacy")).toBe(
+      queueOrderKey({ id: "legacy", priority: 0, createdAt: "" }),
+    );
   });
 
   it("merges already-sorted shard heads in global priority/FIFO order", () => {

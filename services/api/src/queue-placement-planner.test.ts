@@ -137,6 +137,11 @@ describe("queue placement planner", () => {
     expect(
       targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
     ).toBe(false);
+    plane.state.worktrees.get("wt")!.online = true;
+    plane.state.disconnectedHosts.set("host", { lastHeartbeatAt: NOW });
+    expect(
+      targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
+    ).toBe(false);
   });
 
   it("clears an unusable resume pin and reports assignable capacity", () => {
