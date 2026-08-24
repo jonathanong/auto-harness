@@ -83,6 +83,26 @@ function slackRecord(): SlackIntegrationRecord {
   };
 }
 
+function sessionRecord(id: string, status: string, extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    repositoryId: "repo-1",
+    prompt: id,
+    target: { commandId: "command-1" },
+    fallbacks: [],
+    targetLabels: ["Codex"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: now,
+    timeout: 60,
+    priority: 4,
+    requiredLabels: [],
+    status,
+    queueShard: 0,
+    createdAt: now,
+    ...extra,
+  } as never;
+}
+
 describe("Slack production runtime", () => {
   it("starts only with an outbox and either credentials or an injected transport", () => {
     expect(createSlackLifecycleWorker(new ControlPlane())).toBeUndefined();
@@ -99,6 +119,11 @@ describe("Slack production runtime", () => {
       createSlackLifecycleWorker(new ControlPlane({ storage: store as never }), {
         transport: { deliver: vi.fn() },
       }),
+    ).toBeDefined();
+    expect(
+      createSlackLifecycleWorker(
+        new ControlPlane({ storage: store as never, secretEncryptor: encryptor() }),
+      ),
     ).toBeDefined();
   });
 
@@ -243,6 +268,7 @@ describe("Slack production runtime", () => {
       worker: { now: () => now, maxOperationsPerTick: 20 },
     });
     expect(await worker!.runOnce()).toBe(true);
+    expect(await worker!.runOnce()).toBe(true);
     listRunning = false;
     expect(await worker!.runOnce()).toBe(true);
     expect(listLogs).toHaveBeenCalledWith("running-1");
@@ -250,5 +276,50 @@ describe("Slack production runtime", () => {
       fetchImpl.mock.calls.some((call) => String(call[1].body).includes("Session failed")),
     ).toBe(true);
     expect(fetchImpl.mock.calls.some((call) => String(call[1].body).includes("old"))).toBe(false);
+  });
+
+  it("skips missing Slack config, in-memory sessions, and non-reconcileable statuses", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: store as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    plane.state.sessions.set("queued-memory", sessionRecord("queued-memory", "queued"));
+    plane.state.sessions.set("ghost", sessionRecord("ghost", "paused"));
+    plane.state.sessions.set(
+      "completed-memory",
+      sessionRecord("completed-memory", "completed", {
+        createdAt: "2016-01-01T00:00:00.000Z",
+      }),
+    );
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "2.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    plane.state.slackIntegration = slackRecord();
+    expect(await worker!.runOnce()).toBe(true);
+    expect(
+      fetchImpl.mock.calls.some((call) => String(call[1].body).includes("queued-memory")),
+    ).toBe(true);
+    expect(fetchImpl.mock.calls.some((call) => String(call[1].body).includes("ghost"))).toBe(false);
+    expect(
+      fetchImpl.mock.calls.some((call) => String(call[1].body).includes("completed-memory")),
+    ).toBe(false);
+
+    plane.state.sessions.set("queued-later", sessionRecord("queued-later", "queued"));
+    let remaining = 1;
+    Object.assign(store, {
+      getSlackIntegration: async () => (remaining-- > 0 ? slackRecord() : null),
+    });
+    expect(await worker!.runOnce()).toBe(true);
   });
 });

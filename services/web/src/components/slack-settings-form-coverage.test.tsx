@@ -50,10 +50,13 @@ function fillCreate(view: ReturnType<typeof mountForm>) {
 describe("SlackSettingsForm", () => {
   it("hides the delivery warning when outbound delivery is available", () => {
     const view = mountForm(
-      <SlackSettingsForm initial={{ ...configured, deliveryAvailable: true }} />,
+      <SlackSettingsForm
+        initial={{ ...configured, deliveryAvailable: true, signingSecretConfigured: true }}
+      />,
     );
     expect(view.container.querySelector('[data-pw="slack-delivery-warning"]')).toBeNull();
     expect(field(view.container, "slack-delivery-state").textContent).toBe("Available");
+    expect(field(view.container, "slack-signing-secret-state").textContent).toBe("Configured");
   });
 
   it("validates, creates, and surfaces save failures", async () => {
