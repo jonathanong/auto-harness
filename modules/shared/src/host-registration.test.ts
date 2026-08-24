@@ -67,7 +67,7 @@ describe("host registration repository validation", () => {
     expect(validateProviderAccountReadiness([{ providerAccountId: "acct" } as never])).toBe(
       "invalid provider account readiness",
     );
-    expect(providerAccountLeaseConcurrencyId("acct", 0)).toBe("provider-account:acct:0");
+    expect(providerAccountLeaseConcurrencyId("acct", 0)).toBe("provider-lease:acct:0");
     expect(
       sanitizeProviderAccountReadiness([
         {

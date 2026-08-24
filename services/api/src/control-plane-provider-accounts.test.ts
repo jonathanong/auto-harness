@@ -145,7 +145,7 @@ describe("ControlPlane provider account CRUD", () => {
         maxConcurrentSessions: 2,
       }).ok,
     ).toBe(true);
-    plane.state.providerAccountLeases.set("provider-account:acct-1:1", {
+    plane.state.providerAccountLeases.set("provider-lease:acct-1:1", {
       sessionId: "stale",
       attemptId: "attempt",
       slot: 1,

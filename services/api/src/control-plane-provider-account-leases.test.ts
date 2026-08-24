@@ -105,6 +105,24 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getSession("sess-1")?.status).toBe("queued");
   });
 
+  it("keeps legacy generic locks separate from provider-account leases", () => {
+    const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
+    const created = plane.createSession({
+      repositoryId: "repo-1",
+      prompt: "legacy lock",
+      target: { providerId: "prov-1" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const queued = plane.state.sessions.get("sess-1")!;
+    queued.concurrencyId = "provider-account:acct-1:0";
+
+    expect(plane.assignQueued()).toHaveLength(1);
+    expect(plane.getSession("sess-1")?.providerAccountLease?.concurrencyId).toBe(
+      "provider-lease:acct-1:0",
+    );
+  });
+
   it("honors advertised host assignment capacity", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 2 });
     const connectionId = plane.state.hostConnection.get("host-1")!;
@@ -235,7 +253,7 @@ describe("provider account execution-profile leases", () => {
       id: "sess",
       attemptId: "attempt",
       providerAccountLease: {
-        concurrencyId: "provider-account:acct:0",
+        concurrencyId: "provider-lease:acct:0",
         providerAccountId: "acct",
         slot: 0,
         attemptId: "attempt",
@@ -291,7 +309,7 @@ describe("provider account execution-profile leases", () => {
     await state.writeTail;
     expect(queued).toEqual([
       {
-        concurrencyId: "provider-account:acct:0",
+        concurrencyId: "provider-lease:acct:0",
         sessionId: "sess",
         attemptId: "attempt",
       },
@@ -337,7 +355,7 @@ describe("provider account execution-profile leases", () => {
           createdAt: NOW,
           hostId: "host",
           providerAccountLease: {
-            concurrencyId: "provider-account:acct:0",
+            concurrencyId: "provider-lease:acct:0",
             providerAccountId: "acct",
             slot: 0,
             attemptId: "attempt",
@@ -359,7 +377,7 @@ describe("provider account execution-profile leases", () => {
           queueShard: 0,
           createdAt: NOW,
           providerAccountLease: {
-            concurrencyId: "provider-account:acct:1",
+            concurrencyId: "provider-lease:acct:1",
             providerAccountId: "acct",
             slot: 1,
             attemptId: "old",
@@ -382,7 +400,7 @@ describe("provider account execution-profile leases", () => {
           createdAt: NOW,
           hostId: null,
           providerAccountLease: {
-            concurrencyId: "provider-account:acct:2",
+            concurrencyId: "provider-lease:acct:2",
             providerAccountId: "acct",
             slot: 2,
             attemptId: "done",
@@ -404,12 +422,12 @@ describe("provider account execution-profile leases", () => {
       listLogs: async () => [],
     } as never;
     await plane.hydrateFromStorage();
-    expect(plane.state.providerAccountLeases.get("provider-account:acct:0")).toMatchObject({
+    expect(plane.state.providerAccountLeases.get("provider-lease:acct:0")).toMatchObject({
       sessionId: "running",
       attemptId: "attempt",
     });
-    expect(plane.state.providerAccountLeases.has("provider-account:acct:1")).toBe(false);
-    expect(plane.state.providerAccountLeases.has("provider-account:acct:2")).toBe(false);
+    expect(plane.state.providerAccountLeases.has("provider-lease:acct:1")).toBe(false);
+    expect(plane.state.providerAccountLeases.has("provider-lease:acct:2")).toBe(false);
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
   });
 
@@ -544,7 +562,7 @@ describe("provider account execution-profile leases", () => {
       createdAt: NOW,
       hostId: "host",
       providerAccountLease: {
-        concurrencyId: "provider-account:acct:0",
+        concurrencyId: "provider-lease:acct:0",
         providerAccountId: "acct",
         slot: 0,
         attemptId: "attempt",
@@ -578,7 +596,7 @@ describe("provider account execution-profile leases", () => {
           createdAt: NOW,
           hostId: "host",
           providerAccountLease: {
-            concurrencyId: "provider-account:acct:0",
+            concurrencyId: "provider-lease:acct:0",
             providerAccountId: "acct",
             slot: 0,
             attemptId: "attempt",
@@ -598,7 +616,7 @@ describe("provider account execution-profile leases", () => {
       listLogs: async () => [],
     } as never;
     await plane.hydrateFromStorage();
-    expect(plane.state.providerAccountLeases.get("provider-account:acct:0")).toMatchObject({
+    expect(plane.state.providerAccountLeases.get("provider-lease:acct:0")).toMatchObject({
       sessionId: "held",
       attemptId: "attempt",
     });
@@ -646,7 +664,7 @@ describe("provider account execution-profile leases", () => {
     expect(
       providerAccountLeaseWriteOpts({
         providerAccountLease: {
-          concurrencyId: "provider-account:acct:0",
+          concurrencyId: "provider-lease:acct:0",
           providerAccountId: "acct",
           slot: 0,
           attemptId: "attempt",
@@ -654,7 +672,7 @@ describe("provider account execution-profile leases", () => {
       }),
     ).toEqual({
       providerAccountLease: {
-        concurrencyId: "provider-account:acct:0",
+        concurrencyId: "provider-lease:acct:0",
         providerAccountId: "acct",
         slot: 0,
         attemptId: "attempt",

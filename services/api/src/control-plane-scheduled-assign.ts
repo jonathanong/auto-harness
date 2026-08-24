@@ -96,8 +96,9 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
 export async function assignScheduledQueuedDurable(
   state: ControlPlaneState,
   sessionId?: string,
+  options?: { readModelLoaded?: boolean },
 ): Promise<ScheduledAssignment[]> {
-  if (state.storage) {
+  if (state.storage && !options?.readModelLoaded) {
     if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
       await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
     }

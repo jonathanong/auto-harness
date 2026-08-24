@@ -143,15 +143,18 @@ export function assignQueued(
 export async function assignQueuedDurable(
   state: ControlPlaneState,
   sessionId?: string,
+  options?: { readModelLoaded?: boolean },
 ): Promise<Array<{ session: PublicSession; worktree: WorktreeRecord }>> {
   if (!state.storage) {
     return assignQueued(state, sessionId);
   }
-  if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
-    await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
+  if (!options?.readModelLoaded) {
+    if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
+      await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
+    }
+    await refreshSchedulerReadModel(state);
+    await listQueuedSessionsDurable(state, "prompt");
   }
-  await refreshSchedulerReadModel(state);
-  await listQueuedSessionsDurable(state, "prompt");
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);

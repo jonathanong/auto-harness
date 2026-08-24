@@ -39,7 +39,7 @@ describe("provider account maxConcurrentSessions", () => {
         maxConcurrentSessions: 2,
       }).ok,
     ).toBe(true);
-    plane.state.providerAccountLeases.set("provider-account:acct-1:1", {
+    plane.state.providerAccountLeases.set("provider-lease:acct-1:1", {
       sessionId: "session-1",
       attemptId: "attempt-1",
       slot: 1,
