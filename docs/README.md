@@ -15,6 +15,7 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [deploy-aws.md](deploy-aws.md)                           | AWS control plane deploy / update / teardown                |
 | [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown                       |
 | [release-client.md](release-client.md)                   | Manual npm client version, tag, and trusted publish         |
+| [github.md](github.md)                                   | Dependabot version updates, PR labels, actionlint           |
 | [setup.md](setup.md)                                     | Install, AWS deploy overview, VPS agent production shape    |
 | [cli.md](cli.md)                                         | `auto-harness-agent` commands                               |
 | [harness.md](harness.md)                                 | Repo harness hookup examples, requirements                  |
