@@ -34,6 +34,7 @@ export type ScheduleRecord = {
 
 export type ArchiveObject = {
   key: string;
+  objectKey?: string;
   body: string;
   contentType: string;
 };
@@ -41,6 +42,7 @@ export type ArchiveObject = {
 /** Bounded durable pointer/state; archive bodies are never duplicated into DynamoDB. */
 export type ArchiveMetadata = {
   key: string;
+  objectKey?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";

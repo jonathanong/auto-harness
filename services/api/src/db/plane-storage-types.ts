@@ -155,6 +155,7 @@ export type HostLogFence = {
 
 export type ArchiveMetadata = {
   key: string;
+  objectKey?: string;
   contentType: string;
   bodyBytes: number;
   status: "pending" | "complete";

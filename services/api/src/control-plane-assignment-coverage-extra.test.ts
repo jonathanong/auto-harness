@@ -193,6 +193,24 @@ describe("assignment residual coverage", () => {
     await expect(enforceAckDeadlinesDurable(state, Date.parse(NOW))).resolves.toEqual([]);
   });
 
+  it("reconstructs a prompt acknowledgement deadline from durable assignment fields", async () => {
+    const state = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    const row = session({
+      status: "running",
+      worktreeId: "w",
+      hostId: "host",
+      attemptId: "attempt",
+      assignmentSentAt: NOW,
+    });
+    setDurableReadStorage(state, {
+      listAllSessions: async () => [row],
+      tryRequeueSession: async () => true,
+    });
+
+    await expect(enforceAckDeadlinesDurable(state, Date.parse(NOW) + 2)).resolves.toEqual(["s"]);
+    expect(state.pendingAcks.has("s")).toBe(false);
+  });
+
   it("drops a stale scheduled deadline that lacks an assignment fence", async () => {
     const state = createControlPlaneState({ ackDeadlineMs: 1 });
     const row = session({

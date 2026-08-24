@@ -666,7 +666,10 @@ async function applySessionStatusDurable(
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
-    session.providerAccountLease?.attemptId === msg.attemptId
+    (session.providerAccountLease?.attemptId === msg.attemptId ||
+      (!session.providerAccountLease &&
+        session.timedOutHostId != null &&
+        session.attemptId === msg.attemptId))
   ) {
     if (state.storage) {
       await releaseTimedOutProviderAccountLease(state, session);
@@ -872,6 +875,7 @@ async function applySessionStatusDurable(
         suppressedTargetIndex: suppress.targetIndex,
         ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
         ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
