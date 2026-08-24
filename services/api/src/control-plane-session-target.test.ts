@@ -272,23 +272,31 @@ describe("resolveSessionTargetArgv", () => {
         ),
       ).toEqual([...expected, "hello"]);
     }
-    state.commands.set("explicit-format", {
-      id: "explicit-format",
-      name: "explicit format",
-      argv: ["claude", "-p", "--output-format", "text"],
-      appendPrompt: true,
-      providerId: "provider-claude",
-      createdAt: "t",
-      updatedAt: "t",
-    });
-    expect(
-      resolveSessionTargetArgv(
-        state,
-        buildProviderCatalog(state),
-        session({ target: { commandId: "explicit-format" } }),
-        worktree(),
-      ),
-    ).toEqual(["claude", "-p", "--output-format", "text", "hello"]);
+    const explicitOutputCases = [
+      ["explicit-format", ["claude", "-p", "--output-format", "text"]],
+      ["explicit-inline-format", ["gemini", "-p", "--output-format=json"]],
+      ["explicit-codex-json", ["codex", "exec", "--json"]],
+      ["custom-provider-command", ["custom", "--print"]],
+    ] as const;
+    for (const [id, argv] of explicitOutputCases) {
+      state.commands.set(id, {
+        id,
+        name: id,
+        argv: [...argv],
+        appendPrompt: true,
+        providerId: "provider-claude",
+        createdAt: "t",
+        updatedAt: "t",
+      });
+      expect(
+        resolveSessionTargetArgv(
+          state,
+          buildProviderCatalog(state),
+          session({ target: { commandId: id } }),
+          worktree(),
+        ),
+      ).toEqual([...argv, "hello"]);
+    }
   });
 
   it("skips suppressed and native-fenced routes", () => {
