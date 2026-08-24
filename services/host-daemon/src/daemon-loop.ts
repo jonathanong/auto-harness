@@ -172,20 +172,23 @@ export class DaemonLoop {
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
     const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
     const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
-    await applyDaemonInventory(this.config, next, this.worktrees, async () => {
-      this.worktrees.clearAllowedRootsPolicy();
-      // Worktree validation just succeeded against `next`; register the host as assignable again.
-      this.inventoryPolicyBlocked = false;
-      this.inventoryPolicyDrainPublished = false;
-      try {
+    // Validate the candidate inventory against its own roots. The prior fence
+    // remains represented by `inventoryPolicyBlocked`, which refuses new
+    // assignments until the replacement inventory has registered successfully.
+    this.worktrees.clearAllowedRootsPolicy();
+    try {
+      await applyDaemonInventory(this.config, next, this.worktrees, async () => {
+        // Worktree validation just succeeded against `next`; register the host as assignable again.
+        this.inventoryPolicyBlocked = false;
+        this.inventoryPolicyDrainPublished = false;
         await this.register();
-      } catch (error) {
-        this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
-        this.inventoryPolicyBlocked = wasPolicyBlocked;
-        this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
-        throw error;
-      }
-    });
+      });
+    } catch (error) {
+      this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
+      this.inventoryPolicyBlocked = wasPolicyBlocked;
+      this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
+      throw error;
+    }
   }
   async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
     this.worktrees.setAllowedRootsPolicy(allowedRoots);
