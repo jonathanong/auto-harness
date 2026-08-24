@@ -43,6 +43,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
     expect(commands).toEqual([
       expect.any(ScanCommand),
       expect.any(QueryCommand),
+      expect.any(QueryCommand),
       expect.any(ScanCommand),
       expect.any(QueryCommand),
     ]);
@@ -60,7 +61,9 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
       },
       tables: { sessions: "sessions" },
     } as unknown as PlaneStorageCtx;
-    await expect(listSessionsByStatus(ctx, "running", 0)).resolves.toMatchObject([{ id: "running" }]);
+    await expect(listSessionsByStatus(ctx, "running", 0)).resolves.toMatchObject([
+      { id: "running" },
+    ]);
     expect(commands).toHaveLength(1);
     expect(commands[0]?.input.IndexName).toBe(SESSIONS_STATUS_CREATED_INDEX);
   });
@@ -74,7 +77,11 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
           if (command instanceof QueryCommand) {
             const index = (command as QueryCommand).input.IndexName;
             if (index === SESSIONS_QUEUE_ORDER_INDEX) {
-              return { Items: [{ id: "high", status: "queued", priority: 5, createdAt: "t2", queueOrder: "x" }] };
+              return {
+                Items: [
+                  { id: "high", status: "queued", priority: 5, createdAt: "t2", queueOrder: "x" },
+                ],
+              };
             }
             return {
               Items: [

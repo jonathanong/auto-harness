@@ -131,6 +131,17 @@ describe("target optional routing residual coverage", () => {
       providerId: "provider",
     });
     state.worktrees.set("w", worktree);
+    state.connections.set("host-connection", {
+      connectionId: "host-connection",
+      type: "host",
+      hostId: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      capabilities: [],
+      repositoryIds: ["repo"],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    });
+    state.hostConnection.set("host", "host-connection");
     state.hostInventories.set("host", {
       hostId: "host",
       repositories: [

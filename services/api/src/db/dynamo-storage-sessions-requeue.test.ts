@@ -97,9 +97,8 @@ describe("DynamoDB Local requeue and acknowledgement races", () => {
     ).toBe(true);
     expect((await getSession(ctx, "run"))?.status).toBe("queued");
     expect(
-      (
-        await ctx.doc.send(new GetCommand({ TableName: tables.sessions, Key: { id: "run" } }))
-      ).Item?.queueOrder,
+      (await ctx.doc.send(new GetCommand({ TableName: tables.sessions, Key: { id: "run" } }))).Item
+        ?.queueOrder,
     ).toBe(queueOrderKey({ id: "run", priority: base.priority, createdAt: base.createdAt }));
     expect((await getWorktree(ctx, "wt"))?.online).toBe(false);
     await putSession(ctx, {
