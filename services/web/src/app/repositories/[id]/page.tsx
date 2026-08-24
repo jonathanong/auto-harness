@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- worktrees tab now threads fleet:exec-config to add-worktree. */
 import Link from "next/link";
 import {
   RepositoryDetail,
@@ -8,7 +9,6 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
-
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
 import { RepositoryDetailNotFound } from "../../../components/repository-detail-not-found.tsx";
 import { RepositoryWorktreesTab } from "../../../components/repository-worktrees-tab.tsx";
@@ -20,7 +20,6 @@ import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
-
 type Wt = {
   id: string;
   name: string;
