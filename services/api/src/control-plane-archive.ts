@@ -30,8 +30,8 @@ export async function archiveSessionLogs(
     retryState: retryClaim?.retryState ?? "pending",
     retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${object.key}`,
   };
-  if (state.storage) await state.storage.putArchive(pending);
-  state.archives.set(object.key, pending);
+  if (state.storage && !retryClaim) await state.storage.putArchive(pending);
+  if (!retryClaim) state.archives.set(object.key, pending);
   if (state.archiveWriter) await state.archiveWriter.putArchive(object);
   const storedMetadata = { ...pending };
   delete storedMetadata.retryState;
@@ -45,8 +45,21 @@ export async function archiveSessionLogs(
       ? {}
       : { retryState: "pending" as const, retryOrder: `${state.now()}#${object.key}` }),
   };
-  if (state.storage) await state.storage.putArchive(complete);
-  state.archives.set(object.key, complete);
+  if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
+    const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
+    if (committed) state.archives.set(object.key, complete);
+  } else if (retryClaim) {
+    // In-memory mode has no conditional write primitive, so apply the same fence locally.
+    // A newer claim may have replaced this row while the object upload was in flight.
+    const current = state.archives.get(object.key);
+    if (current?.retryState === "processing" && current.retryOrder === retryClaim.retryOrder) {
+      if (state.storage) await state.storage.putArchive(complete);
+      state.archives.set(object.key, complete);
+    }
+  } else {
+    if (state.storage) await state.storage.putArchive(complete);
+    state.archives.set(object.key, complete);
+  }
   return object;
 }
 

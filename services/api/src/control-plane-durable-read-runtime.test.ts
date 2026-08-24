@@ -11,6 +11,7 @@ import {
   listWorktreesForRepositoryDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
+import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -281,6 +282,18 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
     expect(state.sessions.get(session.id)).toEqual(assigned);
+  });
+
+  it("uses only durable queue rows for queue age metrics", async () => {
+    const durable = { ...session, id: "durable-queue" };
+    const stale = { ...session, id: "stale-queue", status: "running" as const };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: { listSessionsByStatus: async () => [durable, stale] } as never,
+    });
+    state.sessions.set(session.id, { ...session });
+
+    await expect(listQueuedSessionsDurableForMetric(state)).resolves.toEqual([durable]);
   });
 
   it("keeps just-written occupancy when the status GSI lags", async () => {

@@ -70,5 +70,8 @@ describe("runtime observability", () => {
       MetricName: "5xx",
       Namespace: "AWS/ApiGateway",
     });
+    const rendered = JSON.stringify(template.toJSON());
+    expect(rendered).toContain("IntegrationError");
+    expect(rendered).toContain("ExecutionError");
   });
 });

@@ -1371,7 +1371,11 @@ export async function listPendingArchives(
   return catalogPageItems([
     ...(pending.Items ?? []),
     ...(processing.Items ?? []),
-  ] as ArchiveMetadata[]).slice(0, boundedLimit);
+  ] as ArchiveMetadata[])
+    .toSorted((left, right) =>
+      (left.retryOrder ?? left.key).localeCompare(right.retryOrder ?? right.key),
+    )
+    .slice(0, boundedLimit);
 }
 
 /** Atomically move a pending archive out of the retry queue for one Cron worker. */
@@ -1427,6 +1431,41 @@ export async function releaseArchiveRetry(
           ":pending": "pending",
           ":claimed": claimedOrder,
           ":retryOrder": retryOrder,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
+/** Complete an upload only while the worker still owns the retry fence. */
+export async function completeArchiveRetry(
+  ctx: PlaneStorageCtx,
+  archive: ArchiveMetadata,
+  expectedRetryOrder: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.archives,
+        Key: { key: archive.key },
+        UpdateExpression:
+          "SET contentType = :contentType, bodyBytes = :bodyBytes, #status = :complete, objectStored = :true, updatedAt = :updatedAt REMOVE retryState, retryOrder",
+        ConditionExpression:
+          "objectStored = :false AND retryState = :processing AND retryOrder = :expected",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":contentType": archive.contentType,
+          ":bodyBytes": archive.bodyBytes,
+          ":complete": "complete",
+          ":true": true,
+          ":updatedAt": archive.updatedAt,
+          ":false": false,
+          ":processing": "processing",
+          ":expected": expectedRetryOrder,
         },
       }),
     );

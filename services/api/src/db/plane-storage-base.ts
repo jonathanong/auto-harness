@@ -929,6 +929,10 @@ export class DynamoPlaneStorageBase {
     return catalog.releaseArchiveRetry(this.ctx, key, claimedOrder, retryOrder);
   }
 
+  completeArchiveRetry(archive: ArchiveMetadata, expectedRetryOrder: string): Promise<boolean> {
+    return catalog.completeArchiveRetry(this.ctx, archive, expectedRetryOrder);
+  }
+
   /** Returns false when `expectedVersion` no longer matches the stored document. */
   putHostInventory(
     rec: HostInventoryRecord,

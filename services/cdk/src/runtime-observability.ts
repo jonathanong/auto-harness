@@ -93,6 +93,31 @@ function apiGateway5xx(apiId: string, stage: string): cloudwatch.Metric {
   });
 }
 
+function websocketApiErrors(apiId: string, stage: string): cloudwatch.MathExpression {
+  const dimensionsMap = { ApiId: apiId, Stage: stage };
+  return new cloudwatch.MathExpression({
+    expression: "integration + execution",
+    usingMetrics: {
+      integration: new cloudwatch.Metric({
+        dimensionsMap,
+        metricName: "IntegrationError",
+        namespace: "AWS/ApiGateway",
+        period: Duration.minutes(5),
+        statistic: "Sum",
+      }),
+      execution: new cloudwatch.Metric({
+        dimensionsMap,
+        metricName: "ExecutionError",
+        namespace: "AWS/ApiGateway",
+        period: Duration.minutes(5),
+        statistic: "Sum",
+      }),
+    },
+    period: Duration.minutes(5),
+    label: "WebSocket integration and execution errors",
+  });
+}
+
 function operationalMetric(
   name: string,
   environment: string,
@@ -139,7 +164,12 @@ export function addRuntimeObservability(input: {
   addErrorAlarm(input.scope, "WebSocketFunctionErrors", input.websocket.metricErrors(errors), 1);
   addErrorAlarm(input.scope, "CronFunctionErrors", input.cron.metricErrors(errors), 1);
   addErrorAlarm(input.scope, "HttpApi5xx", apiGateway5xx(input.httpApi.ref, "$default"), 1);
-  addErrorAlarm(input.scope, "WebSocketApi5xx", apiGateway5xx(input.websocketApi.ref, "prod"), 1);
+  addErrorAlarm(
+    input.scope,
+    "WebSocketApiErrors",
+    websocketApiErrors(input.websocketApi.ref, "prod"),
+    1,
+  );
 
   const env = input.environment;
   addErrorAlarm(

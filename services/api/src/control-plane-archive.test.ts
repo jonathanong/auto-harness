@@ -107,4 +107,50 @@ describe("archive retry state", () => {
     expect(state.archives.get("sessions/failed/logs.jsonl")?.objectStored).toBe(false);
     expect(state.archives.get("sessions/later/logs.jsonl")?.objectStored).toBe(true);
   });
+
+  it("does not let an older retry claim complete over a newer claim", async () => {
+    let releaseUpload!: () => void;
+    const uploadStarted = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => uploadStarted },
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    const key = "sessions/fenced/logs.jsonl";
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const retry = retrySessionArchiveIfNeeded(state, "fenced", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    await Promise.resolve();
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "new-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    releaseUpload();
+    await retry;
+
+    expect(state.archives.get(key)).toMatchObject({
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "new-claim",
+    });
+  });
 });

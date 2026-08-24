@@ -20,6 +20,7 @@ import {
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
+import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 
 import {
   createLambdaResponseCapture,
@@ -286,12 +287,13 @@ export async function createLambdaRuntime(
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
         const archivesRetried = await created.plane.retryPendingArchivesDurable(25);
+        const queuedForMetrics = await listQueuedSessionsDurableForMetric(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
         emitCronSweepMetrics({
           ackTimeouts: ackDeadlinesEnforced.length,
           staleHosts: staleHostsReclaimed.length,
-          queueAgeSeconds: queuedSessionAgeSeconds(created.plane.listSessions(), Date.now()),
+          queueAgeSeconds: queuedSessionAgeSeconds(queuedForMetrics, Date.now()),
         });
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
