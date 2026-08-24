@@ -6,7 +6,7 @@ vi.mock("node:net", () => ({ connect: vi.fn() }));
 
 const { spawnSync } = await import("node:child_process");
 const { connect } = await import("node:net");
-const { bucketFor, computePorts, findAvailablePorts, fnv1a, portsForBucket } =
+const { bucketFor, computePorts, envFor, findAvailablePorts, fnv1a, portsForBucket } =
   await import("./worktree-e2e-env.mts");
 
 afterEach(() => {
@@ -39,6 +39,12 @@ describe("computePorts", () => {
     const a = computePorts("worktree-a");
     const b = computePorts("worktree-b");
     expect(a.offset).not.toBe(b.offset);
+  });
+
+  it("sets HARNESS_PUBLIC_BASE_URL to this worktree's control UI origin", () => {
+    const ports = computePorts("mellow-herding-mountain");
+    expect(envFor(ports).HARNESS_PUBLIC_BASE_URL).toBe(`http://127.0.0.1:${ports.controlPort}`);
+    expect(envFor(ports).HARNESS_API_HTTP).toBe(`http://127.0.0.1:${ports.apiPort}`);
   });
 
   it("never lands on the shared default offset (0)", () => {

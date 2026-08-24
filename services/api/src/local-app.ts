@@ -6,7 +6,7 @@ import { auditActor } from "./audit.ts";
 import { authorize } from "./auth-policy.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { applyLocalCors } from "./local-cors.ts";
-import { type LocalServerOptions, send } from "./local-http.ts";
+import { resolvePublicBaseUrl, type LocalServerOptions, send } from "./local-http.ts";
 import { handleAuditLogRoutes } from "./local-routes-audit-logs.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleCommandRoutes } from "./local-routes-commands.ts";
@@ -39,7 +39,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   const plane =
     options.plane ??
     options.store?.plane ??
-    new ControlPlane({ publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421" });
+    new ControlPlane({ publicBaseUrl: resolvePublicBaseUrl(options.publicBaseUrl) });
   const store = options.store ?? new MemorySessionStore({ plane });
   const envRateLimitConfig = rateLimitConfigFromEnv();
   const config: RateLimitConfig = mergeRateLimitConfig({

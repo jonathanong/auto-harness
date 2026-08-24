@@ -387,7 +387,7 @@ export class AuthService {
     res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
   }
 
-  /** Short-lived one-time browser-to-API WebSocket credential; never stored in JavaScript cookies. */
+  /** Short-lived one-time browser-to-API WebSocket credential. */
   async issueViewerTicket(principal: Principal): Promise<string> {
     if (!isBrowserPrincipal(principal)) {
       throw new Error("viewer tickets are only available to browser sessions");

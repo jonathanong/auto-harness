@@ -13,8 +13,7 @@ export function sessionCookieValue(cookieHeader: string | null | undefined): str
 
 /**
  * Edge-compatible JWT verification for UI middleware and host-pane browse.
- * Rejects service-account cookies and leftover viewer-ticket JWTs so neither
- * can unlock pages.
+ * Session JWTs must be kind admin or user with no audience.
  */
 export async function hasValidSession(
   token: string | undefined,

@@ -26,6 +26,9 @@ describe("viewer origin allowlist", () => {
       false,
     );
     expect(isAllowedViewerOrigin("http://127.0.0.1:7422", "http://127.0.0.1:7421")).toBe(false);
+    expect(isAllowedViewerOrigin("http://127.0.0.1:7431", "http://localhost:7421")).toBe(false);
+    expect(isAllowedViewerOrigin("http://127.0.0.1:7431", "http://127.0.0.1:7421")).toBe(false);
+    expect(isAllowedViewerOrigin("http://127.0.0.1:7431", "http://127.0.0.1:7431")).toBe(true);
   });
 
   it("rejects a viewer request whose Origin does not match", async () => {

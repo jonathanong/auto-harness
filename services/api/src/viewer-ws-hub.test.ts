@@ -384,6 +384,25 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
+  it("rejects the e2e control Origin against the default :7421 publicBaseUrl", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = new ControlPlane({ publicBaseUrl: "http://localhost:7421" });
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    await expectUnauthorizedUpgrade(`${wsUrl(server)}?ticket=${encodeURIComponent(ticket)}`, {
+      origin: "http://127.0.0.1:7431",
+    });
+    hub.close();
+    await close(server);
+  });
+
   it("rejects a replayed one-time ticket", async () => {
     const auth = authService();
     const principal = await auth.createUser({
