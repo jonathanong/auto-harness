@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { queueWrite } from "./control-plane-state.ts";
 import { createLambdaRuntime } from "./lambda-handlers.ts";
 import { createLambdaResponseCapture, requestForLambdaEvent } from "./lambda-http-adapter.ts";
 
@@ -33,6 +34,50 @@ describe("Lambda HTTP adapter", () => {
     await expect(
       runtime.rest({ body: "plain", rawPath: "/health", requestContext: { http: {} } }),
     ).resolves.toMatchObject({ statusCode: 200 });
+  });
+
+  it("flushes pending durable writes before returning from an invocation", async () => {
+    const plane = new ControlPlane();
+    let released = false;
+    let resolveWrite!: () => void;
+    const write = new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    });
+    queueWrite(plane.state, async () => {
+      await write;
+      released = true;
+    });
+    const runtime = await createLambdaRuntime({
+      auth: {} as never,
+      created: { plane, storage: {} } as never,
+      management: { send: async () => ({}) },
+    });
+    const rest = runtime.rest({ rawPath: "/health" });
+    await Promise.resolve();
+    expect(released).toBe(false);
+    resolveWrite();
+    await expect(rest).resolves.toMatchObject({ statusCode: 200 });
+    expect(released).toBe(true);
+    expect(plane.state.pendingPersists).toHaveLength(0);
+  });
+
+  it("logs a failed durable write without changing the captured HTTP response", async () => {
+    const plane = new ControlPlane();
+    queueWrite(plane.state, async () => {
+      throw new Error("write failed");
+    });
+    const runtime = await createLambdaRuntime({
+      auth: {} as never,
+      created: { plane, storage: {} } as never,
+      management: { send: async () => ({}) },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(runtime.rest({ rawPath: "/health" })).resolves.toMatchObject({ statusCode: 200 });
+    expect(error).toHaveBeenCalledWith(
+      "durable write failed after invocation",
+      expect.objectContaining({ message: "write failed" }),
+    );
+    error.mockRestore();
   });
 
   it("captures response headers, cookies, empty bodies, and arrays", () => {

@@ -224,11 +224,19 @@ export async function createLambdaRuntime(
       return resolved;
     },
   });
+  const flushPendingWrites = async (): Promise<void> => {
+    try {
+      await created.plane.settleStorage();
+    } catch (error) {
+      console.error("durable write failed after invocation", error);
+    }
+  };
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();
     return deliveryContext.run(deliveries, async () => {
       const result = await operation();
       while (deliveries.size > 0) await Promise.all(deliveries);
+      await flushPendingWrites();
       return result;
     });
   };
@@ -269,6 +277,7 @@ export async function createLambdaRuntime(
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
+        await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
