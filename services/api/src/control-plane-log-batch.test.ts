@@ -208,4 +208,33 @@ describe("durable host log batches", () => {
       },
     ]);
   });
+
+  it("writes a batch without attempt fences when no attempt id can be resolved", async () => {
+    const plane = new ControlPlane();
+    const fences: Array<{ attempts?: unknown }> = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (_records: unknown, fence: { attempts?: unknown }) => (
+        fences.push(fence), true
+      ),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [
+          {
+            type: "session:log",
+            sessionId: "session",
+            stream: "stdout",
+            content: "legacy",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          },
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(fences).toEqual([{ hostId: "host", connectionId: "connection" }]);
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { registerHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 describe("durable host inventory registration fence", () => {
@@ -131,5 +132,45 @@ describe("durable host inventory registration fence", () => {
         replaceExisting: true,
       }),
     ).rejects.toThrow("read");
+  });
+
+  it("rejects an invalid runtime report on the durable path", async () => {
+    const plane = new ControlPlane();
+    plane.state.storage = { getSession: async () => null } as never;
+    await expect(
+      registerHostDurable(plane.state, {
+        hostId: "h",
+        worktrees: [],
+        runtime: {
+          daemonVersion: "test",
+          gitVersion: "2.36.0",
+          gitReady: true,
+          environmentNames: Array.from({ length: 513 }, (_, index) => `TOKEN_${index}`),
+        },
+      }),
+    ).resolves.toEqual({ ok: false, error: "runtime report is invalid" });
+  });
+
+  it("rolls back when a worktree fence loses during durable registration", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [],
+      putWorktreeFenced: async () => false,
+      releaseHostConnection: async () => true,
+      getHostLock: async () => null,
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        replaceExisting: true,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "host connection changed while publishing inventory",
+    });
   });
 });
