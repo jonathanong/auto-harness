@@ -1,10 +1,17 @@
-import { DescribeTableCommand, ListTablesCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DescribeTableCommand,
+  DescribeTimeToLiveCommand,
+  ListTablesCommand,
+} from "@aws-sdk/client-dynamodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createDynamoClients,
   createDynamoDocumentClient,
   DEFAULT_DYNAMODB_ENDPOINT,
+  SESSION_LOGS_TTL_ATTRIBUTE,
+  SESSION_LOGS_TTL_SECONDS,
+  sessionLogsTtlEpochSeconds,
   statusShardAttr,
   tableNames,
 } from "./dynamo.ts";
@@ -25,6 +32,11 @@ describe("DynamoDB Local clients", () => {
     expect(tableNames("").sessions).toContain("Sessions");
     expect(tableNames("A H/!").sessions).toBe("AH-Sessions");
     expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("7423");
+    expect(SESSION_LOGS_TTL_ATTRIBUTE).toBe("ttl");
+    expect(SESSION_LOGS_TTL_SECONDS).toBe(7 * 24 * 60 * 60);
+    expect(sessionLogsTtlEpochSeconds(1_700_000_000_500)).toBe(
+      1_700_000_000 + SESSION_LOGS_TTL_SECONDS,
+    );
     const doc = createDynamoDocumentClient();
     expect(doc).toBeTruthy();
   });
@@ -96,6 +108,15 @@ describe("DynamoDB Local clients", () => {
       new DescribeTableCommand({ TableName: a.webhookDeliveries }),
     );
     expect(webhooks.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("state-dueAt");
+    const sessionLogsTtl = await client.send(
+      new DescribeTimeToLiveCommand({ TableName: a.sessionLogs }),
+    );
+    expect(sessionLogsTtl.TimeToLiveDescription).toMatchObject({
+      AttributeName: SESSION_LOGS_TTL_ATTRIBUTE,
+    });
+    expect(["ENABLED", "ENABLING"]).toContain(
+      sessionLogsTtl.TimeToLiveDescription?.TimeToLiveStatus,
+    );
   });
 
   it("is safe when independent processes provision the same fresh table prefix", async () => {

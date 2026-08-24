@@ -136,4 +136,19 @@ describe("durable terminal message residual coverage", () => {
       expect(state.sessions.get("s")?.status).toBe(won ? "queued" : "running");
     }
   });
+
+  it("does not load a provider account for a late cancelled usage_limit", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set("s", row({ status: "cancelled", completedAt: NOW }));
+    let loaded = 0;
+    setDurableReadStorage(state, {
+      getProviderAccount: async () => {
+        loaded += 1;
+        throw new Error("catalog unavailable");
+      },
+      releaseMainCheckoutSession: async () => true,
+    });
+    await expect(handleHostMessageDurable(state, message())).resolves.toEqual({ ok: true });
+    expect(loaded).toBe(0);
+  });
 });

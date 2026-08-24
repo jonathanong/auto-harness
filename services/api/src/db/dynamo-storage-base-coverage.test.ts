@@ -2,7 +2,7 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
+import { createDynamoClients, SESSION_LOGS_TTL_SECONDS, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 
@@ -34,6 +34,7 @@ describe("DynamoPlaneStorageBase", () => {
       timestamp: "2026-01-01T00:00:00.000Z",
       seq: 1,
     };
+    const logWrittenAt = Date.now();
     expect(await storage.tryAcquireHostLock({ ...fence, replaceExisting: false })).toBe(true);
     expect(await storage.putLogFenced(log, fence)).toBe(true);
     await storage.putLog({ ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000002", seq: 2 });
@@ -58,10 +59,19 @@ describe("DynamoPlaneStorageBase", () => {
         { ...fence, connectionId: "stale" },
       ),
     ).toBe(false);
-    expect((await storage.listLogs(log.sessionId)).map(({ seq }) => seq)).toEqual(
+    const storedLogs = await storage.listLogs(log.sessionId);
+    expect(storedLogs.map(({ seq }) => seq)).toEqual(
       Array.from({ length: 27 }, (_, index) => index + 1),
     );
-    expect((await storage.listLogs(log.sessionId)).at(-1)?.content).toBe("replayed duplicate");
+    expect(storedLogs.at(-1)?.content).toBe("replayed duplicate");
+    for (const stored of storedLogs) {
+      expect(stored.ttl).toBeGreaterThanOrEqual(
+        Math.floor(logWrittenAt / 1000) + SESSION_LOGS_TTL_SECONDS,
+      );
+      expect(stored.ttl).toBeLessThanOrEqual(
+        Math.floor(Date.now() / 1000) + SESSION_LOGS_TTL_SECONDS,
+      );
+    }
     expect(await storage.queryLogs(log.sessionId, { limit: 10 })).toHaveLength(10);
     await storage.deleteLog(log.sessionId, log.timestampSeq);
     await storage.putRepository({

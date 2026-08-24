@@ -50,6 +50,7 @@ describe("install-service darwin validation and updates", () => {
     expect(spawn.calls.map((call) => call.args[0])).toEqual([
       "bootout",
       "bootstrap",
+      "print",
       "kickstart",
       "print",
     ]);

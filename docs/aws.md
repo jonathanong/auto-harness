@@ -230,27 +230,27 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                  | PK                | SK             | GSIs                                              | Primary access patterns                                                 |
-| ---------------------- | ----------------- | -------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| Users                  | `id`              | —              | `username`                                        | Login by username                                                       |
-| Repositories           | `id`              | —              | —                                                 | CRUD by id; bounded strongly consistent catalog pages                   |
-| Worktrees              | `id`              | —              | `repositoryId-id`                                 | List repository worktrees                                               |
-| Sessions               | `id`              | —              | `statusShard-createdAt`, `statusShard-queueOrder` | Sharded queue query; `queueOrder` is inverted priority, `createdAt`, id |
-| HostLocks              | `hostId`          | —              | —                                                 | Conditional host assignment lock                                        |
-| ConcurrencyLocks       | `concurrencyId`   | —              | —                                                 | Conditional concurrency lock                                            |
-| SessionLogs            | `sessionId`       | `timestampSeq` | —                                                 | Append/range read; TTL attribute configured on the table, unused today  |
-| Schedules              | `id`              | —              | `repositoryId-id`                                 | CRUD by id; count schedules by repository                               |
-| Connections            | `connectionId`    | —              | —                                                 | Connection state                                                        |
-| Archives               | `key`             | —              | —                                                 | Archive metadata                                                        |
-| HostInventories        | `hostId`          | —              | —                                                 | Host inventory                                                          |
-| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                                                 | Append-only newest-first query                                          |
-| RateLimits             | `bucketKey`       | —              | —                                                 | Atomic fixed-window counters + TTL                                      |
-| Providers              | `id`              | —              | —                                                 | Provider catalog                                                        |
-| ProviderAccounts       | `id`              | —              | —                                                 | Provider account catalog                                                |
-| Commands               | `id`              | —              | —                                                 | Command catalog                                                         |
-| Integrations           | `id`              | —              | —                                                 | Encrypted integration configuration                                     |
-| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                          |
-| WebhookDeliveries      | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                       |
+| Table                  | PK                | SK             | GSIs                                              | Primary access patterns                                                                    |
+| ---------------------- | ----------------- | -------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Users                  | `id`              | —              | `username`                                        | Login by username                                                                          |
+| Repositories           | `id`              | —              | —                                                 | CRUD by id; bounded strongly consistent catalog pages                                      |
+| Worktrees              | `id`              | —              | `repositoryId-id`                                 | List repository worktrees                                                                  |
+| Sessions               | `id`              | —              | `statusShard-createdAt`, `statusShard-queueOrder` | Sharded queue query; `queueOrder` is inverted priority, `createdAt`, id                    |
+| HostLocks              | `hostId`          | —              | —                                                 | Conditional host assignment lock                                                           |
+| ConcurrencyLocks       | `concurrencyId`   | —              | —                                                 | Conditional concurrency lock                                                               |
+| SessionLogs            | `sessionId`       | `timestampSeq` | —                                                 | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes                       |
+| Schedules              | `id`              | —              | `repositoryId-id`                                 | CRUD by id; count schedules by repository                                                  |
+| Connections            | `connectionId`    | —              | —                                                 | Connection state                                                                           |
+| Archives               | `key`             | —              | —                                                 | Archive metadata                                                                           |
+| HostInventories        | `hostId`          | —              | —                                                 | Host inventory                                                                             |
+| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                                                 | Append-only newest-first query                                                             |
+| RateLimits             | `bucketKey`       | —              | —                                                 | Atomic fixed-window counters + TTL                                                         |
+| Providers              | `id`              | —              | —                                                 | Provider catalog                                                                           |
+| ProviderAccounts       | `id`              | —              | —                                                 | Provider account catalog                                                                   |
+| Commands               | `id`              | —              | —                                                 | Command catalog                                                                            |
+| Integrations           | `id`              | —              | —                                                 | Encrypted integration configuration                                                        |
+| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                                             |
+| WebhookDeliveries      | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                                          |
 
 Unrestricted repository pages use bounded, strongly consistent table scans with opaque storage
 continuations. Scoped principals use strongly consistent keyed reads of only their allowed IDs.
@@ -271,11 +271,13 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
 
 ### SessionLogs retention and archival
 
-1. Session log rows currently have no automatic expiry, even though the table itself has a DynamoDB
-   TTL attribute (`ttl`) configured (`services/cdk/src/tables.ts`) — table-level TTL only deletes
-   items that carry that attribute with a past Unix-epoch value, and no write path sets it today
-   (see [costs.md](costs.md#sessionlogs-cost-control)). A future retention change may start writing
-   it, targeting a **7-day** window, after the deletion policy is explicitly approved.
+1. New SessionLogs writes set `ttl` to Unix-epoch seconds **7 days** from the write
+   (`SESSION_LOGS_TTL_SECONDS` in `services/api/src/db/dynamo.ts`). CDK and local table creation
+   enable DynamoDB TTL on that attribute (`services/cdk/src/tables.ts`,
+   `services/api/src/db/ensure-tables.ts`). Table-level TTL only deletes items that carry a past
+   Unix-epoch `ttl`, so rows written before this change — which omit the attribute and are not
+   backfilled — do not expire this way (see
+   [costs.md](costs.md#sessionlogs-cost-control)).
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
    write policy; terminal-session processing:

@@ -167,21 +167,29 @@ async function runProcessAndFinish(
     });
   }
 
-  if (detectUsageLimit(combined)) {
+  if (result.exitCode === 0) {
     return await finish({
-      status: "failed",
-      exitCode: result.exitCode,
-      errorCode: "usage_limit",
-      errorMessage: "Usage limit detected in CLI output",
+      status: "completed",
+      exitCode: 0,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });
   }
 
-  if (result.exitCode === 0) {
+  const usageLimit = detectUsageLimit({
+    argv,
+    failed: true,
+    output: combined,
+    ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
+    ...(result.usageLimit === true ? { adapterUsageLimit: true } : {}),
+  });
+  if (usageLimit) {
     return await finish({
-      status: "completed",
-      exitCode: 0,
+      status: "failed",
+      exitCode: result.exitCode,
+      errorCode: "usage_limit",
+      errorMessage:
+        usageLimit === "output" ? "Usage limit detected in CLI output" : "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });

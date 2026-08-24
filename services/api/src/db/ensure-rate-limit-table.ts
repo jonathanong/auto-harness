@@ -19,7 +19,11 @@ export function rateLimitTableDefinition(
   };
 }
 
-export async function enableRateLimitTtl(client: DynamoDBClient, name: string): Promise<void> {
+export async function enableTableTtl(
+  client: DynamoDBClient,
+  name: string,
+  attributeName: string,
+): Promise<void> {
   const current = await client.send(new DescribeTimeToLiveCommand({ TableName: name }));
   if (["ENABLED", "ENABLING"].includes(current.TimeToLiveDescription?.TimeToLiveStatus ?? "")) {
     return;
@@ -28,7 +32,7 @@ export async function enableRateLimitTtl(client: DynamoDBClient, name: string): 
     await client.send(
       new UpdateTimeToLiveCommand({
         TableName: name,
-        TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
+        TimeToLiveSpecification: { AttributeName: attributeName, Enabled: true },
       }),
     );
   } catch (error) {
@@ -41,4 +45,8 @@ export async function enableRateLimitTtl(client: DynamoDBClient, name: string): 
     }
     throw error;
   }
+}
+
+export async function enableRateLimitTtl(client: DynamoDBClient, name: string): Promise<void> {
+  await enableTableTtl(client, name, "expiresAt");
 }
