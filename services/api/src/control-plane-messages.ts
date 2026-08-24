@@ -802,6 +802,8 @@ async function applySessionStatusDurable(
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
       state.providerAccounts.delete(providerAccountId);
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.releaseMainCheckoutSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -812,7 +814,10 @@ async function applySessionStatusDurable(
         queueShard: session.queueShard,
         reason: "provider account missing; requeued",
         errorCode: "usage_limit",
-        ...providerAccountLeaseWriteOpts(session),
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
@@ -827,6 +832,8 @@ async function applySessionStatusDurable(
     }
     if (requeue && cooldown && providerAccountId) {
       const now = state.now();
+      const { hostAssignmentLease: _legacyHostAssignmentLease, ...providerLeaseOpts } =
+        providerAccountLeaseWriteOpts(session);
       const requeued = await storage.requeueMainCheckoutUsageLimitedSession({
         sessionId: session.id,
         hostId: session.hostId,
@@ -838,7 +845,10 @@ async function applySessionStatusDurable(
         now,
         usageLimitedUntil: cooldown.usageLimitedUntil,
         errorMessage: msg.errorMessage,
-        ...providerAccountLeaseWriteOpts(session),
+        ...providerLeaseOpts,
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
       });
       if (!requeued) return { ok: true };
       emitCooldown();

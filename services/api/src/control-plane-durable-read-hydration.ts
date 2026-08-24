@@ -8,13 +8,18 @@ async function listSessionsByStatusAcrossShards(
   storage: DynamoPlaneStorage,
   status: SessionRecord["status"],
 ): Promise<SessionRecord[]> {
-  return (
+  const candidates = (
     await Promise.all(
       [...Array(state.shardCount).keys()].map((shard) =>
         storage.listSessionsByStatus(status, shard),
       ),
     )
   ).flat();
+  if (typeof storage.getSession !== "function") return candidates;
+  const refreshed = await Promise.all(
+    candidates.map((candidate) => storage.getSession(candidate.id, true)),
+  );
+  return refreshed.filter((session): session is SessionRecord => session?.status === status);
 }
 
 export async function hydrateRunningSessions(

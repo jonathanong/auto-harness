@@ -256,6 +256,34 @@ describe("durable runtime read-through", () => {
     expect(state.sessions.has(session.id)).toBe(false);
   });
 
+  it("does not let a stale running GSI row overwrite a queued session", async () => {
+    const staleRunning = {
+      ...session,
+      status: "running" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async (status: string) =>
+          status === "running" ? [staleRunning] : [],
+        getSession: async () => ({ ...session }),
+      } as never,
+    });
+    state.sessions.set(session.id, { ...session });
+
+    await refreshSchedulerReadModel(state);
+
+    expect(state.sessions.get(session.id)).toMatchObject({ status: "queued" });
+  });
+
   it("keeps in-memory queued sessions when the status GSI has not caught up", async () => {
     const state = createControlPlaneState({
       shardCount: 1,
