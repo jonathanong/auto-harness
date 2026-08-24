@@ -164,7 +164,6 @@ export function planPromptPlacement(
     )) {
       candidates.push({ worktree: candidate, route });
     }
-    if (candidates.length) break;
   }
   if (candidates.length === 0) {
     return {

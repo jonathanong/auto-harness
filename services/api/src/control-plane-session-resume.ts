@@ -43,6 +43,9 @@ function validateResumeOverrides(opts: ResumeOptions): string | null {
   ) {
     return "priority must be a number";
   }
+  if (opts.priority !== undefined && !Number.isInteger(opts.priority)) {
+    return "priority must be an integer";
+  }
   return null;
 }
 

@@ -451,6 +451,10 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "priority must be a number",
       });
+      expect(overrides.resumeSession(source.session.id, { priority: 0.5 })).toEqual({
+        ok: false,
+        error: "priority must be an integer",
+      });
       expect(
         overrides.resumeSession(source.session.id, { pinExpiresAt: "not-a-timestamp" }),
       ).toEqual({
