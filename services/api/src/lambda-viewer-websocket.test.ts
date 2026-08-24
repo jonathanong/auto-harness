@@ -88,6 +88,7 @@ describe("Lambda viewer WebSocket adapter", () => {
 
   it("retries a missing origin lookup on later connects and then caches it", async () => {
     const ctx = fixture();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     const resolvePublicBaseUrl = vi
       .fn()
       .mockResolvedValueOnce(undefined)
@@ -99,9 +100,34 @@ describe("Lambda viewer WebSocket adapter", () => {
       resolvePublicBaseUrl,
     });
     await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(6_000);
     await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(200);
     await expect(sockets.connect("viewer-2", "ticket", origin)).resolves.toBe(200);
     expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it("coalesces concurrent origin lookups", async () => {
+    const ctx = fixture();
+    let release!: (value: string | undefined) => void;
+    const resolvePublicBaseUrl = vi.fn(
+      () => new Promise<string | undefined>((resolve) => (release = resolve)),
+    );
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      resolvePublicBaseUrl,
+    });
+    const first = sockets.connect("viewer-1", "ticket", origin);
+    const second = sockets.connect("viewer-2", "ticket", origin);
+    await vi.waitFor(() => expect(resolvePublicBaseUrl).toHaveBeenCalledOnce());
+    release(origin);
+    await expect(first).resolves.toBe(200);
+    await expect(second).resolves.toBe(200);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(1);
   });
 
   it("authenticates viewer tickets and owns viewer disconnects", async () => {

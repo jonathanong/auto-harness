@@ -68,11 +68,24 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
     await dependencies.storage.putConnection(connection);
   };
   let allowedOrigin = dependencies.publicBaseUrl;
+  let inflightOrigin: Promise<string | undefined> | undefined;
+  let nextOriginRetryAt = 0;
   const viewerOrigin = async (): Promise<string | undefined> => {
     if (allowedOrigin !== undefined) return allowedOrigin;
-    const resolved = await dependencies.resolvePublicBaseUrl?.();
-    if (resolved !== undefined) allowedOrigin = resolved;
-    return resolved;
+    if (inflightOrigin) return inflightOrigin;
+    if (Date.now() < nextOriginRetryAt) return undefined;
+    inflightOrigin = (async () => {
+      const resolved = await dependencies.resolvePublicBaseUrl?.();
+      if (resolved !== undefined) {
+        allowedOrigin = resolved;
+        return resolved;
+      }
+      nextOriginRetryAt = Date.now() + 5_000;
+      return undefined;
+    })().finally(() => {
+      inflightOrigin = undefined;
+    });
+    return inflightOrigin;
   };
 
   return {
