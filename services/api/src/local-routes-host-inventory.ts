@@ -172,7 +172,9 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         }
         execEdits = reconciled.execEdits;
         const version =
-          typeof incoming?.version === "number" && Number.isInteger(incoming.version)
+          typeof incoming?.version === "number" &&
+          Number.isInteger(incoming.version) &&
+          incoming.version >= 0
             ? incoming.version
             : (existing?.version ?? 0);
         body = {

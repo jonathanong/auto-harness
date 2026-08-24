@@ -47,6 +47,8 @@ export function HostSetupScriptForm({
   const [environment, setEnvironment] = useState((requiredEnvironment ?? []).join("\n"));
   const [scriptDirty, setScriptDirty] = useState(false);
   const [rootsDirty, setRootsDirty] = useState(false);
+  const scriptDirtyRef = useRef(false);
+  const rootsDirtyRef = useRef(false);
   const savedRefreshExecRef = useRef<string | null>(null);
   const savedRefreshEnvironmentRef = useRef<string | null>(null);
 
@@ -56,10 +58,14 @@ export function HostSetupScriptForm({
     const refreshKey = JSON.stringify([nextScript, nextRoots]);
     const preserveSavedFeedback = savedRefreshExecRef.current === refreshKey;
     savedRefreshExecRef.current = null;
-    setScript(nextScript);
-    setRoots(nextRoots);
-    setScriptDirty(false);
-    setRootsDirty(false);
+    if (!scriptDirtyRef.current) {
+      setScript(nextScript);
+      setScriptDirty(false);
+    }
+    if (!rootsDirtyRef.current) {
+      setRoots(nextRoots);
+      setRootsDirty(false);
+    }
     if (!preserveSavedFeedback) setExecSaved(false);
   }, [allowedRoots, setupScript]);
 
@@ -116,6 +122,8 @@ export function HostSetupScriptForm({
                   }
                 }
                 savedRefreshExecRef.current = JSON.stringify([script, roots]);
+                scriptDirtyRef.current = false;
+                rootsDirtyRef.current = false;
                 setScriptDirty(false);
                 setRootsDirty(false);
                 setExecSaved(true);
@@ -148,6 +156,7 @@ export function HostSetupScriptForm({
               value={script}
               onChange={(event) => {
                 setScript(event.target.value);
+                scriptDirtyRef.current = true;
                 setScriptDirty(true);
               }}
               className="font-mono text-xs"
@@ -168,6 +177,7 @@ export function HostSetupScriptForm({
               value={roots}
               onChange={(event) => {
                 setRoots(event.target.value);
+                rootsDirtyRef.current = true;
                 setRootsDirty(true);
               }}
               className="font-mono text-xs"

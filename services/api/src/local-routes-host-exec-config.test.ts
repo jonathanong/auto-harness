@@ -561,6 +561,32 @@ describe("host exec-config isolation", () => {
     expect(bodies.map((body) => body.version)).toEqual([version, version]);
   });
 
+  it("replaces a negative inventory version with the server-read version", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    const version = (await plane.getHostInventoryDurable("host-1"))?.version;
+    const bodies: Array<Record<string, unknown>> = [];
+    plane.putHostInventoryDurable = async (_hostId, body) => {
+      bodies.push(body as Record<string, unknown>);
+      return {
+        ok: false as const,
+        conflict: true as const,
+        error: "host inventory changed since it was read; re-read and retry",
+      };
+    };
+
+    expect(
+      await invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/inventory",
+        { ...inventory, version: -1 },
+        admin,
+      ),
+    ).toMatchObject({ status: 409 });
+    expect(bodies[0]?.version).toBe(version);
+  });
+
   it("returns a conflict instead of deleting an inventory that changed after the capability check", async () => {
     const plane = new ControlPlane();
     expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);

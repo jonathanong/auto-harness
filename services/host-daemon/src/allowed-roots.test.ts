@@ -48,6 +48,15 @@ describe("allowed roots realpath checks", () => {
     ).rejects.toThrow("outside allowed roots");
   });
 
+  it("rejects dangling symlinks in an unresolved path suffix", async () => {
+    const root = await tempDir("dangling");
+    await symlink(join(root, "outside-not-created"), join(root, "dangling"));
+
+    await expect(
+      assertPathWithinAllowedRoots(join(root, "dangling", "future"), [root]),
+    ).rejects.toThrow("dangling symlink");
+  });
+
   it("skips the check when no roots are configured and fails closed if none resolve", async () => {
     expect(await assertPathWithinAllowedRoots("/tmp/x", [])).toBe("/tmp/x");
     await expect(assertPathWithinAllowedRoots("/tmp/x", ["/no/such/root-ah"])).rejects.toThrow(

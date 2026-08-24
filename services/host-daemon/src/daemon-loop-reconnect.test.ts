@@ -245,6 +245,31 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("retries the policy drain registration after a failed publish", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      let registrations = 0;
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type !== "host:register") return;
+          registrations += 1;
+          if (registrations === 2) throw new Error("registration failed");
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+
+      await expect(loop.blockAssignmentsForInvalidInventory()).rejects.toThrow(
+        "registration failed",
+      );
+      await loop.blockAssignmentsForInvalidInventory();
+      expect(registrations).toBe(3);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("refreshes reconnect and inventory registration snapshots ahead of held outbound traffic", async () => {
     const { config, cleanup } = await makeRepo();
     try {

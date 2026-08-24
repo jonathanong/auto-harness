@@ -54,6 +54,30 @@ function RefreshHarness() {
   );
 }
 
+function UnrelatedRefreshHarness() {
+  const [environment, setEnvironment] = useState(["TOKEN"]);
+  return (
+    <>
+      <button
+        type="button"
+        data-pw="unrelated-refresh"
+        onClick={() => setEnvironment(["NEXT_TOKEN"])}
+      >
+        Refresh environment
+      </button>
+      <HostSetupScriptForm
+        hostId="host"
+        setupScript="old"
+        allowedRoots={["/old-root"]}
+        requiredEnvironment={environment}
+        mutateExec={successfulExec}
+        mutateInv={successfulInv}
+        canWriteExecConfig
+      />
+    </>
+  );
+}
+
 describe("HostSetupScriptForm", () => {
   it("saves exec-config and required environment through independent forms", async () => {
     let execPatch: HostExecConfigPatch | undefined;
@@ -234,6 +258,22 @@ describe("HostSetupScriptForm", () => {
     setValue(field(view.container, "host-setup-script"), "new script");
     await submit(field(view.container, "form-host-setup-script"));
     expect(execPatch).toEqual({ setupScript: "new script" });
+    view.unmount();
+  });
+
+  it("preserves dirty exec fields across an unrelated inventory refresh", () => {
+    const view = mount(<UnrelatedRefreshHarness />);
+    setValue(field(view.container, "host-setup-script"), "new script");
+    setValue(field(view.container, "host-allowed-roots"), "/new-root");
+
+    act(() => field<HTMLButtonElement>(view.container, "unrelated-refresh").click());
+
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe(
+      "new script",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
+      "/new-root",
+    );
     view.unmount();
   });
 });

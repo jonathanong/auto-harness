@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { isAbsolutePathString } from "@auto-harness/shared";
@@ -6,6 +6,7 @@ import { isAbsolutePathString } from "@auto-harness/shared";
 import type { DaemonConfig } from "./config-types.ts";
 
 export type RealpathFn = (path: string) => Promise<string>;
+export type LstatFn = (path: string) => Promise<{ isSymbolicLink(): boolean }>;
 
 /** Path primitives used by containment so Windows-style fixtures can inject `path.win32`. */
 export type PathContainmentApi = {
@@ -39,6 +40,7 @@ export function isWithinRoot(
 export async function resolvePathForRootCheck(
   path: string,
   realpathFn: RealpathFn = realpath,
+  lstatFn: LstatFn = lstat,
 ): Promise<string> {
   const absolute = resolve(path);
   const missing: string[] = [];
@@ -48,6 +50,12 @@ export async function resolvePathForRootCheck(
       const resolved = await realpathFn(current);
       return missing.length ? join(resolved, ...missing) : resolved;
     } catch (error) {
+      let danglingSymlink = false;
+      try {
+        danglingSymlink = (await lstatFn(current)).isSymbolicLink();
+      } catch {}
+      if (danglingSymlink)
+        throw new Error(`cannot resolve dangling symlink in path: ${current}`, { cause: error });
       const parent = dirname(current);
       if (parent === current) throw error;
       missing.unshift(basename(current));

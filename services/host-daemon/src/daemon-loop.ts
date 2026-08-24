@@ -78,6 +78,8 @@ export class DaemonLoop {
   private draining = false;
   /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
   private inventoryPolicyBlocked = false;
+  /** Tracks whether the control plane has acknowledged the policy drain registration. */
+  private inventoryPolicyDrainPublished = false;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
   private drainConfirmation: Promise<void> | undefined;
@@ -166,23 +168,31 @@ export class DaemonLoop {
   }
   async applyInventory(next: DaemonConfig): Promise<void> {
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
+    const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
     await applyDaemonInventory(this.config, next, this.worktrees, async () => {
       // Worktree validation just succeeded against `next`; register the host as assignable again.
       this.inventoryPolicyBlocked = false;
+      this.inventoryPolicyDrainPublished = false;
       try {
         await this.register();
       } catch (error) {
         this.inventoryPolicyBlocked = wasPolicyBlocked;
+        this.inventoryPolicyDrainPublished = wasPolicyDrainPublished;
         throw error;
       }
     });
   }
   async blockAssignmentsForInvalidInventory(): Promise<void> {
-    if (this.inventoryPolicyBlocked) return;
+    if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
     // Set the local gate before network I/O so an already-connected peer cannot assign work in
     // the interval before its durable registration is marked draining.
     this.inventoryPolicyBlocked = true;
-    await this.register();
+    try {
+      await this.register();
+    } catch (error) {
+      this.inventoryPolicyDrainPublished = false;
+      throw error;
+    }
   }
   async register(): Promise<void> {
     const runningAttempts = [...this.inflight.values()]
@@ -198,6 +208,7 @@ export class DaemonLoop {
       runningAttempts,
       this.executionProfiles,
     );
+    if (this.inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
   }
   async keepalive(): Promise<void> {
     await this.outbound.send({
