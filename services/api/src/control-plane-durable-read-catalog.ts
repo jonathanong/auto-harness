@@ -8,6 +8,28 @@ import type {
 } from "./db/plane-storage.ts";
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import type { SessionRecord } from "./db/types.ts";
+
+/** Read queue rows directly for operational metrics instead of reusing stale cache entries. */
+export async function listQueuedSessionsDurableForMetric(
+  state: ControlPlaneState,
+): Promise<SessionRecord[]> {
+  if (!state.storage)
+    return [...state.sessions.values()].filter((session) => session.status === "queued");
+  const candidates = (
+    await Promise.all(
+      [...Array(state.shardCount).keys()].map((shard) =>
+        state.storage!.listSessionsByStatus("queued", shard),
+      ),
+    )
+  ).flat();
+  // The status GSI can retain deleted/transitioned candidates. Read each candidate's
+  // base row consistently before it contributes to the operational queue-age metric.
+  const durable = await Promise.all(
+    candidates.map((candidate) => state.storage!.getSession(candidate.id, true)),
+  );
+  return durable.filter((session): session is SessionRecord => session?.status === "queued");
+}
 
 type CatalogMap<T> = Map<string, T>;
 

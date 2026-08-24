@@ -27,6 +27,8 @@ describe("AutoHarnessFoundationStack", () => {
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
+      DeletionProtectionEnabled: true,
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },
       TableName: "AutoHarness-SessionLogs",
       TimeToLiveSpecification: { AttributeName: "ttl", Enabled: true },
       KeySchema: [
@@ -177,19 +179,30 @@ describe("AutoHarnessFoundationStack", () => {
             Action: Match.arrayWith([
               "dynamodb:BatchGetItem",
               "dynamodb:Query",
+              "dynamodb:TransactWriteItems",
               "dynamodb:UpdateItem",
             ]),
             Effect: "Allow",
           }),
+          Match.objectLike({ Action: "dynamodb:Scan", Effect: "Allow" }),
         ]),
       },
     });
+    const scanStatement = Object.values(template.findResources("AWS::IAM::ManagedPolicy"))
+      .flatMap((policy) => policy.Properties?.PolicyDocument?.Statement ?? [])
+      .find((statement) => statement.Action === "dynamodb:Scan");
+    expect(JSON.stringify(scanStatement)).toContain("Sessions");
+    expect(JSON.stringify(scanStatement)).not.toContain("SessionLogs");
+    expect(JSON.stringify(scanStatement)).not.toContain("AuditLogs");
     template.hasResourceProperties("AWS::IAM::ManagedPolicy", {
       PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({ Action: "dynamodb:Query", Effect: "Allow" }),
-          Match.objectLike({ Action: Match.arrayWith(["s3:PutObject"]), Effect: "Allow" }),
-        ]),
+        Statement: [
+          Match.objectLike({
+            Action: "s3:PutObject",
+            Effect: "Allow",
+            Resource: Match.objectLike({ "Fn::Join": Match.anyValue() }),
+          }),
+        ],
       },
     });
     template.hasOutput("TablePrefix", { Value: "AutoHarness" });
@@ -214,7 +227,10 @@ describe("AutoHarnessFoundationStack", () => {
     });
     const json = template.toJSON() as { Resources: Record<string, { DeletionPolicy?: string }> };
 
-    template.hasResourceProperties("AWS::DynamoDB::Table", { TableName: "Review20-Users" });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      DeletionProtectionEnabled: false,
+      TableName: "Review20-Users",
+    });
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketName: "review-20-cdk-foundation-archives",
     });

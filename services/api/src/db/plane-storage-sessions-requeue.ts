@@ -7,6 +7,10 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 type RequeueOpts = {
   sessionId: string;
@@ -23,11 +27,12 @@ type RequeueOpts = {
   fence?: { hostId: string; connectionId: string };
   requireUnacknowledged?: boolean;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
 };
 
 function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [];
-  if (opts.fence) {
+  if (opts.fence && !opts.hostAssignmentLease) {
     items.push({
       ConditionCheck: {
         TableName: ctx.tables.hostLocks,
@@ -96,7 +101,7 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
       Key: { id: opts.sessionId },
       UpdateExpression:
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, providerAccountLease",
+        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, providerAccountLease, hostAssignmentLease",
       ConditionExpression: requeueSessionCondition(opts),
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -133,6 +138,9 @@ export async function tryRequeueSession(ctx: PlaneStorageCtx, opts: RequeueOpts)
             opts.sessionId,
             opts.providerAccountLease,
           ),
+          ...(opts.hostAssignmentLease
+            ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
+            : []),
         ],
       }),
     );

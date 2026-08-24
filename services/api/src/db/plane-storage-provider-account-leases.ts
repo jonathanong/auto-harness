@@ -15,7 +15,7 @@ export type ProviderAccountLeaseKey = {
   slot: number;
 };
 
-export type ProviderAccountLeaseBackfillResult =
+type ProviderAccountLeaseBackfillResult =
   | { status: "migrated"; lease: ProviderAccountLeaseKey }
   | { status: "lease_collision" | "session_changed" };
 
@@ -160,5 +160,40 @@ export async function releaseProviderAccountLease(
     );
   } catch (err) {
     if (!isConditionalFailed(err)) throw err;
+  }
+}
+
+/** Atomically remove a timeout-preserved lease from its session and lock. */
+export async function releaseTimedOutProviderAccountLease(
+  ctx: PlaneStorageCtx,
+  opts: { concurrencyId: string; sessionId: string; attemptId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression: "REMOVE providerAccountLease, timedOutHostId, hostAssignmentLease",
+              ConditionExpression:
+                "#s = :timedOut AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.attemptId = :attemptId",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":timedOut": "timed_out",
+                ":concurrencyId": opts.concurrencyId,
+                ":attemptId": opts.attemptId,
+              },
+            },
+          },
+          providerAccountLeaseDeleteItem(ctx.tables.concurrencyLocks, opts),
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
+    throw err;
   }
 }

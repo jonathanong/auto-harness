@@ -4,7 +4,6 @@ import { Aws, CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-li
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
-import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
@@ -12,8 +11,10 @@ import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
 import type { FoundationResources } from "./foundation-stack.ts";
+import { grantRuntimeLambdaAccess } from "./lambda-iam.ts";
 import { grantPublicBaseUrlAccess, publicBaseUrlParam } from "./public-base-url-param.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
+import { addRuntimeObservability } from "./runtime-observability.ts";
 
 export type RuntimeStackProps = StackProps & {
   foundation: FoundationResources;
@@ -43,52 +44,44 @@ export class AutoHarnessRuntimeStack extends Stack {
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
     const publicBaseUrl = publicBaseUrlParam(this);
     const commonEnvironment = {
-      ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
+      HARNESS_METRIC_ENVIRONMENT: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
-      KMS_KEY_ID: props.foundation.integrationKey.keyArn,
       PUBLIC_BASE_URL_SSM_PARAM: publicBaseUrl.param.valueAsString,
+    };
+    const archiveAndKms = {
+      ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
+      KMS_KEY_ID: props.foundation.integrationKey.keyArn,
     };
     const functionProps = {
       bundling: { minify: true, sourceMap: true },
       entry: lambdaEntry,
-      environment: commonEnvironment,
       logRetention: RetentionDays.TWO_WEEKS,
       memorySize: 256,
       runtime: lambda.Runtime.NODEJS_22_X,
     } satisfies Partial<nodejs.NodejsFunctionProps>;
     const restFunction = new nodejs.NodejsFunction(this, "RestFunction", {
       ...functionProps,
+      environment: { ...commonEnvironment, ...archiveAndKms },
       handler: "rest",
       timeout: Duration.seconds(15),
     });
     const websocketFunction = new nodejs.NodejsFunction(this, "WebSocketFunction", {
       ...functionProps,
+      environment: commonEnvironment,
       handler: "websocket",
       timeout: Duration.seconds(30),
     });
     // Minute scheduler also drains the Slack lifecycle outbox through chat.postMessage / chat.update.
     const cronFunction = new nodejs.NodejsFunction(this, "CronFunction", {
       ...functionProps,
+      environment: { ...commonEnvironment, ...archiveAndKms },
       handler: "cron",
       timeout: Duration.seconds(60),
     });
-    const apiDataAccessPolicy = iam.ManagedPolicy.fromManagedPolicyArn(
-      this,
-      "ImportedApiDataAccessPolicy",
-      props.foundation.apiDataAccessPolicy.managedPolicyArn,
-    );
-    const archiveDataAccessPolicy = iam.ManagedPolicy.fromManagedPolicyArn(
-      this,
-      "ImportedArchiveDataAccessPolicy",
-      props.foundation.archiveDataAccessPolicy.managedPolicyArn,
-    );
     for (const fn of [restFunction, websocketFunction, cronFunction]) {
-      fn.role!.addManagedPolicy(apiDataAccessPolicy);
-      fn.role!.addManagedPolicy(archiveDataAccessPolicy);
-      props.foundation.integrationKey.grantEncryptDecrypt(fn);
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
       grantPublicBaseUrlAccess(fn, publicBaseUrl);
     }
@@ -149,25 +142,24 @@ export class AutoHarnessRuntimeStack extends Stack {
     websocketFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     restFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     cronFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
-    const manageConnections = new iam.PolicyStatement({
-      actions: ["execute-api:ManageConnections"],
-      resources: [
-        Fn.join("", [
-          "arn:",
-          Aws.PARTITION,
-          ":execute-api:",
-          Aws.REGION,
-          ":",
-          Aws.ACCOUNT_ID,
-          ":",
-          websocketApi.ref,
-          "/prod/POST/@connections/*",
-        ]),
-      ],
+    grantRuntimeLambdaAccess({
+      rest: restFunction,
+      websocket: websocketFunction,
+      cron: cronFunction,
+      foundation: props.foundation,
+      websocketApiId: websocketApi.ref,
     });
-    websocketFunction.addToRolePolicy(manageConnections);
-    restFunction.addToRolePolicy(manageConnections);
-    cronFunction.addToRolePolicy(manageConnections);
+    addRuntimeObservability({
+      scope: this,
+      environment: props.tablePrefix,
+      rest: restFunction,
+      websocket: websocketFunction,
+      cron: cronFunction,
+      httpApi,
+      httpStage,
+      websocketApi,
+      websocketStage,
+    });
 
     const cronRule = new events.Rule(this, "CronRule", {
       description: "Runs durable Auto Harness scheduling and recovery once per minute.",

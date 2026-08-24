@@ -22,6 +22,7 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
       sessions: "Sessions",
       worktrees: "Worktrees",
       concurrencyLocks: "ConcurrencyLocks",
+      hostLocks: "HostLocks",
       sessionDrainActivity: "SessionDrainActivity",
     } as never,
   } as PlaneStorageCtx;
@@ -161,5 +162,43 @@ describe("session storage conditional outcomes", () => {
     await expect(tryAssignSession(ctx(doomed), assignOpts)).resolves.toBe(false);
     expect(assignmentLeaseCollision(cancelled(7), undefined)).toBe(false);
     expect(assignmentLeaseCollision(new Error("unavailable"), 0)).toBe(false);
+  });
+
+  it("reserves the advertised host assignment cap in the claim transaction", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryAssignSession(ctx(send), {
+        sessionId: "session",
+        repositoryId: "repo",
+        worktreeId: "worktree",
+        hostId: "host",
+        hostInventoryVersion: null,
+        connectionId: "connection",
+        now: "now",
+        attemptId: "attempt",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: "worktree",
+          attemptId: "attempt",
+        },
+        hostAssignmentLease: { hostId: "host" },
+        hostAssignmentCap: 1,
+        legacyAssignmentCount: 1,
+        queueShard: 0,
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "HostLocks",
+          ConditionExpression: expect.stringContaining("attribute_not_exists(assignmentCount)"),
+          ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 1 }),
+        }),
+      }),
+    );
   });
 });

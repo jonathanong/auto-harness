@@ -883,6 +883,7 @@ describe("Lambda runtime adapters", () => {
   it("lazily creates one shared runtime for all exported handler shapes", async () => {
     const cron = vi.fn(async () => ({
       ackDeadlinesEnforced: 0,
+      archivesRetried: 0,
       queuedAssigned: 0,
       scheduledAssigned: 0,
       schedulesFired: 0,
@@ -903,6 +904,26 @@ describe("Lambda runtime adapters", () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it("forwards the real AWS cron context instead of treating the event as context", async () => {
+    const cron = vi.fn(async () => ({
+      ackDeadlinesEnforced: 0,
+      archivesRetried: 0,
+      queuedAssigned: 0,
+      scheduledAssigned: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
+    }));
+    const handlers = createLambdaHandlers(async () => ({
+      cron,
+      rest: vi.fn(async () => ({ statusCode: 204 })),
+      websocket: vi.fn(async () => ({ statusCode: 200 })),
+    }));
+    const event = { source: "aws.events" };
+    const context = { getRemainingTimeInMillis: () => 9_000 };
+    await handlers.cron(event, context);
+    expect(cron).toHaveBeenCalledWith(event, context);
+  });
+
   it("retries construction on the next invocation instead of caching a failed cold start", async () => {
     // A rejected promise is not null/undefined, so a bare `runtime ??= createRuntime()`
     // would cache the failure forever — every invocation this container ever handles
@@ -914,6 +935,7 @@ describe("Lambda runtime adapters", () => {
       .mockResolvedValueOnce({
         cron: vi.fn(async () => ({
           ackDeadlinesEnforced: 0,
+          archivesRetried: 0,
           queuedAssigned: 0,
           scheduledAssigned: 0,
           schedulesFired: 0,
@@ -955,6 +977,7 @@ describe("Lambda runtime adapters", () => {
       seedSchedulerSweep(fixture);
       await expect((await fixture.runtime).cron()).resolves.toEqual({
         ackDeadlinesEnforced: 1,
+        archivesRetried: 0,
         runningTimeoutsEnforced: 1,
         queuedAssigned: 0,
         repositoriesReconciled: 1,
@@ -1020,6 +1043,14 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("stops archive retry work when Lambda time is reserved for Slack and metrics", async () => {
+    const fixture = runtimeFixture();
+    const retry = vi.spyOn(fixture.plane, "retryPendingArchivesDurable");
+    await (await fixture.runtime).cron({ getRemainingTimeInMillis: () => 9_000 });
+    expect(retry).toHaveBeenCalledWith(25, expect.any(Function));
+    expect((retry.mock.calls[0]?.[1] as (() => boolean) | undefined)?.()).toBe(false);
+  });
+
   it("posts through the management API and prunes gone connections", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
@@ -1056,6 +1087,39 @@ describe("Lambda runtime adapters", () => {
       ),
     );
     consoleError.mockRestore();
+  });
+
+  it("counts only failed session assignments as assignment failures", async () => {
+    const fixture = runtimeFixture();
+    await registerGatewayHost(fixture);
+    fixture.management.send.mockRejectedValue(new Error("management unavailable"));
+    process.env.HARNESS_METRIC_ENVIRONMENT = "test";
+    const metricLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const assignment = {
+      type: "session:assign" as const,
+      sessionId: "session-1",
+      repositoryId: "repo-1",
+      prompt: "run",
+      resolvedArgv: [],
+      timeout: 30,
+      worktreeId: "worktree-1",
+      assignedAt: "2026-08-12T00:00:00.000Z",
+      attemptId: "attempt-1",
+    };
+    try {
+      fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
+      fixture.plane.state.onHostMessage?.("host-1", assignment);
+      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(2));
+      const assignmentMetrics = metricLog.mock.calls.filter(([line]) =>
+        String(line).includes('"AssignmentFailures":1'),
+      );
+      expect(assignmentMetrics).toHaveLength(1);
+    } finally {
+      delete process.env.HARNESS_METRIC_ENVIRONMENT;
+      metricLog.mockRestore();
+      consoleError.mockRestore();
+    }
   });
 
   it("requires the management endpoint only when constructing its AWS client", async () => {

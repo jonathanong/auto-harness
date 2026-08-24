@@ -2,9 +2,13 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import {
   accountHasLeaseCapacity,
+  accountHasLeaseCapacityOverCap,
+  accountHasLeaseCapacityFromReadModel,
   hostHasAssignmentCapacity,
+  hostAssignmentOccupancyCount,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
   maxConcurrentSessionsFor,
@@ -92,6 +96,112 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
 }
 
 describe("provider account execution-profile leases", () => {
+  it("retries another slot after a concurrent legacy lease backfill", async () => {
+    const sessions = ["a", "b"].map((id) => ({
+      id,
+      status: "running",
+      hostId: "host",
+      attemptId: `${id}-attempt`,
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: `${id}-attempt`,
+      },
+    })) as never[];
+    sessions.push({
+      id: "invalid",
+      status: "running",
+      hostId: "host",
+      resolvedRoute: { providerAccountId: "acct", hostId: "host" },
+    } as never);
+    let calls = 0;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async (opts: { slot: number }) => {
+            calls += 1;
+            if (calls === 1) return { status: "lease_collision" };
+            return {
+              status: "migrated",
+              lease: {
+                concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
+                providerAccountId: "acct",
+                slot: opts.slot,
+                attemptId: "attempt",
+              },
+            };
+          },
+        },
+      } as never,
+      sessions,
+    );
+    expect(calls).toBe(3);
+    expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 1);
+    expect(sessions[1]).toHaveProperty("providerAccountLease.slot", 2);
+  });
+
+  it("handles a legacy session fenced by another hydrator", async () => {
+    const session = {
+      id: "changed",
+      status: "running",
+      hostId: "host",
+      attemptId: "attempt",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    } as never;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
+        },
+      } as never,
+      [session],
+    );
+    expect(session).not.toHaveProperty("providerAccountLease");
+  });
+
+  it("hydrates a lease observed after another hydrator wins", async () => {
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    const session = {
+      id: "changed",
+      status: "running",
+      hostId: "host",
+      attemptId: "attempt",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    } as never;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async () => ({ status: "session_changed" }),
+          getSession: async () => ({ providerAccountLease: lease }),
+        },
+      } as never,
+      [session],
+    );
+    expect(session.providerAccountLease).toEqual(lease);
+  });
+
   it("fails closed when the exact account profile is not advertised as ready", () => {
     const plane = seedAccountPlane({ ready: false });
     const created = plane.createSession({
@@ -148,6 +258,31 @@ describe("provider account execution-profile leases", () => {
     expect(plane.assignQueued()).toEqual([]);
   });
 
+  it("seeds a missing durable host count from active legacy assignments", () => {
+    const state = createControlPlaneState();
+    state.sessions.set("legacy", {
+      id: "legacy",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetLabels: [],
+      queueTtlSeconds: 60,
+      queueExpiresAt: NOW,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      hostId: "host",
+      worktreeId: "worktree",
+    });
+    expect(hostAssignmentOccupancyCount(state, "host")).toBe(1);
+    expect(hostAssignmentOccupancyCount(state, "other")).toBe(0);
+  });
+
   it("exhausts account slots at maxConcurrentSessions", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     expect(
@@ -171,6 +306,66 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getSession("sess-1")?.status).toBe("running");
     expect(plane.getSession("sess-2")?.status).toBe("queued");
     expect(plane.getSession("sess-1")?.providerAccountLease?.slot).toBe(0);
+  });
+
+  it("blocks durable assignment while legacy leases occupy slots beyond the cap", () => {
+    const state = createControlPlaneState();
+    state.storage = {} as never;
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "prov",
+      label: "account",
+      maxConcurrentSessions: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providerAccountLeases.set("provider-lease:acct:1", {
+      sessionId: "legacy",
+      attemptId: "attempt",
+      slot: 1,
+      hostId: "host",
+      providerAccountId: "acct",
+    });
+    expect(accountHasLeaseCapacityOverCap(state, "acct")).toBe(true);
+    expect(accountHasLeaseCapacity(state, "acct")).toBe(false);
+    state.providerAccountLeases.clear();
+    expect(accountHasLeaseCapacity(state, "acct")).toBe(true);
+  });
+
+  it("does not count queued leftover lease fields as active capacity holders", () => {
+    const state = createControlPlaneState();
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "prov",
+      label: "account",
+      maxConcurrentSessions: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.sessions.set("queued", {
+      id: "queued",
+      repositoryId: "repo",
+      prompt: "p",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetLabels: [],
+      queueTtlSeconds: 1,
+      queueExpiresAt: NOW,
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: NOW,
+      providerAccountLease: {
+        concurrencyId: "provider-lease:acct:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "old",
+      },
+    });
+    expect(accountHasLeaseCapacityFromReadModel(state, "acct")).toBe(true);
   });
 
   it("treats missing readiness as unavailable and honors host assignment caps", () => {
@@ -475,7 +670,7 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
   });
 
-  it("releases the account lease when an acknowledged session times out", () => {
+  it("retains the account lease until an acknowledged timeout reports terminal", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     expect(
       plane.createSession({
@@ -498,8 +693,8 @@ describe("provider account execution-profile leases", () => {
     expect(plane.state.providerAccountLeases.size).toBe(1);
     const due = Date.parse(plane.getSession("sess-1")!.ackReceivedAt!) + 30_000;
     expect(plane.enforceRunningTimeouts(due)).toEqual(["sess-1"]);
-    expect(plane.state.providerAccountLeases.size).toBe(0);
-    expect(plane.getSession("sess-1")).not.toHaveProperty("providerAccountLease");
+    expect(plane.state.providerAccountLeases.size).toBe(1);
+    expect(plane.getSession("sess-1")).toHaveProperty("providerAccountLease");
     expect(
       plane.createSession({
         repositoryId: "repo-1",
@@ -508,10 +703,21 @@ describe("provider account execution-profile leases", () => {
         timeout: 30,
       }).ok,
     ).toBe(true);
+    expect(plane.assignQueued()).toHaveLength(0);
+    expect(
+      plane.handleHostMessage({
+        type: "session:status",
+        sessionId: "sess-1",
+        worktreeId: session.worktreeId!,
+        attemptId: session.attemptId!,
+        status: "completed",
+      }).ok,
+    ).toBe(true);
+    expect(plane.state.providerAccountLeases.size).toBe(0);
     expect(plane.assignQueued()).toHaveLength(1);
   });
 
-  it("releases a provider-account lease through durable timeout", async () => {
+  it("retains a provider-account lease through durable timeout", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     expect(
       plane.createSession({
@@ -546,9 +752,9 @@ describe("provider account execution-profile leases", () => {
     expect(finished[0]).toMatchObject({
       sessionId: "sess-1",
       status: "timed_out",
-      providerAccountLease: { providerAccountId: "acct-1", slot: 0 },
+      preserveProviderAccountLease: true,
     });
-    expect(plane.state.providerAccountLeases.size).toBe(0);
+    expect(plane.state.providerAccountLeases.size).toBe(1);
   });
 
   it("counts a cancelled in-flight assignment against the advertised host cap", () => {

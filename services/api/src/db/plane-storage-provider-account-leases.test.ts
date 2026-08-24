@@ -4,6 +4,7 @@ import {
   backfillProviderAccountLease,
   providerAccountLeaseDeleteItems,
   releaseProviderAccountLease,
+  releaseTimedOutProviderAccountLease,
 } from "./plane-storage-provider-account-leases.ts";
 
 describe("provider account lease storage", () => {
@@ -31,6 +32,44 @@ describe("provider account lease storage", () => {
         { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
       ),
     ).rejects.toThrow("boom");
+  });
+
+  it("atomically removes a timed-out session lease and its lock", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+        } as never,
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    const items = request.input.TransactItems;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      Update: {
+        UpdateExpression: "REMOVE providerAccountLease, timedOutHostId, hostAssignmentLease",
+      },
+    });
+    expect(items[1]).toMatchObject({ Delete: { TableName: "Locks" } });
+  });
+
+  it("returns false for a conditional timeout cleanup conflict", async () => {
+    const send = vi.fn().mockRejectedValue({
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+    });
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+        } as never,
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+      ),
+    ).resolves.toBe(false);
   });
 
   it("omits transact deletes when no lease is held", () => {
@@ -102,5 +141,46 @@ describe("provider account lease storage", () => {
         },
       ),
     ).resolves.toEqual({ status: "lease_collision" });
+  });
+
+  it("reports a fenced session when its condition loses", async () => {
+    const send = vi.fn().mockRejectedValue({
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }, { Code: "None" }],
+    });
+    await expect(
+      backfillProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+        } as never,
+        {
+          sessionId: "session",
+          attemptId: "attempt",
+          hostId: "host",
+          providerAccountId: "acct",
+          slot: 0,
+        },
+      ),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+
+  it("rethrows non-conditional transaction failures", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("capacity unavailable"));
+    await expect(
+      backfillProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+        } as never,
+        {
+          sessionId: "session",
+          attemptId: "attempt",
+          hostId: "host",
+          providerAccountId: "acct",
+          slot: 0,
+        },
+      ),
+    ).rejects.toThrow("capacity unavailable");
   });
 });

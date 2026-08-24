@@ -4,7 +4,7 @@
 HTTP/WebSocket API Gateway, bundled Lambda adapters, EventBridge-triggered cron
 Lambda, and the browser UI on CloudFront + Lambda. It exposes distinct `deploy`,
 `update`, and `teardown` commands. There are no provisioned servers.
-Architecture: [aws.md](aws.md).
+Architecture, IAM split, PITR, throttles, and alarms: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
 
@@ -15,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Item                         | Status                                                                                                                                                                                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Design / data model          | Documented in [aws.md](aws.md)                                                                                                                                                                                                                               |
-| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks                                                                                                                                                                                                 |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks. Runtime IAM is split per function; DynamoDB PITR is on; HTTP/WS stages have redacted access logs, throttles, and operational CloudWatch alarms.                                                |
 | Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                                                                                                                                                                                                   |
 | Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17. `purge` (including a real programmatic session created, dispatched, and completed in between) verified against a disposable `qa` environment in `us-west-2` on 2026-08-18. |
 
@@ -26,7 +26,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 - Node ≥22.18, pnpm, and Docker (used only to build the Lambda image)
 - `pnpm install` from the repository root (the CDK CLI is a package development dependency)
 - AWS CLI credentials with access to CloudFormation, CDK bootstrap resources,
-  DynamoDB, S3, Lambda, API Gateway, EventBridge, CloudFront, ECR, IAM, KMS, and SSM
+  DynamoDB, S3, Lambda, API Gateway, EventBridge, CloudFront, CloudWatch, ECR, IAM, KMS, and SSM
 - `AWS_REGION` (or `AWS_DEFAULT_REGION`) set to the target region
 
 ### macOS: isolate Docker credentials from the keychain
@@ -166,15 +166,16 @@ recycle the runtime Lambdas (a no-op `update-function-configuration`) so
 already-warm containers re-read WebUrl instead of keeping the localhost session
 URL fallback.
 
-| Variable               | Purpose                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| SSM: bootstrap secrets | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
-| SSM: public base URL   | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable  |
-| Table names / prefix   | From stack (see [aws.md](aws.md) env table)                                                                                                  |
-| `ARCHIVE_BUCKET`       | S3 archive bucket                                                                                                                            |
-| `WS_API_ENDPOINT`      | API Gateway Management API for `postToConnection`                                                                                            |
-| `KMS_KEY_ID`           | Optional — Slack / integration secrets                                                                                                       |
-| Rate-limit variables   | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
+| Variable                     | Purpose                                                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| SSM: bootstrap secrets       | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
+| SSM: public base URL         | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable  |
+| Table names / prefix         | From stack (see [aws.md](aws.md) env table)                                                                                                  |
+| `ARCHIVE_BUCKET`             | S3 archive bucket (REST and Cron only — WebSocket does not write archives)                                                                   |
+| `WS_API_ENDPOINT`            | API Gateway Management API for `postToConnection`                                                                                            |
+| `KMS_KEY_ID`                 | REST and Cron only — Slack / integration secrets. WebSocket does not receive the key or decrypt grants                                       |
+| `HARNESS_METRIC_ENVIRONMENT` | Table prefix used as the CloudWatch `Environment` dimension for operational EMF metrics                                                      |
+| Rate-limit variables         | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
 
 **Rotation:** replace the value in the Parameter Store UI; no redeploy is required.
 Existing warm Lambda containers keep the value they fetched at their own
@@ -317,12 +318,14 @@ the key needed to decrypt existing integration credentials. Under `destroy`, the
 key enters AWS's seven-day pending-deletion window. Teardown does not remove the
 account-level `CDKToolkit` stack or the three SSM parameters.
 
-`removalPolicy` accepts only `retain` (the default) or `destroy`. With
-`destroy`, CloudFormation still cannot remove a non-empty archive bucket; empty
-it explicitly before deleting the stack. The foundation deliberately does not
-enable CDK `autoDeleteObjects`, because that feature adds a custom-resource
-Lambda and would exceed this stack's no-runtime-resources boundary. Do not
-choose `destroy` for data that must survive a stack replacement.
+`removalPolicy` accepts only `retain` (the default) or `destroy`. `retain`
+enables DynamoDB deletion protection; `destroy` leaves it off so disposable
+tables can be removed. Point-in-time recovery is on for every table in either
+policy. With `destroy`, CloudFormation still cannot remove a non-empty archive
+bucket; empty it explicitly before deleting the stack. The foundation
+deliberately does not enable CDK `autoDeleteObjects`, because that feature adds
+a custom-resource Lambda and would exceed this stack's no-runtime-resources
+boundary. Do not choose `destroy` for data that must survive a stack replacement.
 
 ## Purge (irreversible)
 
@@ -351,7 +354,8 @@ In order: it destroys the web and runtime stacks (the archive bucket's only
 writers — the runtime's scheduled Lambda archives session logs on a 1-minute
 cron), retargets the foundation stack's resources to `DeletionPolicy: Delete` by
 deploying the foundation alone with `removalPolicy=destroy` forced regardless of
-the environment's configured policy, empties the archive bucket (including
+the environment's configured policy (this also turns off DynamoDB deletion
+protection), empties the archive bucket (including
 noncurrent versions and delete markers — `aws s3 rm --recursive` alone is not
 enough for a versioned bucket, and `cdk destroy` fails with `BucketNotEmpty`
 otherwise), then destroys the foundation stack. It verifies afterward that no
@@ -391,14 +395,14 @@ stack survives its destroy phases — it never reports success on a partial resu
 The lifecycle script supplies the runtime stack's SSM parameter names. Secret
 values themselves are never CDK parameters or context.
 
-| Output                                                      | Consumer                                                                                           |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                  |
-| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                              |
-| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                                                                    |
-| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                            |
-| `RestApiUrl`, `WebSocketUrl`                                | Deploy-time health checks and debugging only — **not** a value to hand to a host daemon; see below |
-| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon       |
+| Output                                                      | Consumer                                                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                       |
+| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                                   |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Runtime Lambda attachments: all three get the DynamoDB policy; only REST and Cron get archive PutObject |
+| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                                 |
+| `RestApiUrl`, `WebSocketUrl`                                | Deploy-time health checks and debugging only — **not** a value to hand to a host daemon; see below      |
+| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon            |
 
 `RestApiUrl` and `WebSocketUrl` are two different hostnames — API Gateway v2 fixes
 `protocolType` at creation, so REST and WebSocket are necessarily separate APIs (see
