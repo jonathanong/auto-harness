@@ -12,7 +12,7 @@ type HostOfflineAlertStore = Pick<SlackOutboxStore, "enqueue"> & {
   ) => Promise<boolean>;
 };
 
-export type HostOfflineAlertCandidate = {
+type HostOfflineAlertCandidate = {
   hostId: string;
   reason: string;
   lastHeartbeatAt: string;
