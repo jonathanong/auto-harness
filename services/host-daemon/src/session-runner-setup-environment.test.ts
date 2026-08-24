@@ -106,6 +106,13 @@ describe("SessionRunner setup environment", () => {
         const shellScript = options.argv[1] === "-c" ? options.argv[2] : undefined;
         if (shellScript?.includes("host-setup")) {
           setupOrder.push("host");
+          // A generation change alone is harmless: applyDaemonInventory raises it
+          // before validating a candidate, and can restore an equivalent inventory.
+          // Change an execution-relevant field to model a successfully refreshed
+          // inventory that must stop this claimed setup sequence.
+          config.repositories = [
+            { ...config.repositories[0]!, setupScript: "replacement-repository-setup" },
+          ];
           worktrees.noteInventoryChange();
           return {
             exitCode: 0,
