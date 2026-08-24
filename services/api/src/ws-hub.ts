@@ -11,6 +11,7 @@ import {
   isSessionStatus,
   parseHostCapabilitiesAdvertisement,
   principalHas,
+  sanitizeProviderAccountReadiness,
   validateProviderAccountReadiness,
   type HostToServerMessage,
   type HostWireMessage,
@@ -442,8 +443,9 @@ export function parseHostMessage(
         ...(maxConcurrentAssignments !== undefined ? { maxConcurrentAssignments } : {}),
         ...(message.providerAccountReadiness !== undefined
           ? {
-              providerAccountReadiness:
+              providerAccountReadiness: sanitizeProviderAccountReadiness(
                 message.providerAccountReadiness as ProviderAccountReadiness[],
+              ),
             }
           : {}),
       };

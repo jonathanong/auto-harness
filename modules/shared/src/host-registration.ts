@@ -88,6 +88,17 @@ export function isProviderAccountReadiness(value: unknown): value is ProviderAcc
   );
 }
 
+/** Drop undeclared properties so homes, env, or credentials cannot persist. */
+export function sanitizeProviderAccountReadiness(
+  readiness: readonly ProviderAccountReadiness[],
+): ProviderAccountReadiness[] {
+  return readiness.map((entry) => ({
+    providerAccountId: entry.providerAccountId,
+    ready: entry.ready,
+    fingerprint: entry.fingerprint,
+  }));
+}
+
 /** Reject duplicate account IDs while retaining the daemon's ordering. */
 export function validateProviderAccountReadiness(
   readiness: readonly ProviderAccountReadiness[],

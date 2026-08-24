@@ -2,6 +2,7 @@
 import {
   isHostRuntimeReport,
   normalizeHostCapabilities,
+  sanitizeProviderAccountReadiness,
   validateHostRunningAttempts,
   type HostRuntimeReport,
   type HostCapability,
@@ -470,7 +471,9 @@ export function registerHost(
       ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
       : {}),
     ...(opts.providerAccountReadiness
-      ? { providerAccountReadiness: opts.providerAccountReadiness.map((entry) => ({ ...entry })) }
+      ? {
+          providerAccountReadiness: sanitizeProviderAccountReadiness(opts.providerAccountReadiness),
+        }
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
@@ -612,7 +615,9 @@ export async function registerHostDurable(
       ? { maxConcurrentAssignments: opts.maxConcurrentAssignments }
       : {}),
     ...(opts.providerAccountReadiness
-      ? { providerAccountReadiness: opts.providerAccountReadiness.map((entry) => ({ ...entry })) }
+      ? {
+          providerAccountReadiness: sanitizeProviderAccountReadiness(opts.providerAccountReadiness),
+        }
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),

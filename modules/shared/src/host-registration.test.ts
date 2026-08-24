@@ -5,6 +5,7 @@ import {
   isHostRunningAttempt,
   isProviderAccountReadiness,
   providerAccountLeaseConcurrencyId,
+  sanitizeProviderAccountReadiness,
   validateHostRepositoryRegistrations,
   validateHostRunningAttempts,
   validateProviderAccountReadiness,
@@ -67,5 +68,15 @@ describe("host registration repository validation", () => {
       "invalid provider account readiness",
     );
     expect(providerAccountLeaseConcurrencyId("acct", 0)).toBe("provider-account:acct:0");
+    expect(
+      sanitizeProviderAccountReadiness([
+        {
+          providerAccountId: "acct",
+          ready: true,
+          fingerprint,
+          home: "/secret",
+        } as never,
+      ]),
+    ).toEqual([{ providerAccountId: "acct", ready: true, fingerprint }]);
   });
 });

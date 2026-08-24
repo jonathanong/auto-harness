@@ -177,9 +177,11 @@ assignment. `maxConcurrentAssignments` is the host-wide concurrent assignment ca
 `providerAccountReadiness` is a bounded list of `{ providerAccountId, ready, fingerprint }`.
 `fingerprint` is an opaque SHA-256 of the local CLI home plus extra-env **key names** (values
 are omitted so secrets are not a confirmation oracle). Credentials, CLI homes, and env values
-never cross the wire. Scheduling uses `ready`, not the fingerprint; the hash is operator
-drift display only. Assignment of a provider-backed session fails closed unless this host
-advertised `ready: true` for that exact account.
+never cross the wire. Scheduling uses `ready`. The fingerprint lets the control plane detect
+that a host's local profile changed without learning home paths or env values; it is
+daemon-advertised runtime metadata, not an operator-editable setting. Assignment of a
+provider-backed session fails closed unless this host advertised `ready: true` for that exact
+account.
 
 Modern daemons include `runtime: { daemonVersion, gitVersion, gitReady, gitReadinessReason?,
 environmentNames?, environmentNamesCaseSensitive? }`. `environmentNames` includes names only, and

@@ -24,7 +24,12 @@ describe("host capability advertisements", () => {
         worktrees,
         capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 4 },
         providerAccountReadiness: [
-          { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          },
         ],
       }),
     ).toMatchObject({
@@ -34,6 +39,21 @@ describe("host capability advertisements", () => {
         { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
       ],
     });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        providerAccountReadiness: [
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          },
+        ],
+      })?.providerAccountReadiness?.[0],
+    ).not.toHaveProperty("home");
     expect(
       parseHostMessage({
         type: "host:register",
@@ -75,13 +95,19 @@ describe("host capability advertisements", () => {
         capabilities: ["scheduled-main-checkout"],
         maxConcurrentAssignments: 2,
         providerAccountReadiness: [
-          { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
+          {
+            providerAccountId: "acct",
+            ready: true,
+            fingerprint: "a".repeat(64),
+            home: "/secret",
+          } as never,
         ],
       }).ok,
     ).toBe(true);
     const capped = plane.state.connections.get("capped");
     expect(capped?.maxConcurrentAssignments).toBe(2);
     expect(capped?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
+    expect(capped?.providerAccountReadiness?.[0]).not.toHaveProperty("home");
   });
 
   it("forwards assignment capacity and readiness through durable registration", async () => {

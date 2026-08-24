@@ -145,6 +145,7 @@ export {
   PROVIDER_ACCOUNT_FINGERPRINT_PATTERN,
   PROVIDER_ACCOUNT_LEASE_PREFIX,
   providerAccountLeaseConcurrencyId,
+  sanitizeProviderAccountReadiness,
   validateHostRepositoryRegistrations,
   validateHostRunningAttempts,
   validateProviderAccountReadiness,
