@@ -3,18 +3,21 @@ import { isTerminalSessionStatus, type SessionStatus } from "@auto-harness/share
 
 import type { SessionRecord } from "./db/types.ts";
 
+type SessionReportFields = {
+  exitCode?: number | null;
+  errorCode?: string;
+  errorMessage?: string;
+  cliResumeRef?: string;
+};
+
 export type SessionTransitionEvent =
   | { type: "ack"; worktreeId: string | null; attemptId: string }
-  | {
+  | ({
       type: "status";
       worktreeId: string | null;
       attemptId: string;
       status: SessionStatus;
-      exitCode?: number;
-      errorCode?: string;
-      errorMessage?: string;
-      cliResumeRef?: string;
-    }
+    } & SessionReportFields)
   | { type: "cancel" }
   | { type: "timeout" }
   | { type: "disconnect"; acknowledged: boolean }
@@ -34,25 +37,17 @@ export type SessionTransitionEffect =
   | { type: "reject"; error: string }
   | { type: "ack" }
   | { type: "retry_archive" }
-  | {
+  | ({
       type: "patch_report";
       status?: SessionStatus;
-      exitCode?: number;
-      errorCode?: string;
-      errorMessage?: string;
-      cliResumeRef?: string;
-    }
-  | {
+    } & SessionReportFields)
+  | ({
       type: "finish";
       status: SessionStatus;
       completedAt: string;
-      errorCode?: string;
-      errorMessage?: string;
-      exitCode?: number;
-      cliResumeRef?: string;
       clearResumeRef?: boolean;
-    }
-  | {
+    } & SessionReportFields)
+  | ({
       type: "requeue";
       reason:
         | "usage_limit"
@@ -60,13 +55,9 @@ export type SessionTransitionEffect =
         | "missing_account"
         | "providerless"
         | "disconnect";
-      errorCode?: string;
-      errorMessage?: string;
-      exitCode?: number;
-      cliResumeRef?: string;
       retryCount?: number;
       retryAfter?: string;
-    }
+    } & SessionReportFields)
   | { type: "cooldown"; providerAccountId: string; usageLimitedUntil: string }
   | { type: "suppress_target"; targetIndex: number }
   | { type: "fallback" }
@@ -113,12 +104,7 @@ function remainingFallback(session: SessionRecord): boolean {
   return (session.resolvedRoute?.targetIndex ?? 0) < (session.fallbacks?.length ?? 0);
 }
 
-function report(event: Extract<SessionTransitionEvent, { type: "status" }>): {
-  exitCode?: number;
-  errorCode?: string;
-  errorMessage?: string;
-  cliResumeRef?: string;
-} {
+function report(event: Extract<SessionTransitionEvent, { type: "status" }>): SessionReportFields {
   return {
     ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {}),
     ...(event.errorCode !== undefined ? { errorCode: event.errorCode } : {}),

@@ -515,7 +515,7 @@ async function applySessionStatusDurable(
   }
   state.sessions.set(session.id, session);
   let providerAccount: SessionTransitionContext["providerAccount"];
-  let loadedAccount: { usageLimitCooldownSeconds: number } | null | undefined;
+  let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
   if (
     msg.status === "failed" &&
@@ -693,8 +693,8 @@ async function applySessionStatusDurable(
       queueShard: session.queueShard,
       ...(shouldRetry
         ? {
-            retryCount: requeue.retryCount,
-            retryAfter: requeue.retryAfter,
+            ...(requeue.retryCount !== undefined ? { retryCount: requeue.retryCount } : {}),
+            ...(requeue.retryAfter !== undefined ? { retryAfter: requeue.retryAfter } : {}),
           }
         : { completedAt: finish?.completedAt ?? state.now() }),
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
@@ -712,8 +712,8 @@ async function applySessionStatusDurable(
       ...(shouldRetry
         ? {
             hostId: null,
-            retryCount: requeue.retryCount,
-            retryAfter: requeue.retryAfter,
+            ...(requeue.retryCount !== undefined ? { retryCount: requeue.retryCount } : {}),
+            ...(requeue.retryAfter !== undefined ? { retryAfter: requeue.retryAfter } : {}),
           }
         : { completedAt: finish?.completedAt ?? state.now() }),
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),

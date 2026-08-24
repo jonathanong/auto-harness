@@ -96,6 +96,12 @@ describe("session-transition planner", () => {
         "finish",
       ),
     ).toMatchObject({ status: "failed", errorCode: "setup_failed", errorMessage: "boom" });
+    expect(
+      transitionEffect(
+        planSessionTransition(session(), status({ status: "timed_out", exitCode: null }), ctx()),
+        "finish",
+      ),
+    ).toMatchObject({ status: "timed_out", exitCode: null });
   });
 
   it("usage_limit with fallback remaining cools the account and advances", () => {
@@ -505,6 +511,13 @@ describe("session-transition planner", () => {
         { attemptId: "attempt" },
       ),
     ).toMatchObject({ status: "completed", completedAt: NOW });
+    expect(
+      finishSessionOptsFromPlan(
+        row,
+        { effects: [{ type: "finish", status: "cancelled", completedAt: NOW, exitCode: null }] },
+        { attemptId: "attempt" },
+      ),
+    ).toMatchObject({ status: "cancelled", exitCode: null });
     expect(
       finishSessionOptsFromPlan(
         row,

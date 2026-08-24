@@ -1760,26 +1760,24 @@ export async function setWorktreeOnlineFenced(
 }
 
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {
-  exitCode?: number;
+  exitCode?: number | null;
   errorCode?: string;
   errorMessage?: string;
   cliResumeRef?: string;
 } {
   const finish = transitionEffect(plan, "finish");
   const requeue = transitionEffect(plan, "requeue");
+  const exitCode = finish?.exitCode !== undefined ? finish.exitCode : requeue?.exitCode;
+  const errorCode = finish?.errorCode !== undefined ? finish.errorCode : requeue?.errorCode;
+  const errorMessage =
+    finish?.errorMessage !== undefined ? finish.errorMessage : requeue?.errorMessage;
+  const cliResumeRef =
+    finish?.cliResumeRef !== undefined ? finish.cliResumeRef : requeue?.cliResumeRef;
   return {
-    ...(finish?.exitCode !== undefined || requeue?.exitCode !== undefined
-      ? { exitCode: finish?.exitCode ?? requeue?.exitCode }
-      : {}),
-    ...(finish?.errorCode !== undefined || requeue?.errorCode !== undefined
-      ? { errorCode: finish?.errorCode ?? requeue?.errorCode }
-      : {}),
-    ...(finish?.errorMessage !== undefined || requeue?.errorMessage !== undefined
-      ? { errorMessage: finish?.errorMessage ?? requeue?.errorMessage }
-      : {}),
-    ...(finish?.cliResumeRef !== undefined || requeue?.cliResumeRef !== undefined
-      ? { cliResumeRef: finish?.cliResumeRef ?? requeue?.cliResumeRef }
-      : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(errorCode !== undefined ? { errorCode } : {}),
+    ...(errorMessage !== undefined ? { errorMessage } : {}),
+    ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
   };
 }
 
@@ -1793,7 +1791,7 @@ export function finishSessionOptsFromPlan(
   const queued = transitionEffect(plan, "requeue") !== undefined && finish === undefined;
   return {
     sessionId: session.id,
-    worktreeId: session.worktreeId,
+    worktreeId: session.worktreeId ?? null,
     attemptId: extras.attemptId,
     status: finish?.status ?? "queued",
     queueShard: session.queueShard,
