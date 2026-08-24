@@ -70,6 +70,7 @@ export async function connectHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
+          protocolVersion: 1,
           hostId,
           worktrees: [
             {
@@ -96,10 +97,12 @@ export function logFrame(
   content: string,
   seq: number,
   stream: "stdout" | "system" = "stdout",
+  attemptId: string,
 ): string {
   return JSON.stringify({
     type: "session:log",
     sessionId,
+    attemptId,
     stream,
     content: `${content}\r\n`,
     timestamp: new Date().toISOString(),

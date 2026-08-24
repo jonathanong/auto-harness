@@ -221,4 +221,52 @@ describe("DynamoPlaneStorageBase", () => {
       }),
     ).toBe(false);
   });
+
+  it("rejects fenced log writes when the session attempt does not match", async () => {
+    const fence = { hostId: "attempt-host", connectionId: "attempt-connection" };
+    const log = {
+      sessionId: "attempt-session",
+      timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      stream: "stdout" as const,
+      content: "attempt",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    };
+    expect(await storage.tryAcquireHostLock({ ...fence, replaceExisting: false })).toBe(true);
+    await storage.putSession({
+      id: "attempt-session",
+      repositoryId: "repo",
+      prompt: "p",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetLabels: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "later",
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      queueShard: 0,
+      createdAt: log.timestamp,
+      status: "running",
+      attemptId: "attempt-1",
+    });
+    expect(
+      await storage.putLogFenced(log, {
+        ...fence,
+        attempts: [{ sessionId: log.sessionId, attemptId: "attempt-1" }],
+      }),
+    ).toBe(true);
+    expect(
+      await storage.putLogFenced(
+        { ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000002", seq: 2 },
+        { ...fence, attempts: [{ sessionId: log.sessionId, attemptId: "stale" }] },
+      ),
+    ).toBe(false);
+    expect(
+      await storage.putLogsFenced(
+        [{ ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000003", seq: 3 }],
+        { ...fence, attempts: [{ sessionId: log.sessionId, attemptId: "stale" }] },
+      ),
+    ).toBe(false);
+  });
 });

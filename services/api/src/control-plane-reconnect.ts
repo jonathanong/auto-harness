@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- attempt-fenced reconnect claims stay with this table. */
+import type { HostRunningAttempt } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
@@ -8,7 +10,10 @@ import {
   restoreScheduledReconnects,
   type ScheduledReconnectConfirmation,
 } from "./control-plane-reconnect-scheduled.ts";
-import { confirmReportedSession } from "./control-plane-reconnect-confirm.ts";
+import {
+  confirmReportedSession,
+  ignoreStaleReconnectClaim,
+} from "./control-plane-reconnect-confirm.ts";
 import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
@@ -18,7 +23,9 @@ export async function reconcileHostRunningSessions(
   state: ControlPlaneState,
   hostId: string,
   reported: readonly string[],
+  reportedAttempts: readonly HostRunningAttempt[] = [],
 ): Promise<string[] | false> {
+  const claimedAttempts = new Map(reportedAttempts.map((item) => [item.sessionId, item.attemptId]));
   const running = new Set(reported);
   const connectionId = state.hostConnection.get(hostId);
   const requeued: string[] = [];
@@ -27,10 +34,14 @@ export async function reconcileHostRunningSessions(
   if (state.storage && !connectionId) return requeued;
 
   try {
-    for (const sessionId of running) {
+    for (const sessionId of reported) {
       const session = state.storage
         ? await state.storage.getSession(sessionId)
         : state.sessions.get(sessionId);
+      if (ignoreStaleReconnectClaim(state, session, claimedAttempts.get(sessionId))) {
+        running.delete(sessionId);
+        continue;
+      }
       const worktree = session?.worktreeId
         ? state.storage
           ? await state.storage.getWorktree(session.worktreeId)

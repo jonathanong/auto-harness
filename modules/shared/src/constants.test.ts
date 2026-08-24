@@ -11,6 +11,8 @@ import {
   DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
   LOCAL_HOST_ID,
   LOCAL_API_HTTP,
+  HOST_PROTOCOL_VERSION,
+  ATTEMPT_FENCED_PROTOCOL_VERSION,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
@@ -37,5 +39,8 @@ describe("constants", () => {
     expect(WORKTREE_STATUSES).toEqual(["idle", "busy", "error"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");
+    expect(HOST_PROTOCOL_VERSION).toBe(1);
+    expect(ATTEMPT_FENCED_PROTOCOL_VERSION).toBe(1);
+    expect(HOST_PROTOCOL_VERSION).toBeGreaterThanOrEqual(ATTEMPT_FENCED_PROTOCOL_VERSION);
   });
 });

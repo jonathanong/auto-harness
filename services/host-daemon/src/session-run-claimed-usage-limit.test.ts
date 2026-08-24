@@ -18,7 +18,7 @@ async function runClaimed(
   const logs = [];
   return await runClaimedSession(
     runner,
-    new LogStreamer("s", (chunk) => logs.push(chunk)),
+    new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
     logs,
     assign,
     claimed,

@@ -98,6 +98,7 @@ describe("host message optional-field coverage", () => {
       {
         type: "session:log",
         sessionId: "s",
+        attemptId: "attempt",
         stream: "stdout",
         content: "new",
         timestamp: NOW,
@@ -145,6 +146,7 @@ describe("host message optional-field coverage", () => {
           {
             type: "session:log",
             sessionId: "s",
+            attemptId: "a",
             stream: "stdout",
             content: "x".repeat(32 * 1024 + 1),
             timestamp: NOW,

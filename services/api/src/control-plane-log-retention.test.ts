@@ -123,6 +123,7 @@ describe("session log retention", () => {
       plane.handleHostMessageDurable({
         type: "session:log",
         sessionId: "session-oversized",
+        attemptId: "a",
         stream: "stdout",
         content: "x".repeat(32 * 1024 + 1),
         timestamp: "2026-01-01T00:00:00.000Z",

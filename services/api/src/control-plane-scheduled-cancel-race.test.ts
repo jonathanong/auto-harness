@@ -99,7 +99,11 @@ describe("durable scheduled cancellation races", () => {
       ok: true,
       session: { status: "cancelled" },
     });
-    expect(outbound).toContainEqual({ type: "session:cancel", sessionId: assigned.id });
+    expect(outbound).toContainEqual({
+      type: "session:cancel",
+      sessionId: assigned.id,
+      attemptId: assigned.attemptId,
+    });
     expect(await ctx.storage.getMainCheckoutLease(HOST_ID, REPOSITORY_ID)).toMatchObject({
       sessionId: assigned.id,
       connectionId: run.connectionId,

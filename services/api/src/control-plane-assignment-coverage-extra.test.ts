@@ -89,6 +89,7 @@ describe("assignment residual coverage", () => {
       repositoryIds: ["repo"],
       capabilities: [],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 1,
     });
     setDurableReadStorage(state, { expireQueuedSession: async () => false });
     state.hostConnection.get = () => undefined;
@@ -154,6 +155,7 @@ describe("assignment residual coverage", () => {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 1,
     });
     state.hostConnection.set("host", "connection");
     setDurableReadStorage(state, {
@@ -235,6 +237,7 @@ describe("assignment residual coverage", () => {
         capabilities: [],
         repositoryIds: ["repo"],
         runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+        protocolVersion: 1,
       });
       state.hostConnection.set(hostId, connectionId);
       state.hostInventories.set(hostId, {

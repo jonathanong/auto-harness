@@ -19,6 +19,7 @@ import {
   isConditionalTransactionFailureAt,
   type HostInventoryRecord,
   type ArchiveMetadata,
+  type HostLogFence,
   type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
@@ -58,6 +59,34 @@ function sessionLogItem(rec: LogRecord): LogRecord & { ttl: number } {
   return { ...rec, ttl: sessionLogsTtlEpochSeconds() };
 }
 
+function hostLockCheck(ctx: PlaneStorageCtx, fence: HostLogFence) {
+  return {
+    ConditionCheck: {
+      TableName: ctx.tables.hostLocks,
+      Key: { hostId: fence.hostId },
+      ConditionExpression: "connectionId = :connectionId",
+      ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+    },
+  };
+}
+
+function sessionAttemptChecks(ctx: PlaneStorageCtx, fence: HostLogFence) {
+  const unique = new Map<string, string>();
+  for (const attempt of fence.attempts ?? []) {
+    const existing = unique.get(attempt.sessionId);
+    if (existing !== undefined && existing !== attempt.attemptId) return null;
+    unique.set(attempt.sessionId, attempt.attemptId);
+  }
+  return [...unique.entries()].map(([sessionId, attemptId]) => ({
+    ConditionCheck: {
+      TableName: ctx.tables.sessions,
+      Key: { id: sessionId },
+      ConditionExpression: "attemptId = :attemptId",
+      ExpressionAttributeValues: { ":attemptId": attemptId },
+    },
+  }));
+}
+
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
   if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
@@ -94,20 +123,16 @@ export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void
 export async function putLogFenced(
   ctx: PlaneStorageCtx,
   rec: LogRecord,
-  fence: { hostId: string; connectionId: string },
+  fence: HostLogFence,
 ): Promise<boolean> {
+  const attempts = sessionAttemptChecks(ctx, fence);
+  if (attempts === null) return false;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: fence.hostId },
-              ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": fence.connectionId },
-            },
-          },
+          hostLockCheck(ctx, fence),
+          ...attempts,
           { Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(rec) } },
         ],
       }),
@@ -126,9 +151,11 @@ export async function putLogFenced(
 export async function putLogsFenced(
   ctx: PlaneStorageCtx,
   records: readonly LogRecord[],
-  fence: { hostId: string; connectionId: string },
+  fence: HostLogFence,
 ): Promise<boolean> {
   if (records.length === 0) return true;
+  const attempts = sessionAttemptChecks(ctx, fence);
+  if (attempts === null) return false;
   const uniqueRecords = new Map<string, LogRecord>();
   for (const record of records) {
     uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
@@ -137,14 +164,8 @@ export async function putLogsFenced(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: fence.hostId },
-              ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": fence.connectionId },
-            },
-          },
+          hostLockCheck(ctx, fence),
+          ...attempts,
           ...[...uniqueRecords.values()].map((record) => ({
             Put: { TableName: ctx.tables.sessionLogs, Item: sessionLogItem(record) },
           })),

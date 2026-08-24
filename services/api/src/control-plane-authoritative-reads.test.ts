@@ -156,6 +156,7 @@ describe("authoritative durable reads", () => {
     await writer.handleHostMessageDurable({
       type: "session:log",
       sessionId: "session",
+      attemptId: "a",
       stream: "stdout",
       content: "second",
       timestamp: now(),
@@ -164,6 +165,7 @@ describe("authoritative durable reads", () => {
     await writer.handleHostMessageDurable({
       type: "session:log",
       sessionId: "session",
+      attemptId: "a",
       stream: "stdout",
       content: "first",
       timestamp: now(),

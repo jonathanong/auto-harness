@@ -17,7 +17,11 @@ export function createAcknowledgingLoopbackTransport(opts: {
     sendToServer: async (message) => {
       await opts.sendToServer(message);
       if (message.type === "session:ack") {
-        transport.deliver({ type: "session:acknowledged", sessionId: message.sessionId });
+        transport.deliver({
+          type: "session:acknowledged",
+          sessionId: message.sessionId,
+          attemptId: message.attemptId,
+        });
       }
     },
   });

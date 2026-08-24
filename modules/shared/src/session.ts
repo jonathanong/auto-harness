@@ -8,6 +8,7 @@ import type {
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
+import type { HostRunningAttempt } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
@@ -46,6 +47,8 @@ export type SessionAssign = {
 
 export type SessionLogChunk = {
   sessionId: string;
+  /** Immutable assignment fence echoed from `session:assign`. */
+  attemptId: string;
   stream: LogStream;
   content: string;
   timestamp: string;
@@ -120,8 +123,8 @@ export type HostWireMessage =
     }
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
-  | { type: "session:acknowledged"; sessionId: string }
-  | { type: "session:cancel"; sessionId: string }
+  | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
+  | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
   | { type: "host:drain" }
@@ -145,6 +148,10 @@ export type HostToServerMessage =
       capabilities?: HostCapability[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
+      /** Attempt-fenced reconnect claims; ignored when the attempt is no longer current. */
+      runningAttempts?: HostRunningAttempt[];
+      /** Host control-channel protocol. Missing means a legacy daemon (version 0). */
+      protocolVersion?: number;
       /** Stable for one daemon process and reused across socket reconnects. */
       daemonInstanceId?: string;
       /** Process start time reported alongside daemonInstanceId. */
@@ -177,6 +184,8 @@ export type HostToServerMessage =
   | {
       type: "session:log";
       sessionId: string;
+      /** Required at protocol version 1+. Legacy daemons may omit it. */
+      attemptId?: string | undefined;
       stream: LogStream;
       content: string;
       timestamp: string;

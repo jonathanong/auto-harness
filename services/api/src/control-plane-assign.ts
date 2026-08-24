@@ -21,7 +21,10 @@ import {
   listWorktreesForRepositoryDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
-import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import {
+  hostAcceptsNewAssignments,
+  hostEnvironmentReady,
+} from "./control-plane-host-environment.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
@@ -71,6 +74,7 @@ export function assignQueued(
           w.status === "idle" &&
           w.online &&
           hostGitReady(state, w.hostId) &&
+          hostAcceptsNewAssignments(state, w.hostId) &&
           hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
@@ -227,6 +231,7 @@ export async function assignQueuedDurable(
           w.status === "idle" &&
           w.online &&
           hostGitReady(state, w.hostId) &&
+          hostAcceptsNewAssignments(state, w.hostId) &&
           hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
@@ -466,6 +471,7 @@ function allIdle(
       worktree.status === "idle" &&
       worktree.online &&
       hostGitReady(state, worktree.hostId) &&
+      hostAcceptsNewAssignments(state, worktree.hostId) &&
       hostEnvironmentReady(state, worktree.hostId, session.repositoryId) &&
       !state.drainingHosts.has(worktree.hostId) &&
       !state.disconnectedHosts.has(worktree.hostId) &&

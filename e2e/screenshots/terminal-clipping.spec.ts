@@ -72,7 +72,15 @@ test.describe("terminal clipping", () => {
         }),
       );
       for (let i = 1; i <= LINE_COUNT; i++) {
-        host.socket.send(logFrame(session.id, `line ${String(i).padStart(3, "0")}`, i));
+        host.socket.send(
+          logFrame(
+            session.id,
+            `line ${String(i).padStart(3, "0")}`,
+            i,
+            "stdout",
+            assignment.attemptId,
+          ),
+        );
       }
 
       await page.goto(`${CONTROL_BASE}/sessions/${session.id}`);

@@ -7,6 +7,7 @@ describe("LogStreamer", () => {
     const chunks: { seq: number; sk: string }[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (c) => {
         chunks.push({ seq: c.seq, sk: streamer.sortKey(c) });
       },
@@ -23,6 +24,7 @@ describe("LogStreamer", () => {
     const chunks = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk),
       () => "2026-08-01T12:00:05.000Z",
     );
@@ -40,6 +42,7 @@ describe("LogStreamer", () => {
     const chunks: string[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
@@ -53,7 +56,9 @@ describe("LogStreamer", () => {
   });
 
   it("drops a character that cannot fit into the remaining byte budget", () => {
-    const streamer = new LogStreamer("sess-1", () => undefined, undefined, 0, { maxBytes: 1 });
+    const streamer = new LogStreamer("sess-1", "attempt-1", () => undefined, undefined, 0, {
+      maxBytes: 1,
+    });
     expect(streamer.write("stdout", "é")).toBeNull();
   });
 
@@ -61,6 +66,7 @@ describe("LogStreamer", () => {
     const chunks: number[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk.seq),
       undefined,
       10_000,
@@ -76,6 +82,7 @@ describe("LogStreamer", () => {
     const chunks: { content: string; seq: number }[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push({ content: chunk.content, seq: chunk.seq }),
       () => "2026-08-01T12:00:00.000Z",
       0,
@@ -94,6 +101,7 @@ describe("LogStreamer", () => {
     const chunks: string[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
@@ -112,6 +120,7 @@ describe("LogStreamer", () => {
     const chunks: string[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
@@ -126,6 +135,7 @@ describe("LogStreamer", () => {
     const chunks: string[] = [];
     const streamer = new LogStreamer(
       "sess-1",
+      "attempt-1",
       (chunk) => chunks.push(chunk.content),
       undefined,
       0,
@@ -141,7 +151,7 @@ describe("LogStreamer", () => {
 
   it("keeps the default wire budget under API Gateway's 32 KB per-frame limit even for worst-case JSON-escaped content", () => {
     const chunks: string[] = [];
-    const streamer = new LogStreamer("sess-1", (chunk) => chunks.push(chunk.content));
+    const streamer = new LogStreamer("sess-1", "attempt-1", (chunk) => chunks.push(chunk.content));
     // Every char here JSON-escapes to a six-byte \u00XX sequence — the adversarial case
     // the default budget is sized against, not typical CLI/terminal output.
     const controlByte = String.fromCharCode(1);
@@ -151,6 +161,7 @@ describe("LogStreamer", () => {
       const envelope = {
         type: "session:log",
         sessionId: "sess-1",
+        attemptId: "attempt-1",
         stream: "stdout",
         content,
         timestamp: "2026-08-01T12:00:00.000Z",

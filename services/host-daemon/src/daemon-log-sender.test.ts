@@ -4,6 +4,7 @@ import { sendDaemonLog } from "./daemon-log-sender.ts";
 
 const chunk = {
   sessionId: "s",
+  attemptId: "a",
   stream: "stdout" as const,
   content: "hello",
   timestamp: "t",

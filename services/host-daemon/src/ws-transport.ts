@@ -94,6 +94,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
       message: {
         type: "session:log",
         sessionId: log.sessionId,
+        ...(log.attemptId !== undefined ? { attemptId: log.attemptId } : {}),
         stream: "system",
         content: "1 log chunk(s) dropped while disconnected",
         timestamp: new Date().toISOString(),
@@ -254,12 +255,15 @@ export function createWsTransport(options: Options): DaemonTransport & {
         } else if (
           registered &&
           (("sessionId" in message &&
-            message.type === "session:acknowledged" &&
+            (message.type === "session:acknowledged" || message.type === "session:cancel") &&
             typeof message.sessionId === "string" &&
             message.sessionId.length > 0 &&
-            message.sessionId.length <= 512) ||
+            message.sessionId.length <= 512 &&
+            (message.attemptId === undefined ||
+              (typeof message.attemptId === "string" &&
+                message.attemptId.length > 0 &&
+                message.attemptId.length <= 512))) ||
             message.type === "session:assign" ||
-            message.type === "session:cancel" ||
             message.type === "host:draining" ||
             message.type === "host:drain")
         ) {

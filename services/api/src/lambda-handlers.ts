@@ -341,7 +341,9 @@ export async function createLambdaRuntime(
         if (viewerStatus !== undefined) return { statusCode: viewerStatus };
         if (!authenticated) return { statusCode: 401 };
         if (authenticated.type !== "host") return { statusCode: 403 };
-        const message = parseHostMessage(event.body ?? "");
+        const message = parseHostMessage(event.body ?? "", {
+          protocolVersion: authenticated.protocolVersion ?? 0,
+        });
         if (!message || !validHostMessage(message, authenticated.hostId))
           return { statusCode: 403 };
         const result =
@@ -358,10 +360,11 @@ export async function createLambdaRuntime(
             hostId: message.hostId,
             connectionId: result.connectionId,
           });
-        } else if (result.sessionAcknowledged) {
+        } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",
             sessionId: result.sessionAcknowledged,
+            attemptId: message.attemptId,
           });
         } else if (result.hostDraining) {
           trackDelivery(authenticated.hostId, {

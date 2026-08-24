@@ -102,6 +102,7 @@ describe("createPlaneWsBridge", () => {
       parseHostMessage({
         type: "session:log",
         sessionId: "s",
+        attemptId: "a",
         stream: "stdout",
         content: "x",
         timestamp: new Date().toISOString(),
@@ -180,6 +181,7 @@ describe("createPlaneWsBridge", () => {
           JSON.stringify({
             type: "host:register",
             hostId: "a1",
+            protocolVersion: 1,
             worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
             runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
@@ -232,7 +234,11 @@ describe("createPlaneWsBridge", () => {
     });
 
     expect(received.some((m) => (m as { type: string }).type === "session:assign")).toBe(true);
-    expect(received).toContainEqual({ type: "session:acknowledged", sessionId: "sess-1" });
+    expect(received).toContainEqual({
+      type: "session:acknowledged",
+      sessionId: "sess-1",
+      attemptId: expect.any(String),
+    });
     expect(
       received.filter(
         (m) =>
@@ -355,6 +361,364 @@ describe("createPlaneWsBridge", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(hub.hostCount()).toBe(0);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("accepts legacy session logs without attemptId after protocol version 0 registration", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      socket.on("open", () => {
+        socket.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "legacy-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      socket.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "legacy-host",
+          attemptId: "owned-attempt",
+          status: "running",
+        } as never);
+        socket.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "sess-1",
+            stream: "stdout",
+            content: "legacy",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+        resolve(socket);
+      });
+      socket.on("error", reject);
+    });
+    await vi.waitFor(() =>
+      expect(plane.getLogs("sess-1").map((record) => record.content)).toEqual(["legacy"]),
+    );
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("rejects logs missing attemptId on a fenced protocol connection", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "modern-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "modern-host",
+          attemptId: "owned-attempt",
+          status: "running",
+        } as never);
+        ws.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "sess-1",
+            stream: "stdout",
+            content: "missing-attempt",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+      });
+      ws.on("close", (code) => resolve(code));
+      ws.on("error", reject);
+    });
+    expect(closeCode).toBe(1008);
+    expect(plane.getLogs("sess-1")).toEqual([]);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("does not disconnect a host that emits a delayed log for a reassigned session", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 1 });
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      socket.on("open", () => {
+        socket.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "old-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      socket.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "new-host",
+          attemptId: "attempt-2",
+          status: "running",
+        } as never);
+        socket.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "sess-1",
+            attemptId: "attempt-1",
+            stream: "stdout",
+            content: "stale",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+        resolve(socket);
+      });
+      socket.on("error", reject);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    expect(plane.getLogs("sess-1")).toEqual([]);
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("still rejects a current-attempt log from a host that does not own the session", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "old-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "new-host",
+          attemptId: "attempt-2",
+          status: "running",
+        } as never);
+        ws.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "sess-1",
+            attemptId: "attempt-2",
+            stream: "stdout",
+            content: "spoofed",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+      });
+      ws.on("close", (code) => resolve(code));
+      ws.on("error", reject);
+    });
+    expect(closeCode).toBe(1008);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("ignores a delayed ack for a session reassigned to another host", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      socket.on("open", () => {
+        socket.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "old-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      socket.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "new-host",
+          attemptId: "attempt-2",
+          status: "running",
+        } as never);
+        socket.send(
+          JSON.stringify({
+            type: "session:ack",
+            sessionId: "sess-1",
+            worktreeId: "wt-1",
+            attemptId: "attempt-1",
+          }),
+        );
+        resolve(socket);
+      });
+      socket.on("error", reject);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("rejects a current-attempt non-log frame for a session owned by another host", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "old-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        plane.state.sessions.set("sess-1", {
+          id: "sess-1",
+          hostId: "new-host",
+          attemptId: "attempt-2",
+          status: "running",
+        } as never);
+        ws.send(
+          JSON.stringify({
+            type: "session:ack",
+            sessionId: "sess-1",
+            worktreeId: "wt-2",
+            attemptId: "attempt-2",
+          }),
+        );
+      });
+      ws.on("close", (code) => resolve(code));
+      ws.on("error", reject);
+    });
+    expect(closeCode).toBe(1008);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("rejects a log for a session that is not in the control plane", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            protocolVersion: 1,
+            hostId: "orphan-host",
+            worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+            runtime: { daemonVersion: "1.0.0", gitVersion: "2.36.0", gitReady: true },
+          }),
+        );
+      });
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        ws.send(
+          JSON.stringify({
+            type: "session:log",
+            sessionId: "missing",
+            attemptId: "attempt-1",
+            stream: "stdout",
+            content: "orphan",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          }),
+        );
+      });
+      ws.on("close", (code) => resolve(code));
+      ws.on("error", reject);
+    });
+    expect(closeCode).toBe(1008);
     hub.close();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),

@@ -2,9 +2,11 @@
 import {
   isHostRuntimeReport,
   normalizeHostCapabilities,
+  validateHostRunningAttempts,
   type HostRuntimeReport,
   type HostCapability,
   type HostRepositoryRegistration,
+  type HostRunningAttempt,
 } from "@auto-harness/shared";
 
 import type { ConnectionRecord } from "./control-plane-types.ts";
@@ -13,6 +15,7 @@ import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
+import { ignoreStaleReconnectClaim } from "./control-plane-reconnect-confirm.ts";
 import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
 import {
   buildRegisteredInventory,
@@ -90,6 +93,66 @@ async function rollbackDurableRegistration(
       state.disconnectedHosts.set(hostId, { lastHeartbeatAt: at });
     }
   }
+}
+
+function reportedRunningSessionIds(opts: {
+  runningSessions?: readonly string[];
+  runningAttempts?: readonly HostRunningAttempt[];
+}): string[] {
+  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+    return opts.runningAttempts.map((attempt) => attempt.sessionId);
+  }
+  return [...(opts.runningSessions ?? [])];
+}
+
+function ownedReportedRunningSessionIds(
+  state: ControlPlaneState,
+  opts: {
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+): string[] {
+  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+    return opts.runningAttempts
+      .filter(
+        (attempt) =>
+          !ignoreStaleReconnectClaim(
+            state,
+            state.sessions.get(attempt.sessionId),
+            attempt.attemptId,
+          ),
+      )
+      .map((attempt) => attempt.sessionId);
+  }
+  return reportedRunningSessionIds(opts);
+}
+
+async function ownedReportedRunningSessionIdsDurable(
+  state: ControlPlaneState,
+  opts: {
+    runningSessions?: readonly string[];
+    runningAttempts?: readonly HostRunningAttempt[];
+  },
+): Promise<string[]> {
+  if (opts.runningAttempts && opts.runningAttempts.length > 0) {
+    const sessionIds: string[] = [];
+    for (const attempt of opts.runningAttempts) {
+      const session = await state.storage!.getSession(attempt.sessionId);
+      if (!ignoreStaleReconnectClaim(state, session, attempt.attemptId)) {
+        sessionIds.push(attempt.sessionId);
+      }
+    }
+    return sessionIds;
+  }
+  return reportedRunningSessionIds(opts);
+}
+
+function validateReportedAttempts(opts: {
+  runningSessions?: readonly string[];
+  runningAttempts?: readonly HostRunningAttempt[];
+}): string | null {
+  if (!opts.runningAttempts) return null;
+  return validateHostRunningAttempts(opts.runningAttempts);
 }
 
 function validateRunningSessions(
@@ -326,6 +389,8 @@ export function registerHost(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    runningAttempts?: HostRunningAttempt[];
+    protocolVersion?: number;
     daemonIdentity?: RegisteredDaemonIdentity;
     runtime?: HostRuntimeReport;
     draining?: true;
@@ -347,7 +412,13 @@ export function registerHost(
   if (nameError) {
     return { ok: false, error: nameError };
   }
-  const runningError = validateRunningSessions(state, opts.hostId, opts.runningSessions);
+  const attemptsError = validateReportedAttempts(opts);
+  if (attemptsError) return { ok: false, error: attemptsError };
+  const runningError = validateRunningSessions(
+    state,
+    opts.hostId,
+    ownedReportedRunningSessionIds(state, opts),
+  );
   if (runningError) return { ok: false, error: runningError };
 
   const existing = state.hostConnection.get(opts.hostId);
@@ -394,6 +465,7 @@ export function registerHost(
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
+    ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
@@ -446,7 +518,12 @@ export function registerHost(
       persistWorktree(state, { ...wt, connectionId });
     }
   }
-  void reconcileHostRunningSessions(state, opts.hostId, opts.runningSessions ?? []);
+  void reconcileHostRunningSessions(
+    state,
+    opts.hostId,
+    reportedRunningSessionIds(opts),
+    opts.runningAttempts ?? [],
+  );
   return { ok: true, connectionId };
 }
 
@@ -467,6 +544,8 @@ export async function registerHostDurable(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    runningAttempts?: HostRunningAttempt[];
+    protocolVersion?: number;
     daemonIdentity?: RegisteredDaemonIdentity;
     runtime?: HostRuntimeReport;
     draining?: true;
@@ -491,10 +570,12 @@ export async function registerHostDurable(
   if (nameError) {
     return { ok: false, error: nameError };
   }
+  const attemptsError = validateReportedAttempts(opts);
+  if (attemptsError) return { ok: false, error: attemptsError };
   const runningError = await validateRunningSessionsDurable(
     state,
     opts.hostId,
-    opts.runningSessions,
+    await ownedReportedRunningSessionIdsDurable(state, opts),
   );
   if (runningError) return { ok: false, error: runningError };
   const existing = state.hostConnection.get(opts.hostId);
@@ -518,6 +599,7 @@ export async function registerHostDurable(
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
+    ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
   };
   const won = await state.storage.tryRegisterHost({
     hostId: opts.hostId,
@@ -599,7 +681,12 @@ export async function registerHostDurable(
   }
   let reconciled: string[] | false;
   try {
-    reconciled = await reconcileHostRunningSessions(state, opts.hostId, opts.runningSessions ?? []);
+    reconciled = await reconcileHostRunningSessions(
+      state,
+      opts.hostId,
+      reportedRunningSessionIds(opts),
+      opts.runningAttempts ?? [],
+    );
   } catch (err) {
     // Reconciliation reads and its rollback writes are durable operations too.
     // Do not strand the just-acquired lease if any of those operations fail.

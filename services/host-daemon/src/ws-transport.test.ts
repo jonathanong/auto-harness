@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- assign fixtures include attemptId. */
 import { createServer } from "node:http";
 
 import { describe, expect, it } from "vitest";
@@ -58,6 +59,7 @@ describe("createWsTransport", () => {
           JSON.stringify({
             type: "session:assign",
             sessionId: "s1",
+            attemptId: "attempt-s1",
             repositoryId: "r",
             prompt: "p",
             resolvedArgv: ["c"],
@@ -181,6 +183,7 @@ function assign(sessionId: string) {
   return {
     type: "session:assign",
     sessionId,
+    attemptId: `attempt-${sessionId}`,
     repositoryId: "r",
     prompt: "p",
     resolvedArgv: ["c"],

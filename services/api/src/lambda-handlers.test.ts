@@ -454,6 +454,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: ["repo-active", "repo-ack", "repo-timeout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
   });
   fixture.connections.set("stale-connection", {
     hostId: "stale-host",
@@ -834,6 +835,7 @@ describe("Lambda runtime adapters", () => {
     expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toEqual({
       type: "session:acknowledged",
       sessionId: "session-1",
+      attemptId: "attempt-1",
     });
 
     await expect(

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- public package barrel. */
 export type {
   AccountType,
   LogStream,
@@ -70,6 +71,8 @@ export {
   LOCAL_API_WS,
   LOCAL_DDB_HTTP,
   LOCAL_WEB_HTTP,
+  HOST_PROTOCOL_VERSION,
+  ATTEMPT_FENCED_PROTOCOL_VERSION,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
   SESSION_SOURCES,
@@ -128,8 +131,11 @@ export {
 
 export {
   isHostRepositoryRegistration,
+  isHostRunningAttempt,
   validateHostRepositoryRegistrations,
+  validateHostRunningAttempts,
   type HostRepositoryRegistration,
+  type HostRunningAttempt,
 } from "./host-registration.ts";
 
 export {

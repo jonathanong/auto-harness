@@ -196,6 +196,34 @@ describe("session-transition planner", () => {
         .effects,
     ).toEqual([{ type: "ignore", reason: "stale_attempt" }]);
     expect(
+      planSessionTransition(session(), { type: "log", attemptId: "old" }, ctx()).effects,
+    ).toEqual([{ type: "ignore", reason: "stale_attempt" }]);
+    expect(
+      planSessionTransition(session(), { type: "reconnect_claim", attemptId: "old" }, ctx())
+        .effects,
+    ).toEqual([{ type: "ignore", reason: "stale_attempt" }]);
+    expect(
+      planSessionTransition(session(), { type: "log", attemptId: "attempt" }, ctx()).effects,
+    ).toEqual([]);
+    expect(
+      planSessionTransition(
+        session({ attemptId: undefined }),
+        { type: "log", attemptId: "a" },
+        ctx(),
+      ).effects,
+    ).toEqual([]);
+    expect(
+      planSessionTransition(session(), { type: "reconnect_claim", attemptId: "attempt" }, ctx())
+        .effects,
+    ).toEqual([]);
+    expect(
+      planSessionTransition(
+        session({ status: "queued", hostId: null, worktreeId: null }),
+        { type: "reconnect_claim", attemptId: "attempt" },
+        ctx(),
+      ).effects,
+    ).toEqual([{ type: "ignore", reason: "stale_attempt" }]);
+    expect(
       planSessionTransition(
         session({ ackReceivedAt: NOW }),
         { type: "ack", worktreeId: "wt", attemptId: "attempt" },

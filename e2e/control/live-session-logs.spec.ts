@@ -71,7 +71,15 @@ test.describe("live session logs", () => {
           attemptId: assignment.attemptId,
         }),
       );
-      host.socket.send(logFrame(session.id, "history from the real host socket", 1));
+      host.socket.send(
+        logFrame(
+          session.id,
+          "history from the real host socket",
+          1,
+          "stdout",
+          assignment.attemptId,
+        ),
+      );
 
       const ticketResponse = page.waitForResponse((response) =>
         response.url().endsWith("/api/v1/auth/viewer-ticket"),
@@ -101,17 +109,35 @@ test.describe("live session logs", () => {
       expect((await reconnectTicket).status()).toBe(200);
       await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — running");
 
-      host.socket.send(logFrame(session.id, "\u001b[31mANSI red output\u001b[0m", 2));
+      host.socket.send(
+        logFrame(
+          session.id,
+          "\u001b[31mANSI red output\u001b[0m",
+          2,
+          "stdout",
+          assignment.attemptId,
+        ),
+      );
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "ANSI red output",
       );
-      host.socket.send(logFrame(session.id, "live browser tail", 3));
+      host.socket.send(
+        logFrame(session.id, "live browser tail", 3, "stdout", assignment.attemptId),
+      );
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "live browser tail",
       );
-      host.socket.send(logFrame(session.id, "Process exited with code 0", 4, "system"));
       host.socket.send(
-        logFrame(session.id, "Session completed at 2026-08-01T12:05:30.000Z", 5, "system"),
+        logFrame(session.id, "Process exited with code 0", 4, "system", assignment.attemptId),
+      );
+      host.socket.send(
+        logFrame(
+          session.id,
+          "Session completed at 2026-08-01T12:05:30.000Z",
+          5,
+          "system",
+          assignment.attemptId,
+        ),
       );
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "[system] Process exited with code 0",
@@ -189,6 +215,7 @@ async function connectHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
+          protocolVersion: 1,
           hostId,
           worktrees: [
             {
@@ -215,10 +242,12 @@ function logFrame(
   content: string,
   seq: number,
   stream: "stdout" | "system" = "stdout",
+  attemptId: string,
 ): string {
   return JSON.stringify({
     type: "session:log",
     sessionId,
+    attemptId,
     stream,
     content: `${content}\r\n`,
     timestamp: new Date().toISOString(),

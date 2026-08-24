@@ -34,7 +34,11 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
   session.completedAt = state.now();
   state.pendingAcks.delete(session.id);
   if (session.hostId) {
-    state.onHostMessage?.(session.hostId, { type: "session:cancel", sessionId: session.id });
+    state.onHostMessage?.(session.hostId, {
+      type: "session:cancel",
+      sessionId: session.id,
+      attemptId: session.attemptId!,
+    });
   }
   if (session.mainCheckoutLease) {
     releaseScheduledLeaseLocal(state, session);
@@ -69,7 +73,11 @@ function rememberDurableTimeout(
   }
   if (session.mainCheckoutLease) releaseScheduledLeaseLocal(state, session);
   if (session.hostId) {
-    state.onHostMessage?.(session.hostId, { type: "session:cancel", sessionId: session.id });
+    state.onHostMessage?.(session.hostId, {
+      type: "session:cancel",
+      sessionId: session.id,
+      attemptId: session.attemptId!,
+    });
   }
   state.pendingAcks.delete(session.id);
   const next: SessionRecord = {

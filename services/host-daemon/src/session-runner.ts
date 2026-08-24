@@ -38,6 +38,7 @@ export class SessionRunner {
     const logs: SessionLogChunk[] = [];
     const streamer = new LogStreamer(
       assign.sessionId,
+      assign.attemptId,
       (chunk) => {
         logs.push(chunk);
         this.deps.onLog?.(chunk);

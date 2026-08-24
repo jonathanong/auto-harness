@@ -1,3 +1,5 @@
+import { ATTEMPT_FENCED_PROTOCOL_VERSION } from "@auto-harness/shared";
+
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
 type RepositoryEnvironmentReadiness = {
@@ -38,4 +40,13 @@ export function hostEnvironmentReady(
   repositoryId: string,
 ): boolean {
   return repositoryEnvironmentReadiness(state, hostId, repositoryId).ready;
+}
+
+/** Legacy daemons may finish running attempts but receive no new assignments. */
+export function hostAcceptsNewAssignments(state: ControlPlaneState, hostId: string): boolean {
+  const connectionId = state.hostConnection.get(hostId);
+  if (!connectionId) return false;
+  return (
+    (state.connections.get(connectionId)?.protocolVersion ?? 0) >= ATTEMPT_FENCED_PROTOCOL_VERSION
+  );
 }

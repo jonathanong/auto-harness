@@ -1,4 +1,4 @@
-import type { HostRuntimeReport } from "@auto-harness/shared";
+import { HOST_PROTOCOL_VERSION, type HostRuntimeReport } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -26,6 +26,7 @@ export function ensureSeededTestHost(state: ControlPlaneState, record: WorktreeR
     capabilities: [],
     repositoryIds: [record.repositoryId],
     runtime: TEST_RUNTIME,
+    protocolVersion: HOST_PROTOCOL_VERSION,
   });
   state.hostConnection.set(record.hostId, connectionId);
 }

@@ -19,7 +19,7 @@ describe("claimed session cancellation", () => {
     await expect(
       runClaimedSession(
         cancellableRunner,
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign({ setupScript: "slow" }),
         claimed,
@@ -43,7 +43,7 @@ describe("claimed session cancellation", () => {
             return { exitCode: 0, timedOut: false, signal: null };
           },
         },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign(),
         claimed,
@@ -62,7 +62,7 @@ describe("claimed session cancellation", () => {
     await expect(
       runClaimedSession(
         cancellableRunner,
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign({ setupScript: "slow" }),
         claimed,
@@ -82,7 +82,7 @@ describe("claimed session cancellation", () => {
             return { exitCode: 0, timedOut: false, signal: null };
           },
         },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign(),
         claimed,
@@ -98,7 +98,7 @@ describe("claimed session cancellation", () => {
     await expect(
       runClaimedSession(
         cancellableRunner,
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign(),
         claimed,
@@ -122,7 +122,7 @@ describe("claimed session cancellation", () => {
             return { exitCode: 1, timedOut: false, signal: null };
           },
         },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign({
           resolvedArgv: ["codex", "exec"],
@@ -171,7 +171,7 @@ describe("claimed session cancellation", () => {
             return { ...scenario.result, usage };
           },
         },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign(),
         claimed,

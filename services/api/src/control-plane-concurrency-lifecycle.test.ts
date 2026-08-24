@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- cancel payloads now include attemptId. */
 import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
@@ -60,6 +61,7 @@ describe("concurrency lock lifecycle", () => {
       status: "running",
       hostId: "host-1",
       worktreeId: "wt-1",
+      attemptId: "attempt-1",
     });
     setDurableReadStorage(plane.state, {
       putSession: async () => {},
@@ -70,7 +72,9 @@ describe("concurrency lock lifecycle", () => {
       ok: true,
       session: { status: "cancelled", worktreeId: "wt-1" },
     });
-    expect(messages).toEqual([{ type: "session:cancel", sessionId: "sess-1" }]);
+    expect(messages).toEqual([
+      { type: "session:cancel", sessionId: "sess-1", attemptId: "attempt-1" },
+    ]);
     expect(released).toEqual([]);
   });
 
@@ -150,10 +154,13 @@ describe("concurrency lock lifecycle", () => {
       status: "running",
       hostId: "host-r",
       worktreeId: "worktree-r",
+      attemptId: "attempt-running",
     });
     setDurableReadStorage(plane.state, { putSession: async () => {} });
     supersedeSession(plane.state, "running", "replace running");
-    expect(messages).toEqual([{ type: "session:cancel", sessionId: "running" }]);
+    expect(messages).toEqual([
+      { type: "session:cancel", sessionId: "running", attemptId: "attempt-running" },
+    ]);
   });
 
   it("persists a terminal status before releasing its concurrency lock", async () => {

@@ -112,6 +112,7 @@ describe("DaemonLoop errors", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-missing-worktree",
+        attemptId: "attempt-sess-missing-worktree",
         repositoryId: "demo",
         prompt: "must not run",
         resolvedArgv: ["false"],
@@ -124,6 +125,7 @@ describe("DaemonLoop errors", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-scheduled-worktree",
+        attemptId: "attempt-sess-scheduled-worktree",
         sessionType: "scheduled",
         repositoryId: "demo",
         prompt: "must use main checkout",
@@ -157,6 +159,7 @@ describe("DaemonLoop errors", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-bad",
+        attemptId: "attempt-sess-bad",
         repositoryId: "demo",
         prompt: "x",
         resolvedArgv: [],
@@ -205,6 +208,7 @@ describe("DaemonLoop errors", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-opt",
+        attemptId: "attempt-sess-opt",
         repositoryId: "demo",
         prompt: "x",
         resolvedArgv: ["printf", "%s", "x"],
@@ -245,6 +249,7 @@ describe("DaemonLoop errors", () => {
       transport2.deliver({
         type: "session:assign",
         sessionId: "sess-str",
+        attemptId: "attempt-sess-str",
         repositoryId: "demo",
         prompt: "x",
         resolvedArgv: ["printf", "%s", "x"],
