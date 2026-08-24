@@ -47,7 +47,115 @@ const worktree: WorktreeRecord = {
   connectionId: "connection",
 };
 
+function providerAssignmentState() {
+  const state = createControlPlaneState({
+    now: () => NOW,
+    attemptIdFactory: () => "attempt",
+    shardCount: 1,
+  });
+  state.repositories.set("repo", {
+    id: "repo",
+    name: "repo",
+    url: "/repo",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  state.providers.set("provider", {
+    id: "provider",
+    name: "provider",
+    defaultCommandId: "provider-command",
+  });
+  state.providerAccounts.set("account", {
+    id: "account",
+    providerId: "provider",
+    label: "account",
+    maxConcurrentSessions: 1,
+  });
+  state.commands.set("provider-command", {
+    id: "provider-command",
+    name: "provider command",
+    argv: ["tool"],
+    appendPrompt: true,
+    providerId: "provider",
+  });
+  state.sessions.set(
+    "s",
+    session({ target: { commandId: "provider-command" }, targetLabels: ["provider-command"] }),
+  );
+  state.worktrees.set("w", { ...worktree });
+  state.connections.set("connection", {
+    hostId: "host",
+    connectionId: "connection",
+    type: "host",
+    connectedAt: NOW,
+    lastHeartbeatAt: NOW,
+    capabilities: [],
+    repositoryIds: ["repo"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
+    providerAccountReadiness: [
+      { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+    ],
+  });
+  state.hostConnection.set("host", "connection");
+  return state;
+}
+
 describe("assignment residual coverage", () => {
+  it("skips a local candidate when readiness changes after planning", () => {
+    const state = providerAssignmentState();
+    const connection = state.connections.get("connection")!;
+    let readinessReads = 0;
+    const readiness = [...connection.providerAccountReadiness!];
+    Object.defineProperty(readiness, "some", {
+      value: () => {
+        readinessReads += 1;
+        return readinessReads === 1;
+      },
+    });
+    state.connections.set("connection", { ...connection, providerAccountReadiness: readiness });
+
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
+  it("releases a claimed local worktree when provider lease acquisition loses a race", () => {
+    const state = providerAssignmentState();
+    const leases = new Map<string, never>();
+    Object.defineProperty(leases, "has", {
+      value: (key: string) => key === "provider-lease:account:0",
+    });
+    state.providerAccountLeases = leases as typeof state.providerAccountLeases;
+
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
+  it("skips a durable candidate when readiness changes after planning", async () => {
+    const state = providerAssignmentState();
+    const connection = state.connections.get("connection")!;
+    let readinessReads = 0;
+    const readiness = [...connection.providerAccountReadiness!];
+    Object.defineProperty(readiness, "some", {
+      value: () => {
+        readinessReads += 1;
+        return readinessReads === 1;
+      },
+    });
+    state.connections.set("connection", { ...connection, providerAccountReadiness: readiness });
+    setDurableReadStorage(state, { tryAssignSession: async () => true });
+
+    await expect(assignQueuedDurable(state, undefined, { readModelLoaded: true })).resolves.toEqual(
+      [],
+    );
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
   it("skips locally and durably queued work while repository admission is unavailable", async () => {
     const local = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     local.sessions.set("s", session());

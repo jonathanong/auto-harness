@@ -116,6 +116,21 @@ describe("archive retry migration", () => {
     await expect(backfillArchiveRetryIndexPage(doc, tables)).resolves.toBe(false);
   });
 
+  it("propagates an unexpected migration lease-claim failure", async () => {
+    const doc = {
+      send: async (command: { input: Record<string, unknown> }) => {
+        if (command.input.UpdateExpression?.toString().includes("ADD fence")) {
+          throw new Error("migration lease unavailable");
+        }
+        return {};
+      },
+    } as never;
+
+    await expect(backfillArchiveRetryIndexPage(doc, tables)).rejects.toThrow(
+      "migration lease unavailable",
+    );
+  });
+
   it("resumes a page, skips indexed and stored rows, and tolerates raced backfill", async () => {
     const conditional = Object.assign(new Error("row changed"), {
       name: "ConditionalCheckFailedException",

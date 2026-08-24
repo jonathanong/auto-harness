@@ -56,6 +56,32 @@ describe("DaemonLoop execution profiles", () => {
     }
   });
 
+  it("logs and refuses a ready assignment whose account profile is missing", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const loop = new DaemonLoop({
+        config,
+        transport: createAcknowledgingLoopbackTransport({ sendToServer: () => undefined }),
+        onLog: (line) => lines.push(line),
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      await loop.start();
+      await (
+        loop as unknown as {
+          handleServerMessage(message: HostWireMessage): Promise<void>;
+        }
+      ).handleServerMessage(assign({ sessionId: "missing-ready", providerAccountId: "missing" }));
+      expect(lines).toContain(
+        "execution profile unavailable: refused assign missing-ready account missing",
+      );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("runs two accounts with isolated local CLI homes", async () => {
     const { config, cleanup } = await makeRepo();
     const root = mkdtempSync(join(tmpdir(), "ah-homes-"));

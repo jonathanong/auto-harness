@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
+import { handleHostMessage } from "./control-plane-messages.ts";
 
 function running(id = "s") {
   return {
@@ -28,6 +30,63 @@ function running(id = "s") {
 }
 
 describe("durable host-message fencing", () => {
+  it("normalizes object capability advertisements and explicit assignment caps", () => {
+    const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: () => "connection",
+    });
+
+    expect(
+      handleHostMessage(state, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        capabilities: { features: ["scheduled-main-checkout"] },
+        maxConcurrentAssignments: 2,
+      }),
+    ).toEqual({ ok: true });
+    expect(state.connections.get("connection")).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 2,
+    });
+  });
+
+  it("releases a timed-out local provider lease on a late terminal report", () => {
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
+    const lease = {
+      concurrencyId: "provider-lease:account:0",
+      providerAccountId: "account",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    const row = {
+      ...running(),
+      status: "timed_out" as const,
+      timedOutHostId: "host",
+      providerAccountLease: lease,
+    };
+    state.sessions.set(row.id, row);
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: row.id,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: "host",
+      providerAccountId: lease.providerAccountId,
+    });
+
+    expect(
+      handleHostMessage(state, {
+        type: "session:status",
+        sessionId: row.id,
+        worktreeId: "w",
+        attemptId: lease.attemptId,
+        status: "completed",
+      }),
+    ).toEqual({ ok: true });
+    expect(state.providerAccountLeases.size).toBe(0);
+    expect(state.sessions.get(row.id)).not.toHaveProperty("providerAccountLease");
+  });
+
   it("confirms only an accepted in-memory ACK transition", () => {
     const deliveries: Array<{ hostId: string; message: unknown }> = [];
     const plane = new ControlPlane({

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- conditional transaction outcomes share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,6 +10,8 @@ import {
   suppressProviderlessUsageLimit,
   tryAssignSession,
 } from "./plane-storage-sessions.ts";
+import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
+import { tryRequeueSession } from "./plane-storage-sessions-requeue.ts";
 import { assignmentLeaseCollision, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const conditional = Object.assign(new Error("lost"), {
@@ -198,6 +201,125 @@ describe("session storage conditional outcomes", () => {
           ConditionExpression: expect.stringContaining("attribute_not_exists(assignmentCount)"),
           ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 1 }),
         }),
+      }),
+    );
+  });
+
+  it("omits the legacy count when claiming a host slot without a prior count", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryAssignSession(ctx(send), {
+        sessionId: "session",
+        repositoryId: "repo",
+        worktreeId: "worktree",
+        hostId: "host",
+        hostInventoryVersion: null,
+        connectionId: "connection",
+        now: "now",
+        attemptId: "attempt",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: "worktree",
+          attemptId: "attempt",
+        },
+        hostAssignmentLease: { hostId: "host" },
+        hostAssignmentCap: 1,
+        queueShard: 0,
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "HostLocks",
+          UpdateExpression: expect.stringContaining("assignmentCount"),
+        }),
+      }),
+    );
+  });
+
+  it("includes a host lease in main-checkout assignment expressions", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryAssignMainCheckoutSession(ctx(send), {
+        sessionId: "session",
+        hostId: "host",
+        hostInventoryVersion: null,
+        repositoryId: "repo",
+        connectionId: "connection",
+        now: "now",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: null,
+          attemptId: "attempt",
+        },
+        hostAssignmentLease: { hostId: "host" },
+        hostAssignmentCap: 2,
+        legacyAssignmentCount: 1,
+        queueShard: 0,
+        attemptId: "attempt",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "HostLocks",
+          UpdateExpression: expect.stringContaining("assignmentCount"),
+          ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 1, ":cap": 2 }),
+        }),
+      }),
+    );
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "Sessions",
+          ExpressionAttributeValues: expect.objectContaining({
+            ":hostAssignmentLease": { hostId: "host" },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("releases a host lease while requeueing an assignment", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryRequeueSession(ctx(send), {
+        sessionId: "session",
+        worktreeId: "worktree",
+        attemptId: "attempt",
+        queueShard: 0,
+        hostAssignmentLease: { hostId: "host" },
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({ Update: expect.objectContaining({ TableName: "HostLocks" }) }),
+    );
+  });
+
+  it("deletes a concurrency lock while finishing a terminal assignment", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "session",
+        attemptId: "attempt",
+        status: "completed",
+        queueShard: 0,
+        concurrencyId: "lock",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Delete: expect.objectContaining({ Key: { concurrencyId: "lock" } }),
       }),
     );
   });

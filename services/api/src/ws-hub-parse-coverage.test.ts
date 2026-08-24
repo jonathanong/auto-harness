@@ -43,6 +43,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
     };
     expect(parseHostMessage(JSON.stringify(registration))).toEqual(registration);
     expect(parseHostMessage(Buffer.from(JSON.stringify(registration)))).toEqual(registration);
+    expect(parseHostMessage({ ...registration })).toEqual(registration);
     expect(
       parseHostMessage({
         ...registration,

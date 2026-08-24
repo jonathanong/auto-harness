@@ -75,6 +75,40 @@ describe("provider account lease storage", () => {
     ).resolves.toBe(false);
   });
 
+  it("releases a timeout-preserved host assignment lease in the same transaction", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks", hostLocks: "Hosts" },
+        } as never,
+        {
+          concurrencyId: "provider-lease:acct:0",
+          sessionId: "sess",
+          attemptId: "attempt",
+          hostAssignmentLease: { hostId: "host" },
+        },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toHaveLength(3);
+    expect(request.input.TransactItems[2]).toMatchObject({ Update: { TableName: "Hosts" } });
+  });
+
+  it("rethrows unexpected timeout cleanup failures", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("capacity unavailable"));
+    await expect(
+      releaseTimedOutProviderAccountLease(
+        {
+          doc: { send },
+          tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+        } as never,
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+      ),
+    ).rejects.toThrow("capacity unavailable");
+  });
+
   it("atomically releases a timeout-preserved host slot without a provider lease", async () => {
     const send = vi.fn().mockResolvedValue({});
     await expect(

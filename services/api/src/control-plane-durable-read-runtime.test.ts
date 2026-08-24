@@ -15,6 +15,7 @@ import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read
 import { refreshAssignmentCommandsDurable } from "./control-plane-durable-read-catalog.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
 import { accountHasLeaseCapacity } from "./control-plane-provider-account-leases.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
@@ -57,6 +58,21 @@ const commandRecord = (id: string) => ({
 });
 
 describe("durable runtime read-through", () => {
+  it("returns false when archive retry-index migration is unavailable", async () => {
+    const service = new ControlPlaneSessionsService(createControlPlaneState());
+    await expect(service.migrateArchiveRetryIndexPage()).resolves.toBe(false);
+
+    let migrated = 0;
+    service.state.storage = {
+      migrateArchiveRetryIndexPage: async () => {
+        migrated += 1;
+        return true;
+      },
+    } as never;
+    await expect(service.migrateArchiveRetryIndexPage()).resolves.toBe(true);
+    expect(migrated).toBe(1);
+  });
+
   it("keeps the base durable session facade available to subclasses", async () => {
     const plane = new ControlPlaneBase();
     plane.state.sessions.set(session.id, { ...session });
@@ -617,6 +633,21 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([]);
     expect(state.sessions.get(gsiRow.id)).toEqual(authoritative);
+  });
+
+  it("drops a queued GSI row when its authoritative session was deleted", async () => {
+    const gsiRow = { ...session, id: "deleted-queued", status: "queued" as const };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatusPage: async () => [gsiRow],
+        getSession: async () => null,
+      } as never,
+    });
+    state.sessions.set(gsiRow.id, { ...gsiRow, status: "running" });
+
+    await expect(listQueuedSessionsDurable(state, "prompt", { limit: 1 })).resolves.toEqual([]);
+    expect(state.sessions.has(gsiRow.id)).toBe(false);
   });
 
   it("uses only durable queue rows for queue age metrics", async () => {
