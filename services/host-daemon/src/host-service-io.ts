@@ -28,7 +28,7 @@ export type HostServiceRunResult = {
   stderr: string;
 };
 
-export type HostServiceState = "running" | "stopped" | "failed" | "missing" | "unknown";
+type HostServiceState = "running" | "stopped" | "failed" | "missing" | "unknown";
 
 export type HostServiceStatus = {
   state: HostServiceState;
