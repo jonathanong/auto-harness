@@ -264,4 +264,67 @@ describe("scheduled assignment branch coverage", () => {
     current.sessions.set("vanished", session({ id: "vanished" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
   });
+
+  it("cancels when ownership disappears after placement chooses a host", async () => {
+    const current = state();
+    current.connections.set("c1", connection("h1", "c1"));
+    current.hostConnection.set("h1", "c1");
+    const row = session({ principalId: undefined });
+    let reads = 0;
+    Object.defineProperty(row, "principalId", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? "principal" : undefined;
+      },
+    });
+    current.sessions.set("s", row);
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(current.sessions.get("s")?.status).toBe("cancelled");
+  });
+
+  it("claims with a missing or unversioned host inventory fence", async () => {
+    const versions: Array<number | null> = [];
+    for (const inventory of [
+      undefined,
+      {
+        hostId: "h1",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+        providerAccounts: [],
+        commandProfiles: {},
+        updatedAt: NOW,
+      },
+    ] as const) {
+      const current = state();
+      current.connections.set("c1", connection("h1", "c1"));
+      current.hostConnection.set("h1", "c1");
+      if (inventory) current.hostInventories.set("h1", inventory);
+      else current.hostInventories.delete("h1");
+      current.sessions.set("s", session());
+      setDurableReadStorage(current, {
+        getMainCheckoutCursor: async () => "",
+        ensureMainCheckoutLeaseMap: async () => {
+          if (!inventory) current.hostInventories.delete("h1");
+          return true;
+        },
+        tryAssignMainCheckoutSession: async (opts: { hostInventoryVersion: number | null }) => {
+          versions.push(opts.hostInventoryVersion);
+          return true;
+        },
+      });
+      if (!inventory) {
+        current.hostInventories.set("h1", {
+          hostId: "h1",
+          repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+          providerAccounts: [],
+          commandProfiles: {},
+          updatedAt: NOW,
+        });
+      }
+      await expect(assignScheduledQueuedDurable(current)).resolves.toHaveLength(1);
+    }
+    expect(versions).toEqual([null, 0]);
+  });
 });

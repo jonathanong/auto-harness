@@ -5,6 +5,8 @@ import {
   expireQueuedSession,
   failExpiredResumeSession,
   finishSession,
+  requeueUsageLimitedSession,
+  suppressProviderlessUsageLimit,
 } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -69,5 +71,44 @@ describe("session storage conditional outcomes", () => {
         completedAt: "done",
       }),
     ).resolves.toBe(true);
+  });
+
+  it("treats requeue and suppress condition losses as claim losses and rethrows other errors", async () => {
+    const item = { Item: { id: "session", status: "running", createdAt: "now", priority: 0 } };
+    const requeue = {
+      sessionId: "session",
+      worktreeId: "worktree",
+      attemptId: "attempt",
+      providerAccountId: "account",
+      queueShard: 0,
+      now: "now",
+      usageLimitedUntil: "later",
+      errorMessage: "quota",
+    };
+    const suppress = {
+      sessionId: "session",
+      worktreeId: "worktree",
+      attemptId: "attempt",
+      queueShard: 0,
+      targetIndex: 0,
+    };
+    const lostRequeue = vi.fn().mockResolvedValueOnce(item).mockRejectedValueOnce(conditional);
+    await expect(requeueUsageLimitedSession(ctx(lostRequeue), requeue)).resolves.toBe(false);
+    const lostSuppress = vi.fn().mockResolvedValueOnce(item).mockRejectedValueOnce(conditional);
+    await expect(suppressProviderlessUsageLimit(ctx(lostSuppress), suppress)).resolves.toBe(false);
+    const boomRequeue = vi
+      .fn()
+      .mockResolvedValueOnce(item)
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(requeueUsageLimitedSession(ctx(boomRequeue), requeue)).rejects.toThrow(
+      "dynamo unavailable",
+    );
+    const boomSuppress = vi
+      .fn()
+      .mockResolvedValueOnce(item)
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(suppressProviderlessUsageLimit(ctx(boomSuppress), suppress)).rejects.toThrow(
+      "dynamo unavailable",
+    );
   });
 });

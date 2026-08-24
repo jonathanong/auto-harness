@@ -151,4 +151,36 @@ describe("durable terminal message residual coverage", () => {
     await expect(handleHostMessageDurable(state, message())).resolves.toEqual({ ok: true });
     expect(loaded).toBe(0);
   });
+
+  it("treats a cache miss as a missing provider account during usage-limit planning", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = row({
+      type: "prompt",
+      source: "api",
+      mainCheckoutLease: undefined,
+      assignmentConnectionId: undefined,
+      worktreeId: "w",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "account",
+        hostId: "host",
+        worktreeId: "w",
+        attemptId: "attempt",
+      },
+    });
+    state.sessions.set("s", session);
+    state.storage = { getSession: async () => session } as never;
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "failed",
+        errorCode: "usage_limit",
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(state.sessions.get("s")?.status).toBe("running");
+  });
 });

@@ -90,9 +90,24 @@ describe("assignment residual coverage", () => {
       capabilities: [],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     });
-    setDurableReadStorage(state, { expireQueuedSession: async () => false });
-    state.hostConnection.get = () => undefined;
+    state.hostConnection.set("host", "connection");
+    const liveGet = state.hostConnection.get.bind(state.hostConnection);
+    let planningReads = 2;
+    let assigned = 0;
+    state.hostConnection.get = (hostId) => {
+      if (planningReads === 0) return undefined;
+      planningReads -= 1;
+      return liveGet(hostId);
+    };
+    setDurableReadStorage(state, {
+      expireQueuedSession: async () => false,
+      tryAssignSession: async () => {
+        assigned += 1;
+        return true;
+      },
+    });
     await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+    expect(assigned).toBe(0);
   });
 
   it("fails closed for a connected host whose Git preflight is not ready", () => {
