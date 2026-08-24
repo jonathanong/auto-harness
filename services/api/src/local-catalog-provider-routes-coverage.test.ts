@@ -77,6 +77,32 @@ describe("local provider catalog route coverage", () => {
     expect(response).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
   });
 
+  it("requests assignment after a provider move or cap increase", async () => {
+    const plane = seededPlane();
+    const calls: string[] = [];
+    plane.requestAssignment = async () => {
+      calls.push("assign");
+    };
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", { label: "renamed" }))
+        .status,
+    ).toBe(200);
+    expect(calls).toEqual([]);
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", { providerId: "other" }))
+        .status,
+    ).toBe(200);
+    expect(calls).toEqual(["assign"]);
+    expect(
+      (
+        await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", {
+          maxConcurrentSessions: 2,
+        })
+      ).status,
+    ).toBe(200);
+    expect(calls).toEqual(["assign", "assign"]);
+  });
+
   it("returns an internal error when the durable cooldown read fails", async () => {
     const plane = new ControlPlane({
       storage: {

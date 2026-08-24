@@ -182,17 +182,14 @@ describe("scheduled terminal and retry message branches", () => {
         cliResumeRef: "resume",
       }),
     );
-    expect(calls[0]).toMatchObject({ providerAccountLease: lease });
-    expect(state.sessions.get("s")).toMatchObject({
-      status: "cancelled",
-      errorCode: "killed",
-      errorMessage: "late",
+    expect(calls[0]).toMatchObject({
+      providerAccountLease: lease,
       exitCode: 2,
+      errorCode: "killed",
+      reason: "late",
       cliResumeRef: "resume",
-      worktreeId: null,
     });
-    expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
-    expect(state.sessions.get("s")).not.toHaveProperty("providerAccountLease");
+    expect(state.sessions.get("s")).toBeUndefined();
     expect(state.providerAccountLeases.size).toBe(0);
   });
 

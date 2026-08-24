@@ -118,12 +118,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           )
             return true;
           const status = result.conflict ? 409 : plane.getProviderAccount(id) ? 400 : 404;
-          send(res, status, {
-            error: {
-              code: status === 409 ? "CONFLICT" : status === 400 ? "VALIDATION_ERROR" : "NOT_FOUND",
-              message: result.error,
-            },
-          });
+          const code =
+            status === 409 ? "CONFLICT" : status === 400 ? "VALIDATION_ERROR" : "NOT_FOUND";
+          send(res, status, { error: { code, message: result.error } });
           return true;
         }
         if (
@@ -135,7 +132,8 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           }))
         )
           return true;
-        if (typeof body.maxConcurrentSessions === "number") await plane.requestAssignment();
+        if (typeof body.maxConcurrentSessions === "number" || typeof body.providerId === "string")
+          await plane.requestAssignment();
         send(res, 200, result.account);
         return true;
       } catch {

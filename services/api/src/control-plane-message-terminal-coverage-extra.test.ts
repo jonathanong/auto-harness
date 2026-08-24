@@ -135,12 +135,7 @@ describe("durable terminal message residual coverage", () => {
     });
     await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
     expect(input.completedAt).toBe(NOW);
-    expect(state.sessions.get("s")?.mainCheckoutLease).toBeUndefined();
-    expect(state.sessions.get("s")).toMatchObject({
-      errorCode: "cancelled",
-      errorMessage: "cancelled by operator",
-      cliResumeRef: "resume-existing",
-    });
+    expect(state.sessions.get("s")).toBeUndefined();
   });
 
   it("leaves a missing-account attempt untouched when its release loses", async () => {

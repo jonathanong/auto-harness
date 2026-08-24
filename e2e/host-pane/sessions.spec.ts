@@ -50,6 +50,30 @@ test.describe("host pane sessions", () => {
 
       try {
         await page.goto("/sessions");
+        const command = await request.post(`${API}/api/v1/commands`, {
+          data: {
+            name: `echo-prompt-${wtId}`,
+            argv: ["echo"],
+            appendPrompt: true,
+            providerId: null,
+          },
+        });
+        const { id: commandId } = (await command.json()) as { id: string };
+
+        const prompt = `hello-${wtId}\nhost pane second line`;
+        const created = await request.post(`${API}/api/v1/sessions`, {
+          data: {
+            repositoryId: repoId,
+            prompt,
+            target: { commandId },
+            timeout: 30,
+            requiredLabels: ["echo"],
+          },
+        });
+        const { id } = (await created.json()) as { id: string };
+        detailPage = await page.context().newPage();
+        await detailPage.goto(`/sessions/${encodeURIComponent(id)}`);
+        await expect(detailPage.getByTestId("session-detail-queue-deadline")).toBeVisible();
         await page.evaluate(
           ({ repositoryId, worktreeId, wsBase }) =>
             new Promise<void>((resolve, reject) => {
@@ -93,31 +117,6 @@ test.describe("host pane sessions", () => {
             }),
           { repositoryId: repoId, worktreeId: wtId, wsBase: WS_BASE },
         );
-
-        const command = await request.post(`${API}/api/v1/commands`, {
-          data: {
-            name: `echo-prompt-${wtId}`,
-            argv: ["echo"],
-            appendPrompt: true,
-            providerId: null,
-          },
-        });
-        const { id: commandId } = (await command.json()) as { id: string };
-
-        const prompt = `hello-${wtId}\nhost pane second line`;
-        const created = await request.post(`${API}/api/v1/sessions`, {
-          data: {
-            repositoryId: repoId,
-            prompt,
-            target: { commandId },
-            timeout: 30,
-            requiredLabels: ["echo"],
-          },
-        });
-        const { id } = (await created.json()) as { id: string };
-        detailPage = await page.context().newPage();
-        await detailPage.goto(`/sessions/${encodeURIComponent(id)}`);
-        await expect(detailPage.getByTestId("session-detail-queue-deadline")).toBeVisible();
         await request.post(`${API}/api/v1/scheduler/assign`);
         const assigned = await request.get(`${API}/api/v1/sessions/${id}`);
         const assignment = (await assigned.json()) as { attemptId: string; worktreeId: string };

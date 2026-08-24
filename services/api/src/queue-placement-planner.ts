@@ -256,7 +256,7 @@ export function targetIsAvailable(
 ): boolean {
   return [...state.worktrees.values()].some((worktree) => {
     if (!isSchedulableWorktree(state, worktree)) return false;
-    const route = resolveSessionTargetRouteAt(
+    return resolveSessionTargetRoutesAt(
       state,
       catalog,
       {
@@ -278,11 +278,10 @@ export function targetIsAvailable(
       worktree,
       nowMs,
       0,
-    );
-    return (
-      Boolean(route) &&
-      hostProviderAccountReady(state, worktree.hostId, route?.providerAccountId) &&
-      accountHasLeaseCapacity(state, route?.providerAccountId)
+    ).some(
+      (route) =>
+        hostProviderAccountReady(state, worktree.hostId, route.providerAccountId) &&
+        accountHasLeaseCapacity(state, route.providerAccountId),
     );
   });
 }

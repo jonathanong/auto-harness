@@ -399,5 +399,13 @@ describe("queue placement planner", () => {
       action: "assign",
       candidates: [{ route: { providerAccountId: "acct-b" } }],
     });
+    expect(
+      targetIsAvailable(
+        plane.state,
+        buildProviderCatalog(plane.state),
+        { providerId: "prov" },
+        Date.parse(NOW),
+      ),
+    ).toBe(true);
   });
 });

@@ -559,7 +559,7 @@ describe("durable control-plane transitions", () => {
     expect(terminal?.worktreeId).toBeNull();
     expect(terminal?.hostId).toBe("host-cancelled-late-terminal");
     expect(terminal?.cliResumeRef).toBe("cancelled-native-ref");
-    expect(plane.resumeSession("session-cancelled-late-terminal").ok).toBe(true);
+    expect((await plane.resumeSessionDurable("session-cancelled-late-terminal")).ok).toBe(true);
     expect(
       (
         await plane.handleHostMessageDurable({
