@@ -14,6 +14,20 @@ import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 
 type LiveWorktree = { status?: string; online?: boolean };
 
+function hasRepositoryExecConfig(repository: HostInventory["repositories"][number]): boolean {
+  return (
+    (repository.setupScript ?? "") !== "" ||
+    (repository.terminalHookScript ?? "") !== "" ||
+    repository.worktrees.some((worktree) => (worktree.setupScript ?? "") !== "")
+  );
+}
+
+function hasWorktreeExecConfig(
+  worktree: HostInventory["repositories"][number]["worktrees"][number] | undefined,
+) {
+  return (worktree?.setupScript ?? "") !== "";
+}
+
 export function HostRepositoriesSection({
   hostId,
   inventory,
@@ -98,20 +112,25 @@ export function HostRepositoriesSection({
                     repoName={namesById[repo.id] ?? repo.id}
                     canWriteExecConfig={canWriteExecConfig}
                   />
-                  <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
+                  {canWriteExecConfig || !hasRepositoryExecConfig(repo) ? (
+                    <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
+                  ) : null}
                 </div>
               </div>
             );
           }}
-          renderWorktreeActions={(wt) =>
-            canWrite ? (
+          renderWorktreeActions={(wt) => {
+            const inventoryWorktree = reposById[wt.repositoryId]?.worktrees.find(
+              (worktree) => worktree.id === wt.id,
+            );
+            return canWrite && (canWriteExecConfig || !hasWorktreeExecConfig(inventoryWorktree)) ? (
               <RemoveWorktreeButton
                 hostId={hostId}
                 repositoryId={wt.repositoryId}
                 worktreeId={wt.id}
               />
-            ) : null
-          }
+            ) : null;
+          }}
         />
       </section>
     </div>

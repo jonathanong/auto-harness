@@ -12,6 +12,7 @@ export default async function SettingsPage() {
   const id = hostId();
   const principal = await loadPrincipal();
   const canEditExecConfig = can(principal, "fleet:exec-config");
+  const canEditInventory = can(principal, "fleet:inventory");
   const { inventory, version } = await loadHostInventoryWithVersion(id);
 
   let providers: Provider[] = [];
@@ -91,6 +92,7 @@ export default async function SettingsPage() {
           allowedRoots={inventory.allowedRoots}
           requiredEnvironment={inventory.requiredEnvironment}
           canWriteExecConfig={canEditExecConfig}
+          canWriteInventory={canEditInventory}
         />
       </div>
 

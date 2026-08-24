@@ -145,11 +145,13 @@ describe("daemon registration", () => {
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
+    const inventoryChanges: string[] = [];
     await expect(
       applyDaemonInventory(
         config,
         next,
         {
+          noteInventoryChange: () => void inventoryChanges.push("changed"),
           ensureAll: async () => {
             throw new Error("worktree preparation failed");
           },
@@ -161,6 +163,7 @@ describe("daemon registration", () => {
       { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
     ]);
     expect(config.setupScript).toBe("old setup");
+    expect(inventoryChanges).toEqual(["changed", "changed"]);
   });
 
   it("restores the prior inventory when registration fails", async () => {
@@ -171,12 +174,22 @@ describe("daemon registration", () => {
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
+    const inventoryChanges: string[] = [];
     await expect(
-      applyDaemonInventory(config, next, { ensureAll: async () => {} } as never, async () => {
-        throw new Error("registration failed");
-      }),
+      applyDaemonInventory(
+        config,
+        next,
+        {
+          noteInventoryChange: () => void inventoryChanges.push("changed"),
+          ensureAll: async () => {},
+        } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+      ),
     ).rejects.toThrow("registration failed");
     expect(config.repositories).toEqual([]);
     expect(config).not.toHaveProperty("setupScript");
+    expect(inventoryChanges).toEqual(["changed", "changed"]);
   });
 });

@@ -113,4 +113,53 @@ describe("HostRepositoriesSection", () => {
     expect(field(view.container, "repo-link-repo-one").textContent).toBe("Catalog one");
     view.unmount();
   });
+
+  it("requires exec-config access to remove inventory that contains executable settings", () => {
+    const inventory = {
+      repositories: [
+        {
+          id: "plain-repo",
+          path: "/repos/plain",
+          defaultBranch: "main",
+          worktrees: [{ id: "plain-worktree", name: "plain", path: "/repos/plain/wt", labels: [] }],
+        },
+        {
+          id: "configured-repo",
+          path: "/repos/configured",
+          defaultBranch: "main",
+          setupScript: "pnpm install",
+          worktrees: [
+            {
+              id: "configured-worktree",
+              name: "configured",
+              path: "/repos/configured/wt",
+              labels: [],
+              setupScript: "pnpm build",
+            },
+          ],
+        },
+      ],
+      providerAccounts: [],
+    };
+    const view = mountForm(
+      <HostRepositoriesSection
+        hostId="host"
+        inventory={inventory}
+        namesById={{}}
+        unattachedCatalog={[]}
+        liveById={{}}
+        canWrite
+        canWriteExecConfig={false}
+      />,
+    );
+    expect(field(view.container, "repo-remove-plain-repo")).toBeInstanceOf(HTMLButtonElement);
+    expect(field(view.container, "worktree-remove-plain-worktree")).toBeInstanceOf(
+      HTMLButtonElement,
+    );
+    expect(view.container.querySelector('[data-pw="repo-remove-configured-repo"]')).toBeNull();
+    expect(
+      view.container.querySelector('[data-pw="worktree-remove-configured-worktree"]'),
+    ).toBeNull();
+    view.unmount();
+  });
 });

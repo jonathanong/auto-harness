@@ -93,6 +93,10 @@ export async function applyDaemonInventory(
     if (previousAllowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;
+    // Claims that started while the next inventory was visible must retry against
+    // the restored configuration too. Otherwise an async path check can return a
+    // claim for the rejected inventory after this rollback completes.
+    worktrees.noteInventoryChange?.();
     throw err;
   }
 }

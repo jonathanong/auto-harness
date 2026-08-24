@@ -125,6 +125,7 @@ describe("host-pane settings route", () => {
     });
     const readOnlyMarkup = render(await SettingsPage());
     expect(readOnlyMarkup).not.toContain('data-pw="host-setup-script"');
+    expect(readOnlyMarkup).not.toContain('data-pw="host-required-environment"');
 
     setApiTransportForTests(async (input) => {
       const url = String(input);
@@ -141,6 +142,24 @@ describe("host-pane settings route", () => {
     });
     const adminMarkup = render(await SettingsPage());
     expect(adminMarkup).toContain('data-pw="host-setup-script"');
+    expect(adminMarkup).not.toContain('data-pw="host-required-environment"');
+
+    setApiTransportForTests(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return Response.json({
+          username: "operator",
+          role: "operator",
+          kind: "user",
+          capabilities: ["fleet:inventory"],
+        });
+      }
+      if (url.endsWith("/inventory")) return Response.json({});
+      return Response.json({});
+    });
+    const inventoryMarkup = render(await SettingsPage());
+    expect(inventoryMarkup).not.toContain('data-pw="host-setup-script"');
+    expect(inventoryMarkup).toContain('data-pw="host-required-environment"');
   });
 });
 
