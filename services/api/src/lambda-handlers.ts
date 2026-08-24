@@ -43,9 +43,13 @@ type PlaneBundle = Awaited<ReturnType<typeof createControlPlane>>;
 type ManagementClient = Pick<ApiGatewayManagementApiClient, "send">;
 
 export type LambdaRuntime = {
-  cron: () => Promise<CronResult>;
+  cron: (context?: LambdaCronContext) => Promise<CronResult>;
   rest: (event: HttpApiEvent) => Promise<HttpApiResponse>;
   websocket: (event: WebSocketEvent) => Promise<{ statusCode: number }>;
+};
+
+export type LambdaCronContext = {
+  getRemainingTimeInMillis?: () => number;
 };
 
 export type CronResult = {
@@ -273,7 +277,7 @@ export async function createLambdaRuntime(
   });
 
   return {
-    async cron() {
+    async cron(context?: LambdaCronContext) {
       return runInvocation(async () => {
         // Bounded and resumable: never make Lambda initialization scan history.
         await created.plane.migrateSessionDrainActivityLedgerPage();
@@ -286,7 +290,10 @@ export async function createLambdaRuntime(
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
-        const archivesRetried = await created.plane.retryPendingArchivesDurable(25);
+        const archivesRetried = await created.plane.retryPendingArchivesDurable(
+          25,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
+        );
         const queuedForMetrics = await listQueuedSessionsDurableForMetric(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
@@ -420,8 +427,8 @@ export function createLambdaHandlers(
     return runtime;
   };
   return {
-    async cron() {
-      return (await getRuntime()).cron();
+    async cron(context?: LambdaCronContext) {
+      return (await getRuntime()).cron(context);
     },
     async rest(event) {
       return (await getRuntime()).rest(event);

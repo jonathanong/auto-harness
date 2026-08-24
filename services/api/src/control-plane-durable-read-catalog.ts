@@ -16,15 +16,19 @@ export async function listQueuedSessionsDurableForMetric(
 ): Promise<SessionRecord[]> {
   if (!state.storage)
     return [...state.sessions.values()].filter((session) => session.status === "queued");
-  return (
+  const candidates = (
     await Promise.all(
       [...Array(state.shardCount).keys()].map((shard) =>
         state.storage!.listSessionsByStatus("queued", shard),
       ),
     )
-  )
-    .flat()
-    .filter((session) => session.status === "queued");
+  ).flat();
+  // The status GSI can retain deleted/transitioned candidates. Read each candidate's
+  // base row consistently before it contributes to the operational queue-age metric.
+  const durable = await Promise.all(
+    candidates.map((candidate) => state.storage!.getSession(candidate.id, true)),
+  );
+  return durable.filter((session): session is SessionRecord => session?.status === "queued");
 }
 
 type CatalogMap<T> = Map<string, T>;

@@ -9,15 +9,10 @@ export async function archiveSessionLogs(
   // Only this session's log writes. Awaiting every pending log write made archive cost
   // scale with total output since process start rather than with the session's own.
   await Promise.all(state.pendingLogPersists.get(sessionId) ?? []);
-  const logs = state.storage
-    ? await state.storage.listLogs(sessionId)
-    : [...(state.logs.get(sessionId) ?? [])];
-  const body = logs
-    .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
-    .join("\n");
+  const body = await archiveBody(state, sessionId);
   const object: ArchiveObject = {
     key: `${state.archivePrefix}${sessionId}/logs.jsonl`,
-    body: body ? `${body}\n` : "",
+    body,
     contentType: "application/x-ndjson",
   };
   const pending: ArchiveMetadata = {
@@ -48,6 +43,7 @@ export async function archiveSessionLogs(
   if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
     const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
     if (committed) state.archives.set(object.key, complete);
+    else await restoreCompletedArchiveObject(state, object, sessionId);
   } else if (retryClaim) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
@@ -55,12 +51,34 @@ export async function archiveSessionLogs(
     if (current?.retryState === "processing" && current.retryOrder === retryClaim.retryOrder) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);
+    } else if (current?.status === "complete" && current.objectStored) {
+      await restoreCompletedArchiveObject(state, object, sessionId);
     }
   } else {
     if (state.storage) await state.storage.putArchive(complete);
     state.archives.set(object.key, complete);
   }
   return object;
+}
+
+async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {
+  const logs = state.storage
+    ? await state.storage.listLogs(sessionId)
+    : [...(state.logs.get(sessionId) ?? [])];
+  const body = logs
+    .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
+    .join("\n");
+  return body ? `${body}\n` : "";
+}
+
+/** A stale worker may finish its same-key upload after a newer fenced generation. */
+async function restoreCompletedArchiveObject(
+  state: ControlPlaneState,
+  object: ArchiveObject,
+  sessionId: string,
+): Promise<void> {
+  if (!state.archiveWriter) return;
+  await state.archiveWriter.putArchive({ ...object, body: await archiveBody(state, sessionId) });
 }
 
 /** Retry an interrupted object upload after the session transition already committed. */
@@ -82,7 +100,11 @@ function archiveSessionId(key: string): string | null {
 }
 
 /** Retry at most one bounded page of durable archive metadata, isolating failures per item. */
-export async function retryPendingArchives(state: ControlPlaneState, limit = 25): Promise<number> {
+export async function retryPendingArchives(
+  state: ControlPlaneState,
+  limit = 25,
+  shouldContinue: () => boolean = () => true,
+): Promise<number> {
   if (!state.archiveWriter) return 0;
   const storage = state.storage;
   const durableRetry = storage !== undefined && typeof storage.listPendingArchives === "function";
@@ -108,6 +130,7 @@ export async function retryPendingArchives(state: ControlPlaneState, limit = 25)
   }
   let retried = 0;
   for (const metadata of candidates) {
+    if (!shouldContinue()) break;
     const sessionId = archiveSessionId(metadata.key);
     if (!sessionId || !metadata.retryOrder) continue;
     const claimedOrder = `${state.now()}#${metadata.key}`;

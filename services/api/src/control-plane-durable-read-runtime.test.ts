@@ -289,9 +289,26 @@ describe("durable runtime read-through", () => {
     const stale = { ...session, id: "stale-queue", status: "running" as const };
     const state = createControlPlaneState({
       shardCount: 1,
-      storage: { listSessionsByStatus: async () => [durable, stale] } as never,
+      storage: {
+        listSessionsByStatus: async () => [durable, stale],
+        getSession: async (id: string) => (id === durable.id ? durable : stale),
+      } as never,
     });
     state.sessions.set(session.id, { ...session });
+
+    await expect(listQueuedSessionsDurableForMetric(state)).resolves.toEqual([durable]);
+  });
+
+  it("drops queued-GSI candidates whose durable base rows are gone", async () => {
+    const durable = { ...session, id: "durable-queue" };
+    const orphaned = { ...session, id: "orphaned-queue" };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatus: async () => [durable, orphaned],
+        getSession: async (id: string) => (id === durable.id ? durable : null),
+      } as never,
+    });
 
     await expect(listQueuedSessionsDurableForMetric(state)).resolves.toEqual([durable]);
   });

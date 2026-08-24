@@ -153,4 +153,57 @@ describe("archive retry state", () => {
       retryOrder: "new-claim",
     });
   });
+
+  it("restores the current logs when a stale same-key upload loses its completion fence", async () => {
+    let releaseUpload!: () => void;
+    const uploaded: string[] = [];
+    const uploadStarted = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async ({ body }) => {
+          uploaded.push(body);
+          if (uploaded.length === 1) await uploadStarted;
+        },
+      },
+    });
+    const key = "sessions/fenced-current/logs.jsonl";
+    state.logs.set("fenced-current", [
+      { timestamp: "1", stream: "stdout", content: "old" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "old-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const retry = retrySessionArchiveIfNeeded(state, "fenced-current", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    await Promise.resolve();
+    state.logs.set("fenced-current", [
+      { timestamp: "1", stream: "stdout", content: "new" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    releaseUpload();
+    await retry;
+
+    expect(uploaded).toEqual([
+      '{"timestamp":"1","stream":"stdout","content":"old"}\n',
+      '{"timestamp":"1","stream":"stdout","content":"new"}\n',
+    ]);
+  });
 });

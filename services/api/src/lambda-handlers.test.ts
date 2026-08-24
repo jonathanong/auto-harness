@@ -1023,6 +1023,14 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("stops archive retry work when Lambda time is reserved for Slack and metrics", async () => {
+    const fixture = runtimeFixture();
+    const retry = vi.spyOn(fixture.plane, "retryPendingArchivesDurable");
+    await (await fixture.runtime).cron({ getRemainingTimeInMillis: () => 9_000 });
+    expect(retry).toHaveBeenCalledWith(25, expect.any(Function));
+    expect((retry.mock.calls[0]?.[1] as (() => boolean) | undefined)?.()).toBe(false);
+  });
+
   it("posts through the management API and prunes gone connections", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);

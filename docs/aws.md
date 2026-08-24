@@ -184,22 +184,22 @@ timeout.
 
 ### Handler inventory
 
-| Group              | Triggers                                              | Responsibility                                                                   |
-| ------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Auth               | REST `/auth/*`                                        | Login/logout, users, service accounts, password change, `/auth/me`               |
-| Sessions           | REST `/sessions/*`                                    | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler   |
-| Repositories       | REST `/repositories/*`                                | CRUD repos                                                                       |
-| Worktrees          | REST `/worktrees/*`                                   | Read models (written by agents)                                                  |
-| Hosts              | REST `/hosts`, `/hosts/drain`, `/hosts/:id/inventory` | Connected hosts, drain state, and durable inventory                              |
-| Schedules          | REST `/schedules/*`                                   | CRUD + manual trigger                                                            |
-| Integrations       | REST `/integrations/*`                                | Slack config (KMS encrypt). GET may decrypt to probe `deliveryAvailable`.        |
-| Notifications      | Local worker + cron Lambda outbox drain               | Reconcile bounded session snapshots; claim `NotificationDeliveries` via HTTP     |
-| WS Connect         | `$connect`                                            | Validate token; store connection                                                 |
-| WS Disconnect      | `$disconnect`                                         | Cleanup + agent offline handling                                                 |
-| WS Message         | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                     |
-| Cron               | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox |
-| Scheduler          | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                        |
-| Archival           | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                  |
+| Group         | Triggers                                              | Responsibility                                                                                  |
+| ------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Auth          | REST `/auth/*`                                        | Login/logout, users, service accounts, password change, `/auth/me`                              |
+| Sessions      | REST `/sessions/*`                                    | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler                  |
+| Repositories  | REST `/repositories/*`                                | CRUD repos                                                                                      |
+| Worktrees     | REST `/worktrees/*`                                   | Read models (written by agents)                                                                 |
+| Hosts         | REST `/hosts`, `/hosts/drain`, `/hosts/:id/inventory` | Connected hosts, drain state, and durable inventory                                             |
+| Schedules     | REST `/schedules/*`                                   | CRUD + manual trigger                                                                           |
+| Integrations  | REST `/integrations/*`                                | Slack config (KMS encrypt). GET may decrypt to probe `deliveryAvailable`.                       |
+| Notifications | Local worker + cron Lambda outbox drain               | Reconcile bounded session snapshots; claim `NotificationDeliveries` via HTTP                    |
+| WS Connect    | `$connect`                                            | Validate token; store connection                                                                |
+| WS Disconnect | `$disconnect`                                         | Cleanup + agent offline handling                                                                |
+| WS Message    | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                                    |
+| Cron          | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox |
+| Scheduler     | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                                       |
+| Archival      | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                                 |
 
 Handlers share:
 
