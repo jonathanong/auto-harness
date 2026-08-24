@@ -67,7 +67,7 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
         };
 
   return (
-    <div className="space-y-3 rounded border border-border p-4" data-pw="connect-host-panel">
+    <div className="space-y-3 rounded-sm border border-border p-4" data-pw="connect-host-panel">
       <p className="text-sm font-medium">Connect this host</p>
       {commands === null ? (
         <p className="text-sm text-muted-foreground">Loading connect instructions…</p>
@@ -84,7 +84,7 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
           </p>
           <p className="text-sm font-medium">Foreground</p>
           <pre
-            className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs"
+            className="overflow-x-auto rounded-sm bg-muted p-3 font-mono text-xs"
             data-pw="connect-host-command"
           >
             {commands.start}
@@ -113,7 +113,7 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
             )}
           </div>
           <p className="text-sm font-medium">Persist across reboots</p>
-          <pre className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs">
+          <pre className="overflow-x-auto rounded-sm bg-muted p-3 font-mono text-xs">
             {commands.persist}
           </pre>
         </>

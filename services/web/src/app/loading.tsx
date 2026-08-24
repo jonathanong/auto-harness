@@ -5,7 +5,7 @@ export default function Loading() {
         Loading page
       </h2>
       <div className="space-y-4" aria-hidden="true">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+        <div className="h-8 w-48 animate-pulse rounded-sm bg-muted" />
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="h-28 animate-pulse rounded-lg border bg-muted/60" />

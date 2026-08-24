@@ -47,7 +47,7 @@ export function ScheduleEnabledToggle({ id, enabled }: { id: string; enabled: bo
         className={`relative h-5 w-9 rounded-full transition-colors ${currentEnabled ? "bg-green-600" : "bg-muted"}`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${currentEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`}
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${currentEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`}
         />
       </span>
       {pending ? "Saving…" : currentEnabled ? "Enabled" : "Disabled"}

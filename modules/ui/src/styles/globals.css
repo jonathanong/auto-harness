@@ -43,6 +43,11 @@
   ::file-selector-button {
     border-color: hsl(var(--border));
   }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 :root {

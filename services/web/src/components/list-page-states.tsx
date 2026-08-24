@@ -54,10 +54,10 @@ export function ListLoadingSkeleton({
       data-pw={`${selector}-loading`}
     >
       <span className="sr-only">Loading {label}…</span>
-      <div className="h-8 w-48 animate-pulse rounded bg-muted" aria-hidden="true" />
+      <div className="h-8 w-48 animate-pulse rounded-sm bg-muted" aria-hidden="true" />
       <div className="space-y-2 rounded-md border border-border p-4" aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
-          <div className="h-10 animate-pulse rounded bg-muted/70" key={index} />
+          <div className="h-10 animate-pulse rounded-sm bg-muted/70" key={index} />
         ))}
       </div>
     </div>
