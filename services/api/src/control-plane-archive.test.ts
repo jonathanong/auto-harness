@@ -205,6 +205,141 @@ describe("archive retry state", () => {
     );
   });
 
+  it("preserves an existing retry claim when deferring without a writer", async () => {
+    const state = createControlPlaneState();
+    const object = await archiveSessionLogs(
+      state,
+      "claimed",
+      { retryState: "processing", retryOrder: "claim-order" },
+      true,
+    );
+    expect(object.body).toBe("");
+    expect(state.archives.get("sessions/claimed/logs.jsonl")).toBeUndefined();
+  });
+
+  it("commits a durable retry generation and updates the in-memory mirror", async () => {
+    const completeArchiveRetry = vi.fn(async () => true);
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        getArchive: async () => ({
+          key: "sessions/durable-commit/logs.jsonl",
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        completeArchiveRetry,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "durable-commit", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(completeArchiveRetry).toHaveBeenCalledOnce();
+    expect(state.archives.get("sessions/durable-commit/logs.jsonl")).toMatchObject({
+      status: "complete",
+      objectStored: true,
+    });
+  });
+
+  it("writes a durable pending marker when an in-memory claim has storage but no retry fence", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const key = "sessions/storage-claim/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        getArchive: async () => ({
+          key,
+          contentType: "application/x-ndjson",
+          bodyBytes: 0,
+          status: "pending",
+          objectStored: false,
+          retryState: "processing",
+          retryOrder: "claim-order",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        listLogs: async () => [],
+        putArchive,
+      } as never,
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await retrySessionArchiveIfNeeded(state, "storage-claim", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ key }));
+  });
+
+  it("sweeps durable candidates and releases a failed claim", async () => {
+    const releaseArchiveRetry = vi.fn(async () => undefined);
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("upload failed");
+        },
+      },
+      storage: {
+        listPendingArchives: async () => [
+          { key: "sessions/durable-failed/logs.jsonl", objectStored: false, retryOrder: "one" },
+        ],
+        claimArchiveRetry: async () => true,
+        releaseArchiveRetry,
+        getArchive: async () => null,
+        listLogs: async () => [],
+      } as never,
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(releaseArchiveRetry).toHaveBeenCalledOnce();
+  });
+
+  it("returns zero when the durable retry index is unavailable", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => undefined },
+      storage: {
+        listPendingArchives: async () => {
+          throw new Error("index unavailable");
+        },
+      } as never,
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+  });
+
+  it("does not release a claim when the release operation itself fails", async () => {
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("upload failed");
+        },
+      },
+      storage: {
+        listPendingArchives: async () => [
+          { key: "sessions/release-failed/logs.jsonl", objectStored: false, retryOrder: "one" },
+        ],
+        claimArchiveRetry: async () => true,
+        releaseArchiveRetry: async () => {
+          throw new Error("release failed");
+        },
+        getArchive: async () => null,
+        listLogs: async () => [],
+      } as never,
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+  });
+
   it("does not rewrite a newer pending generation when a stale upload loses its fence", async () => {
     let releaseUpload!: () => void;
     const uploaded: string[] = [];

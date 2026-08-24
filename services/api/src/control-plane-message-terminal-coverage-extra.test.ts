@@ -118,6 +118,47 @@ describe("durable terminal message residual coverage", () => {
     expect(state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
   });
 
+  it("cleans up a timed-out providerless host assignment", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set(
+      "s",
+      row({
+        status: "timed_out",
+        hostId: null,
+        timedOutHostId: "host",
+        providerAccountLease: undefined,
+      }),
+    );
+    let released = 0;
+    setDurableReadStorage(state, {
+      releaseTimedOutHostAssignment: async () => (released++, true),
+    });
+    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    expect(released).toBe(1);
+    expect(state.sessions.get("s")).not.toHaveProperty("timedOutHostId");
+  });
+
+  it("falls back to local timed-out lease cleanup when durable provider cleanup is unavailable", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const lease = {
+      concurrencyId: "provider-lease:account:0",
+      providerAccountId: "account",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    state.sessions.set("s", row({ status: "timed_out", providerAccountLease: lease }));
+    state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId: "s",
+      attemptId: "attempt",
+      slot: 0,
+      hostId: "host",
+      providerAccountId: "account",
+    });
+    setDurableReadStorage(state, {});
+    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    expect(state.sessions.get("s")).not.toHaveProperty("providerAccountLease");
+  });
+
   it("finishes a leased scheduled attempt with every optional report field", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     state.sessions.set("s", row({ concurrencyId: "concurrency" }));
@@ -183,7 +224,7 @@ describe("durable terminal message residual coverage", () => {
 
   it("leaves a missing-account attempt untouched when its release loses", async () => {
     const state = createControlPlaneState({ now: () => NOW });
-    const session = row();
+    const session = row({ hostAssignmentLease: { hostId: "host" } });
     state.sessions.set("s", session);
     setDurableReadStorage(state, {
       getProviderAccount: async () => null,
@@ -196,7 +237,7 @@ describe("durable terminal message residual coverage", () => {
   it("handles both losing and successful provider cooldown writes without a message", async () => {
     for (const won of [false, true]) {
       const state = createControlPlaneState({ now: () => NOW });
-      const session = row();
+      const session = row({ hostAssignmentLease: { hostId: "host" } });
       state.sessions.set("s", session);
       state.providerAccounts.set("account", {
         id: "account",
@@ -213,6 +254,23 @@ describe("durable terminal message residual coverage", () => {
       await handleHostMessageDurable(state, message());
       expect(state.sessions.get("s")?.status).toBe(won ? "queued" : "running");
     }
+  });
+
+  it("keeps a providerless main-checkout fallback unchanged when release loses", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = row({
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    });
+    state.sessions.set("s", session);
+    setDurableReadStorage(state, { releaseMainCheckoutSession: async () => false });
+    await handleHostMessageDurable(state, message({ errorCode: "usage_limit" }));
+    expect(state.sessions.get("s")).toEqual(session);
   });
 
   it("does not load a provider account for a late cancelled usage_limit", async () => {

@@ -273,4 +273,74 @@ describe("DynamoDB Local main-checkout release", () => {
       releaseMainCheckoutSession({ ...ctx, tables: { ...tables, hostLocks: "missing" } }, opts),
     ).rejects.toThrow();
   });
+
+  it("decrements the advertised host count while preserving timeout-owned leases", async () => {
+    const opts = {
+      sessionId: "timeout-preserved",
+      hostId: "timeout-host",
+      repositoryId: "timeout-repo",
+      connectionId: "timeout-connection",
+      status: "timed_out",
+      queueShard: 0,
+      attemptId: "timeout-attempt",
+      hostAssignmentLease: { hostId: "timeout-host" },
+      providerAccountLease: {
+        concurrencyId: "provider-lease:account:0",
+        providerAccountId: "account",
+        slot: 0,
+        attemptId: "timeout-attempt",
+      },
+      preserveHostAssignmentLease: true,
+      preserveProviderAccountLease: true,
+    };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: opts.hostId,
+          assignmentCount: 2,
+          mainCheckoutLeases: {
+            [opts.repositoryId]: { sessionId: opts.sessionId, connectionId: opts.connectionId },
+          },
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessions,
+        Item: {
+          id: opts.sessionId,
+          status: "running",
+          statusShard: "running#0",
+          hostId: opts.hostId,
+          assignmentConnectionId: opts.connectionId,
+          mainCheckoutLease: true,
+          attemptId: opts.attemptId,
+          worktreeId: null,
+          hostAssignmentLease: opts.hostAssignmentLease,
+          providerAccountLease: opts.providerAccountLease,
+        },
+      }),
+    );
+
+    expect(await releaseMainCheckoutSession(ctx, opts)).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: opts.hostId } }),
+        )
+      ).Item,
+    ).toMatchObject({ assignmentCount: 1, mainCheckoutLeases: {} });
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      status: "timed_out",
+      hostAssignmentLease: opts.hostAssignmentLease,
+      providerAccountLease: opts.providerAccountLease,
+    });
+  });
 });

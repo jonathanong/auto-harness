@@ -604,6 +604,23 @@ describe("session-transition planner", () => {
     ).toEqual({ hostId: "host" });
     expect(
       finishSessionOptsFromPlan(
+        session({
+          status: "queued",
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+        }),
+        { effects: [{ type: "finish", status: "failed", completedAt: NOW }] },
+        { attemptId: "attempt" },
+      ).hostAssignmentLease,
+    ).toBeUndefined();
+    expect(
+      finishSessionOptsFromPlan(
         row,
         { effects: [{ type: "finish", status: "completed", completedAt: NOW }] },
         { attemptId: "attempt" },
@@ -708,6 +725,12 @@ describe("session-transition planner", () => {
         { now: NOW, attemptId: "attempt" },
       ).errorMessage,
     ).toBeUndefined();
+    expect(
+      requeueUsageLimitedSessionOptsFromPlan(session(), cooldownPlan, {
+        now: NOW,
+        attemptId: "attempt",
+      }),
+    ).not.toHaveProperty("hostAssignmentLease");
 
     const suppressPlan: SessionTransitionPlan = {
       effects: [

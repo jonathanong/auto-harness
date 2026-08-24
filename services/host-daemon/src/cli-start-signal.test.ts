@@ -205,4 +205,16 @@ describe("runCli start signal handling", () => {
       "child environment exceeds runtime report limits (512 names, 128 characters per name)",
     ]);
   });
+
+  it("reports non-Error start failures safely", async () => {
+    const errors: string[] = [];
+    const deps = minimalDeps({
+      error: (message) => errors.push(message),
+      ensureReady: async () => {
+        throw "string start failure";
+      },
+    });
+    await expect(runCli(["node", "x", "start"], {}, deps)).resolves.toBe(1);
+    expect(errors).toEqual(["string start failure"]);
+  });
 });

@@ -16,6 +16,8 @@ import {
   releaseProviderAccountLease,
   releaseProviderAccountLeaseForSession,
   releaseProviderAccountLeaseLocal,
+  releaseTimedOutProviderAccountLease,
+  releaseTimedOutProviderAccountLeasesForHost,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -936,5 +938,150 @@ describe("provider account execution-profile leases", () => {
       }),
     ).toEqual({ hostAssignmentLease: { hostId: "host" } });
     expect(providerAccountLeaseWriteOpts({ hostId: "host", status: "running" })).toEqual({});
+  });
+
+  it("keeps cancelled legacy routes and explicit timeout host claims in capacity accounting", () => {
+    const state = createControlPlaneState();
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "provider",
+      label: "account",
+      maxConcurrentSessions: 2,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providerAccountLeases.set("provider-lease:other:0", {
+      sessionId: "other",
+      attemptId: "other-attempt",
+      slot: 0,
+      hostId: "other-host",
+      providerAccountId: "other",
+    });
+    state.sessions.set("cancelled", {
+      id: "cancelled",
+      repositoryId: "repo",
+      prompt: "p",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetLabels: [],
+      queueTtlSeconds: 1,
+      queueExpiresAt: NOW,
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "cancelled",
+      queueShard: 0,
+      createdAt: NOW,
+      hostId: "host",
+      resolvedRoute: { providerAccountId: "acct" },
+    });
+
+    expect(accountHasLeaseCapacityOverCap(state, "acct")).toBe(false);
+    expect(accountHasLeaseCapacityFromReadModel(state, "acct")).toBe(true);
+    expect(
+      providerAccountLeaseWriteOpts({
+        hostAssignmentLease: { hostId: "explicit-host" },
+      }),
+    ).toEqual({ hostAssignmentLease: { hostId: "explicit-host" } });
+    expect(
+      providerAccountLeaseWriteOpts({
+        providerAccountLease: {
+          concurrencyId: "provider-lease:acct:0",
+          providerAccountId: "acct",
+          slot: 0,
+          attemptId: "attempt",
+        },
+        timedOutHostId: "timed-out-host",
+      }),
+    ).toMatchObject({ hostAssignmentLease: { hostId: "timed-out-host" } });
+  });
+
+  it("cleans timeout leases through each local and durable host-assignment path", async () => {
+    const state = createControlPlaneState();
+    const noLease = { id: "no-lease", attemptId: "attempt", timedOutHostId: "host" } as never;
+    await expect(releaseTimedOutProviderAccountLease(state, noLease)).resolves.toBe(true);
+    expect(noLease).not.toHaveProperty("timedOutHostId");
+
+    const localLease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: "local-attempt",
+    };
+    state.providerAccountLeases.set(localLease.concurrencyId, {
+      sessionId: "local",
+      attemptId: localLease.attemptId,
+      slot: localLease.slot,
+      hostId: "host",
+      providerAccountId: localLease.providerAccountId,
+    });
+    const local = {
+      id: "local",
+      providerAccountLease: localLease,
+      timedOutHostId: "host",
+    } as never;
+    await expect(releaseTimedOutProviderAccountLease(state, local)).resolves.toBe(true);
+    expect(local).not.toHaveProperty("providerAccountLease");
+
+    const durableCalls: unknown[] = [];
+    state.storage = {
+      releaseTimedOutProviderAccountLease: async (opts: unknown) => {
+        durableCalls.push(opts);
+        return true;
+      },
+    } as never;
+    for (const [id, attemptId, hostAssignmentLease, timedOutHostId] of [
+      ["explicit", "explicit-attempt", { hostId: "lease-host" }, "timed-out-host"],
+      ["timed-out", "timed-out-attempt", undefined, "timed-out-host"],
+      ["unassigned", "unassigned-attempt", undefined, undefined],
+    ] as const) {
+      const lease = {
+        concurrencyId: `provider-lease:acct:${id}`,
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId,
+      };
+      state.providerAccountLeases.set(lease.concurrencyId, {
+        sessionId: id,
+        attemptId,
+        slot: 0,
+        hostId: "host",
+        providerAccountId: "acct",
+      });
+      await expect(
+        releaseTimedOutProviderAccountLease(state, {
+          id,
+          providerAccountLease: lease,
+          ...(hostAssignmentLease ? { hostAssignmentLease } : {}),
+          timedOutHostId,
+        } as never),
+      ).resolves.toBe(true);
+    }
+    expect(durableCalls[0]).toEqual(
+      expect.objectContaining({ hostAssignmentLease: { hostId: "lease-host" } }),
+    );
+    expect(durableCalls[1]).toEqual(
+      expect.objectContaining({ hostAssignmentLease: { hostId: "timed-out-host" } }),
+    );
+    expect(durableCalls[2]).not.toHaveProperty("hostAssignmentLease");
+  });
+
+  it("releases only matching timed-out host leases", async () => {
+    const state = createControlPlaneState();
+    state.sessions.set("other", {
+      id: "other",
+      status: "timed_out",
+      timedOutHostId: "other",
+    } as never);
+    state.sessions.set("matching", {
+      id: "matching",
+      status: "timed_out",
+      timedOutHostId: "host",
+    } as never);
+
+    await expect(releaseTimedOutProviderAccountLeasesForHost(state, "host")).resolves.toEqual([
+      "matching",
+    ]);
   });
 });
