@@ -71,6 +71,30 @@ describe("EditWorktreeForm", () => {
     view.unmount();
   });
 
+  it("locks the worktree path for inherited execution config without access", async () => {
+    const api = createApiFake(
+      json({ ...inventory, version: 4 }),
+      new Response(null, { status: 204 }),
+    );
+    const view = mountForm(
+      <EditWorktreeForm
+        hostId="host/one"
+        repositoryId="repo-1"
+        worktree={worktree}
+        hasInheritedExecutionConfig
+      />,
+    );
+    press(field(view.container, "worktree-edit-open"));
+    expect(field<HTMLInputElement>(document, "worktree-edit-path").disabled).toBe(true);
+    setValue(field(document, "worktree-edit-labels"), "ci");
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(api.requests[1]?.[1]?.body))).toMatchObject({
+      repositories: [{ worktrees: [{ id: "worktree-1", path: "/repo/feature", labels: ["ci"] }] }],
+    });
+    view.unmount();
+  });
+
   it("saves trimmed paths and labels, preserving worktree settings", async () => {
     const api = createApiFake(
       json({ ...inventory, version: 4 }),

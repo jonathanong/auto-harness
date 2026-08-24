@@ -104,6 +104,7 @@ export function HostRepositoriesSection({
                   hostId={hostId}
                   repo={repo}
                   canWriteExecConfig={canWriteExecConfig}
+                  hasInheritedSetupScript={(inventory.setupScript ?? "") !== ""}
                 />
                 <div className="flex gap-2">
                   <AddWorktreeForm

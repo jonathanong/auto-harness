@@ -102,6 +102,10 @@ export default async function WorktreeDetailPage({
   }
   const hostRepository = inventory?.repositories.find((r) => r.id === worktree.repositoryId);
   const hostWorktree = hostRepository?.worktrees.find((w) => w.id === worktree.id);
+  const hasInheritedExecutionConfig =
+    (inventory?.setupScript ?? "") !== "" ||
+    (hostRepository?.setupScript ?? "") !== "" ||
+    (hostRepository?.terminalHookScript ?? "") !== "";
 
   const { providersById, providerAccountsById, commandsById, catalog } =
     await fetchProviderCatalogLookups();
@@ -194,6 +198,7 @@ export default async function WorktreeDetailPage({
                       repositoryId={worktree.repositoryId}
                       worktree={hostWorktree}
                       canWriteExecConfig={canWriteExecConfig}
+                      hasInheritedExecutionConfig={hasInheritedExecutionConfig}
                     />
                   ) : null}
                 </div>

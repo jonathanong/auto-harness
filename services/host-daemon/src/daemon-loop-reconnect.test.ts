@@ -282,6 +282,42 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("keeps blocked roots out of pending hooks until the candidate registration succeeds", async () => {
+    const { root, config, cleanup } = await makeRepo();
+    try {
+      const transport = new DelayedRegistrationTransport();
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const worktrees = (
+        loop as unknown as {
+          worktrees: { claim(repositoryId: string, worktreeId: string): Promise<unknown> };
+        }
+      ).worktrees;
+      const claim = (await worktrees.claim("demo", "wt-1")) as {
+        currentHookTarget(): Promise<unknown>;
+      };
+      await loop.blockAssignmentsForInvalidInventory();
+      transport.holdRegistrations = true;
+
+      const applying = loop.applyInventory({ ...config, allowedRoots: [root] });
+      await vi.waitFor(() =>
+        expect(transport.sent.filter((message) => message.type === "host:register")).toHaveLength(
+          3,
+        ),
+      );
+      await expect(claim.currentHookTarget()).resolves.toBeNull();
+
+      transport.releaseRegistration();
+      await applying;
+      await expect(claim.currentHookTarget()).resolves.toMatchObject({
+        repository: { id: "demo" },
+      });
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("retries the policy drain registration after a failed publish", async () => {
     const { config, cleanup } = await makeRepo();
     try {

@@ -29,17 +29,25 @@ export function HostRepoSettingsForm({
   hostId,
   repo,
   canWriteExecConfig = false,
+  hasInheritedSetupScript = false,
   mutate = mutateInventory,
 }: {
   hostId: string;
   repo: HostRepository;
   canWriteExecConfig?: boolean;
+  /** A host setup script also executes in this repository's checkout. */
+  hasInheritedSetupScript?: boolean;
   /** Inventory persistence boundary; injectable for isolated component tests. */
   mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const pathEditingBlocked =
+    !canWriteExecConfig &&
+    (hasInheritedSetupScript ||
+      (repo.setupScript ?? "") !== "" ||
+      (repo.terminalHookScript ?? "") !== "");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -62,7 +70,9 @@ export function HostRepoSettingsForm({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const path = String(fd.get("path") ?? "").trim();
+            // Disabled controls are omitted from FormData. Keep the stored path
+            // when executable configuration makes its checkout privileged.
+            const path = pathEditingBlocked ? repo.path : String(fd.get("path") ?? "").trim();
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
@@ -160,7 +170,14 @@ export function HostRepoSettingsForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor={`path-${repo.id}`} tip="Absolute path on this host">
+            <Label
+              htmlFor={`path-${repo.id}`}
+              tip={
+                pathEditingBlocked
+                  ? "Changing this path requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+                  : "Absolute path on this host"
+              }
+            >
               Absolute Path
             </Label>
             <Input
@@ -168,6 +185,7 @@ export function HostRepoSettingsForm({
               name="path"
               defaultValue={repo.path}
               required
+              disabled={pathEditingBlocked}
               data-pw={`repo-settings-path-${repo.id}`}
             />
           </div>

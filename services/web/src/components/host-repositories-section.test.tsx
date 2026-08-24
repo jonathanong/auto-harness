@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm } from "./form-test-helpers.tsx";
+import { field, mountForm, press } from "./form-test-helpers.tsx";
 import { HostRepositoriesSection } from "./host-repositories-section.tsx";
 
 describe("HostRepositoriesSection", () => {
@@ -160,6 +160,34 @@ describe("HostRepositoriesSection", () => {
     expect(
       view.container.querySelector('[data-pw="worktree-remove-configured-worktree"]'),
     ).toBeNull();
+    view.unmount();
+  });
+
+  it("passes inherited host setup to the repository path gate", () => {
+    const view = mountForm(
+      <HostRepositoriesSection
+        hostId="host"
+        inventory={{
+          setupScript: "pnpm install",
+          repositories: [
+            {
+              id: "repo-one",
+              path: "/repos/one",
+              defaultBranch: "main",
+              worktrees: [],
+            },
+          ],
+          providerAccounts: [],
+        }}
+        namesById={{}}
+        unattachedCatalog={[]}
+        liveById={{}}
+        canWrite
+        canWriteExecConfig={false}
+      />,
+    );
+    press(field(view.container, "repo-settings-open-repo-one"));
+    expect(field<HTMLInputElement>(document, "repo-settings-path-repo-one").disabled).toBe(true);
     view.unmount();
   });
 });

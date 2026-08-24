@@ -70,6 +70,27 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
+  it("locks the repository path for inherited setup without exec-config access", async () => {
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm
+        hostId="host"
+        repo={repo}
+        hasInheritedSetupScript
+        mutate={persistence.mutate}
+      />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    expect(field<HTMLInputElement>(document, "repo-settings-path-repo-1").disabled).toBe(true);
+    setValue(field(document, "repo-settings-branch-repo-1"), "release");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(persistence.current()).toMatchObject({
+      repositories: [{ id: "repo-1", path: "/old/repo", defaultBranch: "release" }],
+    });
+    view.unmount();
+  });
+
   it("rejects a relative terminal hook before writing inventory", () => {
     const persistence = inMemoryInventory(inventory);
     const view = mountForm(

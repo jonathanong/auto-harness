@@ -99,13 +99,17 @@ export class WorktreeManager {
       : (this.config.allowedRoots ?? []);
   }
 
-  async ensureAll(): Promise<void> {
-    if (this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
+  async ensureAll(candidate?: DaemonConfig): Promise<void> {
+    if (!candidate && this.allowedRootsPolicyActive && this.policyAllowedRoots.length === 0) {
       throw new Error("host inventory policy blocks execution");
     }
-    const roots = this.effectiveAllowedRoots();
-    await assertDaemonPathsAllowed({ ...this.config, allowedRoots: roots });
-    for (const repo of this.config.repositories) {
+    const config = candidate ?? this.config;
+    // Candidate validation must not replace an active retained policy: pending
+    // terminal hooks continue to read `this.config` and `effectiveAllowedRoots()`
+    // until the candidate registration has succeeded.
+    const roots = candidate?.allowedRoots ?? this.effectiveAllowedRoots();
+    await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
+    for (const repo of config.repositories) {
       const repositoryPath = await assertPathWithinAllowedRoots(repo.path, roots);
       await this.git.ensureRepo(repositoryPath);
       for (const wt of repo.worktrees) {

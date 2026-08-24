@@ -122,8 +122,13 @@ describe("daemon registration", () => {
     expect(messages).toEqual([]);
   });
 
-  it("applies the next repositories, ensures worktrees, then registers", async () => {
-    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+  it("keeps the live inventory intact while validating and registering the candidate", async () => {
+    const config = {
+      hostId: "h",
+      setupScript: "old setup",
+      repositories: [{ id: "old", path: "/old", defaultBranch: "main", worktrees: [] }],
+      providerAccounts: [],
+    };
     const next = {
       ...config,
       setupScript: "source ~/.zshrc",
@@ -133,8 +138,23 @@ describe("daemon registration", () => {
     await applyDaemonInventory(
       config,
       next,
-      { ensureAll: async () => void calls.push("ensure") } as never,
-      async () => void calls.push("register"),
+      {
+        ensureAll: async (candidate) => {
+          calls.push("ensure");
+          expect(candidate).toBe(next);
+          expect(config).toMatchObject({
+            setupScript: "old setup",
+            repositories: [{ id: "old", path: "/old" }],
+          });
+        },
+      } as never,
+      async (candidate) => {
+        calls.push("register");
+        expect(candidate).toBe(next);
+        expect(config.repositories).toEqual([
+          { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
+        ]);
+      },
     );
     expect(config.repositories).toEqual(next.repositories);
     expect(config).toMatchObject({ setupScript: "source ~/.zshrc" });

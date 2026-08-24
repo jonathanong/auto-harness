@@ -174,17 +174,24 @@ export class DaemonLoop {
     const previousRootsPolicy = this.worktrees.getAllowedRootsPolicy();
     // Validate the candidate inventory against its own roots. The prior fence
     // remains represented by `inventoryPolicyBlocked`, which refuses new
-    // assignments until the replacement inventory has registered successfully.
-    this.worktrees.clearAllowedRootsPolicy();
+    // assignments and blocks pending hooks until replacement registration succeeds.
     try {
-      await applyDaemonInventory(this.config, next, this.worktrees, async () => {
-        // Advertise the validated inventory as available while retaining the local
-        // assignment fence until that registration has been durably handed off.
-        // A peer can otherwise queue an assignment while send() is still pending.
-        await this.register({ inventoryPolicyBlocked: false });
-        this.inventoryPolicyBlocked = false;
-        this.inventoryPolicyDrainPublished = false;
-      });
+      await applyDaemonInventory(
+        this.config,
+        next,
+        this.worktrees,
+        async (candidate) => {
+          // Advertise the validated inventory as available while retaining the local
+          // assignment fence until that registration has been durably handed off.
+          // A peer can otherwise queue an assignment while send() is still pending.
+          await this.register({ config: candidate, inventoryPolicyBlocked: false });
+        },
+        () => {
+          this.worktrees.clearAllowedRootsPolicy();
+          this.inventoryPolicyBlocked = false;
+          this.inventoryPolicyDrainPublished = false;
+        },
+      );
     } catch (error) {
       this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
       this.inventoryPolicyBlocked = wasPolicyBlocked;
@@ -207,13 +214,14 @@ export class DaemonLoop {
   }
   async register({
     inventoryPolicyBlocked = this.inventoryPolicyBlocked,
-  }: { inventoryPolicyBlocked?: boolean } = {}): Promise<void> {
+    config = this.config,
+  }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
     const readiness = providerAccountReadiness(this.executionProfiles);
     const runningAttempts = [...this.inflight.values()]
       .filter((session) => session.acknowledged && !session.controller.signal.aborted)
       .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
     await registerDaemon(
-      this.config,
+      config,
       this.transport,
       runningAttempts.map((attempt) => attempt.sessionId),
       this.drainRequested || this.draining || inventoryPolicyBlocked,

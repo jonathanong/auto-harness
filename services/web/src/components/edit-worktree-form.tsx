@@ -23,16 +23,21 @@ export function EditWorktreeForm({
   repositoryId,
   worktree,
   canWriteExecConfig = false,
+  hasInheritedExecutionConfig = false,
 }: {
   hostId: string;
   repositoryId: string;
   worktree: HostWorktree;
   canWriteExecConfig?: boolean;
+  /** Host/repository setup or terminal hooks execute in this worktree's checkout. */
+  hasInheritedExecutionConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [setupScriptEdited, setSetupScriptEdited] = useState(false);
+  const pathEditingBlocked =
+    !canWriteExecConfig && (hasInheritedExecutionConfig || (worktree.setupScript ?? "") !== "");
 
   const handleOpenChange = (nextOpen: boolean): void => {
     setOpen(nextOpen);
@@ -60,7 +65,9 @@ export function EditWorktreeForm({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const path = String(fd.get("path") ?? "").trim();
+            // Disabled controls are omitted from FormData. Keep the stored path
+            // when an inherited executable action makes its cwd privileged.
+            const path = pathEditingBlocked ? worktree.path : String(fd.get("path") ?? "").trim();
             const labels = String(fd.get("labels") ?? "")
               .split(",")
               .map((s) => s.trim())
@@ -99,7 +106,14 @@ export function EditWorktreeForm({
           }}
         >
           <div className="space-y-1">
-            <Label htmlFor="path" tip="Absolute path on this host">
+            <Label
+              htmlFor="path"
+              tip={
+                pathEditingBlocked
+                  ? "Changing this path requires fleet:exec-config because setup or a terminal hook runs in its checkout."
+                  : "Absolute path on this host"
+              }
+            >
               Absolute Path
             </Label>
             <Input
@@ -107,6 +121,7 @@ export function EditWorktreeForm({
               name="path"
               defaultValue={worktree.path}
               required
+              disabled={pathEditingBlocked}
               data-pw="worktree-edit-path"
             />
           </div>
