@@ -342,9 +342,10 @@ wrong backend — see [`scripts/worktree-e2e-env.mts`](../scripts/worktree-e2e-e
 which derives a deterministic, worktree-specific port block and DynamoDB container name
 from the worktree's directory name, so the same worktree always gets the same ports (safe
 to reuse across runs). A hash of the directory name is only the _starting_ candidate — it
-probes those ports for real occupancy (and restarts its own container if that container
-exists but is stopped) before using them, walking to the next candidate block on a genuine
-collision rather than assuming the hash alone is collision-free:
+probes those ports for real occupancy before using them. It restarts its own container when
+stopped and recreates it when the configured DynamoDB Local image no longer matches the pinned
+version, while walking to the next candidate block on a genuine collision rather than assuming
+the hash alone is collision-free:
 
 ```bash
 # Print the env for this worktree (source it, or read the values off individually):
