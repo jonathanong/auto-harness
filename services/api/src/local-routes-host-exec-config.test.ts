@@ -175,11 +175,14 @@ describe("host exec-config isolation", () => {
         },
         maintainer,
       ),
-    ).toMatchObject({ status: 200 });
+    ).toMatchObject({
+      status: 403,
+      json: { error: { code: "FORBIDDEN", message: expect.stringContaining("fleet:exec-config") } },
+    });
     const stored = await plane.getHostInventoryDurable("host-1");
     expect(stored?.setupScript).toBe("source ~/.zshrc");
     expect(stored?.allowedRoots).toEqual(["/opt/harness"]);
-    expect(stored?.repositories[0]?.path).toBe("/opt/harness/repo-new");
+    expect(stored?.repositories[0]?.path).toBe("/opt/harness/repo");
     expect(stored?.repositories[0]?.setupScript).toBe("pnpm install");
     expect(stored?.repositories[0]?.terminalHookScript).toBe("/opt/harness/hook.sh");
     expect(stored?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm build");
