@@ -4,7 +4,7 @@ import { apiFetch, apiFetchAllPages } from "../lib/client-api.ts";
 
 import type { UserRole } from "@auto-harness/shared";
 
-export type ServiceAccountRole = UserRole;
+type ServiceAccountRole = UserRole;
 
 export type ServiceAccount = {
   id: string;

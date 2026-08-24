@@ -40,7 +40,7 @@ export type WebhookDestinationRef = {
   configurationVersion: number;
 };
 
-export type WebhookDeliveryState = "pending" | "leased" | "delivered" | "dead";
+type WebhookDeliveryState = "pending" | "leased" | "delivered" | "dead";
 
 export type DurableWebhookDelivery = {
   id: string;
