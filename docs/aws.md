@@ -230,28 +230,28 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                  | PK                | SK             | GSIs                    | Primary access patterns                                              |
-| ---------------------- | ----------------- | -------------- | ----------------------- | -------------------------------------------------------------------- |
-| Users                  | `id`              | —              | `username`              | Login by username                                                    |
-| Repositories           | `id`              | —              | —                       | CRUD by id; bounded strongly consistent catalog pages                |
-| Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees                                            |
-| Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                                                  |
-| HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock                                     |
-| ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock                                         |
-| SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes |
-| Schedules              | `id`              | —              | `repositoryId-id`       | CRUD by id; count schedules by repository                            |
-| Connections            | `connectionId`    | —              | —                       | Connection state                                                     |
-| Archives               | `key`             | —              | —                       | Archive metadata                                                     |
-| HostInventories        | `hostId`          | —              | —                       | Host inventory                                                       |
-| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query                                       |
-| RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL                                   |
-| ViewerTickets          | `ticketHash`      | —              | —                       | Hashed one-time viewer tickets + TTL                                 |
-| Providers              | `id`              | —              | —                       | Provider catalog                                                     |
-| ProviderAccounts       | `id`              | —              | —                       | Provider account catalog                                             |
-| Commands               | `id`              | —              | —                       | Command catalog                                                      |
-| Integrations           | `id`              | —              | —                       | Encrypted integration configuration                                  |
-| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox                                       |
-| WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry                                    |
+| Table                  | PK                | SK             | GSIs                                              | Primary access patterns                                                 |
+| ---------------------- | ----------------- | -------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| Users                  | `id`              | —              | `username`                                        | Login by username                                                       |
+| Repositories           | `id`              | —              | —                                                 | CRUD by id; bounded strongly consistent catalog pages                   |
+| Worktrees              | `id`              | —              | `repositoryId-id`                                 | List repository worktrees                                               |
+| Sessions               | `id`              | —              | `statusShard-createdAt`, `statusShard-queueOrder` | Sharded queue query; `queueOrder` is inverted priority, `createdAt`, id |
+| HostLocks              | `hostId`          | —              | —                                                 | Conditional host assignment lock                                        |
+| ConcurrencyLocks       | `concurrencyId`   | —              | —                                                 | Conditional concurrency lock                                            |
+| SessionLogs            | `sessionId`       | `timestampSeq` | —                                                 | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes    |
+| Schedules              | `id`              | —              | `repositoryId-id`                                 | CRUD by id; count schedules by repository                               |
+| Connections            | `connectionId`    | —              | —                                                 | Connection state                                                        |
+| Archives               | `key`             | —              | —                                                 | Archive metadata                                                        |
+| HostInventories        | `hostId`          | —              | —                                                 | Host inventory                                                          |
+| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                                                 | Append-only newest-first query                                          |
+| RateLimits             | `bucketKey`       | —              | —                                                 | Atomic fixed-window counters + TTL                                      |
+| ViewerTickets          | `ticketHash`      | —              | —                                                 | Hashed one-time viewer tickets + TTL                                    |
+| Providers              | `id`              | —              | —                                                 | Provider catalog                                                        |
+| ProviderAccounts       | `id`              | —              | —                                                 | Provider account catalog                                                |
+| Commands               | `id`              | —              | —                                                 | Command catalog                                                         |
+| Integrations           | `id`              | —              | —                                                 | Encrypted integration configuration                                     |
+| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                          |
+| WebhookDeliveries      | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                       |
 
 Unrestricted repository pages use bounded, strongly consistent table scans with opaque storage
 continuations. Scoped principals use strongly consistent keyed reads of only their allowed IDs.
@@ -340,7 +340,9 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 
 ### Assignment algorithm
 
-1. **Load session** (must be `queued`).
+Assignment consumes a K-way merge of per-shard priority/FIFO heads rather than draining shard 0…N. Writers persist `queueOrder` before readers query `statusShard-queueOrder`; active queued rows are backfilled, and readers union `statusShard-createdAt` until that backfill is complete (a missing/backfilling index falls back the same way) plus in-memory `compareSessionsForQueue`. Conditional worktree/main-checkout writes remain the claim.
+
+1. **Load session** (must be `queued`). Expired prompt and scheduled rows fail `queue_expired` and release `concurrencyId`.
 2. **Native resume preference** — if a source route and `cliResumeRef` are available, pin the source host and choose any eligible worktree there while the host is online, not draining, and the account is eligible. The selected worktree checks out the stored `ref`. If the native route is unavailable, clear the native ref and placement pin, preserve `resumedFromSessionId`, and continue as a fresh target/fallback assignment.
 3. **Target/fallback path** — for each target in order, filter candidates — worktrees where:
    - `repositoryId` matches session
@@ -377,6 +379,7 @@ When a session ends or is cancelled:
 - `HostLocks.mainCheckoutLeases[repositoryId]` is the durable exclusive lease, fenced to both `sessionId` and `connectionId`; it is acquired with the queued → running transition and released only by that exact terminal/retry/requeue transition
 - Host selection is deterministic round-robin using the durable `lastScheduledAssignedAt` cursor; no worktree row is read or mutated
 - An unacknowledged assignment releases immediately. An acknowledged disconnect keeps the lease for the 75-second reconnect grace, transfers it only when that exact session is reported by the replacement connection, and otherwise requeues/releases it.
+- Queue TTL expiry and `concurrencyId` release match prompt sessions. A providerless `usage_limit` suppresses the failed target, immediately tries the next fallback, and stays queued only until the original `queueExpiresAt`.
 
 Each session may carry an optional global exact-match `concurrencyId`. The scheduler acquires it
 in the durable SessionConcurrencyLocks table before enqueueing; a duplicate manual create returns

@@ -1,5 +1,9 @@
+/* eslint-disable max-lines */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { queueOrderKey } from "../control-plane-ordering.ts";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
@@ -92,6 +96,56 @@ describe("DynamoDB Local requeue and acknowledgement races", () => {
       }),
     ).toBe(true);
     expect((await getSession(ctx, "run"))?.status).toBe("queued");
+    expect(
+      (await ctx.doc.send(new GetCommand({ TableName: tables.sessions, Key: { id: "run" } }))).Item
+        ?.queueOrder,
+    ).toBe(queueOrderKey({ id: "run", priority: base.priority, createdAt: base.createdAt }));
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessions,
+        Item: {
+          ...base,
+          id: "legacy-run",
+          status: "running",
+          statusShard: "running#0",
+          worktreeId: "legacy-wt",
+          hostId: "host",
+          attemptId: "attempt",
+        },
+      }),
+    );
+    await putWorktree(ctx, {
+      id: "legacy-wt",
+      name: "legacy",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "legacy-run",
+    });
+    expect(
+      await tryRequeueSession(ctx, {
+        sessionId: "legacy-run",
+        worktreeId: "legacy-wt",
+        attemptId: "attempt",
+        queueShard: 0,
+      }),
+    ).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: "legacy-run" } }),
+        )
+      ).Item?.queueOrder,
+    ).toBe(
+      queueOrderKey({
+        id: "legacy-run",
+        priority: base.priority,
+        createdAt: base.createdAt,
+      }),
+    );
     expect((await getWorktree(ctx, "wt"))?.online).toBe(false);
     await putSession(ctx, {
       ...base,

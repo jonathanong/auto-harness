@@ -69,6 +69,7 @@ describe("durable scheduled main-checkout leases", () => {
       tablePrefix: ctx.prefix,
       skipEnsureTables: true,
       shardCount: 1,
+      now: () => "2026-01-01T00:00:00.000Z",
     });
     await Promise.all([first.plane.hydrateFromStorage(), second.plane.hydrateFromStorage()]);
     const [one, two] = await Promise.all([

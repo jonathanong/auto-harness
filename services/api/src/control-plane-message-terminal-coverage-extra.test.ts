@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- optional finish fields share the durable terminal fixture. */
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -78,6 +79,44 @@ describe("durable terminal message residual coverage", () => {
     expect(releases[0]).toMatchObject({ expectedStatus: "cancelled", status: "cancelled" });
   });
 
+  it("finishes a leased scheduled attempt with every optional report field", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set("s", row({ concurrencyId: "concurrency" }));
+    let input: Record<string, unknown> = {};
+    setDurableReadStorage(state, {
+      releaseMainCheckoutSession: async (next: Record<string, unknown>) => {
+        input = next;
+        return true;
+      },
+      putArchive: async () => undefined,
+    });
+    await handleHostMessageDurable(
+      state,
+      message({
+        status: "failed",
+        errorCode: "command_failed",
+        exitCode: 1,
+        errorMessage: "boom",
+        cliResumeRef: "resume",
+      }),
+    );
+    expect(input).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      errorCode: "command_failed",
+      reason: "boom",
+      cliResumeRef: "resume",
+      concurrencyId: "concurrency",
+    });
+    expect(state.sessions.get("s")).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      errorCode: "command_failed",
+      errorMessage: "boom",
+      cliResumeRef: "resume",
+    });
+  });
+
   it("releases a cancelled scheduled attempt with default completion metadata", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const session = row({
@@ -150,5 +189,37 @@ describe("durable terminal message residual coverage", () => {
     });
     await expect(handleHostMessageDurable(state, message())).resolves.toEqual({ ok: true });
     expect(loaded).toBe(0);
+  });
+
+  it("treats a cache miss as a missing provider account during usage-limit planning", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = row({
+      type: "prompt",
+      source: "api",
+      mainCheckoutLease: undefined,
+      assignmentConnectionId: undefined,
+      worktreeId: "w",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "account",
+        hostId: "host",
+        worktreeId: "w",
+        attemptId: "attempt",
+      },
+    });
+    state.sessions.set("s", session);
+    state.storage = { getSession: async () => session } as never;
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "failed",
+        errorCode: "usage_limit",
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(state.sessions.get("s")?.status).toBe("running");
   });
 });

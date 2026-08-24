@@ -130,7 +130,7 @@ export async function tryAssignMainCheckoutSession(
                 "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
                 (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
                 " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter",
-              ConditionExpression: "#s = :queued",
+              ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":running": "running",

@@ -1,11 +1,16 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import {
   readSessionDrainActivity,
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
-import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  isConditionalTransactionFailed,
+  itemToSession,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
 
 type ReleaseMainCheckoutOptions = {
   sessionId: string;
@@ -21,6 +26,8 @@ type ReleaseMainCheckoutOptions = {
   cliResumeRef?: string | undefined;
   retryCount?: number;
   retryAfter?: string;
+  suppressedTargetIndex?: number;
+  queueOrder?: string;
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
   concurrencyId?: string | undefined;
@@ -29,11 +36,30 @@ type ReleaseMainCheckoutOptions = {
   requireUnacknowledged?: boolean;
 };
 
+async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
+  const res = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.sessions,
+      Key: { id: sessionId },
+      ConsistentRead: true,
+    }),
+  );
+  return queueOrderKeyForWrite(
+    res.Item ? itemToSession(res.Item as Record<string, unknown>) : undefined,
+    sessionId,
+  );
+}
+
 export async function releaseMainCheckoutSession(
   ctx: PlaneStorageCtx,
   opts: ReleaseMainCheckoutOptions,
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
+  const queueOrder = isQueued
+    ? opts.queueOrder && opts.queueOrder.length > 0
+      ? opts.queueOrder
+      : await queueOrderForSession(ctx, opts.sessionId)
+    : undefined;
   const before = isQueued ? null : await readSessionDrainActivity(ctx, opts.sessionId);
   const cleanup =
     isQueued || before?.session.cancelledByDrainOperationId
@@ -74,7 +100,7 @@ export async function releaseMainCheckoutSession(
                   ? " AND attribute_not_exists(cancelledByDrainOperationId)"
                   : ""),
               ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: expressionValues(opts),
+              ExpressionAttributeValues: expressionValues(opts, queueOrder),
             },
           },
           ...(opts.concurrencyId && !isQueued
@@ -114,7 +140,9 @@ export async function releaseMainCheckoutSession(
 
 function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): string {
   return (
-    "SET #s = :status, statusShard = :statusShard, worktreeId = :null" +
+    "SET #s = :status, statusShard = :statusShard" +
+    (isQueued ? ", queueOrder = :queueOrder" : "") +
+    ", worktreeId = :null" +
     (isQueued ? ", hostId = :null" : "") +
     (opts.reason ? ", errorMessage = :reason" : "") +
     (opts.completedAt ? ", completedAt = :completedAt" : "") +
@@ -123,15 +151,22 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
     (opts.retryCount !== undefined ? ", retryCount = :retryCount" : "") +
     (opts.retryAfter ? ", retryAfter = :retryAfter" : "") +
+    (opts.suppressedTargetIndex !== undefined
+      ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
+      : "") +
     " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
     (isQueued ? ", startedAt" : "")
   );
 }
 
-function expressionValues(opts: ReleaseMainCheckoutOptions): Record<string, unknown> {
+function expressionValues(
+  opts: ReleaseMainCheckoutOptions,
+  queueOrder: string | undefined,
+): Record<string, unknown> {
   return {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
+    ...(opts.status === "queued" ? { ":queueOrder": queueOrder } : {}),
     ":expectedStatus": opts.expectedStatus ?? "running",
     ":hostId": opts.hostId,
     ":connectionId": opts.connectionId,
@@ -144,6 +179,9 @@ function expressionValues(opts: ReleaseMainCheckoutOptions): Record<string, unkn
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
     ...(opts.retryCount !== undefined ? { ":retryCount": opts.retryCount } : {}),
     ...(opts.retryAfter ? { ":retryAfter": opts.retryAfter } : {}),
+    ...(opts.suppressedTargetIndex !== undefined
+      ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
+      : {}),
     ...(opts.attemptId ? { ":attemptId": opts.attemptId } : {}),
   };
 }

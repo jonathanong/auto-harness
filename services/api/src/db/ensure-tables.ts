@@ -22,6 +22,10 @@ import {
 } from "./ensure-rate-limit-table.ts";
 import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
 import {
+  backfillQueuedSessionQueueOrder,
+  ensureSessionsQueueOrderIndex,
+} from "./ensure-queue-order-index.ts";
+import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsRepositoryIndex,
 } from "./ensure-session-index.ts";
@@ -86,6 +90,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "id", AttributeType: ScalarAttributeType.S },
       { AttributeName: "statusShard", AttributeType: ScalarAttributeType.S },
       { AttributeName: "createdAt", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "queueOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
@@ -95,6 +100,14 @@ export async function ensureControlPlaneTables(opts: {
         KeySchema: [
           { AttributeName: "statusShard", KeyType: KeyType.HASH },
           { AttributeName: "createdAt", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "statusShard-queueOrder",
+        KeySchema: [
+          { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "queueOrder", KeyType: KeyType.RANGE },
         ],
         Projection: { ProjectionType: ProjectionType.ALL },
       },
@@ -110,6 +123,8 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await ensureSessionsRepositoryIndex(ddb, names.sessions);
+  await ensureSessionsQueueOrderIndex(ddb, names.sessions);
+  await backfillQueuedSessionQueueOrder(DynamoDBDocumentClient.from(ddb), names.sessions);
 
   await createIfMissing(ddb, {
     TableName: names.sessionDrains,

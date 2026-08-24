@@ -5,15 +5,10 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
-import {
-  compareSessionsForQueue,
-  compareWorktreesForRoundRobin,
-} from "./control-plane-ordering.ts";
+import { orderedQueuedSessions } from "./control-plane-ordering.ts";
+import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
-import {
-  buildProviderCatalog,
-  resolveSessionTargetRouteAt,
-} from "./control-plane-session-target.ts";
+import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import {
@@ -21,19 +16,8 @@ import {
   listWorktreesForRepositoryDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
-import {
-  hostAcceptsNewAssignments,
-  hostEnvironmentReady,
-} from "./control-plane-host-environment.ts";
-import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
-
-function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
-  const connectionId = state.hostConnection.get(hostId);
-  return (
-    connectionId !== undefined && state.connections.get(connectionId)?.runtime?.gitReady === true
-  );
-}
+import { planPromptPlacement } from "./queue-placement-planner.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -47,132 +31,75 @@ export function assignQueued(
   const nowMs = Date.parse(nowIso);
   const catalog = buildProviderCatalog(state);
 
-  for (let shard = 0; shard < state.shardCount; shard++) {
-    const queued = [...state.sessions.values()]
-      .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
-      .toSorted(compareSessionsForQueue);
+  for (const session of orderedQueuedSessions(
+    state.sessions.values(),
+    state.shardCount,
+    "prompt",
+  )) {
+    let plan = planPromptPlacement(state, catalog, session, nowMs);
+    if (plan.action === "clear_pin") {
+      clearResumePin(session);
+      plan = planPromptPlacement(state, catalog, session, nowMs);
+    }
+    if (plan.action === "expire") {
+      expireQueuedLocal(state, session, nowIso);
+      continue;
+    }
+    if (plan.action !== "assign") continue;
+    for (const { worktree: candidate, route } of plan.candidates) {
+      const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
+      if (!won) continue;
+      const attemptId = state.attemptIdFactory();
+      session.status = "running";
+      session.worktreeId = candidate.id;
+      session.hostId = candidate.hostId;
+      session.startedAt = nowIso;
+      session.resolvedArgv = route.resolvedArgv;
+      if (session.resumeSpec === undefined && route.resumeSpec !== undefined) {
+        session.resumeSpec = route.resumeSpec;
+      }
+      session.resolvedRoute = {
+        targetIndex: route.targetIndex,
+        commandId: route.commandId,
+        ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+        hostId: candidate.hostId,
+        worktreeId: candidate.id,
+        attemptId,
+      };
+      session.attemptId = attemptId;
+      touchAccount(state, route.providerAccountId, nowIso);
+      delete session.ackReceivedAt;
+      state.pendingAcks.set(session.id, {
+        sessionId: session.id,
+        worktreeId: candidate.id,
+        attemptId,
+        assignedAtMs: nowMs,
+      });
 
-    for (const session of queued) {
-      if (Date.parse(session.queueExpiresAt) <= nowMs) {
-        session.status = "failed";
-        session.errorCode = "queue_expired";
-        session.errorMessage = "queue TTL expired before capacity became available";
-        session.completedAt = nowIso;
-        persistExpired(state, session);
-        continue;
-      }
-      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
-        continue;
-      if (session.hostId && session.worktreeId && session.ackReceivedAt) {
-        continue;
-      }
-      // Resume pin: only assign to pinned agent when set (Invariant 7).
-      // Skip draining / disconnected agents (online must stay false for zombies).
-      let idle = [...state.worktrees.values()].filter(
-        (w) =>
-          w.repositoryId === session.repositoryId &&
-          w.status === "idle" &&
-          w.online &&
-          hostGitReady(state, w.hostId) &&
-          hostAcceptsNewAssignments(state, w.hostId) &&
-          hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
-          !state.drainingHosts.has(w.hostId) &&
-          !state.disconnectedHosts.has(w.hostId) &&
-          session.requiredLabels.every((l) => w.labels.includes(l)),
-      );
-      if (session.pinnedHostId) {
-        if (session.pinExpiresAt && Date.parse(session.pinExpiresAt) < nowMs) {
-          clearResumePin(session);
-          idle = allIdle(state, session);
-        } else {
-          idle = idle.filter((w) => w.hostId === session.pinnedHostId);
-          const hasNativeRoute =
-            session.pinnedTargetIndex !== undefined &&
-            idle.some((candidate) =>
-              resolveSessionTargetRouteAt(
-                state,
-                catalog,
-                session,
-                candidate,
-                nowMs,
-                session.pinnedTargetIndex!,
-              ),
-            );
-          if (!hasNativeRoute) {
-            clearResumePin(session);
-            idle = allIdle(state, session);
-          }
-        }
-      }
-      idle.sort(compareWorktreesForRoundRobin);
-
-      for (let targetIndex = 0; targetIndex <= session.fallbacks.length; targetIndex++) {
-        for (const { candidate, route } of eligibleRoutes(
-          state,
-          catalog,
-          session,
-          idle,
-          nowMs,
-          targetIndex,
-        )) {
-          const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
-          if (!won) {
-            continue;
-          }
-          const attemptId = state.attemptIdFactory();
-          session.status = "running";
-          session.worktreeId = candidate.id;
-          session.hostId = candidate.hostId;
-          session.startedAt = nowIso;
-          session.resolvedArgv = route.resolvedArgv;
-          if (session.resumeSpec === undefined && route.resumeSpec !== undefined) {
-            session.resumeSpec = route.resumeSpec;
-          }
-          session.resolvedRoute = {
-            targetIndex: route.targetIndex,
-            commandId: route.commandId,
-            ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-            hostId: candidate.hostId,
-            worktreeId: candidate.id,
-            attemptId,
-          };
-          session.attemptId = attemptId;
-          touchAccount(state, route.providerAccountId, nowIso);
-          delete session.ackReceivedAt;
-          state.pendingAcks.set(session.id, {
-            sessionId: session.id,
-            worktreeId: candidate.id,
-            attemptId,
-            assignedAtMs: nowMs,
-          });
-
-          const msg: HostWireMessage = {
-            type: "session:assign",
-            sessionId: session.id,
-            sessionType: "prompt",
-            repositoryId: session.repositoryId,
-            prompt: session.prompt,
-            resolvedArgv: route.resolvedArgv,
-            timeout: session.timeout,
-            worktreeId: candidate.id,
-            assignedAt: nowIso,
-            attemptId,
-            ...(session.ref !== undefined ? { ref: session.ref } : {}),
-            ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
-            ...(session.resumeSpec?.resumeRefCapture
-              ? { resumeRefCapture: session.resumeSpec.resumeRefCapture }
-              : {}),
-            ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-            commandId: route.commandId,
-            targetIndex: route.targetIndex,
-            ...resumeWireFields(session),
-          };
-          state.onHostMessage?.(candidate.hostId, msg);
-          assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
-          break;
-        }
-        if (assigned.at(-1)?.session.id === session.id) break;
-      }
+      const msg: HostWireMessage = {
+        type: "session:assign",
+        sessionId: session.id,
+        sessionType: "prompt",
+        repositoryId: session.repositoryId,
+        prompt: session.prompt,
+        resolvedArgv: route.resolvedArgv,
+        timeout: session.timeout,
+        worktreeId: candidate.id,
+        assignedAt: nowIso,
+        attemptId,
+        ...(session.ref !== undefined ? { ref: session.ref } : {}),
+        ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+        ...(session.resumeSpec?.resumeRefCapture
+          ? { resumeRefCapture: session.resumeSpec.resumeRefCapture }
+          : {}),
+        ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+        commandId: route.commandId,
+        targetIndex: route.targetIndex,
+        ...resumeWireFields(session),
+      };
+      state.onHostMessage?.(candidate.hostId, msg);
+      assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
+      break;
     }
   }
   return assigned;
@@ -190,6 +117,9 @@ export async function assignQueuedDurable(
   if (!state.storage) {
     return assignQueued(state);
   }
+  if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
+    await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
+  }
   await refreshSchedulerReadModel(state);
   await listQueuedSessionsDurable(state, "prompt");
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
@@ -197,187 +127,135 @@ export async function assignQueuedDurable(
   const nowMs = Date.parse(nowIso);
   const catalog = buildProviderCatalog(state);
 
-  for (let shard = 0; shard < state.shardCount; shard++) {
-    const queued = [...state.sessions.values()]
-      .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
-      .toSorted(compareSessionsForQueue);
-    for (const session of queued) {
-      if (Date.parse(session.queueExpiresAt) <= nowMs) {
-        const expired = await state.storage.expireQueuedSession({
-          sessionId: session.id,
-          queueShard: session.queueShard,
-          queueExpiresAt: session.queueExpiresAt,
+  for (const session of orderedQueuedSessions(
+    state.sessions.values(),
+    state.shardCount,
+    "prompt",
+  )) {
+    await listWorktreesForRepositoryDurable(state, session.repositoryId);
+    let plan = planPromptPlacement(state, catalog, session, nowMs);
+    if (plan.action === "clear_pin") {
+      const cleared = await state.storage.clearResumePin({
+        sessionId: session.id,
+        pinnedHostId: session.pinnedHostId!,
+        pinExpiresAt: session.pinExpiresAt,
+      });
+      if (!cleared) continue;
+      clearResumePin(session);
+      plan = planPromptPlacement(state, catalog, session, nowMs);
+    }
+    if (plan.action === "expire") {
+      const expired = await state.storage.expireQueuedSession({
+        sessionId: session.id,
+        queueShard: session.queueShard,
+        queueExpiresAt: session.queueExpiresAt,
+        completedAt: nowIso,
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      });
+      if (expired)
+        state.sessions.set(session.id, {
+          ...session,
+          status: "failed",
           completedAt: nowIso,
+          errorCode: "queue_expired",
+          errorMessage: "queue TTL expired before capacity became available",
         });
-        if (expired)
-          state.sessions.set(session.id, {
-            ...session,
-            status: "failed",
-            completedAt: nowIso,
-            errorCode: "queue_expired",
-            errorMessage: "queue TTL expired before capacity became available",
-          });
+      continue;
+    }
+    if (plan.action !== "assign") continue;
+    for (const { worktree: candidate, route } of plan.candidates) {
+      const connectionId = state.hostConnection.get(candidate.hostId);
+      if (!connectionId) {
         continue;
       }
-      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
+      const attemptId = state.attemptIdFactory();
+      const principalId = sessionPrincipalId(session);
+      const won = await state.storage.tryAssignSession({
+        sessionId: session.id,
+        repositoryId: session.repositoryId,
+        worktreeId: candidate.id,
+        hostId: candidate.hostId,
+        ...(principalId ? { principalId } : {}),
+        hostInventoryVersion: state.hostInventories.has(candidate.hostId)
+          ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
+          : null,
+        connectionId,
+        now: nowIso,
+        resolvedArgv: route.resolvedArgv,
+        resumeSpec: route.resumeSpec,
+        resolvedRoute: {
+          targetIndex: route.targetIndex,
+          commandId: route.commandId,
+          ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+          hostId: candidate.hostId,
+          worktreeId: candidate.id,
+          attemptId,
+        },
+        attemptId,
+        ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+        queueShard: session.queueShard,
+      });
+      if (!won) {
         continue;
-      await listWorktreesForRepositoryDurable(state, session.repositoryId);
-      if (session.hostId && session.worktreeId && session.ackReceivedAt) {
-        continue;
       }
-      let idle = [...state.worktrees.values()].filter(
-        (w) =>
-          w.repositoryId === session.repositoryId &&
-          w.status === "idle" &&
-          w.online &&
-          hostGitReady(state, w.hostId) &&
-          hostAcceptsNewAssignments(state, w.hostId) &&
-          hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
-          !state.drainingHosts.has(w.hostId) &&
-          !state.disconnectedHosts.has(w.hostId) &&
-          session.requiredLabels.every((l) => w.labels.includes(l)),
-      );
-      if (session.pinnedHostId) {
-        if (session.pinExpiresAt && Date.parse(session.pinExpiresAt) < nowMs) {
-          const cleared = await state.storage.clearResumePin({
-            sessionId: session.id,
-            pinnedHostId: session.pinnedHostId,
-            pinExpiresAt: session.pinExpiresAt,
-          });
-          if (!cleared) continue;
-          clearResumePin(session);
-          idle = allIdle(state, session);
-        } else {
-          idle = idle.filter((w) => w.hostId === session.pinnedHostId);
-          const hasNativeRoute =
-            session.pinnedTargetIndex !== undefined &&
-            idle.some((candidate) =>
-              resolveSessionTargetRouteAt(
-                state,
-                catalog,
-                session,
-                candidate,
-                nowMs,
-                session.pinnedTargetIndex!,
-              ),
-            );
-          if (!hasNativeRoute) {
-            const cleared = await state.storage.clearResumePin({
-              sessionId: session.id,
-              pinnedHostId: session.pinnedHostId,
-              pinExpiresAt: session.pinExpiresAt,
-            });
-            if (!cleared) continue;
-            clearResumePin(session);
-            idle = allIdle(state, session);
-          }
-        }
-      }
-      idle.sort(compareWorktreesForRoundRobin);
-      for (let targetIndex = 0; targetIndex <= session.fallbacks.length; targetIndex++) {
-        for (const { candidate, route } of eligibleRoutes(
-          state,
-          catalog,
-          session,
-          idle,
-          nowMs,
-          targetIndex,
-        )) {
-          const connectionId = state.hostConnection.get(candidate.hostId);
-          if (!connectionId) {
-            continue;
-          }
-          const attemptId = state.attemptIdFactory();
-          const principalId = sessionPrincipalId(session);
-          const won = await state.storage.tryAssignSession({
-            sessionId: session.id,
-            repositoryId: session.repositoryId,
-            worktreeId: candidate.id,
-            hostId: candidate.hostId,
-            ...(principalId ? { principalId } : {}),
-            hostInventoryVersion: state.hostInventories.has(candidate.hostId)
-              ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
-              : null,
-            connectionId,
-            now: nowIso,
-            resolvedArgv: route.resolvedArgv,
-            resumeSpec: route.resumeSpec,
-            resolvedRoute: {
-              targetIndex: route.targetIndex,
-              commandId: route.commandId,
-              ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-              hostId: candidate.hostId,
-              worktreeId: candidate.id,
-              attemptId,
-            },
-            attemptId,
-            ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-            queueShard: session.queueShard,
-          });
-          if (!won) {
-            continue;
-          }
-          const resumeSpec = session.resumeSpec ?? route.resumeSpec;
-          const nextSession = {
-            ...session,
-            status: "running" as const,
-            worktreeId: candidate.id,
-            hostId: candidate.hostId,
-            startedAt: nowIso,
-            resolvedArgv: route.resolvedArgv,
-            resumeSpec,
-            resolvedRoute: {
-              targetIndex: route.targetIndex,
-              commandId: route.commandId,
-              ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-              hostId: candidate.hostId,
-              worktreeId: candidate.id,
-              attemptId,
-            },
-            attemptId,
-          };
-          const nextWorktree = {
-            ...candidate,
-            status: "busy" as const,
-            currentSessionId: session.id,
-            lastAssignedAt: nowIso,
-          };
-          state.sessions.set(session.id, nextSession);
-          touchAccount(state, route.providerAccountId, nowIso);
-          state.worktrees.set(candidate.id, nextWorktree);
-          state.pendingAcks.set(session.id, {
-            sessionId: session.id,
-            worktreeId: candidate.id,
-            attemptId,
-            assignedAtMs: nowMs,
-          });
-          const msg: HostWireMessage = {
-            type: "session:assign",
-            sessionId: session.id,
-            sessionType: "prompt",
-            repositoryId: session.repositoryId,
-            prompt: session.prompt,
-            resolvedArgv: route.resolvedArgv,
-            timeout: session.timeout,
-            worktreeId: candidate.id,
-            assignedAt: nowIso,
-            attemptId,
-            ...(session.ref !== undefined ? { ref: session.ref } : {}),
-            ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
-            ...(nextSession.resumeSpec?.resumeRefCapture
-              ? { resumeRefCapture: nextSession.resumeSpec.resumeRefCapture }
-              : {}),
-            ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
-            commandId: route.commandId,
-            targetIndex: route.targetIndex,
-            ...resumeWireFields(session),
-          };
-          state.onHostMessage?.(candidate.hostId, msg);
-          assigned.push({ session: toPublic(state, nextSession), worktree: { ...nextWorktree } });
-          break;
-        }
-        if (assigned.at(-1)?.session.id === session.id) break;
-      }
+      const resumeSpec = session.resumeSpec ?? route.resumeSpec;
+      const nextSession = {
+        ...session,
+        status: "running" as const,
+        worktreeId: candidate.id,
+        hostId: candidate.hostId,
+        startedAt: nowIso,
+        resolvedArgv: route.resolvedArgv,
+        resumeSpec,
+        resolvedRoute: {
+          targetIndex: route.targetIndex,
+          commandId: route.commandId,
+          ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+          hostId: candidate.hostId,
+          worktreeId: candidate.id,
+          attemptId,
+        },
+        attemptId,
+      };
+      const nextWorktree = {
+        ...candidate,
+        status: "busy" as const,
+        currentSessionId: session.id,
+        lastAssignedAt: nowIso,
+      };
+      state.sessions.set(session.id, nextSession);
+      touchAccount(state, route.providerAccountId, nowIso);
+      state.worktrees.set(candidate.id, nextWorktree);
+      state.pendingAcks.set(session.id, {
+        sessionId: session.id,
+        worktreeId: candidate.id,
+        attemptId,
+        assignedAtMs: nowMs,
+      });
+      const msg: HostWireMessage = {
+        type: "session:assign",
+        sessionId: session.id,
+        sessionType: "prompt",
+        repositoryId: session.repositoryId,
+        prompt: session.prompt,
+        resolvedArgv: route.resolvedArgv,
+        timeout: session.timeout,
+        worktreeId: candidate.id,
+        assignedAt: nowIso,
+        attemptId,
+        ...(session.ref !== undefined ? { ref: session.ref } : {}),
+        ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+        ...(nextSession.resumeSpec?.resumeRefCapture
+          ? { resumeRefCapture: nextSession.resumeSpec.resumeRefCapture }
+          : {}),
+        ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
+        commandId: route.commandId,
+        targetIndex: route.targetIndex,
+        ...resumeWireFields(session),
+      };
+      state.onHostMessage?.(candidate.hostId, msg);
+      assigned.push({ session: toPublic(state, nextSession), worktree: { ...nextWorktree } });
+      break;
     }
   }
   return assigned;
@@ -418,65 +296,33 @@ function resumeWireFields(session: import("./db/types.ts").SessionRecord): {
   };
 }
 
+function expireQueuedLocal(
+  state: ControlPlaneState,
+  session: import("./db/types.ts").SessionRecord,
+  nowIso: string,
+): void {
+  session.status = "failed";
+  session.errorCode = "queue_expired";
+  session.errorMessage = "queue TTL expired before capacity became available";
+  session.completedAt = nowIso;
+  persistExpired(state, session);
+}
+
 function persistExpired(
   state: ControlPlaneState,
   session: import("./db/types.ts").SessionRecord,
 ): void {
+  if (session.concurrencyId && state.storage) {
+    persistTerminalSessionThenReleaseConcurrencyLock(
+      state,
+      session,
+      session.concurrencyId,
+      state.storage,
+    );
+    return;
+  }
   state.sessions.set(session.id, { ...session });
   if (state.storage) void state.storage.putSession({ ...session });
-}
-
-/** Select account/worktree tuples globally, so account fairness precedes worktree RR. */
-function eligibleRoutes(
-  state: ControlPlaneState,
-  catalog: ReturnType<typeof buildProviderCatalog>,
-  session: import("./db/types.ts").SessionRecord,
-  worktrees: WorktreeRecord[],
-  nowMs: number,
-  targetIndex: number,
-) {
-  return worktrees
-    .flatMap((candidate) => {
-      const route = resolveSessionTargetRouteAt(
-        state,
-        catalog,
-        session,
-        candidate,
-        nowMs,
-        targetIndex,
-      );
-      return route ? [{ candidate, route }] : [];
-    })
-    .toSorted((left, right) => {
-      const leftAssigned = left.route.providerAccountId
-        ? (state.providerAccounts.get(left.route.providerAccountId)?.lastAssignedAt ?? "")
-        : "";
-      const rightAssigned = right.route.providerAccountId
-        ? (state.providerAccounts.get(right.route.providerAccountId)?.lastAssignedAt ?? "")
-        : "";
-      return (
-        leftAssigned.localeCompare(rightAssigned) ||
-        compareWorktreesForRoundRobin(left.candidate, right.candidate)
-      );
-    });
-}
-
-function allIdle(
-  state: ControlPlaneState,
-  session: import("./db/types.ts").SessionRecord,
-): WorktreeRecord[] {
-  return [...state.worktrees.values()].filter(
-    (worktree) =>
-      worktree.repositoryId === session.repositoryId &&
-      worktree.status === "idle" &&
-      worktree.online &&
-      hostGitReady(state, worktree.hostId) &&
-      hostAcceptsNewAssignments(state, worktree.hostId) &&
-      hostEnvironmentReady(state, worktree.hostId, session.repositoryId) &&
-      !state.drainingHosts.has(worktree.hostId) &&
-      !state.disconnectedHosts.has(worktree.hostId) &&
-      session.requiredLabels.every((label) => worktree.labels.includes(label)),
-  );
 }
 
 /** Invariant 2: requeue sessions that never acked. */

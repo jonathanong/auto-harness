@@ -32,6 +32,7 @@ import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
+import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -48,6 +49,11 @@ export class DynamoPlaneStorageBase {
   /** Bounded deployment migration; scheduler callers run at most one page. */
   migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
     return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
+  }
+
+  /** Repair queued rows missing `queueOrder`. Safe to repeat; later requeues are also written. */
+  async backfillQueuedSessionQueueOrder(shardCount?: number): Promise<void> {
+    await backfillQueuedSessionQueueOrder(this.ctx.doc, this.ctx.tables.sessions, shardCount);
   }
 
   putSession(session: SessionRecord): Promise<void> {
@@ -333,6 +339,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string | undefined;
     retryCount?: number;
     retryAfter?: string;
+    suppressedTargetIndex?: number;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
     concurrencyId?: string | undefined;
@@ -410,6 +417,7 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     queueExpiresAt: string;
     completedAt: string;
+    concurrencyId?: string;
   }): Promise<boolean> {
     return sessions.expireQueuedSession(this.ctx, opts);
   }

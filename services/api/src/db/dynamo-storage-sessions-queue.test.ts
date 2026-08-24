@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- queued pin, cancel, and expiry lock cases share one Dynamo fixture. */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,6 +9,7 @@ import { tryAcquireHostLock } from "./plane-storage-locks.ts";
 import {
   cancelQueuedSession,
   clearResumePin,
+  expireQueuedSession,
   failExpiredResumeSession,
   getConcurrencyLock,
   getSession,
@@ -187,5 +189,31 @@ describe("DynamoDB Local queued session lifecycle", () => {
         { sessionId: "missing", worktreeId: "worktree", attemptId: "attempt", online: true },
       ),
     ).rejects.toThrow();
+  });
+
+  it("expires a queued session and releases the concurrency lease it owns", async () => {
+    await putSession(ctx, {
+      ...base,
+      id: "expire-lock",
+      status: "queued",
+      concurrencyId: "expire-lock",
+    });
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.concurrencyLocks,
+        Item: { concurrencyId: "expire-lock", sessionId: "expire-lock" },
+      }),
+    );
+    expect(
+      await expireQueuedSession(ctx, {
+        sessionId: "expire-lock",
+        queueShard: 0,
+        queueExpiresAt: base.queueExpiresAt,
+        completedAt: "done",
+        concurrencyId: "expire-lock",
+      }),
+    ).toBe(true);
+    expect((await getSession(ctx, "expire-lock"))?.errorCode).toBe("queue_expired");
+    expect(await getConcurrencyLock(ctx, "expire-lock")).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { restoreScheduledReconnects } from "./control-plane-reconnect-scheduled.ts";
 import { resolveSessionTargetArgv } from "./control-plane-session-target.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -31,6 +32,7 @@ function scheduled(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
     hostId: "host",
     worktreeId: null,
     assignmentConnectionId: "connection",
@@ -143,7 +145,7 @@ describe("scheduled final branch coverage", () => {
     const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
     const run = scheduled({ ackReceivedAt: NOW });
     state.sessions.set(run.id, run);
-    state.storage = { releaseMainCheckoutSession: async () => false } as never;
+    setDurableReadStorage(state, { releaseMainCheckoutSession: async () => false });
     await handleHostMessageDurable(state, {
       type: "session:status",
       sessionId: run.id,
@@ -162,6 +164,10 @@ describe("scheduled final branch coverage", () => {
       status: "failed",
       errorCode: "usage_limit",
     });
-    expect(state.sessions.get(run.id)).toMatchObject({ status: "queued", retryCount: 1 });
+    expect(state.sessions.get(run.id)).toMatchObject({
+      status: "queued",
+      suppressedTargetIndexes: [0],
+    });
+    expect(state.sessions.get(run.id)).not.toHaveProperty("retryCount");
   });
 });

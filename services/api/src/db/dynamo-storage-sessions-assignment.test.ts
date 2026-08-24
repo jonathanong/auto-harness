@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { tryAcquireHostLock } from "./plane-storage-locks.ts";
+import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
 import {
   deleteWorktree,
   getWorktree,
@@ -240,5 +241,60 @@ describe("DynamoDB Local session assignment", () => {
       }),
     ).toBe(false);
     expect((await getWorktree(ctx, "stale-inventory-worktree"))?.status).toBe("idle");
+  });
+
+  it("rejects a scheduled main-checkout claim after queue expiry", async () => {
+    const hostId = "scheduled-host";
+    const connectionId = "scheduled-connection";
+    const now = "2025-01-01T00:00:00.000Z";
+    const claim = {
+      hostId,
+      hostInventoryVersion: null,
+      repositoryId: "repo",
+      connectionId,
+      now,
+      resolvedArgv: ["echo"],
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId,
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+      queueShard: 0,
+      attemptId: "attempt",
+    };
+    expect(await tryAcquireHostLock(ctx, { hostId, connectionId, replaceExisting: false })).toBe(
+      true,
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.connections,
+        Item: {
+          connectionId,
+          hostId,
+          capabilities: ["scheduled-main-checkout"],
+          repositoryIds: ["repo"],
+        },
+      }),
+    );
+    await putSession(ctx, {
+      ...session,
+      id: "expired-scheduled",
+      type: "scheduled",
+      queueExpiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    expect(
+      await tryAssignMainCheckoutSession(ctx, { ...claim, sessionId: "expired-scheduled" }),
+    ).toBe(false);
+    await putSession(ctx, {
+      ...session,
+      id: "live-scheduled",
+      type: "scheduled",
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    });
+    expect(await tryAssignMainCheckoutSession(ctx, { ...claim, sessionId: "live-scheduled" })).toBe(
+      true,
+    );
   });
 });

@@ -35,6 +35,9 @@ function validateCloneOverrides(opts: CloneOptions): string | null {
   ) {
     return "priority must be a number";
   }
+  if (opts.priority !== undefined && !Number.isInteger(opts.priority)) {
+    return "priority must be an integer";
+  }
   if (opts.createdBy !== undefined && typeof opts.createdBy !== "string") {
     return "createdBy must be a string";
   }

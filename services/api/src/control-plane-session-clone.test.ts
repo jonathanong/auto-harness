@@ -111,6 +111,7 @@ describe("session clone", () => {
       { timeout: Number.NaN },
       { timeout: "30" },
       { priority: Number.POSITIVE_INFINITY },
+      { priority: 0.5 },
       { priority: "high" },
       { createdBy: 1 },
       { unexpected: true },

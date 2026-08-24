@@ -38,6 +38,9 @@ function parseCloneBody(
   ) {
     return { ok: false, error: "priority must be a number" };
   }
+  if (record.priority !== undefined && !Number.isInteger(record.priority)) {
+    return { ok: false, error: "priority must be an integer" };
+  }
   return {
     ok: true,
     ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),

@@ -170,7 +170,7 @@ describe("host message residual coverage", () => {
     expect(current.sessions.get("s")).not.toHaveProperty("cliResumeRef");
   });
 
-  it("retries a local leased usage-limit and no-ops a lost lease release", () => {
+  it("requeues a local leased providerless usage-limit and no-ops a lost lease release", () => {
     const retry = state(
       session({
         type: "scheduled",
@@ -191,7 +191,11 @@ describe("host message residual coverage", () => {
         errorCode: "usage_limit",
       }),
     ).toEqual({ ok: true });
-    expect(retry.sessions.get("s")).toMatchObject({ status: "queued", retryCount: 1 });
+    expect(retry.sessions.get("s")).toMatchObject({
+      status: "queued",
+      suppressedTargetIndexes: [0],
+    });
+    expect(retry.sessions.get("s")).not.toHaveProperty("retryCount");
 
     const lost = state(
       session({

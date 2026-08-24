@@ -101,7 +101,11 @@ describe("DynamoDB Local clients", () => {
     expect(listed.TableNames).toEqual(expect.any(Array));
     const sessions = await client.send(new DescribeTableCommand({ TableName: a.sessions }));
     expect(sessions.Table?.GlobalSecondaryIndexes?.map((index) => index.IndexName)).toEqual(
-      expect.arrayContaining(["statusShard-createdAt", "repositoryId-createdAt"]),
+      expect.arrayContaining([
+        "statusShard-createdAt",
+        "statusShard-queueOrder",
+        "repositoryId-createdAt",
+      ]),
     );
     const users = await client.send(new DescribeTableCommand({ TableName: a.users }));
     expect(users.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("username");

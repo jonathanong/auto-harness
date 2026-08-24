@@ -23,7 +23,10 @@ describe("DynamoDB storage pagination", () => {
       Repositories: [[{ id: "repository-1" }], [{ id: "repository-2" }]],
       Schedules: [[{ id: "schedule-1" }], [{ id: "schedule-2" }]],
       SessionLogs: [[{ sessionId: "session-1", seq: 1 }], [{ sessionId: "session-1", seq: 2 }]],
-      Sessions: [[{ id: "session-1", statusShard: "queued#0" }], [{ id: "session-2" }]],
+      Sessions: [
+        [{ id: "session-1", statusShard: "queued#0", createdAt: "t1", priority: 0 }],
+        [{ id: "session-2", createdAt: "t2", priority: 0 }],
+      ],
       Worktrees: [[{ id: "worktree-1" }], [{ id: "worktree-2" }]],
     };
     const commands: Array<{ input: Record<string, unknown> }> = [];
@@ -92,8 +95,8 @@ describe("DynamoDB storage pagination", () => {
       { id: "worktree-2" },
     ]);
 
-    expect(commands).toHaveLength(20);
-    for (let index = 0; index < 20; index += 2) {
+    expect(commands).toHaveLength(22);
+    for (let index = 0; index < 22; index += 2) {
       const firstPage = commands[index];
       const secondPage = commands[index + 1];
       expect(firstPage).toBeDefined();
@@ -105,7 +108,7 @@ describe("DynamoDB storage pagination", () => {
     await expect(
       queryLogs(ctx, "session-1", { after: "cursor", stream: "stderr", limit: 25 }),
     ).resolves.toMatchObject([{ seq: 1 }]);
-    expect(commands[20]?.input).toMatchObject({
+    expect(commands[22]?.input).toMatchObject({
       KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
       ExpressionAttributeValues: {
         ":sessionId": "session-1",
@@ -119,7 +122,7 @@ describe("DynamoDB storage pagination", () => {
     await expect(queryLogs(ctx, "session-1", { after: "cursor", limit: 1 })).resolves.toHaveLength(
       1,
     );
-    expect(commands[21]?.input.FilterExpression).toBeUndefined();
+    expect(commands[23]?.input.FilterExpression).toBeUndefined();
   });
   it("uses a bounded, ordered Dynamo query and continues sparse stream-filter pages", async () => {
     const send = vi

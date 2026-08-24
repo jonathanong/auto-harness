@@ -784,33 +784,67 @@ async function applySessionStatusDurable(
       await assignScheduledQueuedDurable(state);
       return { ok: true };
     }
-    const shouldRetry = requeue?.reason === "usage_limit_retry";
+    if (suppress && requeue?.reason === "providerless") {
+      const committed = await storage.releaseMainCheckoutSession({
+        sessionId: session.id,
+        hostId: session.hostId,
+        repositoryId: session.repositoryId,
+        connectionId: session.assignmentConnectionId,
+        attemptId: msg.attemptId,
+        status: "queued",
+        queueShard: session.queueShard,
+        errorCode: "usage_limit",
+        reason: msg.errorMessage ?? "providerless usage limit; trying fallback",
+        suppressedTargetIndex: suppress.targetIndex,
+        ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+        ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      });
+      if (!committed) return { ok: true };
+      releaseScheduledLeaseLocal(state, session);
+      const { mainCheckoutLease: _, ...next } = {
+        ...session,
+        status: "queued" as const,
+        worktreeId: null,
+        hostId: null,
+        errorCode: "usage_limit",
+        suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
+        ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+        ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+        ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      };
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      delete next.startedAt;
+      state.sessions.set(session.id, next);
+      state.pendingAcks.delete(session.id);
+      await assignScheduledQueuedDurable(state);
+      return { ok: true };
+    }
+    const completedAt = state.now();
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
       attemptId: msg.attemptId,
-      status: shouldRetry ? "queued" : msg.status,
+      status: msg.status,
       queueShard: session.queueShard,
-      ...(requeue?.reason === "usage_limit_retry"
-        ? { retryCount: requeue.retryCount, retryAfter: requeue.retryAfter }
-        : { completedAt: state.now() }),
+      completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
-      ...(!shouldRetry && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
     });
     if (!committed) return { ok: true };
     releaseScheduledLeaseLocal(state, session);
     const { mainCheckoutLease: _, ...next } = {
       ...session,
-      status: shouldRetry ? ("queued" as const) : msg.status,
+      status: msg.status,
       worktreeId: null,
-      ...(requeue?.reason === "usage_limit_retry"
-        ? { hostId: null, retryCount: requeue.retryCount, retryAfter: requeue.retryAfter }
-        : { completedAt: state.now() }),
+      completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
@@ -820,12 +854,9 @@ async function applySessionStatusDurable(
     delete next.assignmentSentAt;
     delete next.ackReceivedAt;
     delete next.reconnectDeadlineAt;
-    if (shouldRetry) delete next.startedAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    if (!shouldRetry) {
-      await archiveSessionLogs(state, session.id);
-    }
+    await archiveSessionLogs(state, session.id);
     return { ok: true };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -947,8 +978,6 @@ function applySessionStatus(
     hostStatusEvent(msg),
     plannerContext(state, "local", cachedProviderAccount(state, session)),
   );
-  const rejected = transitionEffect(plan, "reject");
-  if (rejected) return { ok: false, error: rejected.error };
   if (transitionEffect(plan, "ignore")) return { ok: true };
 
   const terminal = isTerminalSessionStatus(msg.status);
@@ -1038,10 +1067,6 @@ function applySessionStatus(
       session.worktreeId = null;
       session.hostId = null;
       delete session.completedAt;
-      if (requeue.reason === "usage_limit_retry") {
-        session.retryCount = requeue.retryCount;
-        session.retryAfter = requeue.retryAfter;
-      }
       const reschedule = transitionEffect(plan, "reschedule");
       if (reschedule?.kind === "scheduled") {
         void assignScheduledQueuedDurable(state).catch(() => undefined);

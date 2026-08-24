@@ -164,14 +164,14 @@ describe("scheduled assignment branch coverage", () => {
     });
   });
 
-  it("skips retry-delayed, wrong-shard, unresolved, and lease-lost candidates", async () => {
+  it("expires queued work and skips wrong-shard, unresolved, and lease-lost candidates", async () => {
     const current = state();
     const host = connection("h1", "c1");
     current.connections.set("c1", host);
     current.hostConnection.set("h1", "c1");
     current.sessions.set(
-      "delayed",
-      session({ id: "delayed", retryAfter: "2026-01-02T00:00:00.000Z" }),
+      "expired",
+      session({ id: "expired", queueExpiresAt: "2025-01-01T00:00:00.000Z" }),
     );
     current.sessions.set("wrong-shard", session({ id: "wrong-shard", queueShard: 1 }));
     current.sessions.set(
@@ -193,6 +193,35 @@ describe("scheduled assignment branch coverage", () => {
     });
     current.sessions.set("storage-lost", session({ id: "storage-lost" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
+  });
+
+  it("expires a durable scheduled queue row and releases its concurrency lock", async () => {
+    const current = state();
+    current.sessions.set(
+      "s",
+      session({ queueExpiresAt: "2025-01-01T00:00:00.000Z", concurrencyId: "lock" }),
+    );
+    const calls: unknown[] = [];
+    setDurableReadStorage(current, {
+      expireQueuedSession: async (opts: { concurrencyId?: string }) => {
+        calls.push(opts);
+        return true;
+      },
+    });
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(calls[0]).toMatchObject({ sessionId: "s", concurrencyId: "lock" });
+    expect(current.sessions.get("s")).toMatchObject({
+      status: "failed",
+      errorCode: "queue_expired",
+    });
+  });
+
+  it("leaves a scheduled row queued when durable expiry loses its fence", async () => {
+    const current = state();
+    current.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    setDurableReadStorage(current, { expireQueuedSession: async () => false });
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(current.sessions.get("s")?.status).toBe("queued");
   });
 
   it("rejects local lease release unless the exact fence still owns it", () => {
@@ -235,5 +264,68 @@ describe("scheduled assignment branch coverage", () => {
     });
     current.sessions.set("vanished", session({ id: "vanished" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
+  });
+
+  it("cancels when ownership disappears after placement chooses a host", async () => {
+    const current = state();
+    current.connections.set("c1", connection("h1", "c1"));
+    current.hostConnection.set("h1", "c1");
+    const row = session({ principalId: undefined });
+    let reads = 0;
+    Object.defineProperty(row, "principalId", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? "principal" : undefined;
+      },
+    });
+    current.sessions.set("s", row);
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(current.sessions.get("s")?.status).toBe("cancelled");
+  });
+
+  it("claims with a missing or unversioned host inventory fence", async () => {
+    const versions: Array<number | null> = [];
+    for (const inventory of [
+      undefined,
+      {
+        hostId: "h1",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+        providerAccounts: [],
+        commandProfiles: {},
+        updatedAt: NOW,
+      },
+    ] as const) {
+      const current = state();
+      current.connections.set("c1", connection("h1", "c1"));
+      current.hostConnection.set("h1", "c1");
+      if (inventory) current.hostInventories.set("h1", inventory);
+      else current.hostInventories.delete("h1");
+      current.sessions.set("s", session());
+      setDurableReadStorage(current, {
+        getMainCheckoutCursor: async () => "",
+        ensureMainCheckoutLeaseMap: async () => {
+          if (!inventory) current.hostInventories.delete("h1");
+          return true;
+        },
+        tryAssignMainCheckoutSession: async (opts: { hostInventoryVersion: number | null }) => {
+          versions.push(opts.hostInventoryVersion);
+          return true;
+        },
+      });
+      if (!inventory) {
+        current.hostInventories.set("h1", {
+          hostId: "h1",
+          repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+          providerAccounts: [],
+          commandProfiles: {},
+          updatedAt: NOW,
+        });
+      }
+      await expect(assignScheduledQueuedDurable(current)).resolves.toHaveLength(1);
+    }
+    expect(versions).toEqual([null, 0]);
   });
 });

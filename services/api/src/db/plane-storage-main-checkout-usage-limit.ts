@@ -1,7 +1,12 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
+import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
-import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  isConditionalTransactionFailed,
+  itemToSession,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
 
 /** Cool an account and requeue its exact scheduled lease for a fallback route. */
 export async function requeueMainCheckoutUsageLimitedSession(
@@ -19,6 +24,17 @@ export async function requeueMainCheckoutUsageLimitedSession(
     errorMessage?: string | undefined;
   },
 ): Promise<boolean> {
+  const current = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.sessions,
+      Key: { id: opts.sessionId },
+      ConsistentRead: true,
+    }),
+  );
+  const queueOrder = queueOrderKeyForWrite(
+    current.Item ? itemToSession(current.Item as Record<string, unknown>) : undefined,
+    opts.sessionId,
+  );
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -52,7 +68,8 @@ export async function requeueMainCheckoutUsageLimitedSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt",
+                "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt",
               ConditionExpression:
                 "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
@@ -60,6 +77,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
                 ":queued": "queued",
                 ":running": "running",
                 ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ":queueOrder": queueOrder,
                 ":null": null,
                 ":code": "usage_limit",
                 ":message": opts.errorMessage ?? "provider usage limit; requeued",
