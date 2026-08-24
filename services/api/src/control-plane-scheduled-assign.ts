@@ -95,6 +95,7 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
 
 export async function assignScheduledQueuedDurable(
   state: ControlPlaneState,
+  sessionId?: string,
 ): Promise<ScheduledAssignment[]> {
   if (state.storage) {
     if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
@@ -111,6 +112,7 @@ export async function assignScheduledQueuedDurable(
     state.shardCount,
     "scheduled",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     const hosts = await eligibleHosts(state, session.repositoryId);
     const plan = planScheduledPlacement(state, catalog, session, hosts);
     if (plan.action === "expire") {

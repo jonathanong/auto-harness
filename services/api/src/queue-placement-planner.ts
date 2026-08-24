@@ -204,13 +204,17 @@ export function planScheduledPlacement(
     connectionId: string;
     route: ResolvedSessionRoute;
   }> = [];
-  for (const host of hosts) {
-    for (const route of resolveScheduledSessionTargets(state, catalog, session, host.hostId)) {
-      if (
-        hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
-        accountHasLeaseCapacity(state, route.providerAccountId)
-      ) {
-        candidates.push({ ...host, route });
+  const maxTargetIndex = session.fallbacks.length;
+  for (let targetIndex = 0; targetIndex <= maxTargetIndex; targetIndex++) {
+    for (const host of hosts) {
+      for (const route of resolveScheduledSessionTargets(state, catalog, session, host.hostId)) {
+        if (route.targetIndex !== targetIndex) continue;
+        if (
+          hostProviderAccountReady(state, host.hostId, route.providerAccountId) &&
+          accountHasLeaseCapacity(state, route.providerAccountId)
+        ) {
+          candidates.push({ ...host, route });
+        }
       }
     }
   }

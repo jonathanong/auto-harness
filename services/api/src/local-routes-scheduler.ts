@@ -1,12 +1,14 @@
 import { writeSystemAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
 
 export async function handleSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, res, url, method } = ctx;
   if (method === "POST" && url.pathname === "/api/v1/scheduler/assign") {
     try {
-      const assigned = await plane.assignQueuedDurable();
-      const scheduled = await plane.assignScheduledQueuedDurable();
+      const assignments = await assignQueuedAndScheduledDurable(plane.state);
+      const assigned = assignments.queuedAssigned;
+      const scheduled = assignments.scheduledAssigned;
       if (
         !(await writeSystemAudit(ctx, {
           action: "scheduler:assign",

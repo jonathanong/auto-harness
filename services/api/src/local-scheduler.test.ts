@@ -25,8 +25,7 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
       reclaimStaleHostsDurable: step("stale"),
       reconcileRepositoryDrainsDurable: step("repository-drains"),
       reconcileSessionDrainsDurable: step("session-drains"),
-      assignQueuedDurable: step("queued"),
-      assignScheduledQueuedDurable: step("scheduled"),
+      requestAssignment: step("assignment"),
     },
   };
 }
@@ -52,8 +51,7 @@ describe("LocalScheduler", () => {
         "stale",
         "repository-drains",
         "session-drains",
-        "queued",
-        "scheduled",
+        "assignment",
       ]);
 
       scheduler.start();
@@ -96,8 +94,7 @@ describe("LocalScheduler", () => {
       "stale",
       "repository-drains",
       "session-drains",
-      "queued",
-      "scheduled",
+      "assignment",
     ]);
     await scheduler.stop();
   });
@@ -127,8 +124,7 @@ describe("LocalScheduler", () => {
       "stale",
       "repository-drains",
       "session-drains",
-      "queued",
-      "scheduled",
+      "assignment",
     ]);
     await scheduler.stop();
   });
@@ -155,8 +151,7 @@ describe("LocalScheduler", () => {
         "stale",
         "repository-drains",
         "session-drains",
-        "queued",
-        "scheduled",
+        "assignment",
       ]);
       await scheduler.stop();
     } finally {

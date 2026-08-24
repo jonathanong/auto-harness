@@ -174,6 +174,7 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     id: string;
     expectedVersion: number;
     expectedProviderId?: string;
+    expectedMaxConcurrentSessions?: number;
     updatedAt: string;
     patch: Partial<
       Pick<

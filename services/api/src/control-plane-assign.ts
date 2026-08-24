@@ -33,6 +33,7 @@ import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
  */
 export function assignQueued(
   state: ControlPlaneState,
+  sessionId?: string,
 ): Array<{ session: PublicSession; worktree: WorktreeRecord }> {
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
@@ -44,6 +45,7 @@ export function assignQueued(
     state.shardCount,
     "prompt",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {
       clearResumePin(session);
@@ -140,9 +142,10 @@ export function assignQueued(
  */
 export async function assignQueuedDurable(
   state: ControlPlaneState,
+  sessionId?: string,
 ): Promise<Array<{ session: PublicSession; worktree: WorktreeRecord }>> {
   if (!state.storage) {
-    return assignQueued(state);
+    return assignQueued(state, sessionId);
   }
   if (typeof state.storage.backfillQueuedSessionQueueOrder === "function") {
     await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
@@ -159,6 +162,7 @@ export async function assignQueuedDurable(
     state.shardCount,
     "prompt",
   )) {
+    if (sessionId !== undefined && session.id !== sessionId) continue;
     await listWorktreesForRepositoryDurable(state, session.repositoryId);
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {

@@ -14,6 +14,7 @@ import { createLocalApp } from "./local-app.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
+import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
 
 import {
   createLambdaResponseCapture,
@@ -275,17 +276,16 @@ export async function createLambdaRuntime(
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
-        const queuedAssigned = await created.plane.assignQueuedDurable();
-        const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
+        const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
-          queuedAssigned: queuedAssigned.length,
+          queuedAssigned: assignments.queuedAssigned.length,
           repositoriesReconciled: repositoriesReconciled.length,
           sessionDrainsReconciled: sessionDrainsReconciled.length,
-          scheduledAssigned: scheduledAssigned.length,
+          scheduledAssigned: assignments.scheduledAssigned.length,
           schedulesFired: schedulesFired.length,
           staleHostsReclaimed: staleHostsReclaimed.length,
         };
