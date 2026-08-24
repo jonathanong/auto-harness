@@ -68,6 +68,28 @@ export function recorder(replies: Record<string, HostServiceRunResult> = {}) {
   };
 }
 
+export function okRun(stdout = ""): HostServiceRunResult {
+  return { status: 0, stdout, stderr: "" };
+}
+
+export function errRun(status: number, stderr: string): HostServiceRunResult {
+  return { status, stdout: "", stderr };
+}
+
+export function launchctlByStep(
+  replies: Record<string, HostServiceRunResult | HostServiceRunResult[]>,
+): (command: string, args: string[]) => HostServiceRunResult {
+  const seen = new Map<string, number>();
+  return (_command, args) => {
+    const step = args[0] ?? "";
+    const index = seen.get(step) ?? 0;
+    seen.set(step, index + 1);
+    const reply = replies[step];
+    if (Array.isArray(reply)) return reply[Math.min(index, reply.length - 1)] ?? okRun();
+    return reply ?? okRun();
+  };
+}
+
 export function baseOpts(
   partial: Partial<HostServiceOpts> & { fs: HostServiceFs },
 ): HostServiceOpts {

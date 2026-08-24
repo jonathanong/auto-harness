@@ -6,7 +6,7 @@ import { statusDarwin } from "./host-service-darwin.ts";
 import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
 
 describe("install-service darwin", () => {
-  it("writes LaunchAgent + env and kickstarts", () => {
+  it("writes LaunchAgent + env and kickstarts without -k", () => {
     const fs = seededFs();
     const spawn = recorder();
     expect(
@@ -36,8 +36,13 @@ describe("install-service darwin", () => {
     expect(spawn.calls.map((c) => c.args[0])).toEqual([
       "bootout",
       "bootstrap",
+      "print",
       "kickstart",
       "print",
+    ]);
+    expect(spawn.calls.find((c) => c.args[0] === "kickstart")?.args).toEqual([
+      "kickstart",
+      "gui/501/com.auto-harness.host-daemon",
     ]);
   });
 
@@ -63,12 +68,13 @@ describe("install-service darwin", () => {
       "bootout",
       "bootstrap",
       "load",
+      "print",
       "kickstart",
       "print",
     ]);
   });
 
-  it("reports bootstrap/load and kickstart failures", () => {
+  it("reports bootstrap/load failures", () => {
     const errors: string[] = [];
     expect(
       installHostService(
@@ -81,21 +87,6 @@ describe("install-service darwin", () => {
       ),
     ).toBe(1);
     expect(errors.join("\n")).toMatch(/bootstrap\/load/);
-    const kickErrors: string[] = [];
-    expect(
-      installHostService(
-        baseOpts({
-          platform: "darwin",
-          fs: seededFs(),
-          error: (m) => kickErrors.push(m),
-          run: (_command, args) =>
-            args[0] === "kickstart"
-              ? { status: 1, stdout: "", stderr: "kick" }
-              : { status: 0, stdout: "", stderr: "" },
-        }),
-      ),
-    ).toBe(1);
-    expect(kickErrors.join("\n")).toMatch(/kickstart/);
   });
 
   it("unloads and removes the plist only", () => {

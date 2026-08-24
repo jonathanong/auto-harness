@@ -284,8 +284,11 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
 
 On a macOS host installed as a LaunchAgent, perform the same drain-and-wait boundary, then update
 the checkout as the current user. Re-running `install-service` keeps the existing mode-0600
-environment file, rewrites the plist to the current checkout and Node paths, and restarts the
-LaunchAgent:
+environment file, rewrites the plist to the current checkout and Node paths, and reloads the
+LaunchAgent. After `bootout`/`bootstrap`, it checks `launchctl print` and does not require
+`kickstart -k`. If launchd is already starting the job (exit 37 / "already in progress") or the
+agent is already running, install succeeds. If a restart unregisters the job, the installer
+bootstraps again instead of leaving the LaunchAgent missing.
 
 ```bash
 git fetch --all --tags
