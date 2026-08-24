@@ -95,8 +95,8 @@ describe("DynamoDB storage pagination", () => {
       { id: "worktree-2" },
     ]);
 
-    expect(commands).toHaveLength(22);
-    for (let index = 0; index < 22; index += 2) {
+    expect(commands).toHaveLength(20);
+    for (let index = 0; index < 20; index += 2) {
       const firstPage = commands[index];
       const secondPage = commands[index + 1];
       expect(firstPage).toBeDefined();
@@ -108,7 +108,7 @@ describe("DynamoDB storage pagination", () => {
     await expect(
       queryLogs(ctx, "session-1", { after: "cursor", stream: "stderr", limit: 25 }),
     ).resolves.toMatchObject([{ seq: 1 }]);
-    expect(commands[22]?.input).toMatchObject({
+    expect(commands[20]?.input).toMatchObject({
       KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
       ExpressionAttributeValues: {
         ":sessionId": "session-1",
