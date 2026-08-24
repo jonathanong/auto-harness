@@ -46,6 +46,9 @@ describe("install-service linux", () => {
       "sudo install -d -o harness -g harness -m 0700 '/opt/auto-harness/incoming'",
     );
     expect(logs.join("\n")).toContain(
+      "sudo install -d -o harness -g harness -m 0700 '/opt/auto-harness/staging'",
+    );
+    expect(logs.join("\n")).toContain(
       "sudo install -d -o root -g root -m 0755 '/usr/local/lib/auto-harness'",
     );
   });
@@ -115,6 +118,7 @@ describe("install-service linux", () => {
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([
       "install -d -o root -g root -m 0755 /opt/auto-harness",
       "install -d -o harness -g harness -m 0700 /opt/auto-harness/incoming",
+      "install -d -o harness -g harness -m 0700 /opt/auto-harness/staging",
       "install -d -o root -g root -m 0755 /usr/local/lib/auto-harness",
       "install -d -o root -g root -m 0755 /opt/auto-harness/releases",
       "chown -R root:root /opt/auto-harness/current",
@@ -193,7 +197,7 @@ describe("install-service linux", () => {
     });
   });
 
-  it("provisions only a private incoming update directory for the unprivileged daemon", () => {
+  it("provisions private incoming and staging directories for the unprivileged daemon", () => {
     const updateRoot = "/srv/auto-harness";
     const spawn = recorder();
     expect(
@@ -212,7 +216,7 @@ describe("install-service linux", () => {
         }),
       ),
     ).toBe(0);
-    expect(spawn.calls.slice(0, 3)).toEqual([
+    expect(spawn.calls.slice(0, 4)).toEqual([
       {
         command: "install",
         args: ["-d", "-o", "root", "-g", "root", "-m", "0755", updateRoot],
@@ -220,6 +224,10 @@ describe("install-service linux", () => {
       {
         command: "install",
         args: ["-d", "-o", "harness", "-g", "harness", "-m", "0700", `${updateRoot}/incoming`],
+      },
+      {
+        command: "install",
+        args: ["-d", "-o", "harness", "-g", "harness", "-m", "0700", `${updateRoot}/staging`],
       },
       {
         command: "install",
@@ -265,6 +273,27 @@ describe("install-service linux", () => {
     ).toBe(1);
     expect(errors).toEqual([
       "install writable update incoming directory failed: permission denied",
+    ]);
+  });
+
+  it("does not install a service when deployment staging cannot be made writable", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (_command, args) =>
+            args.at(-1) === "/opt/auto-harness/staging"
+              ? { status: 1, stdout: "", stderr: "permission denied" }
+              : { status: 0, stdout: "", stderr: "" },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual([
+      "install writable deployment staging directory failed: permission denied",
     ]);
   });
 

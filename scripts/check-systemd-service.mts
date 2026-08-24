@@ -103,6 +103,7 @@ export function validateSystemdActivationHelper(helper: string): string[] {
     "settlePriorBoot(root, incoming)",
     'rmSync(join(root, "releases", marker.version), { recursive: true, force: true })',
     "promote(root, incoming)",
+    '|| "/opt/auto-harness"',
     "rootStat.uid !== 0",
   ]) {
     if (!helper.includes(fragment))

@@ -46,9 +46,11 @@ pnpm deploy:host
 ```
 
 The AWS command fast-forwards `main`, installs the lockfile, updates and health-checks the control
-plane, and handles the one-time session-drain ledger scheduler gate. The host command installs the
-same locked checkout, gracefully restarts the persisted daemon service, and verifies its production
-identity. Environment and first-rollout details remain in the surface-specific runbooks below.
+plane, and handles the one-time session-drain ledger scheduler gate. On Linux, the host command runs
+from the writable `HARNESS_UPDATE_INSTALL_DIR/staging` checkout, gracefully restarts the persisted
+daemon service, and verifies its production identity; the immutable active release changes only after
+the signed updater and root-owned promotion helper validate it. Environment and first-rollout details
+remain in the surface-specific runbooks below.
 
 | What changed                   | Where to look                                         |
 | ------------------------------ | ----------------------------------------------------- |
@@ -58,8 +60,9 @@ identity. Environment and first-rollout details remain in the surface-specific r
 
 Prefer **control plane first**, then **agents**. Agent updates drain, wait for idle, verify a
 signed manifest, stage/activate the artifact, and request a supervisor restart when
-`HARNESS_UPDATE_MANIFEST_URL` and `HARNESS_UPDATE_PUBLIC_KEY` are set. The manual runbook remains
-supported. A failed activation rolls the previous artifact back and resumes scheduling.
+`HARNESS_UPDATE_MANIFEST_URL` and `HARNESS_UPDATE_PUBLIC_KEY` are set. The writable staging checkout
+never becomes active directly. A failed activation rolls the previous artifact back and resumes
+scheduling.
 
 Automation rollouts that need to quiesce only their own work use the authenticated
 repository-principal session-drain API instead. They must keep their external admission gates off,

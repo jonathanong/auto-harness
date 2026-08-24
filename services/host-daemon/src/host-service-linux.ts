@@ -22,11 +22,13 @@ import {
 type LinuxPaths = {
   updateRoot: string;
   currentRoot: string;
+  stagingRoot: string;
   launcher: string;
 };
 
 // Keep this in sync with the checked-in systemd unit. The daemon runs as this
-// unprivileged account, so it must own the update root it mutates at runtime.
+// unprivileged account, so it owns only its incoming artifacts and deployment
+// staging checkout; the root-owned active release remains immutable.
 const LINUX_SERVICE_USER = "harness";
 
 function linuxPaths(ctx: HostServiceContext): LinuxPaths {
@@ -38,6 +40,7 @@ function linuxPaths(ctx: HostServiceContext): LinuxPaths {
   return {
     updateRoot,
     currentRoot: join(updateRoot, "current"),
+    stagingRoot: join(updateRoot, "staging"),
     launcher: LINUX_LAUNCHER_DEST,
   };
 }
@@ -138,6 +141,9 @@ function stageLinux(
   ctx.log(
     `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${shellQuote(join(paths.updateRoot, "incoming"))}`,
   );
+  ctx.log(
+    `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${shellQuote(paths.stagingRoot)}`,
+  );
   ctx.log(`  sudo install -d -o root -g root -m 0755 ${shellQuote(dirname(paths.launcher))}`);
   if (envContents !== undefined) {
     ctx.log(`  sudo install -m 0600 ${shellQuote(stagedEnv)} ${shellQuote(LINUX_ENV_DEST)}`);
@@ -225,6 +231,13 @@ function installLinuxRoots(ctx: HostServiceContext, paths: LinuxPaths): boolean 
       LINUX_SERVICE_USER,
       "0700",
       "install writable update incoming directory",
+    ) &&
+    installLinuxDirectory(
+      ctx,
+      paths.stagingRoot,
+      LINUX_SERVICE_USER,
+      "0700",
+      "install writable deployment staging directory",
     ) &&
     installLinuxDirectory(
       ctx,

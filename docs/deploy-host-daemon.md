@@ -111,10 +111,11 @@ The generated Linux launcher and its update-promotion helper are root-owned unde
 `/usr/local/lib/auto-harness/`. The helper is run by systemd before each daemon start: it
 independently verifies the signed staged artifact, extracts it into a root-owned release tree,
 and atomically switches `current`. The daemon (and every session CLI it starts) can write only
-the private `incoming/` request directory; it cannot modify `current` or runnable releases.
-When run with `sudo`, `install-service` also converts an existing legacy `current` checkout to
-root ownership and removes group/world write permission before enabling the unit, including a
-legacy `current -> versions/<version>` target.
+the private `incoming/` request directory; it cannot modify `current` or runnable releases. The
+Linux default keeps that immutable update root at `/opt/auto-harness`, separate from its writable
+deployment staging checkout at `/opt/auto-harness/staging`. When run with
+`sudo`, `install-service` also locks a legacy `current -> versions/<version>` target before
+enabling the unit.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
 
 Uninstall (removes the service definition, not the checkout):
@@ -123,25 +124,24 @@ Uninstall (removes the service definition, not the checkout):
 pnpm local:daemon uninstall-service
 ```
 
-### VPS copy-unit path
+### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the
-`harness` user, clone into `/opt/auto-harness/current`, copy the unit). The
+`harness` user, clone into `/opt/auto-harness/staging`, then install the service). The
 one-command path above is the supported operator path for an already-cloned
 checkout.
 
 On the agent host:
 
 1. Install Node, Git, and AI CLIs.
-2. Create a dedicated user and install the monorepo checkout at the unit's conventional path:
+2. Create a dedicated user and install the monorepo checkout in the writable staging path:
 
    ```bash
    sudo useradd --create-home --shell /usr/sbin/nologin harness
    sudo install -d -o root -g root -m 0755 /opt/auto-harness
-   sudo git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/current
-   sudo env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
-   sudo chown -R root:root /opt/auto-harness/current
-   sudo chmod -R go-w /opt/auto-harness/current
+   sudo install -d -o harness -g harness -m 0700 /opt/auto-harness/staging
+   sudo -u harness git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/staging
+   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
    ```
 
    The checked-in package uses Node's native TypeScript execution, so deploy the complete checkout and
@@ -160,7 +160,7 @@ On the agent host:
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
 | `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                            |
 | `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                            |
-| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; the root and its `current`/`releases` contents must stay root-owned, while only its `incoming` directory is writable by `harness`.                                                                                 |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root.                                           |
 | `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
 | `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
 
@@ -182,44 +182,28 @@ supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this u
 target and accepts the raw API Gateway endpoint directly; REST still resolves from
 `HARNESS_API_URL`, which must stay set to `WebUrl`.
 
-6. Install the environment file and checked-in unit. Populate the copied environment file before starting;
-   never commit it:
+6. Install the environment file. Populate it before starting; never commit it:
 
 ```bash
 UPDATE_ROOT=/opt/auto-harness # set to the same value as HARNESS_UPDATE_INSTALL_DIR when customized
+STAGING_ROOT="$UPDATE_ROOT/staging"
 sudo install -d -m 0755 /etc/auto-harness
 sudo install -m 0600 \
-  "$UPDATE_ROOT/current/services/host-daemon/systemd/host-daemon.env.example" \
+  "$STAGING_ROOT/services/host-daemon/systemd/host-daemon.env.example" \
   /etc/auto-harness/host-daemon.env
 sudoedit /etc/auto-harness/host-daemon.env
-sudo install -m 0644 \
-  "$UPDATE_ROOT/current/services/host-daemon/systemd/auto-harness-host-daemon.service" \
-  /etc/systemd/system/auto-harness-host-daemon.service
-# This root-owned wrapper stays outside both the activated tree and the daemon-writable
-# update root; it reads the env-file's HARNESS_UPDATE_INSTALL_DIR and selects that tree's
-# current pointer.
-sudo install -d -o root -g root -m 0755 /usr/local/lib/auto-harness
-# UPDATE_ROOT/current and releases/ are immutable service inputs. The daemon
-# writes only a signed activation request below incoming/; systemd's root-owned
-# pre-start helper verifies and promotes it.
-sudo install -d -o root -g root -m 0755 "$UPDATE_ROOT"
-sudo install -d -o harness -g harness -m 0700 "$UPDATE_ROOT/incoming"
-sudo install -d -o root -g root -m 0755 "$UPDATE_ROOT/releases"
-sudo install -m 0755 \
-  "$UPDATE_ROOT/current/services/host-daemon/systemd/run-host-daemon.sh" \
-  /usr/local/lib/auto-harness/run-host-daemon.sh
-sudo install -m 0755 \
-  "$UPDATE_ROOT/current/services/host-daemon/systemd/promote-host-daemon-update.mjs" \
-  /usr/local/lib/auto-harness/promote-host-daemon-update.mjs
-sudo systemctl daemon-reload
-sudo systemctl enable --now auto-harness-host-daemon.service
+cd "$STAGING_ROOT"
+sudo env "PATH=$PATH" "$(command -v pnpm)" local:daemon install-service
 ```
 
-The unit runs as `harness`, invokes the stable generated launcher, restarts after exits or crashes,
-and sends SIGTERM only to the daemon first. `TimeoutStopSec=15min` plus `KillMode=mixed` lets the daemon durably enter drain and wait
-for in-flight CLIs instead of having systemd kill the whole cgroup. An operator can still use an
-explicit `systemctl kill --kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an
-acknowledged emergency; that is not the normal update path.
+The installer creates the root-owned unit, stable launcher, promotion helper, and immutable
+`current`/`releases` layout. On a first install, its generated launcher runs the staging checkout
+only as the unprivileged `harness` service user until the configured signed updater promotes an
+immutable `current` release; subsequent starts select only `current`. `TimeoutStopSec=15min` plus
+`KillMode=mixed` lets the daemon durably enter drain and wait for in-flight CLIs instead of having
+systemd kill the whole cgroup. An operator can still use an explicit `systemctl kill
+--kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an acknowledged emergency;
+that is not the normal update path.
 
 The bound is finite on purpose. It was `infinity`, and the daemon had no bound of its own:
 with the control plane unreachable, `beginDrain()` retried its announcement forever and
@@ -297,11 +281,14 @@ drains during restart). It loads the platform's persisted service environment an
 two minutes until the exact host is online, non-draining, and Git-ready; the same end-to-end
 deadline terminates an in-flight status process group instead of waiting indefinitely. It also
 requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the
-checkout owner from `/opt/auto-harness/current` whenever that conventional service checkout exists;
-the wrapper refuses to validate a different checkout from the one systemd will execute. It invokes
-`sudo` only for the systemd installer and verification so Git and dependency files retain the right
-ownership. The manual procedure below remains the recovery path for immutable revisions, rollbacks,
-and dedicated VPS checkouts.
+checkout owner from `/opt/auto-harness/staging` whenever that conventional staging checkout
+exists; the wrapper refuses to validate a different staging directory. It invokes `sudo` only for
+the systemd installer and verification so Git and dependency files retain the right ownership. The
+service runs only its immutable `current` release: when signed updates are configured, its immediate
+updater poll writes the verified artifact into `incoming/` and systemd's root-owned helper promotes
+it. The manual procedure below remains the recovery path for immutable revisions, rollbacks, and
+dedicated VPS checkouts. For a custom `HARNESS_UPDATE_INSTALL_DIR`, export that same absolute path
+before invoking `pnpm deploy:host`, so the wrapper validates its corresponding `staging/` checkout.
 
 Current path — an operator must **drain, deploy, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 
@@ -309,22 +296,19 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
    - Control plane: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`
    - And/or agent-local drain signal
 2. Wait until no running sessions on that agent.
-3. Fetch and check out the new immutable revision, then install its locked production dependencies:
+3. Fetch and check out the new staging revision, then install its locked production dependencies:
 
    ```bash
-   sudo -u harness git -C /opt/auto-harness/current fetch --all --tags
-   sudo -u harness git -C /opt/auto-harness/current checkout NEW_IMMUTABLE_REVISION
-   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
-   sudo install -m 0644 \
-     /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
-     /etc/systemd/system/auto-harness-host-daemon.service
-   sudo systemctl daemon-reload
+   sudo -u harness git -C /opt/auto-harness/staging fetch --all --tags
+   sudo -u harness git -C /opt/auto-harness/staging checkout NEW_IMMUTABLE_REVISION
+   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
+   cd /opt/auto-harness/staging
+   pnpm deploy:host
    ```
 
-4. Restart only after drain, then verify registration:
+4. Verify the signed promotion/restart registered the host:
 
    ```bash
-   sudo systemctl restart auto-harness-host-daemon.service
    sudo systemctl status auto-harness-host-daemon.service
    ```
 
@@ -383,23 +367,25 @@ launcher files outside the activated tree, so their next start resolves the new 
 On Windows, a detached handoff owns the scheduled task's stop/start sequence rather than asking
 the running daemon to terminate its own task before it can request the replacement.
 On Linux, the selected update root, `current`, and `releases/` must remain root-owned; only
-`incoming/` is writable by `harness`. Both stable launcher and promotion helper are root-owned and
-are never replaced by the updater.
-The manual steps above remain valid when those variables are unset.
+`incoming/` is writable by `harness`. The writable deployment checkout is `staging/` below the
+same root and is never selected as an active release once `current` exists. Both stable launcher
+and promotion helper are root-owned and are never replaced by the updater.
+Without the signed-manifest settings, the service continues the last activated
+release; `pnpm deploy:host` still refreshes only the writable staging checkout
+and root-owned service files. Configure a signed manifest and public key before
+using the normal Linux deployment path to activate a new release.
 
 ### Rollback
 
-Use the same drain boundary, check out the previously verified immutable revision, restore its locked
-dependencies, and restart:
+Use the same drain boundary, select the previously verified signed release in the manifest, then
+restart so the updater stages it to `incoming/` for the root-owned helper to promote. To refresh the
+writable staging checkout for future deployments:
 
 ```bash
-sudo -u harness git -C /opt/auto-harness/current checkout PREVIOUS_IMMUTABLE_REVISION
-sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
-sudo install -m 0644 \
-  /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
-  /etc/systemd/system/auto-harness-host-daemon.service
-sudo systemctl daemon-reload
-sudo systemctl restart auto-harness-host-daemon.service
+sudo -u harness git -C /opt/auto-harness/staging checkout PREVIOUS_IMMUTABLE_REVISION
+sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
+cd /opt/auto-harness/staging
+pnpm deploy:host
 ```
 
 Then confirm the host re-registers and run one smoke session. Rollback does not bypass schema or

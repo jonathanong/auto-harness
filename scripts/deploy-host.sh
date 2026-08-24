@@ -73,11 +73,20 @@ EOF
   fi
 
   platform="$(uname -s)"
+  update_root="${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}"
+  if [[ "$update_root" != /* ]]; then
+    echo "HARNESS_UPDATE_INSTALL_DIR must be an absolute path." >&2
+    exit 1
+  fi
   if [[ "$platform" == "Linux" && "$(id -u)" -eq 0 ]]; then
     echo "deploy:host must run as the checkout owner on Linux; it elevates only the systemd operations." >&2
     exit 1
   fi
-  validate_linux_checkout "$platform" "$(pwd -P)" /opt/auto-harness/current
+  # The active Linux release lives in the immutable update root. Deployments
+  # instead update its writable staging checkout; the restarted daemon's
+  # configured signed updater writes incoming/ and the root-owned pre-start
+  # helper alone promotes a runnable release.
+  validate_linux_checkout "$platform" "$(pwd -P)" "$update_root/staging"
 
   if [[ "$(git branch --show-current)" != "main" ]]; then
     echo "deploy:host requires the main branch" >&2

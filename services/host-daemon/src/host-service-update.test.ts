@@ -27,6 +27,7 @@ describe("install-service API URL updates", () => {
     expect(spawn.calls.map((call) => call.args.join(" "))).toEqual([
       "-d -o root -g root -m 0755 /opt/auto-harness",
       "-d -o harness -g harness -m 0700 /opt/auto-harness/incoming",
+      "-d -o harness -g harness -m 0700 /opt/auto-harness/staging",
       "-d -o root -g root -m 0755 /usr/local/lib/auto-harness",
       "-d -o root -g root -m 0755 /opt/auto-harness/releases",
       "daemon-reload",

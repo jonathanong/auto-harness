@@ -126,6 +126,19 @@ fi`,
     );
   });
 
+  it("rejects a relative Linux update root before changing the checkout", () => {
+    const result = spawnSync("bash", [hostScript], {
+      encoding: "utf8",
+      env: { ...process.env, HARNESS_UPDATE_INSTALL_DIR: "updates" },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("HARNESS_UPDATE_INSTALL_DIR must be an absolute path.");
+    expect(position(host, 'update_root="${HARNESS_UPDATE_INSTALL_DIR')).toBeLessThan(
+      position(host, "git fetch origin main"),
+    );
+  });
+
   it("terminates a status command at the end-to-end readiness deadline", () => {
     const fixture = fakeEnvironment();
     executable(fixture.bin, "never-ready", 'trap "" TERM\n/bin/sleep 30');
@@ -149,12 +162,14 @@ fi`,
     expect(result.stderr).toContain("within 1 seconds");
   });
 
-  it("binds Linux activation to the checkout systemd will execute", () => {
+  it("binds Linux deployment to the writable staging checkout", () => {
     expect(host).toContain('service_root="$(cd "$service_checkout" && pwd -P)"');
     expect(host).toContain('if [[ "$checkout_root" != "$service_root" ]]');
+    expect(host).toContain('update_root="${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}"');
     expect(host).toContain(
-      'validate_linux_checkout "$platform" "$(pwd -P)" /opt/auto-harness/current',
+      'validate_linux_checkout "$platform" "$(pwd -P)" "$update_root/staging"',
     );
+    expect(host).toContain("configured signed updater writes incoming/");
     expect(host).toContain("wait_for_host_readiness 120");
   });
 });

@@ -2,11 +2,10 @@ import { homedir } from "node:os";
 import { isAbsolute, join, win32 } from "node:path";
 
 /**
- * Select a writable, stable update root for the platform supervisor. The
- * stable service launchers always resolve this directory's `current` pointer
- * at process start. Linux keeps its root-owned launcher alongside the update
- * tree; the installer separately grants the daemon user write access to the
- * release root.
+ * Select a stable update root for the platform supervisor. The stable service
+ * launchers always resolve this directory's `current` pointer at process
+ * start. Linux keeps immutable active releases separate from its writable
+ * incoming artifacts and deployment checkout.
  */
 export function resolveUpdateInstallDir(
   env: NodeJS.ProcessEnv,
