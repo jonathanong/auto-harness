@@ -197,6 +197,23 @@ describe("unsupported platform / thrown failures", () => {
     expect(uninstallErrors.join("\n")).toMatch(/boom/);
   });
 
+  it("maps a thrown restart handoff to a failed service operation", () => {
+    const errors: string[] = [];
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          restartHandoff: () => {
+            throw new Error("handoff failed");
+          },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["handoff failed"]);
+  });
+
   it("stringifies non-Error throws from install and uninstall", () => {
     const errors: string[] = [];
     const throwing = {

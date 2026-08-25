@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- updater runtime coverage shares one lifecycle fixture. */
 import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
+import { generateKeyPairSync, sign } from "node:crypto";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -16,6 +17,7 @@ import {
   startUpdatePoll,
   withHostUpdateConfig,
 } from "./agent-updater-runtime.ts";
+import { canonicalManifest } from "./agent-updater.ts";
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
 import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
@@ -263,5 +265,56 @@ describe("daemon updater runtime", () => {
     } finally {
       cleanup();
     }
+  });
+
+  it("owns and releases the daemon drain around a failed artifact download", async () => {
+    const keys = generateKeyPairSync("ed25519");
+    const unsigned = {
+      version: "1.1.0",
+      artifactUrl: "https://updates.example.test/agent-1.1.0.tgz",
+      sha256: "0".repeat(64),
+    };
+    const manifest = {
+      ...unsigned,
+      signature: sign(null, Buffer.from(canonicalManifest(unsigned)), keys.privateKey).toString(
+        "base64url",
+      ),
+    };
+    const calls: string[] = [];
+    let draining = false;
+    const updater = createDaemonUpdater({
+      loop: {
+        isDraining: () => draining,
+        beginDrain: async () => {
+          calls.push("begin");
+          draining = true;
+        },
+        waitForIdle: async () => {
+          calls.push("idle");
+        },
+        resumeFromDrain: () => {
+          calls.push("resume");
+          draining = false;
+        },
+      } as unknown as DaemonLoop,
+      env: {
+        HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+        HARNESS_UPDATE_PUBLIC_KEY: keys.publicKey
+          .export({ type: "spki", format: "pem" })
+          .toString(),
+        HARNESS_UPDATE_INSTALL_DIR: "/tmp/auto-harness-updater-runtime-drain-test",
+      },
+      log: () => undefined,
+      error: () => undefined,
+      service: baseOpts({ platform: "darwin", fs: seededFs() }),
+      fetchFn: async (url) =>
+        url.endsWith("manifest.json")
+          ? { ok: true, status: 200, json: async () => manifest }
+          : { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([1]).buffer },
+    });
+
+    await expect(updater!.run()).resolves.toMatchObject({ phase: "failed" });
+    expect(calls).toEqual(["begin", "idle", "resume"]);
+    expect(draining).toBe(false);
   });
 });

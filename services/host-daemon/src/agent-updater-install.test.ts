@@ -338,6 +338,18 @@ describe("file update installer", () => {
     }
   });
 
+  it("uses the bounded tar runner for a malformed archive by default", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir });
+      await expect(
+        installer.stage({ version: "3.1.0", artifact: new Uint8Array([1, 2, 3]) }),
+      ).rejects.toThrow("update archive listing failed");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("rejects mismatched privileged manifests and boot acknowledgements", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
