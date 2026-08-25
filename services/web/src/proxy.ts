@@ -22,7 +22,7 @@ function pass(request: NextRequest): NextResponse {
 }
 
 /** Public UI binds must have a session before rendering or proxying data. */
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (process.env.HARNESS_AUTH_MODE !== "required") return pass(request);
   // A locally valid token can still name an account revoked by the API. Keep
   // login reachable so that stale cookies never trap the browser in a loop.

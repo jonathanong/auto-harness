@@ -12,7 +12,7 @@ export function sessionCookieValue(cookieHeader: string | null | undefined): str
 }
 
 /**
- * Edge-compatible JWT verification for UI middleware and host-pane browse.
+ * Edge-compatible JWT verification for the UI proxy and host-pane browse.
  * Session JWTs must be kind admin or user with no audience.
  */
 export async function hasValidSession(
