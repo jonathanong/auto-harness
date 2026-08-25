@@ -503,6 +503,19 @@ for stack in Runtime Web; do
 done | tee "/tmp/${HARNESS_DEPLOY_ENVIRONMENT}-retained-log-groups.txt"
 ```
 
+If this environment was ever deployed before the `logGroup:` migration
+(#354), it may *also* carry older `/aws/lambda/AutoHarness-<environment>*`
+groups from the previous `logRetention`-based mechanism — those were never
+CDK-managed, so they won't appear in the capture above. Check for them too,
+and fold any hits into the same file:
+
+```bash
+aws logs describe-log-groups \
+  --log-group-name-prefix "/aws/lambda/AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT" \
+  --query 'logGroups[].logGroupName' --output text | tr '\t' '\n' \
+  | tee -a "/tmp/${HARNESS_DEPLOY_ENVIRONMENT}-retained-log-groups.txt"
+```
+
 ```bash
 export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
 export HARNESS_DEPLOY_PURGE_CONFIRM="destroy-all-data-in-$HARNESS_DEPLOY_ENVIRONMENT"
@@ -524,8 +537,9 @@ aws ssm describe-parameters \
 ```
 
 That should return nothing. The log groups captured above **will** still
-exist — purge does not delete RETAIN-policy log groups. Delete them by hand
-if you want the account fully clean:
+exist — purge never deletes them, whether they're RETAIN-policy CDK stack
+resources or pre-migration groups CDK never managed at all. Delete them by
+hand if you want the account fully clean:
 
 ```bash
 xargs -n1 aws logs delete-log-group --log-group-name \
