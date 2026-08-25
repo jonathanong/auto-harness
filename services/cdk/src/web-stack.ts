@@ -1,9 +1,9 @@
-import { CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 type WebStackProps = StackProps & {
@@ -20,6 +20,13 @@ export class AutoHarnessWebStack extends Stack {
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
 
+    // RETAINed, not DESTROYed, matching runtime-observability.ts's accessLogGroup: deleting or
+    // renaming the web function's construct would otherwise delete up to 14 days of retained
+    // application log history along with the orphaned log group.
+    const webFunctionLogGroup = new logs.LogGroup(this, "WebFunctionLogGroup", {
+      removalPolicy: RemovalPolicy.RETAIN,
+      retention: logs.RetentionDays.TWO_WEEKS,
+    });
     const webFunction = new lambda.DockerImageFunction(this, "WebFunction", {
       architecture: lambda.Architecture.ARM_64,
       code: props.imageCode,
@@ -28,7 +35,7 @@ export class AutoHarnessWebStack extends Stack {
         HARNESS_AUTH_MODE: "required",
         HARNESS_WEB_REMOTE_AUTH: "1",
       },
-      logRetention: RetentionDays.TWO_WEEKS,
+      logGroup: webFunctionLogGroup,
       memorySize: 1024,
       timeout: Duration.seconds(30),
     });

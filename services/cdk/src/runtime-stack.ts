@@ -1,12 +1,12 @@
 import { fileURLToPath } from "node:url";
 
-import { Aws, CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
+import { Aws, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
@@ -36,6 +36,18 @@ type RuntimeResources = {
 
 const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
 
+/**
+ * RETAINed, not DESTROYed, matching runtime-observability.ts's accessLogGroup: deleting or
+ * renaming a Lambda function's construct would otherwise delete up to 14 days of retained
+ * application log history along with the orphaned log group.
+ */
+function functionLogGroup(scope: Construct, id: string): logs.LogGroup {
+  return new logs.LogGroup(scope, `${id}LogGroup`, {
+    removalPolicy: RemovalPolicy.RETAIN,
+    retention: logs.RetentionDays.TWO_WEEKS,
+  });
+}
+
 /** Synthesizable REST + WebSocket Lambda runtime. This construct never deploys by itself. */
 export class AutoHarnessRuntimeStack extends Stack {
   readonly resources: RuntimeResources;
@@ -60,7 +72,6 @@ export class AutoHarnessRuntimeStack extends Stack {
     const functionProps = {
       bundling: { minify: true, sourceMap: true },
       entry: lambdaEntry,
-      logRetention: RetentionDays.TWO_WEEKS,
       memorySize: 256,
       runtime: lambda.Runtime.NODEJS_22_X,
     } satisfies Partial<nodejs.NodejsFunctionProps>;
@@ -68,12 +79,14 @@ export class AutoHarnessRuntimeStack extends Stack {
       ...functionProps,
       environment: { ...commonEnvironment, ...archiveAndKms },
       handler: "rest",
+      logGroup: functionLogGroup(this, "RestFunction"),
       timeout: Duration.seconds(15),
     });
     const websocketFunction = new nodejs.NodejsFunction(this, "WebSocketFunction", {
       ...functionProps,
       environment: commonEnvironment,
       handler: "websocket",
+      logGroup: functionLogGroup(this, "WebSocketFunction"),
       timeout: Duration.seconds(30),
     });
     // Minute scheduler also drains the Slack lifecycle outbox through chat.postMessage / chat.update.
@@ -81,6 +94,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       ...functionProps,
       environment: { ...commonEnvironment, ...archiveAndKms },
       handler: "cron",
+      logGroup: functionLogGroup(this, "CronFunction"),
       timeout: Duration.seconds(60),
     });
     for (const fn of [restFunction, websocketFunction, cronFunction]) {
