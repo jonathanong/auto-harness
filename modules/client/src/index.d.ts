@@ -11,6 +11,9 @@ export type SessionType = "prompt" | "scheduled";
 /** Origin that requested the session. */
 export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 
+/** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
+export type CreatableSessionSource = "api" | "ui" | "webhook";
+
 export type CreateSessionInput = {
   repositoryId: string;
   prompt: string;
@@ -23,10 +26,8 @@ export type CreateSessionInput = {
   priority?: number;
   requiredLabels?: string[];
   metadata?: Record<string, SessionMetadataValue>;
-  /** Defaults to `"prompt"` server-side. */
-  type?: SessionType;
-  /** Defaults to `"api"` server-side. */
-  source?: SessionSource;
+  /** Defaults to `"api"`; `"ui"`/`"webhook"` pass through, anything else becomes `"api"`. */
+  source?: CreatableSessionSource;
 };
 
 export type Session = {
@@ -43,8 +44,10 @@ export type Session = {
   requiredLabels?: string[];
   metadata?: Record<string, SessionMetadataValue>;
   status: string;
-  type: SessionType;
-  source: SessionSource;
+  /** Absent on sessions persisted before this field existed. */
+  type?: SessionType;
+  /** Absent on sessions persisted before this field existed. */
+  source?: SessionSource;
   createdAt: string;
   url: string;
   created?: boolean;

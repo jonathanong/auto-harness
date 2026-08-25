@@ -3,28 +3,26 @@ import test from "node:test";
 
 import { AutoHarnessClient } from "../src/index.js";
 
-test("creates sessions with an explicit type and source", async () => {
+test("creates a session with an explicit honored source", async () => {
   let request;
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",
     fetch: async (url, init) => {
       request = init;
-      return Response.json({ id: "session", created: true, type: "scheduled", source: "schedule" });
+      return Response.json({ id: "session", created: true, type: "prompt", source: "webhook" });
     },
   });
   await client.createSession({
     repositoryId: "repo",
     prompt: "review",
     target: { providerId: "codex" },
-    type: "scheduled",
-    source: "schedule",
+    source: "webhook",
   });
   assert.deepEqual(JSON.parse(request.body), {
     repositoryId: "repo",
     prompt: "review",
     target: { providerId: "codex" },
-    type: "scheduled",
-    source: "schedule",
+    source: "webhook",
   });
 });
 
