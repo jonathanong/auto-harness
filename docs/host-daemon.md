@@ -527,6 +527,14 @@ rather than launching the provider against an incomplete `node_modules`.
 `--frozen-lockfile` refuses to mutate the lockfile: a lockfile that disagrees with `package.json`
 at the checked-out ref fails setup instead of silently drifting or dirtying the worktree.
 
+The lockfile check reruns after setup scripts, not before: a setup script can check out a
+different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
+is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,
+which pnpm refuses without a TTY unless CI mode is set, and the daemon never attaches one. On
+Windows the install runs through `cmd.exe /d /s /c pnpm install --frozen-lockfile` rather than a
+bare `pnpm`, since Node's `child_process.spawn` (`shell: false`) cannot execute a `.cmd` shim
+directly.
+
 Because worktrees are reused across sessions and pnpm's content-addressable global store (under
 the preserved `HOME`) hardlinks unchanged packages, a repeat install on an already-installed
 worktree is a near no-op (roughly a second), while a first install on a fresh worktree pays the

@@ -18,6 +18,13 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * can need a purge-and-recreate (store, virtual-store, or hoisting layout
  * changed since the last install), and pnpm refuses that without a TTY
  * unless CI mode is set. `SpawnProcessRunner` never attaches one.
+ *
+ * On win32 the install runs through `cmd.exe /d /s /c` rather than a bare
+ * `pnpm`/`pnpm.cmd` argv0: `SpawnProcessRunner` always spawns with
+ * `shell: false`, and `.cmd` shims are batch scripts that Windows'
+ * CreateProcess cannot execute directly — see Node's "Spawning .bat and
+ * .cmd files on Windows" doc. `pnpm` and its args stay as separate argv
+ * elements (not a joined string), so there is no shell-injection surface.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -29,7 +36,10 @@ export async function installWorkspaceDependencies(
   platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
   return runner.run({
-    argv: [platform === "win32" ? "pnpm.cmd" : "pnpm", "install", "--frozen-lockfile"],
+    argv:
+      platform === "win32"
+        ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile"]
+        : ["pnpm", "install", "--frozen-lockfile"],
     cwd,
     env: { ...environment, CI: "true" },
     timeoutMs,

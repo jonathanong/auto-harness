@@ -10,8 +10,11 @@ import { SessionRunner } from "./session-runner.ts";
 import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
-/** Matches installWorkspaceDependencies' platform-conditional binary name. */
-const PNPM_BIN = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+/** Matches installWorkspaceDependencies' platform-conditional argv. */
+const INSTALL_ARGV =
+  process.platform === "win32"
+    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile"]
+    : ["pnpm", "install", "--frozen-lockfile"];
 
 const noopGit: GitClient = {
   ensureRepo: async () => undefined,
@@ -57,10 +60,7 @@ describe("SessionRunner dependency install", () => {
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(calls).toEqual([
-      [PNPM_BIN, "install", "--frozen-lockfile"],
-      ["echo", "hello"],
-    ]);
+    expect(calls).toEqual([INSTALL_ARGV, ["echo", "hello"]]);
     const system = result.logs
       .filter((chunk) => chunk.stream === "system")
       .map((chunk) => chunk.content);
@@ -112,7 +112,7 @@ describe("SessionRunner dependency install", () => {
     const spawn = { called: false };
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === PNPM_BIN) {
+        if (opts.argv[0] === INSTALL_ARGV[0]) {
           opts.onChunk({ stream: "stderr", data: "ERR_PNPM_OUTDATED_LOCKFILE\n" });
           return { exitCode: 1, timedOut: false, signal: null };
         }
@@ -135,7 +135,7 @@ describe("SessionRunner dependency install", () => {
     const { worktrees } = runnerFor(cwd);
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === PNPM_BIN) {
+        if (opts.argv[0] === INSTALL_ARGV[0]) {
           return { exitCode: null, timedOut: true, signal: "SIGTERM" };
         }
         return { exitCode: 0, timedOut: false, signal: null };
@@ -151,7 +151,7 @@ describe("SessionRunner dependency install", () => {
     const controller = new AbortController();
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === PNPM_BIN) {
+        if (opts.argv[0] === INSTALL_ARGV[0]) {
           controller.abort();
           return { exitCode: null, timedOut: false, cancelled: true, signal: null };
         }

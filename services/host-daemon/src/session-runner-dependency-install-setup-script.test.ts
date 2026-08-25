@@ -10,8 +10,8 @@ import { SessionRunner } from "./session-runner.ts";
 import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
-/** Matches installWorkspaceDependencies' platform-conditional binary name. */
-const PNPM_BIN = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+/** Matches installWorkspaceDependencies' platform-conditional argv[0]. */
+const INSTALL_BIN = process.platform === "win32" ? "cmd.exe" : "pnpm";
 
 const noopGit: GitClient = {
   ensureRepo: async () => undefined,
@@ -55,7 +55,7 @@ describe("SessionRunner dependency install ordering around setup scripts", () =>
           order.push("setup");
           return { exitCode: 0, timedOut: false, signal: null, environment: opts.env ?? {} };
         }
-        if (opts.argv[0] === PNPM_BIN) {
+        if (opts.argv[0] === INSTALL_BIN) {
           order.push("install");
           return { exitCode: 0, timedOut: false, signal: null };
         }
@@ -84,7 +84,7 @@ describe("SessionRunner dependency install ordering around setup scripts", () =>
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(calls.some((argv) => argv[0] === PNPM_BIN)).toBe(false);
+    expect(calls.some((argv) => argv[0] === INSTALL_BIN)).toBe(false);
   });
 
   it("runs install when a setup script adds a lockfile the pre-setup snapshot did not see", async () => {
@@ -104,6 +104,6 @@ describe("SessionRunner dependency install ordering around setup scripts", () =>
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(calls.some((argv) => argv[0] === PNPM_BIN)).toBe(true);
+    expect(calls.some((argv) => argv[0] === INSTALL_BIN)).toBe(true);
   });
 });

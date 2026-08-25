@@ -57,7 +57,7 @@ describe("installWorkspaceDependencies", () => {
     });
   });
 
-  it("launches pnpm.cmd on win32, since child_process.spawn with shell:false cannot resolve pnpm's .cmd shim", async () => {
+  it("runs through cmd.exe on win32, since child_process.spawn with shell:false cannot execute a .cmd shim directly", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-win32-"));
     let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
     const runner: ProcessRunner = {
@@ -67,7 +67,15 @@ describe("installWorkspaceDependencies", () => {
       },
     };
     await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {}, "win32");
-    expect(seen?.argv).toEqual(["pnpm.cmd", "install", "--frozen-lockfile"]);
+    expect(seen?.argv).toEqual([
+      "cmd.exe",
+      "/d",
+      "/s",
+      "/c",
+      "pnpm",
+      "install",
+      "--frozen-lockfile",
+    ]);
   });
 
   it("omits signal from run options when none is provided", async () => {
