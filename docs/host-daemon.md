@@ -837,6 +837,36 @@ ERROR: CLI tool not found: codex
 - Restart agent (releases local claims on clean start if no process)
 - Control plane may still show busy until disconnect reconciliation or status fix
 
+### Sessions queue forever, host reports healthy
+
+```text
+GET /hosts → online: true, gitReady: true
+```
+
+No error in the log, no error from `status`. Sessions just stay `queued` and never move to `running`.
+
+- Cause: `HARNESS_EXECUTION_PROFILES` is unset, or missing an entry for the account a session
+  needs. Assignment is fail-closed by design (see [Config Loader](#config-loader)) — with no
+  advertised readiness for that exact Provider Account ID, the daemon refuses the assignment
+  silently (no ACK). The host keeps reporting healthy because registration and Git worktrees are
+  unaffected.
+- Fix: set `HARNESS_EXECUTION_PROFILES` to an absolute-path JSON file mapping every attached
+  Provider Account ID (not Provider ID — see [api.md](api.md) `/provider-accounts`) to a `home`
+  directory that exists on the host. Apply with `install-service`, which persists the env var and
+  restarts the daemon in one step — see
+  [deploy-host-daemon.md#deploy-install](deploy-host-daemon.md#deploy-install).
+- Single-operator host running every provider CLI under one real account: point each account's
+  `home` at a **distinct directory** that all resolve to the same real `$HOME`, e.g. a symlink
+  farm (`execution-homes/<provider-name>` → the real home). This satisfies the daemon's
+  home-uniqueness check (`parseExecutionProfiles` rejects two accounts reusing one `home`) while
+  keeping a single real credential store. It buys distinct _configured paths_, not real
+  credential isolation between accounts — don't reach for it if accounts actually need separating.
+  No `env` override is needed when the symlink target is the CLI's real home, since each CLI's
+  config directory already resolves correctly underneath it.
+- Verify the fix landed: `status` or `GET /hosts` after the restart; a picked-up session's
+  `resolvedRoute.providerAccountId` confirms that account's profile is ready.
+- Tracking: auto-harness#342.
+
 ---
 
 ## Related documents

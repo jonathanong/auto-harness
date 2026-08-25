@@ -126,6 +126,30 @@ Uninstall (removes the service definition, not the checkout):
 pnpm local:daemon uninstall-service
 ```
 
+### Provider execution profiles (required for provider-backed dispatch)
+
+Every provider account attached to this host needs an entry in `HARNESS_EXECUTION_PROFILES` before
+the daemon will assign it a session. Without it, the daemon still connects, registers, and reports
+`gitReady: true` — dispatch just silently queues forever, with no ACK and no error anywhere. See
+[host-daemon.md#config-loader](host-daemon.md#config-loader) for the JSON schema (keyed by
+**Provider Account ID**, not Provider ID) and
+[host-daemon.md#sessions-queue-forever-host-reports-healthy](host-daemon.md#sessions-queue-forever-host-reports-healthy)
+for the failure mode and a single-operator workaround.
+
+Set it the same way as identity, then re-run `install-service` — it persists the value and restarts
+the daemon in one step:
+
+```bash
+export HARNESS_EXECUTION_PROFILES='/absolute/path/to/execution-profiles.json'
+pnpm local:daemon install-service
+```
+
+The path must be absolute; `install-service` rejects a relative one rather than resolving it
+against a supervisor working directory. To add this to an already-installed host without
+re-supplying `HARNESS_HOST_ID`/`HARNESS_API_URL`/`HARNESS_API_KEY`, load the existing env file and
+override just the new key — explicit process-env values win over ones loaded from the file (see the
+macOS `status` invocation above for the `HARNESS_ENV_FILE` pattern).
+
 ### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the
