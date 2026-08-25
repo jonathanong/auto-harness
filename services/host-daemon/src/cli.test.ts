@@ -345,6 +345,17 @@ describe("runCli", () => {
     expect(prepareStableDaemonUpdateBoot).toHaveBeenCalledWith({ env: {} });
   });
 
+  it("reports a stable-launcher boot failure without loading daemon config", async () => {
+    vi.mocked(prepareStableDaemonUpdateBoot).mockRejectedValueOnce("stable rollback failed");
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["stable rollback failed"]);
+  });
+
   it("start reports daemon errors", async () => {
     const a = deps({
       ensureReady: async () => {

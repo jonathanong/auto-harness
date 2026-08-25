@@ -36,6 +36,21 @@ describe("HTTPS update fetcher", () => {
     );
   });
 
+  it("uses the legacy artifact buffer when a streaming body is unavailable", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        body: null,
+        arrayBuffer: async () => new Uint8Array([7, 8]).buffer,
+      }),
+    );
+    await expect(fetcher.fetchArtifact("https://updates.example.test/agent.tgz")).resolves.toEqual(
+      new Uint8Array([7, 8]),
+    );
+  });
+
   it("fails closed on HTTP errors, timeouts, and http artifacts", async () => {
     const fetcher = createHttpsUpdateFetcher(
       "https://updates.example.test/manifest.json",

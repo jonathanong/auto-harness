@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { installHostService } from "./host-service.ts";
+import { installHostService, restartHostService } from "./host-service.ts";
 import type { HostServiceRun, HostServiceRunResult } from "./host-service-io.ts";
 import { baseOpts, errRun, launchctlByStep, okRun, seededFs } from "./host-service-test-helpers.ts";
 
@@ -108,6 +108,28 @@ describe("install-service darwin reload", () => {
     });
     expect(result.code).toBe(1);
     expect(result.errors.join("\n")).toMatch(/kickstart/);
+  });
+
+  it("rejects a successful kickstart when launchd retains the prior daemon pid", () => {
+    const errors: string[] = [];
+    let printCalls = 0;
+    const code = restartHostService(
+      baseOpts({
+        platform: "darwin",
+        fs: seededFs(),
+        error: (message) => errors.push(message),
+        run: (_command, args) => {
+          if (args[0] === "print") {
+            printCalls += 1;
+            return okRun("state = running\npid = 100\n");
+          }
+          return okRun();
+        },
+      }),
+    );
+    expect(printCalls).toBe(2);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("launchd kept the prior daemon pid");
   });
 
   it("does not treat a failed or unverifiable kickstart as a restart", () => {

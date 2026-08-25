@@ -426,6 +426,29 @@ describe("UsageCapturingProcessRunner", () => {
     ).resolves.toMatchObject({ usage: { inputTokens: "321" } });
   });
 
+  it("forwards but discards an oversized structured envelope", async () => {
+    const chunks: string[] = [];
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: "x".repeat(4 * 1024 * 1024 + 1) });
+        options.onChunk({
+          stream: "stdout",
+          data: '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":9}}',
+        });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["claude", "-p", "--output-format", "json"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: (chunk) => chunks.push(chunk.data),
+      }),
+    ).resolves.toEqual({ exitCode: 0, timedOut: false, signal: null });
+    expect(chunks).toHaveLength(2);
+  });
+
   it("attaches parsed usage without replacing an inner adapter report", async () => {
     const inner: ProcessRunner = {
       async run(options: RunProcessOptions): Promise<ProcessResult> {

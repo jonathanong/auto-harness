@@ -53,3 +53,33 @@ it("does not roll back when activation fails before current is switched", async 
   });
   expect(rollbackCalls).toBe(0);
 });
+
+it("reports a rollback failure after activation while restoring the drain", async () => {
+  const updater = new AgentUpdater({
+    currentVersion: "1.0.0",
+    manifestPublicKey: publicKey,
+    fetcher: {
+      fetchManifest: async () => manifest,
+      fetchArtifact: async () => artifact,
+    },
+    lifecycle: {
+      drain: async () => undefined,
+      waitForIdle: async () => undefined,
+      resume: async () => undefined,
+    },
+    installer: {
+      stage: async () => undefined,
+      activate: async () => undefined,
+      restart: async () => {
+        throw new Error("supervisor unavailable");
+      },
+      rollback: async () => {
+        throw new Error("rollback unavailable");
+      },
+    },
+  });
+  await expect(updater.run()).resolves.toMatchObject({
+    phase: "failed",
+    error: "supervisor unavailable; rollback failed: rollback unavailable",
+  });
+});
