@@ -324,13 +324,21 @@ function promote(root, incoming) {
     lockTree(oldRelease);
   }
   atomicWrite(join(root, "previous-version"), oldTarget ?? "");
-  switchCurrent(root, join("releases", manifest.version));
+  // Persist the recovery fence before selecting the release. If this process
+  // dies after the pointer moves, the next service start must still know that
+  // the newly selected tree has not completed a registered boot yet.
+  const markerPath = join(root, markerName);
+  atomicWrite(markerPath, JSON.stringify({ version: manifest.version, attempted: false }));
+  try {
+    switchCurrent(root, join("releases", manifest.version));
+  } catch (error) {
+    // The pointer did not move, so this marker must not later authorize a
+    // rollback of the still-active release.
+    rmSync(markerPath, { force: true });
+    throw error;
+  }
   // The next, separate ExecStartPre phase records the actual first boot
   // attempt immediately before systemd invokes the daemon.
-  atomicWrite(
-    join(root, markerName),
-    JSON.stringify({ version: manifest.version, attempted: false }),
-  );
   rmSync(join(incoming, requestName), { force: true });
   rmSync(join(incoming, "manifest.json"), { force: true });
   rmSync(artifact, { force: true });

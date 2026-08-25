@@ -382,9 +382,17 @@ using the normal Linux deployment path to activate a new release.
 
 ### Rollback
 
-Use the same drain boundary, select the previously verified signed release in the manifest, then
-restart so the updater stages it to `incoming/` for the root-owned helper to promote. To refresh the
-writable staging checkout for future deployments:
+A signed-manifest update is deliberately monotonic: the updater ignores a manifest whose version is
+less than or equal to the active version, even if that older artifact is still correctly signed. Do
+not try to roll back a healthy release by republishing an older manifest; publish a newer signed
+remediation instead.
+
+The pending-boot fence remains the emergency rollback path. If a newly promoted release exits or
+cannot register before its first health acknowledgement, the stable launcher/root-owned helper
+restores the saved previous release on the next supervisor start. It does not need, and must not
+accept, a downgraded manifest to do that.
+
+To refresh the writable staging checkout for future deployments:
 
 ```bash
 sudo -u harness git -C /opt/auto-harness/staging checkout PREVIOUS_IMMUTABLE_REVISION
@@ -393,8 +401,9 @@ cd /opt/auto-harness/staging
 pnpm deploy:host
 ```
 
-Then confirm the host re-registers and run one smoke session. Rollback does not bypass schema or
-control-plane compatibility requirements; roll the control plane first when the versions require it.
+After an automatic rollback, confirm the host re-registers and run one smoke session on the saved
+previous release. Recovery does not bypass schema or control-plane compatibility requirements; roll
+the control plane first when the versions require it.
 
 ### Command profiles / repos
 

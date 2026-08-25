@@ -116,6 +116,19 @@ export function validateSystemdActivationHelper(helper: string): string[] {
   if (helper.includes('from "../src/') || helper.includes('from "./')) {
     errors.push("promotion helper must not import daemon-writable activated code");
   }
+  const markerWrite = "JSON.stringify({ version: manifest.version, attempted: false })";
+  const switchCurrent = 'switchCurrent(root, join("releases", manifest.version));';
+  const markerWriteIndex = helper.indexOf(markerWrite);
+  const switchCurrentIndex = helper.indexOf(switchCurrent);
+  if (markerWriteIndex < 0 || switchCurrentIndex < 0 || markerWriteIndex > switchCurrentIndex) {
+    errors.push("pending update marker must be written before selecting the release");
+  }
+  if (
+    helper.indexOf("rmSync(markerPath, { force: true });", switchCurrentIndex) < 0 ||
+    !helper.includes('try {\n    switchCurrent(root, join("releases", manifest.version));')
+  ) {
+    errors.push("pending update marker must be cleared when selecting the release fails");
+  }
   return errors;
 }
 

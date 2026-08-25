@@ -100,4 +100,27 @@ describe("production host systemd artifacts", () => {
       ]),
     );
   });
+
+  it("requires a durable pending-boot marker on both pointer-switch paths", () => {
+    const markerWrite = "JSON.stringify({ version: manifest.version, attempted: false })";
+    const switchCurrent = 'switchCurrent(root, join("releases", manifest.version));';
+    const markerAfterSwitch = activationHelper
+      .replace(markerWrite, "/* delayed pending marker */")
+      .replace(switchCurrent, `${switchCurrent}\n  atomicWrite(markerPath, ${markerWrite});`);
+    const missingCleanup = activationHelper.replace(
+      "rmSync(markerPath, { force: true });\n    throw error;",
+      "throw error;",
+    );
+
+    expect(validateSystemdActivationHelper(markerAfterSwitch)).toEqual(
+      expect.arrayContaining([
+        "pending update marker must be written before selecting the release",
+      ]),
+    );
+    expect(validateSystemdActivationHelper(missingCleanup)).toEqual(
+      expect.arrayContaining([
+        "pending update marker must be cleared when selecting the release fails",
+      ]),
+    );
+  });
 });

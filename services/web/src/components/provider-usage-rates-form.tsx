@@ -137,24 +137,32 @@ function ClearRatesButton({
       onClick={() => {
         setClearing(true);
         start(async () => {
-          const response = await fetch(
-            `${apiBase()}/api/v1/providers/${encodeURIComponent(providerId)}`,
-            {
-              method: "PATCH",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ usageRates: null }),
-            },
-          );
-          setClearing(false);
-          if (!response.ok) {
-            const message = await apiErrorMessage(response);
+          try {
+            const response = await fetch(
+              `${apiBase()}/api/v1/providers/${encodeURIComponent(providerId)}`,
+              {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ usageRates: null }),
+              },
+            );
+            if (!response.ok) {
+              const message = await apiErrorMessage(response);
+              onError(message);
+              showToast(message, { variant: "destructive" });
+              return;
+            }
+            onError(null);
+            onCleared();
+            router.refresh();
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Could not clear provider usage rates";
             onError(message);
             showToast(message, { variant: "destructive" });
-            return;
+          } finally {
+            setClearing(false);
           }
-          onError(null);
-          onCleared();
-          router.refresh();
         });
       }}
     >

@@ -68,4 +68,25 @@ describe("ProviderUsageRatesForm", () => {
     expect(document.querySelector('[data-pw="form-provider-usage-rates"]')).not.toBeNull();
     view.unmount();
   });
+
+  it("surfaces a rejected clear request and allows another attempt", async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error("network unavailable"));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<ProviderUsageRatesForm provider={provider} />);
+
+    await act(async () => {
+      field(document, "provider-usage-rates-clear").click();
+      await Promise.resolve();
+    });
+
+    const clear = field<HTMLButtonElement>(document, "provider-usage-rates-clear");
+    expect(clear.disabled).toBe(false);
+    expect(field(document, "provider-usage-rates-error").textContent).toBe("network unavailable");
+    await act(async () => {
+      clear.click();
+      await Promise.resolve();
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
 });

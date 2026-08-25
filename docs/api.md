@@ -585,7 +585,11 @@ The session enters the `queued` state. Assignment is attempted immediately as a 
 
 If the session exceeds `timeout` seconds while running, the agent kills the process and reports `timed_out`. The control plane also terminates an acknowledged `running` assignment at `ackReceivedAt + timeout` if that host report is lost or rejected. The EventBridge/local scheduler applies the bound on the next sweep after that deadline (typically within 60 seconds).
 
-If the agent detects an **AI vendor usage/rate limit** in CLI output, it reports `errorCode: "usage_limit"`. The control plane pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or fallback. Providerless commands do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
+If a provider-aware CLI adapter validates an **AI vendor usage/rate-limit** signal from a structured
+result, the agent reports `errorCode: "usage_limit"`. The control plane pauses the assigned Provider
+Account globally for its configured cooldown (default 5 hours), releases the worktree, and
+immediately tries the next eligible account or fallback. Providerless and non-structured commands
+do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
 The concurrency identity is released for terminal states (`completed`, `failed`, `cancelled`, `timed_out`), allowing an explicit retry with the same id. A manual duplicate while the original is queued or running is deduplicated and returns the original session; it never creates a second queued run.
 

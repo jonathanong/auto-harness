@@ -341,8 +341,8 @@ migration marker. **No product-repo automation workflow may cut over before the 
   - Session runner — claim worktree → run setup script (ref-aware) → resolve command profile →
     spawn → collect output → release.
   - Session timeout — kill after `timeout` seconds, report `timed_out`.
-  - Usage-limit detection — parse CLI output for quota/rate-limit text → `failed` +
-    `errorCode: usage_limit` (no retry logic yet — that's Phase 2/3).
+  - Usage-limit detection — validate a provider-aware adapter's structured quota/rate-limit
+    signal → `failed` + `errorCode: usage_limit` (no retry logic yet — that's Phase 2/3).
   - `terminal-hook.ts` — on every terminal status, if the repo config declares a hook script,
     invoke it with session metadata as env (`HARNESS_SESSION_ID`, `HARNESS_STATUS`,
     `HARNESS_ERROR_CODE`, `HARNESS_REF`, `HARNESS_METADATA`, worktree path); log and swallow hook
