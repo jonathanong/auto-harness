@@ -880,15 +880,48 @@ search for it as evidence of this failure mode; there is no local or control-pla
   look identical whether the profile landed or not — checking them proves nothing.
   `providerAccountReadiness` is advertised in `host:register` but kept only on the live connection
   state; it is never persisted or exposed through any GET route. Two ways to actually confirm it:
-  - **Pre-flight, no live session needed:** run `loadExecutionProfiles`/`providerAccountReadiness`
-    from [Config Loader](#config-loader)'s source
-    (`services/host-daemon/src/execution-profiles.ts`) against the _persisted_ service env
-    (`HARNESS_ENV_FILE=/path/to/host-daemon.env`, not whatever your shell happens to have
-    exported) and, on Linux, as the service user (e.g. `sudo -u harness`) — otherwise the check
-    reflects your own shell's env and filesystem permissions, not the daemon's, and can report
-    `ready: true` while the live daemon still refuses every assignment.
-  - **Authoritative:** watch an account-specific session get picked up — its
-    `resolvedRoute.providerAccountId` confirms that account's profile is ready.
+  - **Pre-flight, no live session needed:** `loadExecutionProfiles`/`providerAccountReadiness` (see
+    [Config Loader](#config-loader), `services/host-daemon/src/execution-profiles.ts`) read only
+    `HARNESS_EXECUTION_PROFILES` from the process's own env — they don't interpret `HARNESS_ENV_FILE`
+    themselves — and the persisted env file is root-owned mode `0600`, unreadable by `harness`
+    directly. Extract the path as root, then run the actual check as `harness` with just that path;
+    running it as your own shell instead reflects your own env and filesystem permissions, not the
+    daemon's, and can report `ready: true` while the live daemon still refuses every assignment. See
+    the two-step script below.
+  - **Authoritative:** watch an account-specific session get picked up on _that host_ — check both
+    `resolvedRoute.providerAccountId` and `resolvedRoute.hostId`, not the account alone. If the
+    account is attached to more than one eligible host, the session can land on a different healthy
+    host and prove nothing about the one you just repaired.
+
+Linux pre-flight, in two steps because reading the persisted env file needs root but the readiness
+check needs to run as `harness` to reflect its actual filesystem access:
+
+```bash
+# 1. Root reads the persisted env file and prints just the profiles path.
+sudo node --input-type=module <<'NODE'
+import { readFileSync } from "node:fs";
+const entries = new Map(
+  readFileSync("/etc/auto-harness/host-daemon.env", "utf8")
+    .split(/\r?\n/)
+    .filter((l) => l && !l.startsWith("#"))
+    .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+);
+console.log(entries.get("HARNESS_EXECUTION_PROFILES") ?? "");
+NODE
+
+# 2. As harness, run the daemon's own check against that path (substitute it in below). The
+#    release tree ships raw .ts source and runs it directly via Node's native type stripping
+#    (see run-host-daemon.sh) — importing straight from it is exactly what's live.
+sudo -u harness env HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
+  node --input-type=module <<'NODE'
+import {
+  loadExecutionProfiles,
+  providerAccountReadiness,
+} from "/opt/auto-harness/current/services/host-daemon/src/execution-profiles.ts";
+console.log(providerAccountReadiness(loadExecutionProfiles()));
+NODE
+```
+
 - Tracking: auto-harness#342.
 
 ---
