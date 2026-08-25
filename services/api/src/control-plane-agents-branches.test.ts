@@ -263,8 +263,7 @@ describe("agent registration branch boundaries", () => {
         { ...worktree({ id: "busy", name: "busy" }) },
       ],
       putWorktreeFenced: async (row: { id: string; connectionId: string }) => (
-        writes.push(`${row.id}:${row.connectionId}`),
-        true
+        writes.push(`${row.id}:${row.connectionId}`), true
       ),
       putHostInventoryFenced: async () => ({ ok: true }),
     } as never;

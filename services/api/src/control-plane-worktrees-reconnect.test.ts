@@ -66,12 +66,10 @@ describe("durable disconnect worktree reconciliation", () => {
       getWorktree: async (id: string) => rows.find((row) => row.id === id) ?? null,
       setWorktreeOnlineFenced: async (id: string) => (calls.push(`offline:${id}`), true),
       releaseCancelledSessionWorktree: async (opts: { online: boolean }) => (
-        calls.push(opts.online ? "cancel-online" : "cancel-offline"),
-        true
+        calls.push(opts.online ? "cancel-online" : "cancel-offline"), true
       ),
       markReconnectPending: async (opts: { sessionId: string }) => (
-        calls.push(`ack:${opts.sessionId}`),
-        true
+        calls.push(`ack:${opts.sessionId}`), true
       ),
       tryRequeueSession: async (opts: { sessionId: string }) => {
         calls.push(`queue:${opts.sessionId}`);

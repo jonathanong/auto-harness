@@ -603,8 +603,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
     plane.state.storage = {
       getHostLock: async () => "connection",
       putLogFenced: async (_record: unknown, fence: { attempts?: unknown }) => (
-        fences.push(fence),
-        true
+        fences.push(fence), true
       ),
     } as never;
     expect(

@@ -14,13 +14,11 @@ describe("durable host registration", () => {
       getHostInventory: async () => null,
       getWorktree: async () => null,
       putWorktreeFenced: async (_worktree: { id: string }, fence: { connectionId: string }) => (
-        calls.push(`worktree:${fence.connectionId}`),
-        true
+        calls.push(`worktree:${fence.connectionId}`), true
       ),
       listWorktreesByHost: async () => [],
       putHostInventoryFenced: async (_inventory: unknown, fence: { connectionId: string }) => (
-        calls.push(`inventory:${fence.connectionId}`),
-        { ok: true }
+        calls.push(`inventory:${fence.connectionId}`), { ok: true }
       ),
     } as never;
     const result = await plane.registerHostDurable({
@@ -54,8 +52,7 @@ describe("durable host registration", () => {
         throw new Error("write");
       },
       releaseHostConnection: async (_hostId: string, connectionId: string) => (
-        released.push(connectionId),
-        true
+        released.push(connectionId), true
       ),
       getHostLock: async () => null,
       setWorktreeOnlineFenced: async () => false,
@@ -85,8 +82,7 @@ describe("durable host registration", () => {
     const calls: string[] = [];
     plane.state.storage = {
       heartbeatConnection: async (_hostId: string, _connectionId: string, at: string) => (
-        calls.push(`beat:${at}`),
-        true
+        calls.push(`beat:${at}`), true
       ),
       getHostLock: async () => "c",
       listWorktreesByHost: async () => [],

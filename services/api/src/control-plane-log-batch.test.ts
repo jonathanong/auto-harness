@@ -157,8 +157,7 @@ describe("durable host log batches", () => {
       getSession: async () => ({ hostId: "host", attemptId: "a" }),
       getHostLock: async () => "connection",
       putLogsFenced: async (records: Array<{ content: string }>) => (
-        written.push(...records.map((record) => record.content)),
-        true
+        written.push(...records.map((record) => record.content)), true
       ),
     } as never;
     await expect(
@@ -218,8 +217,7 @@ describe("durable host log batches", () => {
       getSession: async () => ({ hostId: "host" }),
       getHostLock: async () => "connection",
       putLogsFenced: async (_records: unknown, fence: { attempts?: unknown }) => (
-        fences.push(fence),
-        true
+        fences.push(fence), true
       ),
     } as never;
     await expect(
