@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
@@ -114,5 +114,45 @@ describe("runSetupIfNeeded dependency install edge cases", () => {
     };
     const { failure } = await run(baseAssign(), claimed, runner, controller.signal);
     expect(failure).toMatchObject({ status: "cancelled" });
+  });
+
+  describe("install step timeout budget", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("gives the install step a fresh deadline instead of the setup script's leftover budget", async () => {
+      vi.useFakeTimers();
+      const cwd = pnpmWorkspaceDir();
+      const claimed = claim(cwd, undefined, "custom-host-setup");
+      let installTimeoutMs = -1;
+      const runner: ProcessRunner = {
+        async run(opts) {
+          if (opts.argv[0] === "pnpm" || opts.argv[0] === "cmd.exe") {
+            installTimeoutMs = opts.timeoutMs;
+            return { exitCode: 0, timedOut: false, signal: null };
+          }
+          // Simulate a setup script that burns through most of the shared
+          // 600s setup budget before the install step ever starts.
+          vi.setSystemTime(Date.now() + 550_000);
+          return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+        },
+      };
+      const { streamer, logs } = noopStreamer();
+      await runSetupIfNeeded(
+        runner,
+        streamer,
+        logs,
+        baseAssign(),
+        claimed,
+        undefined,
+        () => false,
+        () => 700_000,
+      );
+      // The old shared deadline would have left only ~50s (600s cap minus
+      // the 550s the setup script consumed). A fresh budget gets close to
+      // the full 600s cap instead.
+      expect(installTimeoutMs).toBeGreaterThan(590_000);
+    });
   });
 });

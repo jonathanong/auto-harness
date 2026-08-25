@@ -102,10 +102,18 @@ export async function runSetupIfNeeded(
       return { environment, failure: await revalidationFailure(error) };
     }
     streamer.write("system", "Installing workspace dependencies...");
+    // Independent deadline: setup scripts may have already spent most of
+    // setupDeadline, but that says nothing about how much session time is
+    // actually left. Cap the install off the *current* remaining session
+    // time instead of reusing the pre-setup-loop deadline, so a slow setup
+    // script doesn't silently starve the install step.
+    const installDeadline = Date.now() + Math.min(remainingMs(), 600_000);
+    const remainingInstallMs = () =>
+      Math.max(1, Math.min(remainingMs(), installDeadline - Date.now()));
     const install = await installWorkspaceDependencies(
       processRunner,
       claimed.cwd,
-      remainingStepMs(),
+      remainingInstallMs(),
       (c) => streamer.write(c.stream, c.data),
       signal,
       environment,
