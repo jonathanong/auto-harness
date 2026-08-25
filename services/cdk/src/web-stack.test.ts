@@ -24,6 +24,8 @@ describe("AutoHarnessWebStack", () => {
       UpdateReplacePolicy: "Retain",
     });
     // Wired to the explicit logGroup: construct above, not the deprecated logRetention path.
+    // No Custom::LogRetention provider means the deprecated path is gone, not merely unused.
+    template.resourceCountIs("Custom::LogRetention", 0);
     template.hasResourceProperties("AWS::Lambda::Function", {
       LoggingConfig: { LogGroup: Match.anyValue() },
     });

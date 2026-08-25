@@ -21,6 +21,8 @@ describe("AutoHarnessRuntimeStack", () => {
     template.resourcePropertiesCountIs("AWS::Logs::LogGroup", { RetentionInDays: 14 }, 3);
     // Each function must be wired to its own explicit logGroup: construct (see
     // functionLogGroup in runtime-stack.ts), not left to the deprecated logRetention path.
+    // No Custom::LogRetention provider means the deprecated path is gone, not merely unused.
+    template.resourceCountIs("Custom::LogRetention", 0);
     template.resourcePropertiesCountIs(
       "AWS::Lambda::Function",
       { LoggingConfig: { LogGroup: Match.anyValue() } },
