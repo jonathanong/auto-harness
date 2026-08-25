@@ -13,6 +13,11 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * refuses to mutate the lockfile or dirty the worktree; a lockfile that
  * disagrees with package.json at the checked-out ref fails setup instead of
  * silently drifting.
+ *
+ * `CI=true` is forced for this step only: a reused worktree's `node_modules`
+ * can need a purge-and-recreate (store, virtual-store, or hoisting layout
+ * changed since the last install), and pnpm refuses that without a TTY
+ * unless CI mode is set. `SpawnProcessRunner` never attaches one.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -21,11 +26,12 @@ export async function installWorkspaceDependencies(
   onChunk: (chunk: OutputChunk) => void,
   signal: AbortSignal | undefined,
   environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
   return runner.run({
-    argv: ["pnpm", "install", "--frozen-lockfile"],
+    argv: [platform === "win32" ? "pnpm.cmd" : "pnpm", "install", "--frozen-lockfile"],
     cwd,
-    env: environment,
+    env: { ...environment, CI: "true" },
     timeoutMs,
     ...(signal ? { signal } : {}),
     onChunk,

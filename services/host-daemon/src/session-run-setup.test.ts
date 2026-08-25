@@ -16,12 +16,17 @@ function pnpmWorkspaceDir(): string {
   return cwd;
 }
 
-function claim(cwd: string, currentExecutionTarget?: () => Promise<void>): ClaimedWorktree {
+function claim(
+  cwd: string,
+  currentExecutionTarget?: () => Promise<void>,
+  hostSetupScript?: string,
+): ClaimedWorktree {
   return {
     repository: { id: "repo-1", path: cwd, defaultBranch: "main", worktrees: [] },
     worktree: { id: "wt-1", name: "wt-1", path: cwd, labels: [] },
     cwd,
     ...(currentExecutionTarget ? { currentExecutionTarget } : {}),
+    ...(hostSetupScript !== undefined ? { hostSetupScript } : {}),
     currentHookTarget: async () => null,
   };
 }
@@ -72,6 +77,28 @@ describe("runSetupIfNeeded dependency install edge cases", () => {
       status: "failed",
       errorCode: "setup_failed",
       errorMessage: "boom",
+    });
+  });
+
+  it("fails structurally when revalidation throws before the first setup script runs", async () => {
+    const cwd = pnpmWorkspaceDir();
+    const claimed = claim(
+      cwd,
+      () => {
+        throw new Error("inventory changed");
+      },
+      "custom-host-setup",
+    );
+    const runner: ProcessRunner = {
+      async run() {
+        throw new Error("setup script should not run when revalidation fails first");
+      },
+    };
+    const { failure } = await run(baseAssign(), claimed, runner);
+    expect(failure).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "inventory changed",
     });
   });
 

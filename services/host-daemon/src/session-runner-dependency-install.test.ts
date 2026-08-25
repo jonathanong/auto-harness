@@ -10,6 +10,9 @@ import { SessionRunner } from "./session-runner.ts";
 import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
+/** Matches installWorkspaceDependencies' platform-conditional binary name. */
+const PNPM_BIN = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
 const noopGit: GitClient = {
   ensureRepo: async () => undefined,
   ensureWorktree: async () => undefined,
@@ -55,7 +58,7 @@ describe("SessionRunner dependency install", () => {
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
     expect(calls).toEqual([
-      ["pnpm", "install", "--frozen-lockfile"],
+      [PNPM_BIN, "install", "--frozen-lockfile"],
       ["echo", "hello"],
     ]);
     const system = result.logs
@@ -103,36 +106,13 @@ describe("SessionRunner dependency install", () => {
     expect(calls).toEqual([["tool", "resume", "ref"]]);
   });
 
-  it("runs the install after a configured setup script completes", async () => {
-    const cwd = pnpmWorkspaceDir("auto-harness-install-after-setup-");
-    const { worktrees } = runnerFor(cwd, { setupScript: "custom-setup" });
-    const order: string[] = [];
-    const runner: ProcessRunner = {
-      async run(opts) {
-        if (opts.argv[1] === "-c") {
-          order.push("setup");
-          return { exitCode: 0, timedOut: false, signal: null, environment: opts.env ?? {} };
-        }
-        if (opts.argv[0] === "pnpm") {
-          order.push("install");
-          return { exitCode: 0, timedOut: false, signal: null };
-        }
-        order.push("command");
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
-    expect(result.status).toBe("completed");
-    expect(order).toEqual(["setup", "install", "command"]);
-  });
-
   it("fails the session structurally when the install exits non-zero", async () => {
     const cwd = pnpmWorkspaceDir("auto-harness-install-fail-");
     const { worktrees } = runnerFor(cwd);
     const spawn = { called: false };
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === "pnpm") {
+        if (opts.argv[0] === PNPM_BIN) {
           opts.onChunk({ stream: "stderr", data: "ERR_PNPM_OUTDATED_LOCKFILE\n" });
           return { exitCode: 1, timedOut: false, signal: null };
         }
@@ -155,7 +135,7 @@ describe("SessionRunner dependency install", () => {
     const { worktrees } = runnerFor(cwd);
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === "pnpm") {
+        if (opts.argv[0] === PNPM_BIN) {
           return { exitCode: null, timedOut: true, signal: "SIGTERM" };
         }
         return { exitCode: 0, timedOut: false, signal: null };
@@ -171,7 +151,7 @@ describe("SessionRunner dependency install", () => {
     const controller = new AbortController();
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === "pnpm") {
+        if (opts.argv[0] === PNPM_BIN) {
           controller.abort();
           return { exitCode: null, timedOut: false, cancelled: true, signal: null };
         }

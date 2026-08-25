@@ -32,8 +32,8 @@ export async function runSetupIfNeeded(
   const setupScripts = [claimed.hostSetupScript, scopedSetupScript].filter(
     (script): script is string => Boolean(script),
   );
-  const needsDependencyInstall = !assign.resume && isPnpmWorkspace(claimed.cwd);
-  if (assign.resume || (setupScripts.length === 0 && !needsDependencyInstall)) {
+  const mayNeedDependencyInstall = !assign.resume && isPnpmWorkspace(claimed.cwd);
+  if (assign.resume || (setupScripts.length === 0 && !mayNeedDependencyInstall)) {
     return { environment, failure: null };
   }
 
@@ -92,7 +92,9 @@ export async function runSetupIfNeeded(
     streamer.write("system", "Setup complete.");
   }
 
-  if (needsDependencyInstall) {
+  // Re-check after setup scripts run: a script may check out a different ref
+  // and add or remove the lockfile, so the pre-setup snapshot can be stale.
+  if (!assign.resume && isPnpmWorkspace(claimed.cwd)) {
     if (signal?.aborted) return { environment, failure: await abortedFailure() };
     try {
       await claimed.currentExecutionTarget?.();

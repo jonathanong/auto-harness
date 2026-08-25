@@ -26,7 +26,7 @@ describe("isPnpmWorkspace", () => {
 });
 
 describe("installWorkspaceDependencies", () => {
-  it("runs a frozen-lockfile install in the worktree with the given environment", async () => {
+  it("runs a frozen-lockfile install in the worktree with the given environment plus CI=true", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-"));
     mkdirSync(cwd, { recursive: true });
     let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
@@ -45,15 +45,29 @@ describe("installWorkspaceDependencies", () => {
       (c) => chunks.push(c.data),
       controller.signal,
       { PATH: "/usr/bin" },
+      "linux",
     );
     expect(result.exitCode).toBe(0);
     expect(seen).toMatchObject({
       argv: ["pnpm", "install", "--frozen-lockfile"],
       cwd,
-      env: { PATH: "/usr/bin" },
+      env: { PATH: "/usr/bin", CI: "true" },
       timeoutMs: 5_000,
       signal: controller.signal,
     });
+  });
+
+  it("launches pnpm.cmd on win32, since child_process.spawn with shell:false cannot resolve pnpm's .cmd shim", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-win32-"));
+    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
+    const runner: ProcessRunner = {
+      async run(options) {
+        seen = options;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {}, "win32");
+    expect(seen?.argv).toEqual(["pnpm.cmd", "install", "--frozen-lockfile"]);
   });
 
   it("omits signal from run options when none is provided", async () => {
