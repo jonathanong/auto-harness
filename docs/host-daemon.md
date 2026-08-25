@@ -894,30 +894,42 @@ search for it as evidence of this failure mode; there is no local or control-pla
     host and prove nothing about the one you just repaired.
 
 Linux pre-flight, in two steps because reading the persisted env file needs root but the readiness
-check needs to run as `harness` to reflect its actual filesystem access:
+check needs to run as `harness` to reflect its actual filesystem access. Don't hard-code
+`/opt/auto-harness/current` as the import root: a custom `HARNESS_UPDATE_INSTALL_DIR` moves it, and
+on a fresh install (or before the first release promotion) there's no `current` tree yet — the
+daemon's own launcher falls back to the checkout root instead, and that fallback is re-decided live
+on every daemon restart, so even the systemd unit's `WorkingDirectory=` can go stale. Reading the
+running process's actual cwd via `/proc` is the only way to know the live root for certain. Likewise
+don't assume a bare `node` resolves under `sudo` — its secure-path default excludes anything installed
+outside `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` (nvm included), so pull the exact absolute node path
+the daemon itself was installed with out of the launcher script instead:
 
 ```bash
-# 1. Root reads the persisted env file and prints just the profiles path.
-sudo node --input-type=module <<'NODE'
-import { readFileSync } from "node:fs";
-const entries = new Map(
-  readFileSync("/etc/auto-harness/host-daemon.env", "utf8")
-    .split(/\r?\n/)
-    .filter((l) => l && !l.startsWith("#"))
-    .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-);
-console.log(entries.get("HARNESS_EXECUTION_PROFILES") ?? "");
-NODE
+# 1. Root reads the persisted profiles path, the live daemon's actual working root (from its
+#    running process, not the static unit config), and the absolute node path baked into its
+#    launcher at install time.
+sudo sh <<'SCRIPT'
+set -eu
+profiles=$(sed -n 's/^HARNESS_EXECUTION_PROFILES=//p' /etc/auto-harness/host-daemon.env | tail -1)
+pid=$(systemctl show auto-harness-host-daemon.service --property=MainPID --value)
+root=$(readlink -f "/proc/$pid/cwd")
+node_path=$(sed -n "s/^exec '\([^']*\)'.*/\1/p" /usr/local/lib/auto-harness/run-host-daemon.sh | head -1)
+echo "PROFILES=$profiles"
+echo "ROOT=$root"
+echo "NODE_PATH=$node_path"
+SCRIPT
 
-# 2. As harness, run the daemon's own check against that path (substitute it in below). The
-#    release tree ships raw .ts source and runs it directly via Node's native type stripping
-#    (see run-host-daemon.sh) — importing straight from it is exactly what's live.
+# 2. As harness, run the daemon's own check against that path, using the resolved NODE_PATH and
+#    ROOT from step 1 (substitute all three placeholders below). An absolute node path bypasses
+#    PATH resolution entirely, so it works under sudo -u harness regardless of secure_path. The
+#    release tree ships raw .ts source and runs it directly via Node's native type stripping (see
+#    run-host-daemon.sh) — importing from the live root is exactly what's running.
 sudo -u harness env HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
-  node --input-type=module <<'NODE'
+  /absolute/path/to/node --input-type=module <<'NODE'
 import {
   loadExecutionProfiles,
   providerAccountReadiness,
-} from "/opt/auto-harness/current/services/host-daemon/src/execution-profiles.ts";
+} from "/absolute/live/root/services/host-daemon/src/execution-profiles.ts";
 console.log(providerAccountReadiness(loadExecutionProfiles()));
 NODE
 ```
