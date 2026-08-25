@@ -1,8 +1,8 @@
 name: Auto Harness dispatch
-description: Dispatch a session or manage the authenticated principal's repository session drain
+description: Dispatch a session, or start/poll/release a principal session drain that cancels this principal's own queued and running sessions for one repository
 inputs:
   operation:
-    description: dispatch (default), start-drain, get-drain, wait-for-drain, or release-drain
+    description: dispatch (default) creates a session; start-drain/get-drain/wait-for-drain/release-drain manage a principal session drain, which cancels this principal's queued and running sessions for one repository (not a repository-wide or host drain)
     required: false
     default: dispatch
   server-url:

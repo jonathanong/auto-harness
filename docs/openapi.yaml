@@ -110,7 +110,7 @@ paths:
       - $ref: "#/components/parameters/RepositoryId"
     post:
       operationId: startSessionDrain
-      summary: Atomically drain the authenticated principal's sessions for one repository
+      summary: Cancel the authenticated principal's queued and running sessions for one repository and fence new admission from that principal
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       responses:

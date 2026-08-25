@@ -1,4 +1,7 @@
 /* eslint-disable max-lines */
+// Cancels one authenticated principal's queued/running sessions for one repository and fences new
+// admission from that principal — not a repository-wide drain (control-plane-repository-admission.ts)
+// or a host drain (control-plane-agents.ts).
 import { createHash, randomUUID } from "node:crypto";
 
 import {

@@ -45,10 +45,12 @@ while (page.nextCursor) {
 
 ## Principal session drains
 
-An automation principal can atomically stop admitting only its own sessions for one repository,
-then wait for the control plane to cancel and settle that exact scope. This is not repository or
-host drain. Use a stable idempotency key when retries may be ambiguous, poll the durable operation,
-and release the fence explicitly only after recording its terminal result.
+Cancels this principal's own queued and running sessions for one repository, then fences new
+admission from that same principal until the fence is explicitly released. **Not** repository
+drain or host drain — see [Principal session drains](../../docs/api.md#principal-session-drains)
+for the full disambiguation and server-side guarantees. Use a stable idempotency key when retries
+may be ambiguous, poll the durable operation, and release the fence explicitly only after
+recording its terminal result.
 
 ```js
 const drain = await harness.startSessionDrain("repo-1", {

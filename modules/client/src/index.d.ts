@@ -122,7 +122,7 @@ export type RepositoryPage = {
 
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
-/** Bounded, durable progress for the authenticated principal's repository session drain. */
+/** Bounded, durable progress for a principal session drain: cancels the authenticated principal's own queued/running sessions for one repository (not repository or host drain). */
 export type SessionDrain = {
   operationId: string;
   repositoryId: string;
@@ -181,6 +181,7 @@ export class AutoHarnessClient {
   cancelSession(id: string): Promise<Session>;
   resumeSession(id: string, input?: ResumeSessionInput): Promise<Session & { created: boolean }>;
   listSessions(options?: ListSessionsOptions): Promise<SessionPage>;
+  /** Cancels this principal's own queued/running sessions for one repository and fences new admission from it — not repository or host drain. */
   startSessionDrain(
     repositoryId: string,
     options?: { idempotencyKey?: string },
