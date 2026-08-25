@@ -62,8 +62,8 @@ while (progress.status === "draining") {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
   progress = await harness.getSessionDrain("repo-1", drain.operationId);
 }
-if (progress.status !== "succeeded") throw new Error(`Drain failed: ${progress.failureCode}`);
 await harness.releaseSessionDrain("repo-1", drain.operationId);
+if (progress.status !== "succeeded") throw new Error(`Drain failed: ${progress.failureCode}`);
 ```
 
 When create, clone, or resume loses to the fence, `AutoHarnessError` has `code === "DRAINING"`

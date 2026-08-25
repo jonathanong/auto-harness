@@ -37,7 +37,7 @@ malformed results. Release is explicit, including after a failed drain, so relea
 whatever caller-side failure handling records that result.
 
 ```yaml
-- name: Start this service account's repository drain
+- name: Start this service account's principal session drain
   id: drain
   uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:

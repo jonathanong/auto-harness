@@ -141,8 +141,10 @@ the repository is activated. These operations require `repositories:operate` and
 Cancels the authenticated principal's own queued and running sessions for one repository, then
 fences new admission from that same principal until the fence is explicitly released. This is
 **not** repository drain (above; operator-triggered, cancels every principal's sessions) or host
-update drain (one host, running work finishes) — it never touches sessions started by the UI,
-another service account, or another repository:
+update drain (one host, running work finishes) — the fence is `(repositoryId, principal)` only, so
+it never touches another principal's sessions or another repository's sessions. It does not
+distinguish by how a session was started: a UI-started session owned by the calling principal is
+in scope just like an API- or webhook-started one.
 
 - `POST /repositories/:id/session-drains` commits the exact
   `(repositoryId, authenticated principal)` admission fence and returns `202` with
