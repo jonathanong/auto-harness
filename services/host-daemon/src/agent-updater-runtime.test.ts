@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- updater runtime coverage shares one lifecycle fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (importOriginal) => {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { assertProtectedUpdateRootPath } from "./promote-host-daemon-update.mjs";
+import {
+  assertProtectedUpdateRootPath,
+  promotionWorkPrefix,
+} from "./promote-host-daemon-update.mjs";
 
 type PathStat = {
   uid: number;
@@ -78,5 +81,12 @@ describe("systemd update-root protection", () => {
       "update root must be a canonical absolute path",
     );
     expect(symlinkFixture.calls).toEqual(["/", "/srv"]);
+  });
+
+  it("stages promotion below the protected releases tree for an atomic rename", () => {
+    expect(promotionWorkPrefix("/srv/auto-harness/updates")).toBe(
+      "/srv/auto-harness/updates/releases/.auto-harness-promote-",
+    );
+    expect(promotionWorkPrefix("/srv/auto-harness/updates")).not.toContain("/tmp/");
   });
 });

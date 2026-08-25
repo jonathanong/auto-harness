@@ -14,7 +14,9 @@ import {
   startUpdatePoll,
   withHostUpdateConfig,
 } from "./agent-updater-runtime.ts";
+import { recoverPendingUpdateBoot, type UpdateBootRecovery } from "./agent-updater-install.ts";
 import { restartHostService, type HostServiceOpts } from "./host-service.ts";
+import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import { requestWindowsTaskRestart } from "./windows-task-handoff.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
@@ -109,6 +111,33 @@ export async function prepareDaemonUpdateBoot(options: {
     throw new Error("rolled back unacknowledged update but could not restart the supervisor");
   }
   throw new Error("rolled back unacknowledged update boot; supervisor restart requested");
+}
+
+/**
+ * Settle a pending mutable-root replacement from the stable macOS/Windows
+ * launcher, before it selects `current`. This must not run from an activated
+ * release: a crash while Node is loading that release would otherwise leave
+ * its first boot unrecorded and make every supervisor restart select it again.
+ *
+ * Linux intentionally retains its root-owned systemd ExecStartPre fence. Its
+ * immutable update root cannot be changed by the unprivileged launcher.
+ */
+export function prepareStableDaemonUpdateBoot(options: {
+  env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  home?: string;
+  appData?: string;
+}): Promise<UpdateBootRecovery> {
+  const platform = options.platform ?? process.platform;
+  if (platform === "linux") return Promise.resolve("none");
+  return recoverPendingUpdateBoot({
+    rootDir: resolveUpdateInstallDir(options.env, {
+      platform,
+      ...(options.home === undefined ? {} : { home: options.home }),
+      ...(options.appData === undefined ? {} : { appData: options.appData }),
+    }),
+    platform,
+  });
 }
 
 /**

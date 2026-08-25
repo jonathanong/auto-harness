@@ -68,8 +68,12 @@ describe("launchd plist / windows cmd", () => {
       currentLauncherPath:
         "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\updates\\current\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
       fallbackRoot: "C:\\repo",
+      prepareLauncherPath: "C:\\repo\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
     });
     expect(cmd).toContain("HARNESS_ENV_FILE=");
+    expect(cmd).toContain("prepare-update-boot");
+    expect(cmd).toContain("if errorlevel 1 exit /b %errorlevel%");
+    expect(cmd.indexOf("prepare-update-boot")).toBeLessThan(cmd.indexOf("if exist"));
     expect(cmd).toContain("if exist");
     expect(cmd).toContain(" start");
     const args = windowsCreateTaskArgs({
@@ -100,7 +104,10 @@ describe("launchd plist / windows cmd", () => {
       currentLauncherPath: "/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs",
       fallbackRoot: "/checkout",
       fallbackLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      prepareLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
     });
+    expect(launcher).toContain("prepare-update-boot");
+    expect(launcher.indexOf("prepare-update-boot")).toBeLessThan(launcher.indexOf("if [ -f"));
     expect(launcher).toContain(
       "if [ -f '/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs' ]",
     );

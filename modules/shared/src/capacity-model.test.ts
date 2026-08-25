@@ -13,6 +13,7 @@ describe("capacity model", () => {
     expect(estimate.dynamoLogWritesPerMonth).toBe(estimate.logChunksPerSession * 100 * 30);
     expect(estimate.dynamoLogTransactionsPerMonth).toBe(estimate.dynamoLogWritesPerMonth);
     expect(estimate.schedulerInvocationsPerMonth).toBe(30 * 24 * 60);
+    expect(estimate.scheduleEvaluationsPerMonth).toBe(30 * 24 * 60 * 10);
     expect(estimate.archiveBytesPerMonth).toBe(100 * 30 * 256 * 1024);
     expect(estimate.queueAssignsPerDay).toBe(100);
     expect(estimate.lambdaInvocationsPerMonth).toBeGreaterThan(estimate.dynamoLogWritesPerMonth);
@@ -38,5 +39,19 @@ describe("capacity model", () => {
       withoutViewers.dynamoLogWritesPerMonth * 3,
     );
     expect(withViewers.lambdaInvocationsPerMonth).toBe(withoutViewers.lambdaInvocationsPerMonth);
+  });
+
+  it("models every configured schedule evaluated by each repair sweep", () => {
+    const withoutSchedules = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, schedules: 0 });
+    const withSchedules = estimateMonthlyCapacity({ ...REFERENCE_WORKLOAD, schedules: 37 });
+    expect(withoutSchedules.scheduleEvaluationsPerMonth).toBe(0);
+    expect(withSchedules.scheduleEvaluationsPerMonth).toBe(
+      withSchedules.schedulerInvocationsPerMonth * 37,
+    );
+    // The EventBridge trigger remains one invocation per sweep; schedules add
+    // in-invocation query/evaluation load, not one Lambda invocation each.
+    expect(withSchedules.lambdaInvocationsPerMonth).toBe(
+      withoutSchedules.lambdaInvocationsPerMonth,
+    );
   });
 });

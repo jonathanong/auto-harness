@@ -20,7 +20,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -91,6 +90,15 @@ export function assertProtectedUpdateRootPath(root, statPath = lstatSync) {
     ancestor = join(ancestor, part);
   }
   assertProtectedPathEntry(ancestor, statPath);
+}
+
+/**
+ * Root-owned promotion must stage below `releases` so its final rename is on
+ * the same filesystem as the active pointer. A host's `/tmp` may be a separate
+ * mount, where a cross-device rename would fail after verification.
+ */
+export function promotionWorkPrefix(root) {
+  return join(root, "releases", ".auto-harness-promote-");
 }
 
 function assertProtectedPathEntry(ancestor, statPath) {
@@ -255,7 +263,11 @@ function promote(root, incoming) {
   mkdirSync(releases, { recursive: true, mode: 0o755 });
   const target = join(releases, manifest.version);
   if (existsSync(target)) throw new Error(`release ${manifest.version} already exists`);
-  const work = mkdtempSync(join(tmpdir(), "auto-harness-promote-"));
+  // Keep the verifier's temporary archive and extracted release in the
+  // protected update tree. `renameSync(extracted, target)` is consequently an
+  // atomic same-filesystem operation, rather than an EXDEV-prone /tmp move.
+  const work = mkdtempSync(promotionWorkPrefix(root));
+  chmodSync(work, 0o700);
   try {
     const archive = join(work, "artifact.tgz");
     const extracted = join(work, "release");
@@ -263,7 +275,7 @@ function promote(root, incoming) {
     if (hash(archive) !== manifest.sha256)
       throw new Error("activation request changed during copy");
     assertSafeArchive(archive);
-    mkdirSync(extracted, { mode: 0o755 });
+    mkdirSync(extracted, { mode: 0o700 });
     const unpacked = spawnSync(
       "/usr/bin/tar",
       ["--no-same-owner", "--no-same-permissions", "-xzf", archive, "-C", extracted],

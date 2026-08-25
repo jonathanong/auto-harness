@@ -182,6 +182,7 @@ function renderDarwinLauncher(ctx: HostServiceContext): string {
     currentLauncherPath: join(currentRoot, "services/host-daemon/bin/auto-harness-host-daemon.mjs"),
     fallbackRoot: ctx.checkoutRoot,
     fallbackLauncherPath: ctx.launcherPath,
+    prepareLauncherPath: ctx.launcherPath,
   });
 }
 

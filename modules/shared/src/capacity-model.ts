@@ -27,6 +27,8 @@ export type CapacityEstimate = {
   websocketMessagesPerMonth: number;
   lambdaInvocationsPerMonth: number;
   schedulerInvocationsPerMonth: number;
+  /** Number of individual durable schedule records examined by the repair sweep. */
+  scheduleEvaluationsPerMonth: number;
   archiveBytesPerMonth: number;
   queueAssignsPerDay: number;
   connectionMinutes: number;
@@ -63,6 +65,11 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
   const websocketMessagesPerMonth = inboundWebsocketMessagesPerMonth + viewerLogMessagesPerMonth;
   const schedulerInvocationsPerMonth =
     CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.schedulerIntervalSeconds;
+  // One EventBridge/Lambda invocation runs per sweep, but it scans/evaluates
+  // every configured durable schedule. Keep that per-record load visible so a
+  // low session count cannot disguise a large scheduler query/conditional-write
+  // workload.
+  const scheduleEvaluationsPerMonth = schedulerInvocationsPerMonth * workload.schedules;
   return {
     logChunksPerSession,
     dynamoLogWritesPerMonth,
@@ -71,6 +78,7 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
     // Viewer fanout is an outbound gateway message, not an invocation of the WebSocket Lambda.
     lambdaInvocationsPerMonth: inboundWebsocketMessagesPerMonth + sessionsPerMonth * 10,
     schedulerInvocationsPerMonth,
+    scheduleEvaluationsPerMonth,
     archiveBytesPerMonth: sessionsPerMonth * workload.archiveBytesPerSession,
     queueAssignsPerDay: workload.sessionsPerDay,
     connectionMinutes,

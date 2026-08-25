@@ -14,7 +14,12 @@ import {
   recoverPendingUpdateBoot,
 } from "./agent-updater-install.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
-import { prepareDaemonUpdateBoot, requestSupervisorRestart, startDaemon } from "./start-daemon.ts";
+import {
+  prepareDaemonUpdateBoot,
+  prepareStableDaemonUpdateBoot,
+  requestSupervisorRestart,
+  startDaemon,
+} from "./start-daemon.ts";
 
 function runnableExtract(_archivePath: string, destination: string): void {
   const launcher = join(destination, "services/host-daemon/bin");
@@ -83,6 +88,37 @@ describe("startDaemon", () => {
           service: mutableRootService(rootDir),
         }),
       ).rejects.toThrow("rolled back unacknowledged update boot");
+      expect(readInstalledVersion(rootDir)).toBe("1.0.0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("settles a crashing mutable-root replacement before the stable launcher selects it", async () => {
+    const { rootDir, cleanup } = updateRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      expect(confirmPendingUpdateBoot(rootDir)).toBe(true);
+      await installer.stage({ version: "1.1.0", artifact: new Uint8Array() });
+      await installer.activate("1.1.0");
+
+      // This is called by the stable launchd/schtasks wrapper, not by 1.1.0.
+      // It still executes when loading that activated module crashes pre-main.
+      await expect(
+        prepareStableDaemonUpdateBoot({
+          env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          platform: "darwin",
+        }),
+      ).resolves.toBe("booting");
+      await expect(
+        prepareStableDaemonUpdateBoot({
+          env: { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          platform: "darwin",
+        }),
+      ).resolves.toBe("rolled-back");
       expect(readInstalledVersion(rootDir)).toBe("1.0.0");
     } finally {
       cleanup();

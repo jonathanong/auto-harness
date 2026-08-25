@@ -94,6 +94,7 @@ export function installWin32(ctx: HostServiceContext): number {
         "services/host-daemon/bin/auto-harness-host-daemon.mjs",
       ),
       fallbackRoot: ctx.checkoutRoot,
+      prepareLauncherPath: ctx.launcherPath,
     }),
     0o700,
   );

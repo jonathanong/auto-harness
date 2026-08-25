@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- startup runtime coverage shares one daemon harness. */
 import { createServer } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";

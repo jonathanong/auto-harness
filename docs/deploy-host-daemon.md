@@ -342,10 +342,12 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 `AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
 durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, activate, request
 supervisor restart, and roll back plus resume scheduling if activation or restart fails. Activation
-also writes a durable pending-boot marker before switching `current`. The first replacement daemon
-marks that boot as attempted before preflight; it clears the marker only after the control plane
-accepts its registration. If that replacement crashes before acknowledgement, its next supervisor
-launch rolls `current` back to the saved release and restarts through the stable launcher. Obsolete
+also writes a durable pending-boot marker before switching `current`. On macOS and Windows, the
+stable launcher records that first boot _before it selects the activated module_; on Linux,
+systemd's root-owned pre-start helper does the equivalent work. A registered replacement clears the
+marker only after the control plane accepts it. If that replacement crashes before acknowledgement
+(including before its module reaches `main`), its next supervisor launch rolls `current` back to
+the saved release through the stable launcher. Obsolete
 release trees are pruned only after that acknowledgement. Concurrent runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
 `HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM; use literal `\\n` in a single-line EnvironmentFile),
 optional absolute `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,

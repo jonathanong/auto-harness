@@ -59,7 +59,7 @@ The 2026-08-18 `qa` purge in `us-west-2` completed 3 short programmatic sessions
 and later emptied 3 archived object versions. That run is acceptance evidence for
 archive upload, not a monthly invoice. Monthly figures below use the reference
 workload (100 sessions/day, 15-minute CLI at the measured 10 msg/s, 2 hosts + 2
-viewers, 256 KiB archive/session). They are a capacity model, not a contract
+viewers, 10 schedules, 256 KiB archive/session). They are a capacity model, not a contract
 price.
 
 Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
@@ -88,13 +88,14 @@ pages for the deployment region before approving a budget.
 | Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                  |
 | Keepalive               | 20 s            | daemon `startDaemon`                                            |
 | Scheduler               | 1 / minute      | EventBridge / local repair sweep                                |
+| Schedules               | 10              | every durable schedule is evaluated by each repair sweep        |
 | Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics |
 | SessionLogs TTL         | 7 days          | `ttl` on new writes                                             |
 
 At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
 transactional write items/month, ~81M WebSocket messages/month (including each
 viewer copy), ~27.3M Lambda invocations/month (viewer fanout is outbound and does
-not invoke Lambda), 43,200 scheduler invocations/month,
+not invoke Lambda), 43,200 scheduler invocations and 432,000 schedule evaluations/month,
 and ~750 MiB archive PUT volume/month. Queue throughput is 100 assigns/day plus
 the one-minute repair sweep. Re-run `estimateMonthlyCapacity` when the session mix
 changes; do not scale by session count alone.

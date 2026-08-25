@@ -211,8 +211,21 @@ export async function runCli(
     return 1;
   }
 
-  let updateBootPrepared = false;
-  if (command === "start") {
+  // macOS and Windows stable launchers settle/record a pending boot before
+  // they select `current`, so an activated module cannot crash before its own
+  // fence runs. Direct starts retain the in-module fallback below.
+  let updateBootPrepared = env.HARNESS_UPDATE_BOOT_PREPARED === "1";
+  if (command === "prepare-update-boot") {
+    try {
+      const { prepareStableDaemonUpdateBoot } = await import("./start-daemon.ts");
+      await prepareStableDaemonUpdateBoot({ env: resolvedEnv });
+      return 0;
+    } catch (err) {
+      deps.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+  }
+  if (command === "start" && !updateBootPrepared) {
     try {
       const { prepareDaemonUpdateBoot } = await import("./start-daemon.ts");
       // Do this before every daemon preflight, including child-environment and

@@ -60,10 +60,16 @@ export function renderUnixLaunchScript(opts: {
   currentLauncherPath: string;
   fallbackRoot: string;
   fallbackLauncherPath: string;
+  /** Stable checkout command that settles a mutable-root update before selection. */
+  prepareLauncherPath?: string;
 }): string {
+  const prepare =
+    opts.prepareLauncherPath === undefined
+      ? ""
+      : `${shellArgument(opts.nodePath)} ${shellArgument(opts.prepareLauncherPath)} prepare-update-boot\nexport HARNESS_UPDATE_BOOT_PREPARED=1\n`;
   return `#!/bin/sh
 set -eu
-if [ -f ${shellArgument(opts.currentLauncherPath)} ]; then
+${prepare}if [ -f ${shellArgument(opts.currentLauncherPath)} ]; then
   cd ${shellArgument(opts.currentRoot)}
   exec ${shellArgument(opts.nodePath)} ${shellArgument(opts.currentLauncherPath)} start "$@"
 fi
@@ -127,10 +133,19 @@ export function renderWindowsLaunchCmd(opts: {
   currentRoot: string;
   currentLauncherPath: string;
   fallbackRoot: string;
+  /** Stable checkout command that settles a mutable-root update before selection. */
+  prepareLauncherPath?: string;
 }): string {
+  const prepare =
+    opts.prepareLauncherPath === undefined
+      ? ""
+      : `"${opts.nodePath}" "${opts.prepareLauncherPath}" prepare-update-boot\r
+if errorlevel 1 exit /b %errorlevel%\r
+set "HARNESS_UPDATE_BOOT_PREPARED=1"\r
+`;
   return `@echo off\r
 set "HARNESS_ENV_FILE=${opts.envFilePath}"\r
-if exist "${opts.currentLauncherPath}" (\r
+${prepare}if exist "${opts.currentLauncherPath}" (\r
   cd /d "${opts.currentRoot}"\r
   "${opts.nodePath}" "${opts.currentLauncherPath}" start\r
 ) else (\r
