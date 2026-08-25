@@ -837,14 +837,17 @@ ERROR: CLI tool not found: codex
 - Restart agent (releases local claims on clean start if no process)
 - Control plane may still show busy until disconnect reconciliation or status fix
 
-### Sessions queue forever, host reports healthy
+### Sessions stay queued, host reports healthy
 
 ```text
 GET /hosts → online: true, gitReady: true
 ```
 
 No control-plane error, no error from `status`. Sessions just stay `queued` and never move to
-`running`. The daemon does log the refusal locally — check the daemon log for
+`running` — until `queueExpiresAt` (default `queueTtlSeconds`: 8 days), when the scheduler
+transitions them to `failed` with `errorCode: queue_expired` on its own; installing the profile
+after that point does not revive them; submit a new session instead. The daemon does log the
+refusal locally — check the daemon log for
 `execution profile unavailable: refused assign ...` before assuming there's no trace at all.
 
 - Cause: `HARNESS_EXECUTION_PROFILES` is unset, or missing an entry for the account a session
@@ -856,7 +859,9 @@ No control-plane error, no error from `status`. Sessions just stay `queued` and 
   Provider Account ID (not Provider ID — see [api.md](api.md) `/provider-accounts`) to a `home`
   directory that exists on the host. Apply with `install-service`, which persists the env var and
   restarts the daemon in one step — see
-  [deploy-host-daemon.md#deploy-install](deploy-host-daemon.md#deploy-install).
+  [deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch](deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch).
+  (The generic `#deploy-install` walkthrough only sets identity variables — it will reinstall
+  without ever touching `HARNESS_EXECUTION_PROFILES`.)
 - Single-operator host running every provider CLI under one real account: point each account's
   `home` at a **distinct directory** that all resolve to the same real `$HOME`, e.g. a symlink
   farm (`execution-homes/<provider-name>` → the real home). This satisfies the daemon's
@@ -866,14 +871,18 @@ No control-plane error, no error from `status`. Sessions just stay `queued` and 
   No `env` override is needed when the symlink target is the CLI's real home, since each CLI's
   config directory already resolves correctly underneath it.
 - Verify the fix landed: neither `status` nor `GET /hosts` expose per-account readiness, so both
-  look identical whether the profile landed or not — checking them proves nothing. Confirm it
-  directly instead: locally, with no live session needed, by running `loadExecutionProfiles`/
-  `providerAccountReadiness` from [Config Loader](#config-loader)'s source
-  (`services/host-daemon/src/execution-profiles.ts`) against the configured file and checking
-  every attached account reports `ready: true`; or definitively, by watching an account-specific
-  session get picked up — its `resolvedRoute.providerAccountId` confirms that account's profile is
-  ready. `providerAccountReadiness` is advertised in `host:register` but kept only on the live
-  connection state; it is never persisted or exposed through any GET route.
+  look identical whether the profile landed or not — checking them proves nothing.
+  `providerAccountReadiness` is advertised in `host:register` but kept only on the live connection
+  state; it is never persisted or exposed through any GET route. Two ways to actually confirm it:
+  - **Pre-flight, no live session needed:** run `loadExecutionProfiles`/`providerAccountReadiness`
+    from [Config Loader](#config-loader)'s source
+    (`services/host-daemon/src/execution-profiles.ts`) against the _persisted_ service env
+    (`HARNESS_ENV_FILE=/path/to/host-daemon.env`, not whatever your shell happens to have
+    exported) and, on Linux, as the service user (e.g. `sudo -u harness`) — otherwise the check
+    reflects your own shell's env and filesystem permissions, not the daemon's, and can report
+    `ready: true` while the live daemon still refuses every assignment.
+  - **Authoritative:** watch an account-specific session get picked up — its
+    `resolvedRoute.providerAccountId` confirms that account's profile is ready.
 - Tracking: auto-harness#342.
 
 ---
