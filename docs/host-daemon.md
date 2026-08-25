@@ -413,7 +413,8 @@ For `type: scheduled` / `worktreeId: null`:
 2. Agent creates missing worktrees on startup
 3. Control plane learns inventory via `host:register`
 4. Scheduler assigns sessions to idle matching worktrees ([round-robin](aws.md#scheduler))
-5. Setup script resets branch/deps at **session start**
+5. Setup script (if configured) resets branch/state, then the daemon installs workspace
+   dependencies automatically at **session start** ([below](#setup-scripts))
 6. Worktree is reused across sessions (not deleted after each run)
 
 ### Ref checkout recovery
@@ -513,6 +514,24 @@ Non-zero exit → session `failed`, worktree released.
 
 Resume sessions continue to skip every setup script so a destructive setup cannot reset the
 conversation's existing worktree.
+
+### Workspace dependency install
+
+After any configured setup scripts finish, the daemon checks the session cwd for a root
+`pnpm-lock.yaml`. If one is present it runs `pnpm install --frozen-lockfile` there before the
+provider launches — no operator configuration needed. Non-pnpm repositories (no lockfile) are
+unaffected. Like a setup script, this step is skipped entirely on resume, and a non-zero exit,
+timeout, or cancellation fails the session (`errorCode: "setup_failed"`, worktree released)
+rather than launching the provider against an incomplete `node_modules`.
+
+`--frozen-lockfile` refuses to mutate the lockfile: a lockfile that disagrees with `package.json`
+at the checked-out ref fails setup instead of silently drifting or dirtying the worktree.
+
+Because worktrees are reused across sessions and pnpm's content-addressable global store (under
+the preserved `HOME`) hardlinks unchanged packages, a repeat install on an already-installed
+worktree is a near no-op (roughly a second), while a first install on a fresh worktree pays the
+full install cost once. A setup script that already runs its own `pnpm install` (as in the
+examples above) is unaffected — this step reruns after it and finds nothing to change.
 
 ### Disk layout (example)
 
