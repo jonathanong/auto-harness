@@ -16,12 +16,14 @@ test("creates a session with an explicit honored source", async () => {
     repositoryId: "repo",
     prompt: "review",
     target: { providerId: "codex" },
+    timeout: 60,
     source: "webhook",
   });
   assert.deepEqual(JSON.parse(request.body), {
     repositoryId: "repo",
     prompt: "review",
     target: { providerId: "codex" },
+    timeout: 60,
     source: "webhook",
   });
 });

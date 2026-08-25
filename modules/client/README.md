@@ -75,7 +75,7 @@ native command/account route, using a native CLI resume where the provider suppo
 route becomes unavailable or its pin expires, the control plane clears the pin and falls back to a
 fresh run through the normal target/fallback chain, which may land on another host. The source
 session must have been assigned at least once, must not still be queued or running, and must not
-be a scheduled session — sources with `type: "scheduled"` are rejected with `409 CONFLICT`, since
+be a scheduled session — sessions with `type: "scheduled"` are rejected with `409 CONFLICT`, since
 only prompt sessions support resume.
 
 ```js
