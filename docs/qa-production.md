@@ -487,6 +487,22 @@ pnpm local:daemon uninstall-service
 
 Otherwise clean Ctrl-C. Stop the host pane if you started one.
 
+Before purging, capture the physical names of the retained log groups.
+Runtime and web Lambdas provision their own `AWS::Logs::LogGroup` stack
+resources with `RemovalPolicy.RETAIN` (see
+[deploy-aws.md#purge-irreversible](deploy-aws.md#purge-irreversible)); their
+physical names are CDK-generated, not the `/aws/lambda/<function>` convention,
+so they must be read from the stacks while those stacks still exist:
+
+```bash
+for stack in Runtime Web; do
+  aws cloudformation describe-stack-resources \
+    --stack-name "AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT-$stack" \
+    --query "StackResources[?ResourceType=='AWS::Logs::LogGroup'].PhysicalResourceId" \
+    --output text
+done | tee "/tmp/${HARNESS_DEPLOY_ENVIRONMENT}-retained-log-groups.txt"
+```
+
 ```bash
 export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
 export HARNESS_DEPLOY_PURGE_CONFIRM="destroy-all-data-in-$HARNESS_DEPLOY_ENVIRONMENT"
@@ -505,19 +521,15 @@ aws cloudformation list-stacks \
   --query "StackSummaries[?starts_with(StackName, 'AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT')]"
 aws ssm describe-parameters \
   --parameter-filters "Key=Name,Option=BeginsWith,Values=/auto-harness/$HARNESS_DEPLOY_ENVIRONMENT/"
-aws logs describe-log-groups \
-  --log-group-name-prefix "/aws/lambda/AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT"
 ```
 
-The first two should return nothing. The third **will** return Lambda log
-groups — purge does not delete those (they are not CDK-managed). Delete
-them by hand if you want the account fully clean:
+That should return nothing. The log groups captured above **will** still
+exist — purge does not delete RETAIN-policy log groups. Delete them by hand
+if you want the account fully clean:
 
 ```bash
-aws logs describe-log-groups \
-  --log-group-name-prefix "/aws/lambda/AutoHarness-$HARNESS_DEPLOY_ENVIRONMENT" \
-  --query 'logGroups[].logGroupName' --output text | \
-  xargs -n1 aws logs delete-log-group --log-group-name
+xargs -n1 aws logs delete-log-group --log-group-name \
+  < "/tmp/${HARNESS_DEPLOY_ENVIRONMENT}-retained-log-groups.txt"
 ```
 
 Do **not** delete `cdk-hnb659fds-assets-*` or
