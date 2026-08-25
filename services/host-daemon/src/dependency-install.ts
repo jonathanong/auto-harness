@@ -25,6 +25,16 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * CreateProcess cannot execute directly — see Node's "Spawning .bat and
  * .cmd files on Windows" doc. `pnpm` and its args stay as separate argv
  * elements (not a joined string), so there is no shell-injection surface.
+ *
+ * `--ignore-scripts` is mandatory: this install runs for any checked-out
+ * ref, including refs a repository-scoped (non-admin) session author
+ * chose, before the provider CLI's sandbox launches. Without it, a
+ * `preinstall`/`install`/`postinstall`/`prepare` script in that ref would
+ * execute arbitrary code as the daemon user, bypassing the admin-only
+ * arbitrary-execution boundary `fleet:exec-config`/`catalog:write` draw
+ * around setup scripts and command argv (docs/roles.md). A repository that
+ * genuinely needs those scripts can run them through its admin-configured
+ * `setupScript` instead.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -38,8 +48,8 @@ export async function installWorkspaceDependencies(
   return runner.run({
     argv:
       platform === "win32"
-        ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile"]
-        : ["pnpm", "install", "--frozen-lockfile"],
+        ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile", "--ignore-scripts"]
+        : ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
     cwd,
     env: { ...environment, CI: "true" },
     timeoutMs,

@@ -518,22 +518,35 @@ conversation's existing worktree.
 ### Workspace dependency install
 
 After any configured setup scripts finish, the daemon checks the session cwd for a root
-`pnpm-lock.yaml`. If one is present it runs `pnpm install --frozen-lockfile` there before the
-provider launches — no operator configuration needed. Non-pnpm repositories (no lockfile) are
+`pnpm-lock.yaml`. If one is present it runs `pnpm install --frozen-lockfile --ignore-scripts`
+there before the provider launches — no operator configuration needed beyond `pnpm` being
+resolvable on the daemon service user's `PATH`, the same [CLI not found](#cli-not-found) trap
+that applies to provider CLIs (nvm users: point the unit file at a stable node/bin path).
+Non-pnpm repositories (no lockfile) are
 unaffected. Like a setup script, this step is skipped entirely on resume, and a non-zero exit,
 timeout, or cancellation fails the session (`errorCode: "setup_failed"`, worktree released)
-rather than launching the provider against an incomplete `node_modules`.
+rather than launching the provider against an incomplete `node_modules`. A rejected process
+launch (for example `pnpm` missing from `PATH`) is handled the same way: `SessionRunner`'s
+outer catch converts it to the same `setup_failed` result and still releases the worktree.
 
 `--frozen-lockfile` refuses to mutate the lockfile: a lockfile that disagrees with `package.json`
 at the checked-out ref fails setup instead of silently drifting or dirtying the worktree.
+
+`--ignore-scripts` is mandatory, not configurable: the checked-out ref can be chosen by a
+repository-scoped (non-admin) session author, and this install runs before the provider's
+sandbox launches. Without it, a `preinstall`/`install`/`postinstall`/`prepare` script in that ref
+would execute arbitrary code as the daemon user — bypassing the admin-only arbitrary-execution
+boundary that `fleet:exec-config`/`catalog:write` draw around setup scripts and command argv (see
+[roles.md](roles.md)). A repository that genuinely needs those scripts can run them through its
+admin-configured `setupScript` instead.
 
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
 is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,
 which pnpm refuses without a TTY unless CI mode is set, and the daemon never attaches one. On
-Windows the install runs through `cmd.exe /d /s /c pnpm install --frozen-lockfile` rather than a
-bare `pnpm`, since Node's `child_process.spawn` (`shell: false`) cannot execute a `.cmd` shim
-directly.
+Windows the install runs through `cmd.exe /d /s /c pnpm install --frozen-lockfile --ignore-scripts`
+rather than a bare `pnpm`, since Node's `child_process.spawn` (`shell: false`) cannot execute a
+`.cmd` shim directly.
 
 Because worktrees are reused across sessions and pnpm's content-addressable global store (under
 the preserved `HOME`) hardlinks unchanged packages, a repeat install on an already-installed

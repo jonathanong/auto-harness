@@ -13,8 +13,8 @@ import { WorktreeManager } from "./worktree-manager.ts";
 /** Matches installWorkspaceDependencies' platform-conditional argv. */
 const INSTALL_ARGV =
   process.platform === "win32"
-    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile"]
-    : ["pnpm", "install", "--frozen-lockfile"];
+    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile", "--ignore-scripts"]
+    : ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"];
 
 const noopGit: GitClient = {
   ensureRepo: async () => undefined,
