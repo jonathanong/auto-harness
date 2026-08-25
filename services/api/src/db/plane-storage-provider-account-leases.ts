@@ -64,12 +64,18 @@ export async function backfillProviderAccountLease(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression: "SET providerAccountLease = :lease",
+        // A cancelled session only still occupies the account while release hasn't run yet —
+        // release SETs worktreeId to NULL and REMOVEs mainCheckoutLease, so a live claim on
+        // either is the fence against a release racing this transaction (see
+        // control-plane-hydrate-provider-leases.ts for the matching app-layer filter).
         ConditionExpression:
-          "( #s = :running OR (#s = :cancelled AND attribute_exists(hostId)) ) AND attribute_not_exists(providerAccountLease) AND (attribute_not_exists(attemptId) OR attemptId = :attemptId) AND resolvedRoute.attemptId = :attemptId AND resolvedRoute.providerAccountId = :providerAccountId AND hostId = :hostId",
+          "( #s = :running OR (#s = :cancelled AND attribute_exists(hostId) AND ( (attribute_exists(worktreeId) AND NOT attribute_type(worktreeId, :nullType)) OR (attribute_exists(mainCheckoutLease) AND mainCheckoutLease = :true) )) ) AND attribute_not_exists(providerAccountLease) AND (attribute_not_exists(attemptId) OR attemptId = :attemptId) AND resolvedRoute.attemptId = :attemptId AND resolvedRoute.providerAccountId = :providerAccountId AND hostId = :hostId",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
           ":running": "running",
           ":cancelled": "cancelled",
+          ":nullType": "NULL",
+          ":true": true,
           ":lease": lease,
           ":attemptId": opts.attemptId,
           ":providerAccountId": opts.providerAccountId,

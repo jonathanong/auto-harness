@@ -1,13 +1,19 @@
 /* eslint-disable max-lines -- provider lease storage cases share transaction fixtures. */
-import { describe, expect, it, vi } from "vitest";
+import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
+import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { releaseTimedOutHostAssignment } from "./plane-storage-host-assignment.ts";
 import {
   backfillProviderAccountLease,
   providerAccountLeaseDeleteItems,
   releaseProviderAccountLease,
   releaseTimedOutProviderAccountLease,
 } from "./plane-storage-provider-account-leases.ts";
-import { releaseTimedOutHostAssignment } from "./plane-storage-host-assignment.ts";
+import { putSession } from "./plane-storage-sessions.ts";
+import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("provider account lease storage", () => {
   it("deletes the attempt-owned lock and ignores a lost condition", async () => {
@@ -259,5 +265,112 @@ describe("provider account lease storage", () => {
         },
       ),
     ).rejects.toThrow("capacity unavailable");
+  });
+});
+
+describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () => {
+  let client: DynamoDBClient;
+  let tables: DynamoTableNames;
+  let ctx: PlaneStorageCtx;
+  const session = {
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetLabels: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "cancelled" as const,
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    hostId: "host",
+    attemptId: "attempt",
+    resolvedRoute: {
+      targetIndex: 0,
+      commandId: "command",
+      hostId: "host",
+      worktreeId: null,
+      attemptId: "attempt",
+      providerAccountId: "acct",
+    },
+  };
+
+  beforeAll(async () => {
+    const clients = createDynamoClients();
+    client = clients.client;
+    tables = await ensureControlPlaneTables({ client, prefix: `AhLeaseFence${process.pid}` });
+    ctx = { doc: clients.doc, tables };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "acct",
+          providerId: "provider",
+          name: "acct",
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      }),
+    );
+  });
+  afterAll(async () => {
+    await Promise.all(
+      Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
+    );
+  });
+
+  it("migrates a cancelled session still holding a live worktreeId claim", async () => {
+    await putSession(ctx, { ...session, id: "mid-release", worktreeId: "worktree" });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "mid-release",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 0,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+  });
+
+  it("migrates a cancelled session still holding a live mainCheckoutLease claim", async () => {
+    await putSession(ctx, { ...session, id: "mid-release-main", mainCheckoutLease: true });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "mid-release-main",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 1,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+  });
+
+  it("refuses a cancelled session whose worktreeId was released to explicit NULL", async () => {
+    await putSession(ctx, { ...session, id: "released", worktreeId: null });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "released",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 2,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+
+  it("refuses a cancelled session that never held either mid-release claim", async () => {
+    await putSession(ctx, { ...session, id: "never-mid-release" });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "never-mid-release",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 3,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
   });
 });
