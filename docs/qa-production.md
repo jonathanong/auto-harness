@@ -504,7 +504,7 @@ done | tee "/tmp/${HARNESS_DEPLOY_ENVIRONMENT}-retained-log-groups.txt"
 ```
 
 If this environment was ever deployed before the `logGroup:` migration
-(#354), it may *also* carry older `/aws/lambda/AutoHarness-<environment>*`
+(#354), it may _also_ carry older `/aws/lambda/AutoHarness-<environment>*`
 groups from the previous `logRetention`-based mechanism — those were never
 CDK-managed, so they won't appear in the capture above. Check for them too,
 and fold any hits into the same file:
