@@ -863,8 +863,15 @@ No error in the log, no error from `status`. Sessions just stay `queued` and nev
   credential isolation between accounts — don't reach for it if accounts actually need separating.
   No `env` override is needed when the symlink target is the CLI's real home, since each CLI's
   config directory already resolves correctly underneath it.
-- Verify the fix landed: `status` or `GET /hosts` after the restart; a picked-up session's
-  `resolvedRoute.providerAccountId` confirms that account's profile is ready.
+- Verify the fix landed: neither `status` nor `GET /hosts` expose per-account readiness, so both
+  look identical whether the profile landed or not — checking them proves nothing. Confirm it
+  directly instead: locally, with no live session needed, by running `loadExecutionProfiles`/
+  `providerAccountReadiness` from [Config Loader](#config-loader)'s source
+  (`services/host-daemon/src/execution-profiles.ts`) against the configured file and checking
+  every attached account reports `ready: true`; or definitively, by watching an account-specific
+  session get picked up — its `resolvedRoute.providerAccountId` confirms that account's profile is
+  ready. `providerAccountReadiness` is advertised in `host:register` but kept only on the live
+  connection state; it is never persisted or exposed through any GET route.
 - Tracking: auto-harness#342.
 
 ---

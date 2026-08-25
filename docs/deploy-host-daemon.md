@@ -150,6 +150,19 @@ re-supplying `HARNESS_HOST_ID`/`HARNESS_API_URL`/`HARNESS_API_KEY`, load the exi
 override just the new key — explicit process-env values win over ones loaded from the file (see the
 macOS `status` invocation above for the `HARNESS_ENV_FILE` pattern).
 
+On Linux, `/etc/auto-harness/host-daemon.env` is root-owned, so this reinstall needs `sudo` — and
+plain `sudo` resets the environment, silently dropping the `export`s above. `install-service` would
+then re-persist the file with `HARNESS_EXECUTION_PROFILES` empty, and dispatch keeps queuing with
+no error. Pass the variables to `sudo env` explicitly instead, the same pattern already used above
+to read the file as root:
+
+```bash
+sudo env \
+  HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
+  pnpm local:daemon install-service
+```
+
 ### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the
