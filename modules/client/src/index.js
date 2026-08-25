@@ -96,6 +96,29 @@ export class AutoHarnessClient {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }
 
+  /** Resume a previously assigned session on its pinned host, native CLI resume where supported. */
+  resumeSession(id, input) {
+    return this.request(`/sessions/${encodeURIComponent(id)}/resume`, {
+      method: "POST",
+      ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+    });
+  }
+
+  listSessions(options = {}) {
+    const query = new URLSearchParams();
+    if (options.status !== undefined) query.set("status", options.status);
+    if (options.repositoryId !== undefined) query.set("repositoryId", options.repositoryId);
+    if (options.hostId !== undefined) query.set("hostId", options.hostId);
+    if (options.source !== undefined) query.set("source", options.source);
+    if (options.sort !== undefined) query.set("sort", options.sort);
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    if (options.concurrencyId !== undefined) query.set("concurrencyId", options.concurrencyId);
+    if (options.scheduleId !== undefined) query.set("scheduleId", options.scheduleId);
+    const suffix = query.toString();
+    return this.request(suffix ? `/sessions?${suffix}` : "/sessions");
+  }
+
   /**
    * Atomically fence this authenticated principal's session admission for one repository and
    * begin cancelling its existing work. Reuse an idempotency key after an ambiguous retry.

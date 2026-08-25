@@ -67,3 +67,38 @@ await harness.releaseSessionDrain("repo-1", drain.operationId);
 When create, clone, or resume loses to the fence, `AutoHarnessError` has `code === "DRAINING"`
 plus the durable `operationId` and API-relative `statusUrl`; follow that operation rather than
 reimplementing pagination or cancellation reconciliation.
+
+## Resume a session
+
+Resume re-runs a previously assigned session. It initially prefers the source host and its stored
+native command/account route, using a native CLI resume where the provider supports it. If that
+route becomes unavailable or its pin expires, the control plane clears the pin and falls back to a
+fresh run through the normal target/fallback chain, which may land on another host. The source
+session must have been assigned at least once, must not still be queued or running, and must not
+be a scheduled session — sessions with `type: "scheduled"` are rejected with `409 CONFLICT`, since
+only prompt sessions support resume.
+
+```js
+const resumed = await harness.resumeSession("session-1", { prompt: "Address the review comments" });
+console.log(resumed.status);
+```
+
+## List sessions
+
+Session listings are bounded pages with the same cursor shape as repository listings, plus
+filters for status, repository, host, origin, sort order, concurrency identity, and schedule
+provenance:
+
+```js
+let page = await harness.listSessions({ repositoryId: "repo-1", status: "running", limit: 50 });
+const sessions = [...page.items];
+while (page.nextCursor) {
+  page = await harness.listSessions({
+    repositoryId: "repo-1",
+    status: "running",
+    limit: 50,
+    cursor: page.nextCursor,
+  });
+  sessions.push(...page.items);
+}
+```
