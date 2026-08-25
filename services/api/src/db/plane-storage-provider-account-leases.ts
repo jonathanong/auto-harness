@@ -65,10 +65,11 @@ export async function backfillProviderAccountLease(
         Key: { id: opts.sessionId },
         UpdateExpression: "SET providerAccountLease = :lease",
         ConditionExpression:
-          "#s = :running AND attribute_not_exists(providerAccountLease) AND (attribute_not_exists(attemptId) OR attemptId = :attemptId) AND resolvedRoute.attemptId = :attemptId AND resolvedRoute.providerAccountId = :providerAccountId AND hostId = :hostId",
+          "( #s = :running OR (#s = :cancelled AND attribute_exists(hostId)) ) AND attribute_not_exists(providerAccountLease) AND (attribute_not_exists(attemptId) OR attemptId = :attemptId) AND resolvedRoute.attemptId = :attemptId AND resolvedRoute.providerAccountId = :providerAccountId AND hostId = :hostId",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
           ":running": "running",
+          ":cancelled": "cancelled",
           ":lease": lease,
           ":attemptId": opts.attemptId,
           ":providerAccountId": opts.providerAccountId,
