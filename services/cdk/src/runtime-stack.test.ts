@@ -17,8 +17,15 @@ describe("AutoHarnessRuntimeStack", () => {
     });
     const template = Template.fromStack(runtime);
 
-    template.resourceCountIs("AWS::Lambda::Function", 4);
-    template.resourcePropertiesCountIs("Custom::LogRetention", { RetentionInDays: 14 }, 3);
+    template.resourceCountIs("AWS::Lambda::Function", 3);
+    template.resourcePropertiesCountIs("AWS::Logs::LogGroup", { RetentionInDays: 14 }, 3);
+    // Each function must be wired to its own explicit logGroup: construct (see
+    // functionLogGroup in runtime-stack.ts), not left to the deprecated logRetention path.
+    template.resourcePropertiesCountIs(
+      "AWS::Lambda::Function",
+      { LoggingConfig: { LogGroup: Match.anyValue() } },
+      3,
+    );
     template.resourceCountIs("AWS::Events::Rule", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 2);
     template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);

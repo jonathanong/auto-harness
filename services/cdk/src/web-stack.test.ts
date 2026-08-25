@@ -17,8 +17,16 @@ describe("AutoHarnessWebStack", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs("AWS::Lambda::Function", 2);
-    template.hasResourceProperties("Custom::LogRetention", { RetentionInDays: 14 });
+    template.resourceCountIs("AWS::Lambda::Function", 1);
+    template.hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 14 });
+    template.hasResource("AWS::Logs::LogGroup", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
+    // Wired to the explicit logGroup: construct above, not the deprecated logRetention path.
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      LoggingConfig: { LogGroup: Match.anyValue() },
+    });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: {

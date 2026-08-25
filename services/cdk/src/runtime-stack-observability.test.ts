@@ -20,8 +20,18 @@ describe("runtime observability", () => {
 
     // Access logs require a one-time, account-level API Gateway CloudWatch Logs role
     // (scripts/bootstrap-apigateway-account.sh) this stack does not provision, so they
-    // default off — see the enabled case below for accessLogsEnabled: true.
-    template.resourceCountIs("AWS::Logs::LogGroup", 0);
+    // default off — see the enabled case below for accessLogsEnabled: true. The 3 log
+    // groups present regardless are the rest/websocket/cron functions' own logGroup:
+    // constructs (see functionLogGroup in runtime-stack.ts). RETAIN (not DESTROY) on every
+    // one of them is the actual point of functionLogGroup: deleting or renaming a function's
+    // construct must orphan its log group, not delete up to 14 days of application history.
+    const functionLogGroups = Object.values(template.findResources("AWS::Logs::LogGroup"));
+    expect(functionLogGroups).toHaveLength(3);
+    for (const group of functionLogGroups) {
+      expect(group.DeletionPolicy).toBe("Retain");
+      expect(group.UpdateReplacePolicy).toBe("Retain");
+      expect(group.Properties?.RetentionInDays).toBe(14);
+    }
     template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
       AccessLogSettings: Match.absent(),
       DefaultRouteSettings: {
@@ -77,14 +87,17 @@ describe("runtime observability", () => {
     });
     const template = Template.fromStack(runtime);
 
-    template.resourceCountIs("AWS::Logs::LogGroup", 2);
-    template.hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 14 });
-    // Disabling accessLogsEnabled later removes this construct from the stack; RETAIN
-    // orphans the log group instead of deleting up to 14 days of access-log history.
-    template.hasResource("AWS::Logs::LogGroup", {
-      DeletionPolicy: "Retain",
-      UpdateReplacePolicy: "Retain",
-    });
+    // 2 access-log groups (HTTP + WebSocket) plus the 3 always-present function log groups.
+    // Disabling accessLogsEnabled later removes the access-log construct from the stack, and
+    // deleting/renaming a function's construct removes its own log group; RETAIN on every one
+    // of the 5 orphans the log group instead of deleting up to 14 days of history.
+    const allLogGroups = Object.values(template.findResources("AWS::Logs::LogGroup"));
+    expect(allLogGroups).toHaveLength(5);
+    for (const group of allLogGroups) {
+      expect(group.DeletionPolicy).toBe("Retain");
+      expect(group.UpdateReplacePolicy).toBe("Retain");
+      expect(group.Properties?.RetentionInDays).toBe(14);
+    }
     template.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
       AccessLogSettings: Match.objectLike({
         Format: Match.stringLikeRegexp("requestId"),
