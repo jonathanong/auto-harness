@@ -484,7 +484,7 @@ describe("provider account execution-profile leases", () => {
     ).toBe(false);
     const released = { id: "sess", providerAccountLease: undefined } as never;
     releaseProviderAccountLease(state, released);
-    expect(releaseProviderAccountLeaseForSession(state, released as never)).toEqual(released);
+    expect(releaseProviderAccountLeaseForSession(state, released)).toEqual(released);
     const queued: Array<{ concurrencyId: string; sessionId: string; attemptId: string }> = [];
     state.storage = {
       releaseProviderAccountLease: async (opts: {
@@ -872,6 +872,61 @@ describe("provider account execution-profile leases", () => {
       sessionId: "held",
       attemptId: "attempt",
     });
+  });
+
+  it("does not resurrect a released cancelled session as a new backfill candidate", async () => {
+    const plane = new ControlPlane();
+    let backfillCalled = false;
+    plane.state.storage = {
+      listAllSessions: async () => [
+        {
+          id: "released",
+          repositoryId: "repo",
+          prompt: "p",
+          target: { commandId: "c" },
+          fallbacks: [],
+          targetLabels: [],
+          queueTtlSeconds: 1,
+          queueExpiresAt: NOW,
+          timeout: 1,
+          priority: 0,
+          requiredLabels: [],
+          status: "cancelled",
+          queueShard: 0,
+          createdAt: NOW,
+          hostId: "host",
+          attemptId: "stale-attempt",
+          resolvedRoute: {
+            targetIndex: 0,
+            providerAccountId: "acct",
+            commandId: "c",
+            hostId: "host",
+            worktreeId: null,
+            attemptId: "stale-attempt",
+          },
+          // providerAccountLease intentionally absent: a real release already happened.
+        },
+      ],
+      listAllWorktrees: async () => [],
+      listConnections: async () => [],
+      listSchedules: async () => [],
+      listRepositories: async () => [],
+      listHostInventories: async () => [],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+      listCommands: async () => [],
+      listArchives: async () => [],
+      listAllAuditLogs: async () => [],
+      listLogs: async () => [],
+      backfillProviderAccountLease: async () => {
+        backfillCalled = true;
+        throw new Error("must not backfill a released cancelled session");
+      },
+    } as never;
+    await plane.hydrateFromStorage();
+    expect(backfillCalled).toBe(false);
+    expect(plane.getSession("released")).not.toHaveProperty("providerAccountLease");
+    expect(plane.state.providerAccountLeases.has("provider-lease:acct:0")).toBe(false);
   });
 
   it("skips occupied slots when acquiring a local lease", () => {

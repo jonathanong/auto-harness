@@ -21,11 +21,11 @@ export async function backfillLegacyProviderAccountLeases(
       occupied.add(session.providerAccountLease.concurrencyId);
     }
   }
+  // A released cancelled session has nothing to migrate; backfilling resurrects a dead attempt no host will ack.
   const candidates = sessions
     .filter(
       (session) =>
-        (session.status === "running" ||
-          (session.status === "cancelled" && session.hostId != null)) &&
+        session.status === "running" &&
         session.hostId != null &&
         session.resolvedRoute?.providerAccountId != null &&
         session.providerAccountLease == null,
