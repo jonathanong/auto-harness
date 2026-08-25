@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { OutputChunk, ProcessResult, ProcessRunner } from "./executor.ts";
@@ -43,6 +44,21 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * running. A `.pnpmfile.cjs` committed to a non-admin session author's ref
  * would otherwise execute arbitrary code as the daemon user before the
  * frozen-lockfile check even runs.
+ *
+ * `--modules-dir`/`--store-dir`/`--virtual-store-dir` are pinned explicitly
+ * because pnpm also reads them from a project `.npmrc` in the checked-out
+ * ref, and CLI flags outrank project config. Confirmed against the pinned
+ * `pnpm@10.28.2`: an unpinned install honors a checked-out
+ * `.npmrc` setting `store-dir`/`modules-dir` to an arbitrary absolute path
+ * and writes there as the daemon user, before the provider sandbox starts —
+ * the same admin-only arbitrary-write boundary the scripts/pnpmfile flags
+ * protect. `modules-dir`/`virtual-store-dir` are pinned to their existing
+ * pnpm defaults (both already resolve under `cwd`), so this is a no-op for a
+ * repository that doesn't try to redirect them. `store-dir` is pinned to a
+ * fixed path under the daemon's own (session-independent) `HOME` rather than
+ * pnpm's platform-specific default location, so it stays content-addressable
+ * and shared/warm across sessions exactly as before, just anchored somewhere
+ * a checked-out `.npmrc` cannot redirect it away from.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -53,7 +69,20 @@ export async function installWorkspaceDependencies(
   environment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
-  const installArgs = ["install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"];
+  const modulesDir = join(cwd, "node_modules");
+  const storeDir = join(environment.HOME ?? homedir(), ".auto-harness-pnpm-store");
+  const installArgs = [
+    "install",
+    "--frozen-lockfile",
+    "--ignore-scripts",
+    "--ignore-pnpmfile",
+    "--modules-dir",
+    modulesDir,
+    "--store-dir",
+    storeDir,
+    "--virtual-store-dir",
+    join(modulesDir, ".pnpm"),
+  ];
   return runner.run({
     argv:
       platform === "win32"

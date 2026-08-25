@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -10,21 +10,29 @@ import { SessionRunner } from "./session-runner.ts";
 import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
-/** Matches installWorkspaceDependencies' platform-conditional argv. */
-const INSTALL_ARGV =
-  process.platform === "win32"
-    ? [
-        "cmd.exe",
-        "/d",
-        "/s",
-        "/c",
-        "pnpm",
-        "install",
-        "--frozen-lockfile",
-        "--ignore-scripts",
-        "--ignore-pnpmfile",
-      ]
-    : ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"];
+/** Matches installWorkspaceDependencies' platform-conditional argv[0]. */
+const INSTALL_ARGV0 = process.platform === "win32" ? "cmd.exe" : "pnpm";
+
+/** Matches installWorkspaceDependencies' full argv for a given worktree, using the real (unmocked) childEnvSource default of process.env. */
+function installArgvFor(cwd: string): string[] {
+  const modulesDir = join(cwd, "node_modules");
+  const storeDir = join(process.env.HOME ?? homedir(), ".auto-harness-pnpm-store");
+  const args = [
+    "install",
+    "--frozen-lockfile",
+    "--ignore-scripts",
+    "--ignore-pnpmfile",
+    "--modules-dir",
+    modulesDir,
+    "--store-dir",
+    storeDir,
+    "--virtual-store-dir",
+    join(modulesDir, ".pnpm"),
+  ];
+  return process.platform === "win32"
+    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...args]
+    : ["pnpm", ...args];
+}
 
 const noopGit: GitClient = {
   ensureRepo: async () => undefined,
@@ -70,7 +78,7 @@ describe("SessionRunner dependency install", () => {
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(calls).toEqual([INSTALL_ARGV, ["echo", "hello"]]);
+    expect(calls).toEqual([installArgvFor(cwd), ["echo", "hello"]]);
     const system = result.logs
       .filter((chunk) => chunk.stream === "system")
       .map((chunk) => chunk.content);
@@ -122,7 +130,7 @@ describe("SessionRunner dependency install", () => {
     const spawn = { called: false };
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === INSTALL_ARGV[0]) {
+        if (opts.argv[0] === INSTALL_ARGV0) {
           opts.onChunk({ stream: "stderr", data: "ERR_PNPM_OUTDATED_LOCKFILE\n" });
           return { exitCode: 1, timedOut: false, signal: null };
         }
@@ -145,7 +153,7 @@ describe("SessionRunner dependency install", () => {
     const { worktrees } = runnerFor(cwd);
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === INSTALL_ARGV[0]) {
+        if (opts.argv[0] === INSTALL_ARGV0) {
           return { exitCode: null, timedOut: true, signal: "SIGTERM" };
         }
         return { exitCode: 0, timedOut: false, signal: null };
@@ -161,7 +169,7 @@ describe("SessionRunner dependency install", () => {
     const controller = new AbortController();
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === INSTALL_ARGV[0]) {
+        if (opts.argv[0] === INSTALL_ARGV0) {
           controller.abort();
           return { exitCode: null, timedOut: false, cancelled: true, signal: null };
         }

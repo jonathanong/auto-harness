@@ -44,14 +44,26 @@ describe("installWorkspaceDependencies", () => {
       5_000,
       (c) => chunks.push(c.data),
       controller.signal,
-      { PATH: "/usr/bin" },
+      { PATH: "/usr/bin", HOME: "/home/harness" },
       "linux",
     );
     expect(result.exitCode).toBe(0);
     expect(seen).toMatchObject({
-      argv: ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"],
+      argv: [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts",
+        "--ignore-pnpmfile",
+        "--modules-dir",
+        join(cwd, "node_modules"),
+        "--store-dir",
+        join("/home/harness", ".auto-harness-pnpm-store"),
+        "--virtual-store-dir",
+        join(cwd, "node_modules", ".pnpm"),
+      ],
       cwd,
-      env: { PATH: "/usr/bin", CI: "true" },
+      env: { PATH: "/usr/bin", HOME: "/home/harness", CI: "true" },
       timeoutMs: 5_000,
       signal: controller.signal,
     });
@@ -66,7 +78,15 @@ describe("installWorkspaceDependencies", () => {
         return { exitCode: 0, timedOut: false, signal: null };
       },
     };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {}, "win32");
+    await installWorkspaceDependencies(
+      runner,
+      cwd,
+      5_000,
+      () => undefined,
+      undefined,
+      { HOME: "/home/harness" },
+      "win32",
+    );
     expect(seen?.argv).toEqual([
       "cmd.exe",
       "/d",
@@ -77,6 +97,12 @@ describe("installWorkspaceDependencies", () => {
       "--frozen-lockfile",
       "--ignore-scripts",
       "--ignore-pnpmfile",
+      "--modules-dir",
+      join(cwd, "node_modules"),
+      "--store-dir",
+      join("/home/harness", ".auto-harness-pnpm-store"),
+      "--virtual-store-dir",
+      join(cwd, "node_modules", ".pnpm"),
     ]);
   });
 
