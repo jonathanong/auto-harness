@@ -126,6 +126,72 @@ Uninstall (removes the service definition, not the checkout):
 pnpm local:daemon uninstall-service
 ```
 
+### Provider execution profiles (required for provider-backed dispatch)
+
+Every provider account attached to this host needs an entry in `HARNESS_EXECUTION_PROFILES` before
+the daemon will assign it a session. Without it, the daemon still connects, registers, and reports
+`gitReady: true` — dispatch silently queues with no ACK and no control-plane error until the
+session's own `queueExpiresAt` (default 8 days) fails it out from under you with
+`errorCode: queue_expired`. This exact case (no account has an advertised-ready profile) is silent
+on both ends: the control plane's own placement check filters the account out before it ever sends
+a `session:assign`, so the daemon never logs a refusal either — there is no trace to go looking for.
+See [host-daemon.md#config-loader](host-daemon.md#config-loader) for the
+JSON schema (keyed by **Provider Account ID**, not Provider ID) and
+[host-daemon.md#sessions-stay-queued-host-reports-healthy](host-daemon.md#sessions-stay-queued-host-reports-healthy)
+for the failure mode and a single-operator workaround.
+
+Set it the same way as identity, then re-run `install-service` — it persists the value and restarts
+the daemon in one step:
+
+```bash
+export HARNESS_EXECUTION_PROFILES='/absolute/path/to/execution-profiles.json'
+pnpm local:daemon install-service
+```
+
+The path must be absolute; `install-service` rejects a relative one rather than resolving it
+against a supervisor working directory. To add this to an already-installed host without
+re-supplying `HARNESS_HOST_ID`/`HARNESS_API_URL`/`HARNESS_API_KEY`, load the existing env file and
+override just the new key — explicit process-env values win over ones loaded from the file (see the
+macOS `status` invocation above for the `HARNESS_ENV_FILE` pattern).
+
+On Linux, `/etc/auto-harness/host-daemon.env` is root-owned, so this reinstall needs `sudo` — and
+plain `sudo` resets the environment, silently dropping the `export`s above. `install-service` would
+then re-persist the file with `HARNESS_EXECUTION_PROFILES` empty, and dispatch keeps queuing with
+no error. Pass the variables to `sudo env` explicitly instead, the same pattern already used above
+to read the file as root:
+
+```bash
+sudo env \
+  HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
+  pnpm local:daemon install-service
+```
+
+`install-service` only checks that this path is absolute — never that the daemon's own service
+account can read it. The unit runs as `User=harness`, not root, so if this `sudo` reinstall points at
+a file left under `/root` or otherwise mode `600` root-owned, install succeeds but the daemon then
+crashes on every start (`loadExecutionProfiles` throws reading a file it can't open), and
+`Restart=always`/`RestartSec=5s` turns that into a crash-restart loop instead of a clean "installed,
+still refused" state.
+
+Put the file (and its parent directory, for traversal) somewhere `harness` can _read_ — but don't
+`chown` it to `harness`. Session processes run under that same OS user (the CLI child process in
+`executor.ts` inherits the daemon's own uid; there's no privilege drop between the daemon and the
+agent commands it runs), so a `harness`-owned profiles directory is also writable by every session
+that account executes. A session could then rewrite `execution-profiles.json` to redirect another
+provider account's `home`/`env`, and `loadExecutionProfiles` would trust the tampered file after
+the next daemon restart. Keep the directory and file root-owned and grant `harness` only
+group-read/traverse access:
+
+```bash
+sudo install -d -o root -g harness -m 0750 /etc/auto-harness/profiles
+sudo install -o root -g harness -m 0640 /path/to/your/execution-profiles.json \
+  /etc/auto-harness/profiles/execution-profiles.json
+```
+
+Point `HARNESS_EXECUTION_PROFILES` at that final root-owned path, not the working copy, before
+running `install-service`.
+
 ### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the

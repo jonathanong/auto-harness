@@ -837,6 +837,105 @@ ERROR: CLI tool not found: codex
 - Restart agent (releases local claims on clean start if no process)
 - Control plane may still show busy until disconnect reconciliation or status fix
 
+### Sessions stay queued, host reports healthy
+
+```text
+GET /hosts → online: true, gitReady: true
+```
+
+No control-plane error, no error from `status`. Sessions just stay `queued` and never move to
+`running` — until `queueExpiresAt` (default `queueTtlSeconds`: 8 days), when the scheduler
+transitions them to `failed` with `errorCode: queue_expired` on its own; installing the profile
+after that point does not revive them; submit a new session instead. In this exact failure mode —
+no host advertises readiness for the account at all — the control plane's own placement check
+(`hostProviderAccountReady`, in `queue-placement-planner.ts` and `control-plane-scheduled-assign.ts`)
+filters the account out before a `session:assign` message is ever sent, so the daemon never runs
+`handleAssign` and never logs a refusal either. That local log line only fires for a narrower
+late-readiness race (advertised ready, then refused by the time the assign message arrives) — don't
+search for it as evidence of this failure mode; there is no local or control-plane trace here at all.
+
+- Cause: `HARNESS_EXECUTION_PROFILES` is unset, or missing an entry for the account a session
+  needs. Assignment is fail-closed by design (see [Config Loader](#config-loader)) — with no
+  advertised readiness for that exact Provider Account ID, the daemon refuses the assignment with
+  no ACK and no control-plane-visible error. The host keeps reporting healthy because registration
+  and Git worktrees are unaffected.
+- Fix: set `HARNESS_EXECUTION_PROFILES` to an absolute-path JSON file mapping every attached
+  Provider Account ID (not Provider ID — see [api.md](api.md) `/provider-accounts`) to a `home`
+  directory that exists on the host. Apply with `install-service`, which persists the env var and
+  restarts the daemon in one step — see
+  [deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch](deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch).
+  (The generic `#deploy-install` walkthrough only sets identity variables — it will reinstall
+  without ever touching `HARNESS_EXECUTION_PROFILES`.) On Linux, the file must also be _readable_
+  by the `harness` service user, not just present — see the readability note in
+  [deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch](deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch).
+- Single-operator host running every provider CLI under one real account: point each account's
+  `home` at a **distinct directory** that all resolve to the same real `$HOME`, e.g. a symlink
+  farm (`execution-homes/<provider-name>` → the real home). This satisfies the daemon's
+  home-uniqueness check (`parseExecutionProfiles` rejects two accounts reusing one `home`) while
+  keeping a single real credential store. It buys distinct _configured paths_, not real
+  credential isolation between accounts — don't reach for it if accounts actually need separating.
+  No `env` override is needed when the symlink target is the CLI's real home, since each CLI's
+  config directory already resolves correctly underneath it.
+- Verify the fix landed: neither `status` nor `GET /hosts` expose per-account readiness, so both
+  look identical whether the profile landed or not — checking them proves nothing.
+  `providerAccountReadiness` is advertised in `host:register` but kept only on the live connection
+  state; it is never persisted or exposed through any GET route. Two ways to actually confirm it:
+  - **Pre-flight, no live session needed:** `loadExecutionProfiles`/`providerAccountReadiness` (see
+    [Config Loader](#config-loader), `services/host-daemon/src/execution-profiles.ts`) read only
+    `HARNESS_EXECUTION_PROFILES` from the process's own env — they don't interpret `HARNESS_ENV_FILE`
+    themselves — and the persisted env file is root-owned mode `0600`, unreadable by `harness`
+    directly. Extract the path as root, then run the actual check as `harness` with just that path;
+    running it as your own shell instead reflects your own env and filesystem permissions, not the
+    daemon's, and can report `ready: true` while the live daemon still refuses every assignment. See
+    the two-step script below.
+  - **Authoritative:** watch an account-specific session get picked up on _that host_ — check both
+    `resolvedRoute.providerAccountId` and `resolvedRoute.hostId`, not the account alone. If the
+    account is attached to more than one eligible host, the session can land on a different healthy
+    host and prove nothing about the one you just repaired.
+
+Linux pre-flight, in two steps because reading the persisted env file needs root but the readiness
+check needs to run as `harness` to reflect its actual filesystem access. Don't hard-code
+`/opt/auto-harness/current` as the import root: a custom `HARNESS_UPDATE_INSTALL_DIR` moves it, and
+on a fresh install (or before the first release promotion) there's no `current` tree yet — the
+daemon's own launcher falls back to the checkout root instead, and that fallback is re-decided live
+on every daemon restart, so even the systemd unit's `WorkingDirectory=` can go stale. Reading the
+running process's actual cwd via `/proc` is the only way to know the live root for certain. Likewise
+don't assume a bare `node` resolves under `sudo` — its secure-path default excludes anything installed
+outside `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` (nvm included), so pull the exact absolute node path
+the daemon itself was installed with out of the launcher script instead:
+
+```bash
+# 1. Root reads the persisted profiles path, the live daemon's actual working root (from its
+#    running process, not the static unit config), and the absolute node path baked into its
+#    launcher at install time.
+sudo sh <<'SCRIPT'
+set -eu
+profiles=$(sed -n 's/^HARNESS_EXECUTION_PROFILES=//p' /etc/auto-harness/host-daemon.env | tail -1)
+pid=$(systemctl show auto-harness-host-daemon.service --property=MainPID --value)
+root=$(readlink -f "/proc/$pid/cwd")
+node_path=$(sed -n "s/^exec '\([^']*\)'.*/\1/p" /usr/local/lib/auto-harness/run-host-daemon.sh | head -1)
+echo "PROFILES=$profiles"
+echo "ROOT=$root"
+echo "NODE_PATH=$node_path"
+SCRIPT
+
+# 2. As harness, run the daemon's own check against that path, using the resolved NODE_PATH and
+#    ROOT from step 1 (substitute all three placeholders below). An absolute node path bypasses
+#    PATH resolution entirely, so it works under sudo -u harness regardless of secure_path. The
+#    release tree ships raw .ts source and runs it directly via Node's native type stripping (see
+#    run-host-daemon.sh) — importing from the live root is exactly what's running.
+sudo -u harness env HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
+  /absolute/path/to/node --input-type=module <<'NODE'
+import {
+  loadExecutionProfiles,
+  providerAccountReadiness,
+} from "/absolute/live/root/services/host-daemon/src/execution-profiles.ts";
+console.log(providerAccountReadiness(loadExecutionProfiles()));
+NODE
+```
+
+- Tracking: auto-harness#342.
+
 ---
 
 ## Related documents
