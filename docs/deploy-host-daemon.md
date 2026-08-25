@@ -172,9 +172,25 @@ account can read it. The unit runs as `User=harness`, not root, so if this `sudo
 a file left under `/root` or otherwise mode `600` root-owned, install succeeds but the daemon then
 crashes on every start (`loadExecutionProfiles` throws reading a file it can't open), and
 `Restart=always`/`RestartSec=5s` turns that into a crash-restart loop instead of a clean "installed,
-still refused" state. Put the file (and its parent directory, for traversal) somewhere `harness` can
-read — e.g. `chown -R harness:harness` the directory you create it in — before running
-`install-service`.
+still refused" state.
+
+Put the file (and its parent directory, for traversal) somewhere `harness` can _read_ — but don't
+`chown` it to `harness`. Session processes run under that same OS user (the CLI child process in
+`executor.ts` inherits the daemon's own uid; there's no privilege drop between the daemon and the
+agent commands it runs), so a `harness`-owned profiles directory is also writable by every session
+that account executes. A session could then rewrite `execution-profiles.json` to redirect another
+provider account's `home`/`env`, and `loadExecutionProfiles` would trust the tampered file after
+the next daemon restart. Keep the directory and file root-owned and grant `harness` only
+group-read/traverse access:
+
+```bash
+sudo install -d -o root -g harness -m 0750 /etc/auto-harness/profiles
+sudo install -o root -g harness -m 0640 /path/to/your/execution-profiles.json \
+  /etc/auto-harness/profiles/execution-profiles.json
+```
+
+Point `HARNESS_EXECUTION_PROFILES` at that final root-owned path, not the working copy, before
+running `install-service`.
 
 ### VPS install path
 
