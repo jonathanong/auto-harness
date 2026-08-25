@@ -5,6 +5,15 @@ export type TargetRef =
 /** Values accepted for a session metadata entry. */
 export type SessionMetadataValue = string | number | boolean | null;
 
+/** Whether a session was created directly or fired by a schedule. */
+export type SessionType = "prompt" | "scheduled";
+
+/** Origin that requested the session. */
+export type SessionSource = "api" | "ui" | "webhook" | "schedule";
+
+/** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
+export type CreatableSessionSource = "api" | "ui" | "webhook";
+
 export type CreateSessionInput = {
   repositoryId: string;
   prompt: string;
@@ -17,6 +26,8 @@ export type CreateSessionInput = {
   priority?: number;
   requiredLabels?: string[];
   metadata?: Record<string, SessionMetadataValue>;
+  /** Defaults to `"api"`; `"ui"`/`"webhook"` pass through, anything else becomes `"api"`. */
+  source?: CreatableSessionSource;
 };
 
 export type Session = {
@@ -33,9 +44,52 @@ export type Session = {
   requiredLabels?: string[];
   metadata?: Record<string, SessionMetadataValue>;
   status: string;
+  /** Absent on sessions persisted before this field existed. */
+  type?: SessionType;
+  /** Absent on sessions persisted before this field existed. */
+  source?: SessionSource;
   createdAt: string;
   url: string;
   created?: boolean;
+};
+
+/** Body accepted by `POST /sessions/:id/resume`. */
+export type ResumeSessionInput = {
+  prompt?: string;
+  concurrencyId?: string;
+  timeout?: number;
+  priority?: number;
+};
+
+/** `status` filter accepted by `GET /sessions`. */
+export type SessionStatusFilter =
+  | "all"
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export type SessionListSort = "latest" | "oldest" | "priority_desc" | "priority_asc";
+
+export type ListSessionsOptions = {
+  status?: SessionStatusFilter;
+  repositoryId?: string;
+  hostId?: string;
+  source?: SessionSource;
+  sort?: SessionListSort;
+  /** Number of sessions to return (1–100, default 50). */
+  limit?: number;
+  /** Opaque cursor returned by a previous page. */
+  cursor?: string;
+  concurrencyId?: string;
+  scheduleId?: string;
+};
+
+export type SessionPage = {
+  items: Session[];
+  nextCursor: string | null;
 };
 
 export type Repository = {
@@ -125,6 +179,8 @@ export class AutoHarnessClient {
   createSession(input: CreateSessionInput): Promise<Session & { created: boolean }>;
   getSession(id: string): Promise<Session>;
   cancelSession(id: string): Promise<Session>;
+  resumeSession(id: string, input?: ResumeSessionInput): Promise<Session & { created: boolean }>;
+  listSessions(options?: ListSessionsOptions): Promise<SessionPage>;
   startSessionDrain(
     repositoryId: string,
     options?: { idempotencyKey?: string },
