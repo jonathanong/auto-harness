@@ -179,7 +179,7 @@ export class AutoHarnessClient {
   createSession(input: CreateSessionInput): Promise<Session & { created: boolean }>;
   getSession(id: string): Promise<Session>;
   cancelSession(id: string): Promise<Session>;
-  resumeSession(id: string, input?: ResumeSessionInput): Promise<Session>;
+  resumeSession(id: string, input?: ResumeSessionInput): Promise<Session & { created: boolean }>;
   listSessions(options?: ListSessionsOptions): Promise<SessionPage>;
   startSessionDrain(
     repositoryId: string,
