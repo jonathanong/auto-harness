@@ -105,6 +105,9 @@ describe("host update-config route", () => {
     ).resolves.toMatchObject({
       status: 200,
     });
+    await expect(
+      invoke(emptyPlane, { updateConfig: enabled, version: 1.5 }),
+    ).resolves.toMatchObject({ status: 200 });
     await expect(invoke(emptyPlane, { updateConfig: enabled, version: 99 })).resolves.toMatchObject(
       {
         status: 409,
