@@ -13,7 +13,8 @@ describe("durable host inventory registration fence", () => {
       listWorktreesByHost: async () => [],
       putHostInventoryFenced: async () => ({ ok: false, reason: "lease" as const }),
       releaseHostConnection: async (_hostId: string, connectionId: string) => (
-        calls.push(connectionId), true
+        calls.push(connectionId),
+        true
       ),
       getHostLock: async () => null,
     } as never;
@@ -93,7 +94,8 @@ describe("durable host inventory registration fence", () => {
       listWorktreesByHost: async () => [],
       putHostInventoryFenced: async () => ({ ok: false as const, reason: "version" as const }),
       releaseHostConnection: async (_hostId: string, connectionId: string) => (
-        released.push(connectionId), true
+        released.push(connectionId),
+        true
       ),
       getHostLock: async () => null,
     } as never;

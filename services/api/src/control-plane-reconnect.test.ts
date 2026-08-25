@@ -164,7 +164,8 @@ describe("reconnect reconciliation", () => {
       getHostLock: async () => null,
       confirmReconnect: async () => (calls.push("confirm"), true),
       tryRequeueSession: async (opts: { requireNoHostLock?: string }) => (
-        calls.push(opts.requireNoHostLock ? "reclaim" : "omit"), true
+        calls.push(opts.requireNoHostLock ? "reclaim" : "omit"),
+        true
       ),
     } as never;
     expect(await reconcileHostRunningSessions(plane.state, "h", ["s"])).toEqual([]);
@@ -303,7 +304,8 @@ describe("reconnect reconciliation", () => {
       releaseHostConnection: async () => (calls.push("release"), true),
       getHostLock: async () => null,
       setWorktreeOnlineFenced: async (id: string, connectionId: string, online: boolean) => (
-        calls.push(`offline:${id}:${connectionId}:${online}`), true
+        calls.push(`offline:${id}:${connectionId}:${online}`),
+        true
       ),
     } as never;
 
