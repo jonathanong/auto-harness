@@ -60,7 +60,8 @@
     "local:phase2-post": "node scripts/phase2-post-session.mts",
     "local:manage-verify": "node scripts/manage-verify.mts",
     "deploy:aws": "bash scripts/deploy-aws.sh",
-    "deploy:host": "bash scripts/deploy-host.sh"
+    "deploy:host": "bash scripts/deploy-host.sh",
+    "bootstrap:apigateway-account": "bash scripts/bootstrap-apigateway-account.sh"
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.45.1",
@@ -69,13 +70,13 @@
     "@vitest/coverage-v8": "^3.2.4",
     "coverage-check": "^0.14.0",
     "dependency-cruiser": "^18.2.0",
-    "esbuild": "^0.28.1",
-    "happy-dom": "20.11.2",
-    "knip": "^5.61.3",
+    "esbuild": "^0.28.2",
+    "happy-dom": "20.11.6",
+    "knip": "^6.32.2",
     "no-mistakes": "^0.48.0",
-    "oxfmt": "^0.26.0",
-    "oxlint": "^1.28.0",
-    "typescript": "^5.8.3",
+    "oxfmt": "^0.64.0",
+    "oxlint": "^1.79.0",
+    "typescript": "^6.0.3",
     "vitest": "^3.2.4"
   },
   "engines": {

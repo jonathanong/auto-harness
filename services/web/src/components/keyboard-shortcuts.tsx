@@ -164,7 +164,9 @@ function Shortcut({ keys, label, pw }: { keys: string; label: string; pw: string
   return (
     <div className="contents" data-pw={pw}>
       <dt>
-        <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono">{keys}</kbd>
+        <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono">
+          {keys}
+        </kbd>
       </dt>
       <dd>{label}</dd>
     </div>

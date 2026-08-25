@@ -20,7 +20,7 @@ export type ListRepositoriesPageQuery = {
  * cursors bounded even when a principal can see a large number of repositories.
  */
 export type RepositoryCursorScope = { repositoryIdsDigest: string | null };
-export type RepositoryCursorPosition = { name: string; id: string };
+type RepositoryCursorPosition = { name: string; id: string };
 export type RepositoryCursor = {
   version: 1;
   domain: "repositories";

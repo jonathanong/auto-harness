@@ -125,6 +125,32 @@ describe("startDaemon", () => {
     }
   });
 
+  it("leaves Linux boot fencing to the root-owned systemd helper", async () => {
+    await expect(
+      prepareStableDaemonUpdateBoot({
+        env: { HARNESS_UPDATE_INSTALL_DIR: "/not-used-by-the-linux-launcher" },
+        platform: "linux",
+      }),
+    ).resolves.toBe("none");
+  });
+
+  it("resolves non-Linux default roots without selecting an activated module", async () => {
+    const { rootDir, cleanup } = updateRoot();
+    try {
+      await expect(
+        prepareStableDaemonUpdateBoot({ env: {}, platform: "darwin", home: rootDir }),
+      ).resolves.toBe("none");
+      await expect(
+        prepareStableDaemonUpdateBoot({ env: {}, platform: "win32", appData: rootDir }),
+      ).resolves.toBe("none");
+      await expect(
+        prepareStableDaemonUpdateBoot({ env: { HARNESS_UPDATE_INSTALL_DIR: rootDir } }),
+      ).resolves.toBe("none");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("fails closed when a mutable-root rollback cannot request its supervisor handoff", async () => {
     const { rootDir, cleanup } = updateRoot();
     try {

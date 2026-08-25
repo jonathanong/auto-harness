@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export type RateLimitBucket = "login" | "read" | "mutation" | "scheduler" | "host";
 
-export type RateLimitLimits = Record<RateLimitBucket, number>;
+type RateLimitLimits = Record<RateLimitBucket, number>;
 
 export type RateLimitConfig = {
   enabled: boolean;

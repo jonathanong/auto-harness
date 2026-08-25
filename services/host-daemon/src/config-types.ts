@@ -1,7 +1,7 @@
 import type { HostUpdateConfig } from "@auto-harness/shared";
 
 /** Enable/command override for a provider account at a repository or worktree scope. */
-export type ProviderAccountOverride = {
+type ProviderAccountOverride = {
   enabled?: boolean;
   commandId?: string;
 };
@@ -27,7 +27,7 @@ export type RepositoryConfig = {
 };
 
 /** A provider account attached to a host, with an optional command override. */
-export type HostProviderAccountConfig = {
+type HostProviderAccountConfig = {
   providerAccountId: string;
   commandId?: string;
 };

@@ -1,51 +1,36 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mts", "vitest.config.ts", "playwright.config.ts"],
-      "project": [
-        "scripts/**/*.{ts,mts}",
-        "vitest.config.ts",
-        "playwright.config.ts",
-        "e2e/**/*.ts",
-      ],
+      "entry": ["scripts/*.mts"],
+      "project": ["scripts/**/*.{ts,mts}", "e2e/**/*.ts"],
     },
     "modules/shared": {
       "project": ["src/**/*.ts"],
     },
     "modules/ui": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx,css}"],
     },
     "services/api": {
-      "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
     "services/host-daemon": {
-      "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
     "services/web": {
-      "entry": ["src/index.ts", "src/app/**/page.tsx", "src/app/layout.tsx"],
-      "project": ["src/**/*.{ts,tsx}"],
+      "entry": ["src/index.ts", "src/app/**/page.tsx"],
+      "project": ["src/**/*.{ts,tsx,css}"],
     },
     "services/host-pane": {
-      "entry": ["src/index.ts", "src/app/**/page.tsx", "src/app/layout.tsx"],
-      "project": ["src/**/*.{ts,tsx}"],
+      "entry": ["src/index.ts", "src/app/**/page.tsx"],
+      "project": ["src/**/*.{ts,tsx,css}"],
     },
     "services/cdk": {
+      "entry": ["src/cli.ts", "src/apigateway-account-cli.ts"],
       "project": ["src/**/*.ts"],
     },
   },
-  "ignore": ["**/*-test-helpers.ts", "**/.next/**", "**/next-env.d.ts", "**/next.config.ts"],
-  "ignoreBinaries": ["lychee", "playwright"],
-  "ignoreDependencies": [
-    "autoprefixer",
-    "esbuild",
-    "postcss",
-    "tailwindcss",
-    "next",
-    "react",
-    "react-dom",
-  ],
+  "ignore": ["**/*-test-helpers.ts"],
+  "ignoreBinaries": ["lychee", "systemd-analyze"],
+  "ignoreDependencies": ["esbuild"],
 }

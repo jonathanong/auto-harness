@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { prepareDaemonUpdateBoot } from "./start-daemon.ts";
+import { prepareDaemonUpdateBoot, prepareStableDaemonUpdateBoot } from "./start-daemon.ts";
 
 import {
   createDefaultRunSessionDeps,
@@ -21,7 +21,11 @@ import { installHostService, uninstallHostService } from "./host-service.ts";
 
 vi.mock("./start-daemon.ts", async () => {
   const actual = await vi.importActual<typeof import("./start-daemon.ts")>("./start-daemon.ts");
-  return { ...actual, prepareDaemonUpdateBoot: vi.fn(actual.prepareDaemonUpdateBoot) };
+  return {
+    ...actual,
+    prepareDaemonUpdateBoot: vi.fn(actual.prepareDaemonUpdateBoot),
+    prepareStableDaemonUpdateBoot: vi.fn(actual.prepareStableDaemonUpdateBoot),
+  };
 });
 
 describe("normalizeCliArgs", () => {
@@ -328,6 +332,17 @@ describe("runCli", () => {
     const a = deps();
     expect(await runCli(["node", "x", "nope"], {}, a)).toBe(1);
     expect(a.errors[0]).toMatch(/Unknown/);
+  });
+
+  it("settles the stable-launcher update boot without loading daemon config", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    vi.mocked(prepareStableDaemonUpdateBoot).mockResolvedValueOnce("none");
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(0);
+    expect(prepareStableDaemonUpdateBoot).toHaveBeenCalledWith({ env: {} });
   });
 
   it("start reports daemon errors", async () => {

@@ -36,7 +36,10 @@ export function ServiceAccountKeyDialog({
             This key is shown once. It cannot be recovered after this dialog closes.
           </DialogDescription>
         </DialogHeader>
-        <code className="break-all rounded bg-muted p-3 text-sm" data-pw="service-account-api-key">
+        <code
+          className="break-all rounded-sm bg-muted p-3 text-sm"
+          data-pw="service-account-api-key"
+        >
           {secret.apiKey}
         </code>
         <Button
@@ -54,7 +57,10 @@ export function ServiceAccountKeyDialog({
         </Button>
         {copied ? <p data-pw="service-account-copy-ok">Copied.</p> : null}
         {rotatedFromId ? (
-          <div className="space-y-3 rounded border border-amber-500 p-3" data-pw="rotation-warning">
+          <div
+            className="space-y-3 rounded-sm border border-amber-500 p-3"
+            data-pw="rotation-warning"
+          >
             <p className="text-sm">
               The old key remains active. Update every consumer before revoking it.
             </p>

@@ -31,7 +31,7 @@ export function SessionTimeoutField({ initialSeconds = 600 }: { initialSeconds?:
           value={choice}
           onChange={(event) => setChoice(event.currentTarget.value as TimeoutChoice)}
           aria-describedby="timeout-help"
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-pw="create-session-timeout"
         >
           {TIMEOUT_PRESETS.map((preset) => (

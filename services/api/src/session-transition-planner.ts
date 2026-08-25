@@ -320,14 +320,11 @@ function planDisconnect(
       deadlineAt: new Date(Date.parse(ctx.now) + (ctx.reconnectGraceMs ?? 0)).toISOString(),
     });
   }
-  return planOf(
-    ...releaseEffects(session),
-    {
-      type: "requeue",
-      reason: "disconnect",
-      errorMessage: "host disconnected; requeued",
-    },
-  );
+  return planOf(...releaseEffects(session), {
+    type: "requeue",
+    reason: "disconnect",
+    errorMessage: "host disconnected; requeued",
+  });
 }
 
 function planQueueExpired(

@@ -29,7 +29,7 @@ export function SessionSortHead({
       {href ? (
         <Link
           href={href}
-          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={nextLabel}
           data-pw={`session-sort-${kind}`}
         >

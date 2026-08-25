@@ -203,7 +203,7 @@ export type RepositoryPage = {
   nextKey: Record<string, unknown> | null;
 };
 
-export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
+type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
 export type SessionDrainRecord = {
   scopeKey: string;
@@ -228,7 +228,7 @@ export type SessionDrainRecord = {
 };
 
 /** Enable/command override for a provider account at a repository or worktree scope. */
-export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
+type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 
 /** Durable agent host inventory (repository/worktree config for a host). */
 export type HostInventoryRecord = {

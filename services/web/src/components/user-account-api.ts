@@ -3,7 +3,7 @@ import { apiErrorMessage, type UserRole } from "@auto-harness/shared";
 import { apiFetch, apiFetchAllPages } from "../lib/client-api.ts";
 import type { RepositoryOption } from "./service-account-api.ts";
 
-export type UserAccountRole = UserRole;
+type UserAccountRole = UserRole;
 
 export type UserAccount = {
   id: string;

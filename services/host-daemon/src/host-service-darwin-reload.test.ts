@@ -57,6 +57,18 @@ describe("install-service darwin reload", () => {
     expect(result.calls).toEqual(["bootout", "bootstrap", "bootout", "bootstrap", "load", "print"]);
   });
 
+  it("does not trust launchctl load -w's exit code when it reports a load failure", () => {
+    const result = steps({
+      bootstrap: errRun(5, "Bootstrap failed: 5: Input/output error"),
+      load: { status: 0, stdout: "", stderr: "Load failed: 5: Input/output error" },
+    });
+    expect(result.code).toBe(1);
+    expect(result.calls).toEqual(["bootout", "bootstrap", "bootout", "bootstrap", "load"]);
+    expect(result.errors.join("\n")).toMatch(
+      /bootstrap\/load failed: Load failed: 5: Input\/output error/,
+    );
+  });
+
   it("reloads a missing print then skips kickstart once running", () => {
     const result = steps({ print: [missing, running] });
     expect(result.code).toBe(0);

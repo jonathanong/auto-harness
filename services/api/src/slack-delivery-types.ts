@@ -29,8 +29,8 @@ export type SlackSessionSnapshot = {
   stderrTail?: string[] | undefined;
 };
 
-export type SlackDeliveryOperation = "post-root" | "post-reply" | "update-root";
-export type SlackDeliveryStatus = "pending" | "delivering" | "sent" | "dead";
+type SlackDeliveryOperation = "post-root" | "post-reply" | "update-root";
+type SlackDeliveryStatus = "pending" | "delivering" | "sent" | "dead";
 
 /** Durable, secret-free operation. The transport resolves thread timestamps at send time. */
 export type SlackDeliveryRecord = {

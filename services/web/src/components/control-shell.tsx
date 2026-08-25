@@ -116,7 +116,7 @@ function NewSessionButton({ active }: { active: boolean }) {
         prefetch={false}
         className={cn(
           "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors",
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
           active
             ? "bg-muted text-foreground"
             : "bg-primary text-primary-foreground hover:opacity-90",

@@ -42,9 +42,9 @@ const nextConfig: NextConfig = {
         },
       }),
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
+  reactCompiler: true,
   experimental: {
     externalDir: true,
-    reactCompiler: true,
   },
   // CI has a separate required Typecheck job covering every workspace package. Avoid
   // repeating that work inside production-mode E2E builds; deploy/normal builds still fail

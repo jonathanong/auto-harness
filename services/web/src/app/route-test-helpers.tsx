@@ -29,6 +29,7 @@ export function stubApi(routes: Record<string, unknown | Response>) {
 
 export async function renderPage(node: Promise<React.ReactNode> | React.ReactNode) {
   const router = {
+    bfcacheId: "test",
     back: vi.fn(),
     forward: vi.fn(),
     prefetch: vi.fn(),
