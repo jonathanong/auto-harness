@@ -71,5 +71,11 @@ describe("parseHostUpdateConfig", () => {
         manifestUrl: "https://:secret@updates.example.test/manifest.json",
       }),
     ).toThrow("without credentials");
+    expect(() => parseHostUpdateConfig({ ...valid, installDir: 1 })).toThrow(
+      "updateConfig.installDir must be a non-empty string",
+    );
+    expect(() => parseHostUpdateConfig({ ...valid, daemonVersion: "" })).toThrow(
+      "updateConfig.daemonVersion must be a non-empty string",
+    );
   });
 });

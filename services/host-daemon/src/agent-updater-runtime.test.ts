@@ -234,6 +234,13 @@ describe("daemon updater runtime", () => {
           service: { platform: "linux" },
         } as never),
       ).toThrow("notify failed");
+      vi.mocked(spawnSync).mockReturnValueOnce({ status: 1, stderr: "" } as never);
+      expect(() =>
+        notifySystemdReady({
+          env: { NOTIFY_SOCKET: "/run/systemd/notify" },
+          service: { platform: "linux" },
+        } as never),
+      ).toThrow("systemd readiness notification failed");
 
       const errors: string[] = [];
       const stop = startUpdatePoll({ run: async () => Promise.reject("offline") } as never, {
@@ -243,6 +250,16 @@ describe("daemon updater runtime", () => {
       });
       await stop();
       expect(errors).toContain("updater failed: offline");
+
+      vi.useFakeTimers();
+      const guardedStop = startUpdatePoll({ run: async () => undefined } as never, {
+        pollMs: 10,
+        log: () => undefined,
+        error: () => undefined,
+      });
+      await guardedStop();
+      await vi.advanceTimersByTimeAsync(20);
+      vi.useRealTimers();
     } finally {
       cleanup();
     }

@@ -88,6 +88,15 @@ describe("host exec-config isolation", () => {
     await expect(
       invoke(plane, "PUT", "/api/v1/hosts/host-1/exec-config", null, admin),
     ).resolves.toMatchObject({ status: 400 });
+    await expect(
+      invoke(
+        plane,
+        "PUT",
+        "/api/v1/hosts/host-1/exec-config",
+        { setupScript: "new", version: -1 },
+        admin,
+      ),
+    ).resolves.toMatchObject({ status: 200 });
     const original = plane.putHostInventoryDurable.bind(plane);
     plane.putHostInventoryDurable = async (...args) => {
       const result = await original(...args);
