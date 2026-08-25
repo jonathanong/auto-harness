@@ -308,6 +308,34 @@ describe("DynamoDB Local host lock adapters", () => {
     );
   });
 
+  it("treats a sparse DynamoDB scan page with no Items as empty", async () => {
+    let scanCount = 0;
+    const sparseCtx = {
+      doc: {
+        async send() {
+          scanCount += 1;
+          return scanCount === 1
+            ? { LastEvaluatedKey: { hostId: "next" } }
+            : {
+                Items: [
+                  {
+                    hostId: "candidate",
+                    offlineAlertReason: "offline",
+                    offlineAlertLastHeartbeatAt: at,
+                  },
+                ],
+              };
+        },
+      },
+      tables: { hostLocks: "HostLocks" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(listHostOfflineAlertCandidates(sparseCtx)).resolves.toEqual([
+      { hostId: "candidate", reason: "offline", lastHeartbeatAt: at },
+    ]);
+    expect(scanCount).toBe(2);
+  });
+
   it("propagates failures from a real unreachable DynamoDB endpoint", async () => {
     const unavailable = createDynamoClients({ endpoint: "http://127.0.0.1:7468" });
     const unavailableCtx = { doc: unavailable.doc, tables };
