@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- updater runtime coverage shares one lifecycle fixture. */
 import { describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -226,6 +227,13 @@ describe("daemon updater runtime", () => {
           service: { platform: "linux" },
         } as never),
       ).toBe(true);
+      vi.mocked(spawnSync).mockReturnValueOnce({ status: 1, stderr: "notify failed" } as never);
+      expect(() =>
+        notifySystemdReady({
+          env: { NOTIFY_SOCKET: "/run/systemd/notify" },
+          service: { platform: "linux" },
+        } as never),
+      ).toThrow("notify failed");
 
       const errors: string[] = [];
       const stop = startUpdatePoll({ run: async () => Promise.reject("offline") } as never, {

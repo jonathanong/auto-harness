@@ -3,6 +3,31 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 
 describe("agent host inventory", () => {
+  it("fences durable deletion and removes projected worktrees", async () => {
+    const plane = new ControlPlane();
+    const inventory = {
+      hostId: "durable-delete",
+      version: 3,
+      updatedAt: "t",
+      repositories: [],
+      providerAccounts: [],
+    };
+    plane.state.storage = {
+      getHostInventory: async (hostId: string) => (hostId === inventory.hostId ? inventory : null),
+      listAllWorktrees: async () => [],
+      deleteHostInventory: async () => false,
+    } as never;
+    await expect(plane.deleteHostInventoryDurable(inventory.hostId, 2)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    plane.state.storage.deleteHostInventory = async () => true;
+    await expect(plane.deleteHostInventoryDurable(inventory.hostId, 3)).resolves.toEqual({
+      ok: true,
+    });
+    expect(plane.getHostInventory(inventory.hostId)).toBeNull();
+  });
+
   it("stores config and syncs worktrees", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
     const put = plane.putHostInventory("local-1", {

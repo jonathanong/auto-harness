@@ -461,8 +461,8 @@ describe("file update installer", () => {
         extract: runnableExtract,
         renamePath: (from, to) => {
           calls += 1;
-          if (calls === 2) throw new Error("switch failed");
-          if (calls === 3) throw new Error("restore failed");
+          if (calls === 2) throw "switch failed";
+          if (calls === 3) throw "restore failed";
           symlinkSync(from, to, "dir");
         },
       });

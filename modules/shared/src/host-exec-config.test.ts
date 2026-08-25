@@ -71,6 +71,18 @@ describe("parseAllowedRoots", () => {
 describe("parseHostExecConfig", () => {
   it("parses omitted keys as a partial patch", () => {
     expect(parseHostExecConfig({})).toEqual({});
+    expect(parseHostExecConfig({ updateConfig: { enabled: false } })).toEqual({
+      updateConfig: { enabled: false },
+    });
+    expect(
+      parseHostExecConfig({
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "key",
+        },
+      }),
+    ).toMatchObject({ updateConfig: { enabled: true, publicKey: "key" } });
     expect(parseHostExecConfig({ allowedRoots: undefined })).toEqual({ allowedRoots: [] });
     expect(
       parseHostExecConfig({ repositories: [{ id: "repo", worktrees: [{ id: "wt" }] }] }),
