@@ -118,7 +118,8 @@ invalidate CloudFront. The Next.js origin also sends
 `Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*` —
 this is Next.js's own built-in default for hashed static assets in a
 production build, not an app-level header override (see
-[next.config.ts](../services/web/next.config.ts) and #356).
+[next.config.ts](../services/web/next.config.ts) and
+https://github.com/jonathanong/auto-harness/issues/356).
 
 Foundation stack outputs:
 

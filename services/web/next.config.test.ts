@@ -91,8 +91,10 @@ describe("services/web CSP connect-src", () => {
     // branch, gated on `!res.getHeader("cache-control")`). A config-level override here would
     // apply unconditionally, including in `next dev`, suppressing Next's dev-safe default and
     // triggering Next's own build warning that a custom Cache-Control header "can break
-    // Next.js development behavior." See #356.
-    process.env.HARNESS_WEB_CLOUD = "1";
+    // Next.js development behavior." Exercised on the non-cloud (dev) branch — the same
+    // headers() array is returned either way, but this is the branch where a regression here
+    // would actually surface as broken `next dev` behavior.
+    delete process.env.HARNESS_WEB_CLOUD;
     vi.resetModules();
     const { default: config } = await import("./next.config.ts");
     const headerSets = await config.headers!();
