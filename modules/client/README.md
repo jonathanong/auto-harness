@@ -47,7 +47,8 @@ while (page.nextCursor) {
 
 Cancels this principal's own queued and running sessions for one repository, then fences new
 admission from that same principal until the fence is explicitly released. **Not** repository
-drain or host drain — see [Principal session drains](../../docs/api.md#principal-session-drains)
+drain or host drain — see
+[Principal session drains](https://github.com/jonathanong/auto-harness/blob/main/docs/api.md#principal-session-drains)
 for the full disambiguation and server-side guarantees. Use a stable idempotency key when retries
 may be ambiguous, poll the durable operation, and release the fence explicitly only after
 recording its terminal result.
@@ -62,8 +63,10 @@ while (progress.status === "draining") {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
   progress = await harness.getSessionDrain("repo-1", drain.operationId);
 }
+const failed = progress.status !== "succeeded";
+if (failed) console.error(`Drain failed: ${progress.failureCode}`);
 await harness.releaseSessionDrain("repo-1", drain.operationId);
-if (progress.status !== "succeeded") throw new Error(`Drain failed: ${progress.failureCode}`);
+if (failed) throw new Error(`Drain failed: ${progress.failureCode}`);
 ```
 
 When create, clone, or resume loses to the fence, `AutoHarnessError` has `code === "DRAINING"`
