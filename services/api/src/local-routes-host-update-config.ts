@@ -122,14 +122,18 @@ async function putHostUpdateConfig(ctx: RouteCtx, hostId: string): Promise<true>
       { ...applyHostExecConfig(existing, { updateConfig }), version },
       { allowLegacyRelativeTerminalHooks: true, awaitProjection: false },
     );
-    if (!result.ok) return await sendPutFailure(ctx, hostId, ctx.res, result);
+    if (!result.ok) {
+      await sendPutFailure(ctx, hostId, ctx.res, result);
+      return true;
+    }
     send(ctx.res, 200, {
       updateConfig: result.config.updateConfig,
       version: result.config.version,
     });
     return true;
   } catch (error) {
-    return await sendUpdateError(ctx, hostId, ctx.res, error);
+    await sendUpdateError(ctx, hostId, ctx.res, error);
+    return true;
   }
 }
 
@@ -138,15 +142,14 @@ async function sendPutFailure(
   hostId: string,
   res: RouteCtx["res"],
   result: { conflict?: boolean; error: string },
-): Promise<true> {
-  if (await auditOrHandleFailure(ctx, hostId, "failed", true)) return true;
+): Promise<void> {
+  if (await auditOrHandleFailure(ctx, hostId, "failed", true)) return;
   send(res, result.conflict ? 409 : 400, {
     error: {
       code: result.conflict ? "CONFLICT" : "VALIDATION_ERROR",
       message: result.error,
     },
   });
-  return true;
 }
 
 async function sendUpdateError(
@@ -154,12 +157,11 @@ async function sendUpdateError(
   hostId: string,
   res: RouteCtx["res"],
   error: unknown,
-): Promise<true> {
-  if (await auditOrHandleFailure(ctx, hostId, "failed")) return true;
+): Promise<void> {
+  if (await auditOrHandleFailure(ctx, hostId, "failed")) return;
   if (error instanceof TypeError) {
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
   } else {
     sendInternalError(res);
   }
-  return true;
 }
