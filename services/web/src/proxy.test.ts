@@ -3,11 +3,11 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-import { middleware } from "./middleware.ts";
+import { proxy } from "./proxy.ts";
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
-describe("web authentication middleware", () => {
+describe("web authentication proxy", () => {
   afterEach(() => {
     delete process.env.HARNESS_AUTH_MODE;
     delete process.env.HARNESS_SESSION_SECRET;
@@ -18,22 +18,22 @@ describe("web authentication middleware", () => {
 
   it("allows disabled mode and redirects missing, invalid, or expired sessions to login", async () => {
     const request = new NextRequest("http://localhost/sessions");
-    expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(request)).headers.get("x-middleware-next")).toBe("1");
 
     process.env.HARNESS_AUTH_MODE = "required";
     process.env.HARNESS_SESSION_SECRET = "a".repeat(32);
-    const redirected = await middleware(new NextRequest("http://localhost/sessions?status=queued"));
+    const redirected = await proxy(new NextRequest("http://localhost/sessions?status=queued"));
     expect(redirected.status).toBe(307);
     expect(redirected.headers.get("location")).toBe(
       "http://localhost/login?returnTo=%2Fsessions%3Fstatus%3Dqueued",
     );
-    const invalid = await middleware(
+    const invalid = await proxy(
       new NextRequest("http://localhost/sessions", {
         headers: { cookie: "auto_harness_session=not-a-token" },
       }),
     );
     expect(invalid.headers.get("location")).toContain("/login?");
-    const expired = await middleware(
+    const expired = await proxy(
       new NextRequest("http://localhost/sessions", {
         headers: { cookie: `auto_harness_session=${signedToken("a".repeat(32), 0)}` },
       }),
@@ -47,17 +47,13 @@ describe("web authentication middleware", () => {
     const authenticated = new NextRequest("http://localhost/sessions", {
       headers: { cookie: `auto_harness_session=${signedToken("a".repeat(32))}` },
     });
-    expect((await middleware(authenticated)).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(authenticated)).headers.get("x-middleware-next")).toBe("1");
     expect(
-      (await middleware(new NextRequest("http://localhost/login"))).headers.get(
-        "x-middleware-next",
-      ),
+      (await proxy(new NextRequest("http://localhost/login"))).headers.get("x-middleware-next"),
     ).toBe("1");
     expect(
       (
-        await middleware(
-          new NextRequest("http://localhost/login", { headers: authenticated.headers }),
-        )
+        await proxy(new NextRequest("http://localhost/login", { headers: authenticated.headers }))
       ).headers.get("x-middleware-next"),
     ).toBe("1");
   });
@@ -71,18 +67,18 @@ describe("web authentication middleware", () => {
     const request = new NextRequest("https://web.example.test/sessions", {
       headers: { cookie: "auto_harness_session=opaque" },
     });
-    expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(request)).headers.get("x-middleware-next")).toBe("1");
     expect(fetch).toHaveBeenCalledWith(new URL("https://api.example.test/api/v1/auth/me"), {
       headers: { cookie: "auto_harness_session=opaque" },
       signal: expect.any(AbortSignal),
     });
 
     fetch.mockResolvedValueOnce(new Response("no", { status: 401 }));
-    expect((await middleware(request)).headers.get("location")).toContain("/login?");
+    expect((await proxy(request)).headers.get("location")).toContain("/login?");
     fetch.mockRejectedValueOnce(new Error("offline"));
-    expect((await middleware(request)).headers.get("location")).toContain("/login?");
+    expect((await proxy(request)).headers.get("location")).toContain("/login?");
     delete process.env.HARNESS_API_HTTP;
-    expect((await middleware(request)).headers.get("location")).toContain("/login?");
+    expect((await proxy(request)).headers.get("location")).toContain("/login?");
   });
 
   it("fails closed when remote authentication times out", async () => {
@@ -95,7 +91,7 @@ describe("web authentication middleware", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const response = await middleware(new NextRequest("https://web.example.test/sessions"));
+    const response = await proxy(new NextRequest("https://web.example.test/sessions"));
 
     expect(response.headers.get("location")).toContain("/login?");
     expect(fetch).toHaveBeenCalledOnce();

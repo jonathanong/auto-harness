@@ -3,12 +3,12 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
-import { middleware } from "./middleware.ts";
+import { proxy } from "./proxy.ts";
 
 const secret = "a".repeat(32);
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
-describe("host-pane authentication middleware", () => {
+describe("host-pane authentication proxy", () => {
   afterEach(() => {
     delete process.env.HARNESS_AUTH_MODE;
     delete process.env.HARNESS_SESSION_SECRET;
@@ -16,11 +16,11 @@ describe("host-pane authentication middleware", () => {
 
   it("allows local disabled mode and requires a signed session in required mode", async () => {
     const request = new NextRequest("http://localhost/api/browse");
-    expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(request)).headers.get("x-middleware-next")).toBe("1");
 
     process.env.HARNESS_AUTH_MODE = "required";
     process.env.HARNESS_SESSION_SECRET = secret;
-    const denied = await middleware(request);
+    const denied = await proxy(request);
     expect(denied.status).toBe(401);
     expect(denied.headers.get("content-type")).toMatch(/text\/html/);
     const body = await denied.text();
@@ -31,15 +31,15 @@ describe("host-pane authentication middleware", () => {
     const forged = new NextRequest("http://localhost/api/browse", {
       headers: { cookie: "auto_harness_session=signed" },
     });
-    expect((await middleware(forged)).status).toBe(401);
+    expect((await proxy(forged)).status).toBe(401);
     const viewer = new NextRequest("http://localhost/api/browse", {
       headers: { cookie: `auto_harness_session=${signedToken({ audience: "viewer" })}` },
     });
-    expect((await middleware(viewer)).status).toBe(401);
+    expect((await proxy(viewer)).status).toBe(401);
     const authenticated = new NextRequest("http://localhost/api/browse", {
       headers: { cookie: `auto_harness_session=${signedToken()}` },
     });
-    expect((await middleware(authenticated)).headers.get("x-middleware-next")).toBe("1");
+    expect((await proxy(authenticated)).headers.get("x-middleware-next")).toBe("1");
   });
 });
 

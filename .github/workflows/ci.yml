@@ -513,7 +513,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Production control UI with required auth and fixed test-only credentials — see
-      # docs/e2e.md. Set at job level: middleware.ts/api.ts read HARNESS_AUTH_MODE and
+      # docs/e2e.md. Set at job level: proxy.ts/api.ts read HARNESS_AUTH_MODE and
       # HARNESS_SESSION_SECRET at request time inside the webServer-started `next start`
       # process, so the Playwright test step needs them, not just the build step.
       HARNESS_E2E_AUTH: "1"

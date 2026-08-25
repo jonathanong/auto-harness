@@ -6,7 +6,7 @@ export const HOST_PANE_UNAUTHENTICATED_HEADING = "This is the debug host pane";
 export const HOST_PANE_UNAUTHENTICATED_BODY =
   "It has no login. Production session cookies live on the CloudFront control-plane domain. Use the control plane instead.";
 
-/** Standalone 401 page for middleware — no session cookie, no React shell. */
+/** Standalone 401 page for proxy.ts — no session cookie, no React shell. */
 export function hostPaneUnauthenticatedHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">

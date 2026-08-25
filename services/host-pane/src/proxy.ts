@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hostPaneUnauthenticatedHtml } from "./lib/unauthenticated.ts";
 
 /** Public host-pane binds must have a signed session before rendering or browsing. */
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (process.env.HARNESS_AUTH_MODE !== "required") return NextResponse.next();
   const valid = await hasValidSession(
     request.cookies.get(SESSION_COOKIE)?.value,
