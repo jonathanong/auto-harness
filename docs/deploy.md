@@ -64,10 +64,13 @@ signed manifest, stage/activate the artifact, and request a supervisor restart w
 never becomes active directly. A failed activation rolls the previous artifact back and resumes
 scheduling.
 
-Automation rollouts that need to quiesce only their own work use the authenticated
-repository-principal session-drain API instead. They must keep their external admission gates off,
+Automation rollouts that need to cancel and fence only their own Auto Harness sessions — not the
+whole repository or host — use the authenticated repository-principal session-drain API instead.
+It cancels the calling principal's own queued and running sessions for one repository and blocks
+new ones from that principal until released. Callers must keep their external admission gates off,
 poll the durable operation to a terminal state, verify those gates again, then explicitly release
-the Auto Harness fence. This does not cancel GitHub Actions runs or manage repository variables.
+the Auto Harness fence. This does not cancel GitHub Actions runs or manage repository variables —
+those are the caller's responsibility to gate separately.
 
 ### Teardown
 

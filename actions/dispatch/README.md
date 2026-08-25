@@ -26,14 +26,18 @@ response body. It defaults to `30` seconds and must be a finite positive number 
 
 ## Principal session drain
 
-Use one stable idempotency key per caller operation. Start returns the durable `operation-id` and
+Cancels this service account's own queued and running sessions for one repository, then fences
+new admission from that same account until released — **not** repository drain or host drain; see
+[Principal session drains](../../docs/api.md#principal-session-drains) for the full
+disambiguation. Use one stable idempotency key per caller operation. Start returns the durable
+`operation-id` and
 `status-url`; `get-drain` makes one bounded progress request and `wait-for-drain` succeeds only
 when the control plane returns `succeeded`. It fails closed for failed, released, unknown, or
 malformed results. Release is explicit, including after a failed drain, so release must follow
 whatever caller-side failure handling records that result.
 
 ```yaml
-- name: Start this service account's repository drain
+- name: Start this service account's principal session drain
   id: drain
   uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:

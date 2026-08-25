@@ -138,8 +138,13 @@ the repository is activated. These operations require `repositories:operate` and
 
 ### Principal session drains
 
-An authenticated author can stop only its own sessions for one repository without pausing work
-from the UI, another service account, or another repository:
+Cancels the authenticated principal's own queued and running sessions for one repository, then
+fences new admission from that same principal until the fence is explicitly released. This is
+**not** repository drain (above; operator-triggered, cancels every principal's sessions) or host
+update drain (one host, running work finishes) — the fence is `(repositoryId, principal)` only, so
+it never touches another principal's sessions or another repository's sessions. It does not
+distinguish by how a session was started: a UI-started session owned by the calling principal is
+in scope just like an API- or webhook-started one.
 
 - `POST /repositories/:id/session-drains` commits the exact
   `(repositoryId, authenticated principal)` admission fence and returns `202` with
@@ -184,9 +189,8 @@ consumes each due occurrence with an operator-visible audit event until an authe
 repository-scoped schedule edit claims ownership for that principal. The owner is derived from
 authentication and cannot be supplied in schedule JSON.
 
-This is distinct from repository drain above (all principals) and host update drain (one host,
-running work finishes). It requires `sessions:write`; repository scope and principal ownership are
-always derived from authentication and cannot be supplied in the request.
+It requires `sessions:write`; repository scope and principal ownership are always derived from
+authentication and cannot be supplied in the request.
 
 ---
 
