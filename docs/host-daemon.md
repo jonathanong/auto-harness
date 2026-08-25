@@ -846,9 +846,13 @@ GET /hosts → online: true, gitReady: true
 No control-plane error, no error from `status`. Sessions just stay `queued` and never move to
 `running` — until `queueExpiresAt` (default `queueTtlSeconds`: 8 days), when the scheduler
 transitions them to `failed` with `errorCode: queue_expired` on its own; installing the profile
-after that point does not revive them; submit a new session instead. The daemon does log the
-refusal locally — check the daemon log for
-`execution profile unavailable: refused assign ...` before assuming there's no trace at all.
+after that point does not revive them; submit a new session instead. In this exact failure mode —
+no host advertises readiness for the account at all — the control plane's own placement check
+(`hostProviderAccountReady`, in `queue-placement-planner.ts` and `control-plane-scheduled-assign.ts`)
+filters the account out before a `session:assign` message is ever sent, so the daemon never runs
+`handleAssign` and never logs a refusal either. That local log line only fires for a narrower
+late-readiness race (advertised ready, then refused by the time the assign message arrives) — don't
+search for it as evidence of this failure mode; there is no local or control-plane trace here at all.
 
 - Cause: `HARNESS_EXECUTION_PROFILES` is unset, or missing an entry for the account a session
   needs. Assignment is fail-closed by design (see [Config Loader](#config-loader)) — with no
@@ -861,7 +865,9 @@ refusal locally — check the daemon log for
   restarts the daemon in one step — see
   [deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch](deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch).
   (The generic `#deploy-install` walkthrough only sets identity variables — it will reinstall
-  without ever touching `HARNESS_EXECUTION_PROFILES`.)
+  without ever touching `HARNESS_EXECUTION_PROFILES`.) On Linux, the file must also be _readable_
+  by the `harness` service user, not just present — see the readability note in
+  [deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch](deploy-host-daemon.md#provider-execution-profiles-required-for-provider-backed-dispatch).
 - Single-operator host running every provider CLI under one real account: point each account's
   `home` at a **distinct directory** that all resolve to the same real `$HOME`, e.g. a symlink
   farm (`execution-homes/<provider-name>` → the real home). This satisfies the daemon's

@@ -132,9 +132,10 @@ Every provider account attached to this host needs an entry in `HARNESS_EXECUTIO
 the daemon will assign it a session. Without it, the daemon still connects, registers, and reports
 `gitReady: true` — dispatch silently queues with no ACK and no control-plane error until the
 session's own `queueExpiresAt` (default 8 days) fails it out from under you with
-`errorCode: queue_expired`. The daemon does log the refusal locally
-(`execution profile unavailable: refused assign ...`), so check the daemon log before assuming
-there's no trace at all. See [host-daemon.md#config-loader](host-daemon.md#config-loader) for the
+`errorCode: queue_expired`. This exact case (no account has an advertised-ready profile) is silent
+on both ends: the control plane's own placement check filters the account out before it ever sends
+a `session:assign`, so the daemon never logs a refusal either — there is no trace to go looking for.
+See [host-daemon.md#config-loader](host-daemon.md#config-loader) for the
 JSON schema (keyed by **Provider Account ID**, not Provider ID) and
 [host-daemon.md#sessions-stay-queued-host-reports-healthy](host-daemon.md#sessions-stay-queued-host-reports-healthy)
 for the failure mode and a single-operator workaround.
@@ -165,6 +166,15 @@ sudo env \
   HARNESS_EXECUTION_PROFILES=/absolute/path/to/execution-profiles.json \
   pnpm local:daemon install-service
 ```
+
+`install-service` only checks that this path is absolute — never that the daemon's own service
+account can read it. The unit runs as `User=harness`, not root, so if this `sudo` reinstall points at
+a file left under `/root` or otherwise mode `600` root-owned, install succeeds but the daemon then
+crashes on every start (`loadExecutionProfiles` throws reading a file it can't open), and
+`Restart=always`/`RestartSec=5s` turns that into a crash-restart loop instead of a clean "installed,
+still refused" state. Put the file (and its parent directory, for traversal) somewhere `harness` can
+read — e.g. `chown -R harness:harness` the directory you create it in — before running
+`install-service`.
 
 ### VPS install path
 
