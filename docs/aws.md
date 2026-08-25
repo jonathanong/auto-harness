@@ -115,7 +115,11 @@ CloudFront cache behaviors on the web stack:
 
 Hashed filenames are new cache keys after a deploy, so the web stack does not
 invalidate CloudFront. The Next.js origin also sends
-`Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*`.
+`Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*` —
+this is Next.js's own built-in default for hashed static assets in a
+production build, not an app-level header override (see
+[next.config.ts](../services/web/next.config.ts) and
+https://github.com/jonathanong/auto-harness/issues/356).
 
 Foundation stack outputs:
 
