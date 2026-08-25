@@ -129,6 +129,62 @@ describe("claimed session cancellation", () => {
     expect(commandStarted).toBe(false);
   });
 
+  it("normalizes a primitive policy failure before setup", async () => {
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        cancellableRunner,
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign(),
+        {
+          ...claimed,
+          currentExecutionTarget: async () => {
+            throw "primitive policy failure";
+          },
+        },
+        undefined,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "primitive policy failure",
+    });
+  });
+
+  it("normalizes a primitive policy failure after setup", async () => {
+    let checks = 0;
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run() {
+            return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+          },
+        },
+        new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ setupScript: "setup" }),
+        {
+          ...claimed,
+          currentExecutionTarget: async () => {
+            checks += 1;
+            if (checks === 3) throw "primitive policy after setup";
+          },
+        },
+        undefined,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "primitive policy after setup",
+    });
+  });
+
   it("reports timeout when setup is entered after the deadline", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -191,15 +247,15 @@ describe("claimed session cancellation", () => {
           async run(options) {
             options.onChunk({
               stream: "stdout",
-              data: "resume: native-1\nError: insufficient_quota for request",
+              data: "resume: native-1\nprovider command failed",
             });
-            return { exitCode: 1, timedOut: false, signal: null };
+            return { exitCode: 1, timedOut: false, signal: null, usageLimit: true };
           },
         },
         new LogStreamer("s", "attempt-1", (chunk) => logs.push(chunk)),
         logs,
         baseAssign({
-          resolvedArgv: ["codex", "exec"],
+          resolvedArgv: ["codex", "exec", "--json"],
           providerAccountId: "acct-1",
           resumeRefCapture: { stream: "stdout", linePrefix: "resume: " },
         }),

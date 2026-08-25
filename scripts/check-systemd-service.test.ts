@@ -2,14 +2,26 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { validateGeneratedHostServiceTemplates } from "../services/host-daemon/src/host-service-templates.ts";
-import { envExampleUrl, serviceUrl, validateSystemdArtifacts } from "./check-systemd-service.mts";
+import {
+  activationHelperUrl,
+  envExampleUrl,
+  launcherUrl,
+  serviceUrl,
+  validateSystemdActivationHelper,
+  validateSystemdArtifacts,
+  validateSystemdLauncher,
+} from "./check-systemd-service.mts";
 
 describe("production host systemd artifacts", () => {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
+  const launcher = readFileSync(launcherUrl, "utf8");
+  const activationHelper = readFileSync(activationHelperUrl, "utf8");
 
   it("keeps the checked-in service and environment contracts safe", () => {
     expect(validateSystemdArtifacts(service, envExample)).toEqual([]);
+    expect(validateSystemdLauncher(launcher)).toEqual([]);
+    expect(validateSystemdActivationHelper(activationHelper)).toEqual([]);
     expect(validateGeneratedHostServiceTemplates(service)).toEqual([]);
     expect(envExample).toContain("mode 0600");
     expect(envExample).toContain("REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY");
@@ -18,15 +30,15 @@ describe("production host systemd artifacts", () => {
   it("rejects lost drain semantics, unsupported readiness, and secret-shaped examples", () => {
     expect(
       validateSystemdArtifacts(
-        service.replace("TimeoutStopSec=15min\n", "").replace("Type=simple", "Type=notify") +
+        service.replace("TimeoutStopSec=15min\n", "").replace("Type=notify", "Type=simple") +
           "\nWatchdogSec=30s\nExecReload=sh -c true\n",
         envExample.replace("REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY", "hns_real-looking-key"),
       ),
     ).toEqual(
       expect.arrayContaining([
-        "missing service directive: Type=simple",
+        "missing service directive: Type=notify",
         "missing service directive: TimeoutStopSec=15min",
-        "forbidden service behavior: Type=notify",
+        "forbidden service behavior: Type=simple",
         "forbidden service behavior: WatchdogSec=",
         "forbidden service behavior: ExecReload=",
         "forbidden service behavior: sh -c",
@@ -39,16 +51,75 @@ describe("production host systemd artifacts", () => {
     expect(
       validateSystemdArtifacts(
         service.replace(
-          "ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start",
+          'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
           "ExecStart=pnpm local:daemon start",
         ),
         envExample.replace("HARNESS_HOST_ID=REPLACE_WITH_BOUND_HOST_ID\n", ""),
       ),
     ).toEqual(
       expect.arrayContaining([
-        "missing service directive: ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start",
+        'missing service directive: ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
         "forbidden service behavior: pnpm ",
         "missing environment example: HARNESS_HOST_ID",
+      ]),
+    );
+  });
+
+  it("keeps the manual stable launcher on current and forwards daemon arguments", () => {
+    expect(validateSystemdLauncher("#!/bin/sh\n")).toEqual(
+      expect.arrayContaining([
+        "missing systemd launcher fragment: update_root=${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}",
+        'missing systemd launcher fragment: current="$update_root/current"',
+        'missing systemd launcher fragment: cd "$current"',
+        'missing systemd launcher fragment: auto-harness-host-daemon.mjs start "$@"',
+      ]),
+    );
+  });
+
+  it("rejects a promotion helper that can run activated daemon code or skip its immutable fence", () => {
+    expect(
+      validateSystemdActivationHelper(
+        activationHelper
+          .replace("lockTree(extracted)", "")
+          .replaceAll("assertSafeArchive(archive)", "")
+          .replace('process.argv[2] === "--mark-boot-attempt"', "false")
+          .replaceAll('|| "/opt/auto-harness"', "")
+          .replace("assertProtectedUpdateRootPath(root)", "")
+          .replace("process.exitCode = 1", "")
+          .replace('from "node:crypto"', 'from "./current/daemon.mjs"'),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "missing update promotion helper fragment: lockTree(extracted)",
+        "missing update promotion helper fragment: assertSafeArchive(archive)",
+        'missing update promotion helper fragment: process.argv[2] === "--mark-boot-attempt"',
+        'missing update promotion helper fragment: || "/opt/auto-harness"',
+        "missing update promotion helper fragment: assertProtectedUpdateRootPath(root)",
+        "missing update promotion helper fragment: process.exitCode = 1",
+        "promotion helper must not import daemon-writable activated code",
+      ]),
+    );
+  });
+
+  it("requires a durable pending-boot marker on both pointer-switch paths", () => {
+    const markerWrite = "JSON.stringify({ version: manifest.version, attempted: false })";
+    const switchCurrent = 'switchCurrent(root, join("releases", manifest.version));';
+    const markerAfterSwitch = activationHelper
+      .replace(markerWrite, "/* delayed pending marker */")
+      .replace(switchCurrent, `${switchCurrent}\n  atomicWrite(markerPath, ${markerWrite});`);
+    const missingCleanup = activationHelper.replace(
+      "rmSync(markerPath, { force: true });\n    throw error;",
+      "throw error;",
+    );
+
+    expect(validateSystemdActivationHelper(markerAfterSwitch)).toEqual(
+      expect.arrayContaining([
+        "pending update marker must be written before selecting the release",
+      ]),
+    );
+    expect(validateSystemdActivationHelper(missingCleanup)).toEqual(
+      expect.arrayContaining([
+        "pending update marker must be cleared when selecting the release fails",
       ]),
     );
   });

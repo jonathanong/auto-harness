@@ -3,8 +3,8 @@
 A numbered script for QAing a real AWS Auto Harness environment: restore or
 deploy the control plane, **sign in as admin** to set up the fleet (user
 accounts, service accounts, hosts, repos, providers), persist a local host
-daemon, **sign in as operator** to run real `grok -p`, `claude -p`, and
-`codex exec` sessions, exercise a schedule, try to break the product, then
+daemon, **sign in as operator** to run real structured-output `grok -p`,
+`claude -p`, and `codex exec --json` sessions, exercise a schedule, try to break the product, then
 tear the environment down. Do not tell an operator to Add host.
 
 This is the production-surface runbook. The laptop-only counterpart is
@@ -110,7 +110,7 @@ Then retry `pnpm --filter @auto-harness/cdk run update`. Do not set
   AWS CLI credentials, `AWS_REGION` set.
 - `grok` and `claude` on `PATH`, already logged in on this machine. Verify
   in a real shell **before** starting the daemon (Phase 3). `codex` is
-  optional; if it is installed, the catalog preset is `codex exec` — **not**
+  optional; if it is installed, the catalog preset is `codex exec --json` — **not**
   `-p` (`-p` is `--profile`).
 - A git repository the daemon can reach **on this machine**. The control-plane
   "attach repository" form takes an absolute host path that must already
@@ -245,16 +245,17 @@ Do not read `web.md`. Follow nav labels.
 7. **Providers → Add provider** (the UI fills argv when the name matches a
    catalog preset — `claude`, `grok`, `codex`, `cursor` / `cursor-agent`):
    - name `claude`; default command name e.g. `claude-print`; argv one token
-     per line: `claude` then `-p`; append-prompt on
+     per line: `claude`, `-p`, `--output-format`, `json`; append-prompt on
    - name `grok`; default command name e.g. `grok-print`; argv one token
-     per line: `grok`, `--always-approve`, `--max-turns`, `3`, `-p`
+     per line: `grok`, `--always-approve`, `--max-turns`, `3`, `--output-format`,
+     `json`, `-p`
      (`-p` / `--single` takes the prompt as its option value).
      Append-prompt **on**, append-prompt separator **off** — a `--`
      before the prompt makes grok 1.0.5 exit 2 with `a value is required
-for '--single <PROMPT>'`. Do not add `--output-format plain`; `-p`
-     already means headless.
+for '--single <PROMPT>'`. Use `--output-format json`; `-p` still supplies the
+     headless prompt.
    - name `codex`; default command name e.g. `codex-exec`; argv one token
-     per line: `codex` then `exec`. Append-prompt **on**, separator **on**
+     per line: `codex`, `exec`, `--json`. Append-prompt **on**, separator **on**
      (the catalog preset). **Do not use `-p`** — on Codex that is
      `--profile`, unrelated to the prompt.
 
@@ -276,18 +277,18 @@ In a real, unsandboxed shell on the machine that has the repository and
 both CLIs:
 
 ```bash
-claude -p 'Reply with exactly: OK'
-grok --always-approve --max-turns 3 -p 'Reply with exactly: OK'
+claude -p --output-format json 'Reply with exactly: OK'
+grok --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
 ```
 
-If either command does not print `OK`, fix the CLI login before going
+If either command does not return a successful JSON envelope containing `OK`, fix the CLI login before going
 further — every downstream symptom (session stuck `queued`, then failing
 with an auth error) traces back to this.
 
 If `codex` is on `PATH`:
 
 ```bash
-codex exec 'Reply with exactly: OK'
+codex exec --json 'Reply with exactly: OK'
 ```
 
 Persist the daemon so it survives logout/reboot. Same command on linux
@@ -350,7 +351,7 @@ be able to finish the rest of this runbook from `WebUrl` alone.
 
 ---
 
-## Phase 4 — Sessions as operator (`grok -p`, `claude -p`, `codex exec`)
+## Phase 4 — Sessions as operator (structured `grok`, `claude`, and `codex`)
 
 **Log out of admin. Log in as the operator** created in Phase 2. Create
 sessions from **New session** on the control plane (primary). Do not Add
@@ -367,7 +368,7 @@ but is **admin-only**.
 ### Prompt matrix
 
 Run each row against **both** `claude` and `grok` unless noted. If you
-created the `codex` provider in Phase 2, also run row 1 as `codex exec`
+created the `codex` provider in Phase 2, also run row 1 as `codex exec --json`
 (not `-p`).
 
 | #   | Prompt                                                                                            | Why                                    |
@@ -534,7 +535,7 @@ assets, not this environment.
       service accounts created (one bound, one unbound); host slot,
       repository, worktree, and providers set up from `WebUrl` — no
       `:7422` step, no operator Add host
-- [ ] Providers `grok`, `claude`, and `codex` (`codex exec`, not `-p`),
+- [ ] Providers `grok`, `claude`, and `codex` (`codex exec --json`, not `-p`),
       default Commands, Provider Accounts created; accounts attached to
       the host (`codex` may be skipped if the binary is missing)
 - [ ] Daemon persisted with `pnpm local:daemon install-service` and
@@ -545,7 +546,7 @@ assets, not this environment.
 - [ ] `POST /api/v1/sessions` with the unbound key returns `201`/`queued`
 - [ ] At least one `claude -p` and one `grok -p` session reach `completed`
       with the expected CLI output visible in logs
-- [ ] If Codex was configured: at least one `codex exec` session reaches
+- [ ] If Codex was configured: at least one `codex exec --json` session reaches
       `completed` (not `codex -p`)
 - [ ] Prompt matrix rows recorded (pass, fail, or skipped with reason)
 - [ ] Same-`concurrencyId` re-`POST` while active returns `created:false`;

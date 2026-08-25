@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   renderLaunchAgentPlist,
   renderLinuxUnit,
+  renderUnixLaunchScript,
   renderWindowsLaunchCmd,
   validateGeneratedHostServiceTemplates,
   validateHostServiceArtifacts,
@@ -15,9 +16,11 @@ import {
 } from "./host-service-templates.ts";
 
 const unitTemplate = `[Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=harness
 WorkingDirectory=/opt/auto-harness/current
+ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start
 TimeoutStopSec=15min
 KillMode=mixed
 `;
@@ -27,9 +30,12 @@ describe("linux unit rendering", () => {
     expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
       "WorkingDirectory=/home/op/src",
     );
-    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=simple");
+    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain(
+      'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
+    );
+    expect(renderLinuxUnit(unitTemplate, "/home/op/src")).toContain("Type=notify");
     expect(() => renderLinuxUnit(unitTemplate, "/tmp\nEvil=1")).toThrow(/single line/);
-    expect(() => renderLinuxUnit("Type=simple\n", "/tmp")).toThrow(/WorkingDirectory/);
+    expect(() => renderLinuxUnit("Type=notify\n", "/tmp")).toThrow(/WorkingDirectory/);
   });
 });
 
@@ -58,8 +64,17 @@ describe("launchd plist / windows cmd", () => {
       nodePath: "C:\\Program Files\\nodejs\\node.exe",
       launcherPath: "C:\\repo\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
       envFilePath: "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\host-daemon.env",
+      currentRoot: "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\updates\\current",
+      currentLauncherPath:
+        "C:\\Users\\op\\AppData\\Roaming\\auto-harness\\updates\\current\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
+      fallbackRoot: "C:\\repo",
+      prepareLauncherPath: "C:\\repo\\services\\host-daemon\\bin\\auto-harness-host-daemon.mjs",
     });
     expect(cmd).toContain("HARNESS_ENV_FILE=");
+    expect(cmd).toContain("prepare-update-boot");
+    expect(cmd).toContain("if errorlevel 1 exit /b %errorlevel%");
+    expect(cmd.indexOf("prepare-update-boot")).toBeLessThan(cmd.indexOf("if exist"));
+    expect(cmd).toContain("if exist");
     expect(cmd).toContain(" start");
     const args = windowsCreateTaskArgs({
       taskName: "AutoHarnessHostDaemon",
@@ -81,6 +96,25 @@ describe("launchd plist / windows cmd", () => {
       "/F",
     ]);
   });
+
+  it("keeps a Unix supervisor launcher outside the activated tree", () => {
+    const launcher = renderUnixLaunchScript({
+      nodePath: "/usr/bin/node",
+      currentRoot: "/updates/current",
+      currentLauncherPath: "/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      fallbackRoot: "/checkout",
+      fallbackLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      prepareLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+    });
+    expect(launcher).toContain("prepare-update-boot");
+    expect(launcher.indexOf("prepare-update-boot")).toBeLessThan(launcher.indexOf("if [ -f"));
+    expect(launcher).toContain(
+      "if [ -f '/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs' ]",
+    );
+    expect(launcher).toContain("cd '/updates/current'");
+    expect(launcher).toContain("cd '/checkout'");
+    expect(launcher).toContain('start "$@"');
+  });
 });
 
 describe("template contract", () => {
@@ -94,7 +128,7 @@ describe("template contract", () => {
         plist: "LOCALSYSTEM NSSM hns_abc",
         windowsCmd: "nssm LOCALSYSTEM",
         windowsCreateArgs: ["LOCALSYSTEM"],
-        linuxUnit: "Type=notify\n",
+        linuxUnit: "Type=simple\n",
       }),
     ).toEqual(
       expect.arrayContaining([
@@ -109,15 +143,17 @@ describe("template contract", () => {
         "scheduled task is not ONLOGON",
         "scheduled task is not LIMITED",
         "scheduled task runs as SYSTEM",
-        "missing unit directive: Type=simple",
+        "missing unit directive: Type=notify",
       ]),
     );
   });
 
   it("flags a unit that lost drain semantics after rewrite", () => {
     expect(
-      validateGeneratedHostServiceTemplates("WorkingDirectory=/opt/auto-harness/current\n"),
-    ).toEqual(expect.arrayContaining(["missing unit directive: Type=simple"]));
+      validateGeneratedHostServiceTemplates(
+        "WorkingDirectory=/opt/auto-harness/current\nExecStart=/old/daemon start\n",
+      ),
+    ).toEqual(expect.arrayContaining(["missing unit directive: Type=notify"]));
     expect(
       workingDirectoryErrors("WorkingDirectory=/other\n", "/home/operator/auto-harness"),
     ).toEqual(["linux unit WorkingDirectory was not rewritten"]);

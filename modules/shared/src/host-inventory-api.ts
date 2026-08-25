@@ -3,6 +3,7 @@ import { parseRequiredEnvironment } from "./environment-requirements.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
 import type { HostExecConfigPatch } from "./host-exec-config.ts";
+import { parseHostUpdateConfig } from "./host-update-config.ts";
 
 /**
  * Fetch inventory fresh right before a read-modify-write mutation. Callers should not
@@ -41,6 +42,9 @@ async function readInventory(
         ? { allowedRoots: cfg.allowedRoots as string[] }
         : {}),
       ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
+      ...(cfg.updateConfig === undefined
+        ? {}
+        : { updateConfig: parseHostUpdateConfig(cfg.updateConfig) }),
       repositories: Array.isArray(cfg.repositories)
         ? (cfg.repositories as HostInventory["repositories"])
         : [],
@@ -68,6 +72,7 @@ export async function putInventory(
       ...(inv.requiredEnvironment !== undefined
         ? { requiredEnvironment: inv.requiredEnvironment }
         : {}),
+      ...(inv.updateConfig !== undefined ? { updateConfig: inv.updateConfig } : {}),
       repositories: inv.repositories,
       providerAccounts: inv.providerAccounts,
       ...(inv.capabilities !== undefined ? { capabilities: inv.capabilities } : {}),
@@ -99,9 +104,24 @@ export async function putExecConfig(
     body: JSON.stringify({
       ...(patch.setupScript !== undefined ? { setupScript: patch.setupScript } : {}),
       ...(patch.allowedRoots !== undefined ? { allowedRoots: patch.allowedRoots } : {}),
+      ...(patch.updateConfig !== undefined ? { updateConfig: patch.updateConfig } : {}),
       ...(patch.repositories !== undefined ? { repositories: patch.repositories } : {}),
       ...(version !== undefined ? { version } : {}),
     }),
+  });
+  if (!res.ok) return writeFailure(res);
+  return { ok: true };
+}
+
+export async function putHostUpdateConfig(
+  hostId: string,
+  updateConfig: import("./host-update-config.ts").HostUpdateConfig,
+  version?: number,
+): Promise<{ ok: true } | { ok: false; error: string; conflict?: true }> {
+  const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/update-config`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ updateConfig, ...(version !== undefined ? { version } : {}) }),
   });
   if (!res.ok) return writeFailure(res);
   return { ok: true };
@@ -162,4 +182,16 @@ export async function mutateExecConfig(
   patch: (current: HostInventory) => HostExecConfigPatch,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return mutateWithFence(hostId, patch, putExecConfig);
+}
+
+/** Read-modify-write the signed-update settings with the host inventory CAS fence. */
+export async function mutateHostUpdateConfig(
+  hostId: string,
+  updateConfig: import("./host-update-config.ts").HostUpdateConfig,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return await mutateWithFence(
+    hostId,
+    () => updateConfig,
+    (id, value, version) => putHostUpdateConfig(id, value, version),
+  );
 }

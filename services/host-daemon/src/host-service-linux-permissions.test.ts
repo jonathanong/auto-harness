@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService } from "./host-service.ts";
-import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
 import { LINUX_ENV_DEST } from "./host-service-templates.ts";
 
 describe("install-service linux permissions", () => {
@@ -45,5 +45,29 @@ describe("install-service linux permissions", () => {
       ),
     ).toBe(1);
     expect(errors.join("\n")).toMatch(/run install-service with sudo/);
+  });
+
+  it("does not enable the service when locking a release permissions fails", () => {
+    const errors: string[] = [];
+    const spawn = recorder();
+    const run = (command: string, args: string[]) => {
+      spawn.run(command, args);
+      return command === "chmod"
+        ? { status: 1, stdout: "", stderr: "permission denied" }
+        : { status: 0, stdout: "", stderr: "" };
+    };
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: seededFs({ "/opt/auto-harness/current": "" }),
+          run,
+          error: (message) => errors.push(message),
+        }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["lock existing current release permissions failed: permission denied"]);
+    expect(spawn.calls.some(({ command }) => command === "systemctl")).toBe(false);
   });
 });

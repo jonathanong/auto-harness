@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- environment parsing and service-install persistence cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -38,6 +39,15 @@ describe("parseEnvFile / applyEnvFile", () => {
       HARNESS_API_KEY: "from-file",
     });
   });
+
+  it("keeps explicitly blank updater settings instead of restoring a persisted value", () => {
+    expect(
+      applyEnvFile(
+        "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json\nHARNESS_UPDATE_PUBLIC_KEY=key\n",
+        { HARNESS_UPDATE_MANIFEST_URL: "", HARNESS_UPDATE_PUBLIC_KEY: "" },
+      ),
+    ).toEqual({ HARNESS_UPDATE_MANIFEST_URL: "", HARNESS_UPDATE_PUBLIC_KEY: "" });
+  });
 });
 
 describe("renderEnvFile", () => {
@@ -77,6 +87,35 @@ describe("renderEnvFile", () => {
     );
     expect(renderEnvFile(example, { PATH: "/opt/homebrew/bin" }, { capturePath: false })).toContain(
       "PATH=/usr/bin",
+    );
+  });
+
+  it("persists every advertised updater setting in a new service environment", () => {
+    const rendered = renderEnvFile(example, {
+      HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+      HARNESS_UPDATE_PUBLIC_KEY: "public-key",
+      HARNESS_UPDATE_INSTALL_DIR: "/srv/auto-harness",
+      HARNESS_UPDATE_POLL_MS: "60000",
+      HARNESS_DAEMON_VERSION: "1.2.3",
+    });
+    expect(rendered).toContain(
+      "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json",
+    );
+    expect(rendered).toContain('HARNESS_UPDATE_PUBLIC_KEY="public-key"');
+    expect(rendered).toContain("HARNESS_UPDATE_INSTALL_DIR=/srv/auto-harness");
+    expect(rendered).toContain("HARNESS_UPDATE_POLL_MS=60000");
+    expect(rendered).toContain("HARNESS_DAEMON_VERSION=1.2.3");
+  });
+
+  it("quotes escaped updater PEM values for systemd EnvironmentFile", () => {
+    const rendered = renderEnvFile(example, {
+      HARNESS_UPDATE_PUBLIC_KEY: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
+    });
+    expect(rendered).toContain(
+      'HARNESS_UPDATE_PUBLIC_KEY="-----BEGIN KEY-----\\\\nabc\\\\n-----END KEY-----"',
+    );
+    expect(parseEnvFile(rendered).HARNESS_UPDATE_PUBLIC_KEY).toBe(
+      "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
     );
   });
 

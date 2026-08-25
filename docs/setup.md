@@ -49,7 +49,7 @@ Short checklist:
    host slots, repositories, and providers (operators create sessions; they
    do not Add host), then persist agents with
    `pnpm local:daemon install-service` per
-   [deploy-host-daemon.md](deploy-host-daemon.md). Codex is `codex exec`,
+   [deploy-host-daemon.md](deploy-host-daemon.md). Codex is `codex exec --json`,
    not `-p`.
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).

@@ -873,7 +873,10 @@ export async function disconnectHostDurable(
     "agent disconnected; requeued",
   );
   await releaseTimedOutProviderAccountLeasesForHost(state, conn.hostId);
-  const released = await state.storage.releaseHostConnection(conn.hostId, connectionId);
+  const released = await state.storage.releaseHostConnection(conn.hostId, connectionId, {
+    reason: "agent disconnected; requeued",
+    lastHeartbeatAt: conn.lastHeartbeatAt,
+  });
   // releaseHostConnection's transaction cannot delete the connection row if
   // a replacement won its lock condition. The old connection id is globally
   // unique, so deleting that orphan cannot affect the replacement lease.

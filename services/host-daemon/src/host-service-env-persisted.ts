@@ -2,6 +2,7 @@ import {
   renderEnvFile,
   isProductionApiUrl,
   PERSISTED_DAEMON_ENV_KEYS,
+  formatPersistedEnvValue,
   validatePersistedEnvFile,
 } from "./host-service-env.ts";
 import { parseChildEnvAllowlist } from "./child-env.ts";
@@ -12,9 +13,19 @@ function assertSingleLine(key: string, value: string): void {
 
 function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): string {
   const updates = new Map<string, string>();
+  const updaterKeys = new Set([
+    "HARNESS_UPDATE_MANIFEST_URL",
+    "HARNESS_UPDATE_PUBLIC_KEY",
+    "HARNESS_UPDATE_INSTALL_DIR",
+    "HARNESS_UPDATE_POLL_MS",
+    "HARNESS_DAEMON_VERSION",
+  ]);
   for (const key of PERSISTED_DAEMON_ENV_KEYS) {
     const value = env[key];
-    if (value !== undefined && value !== "") updates.set(key, value);
+    // An explicitly empty updater setting is a supported disable/reset action.
+    // Preserve the empty assignment so an install cannot silently retain the
+    // previous non-empty update configuration.
+    if (value !== undefined && (value !== "" || updaterKeys.has(key))) updates.set(key, value);
   }
   if (updates.size === 0) return contents;
   const seen = new Set<string>();
@@ -26,13 +37,13 @@ function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): str
     if (value === undefined) return line;
     assertSingleLine(key, value);
     seen.add(key);
-    return `${line.slice(0, eq + 1)}${value}`;
+    return `${line.slice(0, eq + 1)}${formatPersistedEnvValue(key, value)}`;
   });
   for (const [key, value] of updates) {
     if (seen.has(key)) continue;
     assertSingleLine(key, value);
     if (lines.at(-1) === "") lines.pop();
-    lines.push(`${key}=${value}`);
+    lines.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   const rendered = lines.join("\n");
   return rendered.endsWith("\n") ? rendered : `${rendered}\n`;

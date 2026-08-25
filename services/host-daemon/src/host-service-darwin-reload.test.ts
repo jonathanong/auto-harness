@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { installHostService } from "./host-service.ts";
+import { installHostService, restartHostService } from "./host-service.ts";
 import type { HostServiceRun, HostServiceRunResult } from "./host-service-io.ts";
 import { baseOpts, errRun, launchctlByStep, okRun, seededFs } from "./host-service-test-helpers.ts";
 
 const missing = errRun(1, "Could not find service");
-const running = okRun("state = running\n");
+const running = okRun("state = running\npid = 100\n");
 const stopped = okRun("state = stopped\n");
 
 function install(run: HostServiceRun): { calls: string[]; code: number; errors: string[] } {
@@ -82,17 +82,17 @@ describe("install-service darwin reload", () => {
     ]);
   });
 
-  it("treats kickstart already-in-progress as success when registered", () => {
-    expect(steps({ print: [stopped, running], kickstart: errRun(37, "") }).code).toBe(0);
-    expect(
+  it("rejects a kickstart already-in-progress result", () => {
+    for (const result of [
+      steps({ print: stopped, kickstart: errRun(37, "") }),
       steps({
-        print: [okRun("state = waiting\n"), running],
+        print: okRun("state = waiting\n"),
         kickstart: errRun(1, "already in progress"),
-      }).code,
-    ).toBe(0);
-    expect(steps({ print: stopped, kickstart: errRun(37, "") }).code).toBe(0);
-    expect(steps({ print: [stopped, missing, stopped], kickstart: errRun(37, "") }).code).toBe(0);
-    expect(steps({ print: [stopped, missing, stopped] }).code).toBe(0);
+      }),
+    ]) {
+      expect(result.code).toBe(1);
+      expect(result.errors.join("\n")).toMatch(/kickstart/);
+    }
   });
 
   it("reports kickstart failure when the agent stays stopped", () => {
@@ -101,26 +101,48 @@ describe("install-service darwin reload", () => {
     expect(result.errors.join("\n")).toMatch(/kickstart/);
   });
 
-  it("re-bootstraps after a kickstart race unregisters the agent", () => {
+  it("fails when kickstart cannot restart the registered agent", () => {
     const result = steps({
-      print: [stopped, missing, missing, running],
+      print: [stopped, missing],
       kickstart: errRun(37, ""),
     });
-    expect(result.code).toBe(0);
-    expect(result.calls.filter((step) => step === "bootstrap")).toEqual(["bootstrap", "bootstrap"]);
+    expect(result.code).toBe(1);
+    expect(result.errors.join("\n")).toMatch(/kickstart/);
   });
 
-  it("recovers kickstart failures by reloading a missing agent", () => {
-    expect(steps({ print: [stopped, missing, running], kickstart: errRun(1, "kick") }).code).toBe(
-      0,
+  it("rejects a successful kickstart when launchd retains the prior daemon pid", () => {
+    const errors: string[] = [];
+    let printCalls = 0;
+    const code = restartHostService(
+      baseOpts({
+        platform: "darwin",
+        fs: seededFs(),
+        error: (message) => errors.push(message),
+        run: (_command, args) => {
+          if (args[0] === "print") {
+            printCalls += 1;
+            return okRun("state = running\npid = 100\n");
+          }
+          return okRun();
+        },
+      }),
     );
-    expect(steps({ print: [stopped, missing, missing, running] }).code).toBe(0);
+    expect(printCalls).toBe(2);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("launchd kept the prior daemon pid");
+  });
+
+  it("does not treat a failed or unverifiable kickstart as a restart", () => {
+    expect(steps({ print: [stopped, missing, running], kickstart: errRun(1, "kick") }).code).toBe(
+      1,
+    );
+    expect(steps({ print: [stopped, missing, missing, running] }).code).toBe(1);
   });
 
   it("reports unrecoverable kickstart, verification, and reload failures", () => {
     expect(
       install(launchctlByStep({ print: missing, kickstart: errRun(1, "kick") })).errors.join("\n"),
-    ).toMatch(/kickstart/);
+    ).toMatch(/verification/);
     expect(
       install(launchctlByStep({ print: missing, kickstart: errRun(37, "") })).errors.join("\n"),
     ).toMatch(/verification/);
@@ -133,7 +155,7 @@ describe("install-service darwin reload", () => {
           kickstart: errRun(1, "kick"),
         }),
       ).errors.join("\n"),
-    ).toMatch(/bootstrap\/load/);
+    ).toMatch(/kickstart/);
     expect(
       install(
         launchctlByStep({

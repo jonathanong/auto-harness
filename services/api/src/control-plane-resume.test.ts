@@ -103,6 +103,99 @@ describe("control-plane native resume", () => {
     expect(plane.resumeSession("s1").ok).toBe(true);
   });
 
+  it("upgrades structured output in provider-bound native resume templates, including frozen legacy snapshots", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({
+      shardCount: 1,
+      idFactory: (() => {
+        let n = 0;
+        return () => `provider-session-${++n}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    plane.setOnHostMessage((_host, message) => messages.push(message));
+    expect(
+      plane.createProvider({ id: "provider", name: "claude", defaultCommandId: "cmd" }).ok,
+    ).toBe(true);
+    expect(
+      plane.createProviderAccount({ id: "account", providerId: "provider", label: "account" }).ok,
+    ).toBe(true);
+    plane.createCommand({
+      id: "cmd",
+      name: "claude",
+      argv: ["claude", "-p"],
+      providerId: "provider",
+      resumeArgvTemplate: ["claude", "-p", "--resume", "{cliResumeRef}", "{prompt}"],
+      resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
+    });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+      providerAccountReadiness: [
+        { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+      ],
+    });
+    expect(
+      plane.putHostInventory("host", {
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            worktrees: [{ id: "wt", name: "wt", path: "/wt", labels: [] }],
+          },
+        ],
+        providerAccounts: [{ providerAccountId: "account" }],
+        commandProfiles: {},
+      }).ok,
+    ).toBe(true);
+    const source = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(source.ok).toBe(true);
+    if (!source.ok) throw new Error("unreachable");
+    plane.assignQueued();
+    expect(plane.state.sessions.get(source.session.id)?.resumeSpec?.resumeArgvTemplate).toEqual([
+      "claude",
+      "--output-format",
+      "json",
+      "-p",
+      "--resume",
+      "{cliResumeRef}",
+      "{prompt}",
+    ]);
+    acknowledge(plane, source.session.id);
+    finish(plane, source.session.id, "completed", "cli-1");
+
+    // Simulate a snapshot persisted before provider structured-output migration.
+    plane.state.sessions.get(source.session.id)!.resumeSpec!.resumeArgvTemplate = [
+      "claude",
+      "-p",
+      "--resume",
+      "{cliResumeRef}",
+      "{prompt}",
+    ];
+    plane.state.commands.delete("cmd");
+    expect(plane.resumeSession(source.session.id).ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      resolvedArgv: [
+        "claude",
+        "--output-format",
+        "json",
+        "-p",
+        "--resume",
+        "cli-1",
+        "--",
+        "Continue from the previous session.",
+      ],
+    });
+  });
+
   it("carries the authenticated principal across resumed sessions", () => {
     const plane = new ControlPlane({
       idFactory: (() => {

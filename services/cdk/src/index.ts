@@ -1,23 +1,10 @@
-import {
-  describeControlPlane,
-  DYNAMO_TABLES,
-  EVENTBRIDGE_CRON,
-  S3_ARCHIVE_BUCKET,
-  statusShardKey,
-} from "./tables.ts";
-
-export { AutoHarnessFoundationStack } from "./foundation-stack.ts";
-export type { FoundationResources, FoundationStackProps } from "./foundation-stack.ts";
-export { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
-export type { RuntimeResources, RuntimeStackProps } from "./runtime-stack.ts";
-export { AutoHarnessWebStack } from "./web-stack.ts";
-export type { WebStackProps } from "./web-stack.ts";
+import { describeControlPlane, DYNAMO_TABLES, statusShardKey } from "./tables.ts";
 
 /** AWS CDK infrastructure service identity. */
-export const serviceName = "@auto-harness/cdk" as const;
+const serviceName = "@auto-harness/cdk" as const;
 
 export function getServiceName(): string {
   return serviceName;
 }
 
-export { describeControlPlane, DYNAMO_TABLES, EVENTBRIDGE_CRON, S3_ARCHIVE_BUCKET, statusShardKey };
+export { describeControlPlane, DYNAMO_TABLES, statusShardKey };

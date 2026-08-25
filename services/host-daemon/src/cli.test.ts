@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { prepareDaemonUpdateBoot, prepareStableDaemonUpdateBoot } from "./start-daemon.ts";
+
 import {
   createDefaultRunSessionDeps,
   isDirectInvocation,
@@ -16,6 +18,15 @@ import {
 import { deps, sampleConfig } from "./cli-test-helpers.ts";
 import type { DaemonConfig } from "./config.ts";
 import { installHostService, uninstallHostService } from "./host-service.ts";
+
+vi.mock("./start-daemon.ts", async () => {
+  const actual = await vi.importActual<typeof import("./start-daemon.ts")>("./start-daemon.ts");
+  return {
+    ...actual,
+    prepareDaemonUpdateBoot: vi.fn(actual.prepareDaemonUpdateBoot),
+    prepareStableDaemonUpdateBoot: vi.fn(actual.prepareStableDaemonUpdateBoot),
+  };
+});
 
 describe("normalizeCliArgs", () => {
   it("strips a leading -- from pnpm forwarding", () => {
@@ -323,6 +334,28 @@ describe("runCli", () => {
     expect(a.errors[0]).toMatch(/Unknown/);
   });
 
+  it("settles the stable-launcher update boot without loading daemon config", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    vi.mocked(prepareStableDaemonUpdateBoot).mockResolvedValueOnce("none");
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(0);
+    expect(prepareStableDaemonUpdateBoot).toHaveBeenCalledWith({ env: {} });
+  });
+
+  it("reports a stable-launcher boot failure without loading daemon config", async () => {
+    vi.mocked(prepareStableDaemonUpdateBoot).mockRejectedValueOnce("stable rollback failed");
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["stable rollback failed"]);
+  });
+
   it("start reports daemon errors", async () => {
     const a = deps({
       ensureReady: async () => {
@@ -331,6 +364,23 @@ describe("runCli", () => {
     });
     expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
     expect(a.errors[0]).toMatch(/no host config/);
+  });
+
+  it("reports an update-boot preflight failure before loading daemon config", async () => {
+    vi.mocked(prepareDaemonUpdateBoot).mockRejectedValueOnce(new Error("update rollback failed"));
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["update rollback failed"]);
+  });
+
+  it("passes through a missing runtime report after start preflight", async () => {
+    const a = deps({ ensureReady: async () => undefined });
+    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors[0]).toMatch(/apiUrl \(or --ws\) is required/);
   });
 });
 

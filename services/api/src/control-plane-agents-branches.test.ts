@@ -57,6 +57,53 @@ describe("agent registration branch boundaries", () => {
     ).toEqual({ ok: false, error: "duplicate running session s" });
   });
 
+  it("publishes optional runtime and fallback daemon labels on local registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "runtime" });
+    expect(
+      plane.registerHost({
+        hostId: "runtime-host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          { id: "wt", name: "wt", repositoryId: "repo", path: "/repo/wt", labels: ["daemon"] },
+        ],
+        commandProfiles: [],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).toEqual({ ok: true, connectionId: "runtime" });
+    expect(plane.state.connections.get("runtime")?.runtime).toMatchObject({
+      daemonVersion: "test",
+    });
+    expect(plane.getHostInventory("runtime-host")).toMatchObject({
+      repositories: [{ worktrees: [{ labels: ["daemon"] }] }],
+    });
+    const fallback = new ControlPlane({ connectionIdFactory: () => "fallback" });
+    expect(
+      fallback.registerHost({
+        hostId: "fallback-host",
+        repositories: [],
+        worktrees: [
+          { id: "ghost-wt", name: "ghost", repositoryId: "ghost", path: "/ghost", labels: ["raw"] },
+        ],
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "fallback" });
+    expect(fallback.getWorktree("ghost-wt")?.labels).toEqual(["raw"]);
+  });
+
+  it("validates duplicate reported running sessions when no attempt report is supplied", () => {
+    const plane = new ControlPlane();
+    plane.state.sessions.set("s", session({ hostId: "duplicate-sessions" }));
+    plane.state.worktrees.set("w", worktree({ hostId: "duplicate-sessions" }));
+    expect(
+      plane.registerHost({
+        hostId: "duplicate-sessions",
+        worktrees: [],
+        commandProfiles: [],
+        runningSessions: ["s", "s"],
+      }),
+    ).toEqual({ ok: false, error: "duplicate running session s" });
+  });
+
   it("rejects every durable running-session ownership mismatch", async () => {
     const cases = [
       [session({ status: "queued" }), worktree()],
@@ -234,6 +281,58 @@ describe("agent registration branch boundaries", () => {
       expect.objectContaining({ online: true, connectionId: "c" }),
     );
     expect(plane.getWorktree("busy")).toBeNull();
+  });
+
+  it("republishes worktree labels after a durable inventory-version retry", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "retry" });
+    let inventoryWrites = 0;
+    const worktreeWrites: string[] = [];
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [],
+      putWorktreeFenced: async (row: { id: string }) => {
+        worktreeWrites.push(row.id);
+        return true;
+      },
+      putHostInventoryFenced: async () => {
+        inventoryWrites += 1;
+        return inventoryWrites === 1 ? { ok: false, reason: "version" } : { ok: true };
+      },
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "retry-host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          { id: "wt", name: "wt", repositoryId: "repo", path: "/repo/wt", labels: ["daemon"] },
+        ],
+        commandProfiles: [],
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "retry" });
+    expect(inventoryWrites).toBe(2);
+    expect(worktreeWrites).toEqual(["wt", "wt"]);
+
+    const fallback = new ControlPlane({ connectionIdFactory: () => "durable-fallback" });
+    fallback.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [],
+      putWorktreeFenced: async () => true,
+      putHostInventoryFenced: async () => ({ ok: true }),
+    } as never;
+    await expect(
+      fallback.registerHostDurable({
+        hostId: "durable-fallback-host",
+        repositories: [],
+        worktrees: [
+          { id: "ghost-wt", name: "ghost", repositoryId: "ghost", path: "/ghost", labels: ["raw"] },
+        ],
+        commandProfiles: [],
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "durable-fallback" });
   });
 
   it("persists a draining durable registration with an explicit runtime report", async () => {

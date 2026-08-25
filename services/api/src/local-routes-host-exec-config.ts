@@ -153,6 +153,7 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
     send(res, 200, {
       setupScript: config.setupScript,
       allowedRoots: config.allowedRoots,
+      updateConfig: config.updateConfig,
       repositories: config.repositories
         .filter((repository) => mayAccessRepository(ctx.principal, repository.id))
         .map((repository) => ({

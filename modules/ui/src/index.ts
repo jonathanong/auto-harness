@@ -106,6 +106,7 @@ export { AddWorktreeForm } from "./components/add-worktree-form.tsx";
 export { AddRepoForm, type RepoCatalogEntry } from "./components/add-repo-form.tsx";
 export { HostConfigForm } from "./components/host-config-form.tsx";
 export { HostSetupScriptForm } from "./components/host-setup-script-form.tsx";
+export { HostUpdateConfigForm } from "./components/host-update-config-form.tsx";
 export {
   JsonEditor,
   type JsonEditorProps,

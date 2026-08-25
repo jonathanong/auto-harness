@@ -12,6 +12,7 @@ const publicConfig = {
     onSessionFailed: true,
     onSessionCancelled: true,
     onScheduleCompleted: false,
+    onHostOffline: true,
   },
   botTokenConfigured: true,
   signingSecretConfigured: true,
@@ -69,6 +70,7 @@ test.describe("control plane Slack settings", () => {
     await expect(page.getByTestId("slack-notification-onSessionFailed")).toBeChecked();
     await expect(page.getByTestId("slack-notification-onSessionCancelled")).toBeChecked();
     await expect(page.getByTestId("slack-notification-onScheduleCompleted")).not.toBeChecked();
+    await expect(page.getByTestId("slack-notification-onHostOffline")).toBeChecked();
 
     await page.getByTestId("slack-bot-token").fill("not-a-token");
     await page.getByTestId("slack-submit").click();

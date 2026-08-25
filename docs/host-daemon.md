@@ -322,36 +322,43 @@ If a site needs a full shell pipeline for maintenance, use a **scheduled** sessi
 
 #### Usage limits (AI vendor / CLI quotas)
 
-AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit your limit”, etc.). Auto Harness reports the limit and lets the control plane pause the assigned account, try another eligible account/fallback, or queue-wait for cooldown recovery.
+AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit your limit”, etc.).
+Auto Harness reports a limit only when its provider-aware adapter validates a structured CLI result;
+ordinary stdout/stderr is never quota evidence. A reported limit lets the control plane pause the
+assigned account, try another eligible account/fallback, or queue-wait for cooldown recovery.
 
 **Policy: trusted identity + failure → classify → report → let the control plane route.**
 
 1. The assigned command runs to completion. Timeout and cancel are never `usage_limit`.
 2. Exit `0` is always `completed`. Successful output — including adversarial or prompt-controlled phrases such as “rate limit” — never cools down a Provider Account.
-3. On a failed command (`exitCode !== 0`), the daemon classifies using **trusted assignment identity** (`providerAccountId` from the control plane) plus **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side) plus provider-specific matchers, or a provider-aware CLI adapter's `usageLimit` flag. Untrusted stdout/stderr is never enough on its own.
-4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage`, and `exitCode`. Do not retry or resolve a fallback on the host. Output-matcher hits use `errorMessage: "Usage limit detected in CLI output"`; adapter-only hits use `errorMessage: "Usage limit detected"`.
+3. On a failed command (`exitCode !== 0`), the daemon requires **trusted assignment identity**
+   (`providerAccountId` from the control plane), a recognized **trusted catalog argv** executable
+   (`resolvedArgv[0]`, already resolved control-plane-side), and the provider-aware adapter's
+   structured `usageLimit` signal. Untrusted stdout/stderr is never enough on its own.
+4. On that signal, report `session:status` with `status: failed`, `errorCode: "usage_limit"`,
+   `errorMessage: "Usage limit detected"`, and `exitCode`. Do not retry or resolve a fallback on
+   the host.
 5. The control plane then pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or explicit fallback. A queued session remains eligible until its absolute `queueTtlSeconds` expires (default 8 days), then fails with `queue_expired`.
 
-Providerless commands (`providerId: null`, no `providerAccountId`) and unknown executables **fail closed**: generic quota-like text is an ordinary `failed`, not `usage_limit`. No account is paused.
+Providerless commands (`providerId: null`, no `providerAccountId`), unknown executables, and
+provider commands without a supported structured result **fail closed**: their quota-like text is
+an ordinary `failed`, not `usage_limit`. No account is paused.
 
 **What counts as a usage-limit error:**
 
-Classification keys off a provider-backed assignment (`providerAccountId`) plus the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
-
-| Trusted executable | Example signals in failed CLI output                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`                                |
-| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your weekly limit · resets 12pm (America/Los_Angeles)` |
-| `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota`                       |
-| `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`                               |
-
-Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success, on unknown/providerless argv, and when the assignment has no `providerAccountId`.
+Classification keys off a provider-backed assignment (`providerAccountId`), the spawned catalog
+executable (basename of `resolvedArgv[0]`), and an adapter-supported structured output mode. The
+currently supported adapter set is `claude`, `codex`, `gemini`, and `grok`; it validates each
+provider's terminal/error envelope before emitting `usageLimit`. A generic phrase such as `rate
+limit`, `too many requests`, or a bare `429` is **never** enough, even with a trusted executable
+and a non-zero exit. The adapter signal is also ignored on success, on unknown/providerless argv,
+and when the assignment has no `providerAccountId`.
 
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
-- Prompt-controlled / adversarial stdout, unless a provider-backed assignment, trusted argv[0], a failure, **and** a vendor-specific matcher all apply
-- Providerless commands (no `providerAccountId`) and unknown executables (fail closed)
+- Prompt-controlled / adversarial stdout or stderr: free-form text cannot classify a limit
+- Providerless commands (no `providerAccountId`), unknown executables, and non-structured provider commands (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)
 - Agent host OOM / missing CLI → ordinary `failed` without `usage_limit`

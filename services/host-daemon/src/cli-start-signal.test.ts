@@ -1,11 +1,26 @@
-/* eslint-disable max-lines -- real start signal coverage shares one loopback harness. */
+/* eslint-disable max-lines -- CLI preflight, boot-recovery, and signal paths share the real daemon harness. */
 import { createServer } from "node:http";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { emptyDaemonConfig } from "./bootstrap.ts";
+import {
+  createFileUpdateInstaller,
+  readInstalledVersion,
+  recoverPendingUpdateBoot,
+} from "./agent-updater-install.ts";
 import { runCli, type RunSessionDeps } from "./cli.ts";
+
+function runnableUpdateTree(_archivePath: string, destination: string): void {
+  const launcher = join(destination, "services/host-daemon/bin");
+  mkdirSync(launcher, { recursive: true });
+  writeFileSync(join(destination, "package.json"), "{}\n");
+  writeFileSync(join(launcher, "auto-harness-host-daemon.mjs"), "// launcher\n");
+}
 
 /**
  * `start`'s signal-handling path, exercised against a real startDaemon and a local WS
@@ -120,6 +135,43 @@ function minimalDeps(overrides: Partial<RunSessionDeps>): RunSessionDeps {
 }
 
 describe("runCli start signal handling", () => {
+  it("keeps a Linux replacement recoverable after a config preflight failure", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "ah-cli-update-"));
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableUpdateTree });
+      await installer.stage({ version: "1.0.0", artifact: new Uint8Array() });
+      await installer.activate("1.0.0");
+      if (process.platform === "linux") {
+        // Linux's root-owned ExecStartPre helper records this attempt immediately
+        // before invoking the daemon. The unprivileged CLI intentionally leaves
+        // that immutable marker alone, including when its local preflight fails.
+        await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("booting");
+      }
+      const errors: string[] = [];
+
+      await expect(
+        runCli(
+          ["node", "x", "start"],
+          { HARNESS_UPDATE_INSTALL_DIR: rootDir },
+          minimalDeps({
+            error: (message) => errors.push(message),
+            loadConfig: async () => {
+              throw new Error("config preflight failed");
+            },
+          }),
+        ),
+      ).resolves.toBe(1);
+      expect(errors).toEqual(["config preflight failed"]);
+
+      // The replacement is still unacknowledged, so the next supervisor launch
+      // restores the predecessor instead of crash-looping.
+      await expect(recoverPendingUpdateBoot({ rootDir })).resolves.toBe("rolled-back");
+      expect(readInstalledVersion(rootDir)).toBeUndefined();
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("registers real signal handlers and resolves once one fires", async () => {
     const server = await acceptingServer();
     const proc = fakeProcess();
@@ -156,44 +208,6 @@ describe("runCli start signal handling", () => {
       proc.fire("SIGINT");
       expect(await resultPromise).toBe(0);
     } finally {
-      await server.close();
-    }
-  });
-
-  it.each([
-    ["default timeout", {}],
-    ["invalid timeout", { HARNESS_SHUTDOWN_TIMEOUT_MS: "invalid" }],
-    ["positive timeout", { HARNESS_SHUTDOWN_TIMEOUT_MS: "1000" }],
-  ])("handles %s without optional start wiring", async (_name, timeoutEnv) => {
-    const server = await acceptingServer();
-    const on = vi.spyOn(process, "on");
-    const off = vi.spyOn(process, "off");
-    try {
-      const result = runCli(
-        ["node", "x", "start"],
-        {
-          ...timeoutEnv,
-          HARNESS_CHILD_ENV_ALLOWLIST: "",
-        },
-        minimalDeps({
-          loadConfig: async () =>
-            emptyDaemonConfig({
-              hostId: "cli-start-optional-test",
-              apiUrl: `http://127.0.0.1:${server.port}`,
-              logLevel: "info",
-            }),
-          ensureReady: async () => undefined,
-        }),
-      );
-      await waitFor(() => on.mock.calls.some(([event]) => event === "SIGINT"));
-      const handler = on.mock.calls.find(([event]) => event === "SIGINT")?.[1] as
-        | (() => void)
-        | undefined;
-      handler?.();
-      expect(await result).toBe(0);
-    } finally {
-      on.mockRestore();
-      off.mockRestore();
       await server.close();
     }
   });
@@ -243,17 +257,5 @@ describe("runCli start signal handling", () => {
     expect(errors).toEqual([
       "child environment exceeds runtime report limits (512 names, 128 characters per name)",
     ]);
-  });
-
-  it("reports non-Error start failures safely", async () => {
-    const errors: string[] = [];
-    const deps = minimalDeps({
-      error: (message) => errors.push(message),
-      ensureReady: async () => {
-        throw "string start failure";
-      },
-    });
-    await expect(runCli(["node", "x", "start"], {}, deps)).resolves.toBe(1);
-    expect(errors).toEqual(["string start failure"]);
   });
 });

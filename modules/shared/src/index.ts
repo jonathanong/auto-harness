@@ -132,6 +132,7 @@ export {
   type HostWorktree,
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
+export { parseHostUpdateConfig, type HostUpdateConfig } from "./host-update-config.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
   EXEC_CONFIG_CAPABILITY,
@@ -155,8 +156,10 @@ export {
   getInventory,
   mutateInventory,
   mutateExecConfig,
+  mutateHostUpdateConfig,
   putInventory,
   putExecConfig,
+  putHostUpdateConfig,
 } from "./host-inventory-api.ts";
 export {
   assertHostRepositoryRequiredEnvironmentLimit,
@@ -226,6 +229,13 @@ export {
 export type { Command, Provider, ProviderAccount, ResumeRefCapture } from "./providers.ts";
 export { validateUsageRates, type SessionUsage, type UsageRates } from "./usage.ts";
 export {
+  CAPACITY_CONSTANTS,
+  REFERENCE_WORKLOAD,
+  estimateMonthlyCapacity,
+  type CapacityEstimate,
+  type CapacityWorkload,
+} from "./capacity-model.ts";
+export {
   isValidCliResumeRef,
   MAX_COMMAND_ARGV_ITEMS,
   MAX_COMMAND_ARG_LENGTH,
@@ -250,6 +260,7 @@ export {
 
 export {
   DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
   type PublicSlackIntegration,
   type SlackNotifications,
 } from "./slack.ts";

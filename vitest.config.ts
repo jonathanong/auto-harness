@@ -25,6 +25,30 @@ const coverageCollection = supplementalCoverageOutput
       exclude: [...scope.ignored, ...scope.supplemental],
     };
 
+const dynamoUnitTests = [
+  "services/api/src/db/**/*.test.ts",
+  "services/api/src/**/*durable*.test.ts",
+  "services/api/src/**/*dynamo*.test.ts",
+  "services/api/src/archive-writer-dynamo.test.ts",
+  "services/api/src/local-server-slack-worker.test.ts",
+  "services/api/src/local-server-webhook-worker.test.ts",
+  "services/api/src/control-plane-providers-storage.test.ts",
+  "services/api/src/control-plane-storage-paths.test.ts",
+  "services/api/src/control-plane-agent-restart-observability.test.ts",
+  "services/api/src/control-plane-scheduled-cancel-race.test.ts",
+  "services/api/src/control-plane-scheduled-missing-provider.test.ts",
+  "services/api/src/control-plane-scheduled-registration-rollback.test.ts",
+  "services/api/src/control-plane-scheduled-recovery.test.ts",
+];
+
+const serializedDynamo = {
+  fileParallelism: false,
+  pool: "forks" as const,
+  poolOptions: { forks: { singleFork: true } },
+  testTimeout: 60_000,
+  hookTimeout: 60_000,
+};
+
 export default defineConfig({
   test: {
     // Cap the shared worker pool at 2: GitHub-hosted standard runners have 2 vCPUs, and a
@@ -43,19 +67,21 @@ export default defineConfig({
             "services/**/*.test.{ts,tsx}",
             "scripts/**/*.test.ts",
           ],
+          // Supplying an explicit exclude list replaces Vitest's defaults. Keep
+          // dependencies out of the unit project while moving the Dynamo-backed
+          // files into their serialized project below.
+          exclude: ["**/node_modules/**", ...dynamoUnitTests],
           testTimeout: 60_000,
           hookTimeout: 60_000,
         },
       },
       {
-        // Full-stack integration tests: real HTTP+WS servers, a real agent daemon, real git —
-        // as opposed to the unit project's mocked-boundary tests or e2e/*.spec.ts's UI-driven
-        // Playwright tests. No coverage gate of its own: these verify end-to-end behavior, not
-        // line coverage. See docs/e2e.md.
+        // DynamoDB Local tests share one endpoint. Run them one file at a time rather than
+        // raising the 60s timeout to absorb transaction contention.
         test: {
-          name: "integration",
-          include: ["integration/**/*.test.ts"],
-          testTimeout: 60_000,
+          name: "dynamo",
+          include: [...dynamoUnitTests, "integration/**/*.test.ts"],
+          ...serializedDynamo,
         },
       },
     ],

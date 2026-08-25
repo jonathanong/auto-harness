@@ -99,32 +99,21 @@ describe("claimed session usage-limit classification", () => {
     expect(outcome.errorCode).toBeUndefined();
   });
 
-  it("reports usage_limit for Claude CLI weekly-limit stdout", async () => {
-    await expect(
-      runClaimed(
-        baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }),
-        outputRunner("You've hit your weekly limit · resets 12pm (America/Los_Angeles)\n", {
-          exitCode: 1,
-        }),
-      ),
-    ).resolves.toMatchObject({
-      status: "failed",
-      errorCode: "usage_limit",
-      errorMessage: "Usage limit detected in CLI output",
-    });
-  });
-
-  it("reports usage_limit for a genuine Codex limit on a failed run", async () => {
-    await expect(
-      runClaimed(
-        baseAssign({ resolvedArgv: ["codex", "exec"], providerAccountId: "acct-1" }),
-        outputRunner("Error: insufficient_quota for request", { exitCode: 1 }),
-      ),
-    ).resolves.toMatchObject({
-      status: "failed",
-      errorCode: "usage_limit",
-      errorMessage: "Usage limit detected in CLI output",
-    });
+  it("does not trust a failed provider CLI's quota-shaped stdout", async () => {
+    for (const [argv, output] of [
+      [
+        ["claude", "-p", "--output-format", "json"],
+        "You've hit your weekly limit · resets 12pm (America/Los_Angeles)\n",
+      ],
+      [["codex", "exec", "--json"], "Error: insufficient_quota for request"],
+    ] as const) {
+      const outcome = await runClaimed(
+        baseAssign({ resolvedArgv: [...argv], providerAccountId: "acct-1" }),
+        outputRunner(output, { exitCode: 1 }),
+      );
+      expect(outcome.status).toBe("failed");
+      expect(outcome.errorCode).toBeUndefined();
+    }
   });
 
   it("reports usage_limit from a trusted adapter failure channel", async () => {
@@ -138,6 +127,23 @@ describe("claimed session usage-limit classification", () => {
       errorCode: "usage_limit",
       errorMessage: "Usage limit detected",
     });
+  });
+
+  it("retains adapter usage on a usage-limit outcome", async () => {
+    const usage = {
+      kind: "delta" as const,
+      sequence: 1,
+      inputTokens: "3",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      source: "cli" as const,
+    };
+    await expect(
+      runClaimed(baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }), {
+        async run() {
+          return { exitCode: 1, timedOut: false, signal: null, usageLimit: true, usage };
+        },
+      }),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "usage_limit", usage });
   });
 
   it("does not attribute unmatched CLI output to an adapter usage limit", async () => {

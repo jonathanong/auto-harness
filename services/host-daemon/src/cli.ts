@@ -211,6 +211,34 @@ export async function runCli(
     return 1;
   }
 
+  // macOS and Windows stable launchers settle/record a pending boot before
+  // they select `current`, so an activated module cannot crash before its own
+  // fence runs. Direct starts retain the in-module fallback below.
+  let updateBootPrepared = env.HARNESS_UPDATE_BOOT_PREPARED === "1";
+  if (command === "prepare-update-boot") {
+    try {
+      const { prepareStableDaemonUpdateBoot } = await import("./start-daemon.ts");
+      await prepareStableDaemonUpdateBoot({ env: resolvedEnv });
+      return 0;
+    } catch (err) {
+      deps.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+  }
+  if (command === "start" && !updateBootPrepared) {
+    try {
+      const { prepareDaemonUpdateBoot } = await import("./start-daemon.ts");
+      // Do this before every daemon preflight, including child-environment and
+      // config validation, so a replacement that crashes during startup cannot
+      // loop forever without consuming its rollback attempt.
+      await prepareDaemonUpdateBoot({ env: resolvedEnv, log: deps.log, error: deps.error });
+      updateBootPrepared = true;
+    } catch (err) {
+      deps.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+  }
+
   if (command === "install-service") {
     const apiUrlIndex = args.indexOf("--api-url");
     const apiUrl = apiUrlIndex >= 0 ? args[apiUrlIndex + 1] : undefined;
@@ -218,7 +246,22 @@ export async function runCli(
       deps.error("--api-url requires an HTTPS production control-plane URL");
       return 1;
     }
-    return deps.installService({ env: resolvedEnv, log: deps.log, error: deps.error, apiUrl });
+    let serviceEnv = resolvedEnv;
+    try {
+      const config = await deps.loadConfig({ env: resolvedEnv });
+      const { withHostUpdateConfig } = await import("./agent-updater-runtime.ts");
+      serviceEnv = withHostUpdateConfig(resolvedEnv, config.updateConfig);
+    } catch (error) {
+      // A host can still reinstall its known-good local service while the
+      // control plane is unavailable. It will retain the existing persisted
+      // update configuration rather than partially applying a remote edit.
+      deps.error(
+        `Could not load host update settings; keeping local service settings: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return deps.installService({ env: serviceEnv, log: deps.log, error: deps.error, apiUrl });
   }
   if (command === "uninstall-service") {
     return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });
@@ -334,11 +377,11 @@ export async function runCli(
   }
 
   if (command === "start") {
-    const config = await deps.loadConfig({ env: resolvedEnv });
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
       const { startDaemon } = await import("./start-daemon.ts");
+      const config = await deps.loadConfig({ env: resolvedEnv });
       const ready = await deps.ensureReady(config);
       const environmentNames = Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
         a.localeCompare(b),
@@ -364,6 +407,7 @@ export async function runCli(
         log: deps.log,
         error: deps.error,
         childEnvSource: resolvedEnv,
+        updateBootPrepared,
         ...(runtime ? { runtime } : {}),
       });
       // The previous handler ran stop() again on a second signal, had no catch — so a

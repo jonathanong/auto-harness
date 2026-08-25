@@ -176,12 +176,12 @@ export const DYNAMO_TABLES: TableDef[] = [
   },
 ];
 
-export const S3_ARCHIVE_BUCKET = {
+const S3_ARCHIVE_BUCKET = {
   name: "auto-harness-session-archives",
   purpose: "Completed session log archival (Phase 5)",
 } as const;
 
-export const EVENTBRIDGE_CRON = {
+const EVENTBRIDGE_CRON = {
   rate: "rate(1 minute)",
   target: "CronEvaluatorLambda",
 } as const;

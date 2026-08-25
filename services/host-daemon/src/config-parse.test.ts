@@ -18,6 +18,20 @@ describe("parseDaemonConfig", () => {
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);
   });
 
+  it("retains host-wide required environment and signed update settings", () => {
+    const config = parseDaemonConfig({
+      ...valid,
+      requiredEnvironment: ["HOME"],
+      updateConfig: {
+        enabled: true,
+        manifestUrl: "https://updates.example.test/manifest.json",
+        publicKey: "public key",
+      },
+    });
+    expect(config.requiredEnvironment).toEqual(["HOME"]);
+    expect(config.updateConfig?.enabled).toBe(true);
+  });
+
   it("defaults branch when not given", () => {
     const config = parseDaemonConfig({
       hostId: "x",

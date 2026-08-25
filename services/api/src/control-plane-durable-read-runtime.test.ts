@@ -108,6 +108,98 @@ describe("durable runtime read-through", () => {
     expect(state.commands.has(command.id)).toBe(false);
   });
 
+  it("skips assignment command refresh when no durable catalog is available or the bound is zero", async () => {
+    const inMemory = createControlPlaneState();
+    inMemory.commands.set("stale", commandRecord("stale"));
+    await expect(refreshAssignmentCommandsDurable(inMemory, [session])).resolves.toEqual(new Set());
+    expect(inMemory.commands.has("stale")).toBe(true);
+
+    const durable = createControlPlaneState({
+      storage: { getCommand: async () => commandRecord("unexpected") } as never,
+    });
+    await expect(refreshAssignmentCommandsDurable(durable, [session], 0)).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it("evicts command cache entries beyond the bounded reachable candidate set", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    state.commands.set("kept", commandRecord("kept"));
+    state.commands.set("discarded", commandRecord("discarded"));
+    state.storage = {
+      getCommand: async (id: string) => (id === "kept" ? commandRecord(id) : null),
+    } as never;
+
+    const refreshed = await refreshAssignmentCommandsDurable(
+      state,
+      [
+        {
+          ...session,
+          pinnedCommandId: "kept",
+          resolvedRoute: { commandId: "discarded" },
+        },
+      ],
+      1,
+    );
+
+    expect(refreshed).toEqual(new Set(["kept"]));
+    expect(state.commands.has("kept")).toBe(true);
+    expect(state.commands.has("discarded")).toBe(false);
+  });
+
+  it("refreshes provider candidates, but ignores absent inventory and empty override commands", async () => {
+    const state = createControlPlaneState({ storage: {} as never });
+    state.worktrees.set("worktree", { ...worktree });
+    state.hostInventories.set("missing-host", {
+      hostId: "missing-host",
+      repositories: [],
+      providerAccounts: [],
+    });
+    state.storage = {
+      getHostInventory: async (id: string) =>
+        id === "host"
+          ? {
+              hostId: id,
+              repositories: [
+                {
+                  id: "repository",
+                  path: "/repo",
+                  defaultBranch: "main",
+                  providerAccountOverrides: {
+                    empty: {},
+                    configured: { commandId: "repo-command" },
+                  },
+                  worktrees: [
+                    {
+                      ...worktree,
+                      providerAccountOverrides: {
+                        empty: {},
+                        configured: { commandId: "worktree-command" },
+                      },
+                    },
+                  ],
+                },
+              ],
+              providerAccounts: [{ providerAccountId: "account", commandId: "account-command" }],
+            }
+          : null,
+      getProviderAccount: async () => ({ id: "account", providerId: "provider" }),
+      getProvider: async () => ({ id: "provider", defaultCommandId: "provider-command" }),
+      getCommand: async (id: string) => commandRecord(id),
+    } as never;
+
+    const refreshed = await refreshAssignmentCommandsDurable(
+      state,
+      [{ ...session, target: { providerId: "provider" } }],
+      10,
+    );
+
+    expect(refreshed).toEqual(
+      new Set(["account-command", "repo-command", "worktree-command", "provider-command"]),
+    );
+    expect(state.hostInventories.has("missing-host")).toBe(true);
+  });
+
   it("refreshes the provider command cascade for a bounded candidate", async () => {
     const state = createControlPlaneState({ storage: {} as never });
     state.connections.set("connection", {

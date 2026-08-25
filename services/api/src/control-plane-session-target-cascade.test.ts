@@ -119,7 +119,7 @@ describe("resolveSessionTargetArgv: provider-account cascade", () => {
       session({ target: { providerId: "prov-1" }, prompt: "do it" }),
       worktree(),
     );
-    expect(argv).toEqual(["claude", "-p", "do it"]);
+    expect(argv).toEqual(["claude", "--output-format", "json", "-p", "do it"]);
   });
 
   it("skips an eligible account whose cascaded command cannot execute", () => {

@@ -52,17 +52,18 @@ Configure Slack integration. **Admin only.**
     "onSessionCompleted": true,
     "onSessionFailed": true,
     "onSessionCancelled": true,
-    "onScheduleCompleted": false
+    "onScheduleCompleted": false,
+    "onHostOffline": true
   }
 }
 ```
 
-| Field            | Type    | Required | Description                                                        |
-| ---------------- | ------- | -------- | ------------------------------------------------------------------ |
-| `botToken`       | string  | ✓        | Slack Bot User OAuth Token (`xoxb-...`)                            |
-| `defaultChannel` | string  | ✓        | Default channel for notifications (e.g. `#harness`, `C0123ABCDEF`) |
-| `enabled`        | boolean | ✗        | Default: `true`                                                    |
-| `notifications`  | object  | ✗        | Toggle which events post to Slack                                  |
+| Field            | Type    | Required | Description                                                                  |
+| ---------------- | ------- | -------- | ---------------------------------------------------------------------------- |
+| `botToken`       | string  | ✓        | Slack Bot User OAuth Token (`xoxb-...`)                                      |
+| `defaultChannel` | string  | ✓        | Default channel for notifications (e.g. `#harness`, `C0123ABCDEF`)           |
+| `enabled`        | boolean | ✗        | Default: `true`                                                              |
+| `notifications`  | object  | ✗        | Toggle session lifecycle events plus `onHostOffline` for stale/offline hosts |
 
 > **Note:** The bot token is encrypted at rest in DynamoDB using AWS KMS.
 > `KMS_KEY_ID` is required for configuration writes. Ciphertext is bound to the

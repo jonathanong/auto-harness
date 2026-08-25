@@ -4,6 +4,7 @@ import type {
   Command,
   HostCapability,
   HostRuntimeReport,
+  HostUpdateConfig,
   Provider,
   ProviderAccount,
   ProviderAccountReadiness,
@@ -235,6 +236,7 @@ export type HostInventoryRecord = {
   setupScript?: string | undefined;
   allowedRoots?: string[] | undefined;
   requiredEnvironment?: string[] | undefined;
+  updateConfig?: HostUpdateConfig | undefined;
   /** Opaque identity last reported by a modern daemon process. */
   daemonInstanceId?: string;
   /** Start time reported by that daemon process. */

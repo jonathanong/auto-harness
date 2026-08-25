@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- macOS service install and status mappings share platform fixtures. */
 import { describe, expect, it } from "vitest";
 
-import { installHostService, uninstallHostService } from "./host-service.ts";
+import { installHostService, restartHostService, uninstallHostService } from "./host-service.ts";
 import { resolveHostService } from "./host-service-io.ts";
 import { statusDarwin } from "./host-service-darwin.ts";
 import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
@@ -210,5 +210,48 @@ describe("status darwin", () => {
       expect(result.state).toBe(expected);
     }
     expect(seen).toEqual([{ timeoutMs: 123 }, { timeoutMs: 123 }, { timeoutMs: 123 }]);
+  });
+
+  it("rejects a kickstart that keeps the prior daemon pid", () => {
+    const errors: string[] = [];
+    let printCount = 0;
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (_command, args) => {
+            if (args[0] === "print") {
+              return { status: 0, stdout: "state = running\npid = 42\n", stderr: "" };
+            }
+            return { status: 0, stdout: "", stderr: "" };
+          },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toContain("launchd kept the prior daemon pid");
+
+    printCount = 0;
+    errors.length = 0;
+    expect(
+      restartHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (_command, args) => {
+            if (args[0] === "print") {
+              printCount += 1;
+              return printCount === 1
+                ? { status: 0, stdout: "state = running\npid = 42\n", stderr: "" }
+                : { status: 0, stdout: "state = stopped\n", stderr: "" };
+            }
+            return { status: 0, stdout: "", stderr: "" };
+          },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toContain("launch agent is stopped");
   });
 });

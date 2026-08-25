@@ -1,9 +1,23 @@
+/* eslint-disable max-lines -- startup, updater, and orderly shutdown share one lifecycle. */
 import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
+import {
+  confirmDaemonUpdateBoot,
+  notifySystemdReady,
+  createDaemonUpdater,
+  parseUpdatePollMs,
+  recoverDaemonUpdateBoot,
+  startUpdatePoll,
+  withHostUpdateConfig,
+} from "./agent-updater-runtime.ts";
+import { recoverPendingUpdateBoot, type UpdateBootRecovery } from "./agent-updater-install.ts";
+import { restartHostService, type HostServiceOpts } from "./host-service.ts";
+import { resolveUpdateInstallDir } from "./update-install-dir.ts";
+import { requestWindowsTaskRestart } from "./windows-task-handoff.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
 
@@ -25,6 +39,10 @@ type StartDaemonOptions = {
   runtime?: HostRuntimeReport;
   /** Daemon environment after loading the persisted service environment file. */
   childEnvSource?: NodeJS.ProcessEnv;
+  /** The CLI already recorded any pending update boot before its preflight. */
+  updateBootPrepared?: boolean;
+  /** Test seam for the platform-specific update supervisor adapter. */
+  updateService?: HostServiceOpts;
 };
 
 type InventoryPollOptions = {
@@ -43,6 +61,83 @@ type InventoryPollOptions = {
 
 function noopInventoryPollStop(): Promise<void> {
   return Promise.resolve();
+}
+
+function noopUpdatePoll(): Promise<void> {
+  return Promise.resolve();
+}
+
+/**
+ * Request a nonblocking, self-authorized supervisor handoff. Linux systemd
+ * restarts this process through Restart=always; no service-manager privilege is
+ * needed by the unprivileged daemon user.
+ */
+export function requestSupervisorRestart(
+  signalSelf: (pid: number, signal: NodeJS.Signals) => void = process.kill,
+): void {
+  const handoff = setTimeout(() => signalSelf(process.pid, "SIGTERM"), 0);
+  handoff.unref?.();
+}
+
+function daemonUpdateService(
+  env: NodeJS.ProcessEnv,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): HostServiceOpts {
+  return {
+    env,
+    log,
+    error,
+    restartHandoff:
+      process.platform === "win32" ? requestWindowsTaskRestart : requestSupervisorRestart,
+  };
+}
+
+/**
+ * Handle a replacement boot before daemon preflight or network work begins.
+ * The second start before an acknowledgement has already rolled back its
+ * pointer, so immediately hand execution back to the stable supervisor.
+ */
+export async function prepareDaemonUpdateBoot(options: {
+  env: NodeJS.ProcessEnv;
+  log: (line: string) => void;
+  error: (line: string) => void;
+  service?: HostServiceOpts;
+}): Promise<void> {
+  const service = options.service ?? daemonUpdateService(options.env, options.log, options.error);
+  const recovery = await recoverDaemonUpdateBoot({ env: options.env, service });
+  if (recovery !== "rolled-back") return;
+  if (restartHostService(service) !== 0) {
+    throw new Error("rolled back unacknowledged update but could not restart the supervisor");
+  }
+  throw new Error("rolled back unacknowledged update boot; supervisor restart requested");
+}
+
+/**
+ * Settle a pending mutable-root replacement from the stable macOS/Windows
+ * launcher, before it selects `current`. This must not run from an activated
+ * release: a crash while Node is loading that release would otherwise leave
+ * its first boot unrecorded and make every supervisor restart select it again.
+ *
+ * Linux intentionally retains its root-owned systemd ExecStartPre fence. Its
+ * immutable update root cannot be changed by the unprivileged launcher.
+ */
+export function prepareStableDaemonUpdateBoot(options: {
+  env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  home?: string;
+  appData?: string;
+}): Promise<UpdateBootRecovery> {
+  const platform = options.platform ?? process.platform;
+  if (platform === "linux") return Promise.resolve("none");
+  return recoverPendingUpdateBoot({
+    rootDir: resolveUpdateInstallDir(options.env, {
+      platform,
+      ...(options.home === undefined ? {} : { home: options.home }),
+      ...(options.appData === undefined ? {} : { appData: options.appData }),
+    }),
+    platform,
+  });
 }
 
 /**
@@ -112,6 +207,181 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
   };
 }
 
+type DaemonUpdateContext = {
+  env: NodeJS.ProcessEnv;
+  service: HostServiceOpts;
+};
+
+type ConnectedDaemon = {
+  loop: DaemonLoop;
+  wsUrl: string;
+};
+
+async function prepareDaemonUpdater(
+  options: StartDaemonOptions,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): Promise<DaemonUpdateContext> {
+  const source = options.childEnvSource ?? process.env;
+  const env = withHostUpdateConfig(source, options.config.updateConfig, {
+    // systemd's root-owned promotion helper reads the persisted environment
+    // before this daemon fetches host configuration. Do not stage below a
+    // newly edited control-plane root until install-service has persisted
+    // that same root for the helper and stable launcher.
+    useConfiguredInstallDir:
+      options.config.updateConfig?.installDir === undefined ||
+      options.config.updateConfig.installDir === source.HARNESS_UPDATE_INSTALL_DIR?.trim(),
+  });
+  const service = options.updateService ?? daemonUpdateService(env, log, error);
+  if (!options.updateBootPrepared) {
+    await prepareDaemonUpdateBoot({ env, log, error, service });
+  }
+  return { env, service };
+}
+
+async function connectDaemon(
+  options: StartDaemonOptions,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): Promise<ConnectedDaemon> {
+  const baseUrl = options.wsUrl ?? options.config.apiUrl;
+  if (!baseUrl) {
+    throw new Error("apiUrl (or --ws) is required for start; e.g. ws://127.0.0.1:7420/ws");
+  }
+  // An explicit --ws override is allowed to target a raw API Gateway WebSocket endpoint
+  // directly (a deploy-day escape hatch); HARNESS_API_URL is not, since the deployed
+  // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
+  const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
+  const transport = createWsTransport({
+    url: wsUrl,
+    hostId: options.config.hostId,
+    apiKey: options.config.apiKey,
+    onError: (err) => error(`ws error: ${err.message}`),
+    onClose: () => log("ws closed"),
+  });
+  const loop = new DaemonLoop({
+    config: options.config,
+    transport,
+    onLog: log,
+    ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
+    executionProfiles: loadExecutionProfiles(options.childEnvSource ?? process.env),
+    ...(options.runtime ? { runtime: options.runtime } : {}),
+  });
+  await loop.start();
+  try {
+    await waitForRegistration(transport.registered, options.registrationTimeoutMs ?? 30_000, wsUrl);
+  } catch (reason) {
+    loop.stop();
+    throw reason;
+  }
+  return { loop, wsUrl };
+}
+
+async function acknowledgeDaemonUpdateBoot(
+  update: DaemonUpdateContext,
+  loop: DaemonLoop,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): Promise<void> {
+  try {
+    if (confirmDaemonUpdateBoot({ env: update.env, service: update.service })) {
+      log("updater replacement health acknowledged");
+    }
+    if (notifySystemdReady({ env: update.env, service: update.service })) {
+      log("systemd registration readiness acknowledged");
+    }
+  } catch (reason) {
+    loop.stop();
+    try {
+      await prepareDaemonUpdateBoot({ env: update.env, log, error, service: update.service });
+    } catch (rollbackError) {
+      const failure = reason instanceof Error ? reason.message : String(reason);
+      const rollback =
+        rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(`updater health acknowledgement failed: ${failure}; ${rollback}`, {
+        cause: rollbackError,
+      });
+    }
+    throw reason;
+  }
+}
+
+function startOptionalInventoryPoll(
+  options: StartDaemonOptions,
+  loop: DaemonLoop,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): () => Promise<void> {
+  const pollMs = options.inventoryPollMs ?? 15_000;
+  if (pollMs <= 0 || !options.identity) return noopInventoryPollStop;
+  return startInventoryPoll({
+    config: options.config,
+    identity: options.identity,
+    applyInventory: (next) => loop.applyInventory(next),
+    blockAssignments: (allowedRoots) => loop.blockAssignmentsForInvalidInventory(allowedRoots),
+    pollMs,
+    log,
+    error,
+    fetchFn: options.fetchFn,
+  });
+}
+
+function startDaemonKeepalive(
+  loop: DaemonLoop,
+  error: (line: string) => void,
+): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    void loop.keepalive().catch((err: unknown) => {
+      error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, 20_000);
+}
+
+function startOptionalUpdatePoll(
+  update: DaemonUpdateContext,
+  loop: DaemonLoop,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): () => Promise<void> {
+  try {
+    const updater = createDaemonUpdater({
+      loop,
+      env: update.env,
+      log,
+      error,
+      service: update.service,
+    });
+    return updater
+      ? startUpdatePoll(updater, {
+          pollMs: parseUpdatePollMs(update.env.HARNESS_UPDATE_POLL_MS),
+          log,
+          error,
+        })
+      : noopUpdatePoll;
+  } catch (err) {
+    error(`updater disabled: ${err instanceof Error ? err.message : String(err)}`);
+    return noopUpdatePoll;
+  }
+}
+
+function daemonStop(
+  loop: DaemonLoop,
+  keepalive: ReturnType<typeof setInterval>,
+  stopInventoryPoll: () => Promise<void>,
+  stopUpdatePoll: () => Promise<void>,
+): () => Promise<void> {
+  return async () => {
+    // Keep this channel alive until the fenced drain commits. If it fails,
+    // callers receive the error and can retry without exiting this daemon.
+    await stopUpdatePoll();
+    await loop.beginDrain();
+    await stopInventoryPoll();
+    clearInterval(keepalive);
+    await loop.waitForIdle();
+    loop.stop();
+  };
+}
+
 /**
  * Phase 3 agent daemon: connect WebSocket, register (even with empty inventory),
  * poll control plane for host inventory updates (repos attached via UI).
@@ -122,43 +392,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
 }> {
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
-  const baseUrl = options.wsUrl ?? options.config.apiUrl;
-  if (!baseUrl) {
-    throw new Error("apiUrl (or --ws) is required for start; e.g. ws://127.0.0.1:7420/ws");
-  }
-  // An explicit --ws override is allowed to target a raw API Gateway WebSocket endpoint
-  // directly (a deploy-day escape hatch); HARNESS_API_URL is not, since the deployed
-  // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
-  const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
-  const executionProfiles = loadExecutionProfiles(options.childEnvSource ?? process.env);
-
-  const transport = createWsTransport({
-    url: wsUrl,
-    hostId: options.config.hostId,
-    apiKey: options.config.apiKey,
-    onError: (err) => {
-      error(`ws error: ${err.message}`);
-    },
-    onClose: () => {
-      log("ws closed");
-    },
-  });
-
-  const loop = new DaemonLoop({
-    config: options.config,
-    transport,
-    onLog: log,
-    ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
-    executionProfiles,
-    ...(options.runtime ? { runtime: options.runtime } : {}),
-  });
-  await loop.start();
-  try {
-    await waitForRegistration(transport.registered, options.registrationTimeoutMs ?? 30_000, wsUrl);
-  } catch (reason) {
-    loop.stop();
-    throw reason;
-  }
+  const update = await prepareDaemonUpdater(options, log, error);
+  const { loop, wsUrl } = await connectDaemon(options, log, error);
+  await acknowledgeDaemonUpdateBoot(update, loop, log, error);
   log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
   log(
@@ -168,36 +404,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
         : ` (${repoCount} repo(s))`),
   );
 
-  const pollMs = options.inventoryPollMs ?? 15_000;
-  let stopInventoryPoll = noopInventoryPollStop;
-  if (pollMs > 0 && options.identity) {
-    stopInventoryPoll = startInventoryPoll({
-      config: options.config,
-      identity: options.identity,
-      applyInventory: (next) => loop.applyInventory(next),
-      blockAssignments: (allowedRoots) => loop.blockAssignmentsForInvalidInventory(allowedRoots),
-      pollMs,
-      log,
-      error,
-      fetchFn: options.fetchFn,
-    });
-  }
-
-  const keepalive = setInterval(() => {
-    void loop.keepalive().catch((err: unknown) => {
-      error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
-  }, 20_000);
-
-  const stop = async (): Promise<void> => {
-    // Keep this channel alive until the fenced drain commits. If it fails,
-    // callers receive the error and can retry without exiting this daemon.
-    await loop.beginDrain();
-    await stopInventoryPoll();
-    clearInterval(keepalive);
-    await loop.waitForIdle();
-    loop.stop();
-  };
+  const stopInventoryPoll = startOptionalInventoryPoll(options, loop, log, error);
+  const keepalive = startDaemonKeepalive(loop, error);
+  const stopUpdatePoll = startOptionalUpdatePoll(update, loop, log, error);
+  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll);
 
   if (options.runUntil) {
     await options.runUntil;

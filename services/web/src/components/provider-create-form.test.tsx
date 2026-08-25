@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- provider creation scenarios share one mounted-form fixture. */
 
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -73,16 +74,21 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
-  it("applies grok catalog defaults without a -- separator or --output-format plain", async () => {
+  it("applies grok JSON catalog defaults without a -- separator", async () => {
     const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
-    expectCommand(view, "grok-print", "grok\n--always-approve\n--max-turns\n3\n-p", false);
+    expectCommand(
+      view,
+      "grok-print",
+      "grok\n--always-approve\n--max-turns\n3\n--output-format\njson\n-p",
+      false,
+    );
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
       name: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "-p"],
+      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
       providerId: "p/1",
@@ -94,14 +100,14 @@ describe("ProviderCreateForm", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
     setName(view, "claude");
-    expectCommand(view, "claude-print", "claude\n-p", true);
+    expectCommand(view, "claude-print", "claude\n-p\n--output-format\njson", true);
     view.unmount();
   });
 
   it("applies codex exec and cursor-agent print presets with a -- separator", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "codex");
-    expectCommand(view, "codex-exec", "codex\nexec", true);
+    expectCommand(view, "codex-exec", "codex\nexec\n--json", true);
     setName(view, "cursor-agent");
     expectCommand(view, "cursor-print", "cursor-agent\n--print\n--force", true);
     setName(view, "cursor");
@@ -114,7 +120,7 @@ describe("ProviderCreateForm", () => {
     setName(view, "grok");
     act(() => setValue(input<HTMLInputElement>(view, "provider-catalog-command-name"), "my-cli"));
     setName(view, "claude");
-    expectCommand(view, "my-cli", "claude\n-p", true);
+    expectCommand(view, "my-cli", "claude\n-p\n--output-format\njson", true);
     view.unmount();
   });
 
@@ -122,7 +128,12 @@ describe("ProviderCreateForm", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
     setName(view, "other");
-    expectCommand(view, "grok-print", "grok\n--always-approve\n--max-turns\n3\n-p", false);
+    expectCommand(
+      view,
+      "grok-print",
+      "grok\n--always-approve\n--max-turns\n3\n--output-format\njson\n-p",
+      false,
+    );
     view.unmount();
   });
 

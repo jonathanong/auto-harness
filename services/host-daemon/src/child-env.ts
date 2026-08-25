@@ -37,7 +37,7 @@ export function parseChildEnvAllowlist(source: NodeJS.ProcessEnv): {
     } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       // Do not echo malformed input: a mistaken NAME=value entry may contain a secret.
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST invalid name at position ${index + 1}`);
-    } else if (key.toUpperCase().startsWith("HARNESS_")) {
+    } else if (key.toUpperCase().startsWith("HARNESS_") || key === "NOTIFY_SOCKET") {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST reserved name: ${key}`);
     } else if (seen.has(key)) {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST duplicate name: ${key}`);

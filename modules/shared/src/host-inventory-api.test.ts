@@ -4,10 +4,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getInventory,
   mutateExecConfig,
+  mutateHostUpdateConfig,
   mutateInventory,
   putExecConfig,
+  putHostUpdateConfig,
   putInventory,
 } from "./host-inventory-api.ts";
+
+const emptyInventory = { repositories: [], providerAccounts: [], capabilities: [] };
 
 describe("getInventory / putInventory", () => {
   afterEach(() => {
@@ -36,6 +40,11 @@ describe("getInventory / putInventory", () => {
           setupScript: "source ~/.zshrc",
           allowedRoots: ["/opt/harness"],
           requiredEnvironment: ["TOKEN"],
+          updateConfig: {
+            enabled: true,
+            manifestUrl: "https://updates.example.test/manifest.json",
+            publicKey: "key",
+          },
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
         }),
@@ -47,6 +56,7 @@ describe("getInventory / putInventory", () => {
       expect(inv.setupScript).toBe("source ~/.zshrc");
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
+      expect(inv.updateConfig).toMatchObject({ enabled: true });
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
@@ -82,6 +92,11 @@ describe("getInventory / putInventory", () => {
         setupScript: "source ~/.zshrc",
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "key",
+        },
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -91,6 +106,11 @@ describe("getInventory / putInventory", () => {
         setupScript: "source ~/.zshrc",
         allowedRoots: ["/opt/harness"],
         requiredEnvironment: ["TOKEN"],
+        updateConfig: {
+          enabled: true,
+          manifestUrl: "https://updates.example.test/manifest.json",
+          publicKey: "key",
+        },
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -157,6 +177,50 @@ describe("getInventory / putInventory", () => {
       globalThis.fetch = original;
     }
   });
+
+  it("writes host update config directly and through the inventory version fence", async () => {
+    const original = globalThis.fetch;
+    try {
+      const calls = stubFetch((_url, init) =>
+        init?.method === "PUT"
+          ? new Response(null, { status: 204 })
+          : new Response(JSON.stringify({ ...emptyInventory, version: 12 }), { status: 200 }),
+      );
+      const updateConfig = {
+        enabled: true,
+        manifestUrl: "https://updates.example.test/manifest.json",
+        publicKey: "key",
+      };
+
+      await expect(putHostUpdateConfig("host-1", updateConfig, 12)).resolves.toEqual({ ok: true });
+      expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ updateConfig, version: 12 });
+
+      await expect(mutateHostUpdateConfig("host-1", updateConfig)).resolves.toEqual({ ok: true });
+      const fencedPut = calls.find(
+        (call) => call.init?.method === "PUT" && String(call.url).includes("update-config"),
+      );
+      expect(JSON.parse(String(fencedPut?.init?.body))).toEqual({ updateConfig, version: 12 });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("reports a host update config version conflict", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "stale update config" } }), {
+        status: 409,
+      })) as typeof fetch;
+    try {
+      await expect(putHostUpdateConfig("host-1", { enabled: false })).resolves.toEqual({
+        ok: false,
+        conflict: true,
+        error: "stale update config",
+      });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });
 
 /**
@@ -174,15 +238,13 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 describe("mutateInventory", () => {
-  const empty = { repositories: [], providerAccounts: [], capabilities: [] };
-
   it("sends the version it just read, not one from an earlier render", async () => {
     const original = globalThis.fetch;
     try {
       const calls = stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response(null, { status: 204 })
-          : new Response(JSON.stringify({ ...empty, version: 7 }), { status: 200 }),
+          : new Response(JSON.stringify({ ...emptyInventory, version: 7 }), { status: 200 }),
       );
 
       await expect(mutateInventory("host-1", (current) => current)).resolves.toEqual({ ok: true });
@@ -201,7 +263,7 @@ describe("mutateInventory", () => {
       let puts = 0;
       const calls = stubFetch((_url, init) => {
         if (init?.method !== "PUT") {
-          return new Response(JSON.stringify({ ...empty, version }), { status: 200 });
+          return new Response(JSON.stringify({ ...emptyInventory, version }), { status: 200 });
         }
         puts += 1;
         // The first write loses to a concurrent editor, which leaves version 2 behind.
@@ -229,7 +291,7 @@ describe("mutateInventory", () => {
       const calls = stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response("conflict", { status: 409 })
-          : new Response(JSON.stringify({ ...empty, version: 1 }), { status: 200 }),
+          : new Response(JSON.stringify({ ...emptyInventory, version: 1 }), { status: 200 }),
       );
 
       const result = await mutateInventory("host-1", (current) => current);
@@ -247,7 +309,7 @@ describe("mutateInventory", () => {
       const calls = stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response("nope", { status: 400 })
-          : new Response(JSON.stringify(empty), { status: 200 }),
+          : new Response(JSON.stringify(emptyInventory), { status: 200 }),
       );
 
       await expect(mutateInventory("host-1", (current) => current)).resolves.toEqual({
@@ -262,15 +324,13 @@ describe("mutateInventory", () => {
 });
 
 describe("mutateExecConfig", () => {
-  const empty = { repositories: [], providerAccounts: [], capabilities: [] };
-
   it("sends the exec-config patch against the version it just read", async () => {
     const original = globalThis.fetch;
     try {
       const calls = stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response(null, { status: 204 })
-          : new Response(JSON.stringify({ ...empty, version: 4 }), { status: 200 }),
+          : new Response(JSON.stringify({ ...emptyInventory, version: 4 }), { status: 200 }),
       );
       await expect(
         mutateExecConfig("host-1", () => ({ setupScript: "echo", allowedRoots: ["/opt"] })),
@@ -302,7 +362,7 @@ describe("mutateExecConfig", () => {
       stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response("nope", { status: 400 })
-          : new Response(JSON.stringify(empty), { status: 200 }),
+          : new Response(JSON.stringify(emptyInventory), { status: 200 }),
       );
       await expect(mutateExecConfig("host-1", () => ({ setupScript: "x" }))).resolves.toEqual({
         ok: false,
@@ -311,7 +371,7 @@ describe("mutateExecConfig", () => {
       stubFetch((_url, init) =>
         init?.method === "PUT"
           ? new Response("conflict", { status: 409 })
-          : new Response(JSON.stringify(empty), { status: 200 }),
+          : new Response(JSON.stringify(emptyInventory), { status: 200 }),
       );
       await expect(mutateExecConfig("host-1", () => ({ setupScript: "x" }))).resolves.toMatchObject(
         {

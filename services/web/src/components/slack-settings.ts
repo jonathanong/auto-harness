@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
   type PublicSlackIntegration,
   type SlackNotifications,
 } from "@auto-harness/shared";
@@ -22,6 +22,7 @@ export const notificationFields: Array<{ key: keyof SlackNotifications; label: s
   { key: "onSessionFailed", label: "Session Failed" },
   { key: "onSessionCancelled", label: "Session Cancelled" },
   { key: "onScheduleCompleted", label: "Schedule Completed" },
+  { key: "onHostOffline", label: "Host Offline" },
 ];
 
 export function validateSlackForm(values: SlackFormValues): string | null {
@@ -77,7 +78,7 @@ export function initialSlackFormValues(config?: PublicSlackIntegration): SlackFo
     signingSecret: "",
     defaultChannel: config?.defaultChannel ?? "#harness",
     enabled: config?.enabled ?? true,
-    notifications: config?.notifications ?? { ...DEFAULT_SLACK_NOTIFICATIONS },
+    notifications: normalizeSlackNotifications(config?.notifications),
   };
 }
 

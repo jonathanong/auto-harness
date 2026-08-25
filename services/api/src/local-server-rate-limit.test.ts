@@ -149,6 +149,14 @@ describe("local API rate limits", () => {
       (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
     ).toBe(401);
     expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, {
+          ...wrongBasic,
+          cookie: ["ignored=1", "auto_harness_session=stale"],
+        })
+      ).status,
+    ).toBe(500);
+    expect(
       (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
     ).toBe(429);
   });
@@ -220,6 +228,14 @@ describe("local API rate limits", () => {
           cookie: ["other=value", "auto_harness_session=value"],
         } as never)
       ).status,
+    ).toBe(404);
+
+    const updateConfig = createLocalApp({ rateLimitConfig: { enabled: false } }).handler;
+    expect(
+      (await invokeHandler(updateConfig, "GET", "/api/v1/hosts/host-1/update-config")).status,
+    ).toBe(404);
+    expect(
+      (await invokeHandler(updateConfig, "GET", "/api/v1/unmatched-handler-path")).status,
     ).toBe(404);
   });
 });

@@ -1,0 +1,85 @@
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+
+import { expect, it } from "vitest";
+
+import { AgentUpdater, canonicalManifest } from "./agent-updater.ts";
+
+const artifact = Buffer.from("synthetic agent artifact");
+const keys = generateKeyPairSync("ed25519");
+const publicKey = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+const unsigned = {
+  version: "1.2.0",
+  artifactUrl: "https://updates.example.test/agent-1.2.0.tgz",
+  sha256: createHash("sha256").update(artifact).digest("hex"),
+};
+const manifest = {
+  ...unsigned,
+  signature: sign(null, Buffer.from(canonicalManifest(unsigned)), keys.privateKey).toString(
+    "base64url",
+  ),
+};
+
+it("does not roll back when activation fails before current is switched", async () => {
+  let rollbackCalls = 0;
+  const updater = new AgentUpdater({
+    currentVersion: "1.0.0",
+    manifestPublicKey: publicKey,
+    fetcher: {
+      fetchManifest: async () => manifest,
+      fetchArtifact: async () => artifact,
+    },
+    lifecycle: {
+      drain: async () => undefined,
+      waitForIdle: async () => undefined,
+      resume: async () => {
+        throw new Error("resume down");
+      },
+    },
+    installer: {
+      stage: async () => undefined,
+      activate: async () => {
+        throw new Error("activate down");
+      },
+      restart: async () => undefined,
+      rollback: async () => {
+        rollbackCalls += 1;
+        throw new Error("rollback down");
+      },
+    },
+  });
+  await expect(updater.run()).resolves.toMatchObject({
+    phase: "failed",
+    error: "activate down; resume failed: resume down",
+  });
+  expect(rollbackCalls).toBe(0);
+});
+
+it("reports a rollback failure after activation while restoring the drain", async () => {
+  const updater = new AgentUpdater({
+    currentVersion: "1.0.0",
+    manifestPublicKey: publicKey,
+    fetcher: {
+      fetchManifest: async () => manifest,
+      fetchArtifact: async () => artifact,
+    },
+    lifecycle: {
+      drain: async () => undefined,
+      waitForIdle: async () => undefined,
+      resume: async () => undefined,
+    },
+    installer: {
+      stage: async () => undefined,
+      activate: async () => undefined,
+      restart: async () => {
+        throw new Error("supervisor unavailable");
+      },
+      rollback: async () => {
+        throw new Error("rollback unavailable");
+      },
+    },
+  });
+  await expect(updater.run()).resolves.toMatchObject({
+    phase: "failed",
+    error: "supervisor unavailable; rollback failed: rollback unavailable",
+  });
+});

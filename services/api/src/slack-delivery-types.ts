@@ -5,7 +5,8 @@ export type SlackLifecycleEvent =
   | "session_started"
   | "session_completed"
   | "session_failed"
-  | "session_cancelled";
+  | "session_cancelled"
+  | "host_offline";
 
 export type SlackSessionSnapshot = {
   id: string;

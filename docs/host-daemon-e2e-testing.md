@@ -144,7 +144,7 @@ if [ -n "$GROK_BIN" ]; then
   PROV=$(curl -fsS -X POST "$API/api/v1/providers" -H 'content-type: application/json' -d '{"name":"grok"}')
   PID=$(printf '%s' "$PROV" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   CMD=$(curl -fsS -X POST "$API/api/v1/commands" -H 'content-type: application/json' \
-    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_BIN\",\"--always-approve\",\"--max-turns\",\"3\",\"-p\"],\"appendPrompt\":true,\"appendPromptSeparator\":false,\"providerId\":\"$PID\"}")
+    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_BIN\",\"--always-approve\",\"--max-turns\",\"3\",\"--output-format\",\"json\",\"-p\"],\"appendPrompt\":true,\"appendPromptSeparator\":false,\"providerId\":\"$PID\"}")
   CID=$(printf '%s' "$CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   curl -fsS -X PATCH "$API/api/v1/providers/$PID" -H 'content-type: application/json' -d "{\"defaultCommandId\":\"$CID\"}"
   ACCT=$(curl -fsS -X POST "$API/api/v1/provider-accounts" -H 'content-type: application/json' \
@@ -153,7 +153,7 @@ if [ -n "$GROK_BIN" ]; then
 fi
 ```
 
-Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p"]`) — see §5.2 for the exact commands.
+Same shape for `codex` (`argv: ["$CODEX_BIN", "exec", "--json"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p", "--output-format", "json"]`) — see §5.2 for the exact commands.
 
 Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` — a list of `{providerAccountId}` attachments, not fixed argv):
 
@@ -356,10 +356,10 @@ may be submitted again as an explicit retry.
 
 Verified live (throwaway git repo, prompt `"Reply with exactly: hello world. Do not use any tools."`):
 
-- **`claude -p "<prompt>"`** — exit 0, printed exactly `hello world`. No directory-trust prompt, no extra flags needed. Command: `argv: ["claude", "-p"], appendPrompt: true`.
-- **`codex exec "<prompt>"`** — exit 0, printed `hello world` plus codex's own session banner/token-count lines on stdout — assert a case-insensitive **substring** match (`/hello world/i`), not an exact line match. No sandbox/approval flag needed: default `approval: on-request` never triggers for a reply-only prompt that needs no tool calls, and stdin doesn't hang it (codex reads to EOF and proceeds once stdin is closed/empty, same as `spawn`'s default `"ignore"` stdio). Command: `argv: ["codex", "exec"], appendPrompt: true`. (`-p` on codex means `--profile`, unrelated to the prompt.)
+- **`claude -p --output-format json "<prompt>"`** — exit 0 with a JSON result envelope whose response contains `hello world`. Command: `argv: ["claude", "-p", "--output-format", "json"], appendPrompt: true`.
+- **`codex exec --json "<prompt>"`** — exit 0 with JSONL events; assert a case-insensitive **substring** match (`/hello world/i`) in the terminal response, not an exact line match. No sandbox/approval flag needed: default `approval: on-request` never triggers for a reply-only prompt that needs no tool calls, and stdin doesn't hang it (codex reads to EOF and proceeds once stdin is closed/empty, same as `spawn`'s default `"ignore"` stdio). Command: `argv: ["codex", "exec", "--json"], appendPrompt: true`. (`-p` on codex means `--profile`, unrelated to the prompt.)
 
-Create their Providers/Commands the same way as Grok in §3 (`argv: ["$CLAUDE_BIN", "-p"]` / `argv: ["$CODEX_BIN", "exec"]`), attach an account to the host, then repeat the §5.2 flow with that account's id and prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`.
+Create their Providers/Commands the same way as Grok in §3 (`argv: ["$CLAUDE_BIN", "-p", "--output-format", "json"]` / `argv: ["$CODEX_BIN", "exec", "--json"]`), attach an account to the host, then repeat the §5.2 flow with that account's id and prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`.
 
 ### 5.3 Negative: unknown Provider / Command
 

@@ -6,7 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
-export type WebStackProps = StackProps & {
+type WebStackProps = StackProps & {
   imageCode: lambda.DockerImageCode;
   restApiUrl: string;
   websocketUrl: string;

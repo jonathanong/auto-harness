@@ -153,7 +153,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       session({ target: { providerId: "prov-1" }, prompt: "go" }),
       worktree(),
     );
-    expect(argv).toEqual(["claude", "-p", "--verbose", "go"]);
+    expect(argv).toEqual(["claude", "--output-format", "json", "-p", "--verbose", "go"]);
   });
 
   it("returns null when enabled but the provider has no default command anywhere", () => {

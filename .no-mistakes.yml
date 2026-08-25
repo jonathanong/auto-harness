@@ -56,8 +56,35 @@ tests:
           - services/**/*.test.ts
           - services/**/*.test.tsx
           - scripts/**/*.test.ts
-      integration:
+        exclude:
+          - services/api/src/db/**/*.test.ts
+          - services/api/src/**/*durable*.test.ts
+          - services/api/src/**/*dynamo*.test.ts
+          - services/api/src/archive-writer-dynamo.test.ts
+          - services/api/src/local-server-slack-worker.test.ts
+          - services/api/src/local-server-webhook-worker.test.ts
+          - services/api/src/control-plane-providers-storage.test.ts
+          - services/api/src/control-plane-storage-paths.test.ts
+          - services/api/src/control-plane-agent-restart-observability.test.ts
+          - services/api/src/control-plane-scheduled-cancel-race.test.ts
+          - services/api/src/control-plane-scheduled-missing-provider.test.ts
+          - services/api/src/control-plane-scheduled-registration-rollback.test.ts
+          - services/api/src/control-plane-scheduled-recovery.test.ts
+      dynamo:
         include:
+          - services/api/src/db/**/*.test.ts
+          - services/api/src/**/*durable*.test.ts
+          - services/api/src/**/*dynamo*.test.ts
+          - services/api/src/archive-writer-dynamo.test.ts
+          - services/api/src/local-server-slack-worker.test.ts
+          - services/api/src/local-server-webhook-worker.test.ts
+          - services/api/src/control-plane-providers-storage.test.ts
+          - services/api/src/control-plane-storage-paths.test.ts
+          - services/api/src/control-plane-agent-restart-observability.test.ts
+          - services/api/src/control-plane-scheduled-cancel-race.test.ts
+          - services/api/src/control-plane-scheduled-missing-provider.test.ts
+          - services/api/src/control-plane-scheduled-registration-rollback.test.ts
+          - services/api/src/control-plane-scheduled-recovery.test.ts
           - integration/**/*.test.ts
   playwright:
     configs: playwright.config.ts

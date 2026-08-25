@@ -12,17 +12,29 @@ export const envExampleUrl = new URL(
   "../services/host-daemon/systemd/host-daemon.env.example",
   import.meta.url,
 );
+export const launcherUrl = new URL(
+  "../services/host-daemon/systemd/run-host-daemon.sh",
+  import.meta.url,
+);
+export const activationHelperUrl = new URL(
+  "../services/host-daemon/systemd/promote-host-daemon-update.mjs",
+  import.meta.url,
+);
 
 const REQUIRED_SERVICE_LINES = [
   "Documentation=https://github.com/jonathanong/auto-harness/blob/main/docs/deploy-host-daemon.md",
-  "Type=simple",
+  "Type=notify",
+  "NotifyAccess=main",
   "Wants=network-online.target",
   "After=network-online.target",
   "User=harness",
   "Group=harness",
-  "WorkingDirectory=/opt/auto-harness/current",
+  "WorkingDirectory=/",
   "EnvironmentFile=/etc/auto-harness/host-daemon.env",
-  "ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start",
+  "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs",
+  "ExecStartPre=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --mark-boot-attempt",
+  'ExecStart=/bin/sh "/usr/local/lib/auto-harness/run-host-daemon.sh"',
+  "ExecStartPost=+/usr/bin/env node /usr/local/lib/auto-harness/promote-host-daemon-update.mjs --confirm-ready",
   "Restart=always",
   "RestartSec=5s",
   "TimeoutStopSec=15min",
@@ -38,6 +50,7 @@ const REQUIRED_ENV_NAMES = [
   "HARNESS_API_URL",
   "HARNESS_API_KEY",
   "HARNESS_CHILD_ENV_ALLOWLIST",
+  "HARNESS_UPDATE_INSTALL_DIR",
 ] as const;
 
 export function validateSystemdArtifacts(service: string, envExample: string): string[] {
@@ -46,7 +59,7 @@ export function validateSystemdArtifacts(service: string, envExample: string): s
   for (const line of REQUIRED_SERVICE_LINES) {
     if (!lines.has(line)) errors.push(`missing service directive: ${line}`);
   }
-  for (const forbidden of ["Type=notify", "WatchdogSec=", "ExecReload=", "pnpm ", "sh -c"]) {
+  for (const forbidden of ["Type=simple", "WatchdogSec=", "ExecReload=", "pnpm ", "sh -c"]) {
     if (service.includes(forbidden)) errors.push(`forbidden service behavior: ${forbidden}`);
   }
 
@@ -65,11 +78,69 @@ export function validateSystemdArtifacts(service: string, envExample: string): s
   return errors;
 }
 
+export function validateSystemdLauncher(launcher: string): string[] {
+  const errors: string[] = [];
+  for (const fragment of [
+    "#!/bin/sh",
+    "update_root=${HARNESS_UPDATE_INSTALL_DIR:-/opt/auto-harness}",
+    'current="$update_root/current"',
+    'cd "$current"',
+    'auto-harness-host-daemon.mjs start "$@"',
+  ]) {
+    if (!launcher.includes(fragment)) errors.push(`missing systemd launcher fragment: ${fragment}`);
+  }
+  return errors;
+}
+
+/** Contract-test the root-owned handoff boundary without executing privileged code in CI. */
+export function validateSystemdActivationHelper(helper: string): string[] {
+  const errors: string[] = [];
+  for (const fragment of [
+    'const incomingName = "incoming"',
+    'const releases = join(root, "releases")',
+    "lockTree(extracted)",
+    "assertSafeArchive(archive)",
+    'switchCurrent(root, join("releases", manifest.version))',
+    'process.argv[2] === "--mark-boot-attempt"',
+    "settlePriorBoot(root)",
+    'rmSync(join(root, "releases", marker.version), { recursive: true, force: true })',
+    "promote(root, incoming)",
+    '|| "/opt/auto-harness"',
+    "assertProtectedUpdateRootPath(root)",
+    "stat.isSymbolicLink()",
+    "process.exitCode = 1",
+  ]) {
+    if (!helper.includes(fragment))
+      errors.push(`missing update promotion helper fragment: ${fragment}`);
+  }
+  if (helper.includes('from "../src/') || helper.includes('from "./')) {
+    errors.push("promotion helper must not import daemon-writable activated code");
+  }
+  const markerWrite = "JSON.stringify({ version: manifest.version, attempted: false })";
+  const switchCurrent = 'switchCurrent(root, join("releases", manifest.version));';
+  const markerWriteIndex = helper.indexOf(markerWrite);
+  const switchCurrentIndex = helper.indexOf(switchCurrent);
+  if (markerWriteIndex < 0 || switchCurrentIndex < 0 || markerWriteIndex > switchCurrentIndex) {
+    errors.push("pending update marker must be written before selecting the release");
+  }
+  if (
+    helper.indexOf("rmSync(markerPath, { force: true });", switchCurrentIndex) < 0 ||
+    !helper.includes('try {\n    switchCurrent(root, join("releases", manifest.version));')
+  ) {
+    errors.push("pending update marker must be cleared when selecting the release fails");
+  }
+  return errors;
+}
+
 function main(): void {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
+  const launcher = readFileSync(launcherUrl, "utf8");
+  const activationHelper = readFileSync(activationHelperUrl, "utf8");
   const errors = [
     ...validateSystemdArtifacts(service, envExample),
+    ...validateSystemdLauncher(launcher),
+    ...validateSystemdActivationHelper(activationHelper),
     ...validateGeneratedHostServiceTemplates(service),
   ];
   if (errors.length > 0) throw new Error(errors.join("\n"));

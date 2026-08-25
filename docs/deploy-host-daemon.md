@@ -15,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Production systemd unit                  | **Packaged** — checked-in unit and environment contract; syntax and graceful drain are validated in CI           |
 | Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart))    |
 | Signed update orchestration core         | **Implemented and locally tested** behind injected fetch/install/restart boundaries                              |
-| Automatic production download / restart  | **Not wired**; updates use the manual drain procedure below                                                      |
+| Automatic production download / restart  | **Supported when explicitly configured** with a signed manifest and a stable platform supervisor launcher        |
 
 ---
 
@@ -107,8 +107,18 @@ sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-da
 If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
 installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
-Working directory is `/opt/auto-harness/current` when that path exists, otherwise this checkout.
-`KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
+The generated Linux launcher and its update-promotion helper are root-owned under
+`/usr/local/lib/auto-harness/`. The helper is run by systemd before each daemon start: it
+independently verifies the signed staged artifact, extracts it into a root-owned release tree,
+and atomically switches `current`. The daemon (and every session CLI it starts) can write only
+the private `incoming/` request directory; it cannot modify `current` or runnable releases. The
+Linux default keeps that immutable update root at `/opt/auto-harness`, separate from its writable
+deployment staging checkout at `/opt/auto-harness/staging`. When run with
+`sudo`, `install-service` also locks a legacy `current -> versions/<version>` target before
+enabling the unit.
+`KillMode`, `TimeoutStopSec`, and `Type=notify` stay as in the checked-in unit. The daemon sends
+systemd `READY=1` only after it has registered with the control plane; that readiness barrier lets
+the root-owned post-start helper confirm a promoted release only after the replacement is usable.
 
 Uninstall (removes the service definition, not the checkout):
 
@@ -116,23 +126,24 @@ Uninstall (removes the service definition, not the checkout):
 pnpm local:daemon uninstall-service
 ```
 
-### VPS copy-unit path
+### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the
-`harness` user, clone into `/opt/auto-harness/current`, copy the unit). The
+`harness` user, clone into `/opt/auto-harness/staging`, then install the service). The
 one-command path above is the supported operator path for an already-cloned
 checkout.
 
 On the agent host:
 
 1. Install Node, Git, and AI CLIs.
-2. Create a dedicated user and install the monorepo checkout at the unit's conventional path:
+2. Create a dedicated user and install the monorepo checkout in the writable staging path:
 
    ```bash
    sudo useradd --create-home --shell /usr/sbin/nologin harness
-   sudo install -d -o harness -g harness /opt/auto-harness
-   sudo -u harness git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/current
-   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
+   sudo install -d -o root -g root -m 0755 /opt/auto-harness
+   sudo install -d -o harness -g harness -m 0700 /opt/auto-harness/staging
+   sudo -u harness git clone https://YOUR_GIT_REMOTE/auto-harness.git /opt/auto-harness/staging
+   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
    ```
 
    The checked-in package uses Node's native TypeScript execution, so deploy the complete checkout and
@@ -143,12 +154,29 @@ On the agent host:
 5. Set daemon identity/runtime values and only explicitly allowlisted child credentials on the host.
    Inventory remains in the control plane, not this file:
 
-| Variable                      | Role                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                                                                      |
-| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                   |
-| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                |
-| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
+| Variable                      | Role                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                                                                               |
+| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                                                                            |
+| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed.                                                             |
+| `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                                                                                        |
+| `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                                                                                        |
+| `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; every path component through a custom root must be a root-owned, non-writable, non-symlink directory. Its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root. |
+| `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                                                                              |
+| `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                                                                                |
+
+The Host Advanced **Host daemon updates** form accepts a normal multiline PEM and stores its line
+breaks as literal `\n`, so the same setting remains valid when `install-service` writes the
+single-line service EnvironmentFile. API and host-config inputs receive the same normalization.
+
+For a managed Host, configure these as structured **Host daemon updates** controls on the
+control-plane Host’s Advanced tab. Those settings are authenticated, audited, and take precedence
+over legacy service-environment values. After saving, rerun `install-service` on that Host so the
+root-owned systemd promotion helper and the daemon agree on the selected install directory; then
+restart the Host daemon. Leaving the control-plane setting absent retains the local environment as
+the compatibility fallback, while an explicit disabled setting overrides an existing local update
+configuration.
 
 If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
 supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
@@ -156,28 +184,28 @@ supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this u
 target and accepts the raw API Gateway endpoint directly; REST still resolves from
 `HARNESS_API_URL`, which must stay set to `WebUrl`.
 
-6. Install the environment file and checked-in unit. Populate the copied environment file before starting;
-   never commit it:
+6. Install the environment file. Populate it before starting; never commit it:
 
 ```bash
+UPDATE_ROOT=/opt/auto-harness # set to the same value as HARNESS_UPDATE_INSTALL_DIR when customized
+STAGING_ROOT="$UPDATE_ROOT/staging"
 sudo install -d -m 0755 /etc/auto-harness
 sudo install -m 0600 \
-  /opt/auto-harness/current/services/host-daemon/systemd/host-daemon.env.example \
+  "$STAGING_ROOT/services/host-daemon/systemd/host-daemon.env.example" \
   /etc/auto-harness/host-daemon.env
 sudoedit /etc/auto-harness/host-daemon.env
-sudo install -m 0644 \
-  /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
-  /etc/systemd/system/auto-harness-host-daemon.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now auto-harness-host-daemon.service
+cd "$STAGING_ROOT"
+sudo env "PATH=$PATH" "$(command -v pnpm)" local:daemon install-service
 ```
 
-The unit runs as `harness`, starts the declared package entrypoint from
-`/opt/auto-harness/current`, restarts after exits or crashes, and sends SIGTERM only to the daemon
-first. `TimeoutStopSec=15min` plus `KillMode=mixed` lets the daemon durably enter drain and wait
-for in-flight CLIs instead of having systemd kill the whole cgroup. An operator can still use an
-explicit `systemctl kill --kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an
-acknowledged emergency; that is not the normal update path.
+The installer creates the root-owned unit, stable launcher, promotion helper, and immutable
+`current`/`releases` layout. On a first install, its generated launcher runs the staging checkout
+only as the unprivileged `harness` service user until the configured signed updater promotes an
+immutable `current` release; subsequent starts select only `current`. `TimeoutStopSec=15min` plus
+`KillMode=mixed` lets the daemon durably enter drain and wait for in-flight CLIs instead of having
+systemd kill the whole cgroup. An operator can still use an explicit `systemctl kill
+--kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an acknowledged emergency;
+that is not the normal update path.
 
 The bound is finite on purpose. It was `infinity`, and the daemon had no bound of its own:
 with the control plane unreachable, `beginDrain()` retried its announcement forever and
@@ -185,10 +213,11 @@ never settled, so `systemctl stop` hung indefinitely even with no session in fli
 daemon now stops announcing after `drainDeadlineMs` (30s) and forces exit after
 `HARNESS_SHUTDOWN_TIMEOUT_MS` (default 10min), with this unit as the outer backstop.
 
-The service is `Type=simple`: the daemon does not implement `sd_notify` or a systemd watchdog.
-`systemctl status` proves process liveness, while host online/keepalive state in the control plane is
-the readiness signal. Do not add `Type=notify`, `WatchdogSec`, or `ExecReload` without implementing
-their daemon protocols first.
+The service is `Type=notify` with `NotifyAccess=main`: after control-plane registration, the main
+daemon process sends `sd_notify READY=1` with a `registered` status. `systemctl status` is therefore
+an initial registration-readiness check, while host online/keepalive state in the control plane
+remains the continuous readiness signal. The unit does not implement a systemd watchdog or reload
+protocol; do not add `WatchdogSec` or `ExecReload` without implementing their daemon protocols.
 
 7. Confirm the service and control-plane registration:
 
@@ -255,11 +284,14 @@ drains during restart). It loads the platform's persisted service environment an
 two minutes until the exact host is online, non-draining, and Git-ready; the same end-to-end
 deadline terminates an in-flight status process group instead of waiting indefinitely. It also
 requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the
-checkout owner from `/opt/auto-harness/current` whenever that conventional service checkout exists;
-the wrapper refuses to validate a different checkout from the one systemd will execute. It invokes
-`sudo` only for the systemd installer and verification so Git and dependency files retain the right
-ownership. The manual procedure below remains the recovery path for immutable revisions, rollbacks,
-and dedicated VPS checkouts.
+checkout owner from `/opt/auto-harness/staging` whenever that conventional staging checkout
+exists; the wrapper refuses to validate a different staging directory. It invokes `sudo` only for
+the systemd installer and verification so Git and dependency files retain the right ownership. The
+service runs only its immutable `current` release: when signed updates are configured, its immediate
+updater poll writes the verified artifact into `incoming/` and systemd's root-owned helper promotes
+it. The manual procedure below remains the recovery path for immutable revisions, rollbacks, and
+dedicated VPS checkouts. For a custom `HARNESS_UPDATE_INSTALL_DIR`, export that same absolute path
+before invoking `pnpm deploy:host`, so the wrapper validates its corresponding `staging/` checkout.
 
 Current path — an operator must **drain, deploy, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 
@@ -267,22 +299,19 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
    - Control plane: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`
    - And/or agent-local drain signal
 2. Wait until no running sessions on that agent.
-3. Fetch and check out the new immutable revision, then install its locked production dependencies:
+3. Fetch and check out the new staging revision, then install its locked production dependencies:
 
    ```bash
-   sudo -u harness git -C /opt/auto-harness/current fetch --all --tags
-   sudo -u harness git -C /opt/auto-harness/current checkout NEW_IMMUTABLE_REVISION
-   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
-   sudo install -m 0644 \
-     /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
-     /etc/systemd/system/auto-harness-host-daemon.service
-   sudo systemctl daemon-reload
+   sudo -u harness git -C /opt/auto-harness/staging fetch --all --tags
+   sudo -u harness git -C /opt/auto-harness/staging checkout NEW_IMMUTABLE_REVISION
+   sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
+   cd /opt/auto-harness/staging
+   pnpm deploy:host
    ```
 
-4. Restart only after drain, then verify registration:
+4. Verify the signed promotion/restart registered the host:
 
    ```bash
-   sudo systemctl restart auto-harness-host-daemon.service
    sudo systemctl status auto-harness-host-daemon.service
    ```
 
@@ -290,11 +319,11 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
 
 On a macOS host installed as a LaunchAgent, perform the same drain-and-wait boundary, then update
 the checkout as the current user. Re-running `install-service` keeps the existing mode-0600
-environment file, rewrites the plist to the current checkout and Node paths, and reloads the
-LaunchAgent. After `bootout`/`bootstrap`, it checks `launchctl print` and does not require
-`kickstart -k`. If launchd is already starting the job (exit 37 / "already in progress") or the
-agent is already running, install succeeds. If a restart unregisters the job, the installer
-bootstraps again instead of leaving the LaunchAgent missing.
+environment file, rewrites a stable launcher under `~/Library/Application Support/auto-harness`,
+and reloads the LaunchAgent. The plist always starts that launcher; it selects the activated
+`current` tree when present and otherwise falls back to the installation checkout. After
+`bootout`/`bootstrap`, a stopped job is started with `launchctl kickstart -k` and verified as a
+running process with a PID. Exit 37 / "already in progress" is an error, not restart success.
 
 ```bash
 git fetch --all --tags
@@ -314,28 +343,67 @@ the LaunchAgent may still be running correctly, but that result does not verify 
 Do **not** kill in-flight AI CLIs for routine upgrades.
 
 `AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
-durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, request activation, and
-request supervisor restart. Concurrent runs collapse into one update. Production fetch/install/
-restart boundaries are intentionally not configured yet, so operators still use the manual steps
-above until those host-mutating adapters are explicitly enabled and validated.
+durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, activate, request
+supervisor restart, and roll back plus resume scheduling if activation or restart fails. Activation
+also writes a durable pending-boot marker before switching `current`. On macOS and Windows, the
+stable launcher records that first boot _before it selects the activated module_; on Linux,
+systemd's root-owned pre-start helper does the equivalent work. A registered replacement clears the
+marker only after the control plane accepts it. If that replacement crashes before acknowledgement
+(including before its module reaches `main`), its next supervisor launch rolls `current` back to
+the saved release through the stable launcher. Obsolete
+release trees are pruned only after that acknowledgement. Concurrent runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
+`HARNESS_UPDATE_PUBLIC_KEY` (Ed25519 PEM; use literal `\\n` in a single-line EnvironmentFile),
+optional absolute `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
+`~/Library/Application Support/auto-harness/updates` on macOS, and
+`%APPDATA%\\auto-harness\\updates` on Windows), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once
+per start; maximum `2147483647`) to enable the
+production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. On
+Linux, the checked-in manual unit uses a stable wrapper outside the activated tree; that wrapper
+reads the persisted `HARNESS_UPDATE_INSTALL_DIR`, so set `UPDATE_ROOT` above to the same path when
+using a non-default root. The
+artifact is a gzip-compressed tar archive whose root is a complete runnable checkout (including
+`package.json` and the host-daemon launcher). On Linux, the unprivileged daemon writes the
+already-verified artifact and manifest only to `incoming/`; systemd's root-owned pre-start helper
+verifies both again, extracts the release below root-owned `releases/`, and atomically switches
+`current`. Linux then requests an asynchronous self-exit after the updater transaction; its
+already-authorized systemd supervisor restarts it, rather than the unprivileged service user
+invoking `systemctl`. macOS and Windows supervisors invoke stable
+launcher files outside the activated tree, so their next start resolves the new `current` pointer.
+On Windows, a detached handoff owns the scheduled task's stop/start sequence rather than asking
+the running daemon to terminate its own task before it can request the replacement.
+On Linux, the selected update root, `current`, and `releases/` must remain root-owned; only
+`incoming/` is writable by `harness`. The writable deployment checkout is `staging/` below the
+same root and is never selected as an active release once `current` exists. Both stable launcher
+and promotion helper are root-owned and are never replaced by the updater.
+Without the signed-manifest settings, the service continues the last activated
+release; `pnpm deploy:host` still refreshes only the writable staging checkout
+and root-owned service files. Configure a signed manifest and public key before
+using the normal Linux deployment path to activate a new release.
 
 ### Rollback
 
-Use the same drain boundary, check out the previously verified immutable revision, restore its locked
-dependencies, and restart:
+A signed-manifest update is deliberately monotonic: the updater ignores a manifest whose version is
+less than or equal to the active version, even if that older artifact is still correctly signed. Do
+not try to roll back a healthy release by republishing an older manifest; publish a newer signed
+remediation instead.
+
+The pending-boot fence remains the emergency rollback path. If a newly promoted release exits or
+cannot register before its first health acknowledgement, the stable launcher/root-owned helper
+restores the saved previous release on the next supervisor start. It does not need, and must not
+accept, a downgraded manifest to do that.
+
+To refresh the writable staging checkout for future deployments:
 
 ```bash
-sudo -u harness git -C /opt/auto-harness/current checkout PREVIOUS_IMMUTABLE_REVISION
-sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
-sudo install -m 0644 \
-  /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
-  /etc/systemd/system/auto-harness-host-daemon.service
-sudo systemctl daemon-reload
-sudo systemctl restart auto-harness-host-daemon.service
+sudo -u harness git -C /opt/auto-harness/staging checkout PREVIOUS_IMMUTABLE_REVISION
+sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/staging install --prod --frozen-lockfile
+cd /opt/auto-harness/staging
+pnpm deploy:host
 ```
 
-Then confirm the host re-registers and run one smoke session. Rollback does not bypass schema or
-control-plane compatibility requirements; roll the control plane first when the versions require it.
+After an automatic rollback, confirm the host re-registers and run one smoke session on the saved
+previous release. Recovery does not bypass schema or control-plane compatibility requirements; roll
+the control plane first when the versions require it.
 
 ### Command profiles / repos
 

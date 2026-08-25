@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- startup runtime coverage shares one daemon harness. */
 import { createServer } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +118,67 @@ describe("startDaemon runtime wiring", () => {
       // keepalive timer. A graceful drain requires a live transport, so use
       // the loop's direct shutdown path for cleanup.
       daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
+  it("keeps the legacy install root when host update config moves its staging root", async () => {
+    const harness = await acceptingServer();
+    const { config, cleanup } = await makeRepo();
+    const errors: string[] = [];
+    vi.stubGlobal("fetch", async () => new Response("temporarily unavailable", { status: 503 }));
+    try {
+      await startDaemon({
+        config: {
+          ...config,
+          apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+          updateConfig: {
+            enabled: true,
+            manifestUrl: "https://updates.example.test/manifest.json",
+            publicKey: "public key",
+            installDir: "/configured-root",
+            pollMs: 0,
+          },
+        },
+        childEnvSource: { HARNESS_UPDATE_INSTALL_DIR: "/legacy-root" },
+        updateService: {
+          env: { HARNESS_UPDATE_INSTALL_DIR: "/legacy-root" },
+          platform: "linux",
+          log: () => undefined,
+          error: () => undefined,
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        },
+        fetchFn: async () => new Response("temporarily unavailable", { status: 503 }),
+        error: (line) => errors.push(line),
+        runUntil: Promise.resolve(),
+      });
+      expect(errors).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+      cleanup();
+      await harness.close();
+    }
+  });
+
+  it("disables an updater whose legacy service environment is incomplete", async () => {
+    const harness = await acceptingServer();
+    const { config, cleanup } = await makeRepo();
+    const errors: string[] = [];
+    try {
+      const daemon = await startDaemon({
+        config: { ...config, apiUrl: `ws://127.0.0.1:${harness.port}/ws` },
+        childEnvSource: {
+          HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+        },
+        error: (line) => errors.push(line),
+        runUntil: Promise.resolve(),
+      });
+      expect(errors).toContain(
+        "updater disabled: HARNESS_UPDATE_MANIFEST_URL and HARNESS_UPDATE_PUBLIC_KEY are both required",
+      );
+      await daemon.stop();
+    } finally {
+      cleanup();
       await harness.close();
     }
   });

@@ -73,6 +73,12 @@ export type HostServiceOpts = {
   tmpDir?: string;
   uid?: number;
   timeoutMs?: number;
+  /**
+   * Linux updates ask the already-authorized daemon process to exit, letting
+   * systemd's Restart=always restart it. This deliberately replaces an
+   * unprivileged systemctl invocation from inside the service.
+   */
+  restartHandoff?: () => void;
 };
 
 export type HostServiceContext = {
@@ -91,8 +97,10 @@ export type HostServiceContext = {
   uid: number;
   envExamplePath: string;
   unitTemplatePath: string;
+  activationHelperTemplatePath: string;
   launcherPath: string;
   timeoutMs?: number;
+  restartHandoff?: () => void;
 };
 
 export const nodeHostServiceFs: HostServiceFs = {
@@ -201,10 +209,15 @@ export function resolveHostService(opts: HostServiceOpts): HostServiceContext {
     tmpDir: opts.tmpDir ?? tmpdir(),
     uid: resolveUid(opts.uid, process.getuid),
     ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+    ...(opts.restartHandoff !== undefined ? { restartHandoff: opts.restartHandoff } : {}),
     envExamplePath: join(checkoutRoot, "services/host-daemon/systemd/host-daemon.env.example"),
     unitTemplatePath: join(
       checkoutRoot,
       "services/host-daemon/systemd/auto-harness-host-daemon.service",
+    ),
+    activationHelperTemplatePath: join(
+      checkoutRoot,
+      "services/host-daemon/systemd/promote-host-daemon-update.mjs",
     ),
     launcherPath: join(checkoutRoot, "services/host-daemon/bin/auto-harness-host-daemon.mjs"),
   };

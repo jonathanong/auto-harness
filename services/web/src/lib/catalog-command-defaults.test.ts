@@ -8,33 +8,33 @@ import {
 } from "./catalog-command-defaults.ts";
 
 describe("catalogCommandDefaults", () => {
-  it("returns grok -p defaults without a -- separator or --output-format plain", () => {
+  it("returns grok JSON defaults without a -- separator", () => {
     expect(catalogCommandDefaults(" Grok ")).toEqual({
       commandName: "grok-print",
-      argv: ["grok", "--always-approve", "--max-turns", "3", "-p"],
+      argv: ["grok", "--always-approve", "--max-turns", "3", "--output-format", "json", "-p"],
       appendPrompt: true,
       appendPromptSeparator: false,
     });
-    expect(catalogCommandDefaults("grok")?.argv.includes("--output-format")).toBe(false);
+    expect(catalogCommandDefaults("grok")?.argv).toContain("--output-format");
   });
 
-  it("returns claude -p defaults with a -- separator", () => {
+  it("returns Claude JSON defaults with a -- separator", () => {
     expect(catalogCommandDefaults("claude")).toEqual({
       commandName: "claude-print",
-      argv: ["claude", "-p"],
+      argv: ["claude", "-p", "--output-format", "json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     });
   });
 
-  it("returns codex exec defaults with a -- separator and no --output-format", () => {
+  it("returns Codex JSON defaults with a -- separator", () => {
     expect(catalogCommandDefaults(" Codex ")).toEqual({
       commandName: "codex-exec",
-      argv: ["codex", "exec"],
+      argv: ["codex", "exec", "--json"],
       appendPrompt: true,
       appendPromptSeparator: true,
     });
-    expect(catalogCommandDefaults("codex")?.argv.includes("--output-format")).toBe(false);
+    expect(catalogCommandDefaults("codex")?.argv).toContain("--json");
   });
 
   it("returns the same cursor-agent --print --force defaults for cursor and cursor-agent", () => {

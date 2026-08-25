@@ -46,11 +46,16 @@ describe("AgentUpdater", () => {
         stage: async ({ version }) => void calls.push(`stage:${version}`),
         activate: async (version) => void calls.push(`activate:${version}`),
         restart: async () => void calls.push("restart"),
+        rollback: async () => void calls.push("rollback"),
       },
       onState: (state) => states.push(state.phase),
     });
     const [first, duplicate] = await Promise.all([updater.run(), updater.run()]);
-    expect(first).toEqual({ phase: "complete", currentVersion: "1.2.0" });
+    expect(first).toEqual({
+      phase: "restarting",
+      currentVersion: "1.1.9",
+      targetVersion: "1.2.0",
+    });
     expect(duplicate).toEqual(first);
     expect(calls).toEqual([
       "drain",
@@ -60,7 +65,7 @@ describe("AgentUpdater", () => {
       "activate:1.2.0",
       "restart",
     ]);
-    expect(states).toEqual(["draining", "downloading", "staged", "restarting", "complete"]);
+    expect(states).toEqual(["draining", "downloading", "staged", "restarting"]);
     await expect(updater.run()).resolves.toEqual(first);
     expect(calls).toHaveLength(6);
   });
@@ -83,6 +88,7 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(updater.run()).resolves.toEqual({ phase: "complete", currentVersion: "2.0.0" });
@@ -104,6 +110,7 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(equalUpdater.run()).resolves.toEqual({
@@ -127,11 +134,13 @@ describe("AgentUpdater", () => {
         stage: async () => undefined,
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(largeVersionUpdater.run()).resolves.toEqual({
-      phase: "complete",
-      currentVersion: "9007199254740993.0.0",
+      phase: "restarting",
+      currentVersion: "9007199254740992.0.0",
+      targetVersion: "9007199254740993.0.0",
     });
   });
 
@@ -158,6 +167,7 @@ describe("AgentUpdater", () => {
         },
         activate: async () => undefined,
         restart: async () => undefined,
+        rollback: async () => undefined,
       },
     });
     await expect(updater.run()).resolves.toMatchObject({

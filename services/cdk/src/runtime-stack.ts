@@ -16,14 +16,14 @@ import { grantPublicBaseUrlAccess, publicBaseUrlParam } from "./public-base-url-
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 import { addRuntimeObservability } from "./runtime-observability.ts";
 
-export type RuntimeStackProps = StackProps & {
+type RuntimeStackProps = StackProps & {
   foundation: FoundationResources;
   tablePrefix: string;
   /** Defaults to false — see addRuntimeObservability's account-role prerequisite. */
   accessLogsEnabled?: boolean;
 };
 
-export type RuntimeResources = {
+type RuntimeResources = {
   cronFunction: nodejs.NodejsFunction;
   cronRule: events.Rule;
   httpApi: apigatewayv2.CfnApi;

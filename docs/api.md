@@ -585,7 +585,11 @@ The session enters the `queued` state. Assignment is attempted immediately as a 
 
 If the session exceeds `timeout` seconds while running, the agent kills the process and reports `timed_out`. The control plane also terminates an acknowledged `running` assignment at `ackReceivedAt + timeout` if that host report is lost or rejected. The EventBridge/local scheduler applies the bound on the next sweep after that deadline (typically within 60 seconds).
 
-If the agent detects an **AI vendor usage/rate limit** in CLI output, it reports `errorCode: "usage_limit"`. The control plane pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or fallback. Providerless commands do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
+If a provider-aware CLI adapter validates an **AI vendor usage/rate-limit** signal from a structured
+result, the agent reports `errorCode: "usage_limit"`. The control plane pauses the assigned Provider
+Account globally for its configured cooldown (default 5 hours), releases the worktree, and
+immediately tries the next eligible account or fallback. Providerless and non-structured commands
+do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
 The concurrency identity is released for terminal states (`completed`, `failed`, `cancelled`, `timed_out`), allowing an explicit retry with the same id. A manual duplicate while the original is queued or running is deduplicated and returns the original session; it never creates a second queued run.
 
@@ -1055,7 +1059,7 @@ Create a provider. **Does not** create its default command — the control-plane
 
 #### `GET /providers`, `GET /providers/:id`, `PATCH /providers/:id`, `DELETE /providers/:id`
 
-Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommandId: null` clears it).
+Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"?, "usageRates"? }` (`defaultCommandId: null` and `usageRates: null` clear those fields). `usageRates` is optional operator-configured integer micros plus an ISO currency; Auto Harness never fetches vendor prices. The Provider Settings tab is the structured editor.
 `DELETE` fails `409` while an account, command, schedule, or queued/running session references the
 provider. The response identifies every live dependency; deletion never cascades.
 
@@ -1071,17 +1075,24 @@ Standard CRUD. `GET /provider-accounts` returns `{ "items": [ ...accounts ] }`, 
 
 #### `POST /commands`
 
-**Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
+**Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
 
 **Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+
+For compatibility with provider commands stored before structured usage reporting,
+dispatch upgrades only recognized native forms that have no explicit output setting:
+`claude -p` / `--print`, `gemini -p` / `--prompt`, and `grok -p` / `--single` receive
+`--output-format json`; `codex exec` receives `--json`. This happens in the resolved
+execution argv so quota routing continues to receive vendor envelopes. Commands with an explicit
+format or an unrecognized executable remain operator-authored and unchanged.
 
 `appendPromptSeparator` controls whether a `--` element is inserted before the appended
 prompt: `[...command.argv, "--", prompt]` vs `[...command.argv, prompt]`
 (`services/api/src/control-plane-session-target.ts`). If not given explicitly, it
 **defaults to `true` whenever the command has a non-null `providerId`** and `appendPrompt`
 is not `false` (`services/api/src/control-plane-commands.ts`) — a providerless command
-defaults to `false`. So `{"argv":["claude","-p"],"appendPrompt":true,"providerId":"prov-1"}`
-actually spawns `claude -p -- "<prompt>"`, not `claude -p "<prompt>"` — confirmed against a
+defaults to `false`. So `{"argv":["claude","-p","--output-format","json"],"appendPrompt":true,"providerId":"prov-1"}`
+actually spawns `claude -p --output-format json -- "<prompt>"`, not `claude -p "<prompt>"` — confirmed against a
 real session's `resolvedArgv`. This is harmless for CLIs that treat `--` as
 "end of options" (`claude`, `codex`), but will break any provider-owned command whose
 binary does not accept `--`, or a naive `printf "%s"`-style invocation where a prompt

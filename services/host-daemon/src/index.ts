@@ -34,7 +34,6 @@ export { LogStreamer } from "./log-streamer.ts";
 export { SessionRunner } from "./session-runner.ts";
 export type { SessionRunResult, SessionRunnerDeps } from "./session-runner.ts";
 export { runTerminalHook } from "./terminal-hook.ts";
-export { detectUsageLimit } from "./usage-limit.ts";
 export { WorktreeManager } from "./worktree-manager.ts";
 export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.ts";
 export { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
@@ -51,3 +50,5 @@ export type {
   UpdateManifest,
   UpdateState,
 } from "./agent-updater.ts";
+export { detectUsageLimit } from "./usage-limit.ts";
+export { UsageCapturingProcessRunner, parseCliUsage } from "./usage-adapter.ts";

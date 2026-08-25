@@ -159,7 +159,7 @@ export function ProviderCreateForm() {
           name="argv"
           required
           rows={3}
-          placeholder={"claude\n-p"}
+          placeholder={"claude\n-p\n--output-format\njson"}
           className="font-mono text-xs"
           data-pw="provider-catalog-argv"
           value={argvText}

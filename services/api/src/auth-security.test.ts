@@ -432,6 +432,8 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("PUT", "/api/v1/hosts/h/inventory")).toBe("fleet:inventory");
     expect(requiredCapability("PUT", "/api/v1/hosts/h/exec-config")).toBe("fleet:exec-config");
     expect(requiredCapability("GET", "/api/v1/hosts/h/exec-config")).toBe("authenticated");
+    expect(requiredCapability("PUT", "/api/v1/hosts/h/update-config")).toBe("fleet:exec-config");
+    expect(requiredCapability("GET", "/api/v1/hosts/h/update-config")).toBe("authenticated");
     expect(authorize(maintainer, "PUT", "/api/v1/hosts/host-a/exec-config")).toBe(false);
     expect(authorize(admin, "PUT", "/api/v1/hosts/host-a/exec-config")).toBe(true);
     expect(requiredCapability("POST", "/api/v1/sessions/s/archive")).toBe("sessions:archive");

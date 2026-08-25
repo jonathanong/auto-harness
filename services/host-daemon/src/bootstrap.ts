@@ -55,6 +55,7 @@ export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
     ...(config.allowedRoots !== undefined ? { allowedRoots: config.allowedRoots } : {}),
+    ...(config.updateConfig !== undefined ? { updateConfig: config.updateConfig } : {}),
     repositories: config.repositories,
   });
 }

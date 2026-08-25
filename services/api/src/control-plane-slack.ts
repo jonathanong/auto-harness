@@ -1,6 +1,7 @@
 import { SLACK_SECRET_ENCRYPTION_CONTEXT, type SecretEncryptor } from "./secret-crypto.ts";
 import {
   DEFAULT_SLACK_NOTIFICATIONS,
+  normalizeSlackNotifications,
   SLACK_INTEGRATION_ID,
   toPublicSlackIntegration,
   type PublicSlackIntegration,
@@ -17,7 +18,8 @@ export type SlackConfigInput = {
   signingSecret?: string;
   defaultChannel: string;
   enabled?: boolean;
-  notifications?: SlackNotifications;
+  /** The former six-event payload omits onHostOffline and is normalized on write. */
+  notifications?: Partial<SlackNotifications>;
 };
 
 type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
@@ -145,7 +147,7 @@ async function makeRecord(
     ),
     defaultChannel: input.defaultChannel,
     enabled: input.enabled ?? true,
-    notifications: input.notifications ?? { ...DEFAULT_SLACK_NOTIFICATIONS },
+    notifications: normalizeSlackNotifications(input.notifications),
     signingSecretConfigured: !!input.signingSecret,
     version,
     createdAt,
@@ -168,16 +170,20 @@ function validateInput(input: SlackConfigInput): { ok: true } | SlackConfigFailu
   }
   if (input.notifications !== undefined) {
     const expected = Object.keys(DEFAULT_SLACK_NOTIFICATIONS).toSorted();
+    const legacy = expected.filter((key) => key !== "onHostOffline");
     const actual = Object.keys(input.notifications).toSorted();
     if (
-      actual.length !== expected.length ||
-      actual.some((key, index) => key !== expected[index]) ||
+      (!sameKeys(actual, expected) && !sameKeys(actual, legacy)) ||
       !Object.values(input.notifications).every((value) => typeof value === "boolean")
     ) {
       return { ok: false, error: "notifications must contain only supported boolean event flags" };
     }
   }
   return { ok: true };
+}
+
+function sameKeys(actual: string[], expected: string[]): boolean {
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 function isSlackChannel(value: string): boolean {

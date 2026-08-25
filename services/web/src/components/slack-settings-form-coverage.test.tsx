@@ -28,6 +28,7 @@ const configured: PublicSlackIntegration = {
     onSessionFailed: true,
     onSessionCancelled: true,
     onScheduleCompleted: true,
+    onHostOffline: true,
   },
   botTokenConfigured: true,
   signingSecretConfigured: false,

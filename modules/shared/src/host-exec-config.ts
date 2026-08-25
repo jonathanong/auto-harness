@@ -48,6 +48,7 @@ export function applyHostExecConfig(
   const next: HostInventory = {
     ...existing,
     ...(existing.allowedRoots !== undefined ? { allowedRoots: [...existing.allowedRoots] } : {}),
+    ...(existing.updateConfig !== undefined ? { updateConfig: { ...existing.updateConfig } } : {}),
     ...(existing.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...existing.requiredEnvironment] }
       : {}),
@@ -66,6 +67,7 @@ export function applyHostExecConfig(
     if (patch.allowedRoots.length) next.allowedRoots = [...patch.allowedRoots];
     else delete next.allowedRoots;
   }
+  if (patch.updateConfig !== undefined) next.updateConfig = { ...patch.updateConfig };
   for (const repositoryPatch of patch.repositories ?? []) {
     const repository = requireRepository(next, repositoryPatch.id);
     if (repositoryPatch.setupScript !== undefined) {
@@ -92,6 +94,13 @@ function sameRoots(left: string[] | undefined, right: string[] | undefined): boo
   const a = left ?? [];
   const b = right ?? [];
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function sameUpdateConfig(
+  left: HostInventory["updateConfig"],
+  right: HostInventory["updateConfig"],
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function hasSetupScript(value: string | undefined): boolean {
@@ -206,6 +215,7 @@ function legacyRelativeHookError(
 /** True when deleting this inventory would erase admin-controlled executable paths. */
 export function inventoryHasExecConfig(inventory: HostInventory | null | undefined): boolean {
   if (!inventory) return false;
+  if (inventory.updateConfig !== undefined) return true;
   if ((inventory.setupScript ?? "") !== "" || (inventory.allowedRoots ?? []).length > 0)
     return true;
   return inventory.repositories.some(
@@ -224,6 +234,7 @@ export function listExecConfigEdits(
   const edits: string[] = [];
   addOptionalStringEdit(edits, "setupScript", existing?.setupScript, incoming.setupScript);
   if (!sameRoots(existing?.allowedRoots, incoming.allowedRoots)) edits.push("allowedRoots");
+  if (!sameUpdateConfig(existing?.updateConfig, incoming.updateConfig)) edits.push("updateConfig");
 
   const previousRepositories = entriesById(existing?.repositories);
   const incomingRepositories = entriesById(incoming.repositories);
@@ -323,6 +334,9 @@ export function preserveHostExecConfig(
   if (next.allowedRoots === undefined) {
     if (existing?.allowedRoots !== undefined) next.allowedRoots = [...existing.allowedRoots];
     else delete next.allowedRoots;
+  }
+  if (!Object.hasOwn(next, "updateConfig")) {
+    if (existing?.updateConfig !== undefined) next.updateConfig = { ...existing.updateConfig };
   }
   for (const repository of next.repositories) {
     const previous = existing?.repositories.find((entry) => entry.id === repository.id);

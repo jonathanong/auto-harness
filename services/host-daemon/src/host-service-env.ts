@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- service-environment parsing and persistence validation share one contract. */
 import { isPositiveAssignmentCap, LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
 import { isAbsolute, win32 } from "node:path";
 import { parseChildEnvAllowlist } from "./child-env.ts";
@@ -10,10 +11,9 @@ export function parseEnvFile(contents: string): Record<string, string> {
     const eq = line.indexOf("=");
     const key = line.slice(0, eq);
     let value = line.slice(eq + 1);
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replaceAll("\\\\", "\\").replaceAll('\\"', '"');
+    } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1);
     }
     parsed[key] = value;
@@ -34,7 +34,10 @@ export function loadEnvFileIfPresent(
 export function applyEnvFile(contents: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };
   for (const [key, value] of Object.entries(parseEnvFile(contents))) {
-    if (out[key] === undefined || out[key] === "") {
+    // An explicitly blank updater value disables an already-persisted update
+    // configuration. Other historical identity fields retain their existing
+    // "empty means load the env file" behavior.
+    if (out[key] === undefined || (out[key] === "" && !UPDATER_ENV_KEYS.has(key))) {
       out[key] = value;
     }
   }
@@ -152,7 +155,20 @@ export function persistedEnvError(errors: string[]): string {
 export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_EXECUTION_PROFILES",
   "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
+  "HARNESS_UPDATE_MANIFEST_URL",
+  "HARNESS_UPDATE_PUBLIC_KEY",
+  "HARNESS_UPDATE_INSTALL_DIR",
+  "HARNESS_UPDATE_POLL_MS",
+  "HARNESS_DAEMON_VERSION",
 ] as const;
+
+const UPDATER_ENV_KEYS = new Set<string>([
+  "HARNESS_UPDATE_MANIFEST_URL",
+  "HARNESS_UPDATE_PUBLIC_KEY",
+  "HARNESS_UPDATE_INSTALL_DIR",
+  "HARNESS_UPDATE_POLL_MS",
+  "HARNESS_DAEMON_VERSION",
+]);
 
 function filledValue(
   key: string,
@@ -183,6 +199,16 @@ function assertSingleLine(key: string, value: string): void {
 }
 
 /**
+ * systemd EnvironmentFile consumes backslashes in unquoted values. Keep the
+ * updater's documented literal `\\n` PEM encoding intact by quoting it and
+ * escaping the backslash for the EnvironmentFile parser.
+ */
+export function formatPersistedEnvValue(key: string, value: string): string {
+  if (key !== "HARNESS_UPDATE_PUBLIC_KEY" || value === "") return value;
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/**
  * Render a systemd-style env file from the checked-in example, filling current
  * identity. Extra allowlisted child credentials are appended so they survive
  * restart; HARNESS_* still never reaches repository commands.
@@ -207,21 +233,21 @@ export function renderEnvFile(
     seen.add(key);
     const value = filledValue(key, line.slice(eq + 1), env, capturePath);
     assertSingleLine(key, value);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   for (const key of extras.keys) {
     const value = env[key];
     if (value === undefined || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   for (const key of PERSISTED_DAEMON_ENV_KEYS) {
     const value = env[key];
     if (value === undefined || value === "" || seen.has(key)) continue;
     assertSingleLine(key, value);
     seen.add(key);
-    out.push(`${key}=${value}`);
+    out.push(`${key}=${formatPersistedEnvValue(key, value)}`);
   }
   const rendered = out.join("\n");
   return rendered.endsWith("\n") ? rendered : `${rendered}\n`;

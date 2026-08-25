@@ -73,6 +73,30 @@ describe("DynamoPlaneStorage catalog delegators", () => {
     expect(await storage.getCommand("command")).toBeNull();
 
     expect(await storage.deleteProvider("provider")).toBe(true);
+
+    const offlineCandidate = {
+      hostId: "facade-host",
+      reason: "agent heartbeat stale; requeued",
+      lastHeartbeatAt: now,
+    };
+    expect(await storage.recordHostOfflineAlertCandidate(offlineCandidate)).toBe(true);
+    expect(
+      await storage.enqueueHostOfflineAlertCandidate(offlineCandidate, {
+        id: "slack:host:facade-host:offline:2026-01-01T00:00:00.000Z",
+        integrationId: "slack",
+        sessionId: "host:facade-host",
+        event: "host_offline",
+        operation: "post-root",
+        channel: "#ops",
+        text: "offline",
+        status: "pending",
+        attempts: 0,
+        maxAttempts: 8,
+        nextAttemptAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).toBe(true);
     await storage.clearAll();
     expect(await storage.listProviders()).toEqual([]);
   });

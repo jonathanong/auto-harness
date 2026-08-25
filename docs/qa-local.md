@@ -3,7 +3,7 @@
 A numbered script for QAing Auto Harness on a laptop: automated gates, the
 local stack, the control-plane UI, the debug host pane, fleet setup (hosts,
 repos, providers — admin-shaped even when local auth is off), real
-`grok -p` / `claude -p` / `codex exec` (and a required `echo` dry run), a
+structured `grok -p` / `claude -p` / `codex exec --json` (and a required `echo` dry run), a
 schedule, a short break-it pass, then teardown. **No AWS.** Do not treat
 Add host as an operator step.
 
@@ -42,14 +42,14 @@ on. That 404 is a production-only check — do it in
 
 ## Prerequisites
 
-| Need                          | Check                                                                  |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| Node.js ≥ 22.18               | `node -v`                                                              |
-| pnpm                          | `pnpm -v` (see root `packageManager`)                                  |
-| Docker                        | DynamoDB Local                                                         |
-| Git ≥ 2.36                    | worktrees and checkout recovery                                        |
-| `grok` and `claude` on `PATH` | `which grok claude`; logged in                                         |
-| `codex` (optional)            | `which codex`; recipe is `codex exec` (not `-p` — that is `--profile`) |
+| Need                          | Check                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| Node.js ≥ 22.18               | `node -v`                                                                     |
+| pnpm                          | `pnpm -v` (see root `packageManager`)                                         |
+| Docker                        | DynamoDB Local                                                                |
+| Git ≥ 2.36                    | worktrees and checkout recovery                                               |
+| `grok` and `claude` on `PATH` | `which grok claude`; logged in                                                |
+| `codex` (optional)            | `which codex`; recipe is `codex exec --json` (not `-p` — that is `--profile`) |
 
 ```bash
 cd /path/to/auto-harness
@@ -193,9 +193,9 @@ daemon before creating anything.
 Sanity the CLIs in the same unsandboxed shell **before** relying on them:
 
 ```bash
-claude -p 'Reply with exactly: OK'
-grok --always-approve --max-turns 3 -p 'Reply with exactly: OK'
-# optional: codex exec 'Reply with exactly: OK'   # not `codex -p`
+claude -p --output-format json 'Reply with exactly: OK'
+grok --always-approve --max-turns 3 --output-format json -p 'Reply with exactly: OK'
+# optional: codex exec --json 'Reply with exactly: OK'   # not `codex -p`
 ```
 
 ---
@@ -216,7 +216,7 @@ Settings page is confusing.
    daemon create the directory).
 3. **Providers → Add provider** for `claude`, `grok`, and `codex` with
    the same argv as [qa-production.md](qa-production.md) Phase 2 (one
-   token per line). Codex is `codex exec`, **not** `-p` (`-p` is
+   token per line). The presets request provider JSON envelopes; Codex is `codex exec --json`, **not** `-p` (`-p` is
    `--profile`). Skip `codex` if the binary is missing.
 4. Create a Provider Account under each; **attach them to the host**.
    Note whether the UI warns if you skip attach.
@@ -250,11 +250,11 @@ Target the standalone `echo-prompt` command. Prompt: `hello-from-qa`.
 **Pass:** `queued → running → completed`, exit 0, logs show spawn +
 stdout, worktree is a real git worktree on `main`.
 
-### 5.2 Prompt matrix (`grok`, `claude`, optional `codex exec`)
+### 5.2 Prompt matrix (structured `grok`, `claude`, optional `codex exec --json`)
 
 Same rows as [qa-production.md](qa-production.md) Phase 4. Run each
 against `grok` and `claude` unless a row is CLI-specific. If Codex is
-configured, also run row 1 as `codex exec` (not `-p`).
+configured, also run row 1 as `codex exec --json` (not `-p`).
 
 | #   | Prompt                                                                                            | Why                              |
 | --- | ------------------------------------------------------------------------------------------------- | -------------------------------- |

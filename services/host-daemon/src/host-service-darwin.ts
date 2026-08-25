@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- launchd installation and verified restart share one lifecycle. */
 import { join } from "node:path";
 
 import { pathFromEnv, persistedEnvError } from "./host-service-env.ts";
@@ -8,23 +9,31 @@ import type {
   HostServiceStatus,
 } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
-import { DARWIN_LABEL, renderLaunchAgentPlist } from "./host-service-templates.ts";
+import { resolveUpdateInstallDir } from "./update-install-dir.ts";
+import {
+  DARWIN_LABEL,
+  renderLaunchAgentPlist,
+  renderUnixLaunchScript,
+} from "./host-service-templates.ts";
 
 const LAUNCHCTL_EALREADY = 37;
 
 function darwinPaths(home: string): {
   plist: string;
   envFile: string;
+  launcher: string;
   log: string;
   agentsDir: string;
   supportDir: string;
 } {
+  const supportDir = join(home, "Library/Application Support/auto-harness");
   return {
     plist: join(home, "Library/LaunchAgents/com.auto-harness.host-daemon.plist"),
-    envFile: join(home, "Library/Application Support/auto-harness/host-daemon.env"),
+    envFile: join(supportDir, "host-daemon.env"),
+    launcher: join(supportDir, "run-host-daemon.sh"),
     log: join(home, "Library/Logs/auto-harness-host-daemon.log"),
     agentsDir: join(home, "Library/LaunchAgents"),
-    supportDir: join(home, "Library/Application Support/auto-harness"),
+    supportDir,
   };
 }
 
@@ -46,10 +55,6 @@ function isLaunchctlAlreadyLoaded(result: HostServiceRunResult): boolean {
   );
 }
 
-function isKickstartAlreadyInProgress(result: HostServiceRunResult): boolean {
-  return result.status === LAUNCHCTL_EALREADY || /already in progress/i.test(launchctlText(result));
-}
-
 function isLaunchctlLoadFailed(result: HostServiceRunResult): boolean {
   return /\bload failed\b/i.test(launchctlText(result));
 }
@@ -58,7 +63,12 @@ function isLaunchAgentPresent(status: HostServiceStatus): boolean {
   return status.state !== "missing" && status.state !== "failed";
 }
 
-export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
+type LaunchInspection = {
+  status: HostServiceStatus;
+  pid?: string;
+};
+
+function inspectDarwin(ctx: HostServiceContext): LaunchInspection {
   const result = ctx.run(
     "launchctl",
     ["print", `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`],
@@ -67,15 +77,25 @@ export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
   if (result.status !== 0) {
     const output = launchctlText(result).toLowerCase();
     return /could not find|not found|no such service/.test(output)
-      ? { state: "missing", reason: "launch agent is not installed" }
-      : { state: "failed", reason: "launchctl status command failed" };
+      ? { status: { state: "missing", reason: "launch agent is not installed" } }
+      : { status: { state: "failed", reason: "launchctl status command failed" } };
   }
   const state = /^\s*state\s*=\s*(\S+)/m.exec(result.stdout)?.[1]?.toLowerCase();
-  if (state === "running") return { state: "running", reason: "launch agent is running" };
-  if (state === "stopped" || state === "waiting") {
-    return { state: "stopped", reason: `launch agent is ${state}` };
+  const pid = /^\s*pid\s*=\s*(\d+)/m.exec(result.stdout)?.[1];
+  if (state === "running") {
+    return {
+      status: { state: "running", reason: "launch agent is running" },
+      ...(pid ? { pid } : {}),
+    };
   }
-  return { state: "unknown", reason: "launchctl returned an unrecognized state" };
+  if (state === "stopped" || state === "waiting") {
+    return { status: { state: "stopped", reason: `launch agent is ${state}` } };
+  }
+  return { status: { state: "unknown", reason: "launchctl returned an unrecognized state" } };
+}
+
+export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
+  return inspectDarwin(ctx).status;
 }
 
 function loadLaunchAgent(
@@ -97,29 +117,29 @@ function loadLaunchAgent(
   return failedCommand(ctx.error, "launchctl bootstrap/load", load);
 }
 
-function recoverLaunchAgent(
+function kickstartAndVerify(
   ctx: HostServiceContext,
-  domain: string,
-  plist: string,
   service: string,
-  kick: HostServiceRunResult,
+  priorPid: string | undefined,
 ): number {
-  const status = statusDarwin(ctx);
-  if (status.state === "stopped" && kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
-    return failedCommand(ctx.error, "launchctl kickstart", kick);
+  const kick = ctx.run("launchctl", ["kickstart", "-k", service]);
+  if (kick.status !== 0) return failedCommand(ctx.error, "launchctl kickstart -k", kick);
+  const after = inspectDarwin(ctx);
+  if (
+    after.status.state !== "running" ||
+    after.pid === undefined ||
+    (priorPid !== undefined && after.pid === priorPid)
+  ) {
+    return failedCommand(ctx.error, "launchctl restart verification", {
+      status: 1,
+      stdout: "",
+      stderr:
+        after.status.state === "running" && after.pid === priorPid
+          ? "launchd kept the prior daemon pid"
+          : after.status.reason,
+    });
   }
-  if (isLaunchAgentPresent(status)) return 0;
-  if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
-  const after = statusDarwin(ctx);
-  if (isLaunchAgentPresent(after)) return 0;
-  if (kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
-    return failedCommand(ctx.error, "launchctl kickstart", kick);
-  }
-  return failedCommand(ctx.error, "launchctl verification", {
-    status: 1,
-    stdout: "",
-    stderr: after.reason,
-  });
+  return 0;
 }
 
 function activateLaunchAgent(
@@ -129,19 +149,48 @@ function activateLaunchAgent(
   service: string,
 ): number {
   if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
-  let status = statusDarwin(ctx);
-  if (!isLaunchAgentPresent(status)) {
+  let inspection = inspectDarwin(ctx);
+  if (!isLaunchAgentPresent(inspection.status)) {
     if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
-    status = statusDarwin(ctx);
+    inspection = inspectDarwin(ctx);
   }
-  if (status.state === "running") return 0;
+  if (!isLaunchAgentPresent(inspection.status)) {
+    return failedCommand(ctx.error, "launchctl verification", {
+      status: 1,
+      stdout: "",
+      stderr: inspection.status.reason,
+    });
+  }
+  // Installation only needs launchd to accept the newly written agent. Unlike
+  // an updater-triggered restart, it may report an unstructured transitional
+  // state without a PID, so do not apply the strict replacement verifier here.
+  if (inspection.status.state === "running") return 0;
   const kick = ctx.run("launchctl", ["kickstart", service]);
-  if (kick.status !== 0 && !isKickstartAlreadyInProgress(kick)) {
-    return recoverLaunchAgent(ctx, domain, plist, service, kick);
-  }
-  status = statusDarwin(ctx);
-  if (isLaunchAgentPresent(status)) return 0;
-  return recoverLaunchAgent(ctx, domain, plist, service, kick);
+  if (kick.status !== 0) return failedCommand(ctx.error, "launchctl kickstart", kick);
+  inspection = inspectDarwin(ctx);
+  if (isLaunchAgentPresent(inspection.status)) return 0;
+  return failedCommand(ctx.error, "launchctl verification", {
+    status: 1,
+    stdout: "",
+    stderr: inspection.status.reason,
+  });
+}
+
+function renderDarwinLauncher(ctx: HostServiceContext): string {
+  const updateRoot = resolveUpdateInstallDir(ctx.env, {
+    platform: ctx.platform,
+    home: ctx.home,
+    appData: ctx.appData,
+  });
+  const currentRoot = join(updateRoot, "current");
+  return renderUnixLaunchScript({
+    nodePath: ctx.nodePath,
+    currentRoot,
+    currentLauncherPath: join(currentRoot, "services/host-daemon/bin/auto-harness-host-daemon.mjs"),
+    fallbackRoot: ctx.checkoutRoot,
+    fallbackLauncherPath: ctx.launcherPath,
+    prepareLauncherPath: ctx.launcherPath,
+  });
 }
 
 export function installDarwin(ctx: HostServiceContext): number {
@@ -166,6 +215,8 @@ export function installDarwin(ctx: HostServiceContext): number {
     writeMode(ctx.fs, paths.envFile, preparedEnv.contents, 0o600, !envExists);
     ctx.log(`${envExists ? "Updated" : "Wrote"} ${paths.envFile} (mode 0600)`);
   }
+  writeMode(ctx.fs, paths.launcher, renderDarwinLauncher(ctx), 0o700);
+  ctx.log(`Wrote ${paths.launcher}`);
   writeMode(
     ctx.fs,
     paths.plist,
@@ -177,6 +228,7 @@ export function installDarwin(ctx: HostServiceContext): number {
       envFilePath: paths.envFile,
       pathValue: pathFromEnv(ctx.env) ?? "/usr/local/bin:/usr/bin:/bin",
       logPath: paths.log,
+      programArguments: ["/bin/sh", paths.launcher],
     }),
     0o644,
   );
@@ -186,6 +238,14 @@ export function installDarwin(ctx: HostServiceContext): number {
   const activated = activateLaunchAgent(ctx, domain, paths.plist, service);
   if (activated !== 0) return activated;
   ctx.log(`Enabled LaunchAgent ${DARWIN_LABEL} as the current user`);
+  return 0;
+}
+
+export function restartDarwin(ctx: HostServiceContext): number {
+  const service = `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`;
+  const restarted = kickstartAndVerify(ctx, service, inspectDarwin(ctx).pid);
+  if (restarted !== 0) return restarted;
+  ctx.log(`Restarted LaunchAgent ${DARWIN_LABEL}`);
   return 0;
 }
 

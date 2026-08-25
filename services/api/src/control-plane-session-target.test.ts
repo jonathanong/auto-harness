@@ -191,7 +191,8 @@ describe("resolveSessionTargetArgv", () => {
       targetIndex: 0,
       providerAccountId: "acct-a",
       commandId: "cmd-provider",
-      resolvedArgv: ["claude", "--print", "hello"],
+      resolvedArgv: ["claude", "--output-format", "json", "--print", "hello"],
+      resumeSpec: { argv: ["claude", "--output-format", "json", "--print"] },
     });
 
     state.providerAccounts.get("acct-a")!.usageLimitedUntil = "2026-01-02T00:00:00.000Z";
@@ -224,6 +225,118 @@ describe("resolveSessionTargetArgv", () => {
         worktree(),
       ),
     ).toBeNull();
+  });
+
+  it("upgrades legacy provider command forms without overriding explicit output choices", () => {
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:00:00.000Z" });
+    const cases = [
+      ["claude", ["claude", "-p"], ["claude", "--output-format", "json", "-p"]],
+      [
+        "windows-claude",
+        ["C:\\Tools\\claude.exe", "-p"],
+        ["C:\\Tools\\claude.exe", "--output-format", "json", "-p"],
+      ],
+      ["codex", ["codex", "exec"], ["codex", "exec", "--json"]],
+      ["codex-no-exec", ["codex"], ["codex"]],
+      [
+        "gemini",
+        ["/opt/bin/gemini", "--prompt"],
+        ["/opt/bin/gemini", "--output-format", "json", "--prompt"],
+      ],
+      ["grok", ["grok", "--single"], ["grok", "--output-format", "json", "--single"]],
+    ] as const;
+    state.hostInventories.set("host-1", {
+      hostId: "host-1",
+      repositories: [],
+      providerAccounts: cases.map(([id]) => ({ providerAccountId: `account-${id}` })),
+      commandProfiles: {},
+      updatedAt: "t",
+    });
+    for (const [id, argv, expected] of cases) {
+      state.providerAccounts.set(`account-${id}`, {
+        id: `account-${id}`,
+        providerId: `provider-${id}`,
+        label: id,
+        createdAt: "t",
+        updatedAt: "t",
+      });
+      state.commands.set(`command-${id}`, {
+        id: `command-${id}`,
+        name: id,
+        argv: [...argv],
+        appendPrompt: true,
+        providerId: `provider-${id}`,
+        createdAt: "t",
+        updatedAt: "t",
+      });
+      expect(
+        resolveSessionTargetArgv(
+          state,
+          buildProviderCatalog(state),
+          session({ target: { commandId: `command-${id}` } }),
+          worktree(),
+        ),
+      ).toEqual([...expected, "hello"]);
+    }
+    const explicitOutputCases = [
+      ["explicit-format", ["claude", "-p", "--output-format", "text"]],
+      ["explicit-inline-format", ["gemini", "-p", "--output-format=json"]],
+      ["explicit-codex-json", ["codex", "exec", "--json"]],
+      ["custom-provider-command", ["custom", "--print"]],
+    ] as const;
+    for (const [id, argv] of explicitOutputCases) {
+      state.commands.set(id, {
+        id,
+        name: id,
+        argv: [...argv],
+        appendPrompt: true,
+        providerId: "provider-claude",
+        createdAt: "t",
+        updatedAt: "t",
+      });
+      expect(
+        resolveSessionTargetArgv(
+          state,
+          buildProviderCatalog(state),
+          session({ target: { commandId: id } }),
+          worktree(),
+        ),
+      ).toEqual([...argv, "hello"]);
+    }
+    state.commands.set("separator", {
+      id: "separator",
+      name: "separator",
+      argv: ["claude", "-p", "--", "--raw"],
+      appendPrompt: true,
+      providerId: "provider-claude",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(
+      resolveSessionTargetArgv(
+        state,
+        buildProviderCatalog(state),
+        session({ target: { commandId: "separator" } }),
+        worktree(),
+      ),
+    ).toEqual(["claude", "--output-format", "json", "-p", "--", "--raw", "hello"]);
+    state.commands.set("empty-executable", {
+      id: "empty-executable",
+      name: "empty-executable",
+      argv: [""],
+      appendPrompt: true,
+      providerId: "provider-claude",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(
+      resolveSessionTargetArgv(
+        state,
+        buildProviderCatalog(state),
+        session({ target: { commandId: "empty-executable" } }),
+        worktree(),
+      ),
+    ).toEqual(["", "hello"]);
   });
 
   it("skips suppressed and native-fenced routes", () => {

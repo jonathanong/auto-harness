@@ -8,13 +8,20 @@ export type UpdateManifest = {
 };
 
 export type UpdateInstaller = {
-  stage(input: { version: string; artifact: Uint8Array }): Promise<void>;
+  /**
+   * `manifest` accompanies the artifact so a privileged Linux activation
+   * helper can independently re-verify the signed bytes it promotes. Other
+   * installers may ignore it.
+   */
+  stage(input: { version: string; artifact: Uint8Array; manifest?: UpdateManifest }): Promise<void>;
   activate(version: string): Promise<void>;
   restart(): Promise<void>;
+  rollback(): Promise<void>;
 };
 
 export type UpdateLifecycle = {
-  drain(): Promise<void>;
+  /** Resolve false when a pre-existing operator/policy drain was retained. */
+  drain(): Promise<boolean | void>;
   waitForIdle(): Promise<void>;
   resume(): Promise<void>;
 };
@@ -30,6 +37,7 @@ export type UpdateState =
   | { phase: "downloading"; currentVersion: string; targetVersion: string }
   | { phase: "staged"; currentVersion: string; targetVersion: string }
   | { phase: "restarting"; currentVersion: string; targetVersion: string }
+  | { phase: "deferred"; currentVersion: string; targetVersion: string }
   | { phase: "complete"; currentVersion: string }
   | { phase: "failed"; currentVersion: string; targetVersion?: string; error: string };
 
@@ -57,6 +65,11 @@ export class AgentUpdater {
   }
 
   run(): Promise<UpdateState> {
+    // A successful supervisor handoff ends this process's part of the
+    // transaction. The replacement daemon confirms health from its own boot;
+    // do not start a second activation while that durable acknowledgement is
+    // still pending.
+    if (this.state.phase === "restarting") return Promise.resolve(this.getState());
     if (this.running) return this.running;
     this.running = this.runOnce().finally(() => {
       this.running = undefined;
@@ -67,7 +80,7 @@ export class AgentUpdater {
   private async runOnce(): Promise<UpdateState> {
     let targetVersion: string | undefined;
     let drained = false;
-    let activationAttempted = false;
+    let activated = false;
     const currentVersion = this.state.currentVersion;
     try {
       const manifest = parseAndVerifyManifest(
@@ -83,7 +96,13 @@ export class AgentUpdater {
         currentVersion,
         targetVersion,
       });
-      await this.options.lifecycle.drain();
+      const ownsDrain = (await this.options.lifecycle.drain()) !== false;
+      // A maintenance or policy drain must survive a daemon handoff. Deferring
+      // leaves the active release and foreign drain untouched; a later poll
+      // retries once that owner has resumed the host.
+      if (!ownsDrain) {
+        return this.transition({ phase: "deferred", currentVersion, targetVersion });
+      }
       drained = true;
       await this.options.lifecycle.waitForIdle();
       this.transition({
@@ -93,24 +112,34 @@ export class AgentUpdater {
       });
       const artifact = await this.options.fetcher.fetchArtifact(manifest.artifactUrl);
       if (sha256(artifact) !== manifest.sha256) throw new Error("artifact checksum mismatch");
-      await this.options.installer.stage({ version: targetVersion, artifact });
+      await this.options.installer.stage({ version: targetVersion, artifact, manifest });
       this.transition({
         phase: "staged",
         currentVersion,
         targetVersion,
       });
-      activationAttempted = true;
       await this.options.installer.activate(targetVersion);
+      activated = true;
       this.transition({
         phase: "restarting",
         currentVersion,
         targetVersion,
       });
       await this.options.installer.restart();
-      return this.transition({ phase: "complete", currentVersion: targetVersion });
+      // `restart()` only requests a supervisor handoff. A durable boot marker
+      // is acknowledged by the replacement daemon after it registers, so this
+      // old process must never declare the update complete on its behalf.
+      return this.getState();
     } catch (error) {
       let failure = error instanceof Error ? error.message : String(error);
-      if (drained && !activationAttempted) {
+      if (activated) {
+        try {
+          await this.options.installer.rollback();
+        } catch (rollbackError) {
+          failure += `; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`;
+        }
+      }
+      if (drained) {
         try {
           await this.options.lifecycle.resume();
         } catch (resumeError) {

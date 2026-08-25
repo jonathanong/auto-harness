@@ -1,3 +1,5 @@
+import type { HostUpdateConfig } from "@auto-harness/shared";
+
 /** Enable/command override for a provider account at a repository or worktree scope. */
 type ProviderAccountOverride = {
   enabled?: boolean;
@@ -38,6 +40,7 @@ export type DaemonConfig = {
   setupScript?: string;
   allowedRoots?: string[];
   requiredEnvironment?: string[];
+  updateConfig?: HostUpdateConfig;
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
 };

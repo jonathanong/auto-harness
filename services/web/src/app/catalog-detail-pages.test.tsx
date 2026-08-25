@@ -94,6 +94,9 @@ describe("control catalog detail routes", () => {
       );
       expect(html).toContain('data-pw="page-provider-detail"');
       expect(html).toContain("Claude");
+      if (tab === "settings") {
+        expect(html).toContain('data-pw="form-provider-usage-rates"');
+      }
       if (!tab) {
         expect(html).not.toContain('data-pw="provider-account-unattached-warning"');
       }

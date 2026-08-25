@@ -27,6 +27,9 @@ export function formatSlackLifecycleMessage(
       `Session: ${session.url}`,
     ].join("\n");
   }
+  if (event === "host_offline") {
+    return [`⚠️ Host offline`, `Host: ${session.hostId ?? session.id}`].join("\n");
+  }
   return failedMessage(session);
 }
 

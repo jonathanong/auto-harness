@@ -6,6 +6,7 @@ import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SpawnProcessRunner } from "./executor.ts";
 import { PtyProcessRunner } from "./pty-runner.ts";
+import { UsageCapturingProcessRunner } from "./usage-adapter.ts";
 import { createGitClient } from "./git.ts";
 import { configureConnectionEvents } from "./daemon-connection-events.ts";
 import {
@@ -124,8 +125,13 @@ export class DaemonLoop {
     this.processRunner = processRunner;
     this.runtime = options.runtime;
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
-    const commandRunner =
+    const innerCommandRunner =
       options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
+    // Preserve explicitly supplied command runners as test and operator seams;
+    // production command execution is wrapped so provider usage envelopes are retained.
+    const commandRunner = options.commandRunner
+      ? innerCommandRunner
+      : new UsageCapturingProcessRunner(innerCommandRunner, this.now);
     const git = createGitClient(processRunner);
     this.worktrees = new WorktreeManager(options.config, git);
     this.runner = new SessionRunner({
@@ -295,6 +301,20 @@ export class DaemonLoop {
 
   async waitForIdle(): Promise<void> {
     await Promise.all([...this.inflight.values()].map((entry) => entry.work));
+  }
+
+  async resumeFromDrain(): Promise<void> {
+    if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
+    if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
+    this.drainRetry = undefined;
+    this.drainDeadline = undefined;
+    this.drainRequested = false;
+    this.draining = false;
+    const resolve = this.resolveDrainConfirmation;
+    this.resolveDrainConfirmation = undefined;
+    this.drainConfirmation = undefined;
+    resolve?.();
+    await this.register();
   }
 
   stop(): void {

@@ -707,8 +707,28 @@ export class DynamoPlaneStorageBase {
     return locks.releaseHostLock(this.ctx, hostId, connectionId);
   }
 
-  releaseHostConnection(hostId: string, connectionId: string): Promise<boolean> {
-    return locks.releaseHostConnection(this.ctx, { hostId, connectionId });
+  releaseHostConnection(
+    hostId: string,
+    connectionId: string,
+    offlineAlert?: Omit<locks.HostOfflineAlertCandidate, "hostId">,
+  ): Promise<boolean> {
+    return locks.releaseHostConnection(this.ctx, {
+      hostId,
+      connectionId,
+      ...(offlineAlert ? { offlineAlert } : {}),
+    });
+  }
+
+  recordHostOfflineAlertCandidate(candidate: locks.HostOfflineAlertCandidate): Promise<boolean> {
+    return locks.recordHostOfflineAlertCandidate(this.ctx, candidate);
+  }
+
+  clearHostOfflineAlertCandidate(candidate: locks.HostOfflineAlertCandidate): Promise<boolean> {
+    return locks.clearHostOfflineAlertCandidate(this.ctx, candidate);
+  }
+
+  listHostOfflineAlertCandidates(): Promise<locks.HostOfflineAlertCandidate[]> {
+    return locks.listHostOfflineAlertCandidates(this.ctx);
   }
 
   heartbeatConnection(hostId: string, connectionId: string, at: string): Promise<boolean> {
