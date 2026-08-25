@@ -52,13 +52,34 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * `.npmrc` setting `store-dir`/`modules-dir` to an arbitrary absolute path
  * and writes there as the daemon user, before the provider sandbox starts —
  * the same admin-only arbitrary-write boundary the scripts/pnpmfile flags
- * protect. `modules-dir`/`virtual-store-dir` are pinned to their existing
- * pnpm defaults (both already resolve under `cwd`), so this is a no-op for a
- * repository that doesn't try to redirect them. `store-dir` is pinned to a
- * fixed path under the daemon's own (session-independent) `HOME` rather than
- * pnpm's platform-specific default location, so it stays content-addressable
- * and shared/warm across sessions exactly as before, just anchored somewhere
- * a checked-out `.npmrc` cannot redirect it away from.
+ * protect.
+ *
+ * `modules-dir`/`virtual-store-dir` are pinned to pnpm's own *relative*
+ * defaults (`node_modules`, `node_modules/.pnpm`) rather than an absolute
+ * path resolved against `cwd`. This distinction is load-bearing, not
+ * cosmetic: pnpm resolves `modules-dir`/`virtual-store-dir` per workspace
+ * package (each of `modules/*`/`services/*` normally gets its own
+ * `<package>/node_modules` with a `link:`/symlink into the shared
+ * `.pnpm` virtual store for workspace-internal deps like
+ * `@auto-harness/shared`). Pinning an *absolute* value collapses that
+ * per-package resolution — confirmed empirically against a full workspace
+ * install with the pinned pnpm: every workspace package's `node_modules`
+ * goes uncreated, root `node_modules` ends up with nothing but `.pnpm` and
+ * the state file, and `@auto-harness/shared` becomes unresolvable from
+ * every dependent package, which is the exact failure class #340 exists to
+ * fix. Relative literals still take CLI precedence over a malicious
+ * `.npmrc` (verified the same way: a checked-out `.npmrc` redirecting
+ * `modules-dir`/`virtual-store-dir` has no effect), while reproducing
+ * pnpm's default per-package linking topology exactly. `store-dir` has no
+ * such per-package resolution (it's one shared content-addressable store
+ * for the whole install), so it stays pinned absolute, under the daemon's
+ * own (session-independent) `HOME` rather than pnpm's platform-specific
+ * default location — anchored somewhere a checked-out `.npmrc` cannot
+ * redirect it away from. Because that default location differs from pnpm's
+ * usual platform default, the first install after this pin takes effect is
+ * a cold store (full download); every subsequent install — same worktree or
+ * a fresh one — reuses the warm, content-addressable store exactly as
+ * before.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -69,7 +90,6 @@ export async function installWorkspaceDependencies(
   environment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
-  const modulesDir = join(cwd, "node_modules");
   const storeDir = join(environment.HOME ?? homedir(), ".auto-harness-pnpm-store");
   const installArgs = [
     "install",
@@ -77,11 +97,11 @@ export async function installWorkspaceDependencies(
     "--ignore-scripts",
     "--ignore-pnpmfile",
     "--modules-dir",
-    modulesDir,
+    "node_modules",
     "--store-dir",
     storeDir,
     "--virtual-store-dir",
-    join(modulesDir, ".pnpm"),
+    "node_modules/.pnpm",
   ];
   return runner.run({
     argv:

@@ -56,11 +56,11 @@ describe("installWorkspaceDependencies", () => {
         "--ignore-scripts",
         "--ignore-pnpmfile",
         "--modules-dir",
-        join(cwd, "node_modules"),
+        "node_modules",
         "--store-dir",
         join("/home/harness", ".auto-harness-pnpm-store"),
         "--virtual-store-dir",
-        join(cwd, "node_modules", ".pnpm"),
+        "node_modules/.pnpm",
       ],
       cwd,
       env: { PATH: "/usr/bin", HOME: "/home/harness", CI: "true" },
@@ -98,11 +98,11 @@ describe("installWorkspaceDependencies", () => {
       "--ignore-scripts",
       "--ignore-pnpmfile",
       "--modules-dir",
-      join(cwd, "node_modules"),
+      "node_modules",
       "--store-dir",
       join("/home/harness", ".auto-harness-pnpm-store"),
       "--virtual-store-dir",
-      join(cwd, "node_modules", ".pnpm"),
+      "node_modules/.pnpm",
     ]);
   });
 

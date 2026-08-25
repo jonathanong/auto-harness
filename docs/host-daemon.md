@@ -519,8 +519,8 @@ conversation's existing worktree.
 
 After any configured setup scripts finish, the daemon checks the session cwd for a root
 `pnpm-lock.yaml`. If one is present it runs
-`pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --modules-dir <cwd>/node_modules
---store-dir <HOME>/.auto-harness-pnpm-store --virtual-store-dir <cwd>/node_modules/.pnpm`
+`pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --modules-dir node_modules
+--store-dir <HOME>/.auto-harness-pnpm-store --virtual-store-dir node_modules/.pnpm`
 there before the provider launches — no operator configuration needed beyond `pnpm` being
 resolvable on the daemon service user's `PATH`, the same [CLI not found](#cli-not-found) trap
 that applies to provider CLIs (nvm users: point the unit file at a stable node/bin path).
@@ -552,11 +552,22 @@ reason: pnpm also reads all three from a project `.npmrc`, and (confirmed agains
 path makes the daemon write dependency state there — as the daemon user, before the provider
 sandbox starts — the same boundary the scripts/pnpmfile flags protect. CLI flags outrank project
 `.npmrc`, so passing them explicitly closes the redirect. `--modules-dir`/`--virtual-store-dir` are
-pinned to pnpm's own existing defaults (both already resolve under the session `cwd`), so this is a
-no-op for a repository that isn't trying to redirect them. `--store-dir` is pinned to a fixed path
-under the daemon's own (session-independent) `HOME` rather than pnpm's platform-specific default
-location, so the content-addressable store stays shared and warm across sessions exactly as
-before, just anchored somewhere a checked-out `.npmrc` cannot move it away from.
+pinned to pnpm's own **relative** defaults (`node_modules`, `node_modules/.pnpm`), not an absolute
+path resolved against the session `cwd`. That distinction matters for a real workspace: pnpm
+resolves `modules-dir`/`virtual-store-dir` per workspace package, so each of `modules/*`/`services/*`
+normally gets its own `<package>/node_modules` symlinked into the shared `.pnpm` virtual store for
+workspace-internal deps (for example `@auto-harness/shared`). Pinning an absolute value collapses
+that per-package resolution — verified against a full workspace install with the pinned pnpm: every
+workspace package's `node_modules` goes uncreated and workspace-internal imports become
+unresolvable, which is the exact class of failure this install step exists to fix. The relative
+literals still take CLI precedence over a malicious `.npmrc` (same verification, redirect attempt
+has no effect) while reproducing pnpm's default per-package linking topology exactly. `--store-dir`
+has no such per-package resolution — one shared content-addressable store covers the whole
+install — so it stays pinned to a fixed absolute path under the daemon's own (session-independent)
+`HOME` rather than pnpm's platform-specific default location, anchored somewhere a checked-out
+`.npmrc` cannot move it away from. Because that differs from pnpm's usual platform default, the
+first install after this pin takes effect is a cold store (full download); every install after
+that — same worktree or a fresh one — reuses the warm store exactly as before.
 
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`

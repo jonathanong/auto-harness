@@ -13,9 +13,8 @@ import { WorktreeManager } from "./worktree-manager.ts";
 /** Matches installWorkspaceDependencies' platform-conditional argv[0]. */
 const INSTALL_ARGV0 = process.platform === "win32" ? "cmd.exe" : "pnpm";
 
-/** Matches installWorkspaceDependencies' full argv for a given worktree, using the real (unmocked) childEnvSource default of process.env. */
-function installArgvFor(cwd: string): string[] {
-  const modulesDir = join(cwd, "node_modules");
+/** Matches installWorkspaceDependencies' full argv, using the real (unmocked) childEnvSource default of process.env. */
+function installArgv(): string[] {
   const storeDir = join(process.env.HOME ?? homedir(), ".auto-harness-pnpm-store");
   const args = [
     "install",
@@ -23,11 +22,11 @@ function installArgvFor(cwd: string): string[] {
     "--ignore-scripts",
     "--ignore-pnpmfile",
     "--modules-dir",
-    modulesDir,
+    "node_modules",
     "--store-dir",
     storeDir,
     "--virtual-store-dir",
-    join(modulesDir, ".pnpm"),
+    "node_modules/.pnpm",
   ];
   return process.platform === "win32"
     ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...args]
@@ -78,7 +77,7 @@ describe("SessionRunner dependency install", () => {
     };
     const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
     expect(result.status).toBe("completed");
-    expect(calls).toEqual([installArgvFor(cwd), ["echo", "hello"]]);
+    expect(calls).toEqual([installArgv(), ["echo", "hello"]]);
     const system = result.logs
       .filter((chunk) => chunk.stream === "system")
       .map((chunk) => chunk.content);
