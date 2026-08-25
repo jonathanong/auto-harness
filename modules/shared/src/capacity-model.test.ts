@@ -10,6 +10,7 @@ describe("capacity model", () => {
   it("scales log volume from the measured daemon coalesce rate", () => {
     const estimate = estimateMonthlyCapacity(REFERENCE_WORKLOAD);
     expect(estimate.logChunksPerSession).toBe(15 * 60 * CAPACITY_CONSTANTS.daemonLogMessagesPerSec);
+    expect(estimate.logBytesPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxBytes);
     expect(estimate.dynamoLogWritesPerMonth).toBe(estimate.logChunksPerSession * 100 * 30);
     expect(estimate.dynamoLogTransactionsPerMonth).toBe(estimate.dynamoLogWritesPerMonth);
     expect(estimate.schedulerInvocationsPerMonth).toBe(30 * 24 * 60);
@@ -53,5 +54,29 @@ describe("capacity model", () => {
     expect(withSchedules.lambdaInvocationsPerMonth).toBe(
       withoutSchedules.lambdaInvocationsPerMonth,
     );
+  });
+
+  it("caps long-running session log estimates at the streamer's chunk and byte budgets", () => {
+    const estimate = estimateMonthlyCapacity({
+      ...REFERENCE_WORKLOAD,
+      sessionDurationSeconds: CAPACITY_CONSTANTS.sessionLogMaxChunks,
+    });
+    expect(estimate.logChunksPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxChunks);
+    expect(estimate.logBytesPerSession).toBe(CAPACITY_CONSTANTS.sessionLogMaxBytes);
+    expect(estimate.dynamoLogWritesPerMonth).toBe(
+      CAPACITY_CONSTANTS.sessionLogMaxChunks * REFERENCE_WORKLOAD.sessionsPerDay * 30,
+    );
+  });
+
+  it("includes each scheduled repair sweep in Lambda requests", () => {
+    const estimate = estimateMonthlyCapacity({
+      sessionsPerDay: 0,
+      sessionDurationSeconds: 0,
+      connectedHosts: 0,
+      connectedViewers: 0,
+      schedules: 0,
+      archiveBytesPerSession: 0,
+    });
+    expect(estimate.lambdaInvocationsPerMonth).toBe(estimate.schedulerInvocationsPerMonth);
   });
 });

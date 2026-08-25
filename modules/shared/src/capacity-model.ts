@@ -7,6 +7,11 @@ export const CAPACITY_CONSTANTS = {
   websocketKeepaliveSeconds: 20,
   schedulerIntervalSeconds: 60,
   apiGatewayMaxFrameBytes: 32 * 1024,
+  /** Largest log content payload after leaving room for a JSON WS envelope. */
+  daemonLogPayloadMaxBytes: Math.floor((32 * 1024 - 512) / 6),
+  /** LogStreamer drops ordinary CLI output after either of these per-session bounds. */
+  sessionLogMaxChunks: 10_000,
+  sessionLogMaxBytes: 10 * 1024 * 1024,
   dynamoItemMaxBytes: 400 * 1024,
   secondsPerMonth: 30 * 24 * 3600,
 };
@@ -22,6 +27,8 @@ export type CapacityWorkload = {
 
 export type CapacityEstimate = {
   logChunksPerSession: number;
+  /** Worst-case retained ordinary CLI log content, before archive JSONL overhead. */
+  logBytesPerSession: number;
   dynamoLogWritesPerMonth: number;
   dynamoLogTransactionsPerMonth: number;
   websocketMessagesPerMonth: number;
@@ -44,9 +51,20 @@ export const REFERENCE_WORKLOAD: CapacityWorkload = {
 };
 
 export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEstimate {
-  const logChunksPerSession = Math.max(
+  const uncappedLogChunksPerSession = Math.max(
     1,
     Math.ceil(workload.sessionDurationSeconds * CAPACITY_CONSTANTS.daemonLogMessagesPerSec),
+  );
+  // LogStreamer bounds a session both by emitted chunk count and retained
+  // payload bytes. The byte budget is reported separately: small chunks can
+  // reach the chunk limit before it, while full-size chunks reach bytes first.
+  const logChunksPerSession = Math.min(
+    uncappedLogChunksPerSession,
+    CAPACITY_CONSTANTS.sessionLogMaxChunks,
+  );
+  const logBytesPerSession = Math.min(
+    logChunksPerSession * CAPACITY_CONSTANTS.daemonLogPayloadMaxBytes,
+    CAPACITY_CONSTANTS.sessionLogMaxBytes,
   );
   const sessionsPerMonth = workload.sessionsPerDay * 30;
   const dynamoLogWritesPerMonth = sessionsPerMonth * logChunksPerSession;
@@ -72,11 +90,13 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
   const scheduleEvaluationsPerMonth = schedulerInvocationsPerMonth * workload.schedules;
   return {
     logChunksPerSession,
+    logBytesPerSession,
     dynamoLogWritesPerMonth,
     dynamoLogTransactionsPerMonth,
     websocketMessagesPerMonth,
     // Viewer fanout is an outbound gateway message, not an invocation of the WebSocket Lambda.
-    lambdaInvocationsPerMonth: inboundWebsocketMessagesPerMonth + sessionsPerMonth * 10,
+    lambdaInvocationsPerMonth:
+      inboundWebsocketMessagesPerMonth + sessionsPerMonth * 10 + schedulerInvocationsPerMonth,
     schedulerInvocationsPerMonth,
     scheduleEvaluationsPerMonth,
     archiveBytesPerMonth: sessionsPerMonth * workload.archiveBytesPerSession,

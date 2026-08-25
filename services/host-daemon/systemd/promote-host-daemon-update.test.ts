@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertProtectedUpdateRootPath,
+  normalizeUpdateRoot,
   promotionWorkPrefix,
 } from "./promote-host-daemon-update.mjs";
 
@@ -81,6 +82,16 @@ describe("systemd update-root protection", () => {
       "update root must be a canonical absolute path",
     );
     expect(symlinkFixture.calls).toEqual(["/", "/srv"]);
+  });
+
+  it("normalizes supported absolute update-root spellings before protection", () => {
+    expect(normalizeUpdateRoot("/srv/auto-harness/updates/")).toBe("/srv/auto-harness/updates");
+    expect(normalizeUpdateRoot("/srv/auto-harness/updates/../current")).toBe(
+      "/srv/auto-harness/current",
+    );
+    expect(() => normalizeUpdateRoot("relative/updates")).toThrow(
+      "HARNESS_UPDATE_INSTALL_DIR must be absolute",
+    );
   });
 
   it("stages promotion below the protected releases tree for an atomic rename", () => {

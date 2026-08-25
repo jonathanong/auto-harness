@@ -116,7 +116,9 @@ Linux default keeps that immutable update root at `/opt/auto-harness`, separate 
 deployment staging checkout at `/opt/auto-harness/staging`. When run with
 `sudo`, `install-service` also locks a legacy `current -> versions/<version>` target before
 enabling the unit.
-`KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
+`KillMode`, `TimeoutStopSec`, and `Type=notify` stay as in the checked-in unit. The daemon sends
+systemd `READY=1` only after it has registered with the control plane; that readiness barrier lets
+the root-owned post-start helper confirm a promoted release only after the replacement is usable.
 
 Uninstall (removes the service definition, not the checkout):
 
@@ -211,10 +213,11 @@ never settled, so `systemctl stop` hung indefinitely even with no session in fli
 daemon now stops announcing after `drainDeadlineMs` (30s) and forces exit after
 `HARNESS_SHUTDOWN_TIMEOUT_MS` (default 10min), with this unit as the outer backstop.
 
-The service is `Type=simple`: the daemon does not implement `sd_notify` or a systemd watchdog.
-`systemctl status` proves process liveness, while host online/keepalive state in the control plane is
-the readiness signal. Do not add `Type=notify`, `WatchdogSec`, or `ExecReload` without implementing
-their daemon protocols first.
+The service is `Type=notify` with `NotifyAccess=main`: after control-plane registration, the main
+daemon process sends `sd_notify READY=1` with a `registered` status. `systemctl status` is therefore
+an initial registration-readiness check, while host online/keepalive state in the control plane
+remains the continuous readiness signal. The unit does not implement a systemd watchdog or reload
+protocol; do not add `WatchdogSec` or `ExecReload` without implementing their daemon protocols.
 
 7. Confirm the service and control-plane registration:
 

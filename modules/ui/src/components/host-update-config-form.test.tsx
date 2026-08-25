@@ -9,14 +9,14 @@ import { HostUpdateConfigForm } from "./host-update-config-form.tsx";
 
 afterEach(reset);
 
-const updateConfig: HostUpdateConfig = {
+const updateConfig = {
   enabled: true,
   manifestUrl: "https://updates.example.test/manifest.json",
   publicKey: "-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----",
   installDir: "/opt/auto-harness",
   pollMs: 60_000,
   daemonVersion: "1.2.3",
-};
+} satisfies HostUpdateConfig;
 
 function setTextValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   act(() => {

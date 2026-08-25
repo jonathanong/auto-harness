@@ -93,6 +93,18 @@ export function assertProtectedUpdateRootPath(root, statPath = lstatSync) {
 }
 
 /**
+ * systemd passes the operator-provided environment value directly to this
+ * helper. Accept absolute spellings such as `/opt/auto-harness/`, but reduce
+ * them to the exact canonical path checked below before any filesystem use.
+ */
+export function normalizeUpdateRoot(root) {
+  if (!isAbsolute(root)) {
+    throw new UnsafeUpdateRootPathError("HARNESS_UPDATE_INSTALL_DIR must be absolute");
+  }
+  return resolve(root);
+}
+
+/**
  * Root-owned promotion must stage below `releases` so its final rename is on
  * the same filesystem as the active pointer. A host's `/tmp` may be a separate
  * mount, where a cross-device rename would fail after verification.
@@ -325,9 +337,9 @@ function promote(root, incoming) {
 }
 
 function main() {
-  const root = process.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness";
-  if (!isAbsolute(root))
-    throw new UnsafeUpdateRootPathError("HARNESS_UPDATE_INSTALL_DIR must be absolute");
+  const root = normalizeUpdateRoot(
+    process.env.HARNESS_UPDATE_INSTALL_DIR?.trim() || "/opt/auto-harness",
+  );
   assertProtectedUpdateRootPath(root);
   const incoming = join(root, incomingName);
   if (process.argv[2] === "--confirm-ready") {
