@@ -80,13 +80,22 @@ describe("services/web CSP connect-src", () => {
     expect(config.output).toBe("standalone");
     expect(config.env).toBeUndefined();
     expect(await config.rewrites!()).toEqual([]);
-    const headerSets = await config.headers!();
-    expect(headerSets).toContainEqual({
-      source: "/_next/static/:path*",
-      headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
-    });
     const csp = await loadCspHeader();
     expect(csp).toContain("connect-src 'self'");
     expect(csp).not.toContain("ws://127.0.0.1:7420");
+  });
+
+  it("does not set a custom header on any /_next/* route", async () => {
+    // Next.js already sets Cache-Control itself for hashed static assets under /_next/static
+    // (immutable in production, no-cache in dev — see router-server.js's default-headers
+    // branch, gated on `!res.getHeader("cache-control")`). A config-level override here would
+    // apply unconditionally, including in `next dev`, suppressing Next's dev-safe default and
+    // triggering Next's own build warning that a custom Cache-Control header "can break
+    // Next.js development behavior." See #356.
+    process.env.HARNESS_WEB_CLOUD = "1";
+    vi.resetModules();
+    const { default: config } = await import("./next.config.ts");
+    const headerSets = await config.headers!();
+    expect(headerSets.some((entry) => entry.source.startsWith("/_next/"))).toBe(false);
   });
 });
