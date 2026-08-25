@@ -35,6 +35,14 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * around setup scripts and command argv (docs/roles.md). A repository that
  * genuinely needs those scripts can run them through its admin-configured
  * `setupScript` instead.
+ *
+ * `--ignore-pnpmfile` closes the same hole for `.pnpmfile.cjs`: pnpm
+ * `require()`s and calls that file's hooks (`readPackage`,
+ * `afterAllResolved`, ...) as part of its own resolution logic, not as an
+ * npm lifecycle script, so `--ignore-scripts` alone does not stop it from
+ * running. A `.pnpmfile.cjs` committed to a non-admin session author's ref
+ * would otherwise execute arbitrary code as the daemon user before the
+ * frozen-lockfile check even runs.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -45,11 +53,12 @@ export async function installWorkspaceDependencies(
   environment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
+  const installArgs = ["install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"];
   return runner.run({
     argv:
       platform === "win32"
-        ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "install", "--frozen-lockfile", "--ignore-scripts"]
-        : ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
+        ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...installArgs]
+        : ["pnpm", ...installArgs],
     cwd,
     env: { ...environment, CI: "true" },
     timeoutMs,

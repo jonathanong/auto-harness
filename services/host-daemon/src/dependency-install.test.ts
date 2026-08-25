@@ -49,7 +49,7 @@ describe("installWorkspaceDependencies", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(seen).toMatchObject({
-      argv: ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
+      argv: ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"],
       cwd,
       env: { PATH: "/usr/bin", CI: "true" },
       timeoutMs: 5_000,
@@ -76,6 +76,7 @@ describe("installWorkspaceDependencies", () => {
       "install",
       "--frozen-lockfile",
       "--ignore-scripts",
+      "--ignore-pnpmfile",
     ]);
   });
 
