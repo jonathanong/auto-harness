@@ -843,13 +843,15 @@ ERROR: CLI tool not found: codex
 GET /hosts → online: true, gitReady: true
 ```
 
-No error in the log, no error from `status`. Sessions just stay `queued` and never move to `running`.
+No control-plane error, no error from `status`. Sessions just stay `queued` and never move to
+`running`. The daemon does log the refusal locally — check the daemon log for
+`execution profile unavailable: refused assign ...` before assuming there's no trace at all.
 
 - Cause: `HARNESS_EXECUTION_PROFILES` is unset, or missing an entry for the account a session
   needs. Assignment is fail-closed by design (see [Config Loader](#config-loader)) — with no
-  advertised readiness for that exact Provider Account ID, the daemon refuses the assignment
-  silently (no ACK). The host keeps reporting healthy because registration and Git worktrees are
-  unaffected.
+  advertised readiness for that exact Provider Account ID, the daemon refuses the assignment with
+  no ACK and no control-plane-visible error. The host keeps reporting healthy because registration
+  and Git worktrees are unaffected.
 - Fix: set `HARNESS_EXECUTION_PROFILES` to an absolute-path JSON file mapping every attached
   Provider Account ID (not Provider ID — see [api.md](api.md) `/provider-accounts`) to a `home`
   directory that exists on the host. Apply with `install-service`, which persists the env var and

@@ -130,7 +130,9 @@ pnpm local:daemon uninstall-service
 
 Every provider account attached to this host needs an entry in `HARNESS_EXECUTION_PROFILES` before
 the daemon will assign it a session. Without it, the daemon still connects, registers, and reports
-`gitReady: true` — dispatch just silently queues forever, with no ACK and no error anywhere. See
+`gitReady: true` — dispatch just silently queues forever, with no ACK and no control-plane error.
+The daemon does log it locally (`execution profile unavailable: refused assign ...`), so check the
+daemon log before assuming there's no trace at all. See
 [host-daemon.md#config-loader](host-daemon.md#config-loader) for the JSON schema (keyed by
 **Provider Account ID**, not Provider ID) and
 [host-daemon.md#sessions-queue-forever-host-reports-healthy](host-daemon.md#sessions-queue-forever-host-reports-healthy)
