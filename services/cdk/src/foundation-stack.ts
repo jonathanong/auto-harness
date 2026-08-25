@@ -8,7 +8,7 @@ import type { Construct } from "constructs";
 import { createFoundationDataAccess } from "./foundation-data-access.ts";
 import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 
-export type FoundationStackProps = StackProps & {
+type FoundationStackProps = StackProps & {
   /** Physical table name prefix. Must match `HARNESS_DDB_PREFIX` at runtime. */
   tablePrefix?: string;
   /** Optional globally unique archive bucket name. Leave unset for a generated name. */
