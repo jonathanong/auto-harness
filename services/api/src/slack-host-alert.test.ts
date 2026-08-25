@@ -4,6 +4,7 @@ import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
 import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import {
+  enqueueFencedHostOfflineAlert,
   enqueueHostOfflineAlert,
   planHostOfflineAlert,
   type HostOfflineAlertState,
@@ -110,6 +111,21 @@ describe("host offline Slack alerts", () => {
       reason: "stale",
       lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
     });
+    expect(enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("uses the regular outbox when the storage has no atomic candidate adapter", async () => {
+    const enqueue = vi.fn(async () => "created" as const);
+    await expect(
+      enqueueFencedHostOfflineAlert(
+        alertState({ enqueue, getSlackIntegration: async () => slackRecord() }),
+        {
+          hostId: "host-fallback",
+          reason: "stale",
+          lastHeartbeatAt: now,
+        },
+      ),
+    ).resolves.toBe("enqueued");
     expect(enqueue).toHaveBeenCalledOnce();
   });
 });

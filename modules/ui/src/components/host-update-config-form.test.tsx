@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
+import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type HostUpdateConfig, type mutateHostUpdateConfig } from "@auto-harness/shared";
 
-import { field, mount, reset, setValue, submit } from "./action-form-test-helpers.ts";
+import { field, mount, press, reset, setValue, submit } from "./action-form-test-helpers.ts";
 import { HostUpdateConfigForm } from "./host-update-config-form.tsx";
 
 afterEach(reset);
@@ -16,6 +17,16 @@ const updateConfig: HostUpdateConfig = {
   pollMs: 60_000,
   daemonVersion: "1.2.3",
 };
+
+function setTextValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  act(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+    descriptor?.set?.call(element, value);
+    element.dispatchEvent(
+      new InputEvent("input", { bubbles: true, data: value, inputType: "insertText" }),
+    );
+  });
+}
 
 describe("HostUpdateConfigForm", () => {
   it("renders every structured updater field and saves a typed host setting", async () => {
@@ -97,5 +108,49 @@ describe("HostUpdateConfigForm", () => {
     await submit(field(failed.container, "form-host-update-config"));
     expect(field(document.body, "host-update-config-error").textContent).toBe("cannot save");
     failed.unmount();
+  });
+
+  it("tracks every editable field and reports thrown mutation errors", async () => {
+    let saved: HostUpdateConfig | undefined;
+    const view = mount(
+      <HostUpdateConfigForm
+        hostId="host"
+        updateConfig={{ enabled: false }}
+        mutateUpdate={async (_hostId, next) => {
+          saved = next;
+          return { ok: true };
+        }}
+        canWriteExecConfig
+      />,
+    );
+    press(field<HTMLInputElement>(view.container, "host-update-enabled"));
+    setTextValue(field(view.container, "host-update-manifest-url"), updateConfig.manifestUrl);
+    setTextValue(
+      field(view.container, "host-update-public-key"),
+      "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+    );
+    setValue(field(view.container, "host-update-daemon-version"), "2.0.0");
+    await submit(field(view.container, "form-host-update-config"));
+    expect(saved).toMatchObject({
+      enabled: true,
+      manifestUrl: updateConfig.manifestUrl,
+      publicKey: "-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----",
+      daemonVersion: "2.0.0",
+    });
+    view.unmount();
+
+    const thrown = mount(
+      <HostUpdateConfigForm
+        hostId="host"
+        updateConfig={updateConfig}
+        mutateUpdate={async () => {
+          throw new Error("network down");
+        }}
+        canWriteExecConfig
+      />,
+    );
+    await submit(field(thrown.container, "form-host-update-config"));
+    expect(field(document.body, "host-update-config-error").textContent).toBe("network down");
+    thrown.unmount();
   });
 });

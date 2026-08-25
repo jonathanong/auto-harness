@@ -355,6 +355,50 @@ describe("durable host disconnect", () => {
     expect(state.disconnectedHosts.has(candidate.hostId)).toBe(false);
   });
 
+  it("does not clear a candidate when the exact durable clear loses its fence", async () => {
+    const candidate = {
+      hostId: "clear-lost",
+      reason: "agent heartbeat stale; requeued",
+      lastHeartbeatAt: "2000-01-01T00:00:00.000Z",
+    };
+    const integration = {
+      id: "slack",
+      type: "slack" as const,
+      encryptedConfig: "x",
+      defaultChannel: "#ops",
+      enabled: false,
+      notifications: DEFAULT_SLACK_NOTIFICATIONS,
+      signingSecretConfigured: false,
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const atomic = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(atomic, {
+      listHostOfflineAlertCandidates: async () => [candidate],
+      recordHostOfflineAlertCandidate: async () => true,
+      clearHostOfflineAlertCandidate: async () => false,
+      enqueueHostOfflineAlertCandidate: async () => true,
+      getSlackIntegration: async () => integration,
+      enqueue: async () => "created" as const,
+    });
+    atomic.disconnectedHosts.set(candidate.hostId, { lastHeartbeatAt: candidate.lastHeartbeatAt });
+    await expect(reclaimStaleHostsDurable(atomic, Date.now())).resolves.toEqual([]);
+    expect(atomic.disconnectedHosts.has(candidate.hostId)).toBe(false);
+
+    const regular = createControlPlaneState({ heartbeatStaleMs: 1 });
+    setDurableReadStorage(regular, {
+      listHostOfflineAlertCandidates: async () => [candidate],
+      recordHostOfflineAlertCandidate: async () => true,
+      clearHostOfflineAlertCandidate: async () => false,
+      getSlackIntegration: async () => ({ ...integration, enabled: true }),
+      enqueue: async () => "created" as const,
+    });
+    regular.disconnectedHosts.set(candidate.hostId, { lastHeartbeatAt: candidate.lastHeartbeatAt });
+    await expect(reclaimStaleHostsDurable(regular, Date.now())).resolves.toEqual([]);
+    expect(regular.disconnectedHosts.has(candidate.hostId)).toBe(false);
+  });
+
   it("drops stale local connections and reports requeues even when exact release loses", async () => {
     const plane = new ControlPlane({ heartbeatStaleMs: 1 });
     plane.state.hostConnection.set("h", "c");
