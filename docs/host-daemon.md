@@ -519,7 +519,8 @@ conversation's existing worktree.
 
 After any configured setup scripts finish, the daemon checks the session cwd for a root
 `pnpm-lock.yaml`. If one is present it runs
-`pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile`
+`pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --modules-dir <cwd>/node_modules
+--store-dir <HOME>/.auto-harness-pnpm-store --virtual-store-dir <cwd>/node_modules/.pnpm`
 there before the provider launches — no operator configuration needed beyond `pnpm` being
 resolvable on the daemon service user's `PATH`, the same [CLI not found](#cli-not-found) trap
 that applies to provider CLIs (nvm users: point the unit file at a stable node/bin path).
@@ -545,6 +546,18 @@ boundary that `fleet:exec-config`/`catalog:write` draw around setup scripts and 
 [roles.md](roles.md)). A repository that genuinely needs those scripts can run them through its
 admin-configured `setupScript` instead.
 
+`--modules-dir`, `--store-dir`, and `--virtual-store-dir` are pinned explicitly for the same
+reason: pnpm also reads all three from a project `.npmrc`, and (confirmed against the pinned
+`pnpm@10.28.2`) a checked-out `.npmrc` setting `store-dir`/`modules-dir` to an arbitrary absolute
+path makes the daemon write dependency state there — as the daemon user, before the provider
+sandbox starts — the same boundary the scripts/pnpmfile flags protect. CLI flags outrank project
+`.npmrc`, so passing them explicitly closes the redirect. `--modules-dir`/`--virtual-store-dir` are
+pinned to pnpm's own existing defaults (both already resolve under the session `cwd`), so this is a
+no-op for a repository that isn't trying to redirect them. `--store-dir` is pinned to a fixed path
+under the daemon's own (session-independent) `HOME` rather than pnpm's platform-specific default
+location, so the content-addressable store stays shared and warm across sessions exactly as
+before, just anchored somewhere a checked-out `.npmrc` cannot move it away from.
+
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
 is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,
@@ -553,16 +566,18 @@ install step also gets its own remaining-time budget computed after the setup-sc
 completes (capped at 600s), rather than inheriting whatever was left of the setup loop's shared
 deadline — a slow setup script no longer starves the install of time it would otherwise have had.
 On Windows the install runs through
-`cmd.exe /d /s /c pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile` rather than a
-bare `pnpm`, since Node's `child_process.spawn` (`shell: false`) cannot execute a `.cmd` shim
-directly.
+`cmd.exe /d /s /c pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --modules-dir
+... --store-dir ... --virtual-store-dir ...` rather than a bare `pnpm`, since Node's
+`child_process.spawn` (`shell: false`) cannot execute a `.cmd` shim directly.
 
 Two known gaps remain out of scope for this step and are tracked separately: pnpm can still be
 hijacked on Windows by a ref-committed `pnpm.cmd`/`.bat`/`.exe` ahead of the daemon's real pnpm on
 `PATH` (`cmd.exe` searches the untrusted checkout `cwd` before `PATH`), and a `file:`/`link:`
-dependency in the ref's manifest or lockfile can pull files from outside the claimed checkout into
-`node_modules`. Both are instances of the same "bare argv0 + untrusted cwd" class that also reaches
-`git` invocations during checkout, not something this install step alone can close — tracked in
+dependency in the ref's manifest or lockfile can still pull files from outside the claimed checkout
+_into_ `node_modules` even with the writable directories pinned above — pinning where pnpm writes
+doesn't constrain what a dependency specifier tells it to read from. Both are instances of the same
+"bare argv0 + untrusted cwd" class that also reaches `git` invocations during checkout, not
+something this install step alone can close — tracked in
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349).
 
 Because worktrees are reused across sessions and pnpm's content-addressable global store (under
