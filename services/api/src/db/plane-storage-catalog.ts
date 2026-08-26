@@ -18,6 +18,7 @@ import {
   isConditionalFailed,
   isConditionalTransactionFailed,
   isConditionalTransactionFailureAt,
+  normalizeTargetDisplayNames,
   type HostInventoryRecord,
   type ArchiveMetadata,
   type HostLogFence,
@@ -105,7 +106,7 @@ export function catalogPageItems<T>(items: T[] | undefined): T[] {
 export function scheduleAttributes(
   attributes: Record<string, unknown> | undefined,
 ): ScheduleRecord | null {
-  return attributes ? (attributes as ScheduleRecord) : null;
+  return attributes ? (normalizeTargetDisplayNames(attributes) as ScheduleRecord) : null;
 }
 
 export function isActiveSession(session: SessionRecord | null): session is SessionRecord {
@@ -308,7 +309,7 @@ export async function updateScheduleManagement(
       "#name = :name",
       "target = :target",
       "fallbacks = :fallbacks",
-      "targetLabels = :targetLabels",
+      "targetDisplayNames = :targetDisplayNames",
       "cron = :cron",
       "enabled = :enabled",
       "timeout = :timeout",
@@ -316,7 +317,7 @@ export async function updateScheduleManagement(
       "nextRunAt = :nextRunAt",
       "createdAt = :createdAt",
     ];
-    const remove: string[] = [];
+    const remove = ["targetLabels"];
     if (rec.ref === undefined) remove.push("#ref");
     else set.push("#ref = :ref");
     if (rec.concurrencyId === undefined) remove.push("concurrencyId");
@@ -340,7 +341,7 @@ export async function updateScheduleManagement(
         ":name": rec.name,
         ":target": rec.target,
         ":fallbacks": rec.fallbacks,
-        ":targetLabels": rec.targetLabels,
+        ":targetDisplayNames": rec.targetDisplayNames,
         ":cron": rec.cron,
         ":enabled": rec.enabled,
         ":timeout": rec.timeout,
@@ -391,7 +392,7 @@ export async function getSchedule(
       ...(consistentRead ? { ConsistentRead: true } : {}),
     }),
   );
-  return catalogItem(res.Item as ScheduleRecord | undefined);
+  return scheduleAttributes(res.Item as Record<string, unknown> | undefined);
 }
 
 export async function listSchedules(
@@ -408,7 +409,11 @@ export async function listSchedules(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...catalogPageItems(res.Items as ScheduleRecord[] | undefined));
+    records.push(
+      ...catalogPageItems(res.Items as Record<string, unknown>[] | undefined).map(
+        (item) => normalizeTargetDisplayNames(item) as ScheduleRecord,
+      ),
+    );
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;

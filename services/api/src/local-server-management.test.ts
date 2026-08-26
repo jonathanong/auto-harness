@@ -146,7 +146,7 @@ describe("createLocalApp operator management REST", () => {
     ).toMatchObject({
       name: "nightly2",
       timeout: 45,
-      targetLabels: ["codex-fix"],
+      targetDisplayNames: ["codex-fix"],
       ref: "develop",
       queueTtlSeconds: 20,
     });
@@ -166,7 +166,7 @@ describe("createLocalApp operator management REST", () => {
       type: "scheduled",
       source: "schedule",
       prompt: "run nightly checks",
-      targetLabels: ["codex-fix"],
+      targetDisplayNames: ["codex-fix"],
     });
     expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: false })).status).toBe(
       200,

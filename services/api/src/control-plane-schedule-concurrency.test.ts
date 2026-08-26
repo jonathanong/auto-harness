@@ -31,7 +31,7 @@ function makeDurableSchedulePlane() {
     prompt: "run nightly checks",
     target: { commandId: "cmd-base" },
     fallbacks: [],
-    targetLabels: ["base"],
+    targetDisplayNames: ["base"],
     queueTtlSeconds: 691_200,
     queueExpiresAt: "2026-01-08T00:00:00.000Z",
     timeout: 1,

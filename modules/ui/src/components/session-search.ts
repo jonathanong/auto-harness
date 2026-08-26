@@ -5,7 +5,7 @@ export type SearchableSession = {
   repositoryName?: string | null | undefined;
   prompt?: string | null;
   targetLabel?: string | null;
-  targetLabels?: string[] | null;
+  targetDisplayNames?: string[] | null;
   target?: { providerId?: string; commandId?: string } | null;
   fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
   queueExpiresAt?: string | null;
@@ -39,7 +39,7 @@ export function sessionSearchableText(session: SearchableSession): string {
     session.repositoryName,
     session.prompt,
     session.targetLabel,
-    ...(session.targetLabels ?? []),
+    ...(session.targetDisplayNames ?? []),
     session.target?.providerId,
     session.target?.commandId,
     ...(session.fallbacks ?? []).flatMap((target) => [target.providerId, target.commandId]),

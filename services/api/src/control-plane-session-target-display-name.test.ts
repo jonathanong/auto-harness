@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
+import { resolveSessionTargetDisplayName } from "./control-plane-session-target-display-name.ts";
 
-describe("resolveSessionTargetLabel", () => {
-  it("labels a standalone command by its name", () => {
+describe("resolveSessionTargetDisplayName", () => {
+  it("names a standalone command by its name", () => {
     const state = createControlPlaneState();
     state.commands.set("cmd-1", {
       id: "cmd-1",
@@ -15,21 +15,21 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { commandId: "cmd-1" })).toEqual({
       ok: true,
-      label: "echo hello",
+      displayName: "echo hello",
     });
   });
 
   it("rejects a commandId that doesn't exist", () => {
     const state = createControlPlaneState();
-    expect(resolveSessionTargetLabel(state, { commandId: "missing" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { commandId: "missing" })).toEqual({
       ok: false,
       error: "commandId missing not found",
     });
   });
 
-  it("labels a provider-owned command as an exact command target", () => {
+  it("names a provider-owned command as an exact command target", () => {
     const state = createControlPlaneState();
     state.commands.set("cmd-1", {
       id: "cmd-1",
@@ -47,13 +47,13 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { commandId: "cmd-1" })).toEqual({
       ok: true,
-      label: "claude — claude-print",
+      displayName: "claude — claude-print",
     });
   });
 
-  it("labels a provider target", () => {
+  it("names a provider target", () => {
     const state = createControlPlaneState();
     state.providers.set("prov-1", {
       id: "prov-1",
@@ -62,15 +62,15 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, { providerId: "prov-1" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { providerId: "prov-1" })).toEqual({
       ok: true,
-      label: "claude",
+      displayName: "claude",
     });
   });
 
   it("rejects a providerId that doesn't exist", () => {
     const state = createControlPlaneState();
-    expect(resolveSessionTargetLabel(state, { providerId: "missing" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { providerId: "missing" })).toEqual({
       ok: false,
       error: "providerId missing not found",
     });
@@ -87,7 +87,7 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
+    expect(resolveSessionTargetDisplayName(state, { commandId: "cmd-1" })).toEqual({
       ok: false,
       error: "provider gone not found",
     });

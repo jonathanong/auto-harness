@@ -103,7 +103,8 @@ export function slackSessionSnapshot(
     id: session.id,
     repositoryName: repository?.name ?? session.repositoryId,
     prompt: session.prompt,
-    commandLabel: session.targetLabels[targetIndex] ?? session.targetLabels[0] ?? "Unknown",
+    commandLabel:
+      session.targetDisplayNames[targetIndex] ?? session.targetDisplayNames[0] ?? "Unknown",
     priority: session.priority,
     source: session.source ?? "api",
     ...(sourceActor ? { sourceActor } : {}),

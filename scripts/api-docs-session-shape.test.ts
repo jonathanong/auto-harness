@@ -18,9 +18,10 @@ function jsonExampleAfter(heading: string): Record<string, unknown> {
 }
 
 describe("session API docs match PublicSession", () => {
-  it("documents GET /sessions/:id with targetLabels and nested resolvedRoute", () => {
+  it("documents GET /sessions/:id with targetDisplayNames and nested resolvedRoute", () => {
     const detail = jsonExampleAfter("#### `GET /sessions/:id`");
-    expect(detail.targetLabels).toEqual(["codex", "echo"]);
+    expect(detail.targetDisplayNames).toEqual(["codex", "echo"]);
+    expect(detail).not.toHaveProperty("targetLabels");
     expect(detail).not.toHaveProperty("targetLabel");
     expect(detail).not.toHaveProperty("providerId");
     expect(detail).not.toHaveProperty("providerAccountId");
@@ -32,7 +33,8 @@ describe("session API docs match PublicSession", () => {
   });
 
   it("keeps SessionRecord as the runtime source of those fields", () => {
-    expect(sessionRecord).toMatch(/targetLabels:\s*string\[\]/);
+    expect(sessionRecord).toMatch(/targetDisplayNames:\s*string\[\]/);
+    expect(sessionRecord).not.toMatch(/targetLabels:\s*string\[\]/);
     expect(sessionRecord).toMatch(/resolvedRoute\?:/);
     expect(sessionRecord).toMatch(/providerAccountId\?:\s*string/);
     expect(sessionRecord).not.toMatch(/^\s*targetLabel\?:/m);

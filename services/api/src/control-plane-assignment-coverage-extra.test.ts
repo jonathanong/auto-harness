@@ -19,7 +19,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "run",
     target: { commandId: "missing" },
     fallbacks: [],
-    targetLabels: ["missing"],
+    targetDisplayNames: ["missing"],
     queueTtlSeconds: 3600,
     queueExpiresAt: "2026-01-01T01:00:00.000Z",
     timeout: 30,
@@ -82,7 +82,10 @@ function providerAssignmentState() {
   });
   state.sessions.set(
     "s",
-    session({ target: { commandId: "provider-command" }, targetLabels: ["provider-command"] }),
+    session({
+      target: { commandId: "provider-command" },
+      targetDisplayNames: ["provider-command"],
+    }),
   );
   state.worktrees.set("w", { ...worktree });
   state.connections.set("connection", {
@@ -525,7 +528,7 @@ describe("assignment residual coverage", () => {
       "s",
       session({
         target: { commandId: "provider-command" },
-        targetLabels: ["provider-command"],
+        targetDisplayNames: ["provider-command"],
       }),
     );
     setDurableReadStorage(state, {

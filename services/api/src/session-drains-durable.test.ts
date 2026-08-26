@@ -49,7 +49,7 @@ function session(
     prompt: "drain me",
     target: { commandId: "command-drain" },
     fallbacks: [],
-    targetLabels: ["drain command"],
+    targetDisplayNames: ["drain command"],
     queueTtlSeconds: 691200,
     queueExpiresAt: "2026-01-09T00:00:00.000Z",
     timeout: 30,

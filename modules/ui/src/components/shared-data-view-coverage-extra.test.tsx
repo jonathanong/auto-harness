@@ -20,7 +20,7 @@ describe("shared sessions table and tabs", () => {
             status: "running",
             repositoryId: "repo/a",
             hostId: "host",
-            targetLabels: ["primary", "backup", "tertiary"],
+            targetDisplayNames: ["primary", "backup", "tertiary"],
             fallbacks: [{ providerId: "p" }],
             resolvedRoute: {
               targetIndex: 0,
@@ -89,12 +89,12 @@ describe("shared sessions table and tabs", () => {
             repositoryId: "repo-raw",
             hostId: null,
             target: {},
-            targetLabels: ["primary", "backup"],
+            targetDisplayNames: ["primary", "backup"],
             fallbacks: null,
             resolvedRoute: { providerAccountId: "a", commandId: "route-c" },
           },
           { id: "cli-route", status: "queued", resolvedRoute: {} },
-          { id: "null-route", status: "queued", target: {}, targetLabels: [] },
+          { id: "null-route", status: "queued", target: {}, targetDisplayNames: [] },
         ]}
       />,
     );
@@ -164,7 +164,7 @@ describe("shared sessions table and tabs", () => {
         prompt: "Deploy the service",
         concurrencyId: "release",
         targetLabel: null,
-        targetLabels: ["primary", "backup"],
+        targetDisplayNames: ["primary", "backup"],
         requiredLabels: ["gpu"],
       },
       { id: "without-labels", status: "queued", prompt: null },

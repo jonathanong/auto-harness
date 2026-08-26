@@ -2,15 +2,15 @@ import type { TargetRef } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
-/** Validate catalog targets at create/update time and produce display labels. */
-export function resolveSessionTargetLabel(
+/** Validate catalog targets at create/update time and produce display names. */
+export function resolveSessionTargetDisplayName(
   state: ControlPlaneState,
   target: TargetRef,
-): { ok: true; label: string } | { ok: false; error: string } {
+): { ok: true; displayName: string } | { ok: false; error: string } {
   if ("providerId" in target) {
     const provider = state.providers.get(target.providerId);
     return provider
-      ? { ok: true, label: provider.name }
+      ? { ok: true, displayName: provider.name }
       : { ok: false, error: `providerId ${target.providerId} not found` };
   }
   const command = state.commands.get(target.commandId);
@@ -19,19 +19,22 @@ export function resolveSessionTargetLabel(
   if (command.providerId !== null && !provider) {
     return { ok: false, error: `provider ${command.providerId} not found` };
   }
-  return { ok: true, label: provider ? `${provider.name} — ${command.name}` : command.name };
+  return {
+    ok: true,
+    displayName: provider ? `${provider.name} — ${command.name}` : command.name,
+  };
 }
 
-export function resolveTargetLabels(
+export function resolveTargetDisplayNames(
   state: ControlPlaneState,
   target: TargetRef,
   fallbacks: TargetRef[],
-): { ok: true; labels: string[] } | { ok: false; error: string } {
-  const labels: string[] = [];
+): { ok: true; displayNames: string[] } | { ok: false; error: string } {
+  const displayNames: string[] = [];
   for (const item of [target, ...fallbacks]) {
-    const result = resolveSessionTargetLabel(state, item);
+    const result = resolveSessionTargetDisplayName(state, item);
     if (!result.ok) return result;
-    labels.push(result.label);
+    displayNames.push(result.displayName);
   }
-  return { ok: true, labels };
+  return { ok: true, displayNames };
 }

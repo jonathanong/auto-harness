@@ -2,7 +2,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
-import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 export type CloneOptions = {
@@ -68,7 +68,7 @@ export function prepareClonedSession(
   if (admissionFailure) return admissionFailure;
   const overrideError = validateCloneOverrides(opts);
   if (overrideError) return { ok: false, error: overrideError, code: "VALIDATION_ERROR" };
-  const targets = resolveTargetLabels(state, source.target, source.fallbacks);
+  const targets = resolveTargetDisplayNames(state, source.target, source.fallbacks);
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   const id = state.idFactory();
   const createdAt = state.now();
@@ -78,7 +78,7 @@ export function prepareClonedSession(
     prompt: opts.prompt ?? source.prompt,
     target: { ...source.target },
     fallbacks: source.fallbacks.map((target) => ({ ...target })),
-    targetLabels: targets.labels,
+    targetDisplayNames: targets.displayNames,
     queueTtlSeconds: source.queueTtlSeconds,
     queueExpiresAt: new Date(Date.parse(createdAt) + source.queueTtlSeconds * 1000).toISOString(),
     timeout: opts.timeout ?? source.timeout,

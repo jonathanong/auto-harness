@@ -117,7 +117,7 @@ export function prepareResumedSession(
     prompt: opts.prompt ?? DEFAULT_CONTINUATION_PROMPT,
     target: source.target,
     fallbacks: [...source.fallbacks],
-    targetLabels: [...source.targetLabels],
+    targetDisplayNames: [...source.targetDisplayNames],
     queueTtlSeconds: source.queueTtlSeconds,
     queueExpiresAt: new Date(Date.parse(createdAt) + source.queueTtlSeconds * 1000).toISOString(),
     timeout: opts.timeout ?? source.timeout,

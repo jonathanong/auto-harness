@@ -90,7 +90,7 @@ function seed(plane: ControlPlane): void {
     name: "schedule",
     target: { commandId: command.id },
     fallbacks: [],
-    targetLabels: [command.name],
+    targetDisplayNames: [command.name],
     cron: "* * * * *",
     enabled: true,
     timeout: 1,

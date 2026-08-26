@@ -10,7 +10,7 @@ import {
   toPublic,
 } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
-import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import {
   getRepositoryDurable,
   getScheduleDurable,
@@ -506,7 +506,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: [...schedule.fallbacks],
-    targetLabels: [...schedule.targetLabels],
+    targetDisplayNames: [...schedule.targetDisplayNames],
     queueTtlSeconds: schedule.queueTtlSeconds,
     queueExpiresAt: new Date(Date.parse(createdAt) + schedule.queueTtlSeconds * 1000).toISOString(),
     timeout: schedule.timeout,
@@ -527,8 +527,8 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
 function resolveScheduledTarget(
   state: ControlPlaneState,
   schedule: ScheduleRecord,
-): { ok: true; labels: string[] } | { ok: false; error: string } {
-  return resolveTargetLabels(state, schedule.target, schedule.fallbacks);
+): { ok: true; displayNames: string[] } | { ok: false; error: string } {
+  return resolveTargetDisplayNames(state, schedule.target, schedule.fallbacks);
 }
 
 function scheduledSessionInput(schedule: ScheduleRecord): {

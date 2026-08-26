@@ -145,7 +145,7 @@ describe("ControlPlane operator management", () => {
     if (fired.ok) {
       expect(fired.session.type).toBe("scheduled");
       expect(fired.session.source).toBe("schedule");
-      expect(fired.session.targetLabels).toEqual(["codex-fix"]);
+      expect(fired.session.targetDisplayNames).toEqual(["codex-fix"]);
       expect(fired.session.ref).toBe("develop");
       expect(fired.session.prompt).toBe("run nightly checks");
     }

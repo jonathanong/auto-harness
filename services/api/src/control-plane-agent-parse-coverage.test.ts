@@ -36,7 +36,7 @@ describe("agent inventory guard coverage", () => {
       prompt: "work",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["command"],
+      targetDisplayNames: ["command"],
       queueTtlSeconds: 60,
       queueExpiresAt: "later",
       timeout: 1,

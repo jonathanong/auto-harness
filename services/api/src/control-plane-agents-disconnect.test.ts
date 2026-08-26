@@ -518,7 +518,7 @@ describe("durable host disconnect", () => {
       prompt: "work",
       target: { commandId: "cmd-base" },
       fallbacks: [],
-      targetLabels: ["echo-prompt"],
+      targetDisplayNames: ["echo-prompt"],
       queueTtlSeconds: 60,
       queueExpiresAt: "2099-01-01T00:00:00.000Z",
       timeout: 1,

@@ -16,7 +16,7 @@ it("starts the webhook worker only with durable storage and both injected bounda
     prompt: "must not be transported",
     target: { commandId: "command-1" },
     fallbacks: [],
-    targetLabels: ["Codex"],
+    targetDisplayNames: ["Codex"],
     queueTtlSeconds: 60,
     queueExpiresAt: now,
     timeout: 60,

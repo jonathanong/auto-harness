@@ -34,7 +34,7 @@ describe("legacy schedule fallback disable CAS", () => {
       name: "nightly",
       target: { commandId: "cmd" },
       fallbacks: Array.from({ length: MAX_FALLBACKS + 1 }, () => ({ commandId: "cmd" })),
-      targetLabels: ["cmd"],
+      targetDisplayNames: ["cmd"],
       cron: "* * * * *",
       enabled: true,
       timeout: 30,

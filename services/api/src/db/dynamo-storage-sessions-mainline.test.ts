@@ -16,7 +16,7 @@ const session = (extra: Record<string, unknown> = {}) =>
     prompt: "prompt",
     target: { commandId: "command" },
     fallbacks: [],
-    targetLabels: ["command"],
+    targetDisplayNames: ["command"],
     queueTtlSeconds: 60,
     queueExpiresAt: "later",
     timeout: 60,

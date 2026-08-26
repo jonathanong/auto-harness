@@ -24,7 +24,7 @@ function scheduledSession(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "maintenance",
     target: { commandId: "command" },
     fallbacks: [],
-    targetLabels: ["command"],
+    targetDisplayNames: ["command"],
     queueTtlSeconds: 3600,
     queueExpiresAt: "2026-01-01T01:00:00.000Z",
     timeout: 10,

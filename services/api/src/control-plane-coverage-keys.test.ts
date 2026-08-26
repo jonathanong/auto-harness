@@ -89,7 +89,7 @@ describe("ControlPlane coverage: concurrency ids list and resume metadata", () =
       prompt: "p",
       target: { commandId: BASE_COMMAND_ID },
       fallbacks: [],
-      targetLabels: ["c"],
+      targetDisplayNames: ["c"],
       queueTtlSeconds: 60,
       queueExpiresAt: "2099-01-01T00:00:00.000Z",
       timeout: 1,

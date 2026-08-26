@@ -7,8 +7,8 @@ export type SessionRecord = {
   prompt: string;
   target: TargetRef;
   fallbacks: TargetRef[];
-  /** Human-readable primary + fallback labels, fixed at creation. */
-  targetLabels: string[];
+  /** Human-readable primary + fallback display names, fixed at creation. */
+  targetDisplayNames: string[];
   queueTtlSeconds: number;
   queueExpiresAt: string;
   /** The route used for the current or most recent assignment. */

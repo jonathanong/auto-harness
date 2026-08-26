@@ -39,7 +39,7 @@ function seededPlane(storage?: object): ControlPlane {
     name: "schedule",
     target: { commandId: "command" },
     fallbacks: [],
-    targetLabels: ["command"],
+    targetDisplayNames: ["command"],
     cron: "* * * * *",
     enabled: true,
     timeout: 60,

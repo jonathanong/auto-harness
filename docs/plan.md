@@ -367,7 +367,7 @@ migration marker. **No product-repo automation workflow may cut over before the 
 - An unknown `commandProfile` is rejected before spawn, with no shell fallback (D4). **Superseded**
   by the Providers/Provider Accounts/Commands catalogs (see `docs/terminology.md`): a session now
   targets a `{ providerId }` or `{ commandId }` plus ordered fallbacks, and unknown or duplicate references are rejected at
-  session/schedule **create** time (`resolveSessionTargetLabel`) — strictly earlier than "before
+  session/schedule **create** time (`resolveSessionTargetDisplayName`) — strictly earlier than "before
   spawn". A separate assign-time cascade/enablement check (`resolveSessionTargetArgv`) can still
   reject a specific worktree candidate even for a valid account (e.g. disabled for that worktree),
   which is why "before spawn" as a single flat check no longer fully describes the system. D4's

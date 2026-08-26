@@ -34,7 +34,7 @@ describe("legacy schedule ownership", () => {
       name: "schedule",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["command"],
+      targetDisplayNames: ["command"],
       cron: "* * * * *",
       enabled: true,
       timeout: 60,

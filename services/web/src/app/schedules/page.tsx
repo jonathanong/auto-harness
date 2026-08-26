@@ -18,7 +18,7 @@ type Schedule = {
   id: string;
   name: string;
   repositoryId: string;
-  targetLabels: string[];
+  targetDisplayNames: string[];
   target: { providerId: string } | { commandId: string };
   fallbacks: Array<{ providerId: string } | { commandId: string }>;
   cron: string;
@@ -127,7 +127,7 @@ export default async function SchedulesPage({
                   </TableCell>
                   <TableCell>
                     <div data-pw={`schedule-route-${s.id}`}>
-                      {s.targetLabels?.join(" → ") ?? routeLabel(s.target) ?? "—"}
+                      {s.targetDisplayNames?.join(" → ") ?? routeLabel(s.target) ?? "—"}
                     </div>
                     {s.fallbacks?.length ? (
                       <div className="text-xs text-muted-foreground">

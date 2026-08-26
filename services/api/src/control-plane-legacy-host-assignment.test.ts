@@ -11,7 +11,7 @@ function legacySession(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "run",
     target: { commandId: "command" },
     fallbacks: [],
-    targetLabels: ["command"],
+    targetDisplayNames: ["command"],
     queueTtlSeconds: 60,
     queueExpiresAt: "later",
     timeout: 60,

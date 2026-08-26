@@ -31,7 +31,7 @@ describe("marker-guarded session creation", () => {
           prompt: "run",
           target: { commandId: "command" },
           fallbacks: [],
-          targetLabels: [],
+          targetDisplayNames: [],
           queueTtlSeconds: 1,
           queueExpiresAt: "2026-01-01T00:00:01.000Z",
           timeout: 1,

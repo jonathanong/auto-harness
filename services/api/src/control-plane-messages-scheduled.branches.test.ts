@@ -28,7 +28,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     queueExpiresAt: "2026-01-01T01:00:00.000Z",
     target: { commandId: "cmd" },
     fallbacks: [],
-    targetLabels: ["cmd"],
+    targetDisplayNames: ["cmd"],
     hostId: "host",
     assignmentConnectionId: "old",
     assignmentSentAt: NOW,

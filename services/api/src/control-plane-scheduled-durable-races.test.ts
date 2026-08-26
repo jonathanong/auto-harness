@@ -15,7 +15,7 @@ function session(id: string, repositoryId = "repo-race"): SessionRecord {
     prompt: `scheduled:${id}`,
     target: { commandId: "command-race" },
     fallbacks: [],
-    targetLabels: ["race command"],
+    targetDisplayNames: ["race command"],
     queueTtlSeconds: 3600,
     queueExpiresAt: "2026-01-01T01:00:00.000Z",
     timeout: 30,

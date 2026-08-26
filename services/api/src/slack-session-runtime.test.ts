@@ -25,7 +25,7 @@ function session(status: SessionRecord["status"] = "queued"): SessionRecord {
     prompt: "ship it",
     target: { commandId: "command-1" },
     fallbacks: [],
-    targetLabels: ["Codex", "Claude"],
+    targetDisplayNames: ["Codex", "Claude"],
     queueTtlSeconds: 60,
     queueExpiresAt: now,
     timeout: 60,
@@ -105,7 +105,7 @@ describe("Slack session lifecycle reconciliation", () => {
 
     const fallback = session();
     fallback.repositoryId = "missing";
-    fallback.targetLabels = [];
+    fallback.targetDisplayNames = [];
     fallback.source = undefined;
     fallback.metadata = { sourceActor: " " };
     expect(slackSessionSnapshot({ ...state(), logs: new Map() }, fallback)).toMatchObject({

@@ -44,7 +44,7 @@ describe("durable scheduled main-checkout leases", () => {
       prompt: "run",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["echo"],
+      targetDisplayNames: ["echo"],
       queueTtlSeconds: 3600,
       queueExpiresAt: "2026-01-01T01:00:00.000Z",
       timeout: 30,

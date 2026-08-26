@@ -36,7 +36,7 @@ describe("schedule pages", () => {
             id: "schedule/one",
             name: "Nightly",
             repositoryId: "removed-repo",
-            targetLabels: ["Claude", "review"],
+            targetDisplayNames: ["Claude", "review"],
             target: { providerId: "provider-1" },
             fallbacks: [{ providerId: "provider-2" }, { commandId: "command-1" }],
             cron: "0 2 * * *",

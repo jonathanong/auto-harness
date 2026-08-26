@@ -23,7 +23,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "p",
     target: { commandId: BASE_COMMAND_ID },
     fallbacks: [],
-    targetLabels: [BASE_COMMAND_ID],
+    targetDisplayNames: [BASE_COMMAND_ID],
     queueTtlSeconds: 60,
     queueExpiresAt: "2026-01-01T01:00:00.000Z",
     timeout: 1,
@@ -114,7 +114,7 @@ describe("queue placement planner", () => {
       explainPromptPlacement(
         plane.state,
         catalog,
-        session({ target: { commandId: "missing" }, targetLabels: ["missing"] }),
+        session({ target: { commandId: "missing" }, targetDisplayNames: ["missing"] }),
         Date.parse(NOW),
       ),
     ).toBe("no_eligible_route");
@@ -441,7 +441,7 @@ describe("queue placement planner", () => {
     const plan = planPromptPlacement(
       plane.state,
       buildProviderCatalog(plane.state),
-      session({ target: { providerId: "prov" }, targetLabels: ["prov"] }),
+      session({ target: { providerId: "prov" }, targetDisplayNames: ["prov"] }),
       Date.parse(NOW),
     );
     expect(plan).toMatchObject({

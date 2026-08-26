@@ -108,7 +108,7 @@ export type ScheduleRecord = {
   name: string;
   target: TargetRef;
   fallbacks: TargetRef[];
-  targetLabels: string[];
+  targetDisplayNames: string[];
   cron: string;
   enabled: boolean;
   timeout: number;
@@ -288,9 +288,20 @@ export function sessionToItem(session: SessionRecord): Record<string, unknown> {
   };
 }
 
+/** Remove the legacy label-named display snapshot while hydrating persisted records. */
+export function normalizeTargetDisplayNames(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  const { targetLabels: legacyTargetLabels, ...rest } = item;
+  if (!("targetDisplayNames" in rest) && Array.isArray(legacyTargetLabels)) {
+    rest.targetDisplayNames = legacyTargetLabels;
+  }
+  return rest;
+}
+
 export function itemToSession(item: Record<string, unknown>): SessionRecord {
   const { statusShard: _ss, queueOrder: _qo, ...rest } = item;
-  return rest as SessionRecord;
+  return normalizeTargetDisplayNames(rest) as SessionRecord;
 }
 
 export function isConditionalFailed(err: unknown): boolean {

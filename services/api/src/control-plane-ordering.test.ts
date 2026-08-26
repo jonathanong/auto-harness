@@ -113,7 +113,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "p",
     target: { commandId: "cmd" },
     fallbacks: [],
-    targetLabels: ["cmd"],
+    targetDisplayNames: ["cmd"],
     queueTtlSeconds: 60,
     queueExpiresAt: "t",
     timeout: 1,
