@@ -77,7 +77,7 @@ export async function listProviderAccountLeaseLocks(
 ): Promise<ProviderAccountLeaseLock[]> {
   const locks = await batchGetAll(ctx, {
     [ctx.tables.concurrencyLocks]: {
-      Keys: [...Array(maxSlots).keys()].map((slot) => ({
+      Keys: Array.from({ length: maxSlots }, (_, slot) => ({
         concurrencyId: providerAccountLeaseConcurrencyId(providerAccountId, slot),
       })),
       ConsistentRead: true,

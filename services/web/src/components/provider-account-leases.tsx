@@ -25,13 +25,21 @@ function releaseBlockCopy(holder: ProviderAccountLeaseHolder): string | undefine
   return undefined;
 }
 
+function releaseSuccessCopy(result: ProviderAccountLeaseReleaseResult): string {
+  if (!result.released) return "Provider Account slot was already free.";
+  if (result.after.holder) {
+    return "Lease released; the slot was immediately claimed by another Session.";
+  }
+  return "Provider Account lease released.";
+}
+
 export function ProviderAccountLeases({
   accountId,
   leases,
-}: {
+}: Readonly<{
   accountId: string;
   leases: ProviderAccountLeaseState[] | null;
-}) {
+}>) {
   const router = useRouter();
   if (leases === null) {
     return (
@@ -98,16 +106,9 @@ export function ProviderAccountLeases({
                   return { ok: false, error: await apiErrorMessage(response) };
                 }
                 const result = (await response.json()) as ProviderAccountLeaseReleaseResult;
-                showToast(
-                  !result.released
-                    ? "Provider Account slot was already free."
-                    : result.after.holder
-                      ? "Lease released; the slot was immediately claimed by another Session."
-                      : "Provider Account lease released.",
-                  {
-                    pw: `provider-account-lease-release-success-${accountId}-${String(lease.slot)}`,
-                  },
-                );
+                showToast(releaseSuccessCopy(result), {
+                  pw: `provider-account-lease-release-success-${accountId}-${String(lease.slot)}`,
+                });
                 router.refresh();
               }}
             />
