@@ -10,12 +10,14 @@ import { releaseTimedOutHostAssignment } from "./plane-storage-host-assignment.t
 import {
   backfillProviderAccountLease,
   forceReleaseProviderAccountLease,
+  getProviderAccountLeaseLock,
   getProviderAccountLeaseHolderSessions,
   listProviderAccountLeaseLocks,
   providerAccountLeaseDeleteItems,
   releaseProviderAccountLease,
   releaseTimedOutProviderAccountLease,
 } from "./plane-storage-provider-account-leases.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { putSession } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -60,6 +62,50 @@ describe("provider account lease storage", () => {
         },
       },
     ]);
+  });
+
+  it("reads one lock and delegates the lease storage facade methods", async () => {
+    const lock = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      sessionId: "sess",
+      attemptId: "attempt",
+    };
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Item: lock })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Item: lock })
+      .mockResolvedValueOnce({ Responses: { Locks: [lock] } })
+      .mockResolvedValueOnce({ Responses: { Sessions: [{ id: "sess", status: "cancelled" }] } })
+      .mockResolvedValueOnce({});
+    const tables = {
+      providerAccounts: "Accounts",
+      sessions: "Sessions",
+      concurrencyLocks: "Locks",
+    } as never;
+    const ctx = { doc: { send }, tables } as never;
+
+    await expect(getProviderAccountLeaseLock(ctx, lock.concurrencyId)).resolves.toEqual(lock);
+    await expect(getProviderAccountLeaseLock(ctx, "missing")).resolves.toBeNull();
+
+    const storage = new DynamoPlaneStorageBase({ send } as never, tables);
+    await expect(storage.getProviderAccountLeaseLock(lock.concurrencyId)).resolves.toEqual(lock);
+    const locks = await storage.listProviderAccountLeaseLocks("acct", 1);
+    expect(locks).toEqual([lock]);
+    await expect(storage.getProviderAccountLeaseHolderSessions(locks)).resolves.toEqual(
+      new Map([["sess", { id: "sess", status: "cancelled" }]]),
+    );
+    await expect(
+      storage.forceReleaseProviderAccountLease({
+        providerAccountId: "acct",
+        slot: 0,
+        concurrencyId: lock.concurrencyId,
+        sessionId: "sess",
+        attemptId: "attempt",
+      }),
+    ).resolves.toBe(true);
   });
 
   it("fails closed when the force-release transaction loses any condition", async () => {
