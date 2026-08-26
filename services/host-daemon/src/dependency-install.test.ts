@@ -61,6 +61,8 @@ describe("installWorkspaceDependencies", () => {
         join("/home/harness", ".auto-harness-pnpm-store"),
         "--virtual-store-dir",
         "node_modules/.pnpm",
+        "--package-import-method",
+        "copy",
       ],
       cwd,
       env: { PATH: "/usr/bin", HOME: "/home/harness", CI: "true" },
@@ -103,6 +105,8 @@ describe("installWorkspaceDependencies", () => {
       join("/home/harness", ".auto-harness-pnpm-store"),
       "--virtual-store-dir",
       "node_modules/.pnpm",
+      "--package-import-method",
+      "copy",
     ]);
   });
 

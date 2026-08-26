@@ -27,6 +27,8 @@ function installArgv(): string[] {
     storeDir,
     "--virtual-store-dir",
     "node_modules/.pnpm",
+    "--package-import-method",
+    "copy",
   ];
   return process.platform === "win32"
     ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...args]

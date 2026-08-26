@@ -106,4 +106,27 @@ describe("SessionRunner dependency install ordering around setup scripts", () =>
     expect(result.status).toBe("completed");
     expect(calls.some((argv) => argv[0] === INSTALL_BIN)).toBe(true);
   });
+
+  it("forces the post-setup install even when node_modules already carries a matching import-method marker (#350 hardening)", async () => {
+    const cwd = pnpmWorkspaceDir("auto-harness-install-setup-marker-invalidated-");
+    mkdirSync(join(cwd, "node_modules"), { recursive: true });
+    writeFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "copy");
+    const { worktrees } = runnerFor(cwd, { setupScript: "custom-setup" });
+    let installArgv: string[] | undefined;
+    const runner: ProcessRunner = {
+      async run(opts) {
+        if (opts.argv[1] === "-c") {
+          return { exitCode: 0, timedOut: false, signal: null, environment: opts.env ?? {} };
+        }
+        if (opts.argv[0] === INSTALL_BIN) installArgv = opts.argv;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new SessionRunner({ worktrees, processRunner: runner }).run(baseAssign());
+    expect(result.status).toBe("completed");
+    // A setup script could have run its own unpinned `pnpm install` and left
+    // this pre-existing marker's "copy" claim stale; the install must not
+    // trust it just because it still matches.
+    expect(installArgv).toContain("--force");
+  });
 });
