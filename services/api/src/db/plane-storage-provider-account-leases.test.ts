@@ -127,6 +127,51 @@ describe("provider account lease storage", () => {
     });
   });
 
+  it("handles empty BatchGet responses and an empty holder set", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const ctx = {
+      doc: { send },
+      tables: { concurrencyLocks: "Locks", sessions: "Sessions" },
+    } as never;
+    await expect(listProviderAccountLeaseLocks(ctx, "acct", 1)).resolves.toEqual([]);
+    await expect(getProviderAccountLeaseHolderSessions(ctx, [])).resolves.toEqual(new Map());
+  });
+
+  it("bounds retries when DynamoDB keeps returning unprocessed keys", async () => {
+    const send = vi.fn().mockResolvedValue({
+      UnprocessedKeys: {
+        Locks: { Keys: [{ concurrencyId: "provider-lease:acct:0" }], ConsistentRead: true },
+      },
+    });
+    await expect(
+      listProviderAccountLeaseLocks(
+        { doc: { send }, tables: { concurrencyLocks: "Locks" } } as never,
+        "acct",
+        1,
+      ),
+    ).rejects.toThrow("DynamoDB BatchGetItem left unprocessed keys");
+    expect(send).toHaveBeenCalledTimes(8);
+  });
+
+  it("rethrows unexpected force-release transaction failures", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("transaction unavailable"));
+    await expect(
+      forceReleaseProviderAccountLease(
+        {
+          doc: { send },
+          tables: { providerAccounts: "Accounts", sessions: "Sessions", concurrencyLocks: "Locks" },
+        } as never,
+        {
+          providerAccountId: "acct",
+          slot: 0,
+          concurrencyId: "provider-lease:acct:0",
+          sessionId: "sess",
+          attemptId: "attempt",
+        },
+      ),
+    ).rejects.toThrow("transaction unavailable");
+  });
+
   it("deletes the attempt-owned lock and ignores a lost condition", async () => {
     const send = vi.fn().mockResolvedValue({});
     await releaseProviderAccountLease(

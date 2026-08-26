@@ -30,10 +30,10 @@ export async function loadProviderDetailData(providerId: string, includeLeases: 
       ),
     );
     for (const [index, account] of accounts.entries()) {
-      const result = leaseReads[index];
+      const result = leaseReads[index]!;
       leasesByAccount.set(
         account.id,
-        result?.status === "fulfilled" ? (result.value.items ?? []) : null,
+        result.status === "fulfilled" ? (result.value.items ?? []) : null,
       );
     }
   }

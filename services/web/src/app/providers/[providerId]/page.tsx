@@ -112,7 +112,7 @@ export default async function ProviderDetailPage({
                           <TableCell>
                             <ProviderAccountLeases
                               accountId={a.id}
-                              leases={leasesByAccount.get(a.id) ?? null}
+                              leases={leasesByAccount.get(a.id)!}
                             />
                           </TableCell>
                         ) : null}

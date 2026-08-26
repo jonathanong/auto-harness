@@ -130,6 +130,54 @@ describe("local provider catalog route coverage", () => {
     expect(await invoke(plane, "GET", "/api/v1/provider-accounts/missing/leases")).toMatchObject({
       status: 404,
     });
+    expect(
+      await invoke(plane, "POST", "/api/v1/provider-accounts/missing/leases/0/release"),
+    ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
+  });
+
+  it("fails closed when lease release outcome audits cannot be stored", async () => {
+    for (const path of [
+      "/api/v1/provider-accounts/account/leases/nope/release",
+      "/api/v1/provider-accounts/account/leases/64/release",
+      "/api/v1/provider-accounts/account/leases/1/release",
+    ]) {
+      const plane = seededPlane();
+      plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      expect((await invoke(plane, "POST", path)).status, path).toBe(500);
+    }
+
+    const conflicted = seededPlane();
+    conflicted.state.providerAccountLeases.set("provider-lease:account:0", {
+      providerAccountId: "account",
+      concurrencyId: "provider-lease:account:0",
+      slot: 0,
+      sessionId: "missing-session",
+      attemptId: "attempt",
+      hostId: "host",
+    });
+    conflicted.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invoke(conflicted, "POST", "/api/v1/provider-accounts/account/leases/0/release"),
+    ).toMatchObject({ status: 500 });
+
+    for (const auditFails of [false, true]) {
+      const failed = seededPlane();
+      failed.forceReleaseProviderAccountLeaseDurable = async () => {
+        throw new Error("storage unavailable");
+      };
+      if (auditFails) {
+        failed.appendAuditLog = async () => {
+          throw new Error("audit unavailable");
+        };
+      }
+      expect(
+        await invoke(failed, "POST", "/api/v1/provider-accounts/account/leases/0/release"),
+      ).toMatchObject({ status: 500 });
+    }
   });
 
   it("classifies provider update validation, conflict, and not-found outcomes", async () => {
