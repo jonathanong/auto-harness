@@ -329,7 +329,7 @@ export async function updateScheduleManagement(
     const update = {
       TableName: ctx.tables.schedules,
       Key: { id: rec.id },
-      UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
+      UpdateExpression: `SET ${set.join(", ")} REMOVE ${remove.join(", ")}`,
       ConditionExpression:
         "attribute_exists(id) AND nextRunAt = :expectedNextRunAt AND " +
         (rec.principalId === undefined
