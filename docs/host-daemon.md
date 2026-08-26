@@ -520,7 +520,8 @@ conversation's existing worktree.
 After any configured setup scripts finish, the daemon checks the session cwd for a root
 `pnpm-lock.yaml`. If one is present it runs
 `pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile --modules-dir node_modules
---store-dir <HOME>/.auto-harness-pnpm-store --virtual-store-dir node_modules/.pnpm`
+--store-dir <HOME>/.auto-harness-pnpm-store --virtual-store-dir node_modules/.pnpm
+--package-import-method copy`
 there before the provider launches — no operator configuration needed beyond `pnpm` being
 resolvable on the daemon service user's `PATH`, the same [CLI not found](#cli-not-found) trap
 that applies to provider CLIs (nvm users: point the unit file at a stable node/bin path).
@@ -569,6 +570,51 @@ install — so it stays pinned to a fixed absolute path under the daemon's own (
 first install after this pin takes effect is a cold store (full download); every install after
 that — same worktree or a fresh one — reuses the warm store exactly as before.
 
+`--package-import-method copy` closes a separate hole in that shared store
+([#350](https://github.com/jonathanong/auto-harness/issues/350)). The store being shared across every
+worktree on the host is not itself the bug — the bug is pnpm's default `auto` import method, which
+resolves to `hardlink` on filesystems without clone/reflink support (confirmed against the pinned
+`pnpm@10.28.2`: forcing `hardlink` reproduces it, while macOS/APFS's `auto` default of `clone` does
+not). Under hardlink, every worktree's copy of an unchanged package is the _same inode_ as the
+store's copy, not an independent file, so a write to it anywhere — a session patching a dependency
+while debugging, a partial/corrupted write, anything that touches the file in place — mutates every
+other worktree's copy and the store entry itself, instantly and with no revalidation, for as long as
+those other sessions keep running (verified the same way: a mutation in one worktree was immediately
+visible from a second, already-installed worktree sharing the store). Per [plan.md](plan.md)'s D9,
+the daemon does not sandbox worktrees from each other at the OS level, so this is exactly the kind of
+boundary the CLI's own writable-root configuration is supposed to hold — and hardlinking silently
+defeats it regardless of `--frozen-lockfile`, which guards what pnpm resolves to install, not what a
+process does to the files afterward. A later fresh install elsewhere against the same store does
+self-heal (pnpm re-verifies content against the lockfile's integrity hash and refetches on a
+mismatch, confirmed the same way), so exposure is bounded to worktrees already running at mutation
+time, plus a resumed session, which skips this install step entirely and so never gets a chance to
+self-heal. Since Auto Harness explicitly supports multiple worktrees running sessions concurrently on
+one host, that window is real. `copy` rather than `clone-or-copy`: reflink is copy-on-write and
+equally write-isolated where the filesystem supports it, but an unconditional copy removes the
+platform split entirely — one import method to reason about instead of "clone here, copy there" —
+which is worth more than the throughput `clone-or-copy` would preserve on macOS. Like the three flags
+above, `package-import-method` is also `.npmrc`-settable, so pinning it on the CLI closes the same
+checked-out-`.npmrc` override vector.
+
+The real cost: on the filesystems where `auto` was already resolving to `hardlink` (Linux/ext4,
+including the `ubuntu-latest` CI runners), `copy` gives up cross-worktree dedup — every worktree's
+`node_modules` now holds an independent on-disk copy of each package instead of sharing an inode
+with the store, so disk usage scales with worktree count rather than with distinct packages, and
+each install's linking step does more I/O than a hardlink would (the network fetch is unaffected —
+the store itself stays warm and shared). That's acceptable: the number of worktrees concurrently
+active on one host is small and operator-controlled, not something an untrusted ref can inflate, and
+`--ignore-scripts` already means there is no downstream build step whose latency this would
+compound.
+
+What this does _not_ close: the daemon's session process and every worktree's install run as the
+same OS user (D9 — no per-session OS sandboxing), so a session that deliberately wants to corrupt
+the shared store can still do so by writing into `storeDir` directly, bypassing a worktree's linked
+copy entirely. `--package-import-method copy` removes the _incidental_ aliasing path — an in-place
+mutation of a file that used to be silently shared through a hardlink, plus the `.npmrc`-forced
+override — not same-uid direct writes to the store. Closing that would need the store mounted
+read-only outside the install step, [#350](https://github.com/jonathanong/auto-harness/issues/350)'s
+second suggested option, which is out of scope for this fix.
+
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
 is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,
@@ -591,10 +637,14 @@ doesn't constrain what a dependency specifier tells it to read from. Both are in
 something this install step alone can close — tracked in
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349).
 
-Because worktrees are reused across sessions and pnpm's content-addressable global store (under
-the preserved `HOME`) hardlinks unchanged packages, a repeat install on an already-installed
-worktree is a near no-op (roughly a second), while a first install on a fresh worktree pays the
-full install cost once. A setup script that already runs its own `pnpm install` (as in the
+Because worktrees are reused across sessions, a repeat install on an already-installed worktree
+whose lockfile hasn't changed is a near no-op (roughly a second): pnpm detects `node_modules` is
+already up to date with the lockfile and skips resolution and linking entirely (`Lockfile is up to
+date, resolution step is skipped` / `Already up to date` — confirmed against the pinned
+`pnpm@10.28.2` with `--package-import-method copy`, so this fast path does not depend on the store's
+hardlink-vs-copy import method). A first install on a fresh worktree, or one whose lockfile changed,
+still pays the full linking cost, reusing the warm content-addressable store (under the preserved
+`HOME`) rather than re-downloading. A setup script that already runs its own `pnpm install` (as in the
 examples above) is unaffected — this step reruns after it and finds nothing to change.
 
 ### Disk layout (example)

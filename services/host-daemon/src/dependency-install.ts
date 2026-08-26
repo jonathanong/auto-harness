@@ -80,6 +80,71 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * a cold store (full download); every subsequent install — same worktree or
  * a fresh one — reuses the warm, content-addressable store exactly as
  * before.
+ *
+ * `--package-import-method copy` closes a separate hole in that shared
+ * store (jonathanong/auto-harness#350). `--store-dir` being one store
+ * shared by every worktree on the host is not itself the bug. The bug is
+ * pnpm's default `auto` import method, which resolves to `hardlink` on
+ * filesystems without clone/reflink support (confirmed empirically against
+ * the pinned `pnpm@10.28.2`, comparing forced `hardlink` vs. macOS/APFS's
+ * `auto` default of `clone`): under hardlink, every worktree's copy of an
+ * unchanged package is the *same inode* as the store's copy, not an
+ * independent file. A worktree boundary that looks writable-only-within-
+ * itself is not: a write to a hardlinked file anywhere — a session's agent
+ * process patching a dependency while debugging, a partial/corrupted write,
+ * anything that touches the file in place rather than replacing it —
+ * mutates every other worktree's copy and the store entry itself, instantly
+ * and with no revalidation, for as long as those other sessions keep
+ * running (verified the same way: mutating one worktree's linked file was
+ * immediately visible from a second, already-installed worktree sharing the
+ * store). Per docs/plan.md's D9, the daemon does not sandbox worktrees from
+ * each other at the OS level — the CLI's own writable-root boundary is what
+ * is supposed to hold here, and hardlinking silently defeats it regardless
+ * of `--frozen-lockfile`, which guards what pnpm resolves to install, not
+ * what a process does to the files afterward. A later fresh install
+ * elsewhere against the same store does self-heal — pnpm re-verifies
+ * content against the lockfile's integrity hash and silently refetches on a
+ * mismatch (confirmed the same way) — so exposure is bounded to worktrees
+ * already running at mutation time, plus a resumed session, which skips
+ * this install step entirely (session-run-setup.ts) and so never gets a
+ * chance to self-heal. Auto Harness explicitly supports multiple worktrees
+ * running sessions concurrently on one host, so that window is real.
+ *
+ * `copy`, not `clone-or-copy`: clone/reflink is copy-on-write, so it is
+ * just as write-isolated as a plain copy on filesystems that support it,
+ * but "an independent copy on every filesystem, unconditionally" is the
+ * easier property to defend on a security-motivated pin across the
+ * daemon's Linux and macOS hosts, and it removes the platform split
+ * entirely — reasoning about one import method instead of "clone here,
+ * copy there" is worth more than the throughput `clone-or-copy` would
+ * preserve on macOS. Like the three flags above, `package-import-method`
+ * is also `.npmrc`-settable, so pinning it on the CLI closes the same
+ * checked-out-`.npmrc` override vector: unpinned, a ref's `.npmrc` could
+ * force `hardlink` even on a filesystem where `auto` would not otherwise
+ * have chosen it.
+ *
+ * The real cost: `copy` gives up cross-worktree dedup on the filesystems
+ * where `auto` was already choosing `hardlink` (Linux/ext4, including the
+ * `ubuntu-latest` CI runners) — every worktree's `node_modules` now holds
+ * an independent on-disk copy of each installed package instead of sharing
+ * one inode, so per-host disk usage scales with worktree count instead of
+ * with distinct packages, and each install's linking step (not the
+ * network fetch — the store itself stays warm and shared) does more I/O
+ * than a hardlink would. That's acceptable here: the number of worktrees
+ * concurrently active on one host is small and operator-controlled, not
+ * something an untrusted ref can inflate, and there is no scripts/build
+ * step downstream whose latency this would compound.
+ *
+ * What this does *not* close: the daemon's session process and every
+ * worktree's install run as the same OS user (D9 — no per-session OS
+ * sandboxing), so a session that deliberately wants to corrupt the shared
+ * store still can, by writing into `storeDir` directly rather than through
+ * a worktree's linked copy. `--package-import-method copy` only removes
+ * the *incidental* aliasing path — an in-place mutation of a file that
+ * used to be silently shared — plus the `.npmrc`-forced-`hardlink`
+ * override. Closing direct same-uid store writes would need the store
+ * mounted read-only outside the install step (auto-harness#350's second
+ * suggested option), which is out of scope for this fix.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -102,6 +167,8 @@ export async function installWorkspaceDependencies(
     storeDir,
     "--virtual-store-dir",
     "node_modules/.pnpm",
+    "--package-import-method",
+    "copy",
   ];
   return runner.run({
     argv:
