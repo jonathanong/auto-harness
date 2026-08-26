@@ -70,6 +70,15 @@ export function resolveTrustedExecutable(
   platform: NodeJS.Platform = process.platform,
 ): string {
   if (isAbsolute(command)) return command;
+  // A bare command name never contains a path separator by definition — one
+  // that does is attempting to escape whichever PATH directory it's joined
+  // against (e.g. "..\\..\\untrusted\\evil"). An already-absolute path is
+  // handled above and passes through unchanged, so rejecting this doesn't
+  // remove any legitimate capability, only an invariant a bare name must
+  // already satisfy.
+  if (/[/\\]/.test(command)) {
+    throw new Error(`Cannot resolve trusted executable "${command}": contains a path separator`);
+  }
 
   const isWindows = platform === "win32";
   const directories = (envValue(env, "PATH", isWindows) ?? "")

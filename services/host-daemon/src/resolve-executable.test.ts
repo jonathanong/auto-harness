@@ -40,6 +40,24 @@ describe("resolveTrustedExecutable", () => {
     );
   });
 
+  it("rejects a non-absolute command containing a path separator", () => {
+    // path.join normalizes ".." segments, so a bare command name with
+    // traversal segments could otherwise escape the intended PATH directory
+    // entirely. A bare command must never contain a separator; an operator
+    // who wants a specific path can already pass one as an absolute command.
+    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-traversal-"));
+    expect(() =>
+      resolveTrustedExecutable("../../untrusted/evil", { PATH: binDir }, "linux"),
+    ).toThrow(
+      'Cannot resolve trusted executable "../../untrusted/evil": contains a path separator',
+    );
+    expect(() =>
+      resolveTrustedExecutable("..\\..\\untrusted\\evil", { PATH: binDir }, "win32"),
+    ).toThrow(
+      'Cannot resolve trusted executable "..\\..\\untrusted\\evil": contains a path separator',
+    );
+  });
+
   it("throws when PATH is unset", () => {
     expect(() => resolveTrustedExecutable("git", {}, "linux")).toThrow(
       'Cannot resolve trusted executable "git": not found on PATH',
