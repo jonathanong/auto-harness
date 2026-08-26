@@ -12,6 +12,7 @@ import {
   type ProcessRunner,
   type RunProcessOptions,
 } from "./executor.ts";
+import { resolveTrustedExecutable } from "./resolve-executable.ts";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_COLUMNS = 120;
@@ -63,13 +64,21 @@ export class PtyProcessRunner implements ProcessRunner {
       return { exitCode: null, timedOut: false, cancelled: true, signal: null };
     }
 
+    // Resolved to an absolute path via resolveTrustedExecutable, searching
+    // only `env`'s PATH — never `options.cwd` — for the same reason as
+    // runGit/installWorkspaceDependencies: options.cwd is always the
+    // untrusted session worktree, and Windows' child_process.spawn (libuv
+    // search_path()) checks cwd before PATH for a bare command name.
+    const env = options.env ?? createChildEnv();
+    const resolvedCommand = resolveTrustedExecutable(command, env, this.platform);
+
     let terminal: IPty;
     try {
-      terminal = this.spawn(command, args, {
+      terminal = this.spawn(resolvedCommand, args, {
         cols: DEFAULT_COLUMNS,
         cwd: options.cwd,
         encoding: "utf8",
-        env: options.env ?? createChildEnv(),
+        env,
         name: "xterm-256color",
         rows: DEFAULT_ROWS,
       });
