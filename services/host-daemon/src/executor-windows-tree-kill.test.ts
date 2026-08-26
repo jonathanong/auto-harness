@@ -183,4 +183,35 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     // `calls` staying at length 1 above.
     await expect(run).resolves.toMatchObject({ timedOut: true });
   });
+
+  it("does not taskkill a pid after the root process has already exited, since Windows may have recycled it", async () => {
+    const child = new FakeChild();
+    spawned.child = child;
+    const kill = vi.spyOn(child, "kill").mockImplementation(() => {
+      queueMicrotask(() => child.emit("close", null, null));
+      return true;
+    });
+    const treeKillCalls: number[] = [];
+    const runner = new SpawnProcessRunner({
+      platform: "win32",
+      killWindowsProcessTree: (pid) => {
+        treeKillCalls.push(pid);
+        return true;
+      },
+    });
+    const run = runner.run({
+      argv: ["fake-command"],
+      cwd: process.cwd(),
+      timeoutMs: 1,
+      terminationGraceMs: 1_000,
+      onChunk: () => undefined,
+    });
+    // The direct child (a cmd.exe launcher) has exited, but a backgrounded
+    // descendant still holds the inherited stdio open, so "close" has not
+    // fired yet -- the exact window in which child.pid is stale.
+    child.emit("exit", 0, null);
+    await run;
+    expect(treeKillCalls).toEqual([]);
+    expect(kill).toHaveBeenCalled();
+  });
 });

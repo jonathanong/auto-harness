@@ -125,14 +125,26 @@ export class SpawnProcessRunner implements ProcessRunner {
       let closed = false;
       let stopping = false;
       let escalation: ReturnType<typeof setTimeout> | undefined;
+      // Node fires "exit" as soon as the direct child's process ends, but
+      // delays "close" until its stdio streams also close -- which stalls
+      // for as long as a backgrounded descendant (the node.exe a cmd.exe
+      // launcher started, see #348) keeps holding the inherited pipes open.
+      // `child.pid` is never updated after exit, so once the direct child
+      // has exited, that number is a stale pid Windows may already have
+      // recycled for an unrelated process; only `child.kill()` -- which
+      // signals via the handle retained from spawn, not a PID re-lookup --
+      // stays safe to call in that window.
+      let rootExited = false;
 
       const signalProcess = (signal: NodeJS.Signals): void => {
         if (this.platform === "win32") {
           // Windows children never join a POSIX process group; reach
           // descendants (e.g. the node.exe a cmd.exe launcher started) via
           // taskkill instead of a plain child.kill(), which only signals the
-          // direct child.
-          if (child.pid !== undefined) {
+          // direct child. Skip it once the root has already exited: taskkill
+          // re-resolves the pid itself, so a stale/recycled pid there could
+          // force-kill an unrelated process tree instead.
+          if (child.pid !== undefined && !rootExited) {
             try {
               if (this.killWindowsProcessTree(child.pid)) return;
             } catch {
@@ -204,6 +216,10 @@ export class SpawnProcessRunner implements ProcessRunner {
       });
       child.stderr?.on("data", (buf: Buffer) => {
         emitChunk("stderr", buf);
+      });
+
+      child.on("exit", () => {
+        rootExited = true;
       });
 
       child.on("error", (err) => {
