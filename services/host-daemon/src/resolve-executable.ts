@@ -1,7 +1,35 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+
+/**
+ * Look up an environment variable, optionally tolerating the OS-native
+ * casing Windows reports for names like `Path`/`Pathext` — `NodeJS.ProcessEnv`
+ * property access is case-sensitive even when the underlying env var isn't.
+ */
+function envValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  caseInsensitive: boolean,
+): string | undefined {
+  if (env[name] !== undefined) return env[name];
+  if (!caseInsensitive) return undefined;
+  const target = name.toUpperCase();
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === target) return env[key];
+  }
+  return undefined;
+}
+
+function isExecutablePosix(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Resolve a trusted command name (e.g. "git", "pnpm", "cmd.exe") to an
@@ -30,23 +58,41 @@ export function resolveTrustedExecutable(
   if (isAbsolute(command)) return command;
 
   const isWindows = platform === "win32";
-  const directories = (env.PATH ?? "")
+  const directories = (envValue(env, "PATH", isWindows) ?? "")
     .split(isWindows ? ";" : ":")
-    .filter((directory) => directory.length > 0);
+    .filter((directory) => directory.length > 0)
+    // A relative PATH entry resolves against whichever process happens to be
+    // spawned with it as argv[0] and *that* process's cwd — for a session
+    // daemon that cwd is the untrusted checkout, so a relative entry could
+    // reintroduce the exact cwd-search vulnerability this function exists to
+    // close. Only absolute directories are trustworthy search roots.
+    .filter((directory) => isAbsolute(directory));
   const extensions = isWindows
-    ? (env.PATHEXT ?? DEFAULT_PATHEXT)
+    ? (envValue(env, "PATHEXT", true) ?? DEFAULT_PATHEXT)
         .split(";")
         .filter((ext) => ext.length > 0)
         .map((ext) => ext.toLowerCase())
     : [""];
   const lowerCommand = command.toLowerCase();
+  const hasExplicitExtension = /\.[^./\\]+$/.test(command);
 
   for (const directory of directories) {
-    for (const extension of extensions) {
-      const filename =
-        extension && lowerCommand.endsWith(extension) ? command : `${command}${extension}`;
-      const candidate = join(directory, filename);
-      if (existsSync(candidate)) return candidate;
+    if (isWindows) {
+      // Probe the command's own extension first, independent of PATHEXT: a
+      // custom PATHEXT that happens to omit e.g. ".EXE" must not make an
+      // already-fully-qualified filename like "cmd.exe" unresolvable.
+      if (hasExplicitExtension) {
+        const explicit = join(directory, command);
+        if (existsSync(explicit)) return explicit;
+      }
+      for (const extension of extensions) {
+        if (extension && lowerCommand.endsWith(extension)) continue;
+        const candidate = join(directory, `${command}${extension}`);
+        if (existsSync(candidate)) return candidate;
+      }
+    } else {
+      const candidate = join(directory, command);
+      if (existsSync(candidate) && isExecutablePosix(candidate)) return candidate;
     }
   }
   throw new Error(`Cannot resolve trusted executable "${command}": not found on PATH`);

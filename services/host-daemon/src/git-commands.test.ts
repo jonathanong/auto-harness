@@ -256,7 +256,9 @@ describe("sanitizeGitDiagnostic", () => {
 
 describe("runGit executable resolution", () => {
   function stubBinary(dir: string, filename: string): void {
-    writeFileSync(join(dir, filename), "");
+    // Mode 0o755: resolution requires POSIX candidates to actually be
+    // executable, not merely present.
+    writeFileSync(join(dir, filename), "", { mode: 0o755 });
   }
 
   it("resolves git from PATH, not from a malicious git.exe planted in the untrusted checkout cwd", async () => {

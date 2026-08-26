@@ -5,9 +5,15 @@ import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
 
-/** git is now resolved to an absolute path before spawning; match by basename. */
+/**
+ * git is now resolved to an absolute path before spawning; match by basename,
+ * stripping a Windows executable extension (resolveTrustedExecutable's
+ * default `platform` is `process.platform`, so this file's real spawns
+ * resolve to "git.exe" when actually run on Windows, not just in CI's
+ * platform-injected unit tests).
+ */
 function isGit(argv0: string | undefined): boolean {
-  return argv0 !== undefined && basename(argv0) === "git";
+  return argv0 !== undefined && basename(argv0).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
 }
 
 const config = parseDaemonConfig({

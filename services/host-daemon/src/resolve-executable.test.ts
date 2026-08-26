@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import { resolveTrustedExecutable } from "./resolve-executable.ts";
 
 function stubBinary(dir: string, filename: string): void {
-  writeFileSync(join(dir, filename), "");
+  // Mode 0o755: resolution requires POSIX candidates to actually be
+  // executable, not merely present.
+  writeFileSync(join(dir, filename), "", { mode: 0o755 });
 }
 
 describe("resolveTrustedExecutable", () => {
@@ -42,6 +44,33 @@ describe("resolveTrustedExecutable", () => {
     expect(() => resolveTrustedExecutable("git", {}, "linux")).toThrow(
       'Cannot resolve trusted executable "git": not found on PATH',
     );
+  });
+
+  it("skips a relative PATH directory entry and resolves from a later absolute one", () => {
+    // A relative PATH entry resolves against whatever cwd the eventual spawn
+    // happens to use — for this daemon that's the untrusted checkout, so
+    // honoring it could reintroduce the cwd-search vulnerability. Only
+    // absolute directories are trustworthy search roots.
+    const absolute = mkdtempSync(join(tmpdir(), "auto-harness-resolve-relative-abs-"));
+    stubBinary(absolute, "git");
+    const env = { PATH: `relative-bin-dir:${absolute}` };
+    expect(resolveTrustedExecutable("git", env, "linux")).toBe(join(absolute, "git"));
+  });
+
+  it("throws when every PATH directory entry is relative", () => {
+    const env = { PATH: "relative-bin-dir:./another-relative-dir" };
+    expect(() => resolveTrustedExecutable("git", env, "linux")).toThrow(
+      'Cannot resolve trusted executable "git": not found on PATH',
+    );
+  });
+
+  it("skips a PATH candidate that exists but is not executable, on posix", () => {
+    const nonExecutableDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-non-exec-"));
+    writeFileSync(join(nonExecutableDir, "git"), "", { mode: 0o644 });
+    const executableDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-exec-"));
+    stubBinary(executableDir, "git");
+    const env = { PATH: `${nonExecutableDir}:${executableDir}` };
+    expect(resolveTrustedExecutable("git", env, "linux")).toBe(join(executableDir, "git"));
   });
 
   it("never considers the current working directory, only env.PATH", () => {
@@ -87,6 +116,27 @@ describe("resolveTrustedExecutable", () => {
       const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-pathext-"));
       stubBinary(binDir, "pnpm.foo");
       expect(resolveTrustedExecutable("pnpm", { PATH: binDir, PATHEXT: ".FOO" }, "win32")).toBe(
+        join(binDir, "pnpm.foo"),
+      );
+    });
+
+    it("resolves an explicit extension even when a custom PATHEXT omits it", () => {
+      // A custom PATHEXT that happens to omit e.g. ".EXE" must not make an
+      // already-fully-qualified filename like "cmd.exe" unresolvable.
+      const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-explicit-ext-"));
+      stubBinary(binDir, "cmd.exe");
+      expect(
+        resolveTrustedExecutable("cmd.exe", { PATH: binDir, PATHEXT: ".COM;.BAT;.CMD" }, "win32"),
+      ).toBe(join(binDir, "cmd.exe"));
+    });
+
+    it("resolves PATH/PATHEXT under Windows' native env-key casing (Path/Pathext)", () => {
+      // NodeJS.ProcessEnv property access is case-sensitive even though the
+      // env vars it wraps are not; Windows commonly reports these as
+      // "Path"/"Pathext" rather than "PATH"/"PATHEXT".
+      const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-casing-"));
+      stubBinary(binDir, "pnpm.foo");
+      expect(resolveTrustedExecutable("pnpm", { Path: binDir, Pathext: ".FOO" }, "win32")).toBe(
         join(binDir, "pnpm.foo"),
       );
     });

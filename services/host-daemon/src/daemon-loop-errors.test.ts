@@ -22,8 +22,12 @@ describe("DaemonLoop errors", () => {
       const fallback = new SpawnProcessRunner();
       const processRunner: ProcessRunner = {
         async run(options) {
-          // git is now resolved to an absolute path before spawning; match by basename.
-          const isGit = options.argv[0] !== undefined && basename(options.argv[0]) === "git";
+          // git is now resolved to an absolute path before spawning; match by
+          // basename, stripping a Windows executable extension (this real
+          // spawn resolves to "git.exe" when actually run on Windows).
+          const isGit =
+            options.argv[0] !== undefined &&
+            basename(options.argv[0]).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
           if (
             isGit &&
             options.argv[1] === "switch" &&

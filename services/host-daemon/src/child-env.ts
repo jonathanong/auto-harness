@@ -18,7 +18,12 @@ const BASELINE_KEYS = new Set([
 ]);
 
 function isBaselineKey(key: string): boolean {
-  return BASELINE_KEYS.has(key) || key.startsWith("LC_");
+  // Compared case-insensitively: Windows commonly reports these as
+  // "Path"/"Temp" rather than the POSIX-conventional uppercase spelling, and
+  // dropping them here would leave resolveTrustedExecutable() with no PATH
+  // to search on every Windows spawn.
+  const upper = key.toUpperCase();
+  return BASELINE_KEYS.has(upper) || upper.startsWith("LC_");
 }
 
 export function parseChildEnvAllowlist(source: NodeJS.ProcessEnv): {

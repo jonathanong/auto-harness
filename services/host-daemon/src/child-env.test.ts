@@ -42,6 +42,14 @@ describe("child environment", () => {
     });
   });
 
+  it("keeps a baseline var under Windows' native casing (Path, not PATH)", () => {
+    // NodeJS.ProcessEnv keys are compared case-sensitively; Windows commonly
+    // reports "Path"/"Temp" rather than the POSIX-conventional uppercase
+    // spelling. Case-insensitive matching must still recognize it as
+    // baseline, and the original casing must be preserved on the way out.
+    expect(createChildEnv({ Path: "C:\\bin", SECRET: "nope" })).toEqual({ Path: "C:\\bin" });
+  });
+
   it("does not echo a malformed entry that may contain a secret", () => {
     const result = parseChildEnvAllowlist({
       HARNESS_CHILD_ENV_ALLOWLIST: "TOKEN=super-secret",
