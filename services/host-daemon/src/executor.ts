@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 
 import { createChildEnv } from "./child-env.ts";
+import { killWindowsProcessTree, type WindowsProcessTreeKill } from "./windows-process-tree.ts";
 import type { SessionUsage } from "@auto-harness/shared";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
@@ -30,7 +31,7 @@ export type RunProcessOptions = {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs: number;
-  /** Cancels the child (and its POSIX process group) promptly. */
+  /** Cancels the child (and its POSIX process group, or Windows process tree) promptly. */
   signal?: AbortSignal;
   /** Test-only/advanced override; production uses a five second grace period. */
   terminationGraceMs?: number;
@@ -71,7 +72,21 @@ export function formatSpawnEnoent(command: string, cwd: string): string {
   return `Cannot run ${command}: executable not found in PATH (ENOENT)`;
 }
 
+export type SpawnProcessRunnerDependencies = {
+  platform?: NodeJS.Platform;
+  /** Test-only override; production kills via `taskkill /T /F`. */
+  killWindowsProcessTree?: WindowsProcessTreeKill;
+};
+
 export class SpawnProcessRunner implements ProcessRunner {
+  private readonly platform: NodeJS.Platform;
+  private readonly killWindowsProcessTree: WindowsProcessTreeKill;
+
+  constructor(dependencies: SpawnProcessRunnerDependencies = {}) {
+    this.platform = dependencies.platform ?? process.platform;
+    this.killWindowsProcessTree = dependencies.killWindowsProcessTree ?? killWindowsProcessTree;
+  }
+
   async run(options: RunProcessOptions): Promise<ProcessResult> {
     if (options.argv.length === 0) {
       throw new Error("argv must be non-empty");
@@ -101,7 +116,7 @@ export class SpawnProcessRunner implements ProcessRunner {
         shell: false,
         // A detached POSIX child starts a process group. This makes timeout and
         // cancellation kill helpers that a CLI may have spawned as well.
-        detached: process.platform !== "win32",
+        detached: this.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -110,16 +125,42 @@ export class SpawnProcessRunner implements ProcessRunner {
       let closed = false;
       let stopping = false;
       let escalation: ReturnType<typeof setTimeout> | undefined;
+      // Node fires "exit" as soon as the direct child's process ends, but
+      // delays "close" until its stdio streams also close -- which stalls
+      // for as long as a backgrounded descendant (the node.exe a cmd.exe
+      // launcher started, see #348) keeps holding the inherited pipes open.
+      // `child.pid` is never updated after exit, so once the direct child
+      // has exited, that number is a stale pid Windows may already have
+      // recycled for an unrelated process; only `child.kill()` -- which
+      // signals via the handle retained from spawn, not a PID re-lookup --
+      // stays safe to call in that window.
+      let rootExited = false;
 
       const signalProcess = (signal: NodeJS.Signals): void => {
-        // Negative pid addresses the group created by detached:true. On
-        // Windows, or if group signalling is unavailable, kill the direct
-        // child as the safe fallback.
-        try {
-          process.kill(-child.pid!, signal);
-          return;
-        } catch {
-          // Fall through to direct child signal.
+        if (this.platform === "win32") {
+          // Windows children never join a POSIX process group; reach
+          // descendants (e.g. the node.exe a cmd.exe launcher started) via
+          // taskkill instead of a plain child.kill(), which only signals the
+          // direct child. Skip it once the root has already exited: taskkill
+          // re-resolves the pid itself, so a stale/recycled pid there could
+          // force-kill an unrelated process tree instead.
+          if (child.pid !== undefined && !rootExited) {
+            try {
+              if (this.killWindowsProcessTree(child.pid)) return;
+            } catch {
+              // Fall through to direct child signal.
+            }
+          }
+        } else {
+          // Negative pid addresses the group created by detached:true. If
+          // group signalling is unavailable, kill the direct child as the
+          // safe fallback.
+          try {
+            process.kill(-child.pid!, signal);
+            return;
+          } catch {
+            // Fall through to direct child signal.
+          }
         }
         try {
           child.kill(signal);
@@ -134,6 +175,14 @@ export class SpawnProcessRunner implements ProcessRunner {
         timedOut = reason === "timeout";
         cancelled = reason === "cancel";
         signalProcess("SIGTERM");
+        // taskkill /F is already maximally forceful, so there is no softer
+        // first stage to escalate from on Windows -- and a delayed second
+        // taskkill call is actively dangerous there: Windows recycles PIDs
+        // aggressively, so by the time the grace period elapses the numeric
+        // pid can belong to an unrelated process and its tree. POSIX still
+        // escalates because a reaped pid is inert to `process.kill`/`child.kill`
+        // (ESRCH), not silently redirected to a different process.
+        if (this.platform === "win32") return;
         escalation = setTimeout(() => {
           // The direct child may close after SIGTERM while descendants in its
           // detached POSIX process group survive. Escalate the group anyway.
@@ -167,6 +216,10 @@ export class SpawnProcessRunner implements ProcessRunner {
       });
       child.stderr?.on("data", (buf: Buffer) => {
         emitChunk("stderr", buf);
+      });
+
+      child.on("exit", () => {
+        rootExited = true;
       });
 
       child.on("error", (err) => {
