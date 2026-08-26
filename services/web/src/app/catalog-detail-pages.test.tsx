@@ -205,6 +205,19 @@ describe("control catalog detail routes", () => {
       }),
     );
     expect(html).toContain("Could not load held leases");
+
+    stubApi({
+      ...base,
+      "/api/v1/auth/me": { username: "op", role: "operator", kind: "user" },
+      "/api/v1/provider-accounts/account-1/leases": {},
+    });
+    html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-1" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain("No held leases");
   });
 
   it("keeps provider detail tabs empty when supporting APIs fail", async () => {
