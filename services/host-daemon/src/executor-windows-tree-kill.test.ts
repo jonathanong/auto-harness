@@ -48,7 +48,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     });
     const result = await runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 1,
       terminationGraceMs: 1_000,
       onChunk: () => undefined,
@@ -75,7 +75,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     });
     const result = await runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 1,
       terminationGraceMs: 1_000,
       onChunk: () => undefined,
@@ -100,7 +100,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     });
     const result = await runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 1,
       terminationGraceMs: 1_000,
       onChunk: () => undefined,
@@ -127,7 +127,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     });
     const result = await runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 1,
       terminationGraceMs: 1_000,
       onChunk: () => undefined,
@@ -143,7 +143,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     const runner = new SpawnProcessRunner({ platform: "win32" });
     const run = runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 10_000,
       onChunk: () => undefined,
     });
@@ -168,7 +168,7 @@ describe("SpawnProcessRunner Windows process-tree kill", () => {
     });
     const run = runner.run({
       argv: ["fake-command"],
-      cwd: "/tmp",
+      cwd: process.cwd(),
       timeoutMs: 1,
       terminationGraceMs: 50,
       onChunk: () => undefined,
