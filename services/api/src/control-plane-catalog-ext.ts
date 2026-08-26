@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- catalog CRUD and provider-account lease operations share one facade. */
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -10,6 +11,10 @@ import * as providers from "./control-plane-providers.ts";
 import { listSessionTargets, type SessionTarget } from "./control-plane-session-targets.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
+import {
+  forceReleaseProviderAccountLease,
+  listProviderAccountLeaseStates,
+} from "./control-plane-provider-account-leases.ts";
 
 /** Provider/ProviderAccount/Command catalog delegators. */
 export class ControlPlaneCatalogService {
@@ -148,6 +153,14 @@ export class ControlPlaneCatalogService {
     id: string,
   ): Promise<ReturnType<typeof providerAccounts.deleteProviderAccount>> {
     return durableProviderAccounts.deleteProviderAccountDurable(this.state, id);
+  }
+
+  listProviderAccountLeaseStatesDurable(id: string) {
+    return listProviderAccountLeaseStates(this.state, id);
+  }
+
+  forceReleaseProviderAccountLeaseDurable(id: string, slot: number) {
+    return forceReleaseProviderAccountLease(this.state, id, slot);
   }
 
   createCommand(

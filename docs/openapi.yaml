@@ -208,6 +208,37 @@ paths:
               schema: { $ref: "#/components/schemas/ProviderAccount" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /provider-accounts/{providerAccountId}/leases:
+    parameters:
+      - $ref: "#/components/parameters/ProviderAccountId"
+    get:
+      operationId: listProviderAccountLeases
+      summary: List currently held provider-account leases for operational recovery
+      responses:
+        "200":
+          description: Held leases and their terminal-release safety state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccountLeaseList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /provider-accounts/{providerAccountId}/leases/{slot}/release:
+    parameters:
+      - $ref: "#/components/parameters/ProviderAccountId"
+      - $ref: "#/components/parameters/ProviderAccountLeaseSlot"
+    post:
+      operationId: releaseProviderAccountLease
+      summary: Force-release a terminal provider-account lease with attempt fencing
+      responses:
+        "200":
+          description: Before/after lease state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderAccountLeaseRelease" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /repositories/{repositoryId}/session-drains/{operationId}/release:
     parameters:
       - $ref: "#/components/parameters/RepositoryId"
@@ -244,6 +275,12 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ProviderAccountLeaseSlot:
+      name: slot
+      in: path
+      required: true
+      description: Zero-based provider-account concurrency slot.
+      schema: { type: integer, minimum: 0, maximum: 63 }
     SessionDrainOperationId:
       name: operationId
       in: path
@@ -440,6 +477,56 @@ components:
         lastAssignedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ProviderAccountLeaseHolder:
+      type: object
+      required:
+        - sessionId
+        - attemptId
+        - hostId
+        - sessionStatus
+        - sessionCreatedAt
+        - sessionStartedAt
+        - releasable
+        - releaseBlock
+      properties:
+        sessionId: { type: string }
+        attemptId: { type: string }
+        hostId: { type: [string, "null"] }
+        sessionStatus:
+          type: [string, "null"]
+          enum: [queued, running, completed, failed, cancelled, timed_out, null]
+        sessionCreatedAt: { type: [string, "null"], format: date-time }
+        sessionStartedAt: { type: [string, "null"], format: date-time }
+        releasable: { type: boolean }
+        releaseBlock:
+          type: [string, "null"]
+          enum: [session_not_terminal, session_not_found, session_lease_mismatch, null]
+      additionalProperties: false
+    ProviderAccountLease:
+      type: object
+      required: [providerAccountId, slot, holder]
+      properties:
+        providerAccountId: { type: string }
+        slot: { type: integer, minimum: 0, maximum: 63 }
+        holder:
+          oneOf:
+            - { $ref: "#/components/schemas/ProviderAccountLeaseHolder" }
+            - type: "null"
+      additionalProperties: false
+    ProviderAccountLeaseList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderAccountLease" }
+    ProviderAccountLeaseRelease:
+      type: object
+      required: [released, before, after]
+      properties:
+        released: { type: boolean }
+        before: { $ref: "#/components/schemas/ProviderAccountLease" }
+        after: { $ref: "#/components/schemas/ProviderAccountLease" }
     CreateProviderAccount:
       type: object
       required: [providerId, label]

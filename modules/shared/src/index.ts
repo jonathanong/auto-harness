@@ -183,6 +183,8 @@ export {
   validateProviderAccountReadiness,
   type HostRepositoryRegistration,
   type HostRunningAttempt,
+  type ProviderAccountLeaseReleaseResult,
+  type ProviderAccountLeaseState,
   type ProviderAccountReadiness,
 } from "./host-registration.ts";
 

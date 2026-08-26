@@ -1,5 +1,12 @@
-import { DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+/* eslint-disable max-lines -- durable provider-account lease lifecycle and operator fencing share helpers. */
+import {
+  BatchGetCommand,
+  DeleteCommand,
+  GetCommand,
+  TransactWriteCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   isConditionalFailed,
@@ -12,6 +19,7 @@ import {
   type HostAssignmentLease,
 } from "./plane-storage-host-assignment.ts";
 import { providerAccountCapCondition } from "./plane-storage-provider-account-cap.ts";
+import type { SessionRecord } from "./types.ts";
 
 export type ProviderAccountLeaseKey = {
   concurrencyId: string;
@@ -20,9 +28,78 @@ export type ProviderAccountLeaseKey = {
   slot: number;
 };
 
+export type ProviderAccountLeaseLock = ProviderAccountLeaseKey & {
+  sessionId: string;
+  hostId?: string;
+};
+
 type ProviderAccountLeaseBackfillResult =
   | { status: "migrated"; lease: ProviderAccountLeaseKey }
   | { status: "lease_collision" | "session_changed" };
+
+/** Strongly read the durable slot holder before deciding whether it is safe to release. */
+export async function getProviderAccountLeaseLock(
+  ctx: PlaneStorageCtx,
+  concurrencyId: string,
+): Promise<ProviderAccountLeaseLock | null> {
+  const response = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.concurrencyLocks,
+      Key: { concurrencyId },
+      ConsistentRead: true,
+    }),
+  );
+  return (response.Item as ProviderAccountLeaseLock | undefined) ?? null;
+}
+
+async function batchGetAll(
+  ctx: PlaneStorageCtx,
+  requestItems: Record<string, { Keys: Record<string, unknown>[]; ConsistentRead: true }>,
+): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  let pending = requestItems;
+  for (let attempts = 0; ; attempts += 1) {
+    const response = await ctx.doc.send(new BatchGetCommand({ RequestItems: pending }));
+    items.push(...Object.values(response.Responses ?? {}).flat());
+    const unprocessed = response.UnprocessedKeys ?? {};
+    if (Object.keys(unprocessed).length === 0) return items;
+    if (attempts >= 7) throw new Error("DynamoDB BatchGetItem left unprocessed keys");
+    await delay(Math.min(2 ** attempts, 50));
+    pending = unprocessed as typeof pending;
+  }
+}
+
+/** Strongly read the fixed synthetic slot keyspace in bounded BatchGetItem requests. */
+export async function listProviderAccountLeaseLocks(
+  ctx: PlaneStorageCtx,
+  providerAccountId: string,
+  maxSlots: number,
+): Promise<ProviderAccountLeaseLock[]> {
+  const locks = await batchGetAll(ctx, {
+    [ctx.tables.concurrencyLocks]: {
+      Keys: [...Array(maxSlots).keys()].map((slot) => ({
+        concurrencyId: providerAccountLeaseConcurrencyId(providerAccountId, slot),
+      })),
+      ConsistentRead: true,
+    },
+  });
+  return locks as ProviderAccountLeaseLock[];
+}
+
+/** Strongly read the holder sessions for a batch of lock rows, retrying unprocessed keys. */
+export async function getProviderAccountLeaseHolderSessions(
+  ctx: PlaneStorageCtx,
+  leases: readonly ProviderAccountLeaseLock[],
+): Promise<Map<string, SessionRecord>> {
+  if (leases.length === 0) return new Map();
+  const sessions = await batchGetAll(ctx, {
+    [ctx.tables.sessions]: {
+      Keys: [...new Set(leases.map((lease) => lease.sessionId))].map((id) => ({ id })),
+      ConsistentRead: true,
+    },
+  });
+  return new Map((sessions as SessionRecord[]).map((session) => [session.id, session]));
+}
 
 /**
  * Migrate one active legacy assignment to an attempt-owned provider lease.
@@ -215,6 +292,76 @@ export async function releaseTimedOutProviderAccountLease(
           ...(opts.hostAssignmentLease
             ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
             : []),
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
+/**
+ * Atomically remove a terminal session's exact provider-account lease and its
+ * matching ConcurrencyLocks row. Every holder attribute is a transaction fence
+ * so an operator can never free a lease reacquired by another attempt.
+ */
+export async function forceReleaseProviderAccountLease(
+  ctx: PlaneStorageCtx,
+  opts: {
+    providerAccountId: string;
+    slot: number;
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.providerAccounts,
+              Key: { id: opts.providerAccountId },
+              ConditionExpression: "attribute_exists(id)",
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression: "REMOVE providerAccountLease",
+              ConditionExpression:
+                "#s IN (:completed, :failed, :cancelled, :timedOut) AND attemptId = :attemptId AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.providerAccountId = :providerAccountId AND providerAccountLease.slot = :slot AND providerAccountLease.attemptId = :attemptId",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":completed": "completed",
+                ":failed": "failed",
+                ":cancelled": "cancelled",
+                ":timedOut": "timed_out",
+                ":attemptId": opts.attemptId,
+                ":concurrencyId": opts.concurrencyId,
+                ":providerAccountId": opts.providerAccountId,
+                ":slot": opts.slot,
+              },
+            },
+          },
+          {
+            Delete: {
+              TableName: ctx.tables.concurrencyLocks,
+              Key: { concurrencyId: opts.concurrencyId },
+              ConditionExpression:
+                "providerAccountId = :providerAccountId AND slot = :slot AND sessionId = :sessionId AND attemptId = :attemptId",
+              ExpressionAttributeValues: {
+                ":providerAccountId": opts.providerAccountId,
+                ":slot": opts.slot,
+                ":sessionId": opts.sessionId,
+                ":attemptId": opts.attemptId,
+              },
+            },
+          },
         ],
       }),
     );

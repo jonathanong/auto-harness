@@ -44,6 +44,7 @@ describe("role capability table", () => {
         "schedules:write",
         "repositories:operate",
         "fleet:drain",
+        "providers:leases",
       ],
       maintainer: [
         "sessions:write",
@@ -52,6 +53,7 @@ describe("role capability table", () => {
         "schedules:write",
         "repositories:operate",
         "fleet:drain",
+        "providers:leases",
         "fleet:inventory",
         "providers:accounts",
       ],
@@ -73,6 +75,7 @@ describe("role capability table", () => {
     expect(roleHas("maintainer", "audit:read")).toBe(false);
     expect(roleHas("author", "schedules:write")).toBe(false);
     expect(roleHas("operator", "fleet:inventory")).toBe(false);
+    expect(roleHas("operator", "providers:leases")).toBe(true);
     expect(roleHas("maintainer", "fleet:exec-config")).toBe(false);
     expect(roleHas("agent", "sessions:write")).toBe(false);
     expect(roleHas("admin", "fleet:exec-config")).toBe(true);

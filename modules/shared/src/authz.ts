@@ -10,6 +10,7 @@ export type Capability =
   | "fleet:inventory"
   | "fleet:exec-config"
   | "providers:accounts"
+  | "providers:leases"
   | "catalog:write"
   | "accounts:write"
   | "integrations:write"
@@ -27,6 +28,7 @@ export const CAPABILITIES = [
   "fleet:inventory",
   "fleet:exec-config",
   "providers:accounts",
+  "providers:leases",
   "catalog:write",
   "accounts:write",
   "integrations:write",
@@ -46,6 +48,7 @@ const OPERATOR_CAPABILITIES = [
   "schedules:write",
   "repositories:operate",
   "fleet:drain",
+  "providers:leases",
 ] as const satisfies readonly Capability[];
 
 const MAINTAINER_CAPABILITIES = [

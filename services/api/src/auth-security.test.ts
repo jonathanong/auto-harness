@@ -409,6 +409,17 @@ describe("control-plane authentication security", () => {
     expect(authorize(maintainer, "PUT", "/api/v1/hosts/host-a/inventory")).toBe(true);
     expect(authorize(maintainer, "POST", "/api/v1/commands")).toBe(false);
     expect(authorize(maintainer, "POST", "/api/v1/provider-accounts")).toBe(true);
+    expect(authorize(operator, "GET", "/api/v1/provider-accounts/account/leases")).toBe(true);
+    expect(authorize(readOnly, "GET", "/api/v1/provider-accounts/account/leases")).toBe(false);
+    expect(authorize(operator, "POST", "/api/v1/provider-accounts/account/leases/0/release")).toBe(
+      true,
+    );
+    expect(authorize(author, "POST", "/api/v1/provider-accounts/account/leases/0/release")).toBe(
+      false,
+    );
+    expect(
+      authorize(maintainer, "POST", "/api/v1/provider-accounts/account/leases/0/release"),
+    ).toBe(true);
     expect(authorize(agent, "POST", "/api/v1/host/messages")).toBe(true);
     expect(authorize(agent, "POST", "/api/v1/sessions")).toBe(true);
     expect(authorize(agent, "POST", "/api/v1/commands")).toBe(false);
@@ -439,6 +450,12 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("POST", "/api/v1/sessions/s/archive")).toBe("sessions:archive");
     expect(requiredCapability("POST", "/api/v1/sessions/s/cancel")).toBe("sessions:write");
     expect(requiredCapability("GET", "/api/v1/provider-accounts")).toBe("authenticated");
+    expect(requiredCapability("GET", "/api/v1/provider-accounts/account/leases")).toBe(
+      "providers:leases",
+    );
+    expect(requiredCapability("POST", "/api/v1/provider-accounts/account/leases/0/release")).toBe(
+      "providers:leases",
+    );
     expect(requiredCapability("GET", "/api/v1/sessions")).toBe("authenticated");
     expect(requiredCapability("POST", "/api/v1/unknown")).toBeNull();
     expect(requiredCapability("POST", "/api/v1/scheduler-extra")).toBeNull();
