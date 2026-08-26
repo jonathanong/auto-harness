@@ -74,16 +74,23 @@ describe("resolveTrustedExecutable", () => {
   });
 
   it("never considers the current working directory, only env.PATH", () => {
-    // Regression guard for the vulnerability itself: place a same-named file
-    // in process.cwd() (simulating an untrusted checkout used as cwd) and
-    // confirm resolution still requires a real PATH match, never falling
-    // back to an implicit cwd search the way Windows' native resolution does.
+    // Regression guard for the vulnerability itself: actually chdir() into a
+    // directory containing a same-named file (simulating an untrusted
+    // checkout used as cwd) and confirm resolution still requires a real
+    // PATH match — a future resolver that fell back to process.cwd() the
+    // way Windows' native resolution does must still fail this test.
     const untrustedCwd = mkdtempSync(join(tmpdir(), "auto-harness-resolve-untrusted-cwd-"));
     stubBinary(untrustedCwd, "git");
     const emptyBinDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-empty-path-"));
-    expect(() => resolveTrustedExecutable("git", { PATH: emptyBinDir }, "linux")).toThrow(
-      'Cannot resolve trusted executable "git": not found on PATH',
-    );
+    const originalCwd = process.cwd();
+    process.chdir(untrustedCwd);
+    try {
+      expect(() => resolveTrustedExecutable("git", { PATH: emptyBinDir }, "linux")).toThrow(
+        'Cannot resolve trusted executable "git": not found on PATH',
+      );
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 
   describe("on win32", () => {
@@ -152,22 +159,28 @@ describe("resolveTrustedExecutable", () => {
     it("ignores a malicious pnpm.cmd planted in an untrusted checkout used as cwd", () => {
       // This is the vulnerability from #349: a checked-out ref can plant a
       // same-named pnpm.cmd/git.exe in the directory a session daemon later
-      // spawns with as cwd. Resolution here never looks at any cwd-like
-      // value at all, so a directory that merely happens to contain a
-      // same-named file is never consulted, regardless of what a caller's
-      // cwd is set to.
+      // spawns with as cwd. Actually chdir() into that directory: resolution
+      // must still never look at any cwd-like value at all, so a directory
+      // that merely happens to contain a same-named file is never
+      // consulted, regardless of what the caller's actual cwd is set to.
       const untrustedCheckout = mkdtempSync(join(tmpdir(), "auto-harness-resolve-malicious-"));
       stubBinary(untrustedCheckout, "pnpm.cmd");
       stubBinary(untrustedCheckout, "git.exe");
       const trustedBinDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-trusted-"));
       stubBinary(trustedBinDir, "pnpm.cmd");
       stubBinary(trustedBinDir, "git.exe");
-      expect(resolveTrustedExecutable("pnpm", { PATH: trustedBinDir }, "win32")).toBe(
-        join(trustedBinDir, "pnpm.cmd"),
-      );
-      expect(resolveTrustedExecutable("git", { PATH: trustedBinDir }, "win32")).toBe(
-        join(trustedBinDir, "git.exe"),
-      );
+      const originalCwd = process.cwd();
+      process.chdir(untrustedCheckout);
+      try {
+        expect(resolveTrustedExecutable("pnpm", { PATH: trustedBinDir }, "win32")).toBe(
+          join(trustedBinDir, "pnpm.cmd"),
+        );
+        expect(resolveTrustedExecutable("git", { PATH: trustedBinDir }, "win32")).toBe(
+          join(trustedBinDir, "git.exe"),
+        );
+      } finally {
+        process.chdir(originalCwd);
+      }
     });
   });
 });
