@@ -56,6 +56,18 @@ describe("ProviderAccountLeases", () => {
     expect(
       field<HTMLButtonElement>(view.container, "provider-account-lease-release-account-2").disabled,
     ).toBe(true);
+    view.unmount();
+
+    const attached = mountForm(
+      <ProviderAccountLeases
+        accountId="account"
+        leases={[lease({ releasable: false, releaseBlock: "session_assignment_attached" })]}
+      />,
+    );
+    expect(
+      field<HTMLButtonElement>(attached.container, "provider-account-lease-release-account-2")
+        .disabled,
+    ).toBe(true);
   });
 
   it("confirms a terminal release, refreshes, and reports immediate reuse", async () => {

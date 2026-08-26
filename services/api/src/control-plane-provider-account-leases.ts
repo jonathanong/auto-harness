@@ -26,6 +26,12 @@ type ProviderAccountLeaseOperation =
   | { ok: true; result: ProviderAccountLeaseReleaseResult }
   | { ok: false; reason: "not_found" | "conflict" };
 
+type ProviderAccountLeaseAccess = (session: SessionRecord | undefined) => boolean;
+
+function sessionAttemptId(session: SessionRecord): string | undefined {
+  return session.attemptId ?? session.resolvedRoute?.attemptId;
+}
+
 function sessionMatchesProviderAccountLease(
   session: SessionRecord | undefined,
   lease: ProviderAccountLeaseLock,
@@ -37,7 +43,18 @@ function sessionMatchesProviderAccountLease(
     held.providerAccountId === lease.providerAccountId &&
     held.slot === lease.slot &&
     held.attemptId === lease.attemptId &&
-    session.attemptId === lease.attemptId
+    sessionAttemptId(session) === lease.attemptId
+  );
+}
+
+function sessionAssignmentDetached(session: SessionRecord): boolean {
+  return (
+    session.worktreeId == null &&
+    session.mainCheckoutLease !== true &&
+    session.assignmentConnectionId === undefined &&
+    session.hostAssignmentLease === undefined &&
+    session.timedOutHostId === undefined &&
+    session.timedOutAssignmentConnectionId === undefined
   );
 }
 
@@ -50,6 +67,7 @@ function providerAccountLeaseState(
   if (!session) releaseBlock = "session_not_found";
   else if (!matches) releaseBlock = "session_lease_mismatch";
   else if (!isTerminalSessionStatus(session.status)) releaseBlock = "session_not_terminal";
+  else if (!sessionAssignmentDetached(session)) releaseBlock = "session_assignment_attached";
   return {
     providerAccountId: lease.providerAccountId,
     slot: lease.slot,
@@ -111,6 +129,7 @@ function localProviderAccountLeaseLock(
 export async function listProviderAccountLeaseStates(
   state: ControlPlaneState,
   providerAccountId: string,
+  mayAccessSession: ProviderAccountLeaseAccess = () => true,
 ): Promise<{ ok: true; items: ProviderAccountLeaseState[] } | { ok: false; reason: "not_found" }> {
   if (state.storage) {
     const account = await state.storage.getProviderAccount(providerAccountId);
@@ -128,6 +147,10 @@ export async function listProviderAccountLeaseStates(
     return {
       ok: true,
       items: leases
+        .filter((lease) => {
+          const session = sessions.get(lease.sessionId);
+          return mayAccessSession(session);
+        })
         .map((lease) => providerAccountLeaseState(lease, sessions.get(lease.sessionId)))
         .toSorted((left, right) => left.slot - right.slot),
     };
@@ -137,7 +160,8 @@ export async function listProviderAccountLeaseStates(
   for (let slot = 0; slot < MAX_CONCURRENT_SESSIONS_LIMIT; slot += 1) {
     const lease = localProviderAccountLeaseLock(state, providerAccountId, slot);
     if (!lease) continue;
-    items.push(providerAccountLeaseState(lease, state.sessions.get(lease.sessionId)));
+    const session = state.sessions.get(lease.sessionId);
+    if (mayAccessSession(session)) items.push(providerAccountLeaseState(lease, session));
   }
   return { ok: true, items };
 }
@@ -148,6 +172,7 @@ async function forceReleaseDurableProviderAccountLease(
   providerAccountId: string,
   slot: number,
   concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
 ): Promise<ProviderAccountLeaseOperation> {
   const account = await storage.getProviderAccount(providerAccountId);
   if (!account) {
@@ -165,9 +190,13 @@ async function forceReleaseDurableProviderAccountLease(
   else state.sessions.delete(lease.sessionId);
   const matchedSession = session ?? undefined;
   const before = providerAccountLeaseState(lease, matchedSession);
+  if (!mayAccessSession(matchedSession)) {
+    return { ok: false, reason: "not_found" };
+  }
   if (
     !sessionMatchesProviderAccountLease(matchedSession, lease) ||
-    !isTerminalSessionStatus(matchedSession.status)
+    !isTerminalSessionStatus(matchedSession.status) ||
+    !sessionAssignmentDetached(matchedSession)
   ) {
     return { ok: false, reason: "conflict" };
   }
@@ -182,6 +211,11 @@ async function forceReleaseDurableProviderAccountLease(
   // Do not mutate either cache until the transaction commits. A stale local map must never
   // advertise capacity after a fenced conditional failure.
   delete matchedSession.providerAccountLease;
+  const cachedSession = state.sessions.get(matchedSession.id);
+  if (cachedSession && sessionMatchesProviderAccountLease(cachedSession, lease)) {
+    delete cachedSession.providerAccountLease;
+    state.sessions.set(cachedSession.id, { ...cachedSession });
+  }
   const cached = state.providerAccountLeases.get(concurrencyId);
   if (cached?.sessionId === lease.sessionId && cached.attemptId === lease.attemptId) {
     state.providerAccountLeases.delete(concurrencyId);
@@ -209,6 +243,7 @@ function forceReleaseLocalProviderAccountLease(
   providerAccountId: string,
   slot: number,
   concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
 ): ProviderAccountLeaseOperation {
   if (!state.providerAccounts.has(providerAccountId)) return { ok: false, reason: "not_found" };
   const lease = localProviderAccountLeaseLock(state, providerAccountId, slot);
@@ -218,9 +253,11 @@ function forceReleaseLocalProviderAccountLease(
   }
   const session = state.sessions.get(lease.sessionId);
   const before = providerAccountLeaseState(lease, session);
+  if (!mayAccessSession(session)) return { ok: false, reason: "not_found" };
   if (
     !sessionMatchesProviderAccountLease(session, lease) ||
-    !isTerminalSessionStatus(session.status)
+    !isTerminalSessionStatus(session.status) ||
+    !sessionAssignmentDetached(session)
   ) {
     return { ok: false, reason: "conflict" };
   }
@@ -244,6 +281,7 @@ export async function forceReleaseProviderAccountLease(
   state: ControlPlaneState,
   providerAccountId: string,
   slot: number,
+  mayAccessSession: ProviderAccountLeaseAccess = () => true,
 ): Promise<ProviderAccountLeaseOperation> {
   const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
   if (state.storage) {
@@ -253,9 +291,16 @@ export async function forceReleaseProviderAccountLease(
       providerAccountId,
       slot,
       concurrencyId,
+      mayAccessSession,
     );
   }
-  return forceReleaseLocalProviderAccountLease(state, providerAccountId, slot, concurrencyId);
+  return forceReleaseLocalProviderAccountLease(
+    state,
+    providerAccountId,
+    slot,
+    concurrencyId,
+    mayAccessSession,
+  );
 }
 
 export function hostProviderAccountReady(

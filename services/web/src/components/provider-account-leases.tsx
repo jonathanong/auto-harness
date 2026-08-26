@@ -16,6 +16,9 @@ function releaseBlockCopy(holder: ProviderAccountLeaseHolder): string | undefine
   if (holder.releaseBlock === "session_not_terminal") {
     return "Only a lease held by a terminal Session can be released.";
   }
+  if (holder.releaseBlock === "session_assignment_attached") {
+    return "The holder Session still has an attached host assignment.";
+  }
   if (holder.releaseBlock === "session_not_found") {
     return "The holder Session could not be found; this lease cannot be released safely.";
   }

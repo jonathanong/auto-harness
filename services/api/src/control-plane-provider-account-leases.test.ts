@@ -474,6 +474,7 @@ describe("provider account execution-profile leases", () => {
   it("lists durable lease holders in slot order and evicts a missing account", async () => {
     const session = {
       id: "session",
+      repositoryId: "allowed",
       status: "cancelled",
       attemptId: "attempt",
       createdAt: NOW,
@@ -481,6 +482,7 @@ describe("provider account execution-profile leases", () => {
     } as never;
     const mismatched = {
       id: "missing",
+      repositoryId: "hidden",
       status: "cancelled",
       attemptId: "different-attempt",
       createdAt: NOW,
@@ -513,6 +515,12 @@ describe("provider account execution-profile leases", () => {
         { slot: 2, holder: { releaseBlock: "session_lease_mismatch" } },
       ],
     });
+    await expect(
+      listProviderAccountLeaseStates(state, "acct", (holder) => holder?.repositoryId === "allowed"),
+    ).resolves.toMatchObject({
+      ok: true,
+      items: [{ slot: 0, holder: { sessionId: "session" } }],
+    });
     expect(state.sessions.get("session")).toMatchObject({ status: "cancelled" });
 
     state.storage = { getProviderAccount: async () => null } as never;
@@ -535,6 +543,7 @@ describe("provider account execution-profile leases", () => {
     };
     const terminal = {
       id: "terminal",
+      repositoryId: "repo",
       status: "cancelled",
       attemptId: "attempt",
       createdAt: NOW,
@@ -572,18 +581,33 @@ describe("provider account execution-profile leases", () => {
     });
 
     const fenced = createControlPlaneState();
+    const releaseFenced = vi.fn().mockResolvedValue(false);
     fenced.storage = {
       getProviderAccount: async () => account,
       getProviderAccountLeaseLock: async () => lease,
       getSession: async () => terminal,
-      forceReleaseProviderAccountLease: async () => false,
+      forceReleaseProviderAccountLease: releaseFenced,
     } as never;
     await expect(forceReleaseProviderAccountLease(fenced, "acct", 0)).resolves.toEqual({
       ok: false,
       reason: "conflict",
     });
+    await expect(forceReleaseProviderAccountLease(fenced, "acct", 0, () => false)).resolves.toEqual(
+      { ok: false, reason: "not_found" },
+    );
+    expect(releaseFenced).toHaveBeenCalledOnce();
 
-    for (const session of [undefined, { ...terminal, status: "running" }] as const) {
+    for (const session of [
+      undefined,
+      { ...terminal, status: "running" },
+      { ...terminal, worktreeId: "worktree", assignmentConnectionId: "connection" },
+      {
+        ...terminal,
+        status: "timed_out",
+        timedOutHostId: "host",
+        timedOutAssignmentConnectionId: "connection",
+      },
+    ] as const) {
       const conflicted = createControlPlaneState();
       conflicted.storage = {
         getProviderAccount: async () => account,
@@ -649,6 +673,7 @@ describe("provider account execution-profile leases", () => {
       },
     });
     expect(terminal).not.toHaveProperty("providerAccountLease");
+    expect(released.sessions.get("terminal")).not.toHaveProperty("providerAccountLease");
     expect(released.providerAccountLeases.get(concurrencyId)).toMatchObject({
       sessionId: "replacement",
       hostId: "session-host",
@@ -667,6 +692,43 @@ describe("provider account execution-profile leases", () => {
       ok: true,
       result: { released: true, after: { holder: null } },
     });
+  });
+
+  it("releases a detached legacy holder fenced by its resolved-route attempt", async () => {
+    const concurrencyId = "provider-lease:acct:0";
+    const lease = {
+      concurrencyId,
+      providerAccountId: "acct",
+      slot: 0,
+      sessionId: "legacy",
+      attemptId: "legacy-attempt",
+    };
+    const session = {
+      id: "legacy",
+      repositoryId: "repo",
+      status: "failed",
+      resolvedRoute: { attemptId: "legacy-attempt" },
+      providerAccountLease: {
+        concurrencyId,
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "legacy-attempt",
+      },
+    } as never;
+    const release = vi.fn().mockResolvedValue(true);
+    const state = createControlPlaneState();
+    state.storage = {
+      getProviderAccount: async () => ({ id: "acct" }),
+      getProviderAccountLeaseLock: vi.fn().mockResolvedValueOnce(lease).mockResolvedValueOnce(null),
+      getSession: async () => session,
+      forceReleaseProviderAccountLease: release,
+    } as never;
+
+    await expect(forceReleaseProviderAccountLease(state, "acct", 0)).resolves.toMatchObject({
+      ok: true,
+      result: { released: true },
+    });
+    expect(release).toHaveBeenCalledWith(expect.objectContaining({ attemptId: "legacy-attempt" }));
   });
 
   it("removes an exact cached local lease after release", async () => {

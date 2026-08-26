@@ -1108,9 +1108,11 @@ be safely released:
 
 The API does not expose the internal `provider-lease:<providerAccountId>:<slot>` key format.
 `releasable` is true only for a lease whose holder session is terminal (`cancelled`, `failed`,
-`completed`, or `timed_out`) and whose conditional release can still be fenced to that exact
-session and attempt. Active sessions are reported with `releasable: false` and a non-empty
-`releaseBlock` explaining why an operator must not release them.
+`completed`, or `timed_out`), whose host assignment has been detached, and whose conditional
+release can still be fenced to that exact session and attempt. Active or still-attached sessions
+are reported with `releasable: false` and a non-empty `releaseBlock` explaining why an operator
+must not release them. Repository-scoped principals see only holders in their allowed
+repositories; unknown or out-of-scope holders are omitted.
 
 #### `POST /provider-accounts/:id/leases/:slot/release`
 
@@ -1123,8 +1125,9 @@ slot states.
 
 **Responses:** `200 OK` returns `{ "released", "before", "after" }` using the lease item shape
 above. `before` and `after` are always slot states; a free slot has `holder: null`. An
-invalid/non-integer slot returns `400 VALIDATION_ERROR`; an unknown account returns `404 NOT_FOUND`;
-an active holder or a lost conditional race returns `409 CONFLICT` with the current safety reason.
+invalid/non-integer slot returns `400 VALIDATION_ERROR`; an unknown account or out-of-scope holder
+returns `404 NOT_FOUND`; an active or still-attached holder or a lost conditional race returns
+`409 CONFLICT` with the current safety reason.
 A successful release returns the post-write state so an operator can confirm that the slot is free
 or was immediately claimed by another Session.
 

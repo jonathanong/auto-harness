@@ -138,7 +138,12 @@ export type ProviderAccountLeaseState = {
     sessionCreatedAt: string | null;
     sessionStartedAt: string | null;
     releasable: boolean;
-    releaseBlock: null | "session_not_terminal" | "session_not_found" | "session_lease_mismatch";
+    releaseBlock:
+      | null
+      | "session_not_terminal"
+      | "session_assignment_attached"
+      | "session_not_found"
+      | "session_lease_mismatch";
   } | null;
 };
 

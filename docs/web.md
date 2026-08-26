@@ -491,12 +491,14 @@ The Accounts tab's held-leases column uses `GET /api/v1/provider-accounts/:id/le
 the slot, holder session, host, status, and lifecycle age. The API state also carries the holder's
 attempt, `releasable`, and `releaseBlock` fields for the safety decision; the column does not expose
 the internal concurrency key. A **Release lease** control is enabled only when the holder session
-is terminal; clicking it requires explicit confirmation and calls
+is terminal and its host assignment has been detached; clicking it requires explicit confirmation and calls
 `POST /api/v1/provider-accounts/:id/leases/:slot/release`. The confirmation states that this
 removes the session's provider-account lease and its matching concurrency lock, and that the server
 fences both writes to the displayed session and attempt. A free slot or an already-completed
-release is rendered as free; an active session remains non-releasable with the server-provided
-block reason. Read-only and author accounts do not receive the held-leases data or release control.
+release is rendered as free; an active or still-attached session remains non-releasable with the
+server-provided block reason. Repository-scoped operators see only leases held by Sessions in
+their allowed repositories. Read-only and author accounts do not receive the held-leases data or
+release control.
 
 ---
 

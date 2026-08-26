@@ -500,7 +500,14 @@ components:
         releasable: { type: boolean }
         releaseBlock:
           type: [string, "null"]
-          enum: [session_not_terminal, session_not_found, session_lease_mismatch, null]
+          enum:
+            [
+              session_not_terminal,
+              session_assignment_attached,
+              session_not_found,
+              session_lease_mismatch,
+              null,
+            ]
       additionalProperties: false
     ProviderAccountLease:
       type: object

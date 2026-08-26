@@ -334,13 +334,15 @@ export async function forceReleaseProviderAccountLease(
               Key: { id: opts.sessionId },
               UpdateExpression: "REMOVE providerAccountLease",
               ConditionExpression:
-                "#s IN (:completed, :failed, :cancelled, :timedOut) AND attemptId = :attemptId AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.providerAccountId = :providerAccountId AND providerAccountLease.slot = :slot AND providerAccountLease.attemptId = :attemptId",
+                "#s IN (:completed, :failed, :cancelled, :timedOut) AND (attemptId = :attemptId OR (attribute_not_exists(attemptId) AND resolvedRoute.attemptId = :attemptId)) AND (attribute_not_exists(worktreeId) OR worktreeId = :null) AND (attribute_not_exists(mainCheckoutLease) OR mainCheckoutLease = :false) AND attribute_not_exists(assignmentConnectionId) AND attribute_not_exists(hostAssignmentLease) AND attribute_not_exists(timedOutHostId) AND attribute_not_exists(timedOutAssignmentConnectionId) AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.providerAccountId = :providerAccountId AND providerAccountLease.slot = :slot AND providerAccountLease.attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":completed": "completed",
                 ":failed": "failed",
                 ":cancelled": "cancelled",
                 ":timedOut": "timed_out",
+                ":null": null,
+                ":false": false,
                 ":attemptId": opts.attemptId,
                 ":concurrencyId": opts.concurrencyId,
                 ":providerAccountId": opts.providerAccountId,

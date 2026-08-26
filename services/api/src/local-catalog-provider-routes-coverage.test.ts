@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
@@ -21,6 +22,78 @@ function seededPlane(): ControlPlane {
 }
 
 describe("local provider catalog route coverage", () => {
+  it("hides and protects lease holders outside the principal's repository scope", async () => {
+    const plane = seededPlane();
+    for (const [slot, repositoryId] of [
+      [0, "allowed"],
+      [1, "hidden"],
+    ] as const) {
+      const attemptId = `attempt-${String(slot)}`;
+      const concurrencyId = `provider-lease:account:${String(slot)}`;
+      const sessionId = `session-${String(slot)}`;
+      plane.state.sessions.set(sessionId, {
+        id: sessionId,
+        repositoryId,
+        status: "cancelled",
+        attemptId,
+        providerAccountLease: { concurrencyId, providerAccountId: "account", slot, attemptId },
+      } as never);
+      plane.state.providerAccountLeases.set(concurrencyId, {
+        concurrencyId,
+        providerAccountId: "account",
+        slot,
+        sessionId,
+        attemptId,
+      });
+    }
+    const auth = new AuthService({
+      mode: "required",
+      secret: "s".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64url",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({
+      name: "scoped operator",
+      role: "operator",
+      allowedRepositoryIds: ["allowed"],
+    });
+    const handler = createLocalApp({ plane, authService: auth }).handler;
+    const headers = { authorization: `Bearer ${apiKey}` };
+
+    const listed = await invokeHandler(
+      handler,
+      "GET",
+      "/api/v1/provider-accounts/account/leases",
+      undefined,
+      headers,
+    );
+    expect(listed).toMatchObject({
+      status: 200,
+      json: { items: [{ slot: 0, holder: { sessionId: "session-0" } }] },
+    });
+    expect(listed.raw).not.toContain("session-1");
+    expect(
+      await invokeHandler(
+        handler,
+        "POST",
+        "/api/v1/provider-accounts/account/leases/1/release",
+        undefined,
+        headers,
+      ),
+    ).toMatchObject({ status: 404 });
+    expect(plane.state.sessions.get("session-1")).toHaveProperty("providerAccountLease");
+    expect(
+      await invokeHandler(
+        handler,
+        "POST",
+        "/api/v1/provider-accounts/account/leases/0/release",
+        undefined,
+        headers,
+      ),
+    ).toMatchObject({ status: 200, json: { released: true } });
+  });
+
   it("lists legacy occupied slots and force-releases only a terminal exact lease", async () => {
     const plane = seededPlane();
     const lease = {

@@ -531,6 +531,7 @@ describe("DynamoDB Local: forceReleaseProviderAccountLease", () => {
     sessionId: string,
     slot: number,
     status: "cancelled" | "running",
+    patch: Record<string, unknown> = {},
   ): Promise<void> {
     const attemptId = `${sessionId}-attempt`;
     const concurrencyId = `provider-lease:acct:${String(slot)}`;
@@ -552,6 +553,7 @@ describe("DynamoDB Local: forceReleaseProviderAccountLease", () => {
       hostId: "host",
       attemptId,
       providerAccountLease: { concurrencyId, providerAccountId: "acct", slot, attemptId },
+      ...patch,
     });
     await ctx.doc.send(
       new PutCommand({
@@ -633,6 +635,65 @@ describe("DynamoDB Local: forceReleaseProviderAccountLease", () => {
     expect(await readLeaseRows("active", 6)).toMatchObject({
       session: { providerAccountLease: { attemptId: "active-attempt" } },
       lock: { attemptId: "active-attempt" },
+    });
+  });
+
+  it("releases a legacy resolved-route attempt but not an attached terminal assignment", async () => {
+    await putLease("legacy", 7, "cancelled", {
+      attemptId: undefined,
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "legacy-attempt",
+      },
+      providerAccountLease: {
+        concurrencyId: "provider-lease:acct:7",
+        providerAccountId: "acct",
+        slot: 7,
+        attemptId: "legacy-attempt",
+      },
+    });
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.concurrencyLocks,
+        Item: {
+          concurrencyId: "provider-lease:acct:7",
+          providerAccountId: "acct",
+          slot: 7,
+          sessionId: "legacy",
+          attemptId: "legacy-attempt",
+        },
+      }),
+    );
+    await expect(
+      forceReleaseProviderAccountLease(ctx, {
+        providerAccountId: "acct",
+        slot: 7,
+        concurrencyId: "provider-lease:acct:7",
+        sessionId: "legacy",
+        attemptId: "legacy-attempt",
+      }),
+    ).resolves.toBe(true);
+    expect(await readLeaseRows("legacy", 7)).toMatchObject({ lock: undefined });
+
+    await putLease("attached", 8, "cancelled", {
+      worktreeId: "worktree",
+      assignmentConnectionId: "connection",
+    });
+    await expect(
+      forceReleaseProviderAccountLease(ctx, {
+        providerAccountId: "acct",
+        slot: 8,
+        concurrencyId: "provider-lease:acct:8",
+        sessionId: "attached",
+        attemptId: "attached-attempt",
+      }),
+    ).resolves.toBe(false);
+    expect(await readLeaseRows("attached", 8)).toMatchObject({
+      session: { providerAccountLease: { attemptId: "attached-attempt" } },
+      lock: { attemptId: "attached-attempt" },
     });
   });
 });

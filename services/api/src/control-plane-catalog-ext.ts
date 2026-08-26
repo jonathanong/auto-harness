@@ -155,12 +155,19 @@ export class ControlPlaneCatalogService {
     return durableProviderAccounts.deleteProviderAccountDurable(this.state, id);
   }
 
-  listProviderAccountLeaseStatesDurable(id: string) {
-    return listProviderAccountLeaseStates(this.state, id);
+  listProviderAccountLeaseStatesDurable(
+    id: string,
+    mayAccessSession?: Parameters<typeof listProviderAccountLeaseStates>[2],
+  ) {
+    return listProviderAccountLeaseStates(this.state, id, mayAccessSession);
   }
 
-  forceReleaseProviderAccountLeaseDurable(id: string, slot: number) {
-    return forceReleaseProviderAccountLease(this.state, id, slot);
+  forceReleaseProviderAccountLeaseDurable(
+    id: string,
+    slot: number,
+    mayAccessSession?: Parameters<typeof forceReleaseProviderAccountLease>[3],
+  ) {
+    return forceReleaseProviderAccountLease(this.state, id, slot, mayAccessSession);
   }
 
   createCommand(

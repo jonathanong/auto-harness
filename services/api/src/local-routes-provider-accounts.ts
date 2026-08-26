@@ -3,6 +3,7 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { writeRouteAudit } from "./local-audit.ts";
 import { handleProviderAccountUsageRoute } from "./local-routes-provider-account-usage.ts";
 import { MAX_CONCURRENT_SESSIONS_LIMIT } from "@auto-harness/shared";
+import { mayAccessRepository } from "./auth-policy.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
 export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -82,7 +83,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
     const rawSlot = leaseMatch[2];
     if (method === "GET" && rawSlot === undefined) {
       try {
-        const result = await plane.listProviderAccountLeaseStatesDurable(id);
+        const result = await plane.listProviderAccountLeaseStatesDurable(id, (session) =>
+          mayAccessRepository(ctx.principal, session?.repositoryId),
+        );
         if (!result.ok) {
           send(res, 404, { error: { code: "NOT_FOUND", message: "provider account not found" } });
           return true;
@@ -122,7 +125,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         return true;
       }
       try {
-        const result = await plane.forceReleaseProviderAccountLeaseDurable(id, slot);
+        const result = await plane.forceReleaseProviderAccountLeaseDurable(id, slot, (session) =>
+          mayAccessRepository(ctx.principal, session?.repositoryId),
+        );
         if (!result.ok) {
           if (
             !(await writeRouteAudit(ctx, {
