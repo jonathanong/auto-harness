@@ -45,11 +45,20 @@ describe("SpawnProcessRunner cancellation", () => {
       onChunk: () => undefined,
     });
     expect(result.timedOut).toBe(true);
-    // Under an overloaded parallel test run Node can receive the timeout
-    // before its fixture installs the handler; both terminal signals prove the
-    // runner completed the timeout path. The focused test reliably exercises
-    // SIGKILL once the handler is ready.
-    expect(["SIGTERM", "SIGKILL"]).toContain(result.signal);
+    if (process.platform === "win32") {
+      // taskkill terminates the process externally; libuv only reports a
+      // signal it delivered itself, so a taskkill-based kill is expected to
+      // surface here as signal: null rather than "SIGTERM"/"SIGKILL". This
+      // is an inference, not something exercised on real Windows from this
+      // environment, so accept either shape rather than pin an unverified one.
+      expect(result.signal === null || ["SIGTERM", "SIGKILL"].includes(result.signal)).toBe(true);
+    } else {
+      // Under an overloaded parallel test run Node can receive the timeout
+      // before its fixture installs the handler; both terminal signals prove the
+      // runner completed the timeout path. The focused test reliably exercises
+      // SIGKILL once the handler is ready.
+      expect(["SIGTERM", "SIGKILL"]).toContain(result.signal);
+    }
   });
 
   it("marks an externally aborted process as cancelled", async () => {
