@@ -158,7 +158,16 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           }))
         )
           return true;
-        if (result.result.released) await plane.requestAssignment();
+        if (result.result.released) {
+          await plane.requestAssignment();
+          const refreshed = await plane.listProviderAccountLeaseStatesDurable(id, (session) =>
+            mayAccessRepository(ctx.principal, session?.repositoryId),
+          );
+          if (refreshed.ok) {
+            result.result.after =
+              refreshed.items.find((item) => item.slot === slot) ?? result.result.after;
+          }
+        }
         send(res, 200, result.result);
       } catch {
         if (

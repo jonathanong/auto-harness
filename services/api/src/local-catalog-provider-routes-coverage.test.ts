@@ -144,6 +144,27 @@ describe("local provider catalog route coverage", () => {
         ],
       },
     });
+    plane.requestAssignment = async () => {
+      plane.state.sessions.set("replacement", {
+        id: "replacement",
+        repositoryId: "repository",
+        status: "running",
+        attemptId: "replacement-attempt",
+        providerAccountLease: {
+          concurrencyId: "provider-lease:account:7",
+          providerAccountId: "account",
+          slot: 7,
+          attemptId: "replacement-attempt",
+        },
+      } as never);
+      plane.state.providerAccountLeases.set("provider-lease:account:7", {
+        concurrencyId: "provider-lease:account:7",
+        providerAccountId: "account",
+        slot: 7,
+        sessionId: "replacement",
+        attemptId: "replacement-attempt",
+      });
+    };
     const released = await invoke(
       plane,
       "POST",
@@ -154,10 +175,12 @@ describe("local provider catalog route coverage", () => {
       json: {
         released: true,
         before: { slot: 7, holder: { sessionId: "session" } },
-        after: { slot: 7, holder: null },
+        after: { slot: 7, holder: { sessionId: "replacement" } },
       },
     });
     expect(plane.state.sessions.get("session")).not.toHaveProperty("providerAccountLease");
+    plane.state.sessions.delete("replacement");
+    plane.state.providerAccountLeases.delete("provider-lease:account:7");
     expect(
       await invoke(plane, "POST", "/api/v1/provider-accounts/account/leases/7/release"),
     ).toMatchObject({

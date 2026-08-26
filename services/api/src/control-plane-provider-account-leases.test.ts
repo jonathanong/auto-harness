@@ -592,6 +592,7 @@ describe("provider account execution-profile leases", () => {
       ok: false,
       reason: "conflict",
     });
+    expect(fenced.sessions.has("terminal")).toBe(false);
     await expect(forceReleaseProviderAccountLease(fenced, "acct", 0, () => false)).resolves.toEqual(
       { ok: false, reason: "not_found" },
     );
@@ -636,6 +637,10 @@ describe("provider account execution-profile leases", () => {
       },
     } as never;
     const released = createControlPlaneState();
+    released.sessions.set("terminal", {
+      ...terminal,
+      providerAccountLease: { ...terminal.providerAccountLease },
+    } as never);
     released.providerAccountLeases.set(concurrencyId, {
       ...lease,
       hostId: "old-host",
@@ -678,7 +683,7 @@ describe("provider account execution-profile leases", () => {
       sessionId: "replacement",
       hostId: "session-host",
     });
-    expect(released.sessions.get("replacement")).toMatchObject({ status: "running" });
+    expect(released.sessions.has("replacement")).toBe(false);
 
     const staysFree = createControlPlaneState();
     const getFreeLock = vi.fn().mockResolvedValueOnce(lease).mockResolvedValueOnce(null);
@@ -689,6 +694,45 @@ describe("provider account execution-profile leases", () => {
       forceReleaseProviderAccountLease: async () => true,
     } as never;
     await expect(forceReleaseProviderAccountLease(staysFree, "acct", 0)).resolves.toMatchObject({
+      ok: true,
+      result: { released: true, after: { holder: null } },
+    });
+
+    const scoped = createControlPlaneState();
+    const scopedTerminal = {
+      ...terminalForFree,
+      repositoryId: "allowed",
+      providerAccountLease: {
+        concurrencyId,
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    } as never;
+    const hiddenReplacement = {
+      ...replacementSession,
+      repositoryId: "hidden",
+    } as never;
+    scoped.storage = {
+      getProviderAccount: async () => account,
+      getProviderAccountLeaseLock: vi
+        .fn()
+        .mockResolvedValueOnce(lease)
+        .mockResolvedValueOnce(reacquired),
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(scopedTerminal)
+        .mockResolvedValueOnce(hiddenReplacement),
+      forceReleaseProviderAccountLease: async () => true,
+    } as never;
+    await expect(
+      forceReleaseProviderAccountLease(
+        scoped,
+        "acct",
+        0,
+        (holder) => holder?.repositoryId === "allowed",
+      ),
+    ).resolves.toMatchObject({
       ok: true,
       result: { released: true, after: { holder: null } },
     });

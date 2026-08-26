@@ -165,15 +165,6 @@ export async function listProviderAccountLeaseStates(
   return { ok: true, items };
 }
 
-function cacheLeaseHolderSession(
-  state: ControlPlaneState,
-  sessionId: string,
-  session: SessionRecord | undefined,
-): void {
-  if (session) state.sessions.set(session.id, { ...session });
-  else state.sessions.delete(sessionId);
-}
-
 function clearReleasedLeaseCaches(
   state: ControlPlaneState,
   lease: ProviderAccountLeaseLock,
@@ -197,6 +188,7 @@ async function providerAccountLeaseStateAfterRelease(
   providerAccountId: string,
   slot: number,
   concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
 ): Promise<ProviderAccountLeaseState> {
   const lease = await storage.getProviderAccountLeaseLock(concurrencyId);
   if (!lease) return freeProviderAccountLeaseState(providerAccountId, slot);
@@ -205,8 +197,9 @@ async function providerAccountLeaseStateAfterRelease(
     ...lease,
     hostId: session?.hostId ?? lease.hostId ?? "",
   });
-  cacheLeaseHolderSession(state, lease.sessionId, session);
-  return providerAccountLeaseState(lease, session);
+  return mayAccessSession(session)
+    ? providerAccountLeaseState(lease, session)
+    : freeProviderAccountLeaseState(providerAccountId, slot);
 }
 
 async function forceReleaseDurableProviderAccountLease(
@@ -229,7 +222,6 @@ async function forceReleaseDurableProviderAccountLease(
     return { ok: true, result: { released: false, before: free, after: free } };
   }
   const session = await storage.getSession(lease.sessionId, true);
-  cacheLeaseHolderSession(state, lease.sessionId, session ?? undefined);
   const matchedSession = session ?? undefined;
   const before = providerAccountLeaseState(lease, matchedSession);
   if (!mayAccessSession(matchedSession)) {
@@ -259,6 +251,7 @@ async function forceReleaseDurableProviderAccountLease(
     providerAccountId,
     slot,
     concurrencyId,
+    mayAccessSession,
   );
   return { ok: true, result: { released: true, before, after } };
 }
