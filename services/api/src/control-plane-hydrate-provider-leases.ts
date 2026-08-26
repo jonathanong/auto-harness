@@ -1,7 +1,7 @@
 import type { DynamoPlaneStorage, ProviderAccountRecord } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
-import { maxConcurrentSessionsFor } from "./control-plane-provider-account-leases.ts";
+import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
 
 type HydrateLeaseState = {
   storage: DynamoPlaneStorage | undefined;

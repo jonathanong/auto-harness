@@ -11,7 +11,6 @@ import {
   hostAssignmentOccupancyCount,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
-  maxConcurrentSessionsFor,
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
   releaseProviderAccountLeaseForSession,
@@ -20,6 +19,7 @@ import {
   releaseTimedOutProviderAccountLeasesForHost,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
+import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 const FINGERPRINT = "a".repeat(64);
