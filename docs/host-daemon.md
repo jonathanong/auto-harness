@@ -520,6 +520,21 @@ Non-zero exit → session `failed`, worktree released.
 Resume sessions continue to skip every setup script so a destructive setup cannot reset the
 conversation's existing worktree.
 
+### Command resolution hardening
+
+`runGit` (`services/host-daemon/src/git-commands.ts`) and `PtyProcessRunner.run()`
+(`services/host-daemon/src/pty-runner.ts`) both resolve a bare executable name
+(`git`, or the assigned CLI's `resolvedArgv[0]`) to an absolute path via
+`resolveTrustedExecutable` (`services/host-daemon/src/resolve-executable.ts`) before
+spawning, searching only the process's own `env.PATH` — never the untrusted session
+`cwd`. This closes the "bare argv0 + untrusted cwd" hijack tracked in
+[jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349)
+for the git call site, and
+[jonathanong/auto-harness#365](https://github.com/jonathanong/auto-harness/issues/365)
+for the assigned CLI process. Trusted setup scripts (above) invoke `pnpm` or any other
+package manager directly through the operator's own configured command; the daemon
+does not resolve or spawn a package manager itself.
+
 ### Disk layout (example)
 
 ```text

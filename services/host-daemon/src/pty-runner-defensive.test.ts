@@ -19,7 +19,7 @@ describe("PtyProcessRunner defensive boundary", () => {
     } as IPty;
     const runner = new PtyProcessRunner({ spawn: () => terminal });
     const run = runner.run({
-      argv: ["tool"],
+      argv: ["/opt/tool"],
       cwd: process.cwd(),
       timeoutMs: 1_000,
       onChunk: () => undefined,
@@ -38,7 +38,7 @@ describe("PtyProcessRunner defensive boundary", () => {
 
     await expect(
       runner.run({
-        argv: ["tool"],
+        argv: ["/opt/tool"],
         cwd: process.cwd(),
         timeoutMs: 1_000,
         onChunk: () => undefined,
@@ -65,7 +65,7 @@ describe("PtyProcessRunner defensive boundary", () => {
     const controller = new AbortController();
     const runner = new PtyProcessRunner({ platform: "win32", spawn: () => terminal });
     const run = runner.run({
-      argv: ["tool"],
+      argv: ["/opt/tool"],
       cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 1_000,

@@ -1,8 +1,20 @@
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
+
+/**
+ * git is now resolved to an absolute path before spawning; match by basename,
+ * stripping a Windows executable extension (resolveTrustedExecutable's
+ * default `platform` is `process.platform`, so this file's real spawns
+ * resolve to "git.exe" when actually run on Windows, not just in CI's
+ * platform-injected unit tests).
+ */
+function isGit(argv0: string | undefined): boolean {
+  return argv0 !== undefined && basename(argv0).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
+}
 
 const config = parseDaemonConfig({
   hostId: "a1",
@@ -63,7 +75,7 @@ describe("runtime helpers", () => {
   it("runAssignedSession completes", async () => {
     const runner: ProcessRunner = {
       async run(opts) {
-        if (opts.argv[0] === "git") {
+        if (isGit(opts.argv[0])) {
           if (opts.argv.includes("--version")) {
             opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
           }
@@ -150,7 +162,7 @@ describe("runtime helpers", () => {
       commandRunner,
     );
 
-    expect(systemCalls.every((argv) => argv[0] === "git")).toBe(true);
+    expect(systemCalls.every((argv) => isGit(argv[0]))).toBe(true);
     expect(commandCalls).toEqual([["tool", "literal"]]);
   });
 });

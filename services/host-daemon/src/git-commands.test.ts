@@ -1,4 +1,7 @@
 /* eslint-disable max-lines, unicorn/consistent-function-scoping -- Git command cases use local scenario helpers. */
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -248,6 +251,43 @@ describe("sanitizeGitDiagnostic", () => {
       ["fetch"],
     );
     expect(result).toMatchObject({ exitCode: 1, stderr: "safe [output chunk truncated]" });
+  });
+});
+
+describe("runGit executable resolution", () => {
+  function stubBinary(dir: string, filename: string): void {
+    // Mode 0o755: resolution requires POSIX candidates to actually be
+    // executable, not merely present.
+    writeFileSync(join(dir, filename), "", { mode: 0o755 });
+  }
+
+  it("resolves git from PATH, not from a malicious git.exe planted in the untrusted checkout cwd", async () => {
+    // Regression guard for #349's runGit call site specifically: an
+    // untrusted checkout used as cwd plants a same-named git.exe. runGit
+    // must spawn the trusted PATH-resolved binary, never a bare "git" that
+    // Windows' cwd-first executable search would resolve from cwd instead.
+    const untrustedCheckout = mkdtempSync(join(tmpdir(), "auto-harness-run-git-untrusted-"));
+    stubBinary(untrustedCheckout, "git.exe");
+    const trustedBinDir = mkdtempSync(join(tmpdir(), "auto-harness-run-git-trusted-"));
+    stubBinary(trustedBinDir, "git.exe");
+
+    let capturedArgv0: string | undefined;
+    await runGit(
+      {
+        async run(options) {
+          capturedArgv0 = options.argv[0];
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      untrustedCheckout,
+      ["status"],
+      undefined,
+      { PATH: trustedBinDir, PATHEXT: ".EXE" },
+      "win32",
+    );
+
+    expect(capturedArgv0).toBe(join(trustedBinDir, "git.exe"));
+    expect(capturedArgv0).not.toBe(join(untrustedCheckout, "git.exe"));
   });
 });
 

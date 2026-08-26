@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- daemon error coverage uses one shared lifecycle fixture. */
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
@@ -21,8 +22,14 @@ describe("DaemonLoop errors", () => {
       const fallback = new SpawnProcessRunner();
       const processRunner: ProcessRunner = {
         async run(options) {
+          // git is now resolved to an absolute path before spawning; match by
+          // basename, stripping a Windows executable extension (this real
+          // spawn resolves to "git.exe" when actually run on Windows).
+          const isGit =
+            options.argv[0] !== undefined &&
+            basename(options.argv[0]).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
           if (
-            options.argv[0] === "git" &&
+            isGit &&
             options.argv[1] === "switch" &&
             options.argv[2] === "--" &&
             options.argv[3] === "main"
@@ -33,7 +40,7 @@ describe("DaemonLoop errors", () => {
             });
             return { exitCode: 1, timedOut: false, signal: null };
           }
-          if (options.argv[0] === "git" && options.argv[1] === "fetch") {
+          if (isGit && options.argv[1] === "fetch") {
             options.onChunk({
               stream: "stderr",
               data: "fatal: https://oauth:fetch-secret@example.com/repo.git",

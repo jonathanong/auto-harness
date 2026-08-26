@@ -1,3 +1,7 @@
+/* eslint-disable max-lines, unicorn/consistent-function-scoping -- PTY resolution cases use local scenario helpers, matching git-commands.test.ts's precedent for the sibling call site. */
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IPty } from "node-pty";
 import { describe, expect, it } from "vitest";
 
@@ -49,7 +53,7 @@ describe("PtyProcessRunner boundary", () => {
 
     await expect(
       runner.run({
-        argv: ["tool", "literal;not-a-shell", "$(still-literal)"],
+        argv: ["/opt/tool", "literal;not-a-shell", "$(still-literal)"],
         cwd: process.cwd(),
         env: { PATH: "/bin", TERM: "caller-value" },
         timeoutMs: 1_000,
@@ -57,7 +61,7 @@ describe("PtyProcessRunner boundary", () => {
       }),
     ).resolves.toEqual({ exitCode: 0, signal: null, timedOut: false });
     expect(spawned).toEqual([
-      "tool",
+      "/opt/tool",
       ["literal;not-a-shell", "$(still-literal)"],
       {
         cols: 120,
@@ -119,7 +123,7 @@ describe("PtyProcessRunner boundary", () => {
 
     await expect(
       runner.run({
-        argv: ["tool"],
+        argv: ["/opt/tool"],
         cwd: process.cwd(),
         timeoutMs: 5,
         terminationGraceMs: 5,
@@ -146,7 +150,7 @@ describe("PtyProcessRunner boundary", () => {
       spawn: () => pty.terminal,
     });
     const run = runner.run({
-      argv: ["tool"],
+      argv: ["/opt/tool"],
       cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 1_000,
@@ -171,7 +175,7 @@ describe("PtyProcessRunner boundary", () => {
     });
     const chunks: string[] = [];
     const run = runner.run({
-      argv: ["tool"],
+      argv: ["/opt/tool"],
       cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 1_000,
@@ -197,11 +201,103 @@ describe("PtyProcessRunner boundary", () => {
     });
     await expect(
       runner.run({
-        argv: ["missing-tool"],
+        // Absolute, so resolution passes through unchanged and this test
+        // exercises the native this.spawn() ENOENT-normalization path
+        // rather than resolveTrustedExecutable's own not-found error.
+        argv: ["/opt/missing-tool"],
         cwd: process.cwd(),
         timeoutMs: 1_000,
         onChunk: () => undefined,
       }),
     ).rejects.toThrow("executable not found in PATH");
+  });
+});
+
+describe("PtyProcessRunner executable resolution", () => {
+  function stubBinary(dir: string, filename: string): void {
+    // Mode 0o755: resolution requires POSIX candidates to actually be
+    // executable, not merely present.
+    writeFileSync(join(dir, filename), "", { mode: 0o755 });
+  }
+
+  it("resolves a bare command from env.PATH before spawning", async () => {
+    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-resolve-"));
+    stubBinary(binDir, "claude");
+    let spawned: Parameters<PtySpawn> | undefined;
+    const runner = new PtyProcessRunner({
+      platform: "linux",
+      spawn: (...args) => {
+        spawned = args;
+        const pty = fakePty();
+        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+        return pty.terminal;
+      },
+    });
+
+    await runner.run({
+      argv: ["claude", "--resume"],
+      cwd: process.cwd(),
+      env: { PATH: binDir },
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+
+    expect(spawned?.[0]).toBe(join(binDir, "claude"));
+  });
+
+  it("resolves from PATH, not from a malicious same-named binary planted in the untrusted checkout cwd", async () => {
+    // Regression guard for #365: PtyProcessRunner spawns operator-authored
+    // resolvedArgv with options.cwd set to the untrusted session worktree.
+    // Windows' child_process.spawn (libuv search_path()) checks cwd before
+    // PATH for a bare command name, so a same-named binary committed to the
+    // checked-out ref must never be resolved, only a real PATH match.
+    const untrustedCheckout = mkdtempSync(join(tmpdir(), "auto-harness-pty-untrusted-"));
+    stubBinary(untrustedCheckout, "claude.exe");
+    const trustedBinDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-trusted-"));
+    stubBinary(trustedBinDir, "claude.exe");
+
+    let spawned: Parameters<PtySpawn> | undefined;
+    const runner = new PtyProcessRunner({
+      platform: "win32",
+      spawn: (...args) => {
+        spawned = args;
+        const pty = fakePty();
+        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+        return pty.terminal;
+      },
+    });
+
+    await runner.run({
+      argv: ["claude"],
+      cwd: untrustedCheckout,
+      env: { PATH: trustedBinDir, PATHEXT: ".EXE" },
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+
+    expect(spawned?.[0]).toBe(join(trustedBinDir, "claude.exe"));
+    expect(spawned?.[0]).not.toBe(join(untrustedCheckout, "claude.exe"));
+  });
+
+  it("throws before spawning when the command is not found anywhere on PATH", async () => {
+    let spawnCalls = 0;
+    const runner = new PtyProcessRunner({
+      platform: "linux",
+      spawn: () => {
+        spawnCalls += 1;
+        return fakePty().terminal;
+      },
+    });
+
+    await expect(
+      runner.run({
+        argv: ["missing-tool"],
+        cwd: process.cwd(),
+        env: { PATH: mkdtempSync(join(tmpdir(), "auto-harness-pty-empty-path-")) },
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).rejects.toThrow('Cannot resolve trusted executable "missing-tool": not found on PATH');
+    expect(spawnCalls).toBe(0);
   });
 });
