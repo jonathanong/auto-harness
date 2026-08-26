@@ -51,8 +51,10 @@ describe("install-service darwin validation and updates", () => {
             if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
             prints += 1;
             return prints === 1
-              ? { status: 0, stdout: "state = waiting\n", stderr: "" }
-              : { status: 0, stdout: "state = running\npid = 77\n", stderr: "" };
+              ? { status: 1, stdout: "", stderr: "Could not find service" }
+              : prints === 2
+                ? { status: 0, stdout: "state = waiting\n", stderr: "" }
+                : { status: 0, stdout: "state = running\npid = 77\n", stderr: "" };
           },
         }),
       ),
@@ -60,7 +62,7 @@ describe("install-service darwin validation and updates", () => {
     expect(fs.files.get(envPath)).toBe(
       "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://new.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n",
     );
-    expect(calls).toEqual(["bootout", "bootstrap", "print", "kickstart", "print"]);
+    expect(calls).toEqual(["print", "bootout", "bootstrap", "print", "kickstart", "print"]);
   });
 
   it("fails when launchctl does not register the service", () => {
