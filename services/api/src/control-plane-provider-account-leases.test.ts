@@ -598,16 +598,22 @@ describe("provider account execution-profile leases", () => {
     );
     expect(releaseFenced).toHaveBeenCalledOnce();
 
-    for (const session of [
-      undefined,
-      { ...terminal, status: "running" },
-      { ...terminal, worktreeId: "worktree", assignmentConnectionId: "connection" },
-      {
-        ...terminal,
-        status: "timed_out",
-        timedOutHostId: "host",
-        timedOutAssignmentConnectionId: "connection",
-      },
+    for (const [session, releaseBlock] of [
+      [undefined, "session_not_found"],
+      [{ ...terminal, status: "running" }, "session_not_terminal"],
+      [
+        { ...terminal, worktreeId: "worktree", assignmentConnectionId: "connection" },
+        "session_assignment_attached",
+      ],
+      [
+        {
+          ...terminal,
+          status: "timed_out",
+          timedOutHostId: "host",
+          timedOutAssignmentConnectionId: "connection",
+        },
+        "session_assignment_attached",
+      ],
     ] as const) {
       const conflicted = createControlPlaneState();
       conflicted.storage = {
@@ -618,6 +624,7 @@ describe("provider account execution-profile leases", () => {
       await expect(forceReleaseProviderAccountLease(conflicted, "acct", 0)).resolves.toEqual({
         ok: false,
         reason: "conflict",
+        releaseBlock,
       });
     }
 

@@ -78,7 +78,8 @@ export const USER_ROLE_LABELS = {
 export const USER_ROLE_DESCRIPTIONS = {
   "read-only": "Observe sessions, catalog, and fleet. No writes.",
   author: "Create, clone, resume, and archive sessions. Cancel only your own.",
-  operator: "Run the queue: sessions, any in-scope cancel, schedules, and drain.",
+  operator:
+    "Run the queue: sessions, any in-scope cancel, schedules, drain, and Provider Account lease recovery.",
   maintainer: "Configure fleet inventory and provider accounts, plus operator work.",
   agent: "Bound to one host; cannot author sessions.",
   admin:

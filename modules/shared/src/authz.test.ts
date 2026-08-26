@@ -31,6 +31,7 @@ describe("role capability table", () => {
       expect(USER_ROLE_DESCRIPTIONS[role].length).toBeGreaterThan(10);
       expect(USER_ROLE_LABELS[role].length).toBeGreaterThan(0);
     }
+    expect(USER_ROLE_DESCRIPTIONS.operator).toContain("Provider Account lease recovery");
   });
 
   it("grants each named role the documented writes", () => {

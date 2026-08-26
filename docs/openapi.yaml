@@ -570,6 +570,16 @@ components:
               type: string
               examples: [VALIDATION_ERROR, DRAINING, REPOSITORY_ADMISSION_CLOSED]
             message: { type: string }
+            releaseBlock:
+              type: string
+              enum:
+                [
+                  session_not_terminal,
+                  session_assignment_attached,
+                  session_not_found,
+                  session_lease_mismatch,
+                ]
+              description: Provider-account lease safety reason present on applicable conflicts
             operationId:
               type: string
               description: Present for DRAINING admission rejections

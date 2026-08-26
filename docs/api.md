@@ -1127,7 +1127,8 @@ slot states.
 above. `before` and `after` are always slot states; a free slot has `holder: null`. An
 invalid/non-integer slot returns `400 VALIDATION_ERROR`; an unknown account or out-of-scope holder
 returns `404 NOT_FOUND`; an active or still-attached holder or a lost conditional race returns
-`409 CONFLICT` with the current safety reason.
+`409 CONFLICT`. When the holder read establishes a specific safety reason, the error includes it as
+`error.releaseBlock`.
 A successful release returns the post-write state so an operator can confirm that the slot is free
 or was immediately claimed by another Session.
 

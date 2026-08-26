@@ -145,6 +145,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
                 result.reason === "not_found"
                   ? "provider account not found"
                   : "provider account lease cannot be released",
+              ...(result.reason === "conflict" && result.releaseBlock
+                ? { releaseBlock: result.releaseBlock }
+                : {}),
             },
           });
           return true;
@@ -154,6 +157,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
             action: "provider-account-lease:release",
             resourceType: "provider-account",
             resourceId: `${id}:${String(slot)}`,
+            repositoryId: result.repositoryId,
             metadata: { released: result.result.released, slot },
           }))
         )

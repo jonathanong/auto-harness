@@ -92,6 +92,14 @@ describe("local provider catalog route coverage", () => {
         headers,
       ),
     ).toMatchObject({ status: 200, json: { released: true } });
+    expect(
+      (
+        await plane.listAuditLogs({
+          action: "provider-account-lease:release",
+          repositoryId: "allowed",
+        })
+      ).items,
+    ).toHaveLength(1);
   });
 
   it("lists legacy occupied slots and force-releases only a terminal exact lease", async () => {
@@ -222,7 +230,10 @@ describe("local provider catalog route coverage", () => {
     });
     expect(
       await invoke(plane, "POST", "/api/v1/provider-accounts/account/leases/0/release"),
-    ).toMatchObject({ status: 409 });
+    ).toMatchObject({
+      status: 409,
+      json: { error: { code: "CONFLICT", releaseBlock: "session_not_terminal" } },
+    });
     expect(await invoke(plane, "GET", "/api/v1/provider-accounts/missing/leases")).toMatchObject({
       status: 404,
     });

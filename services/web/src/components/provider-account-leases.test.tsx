@@ -83,7 +83,13 @@ describe("ProviderAccountLeases", () => {
     press(field(view.container, "provider-account-lease-release-account/one-2"));
     expect(
       field(document.body, "provider-account-lease-release-account/one-2-confirm").textContent,
-    ).toContain("terminal Session session-one");
+    ).toContain("provider-account lease from Session session-one");
+    expect(
+      field(document.body, "provider-account-lease-release-account/one-2-confirm").textContent,
+    ).toContain("matching concurrency lock");
+    expect(
+      field(document.body, "provider-account-lease-release-account/one-2-confirm").textContent,
+    ).toContain("attempt attempt-one");
     press(field(document.body, "provider-account-lease-release-account/one-2-confirm-submit"));
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith("/api/v1/provider-accounts/account%2Fone/leases/2/release", {

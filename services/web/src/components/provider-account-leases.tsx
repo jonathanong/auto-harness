@@ -95,7 +95,7 @@ export function ProviderAccountLeases({
             <ConfirmButton
               triggerLabel="Release"
               confirmTitle={`Release slot ${String(lease.slot)}?`}
-              confirmDescription={`Force-release the lease held by terminal Session ${holder.sessionId}. A queued Session may claim the slot immediately.`}
+              confirmDescription={`Remove the provider-account lease from Session ${holder.sessionId} and its matching concurrency lock. Both writes are fenced to this Session and attempt ${holder.attemptId}. A queued Session may claim the slot immediately.`}
               confirmLabel="Release lease"
               disabled={!holder.releasable}
               tip={blockedCopy}

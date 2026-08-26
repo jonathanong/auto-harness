@@ -23,8 +23,16 @@ type ProviderAccountLease = {
 type ProviderAccountLeaseLock = ProviderAccountLease & { sessionId: string; hostId?: string };
 
 type ProviderAccountLeaseOperation =
-  | { ok: true; result: ProviderAccountLeaseReleaseResult }
-  | { ok: false; reason: "not_found" | "conflict" };
+  | { ok: true; result: ProviderAccountLeaseReleaseResult; repositoryId?: string }
+  | { ok: false; reason: "not_found" }
+  | {
+      ok: false;
+      reason: "conflict";
+      releaseBlock?: Exclude<
+        NonNullable<ProviderAccountLeaseState["holder"]>["releaseBlock"],
+        null
+      >;
+    };
 
 type ProviderAccountLeaseAccess = (session: SessionRecord | undefined) => boolean;
 
@@ -232,7 +240,11 @@ async function forceReleaseDurableProviderAccountLease(
     !isTerminalSessionStatus(matchedSession.status) ||
     !sessionAssignmentDetached(matchedSession)
   ) {
-    return { ok: false, reason: "conflict" };
+    return {
+      ok: false,
+      reason: "conflict",
+      ...(before.holder?.releaseBlock ? { releaseBlock: before.holder.releaseBlock } : {}),
+    };
   }
   const released = await storage.forceReleaseProviderAccountLease({
     providerAccountId,
@@ -253,7 +265,11 @@ async function forceReleaseDurableProviderAccountLease(
     concurrencyId,
     mayAccessSession,
   );
-  return { ok: true, result: { released: true, before, after } };
+  return {
+    ok: true,
+    result: { released: true, before, after },
+    repositoryId: matchedSession.repositoryId,
+  };
 }
 
 function forceReleaseLocalProviderAccountLease(
@@ -277,7 +293,11 @@ function forceReleaseLocalProviderAccountLease(
     !isTerminalSessionStatus(session.status) ||
     !sessionAssignmentDetached(session)
   ) {
-    return { ok: false, reason: "conflict" };
+    return {
+      ok: false,
+      reason: "conflict",
+      ...(before.holder?.releaseBlock ? { releaseBlock: before.holder.releaseBlock } : {}),
+    };
   }
   delete session.providerAccountLease;
   const cached = state.providerAccountLeases.get(concurrencyId);
@@ -286,6 +306,7 @@ function forceReleaseLocalProviderAccountLease(
   }
   return {
     ok: true,
+    repositoryId: session.repositoryId,
     result: {
       released: true,
       before,
