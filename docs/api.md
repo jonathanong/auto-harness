@@ -422,7 +422,7 @@ Add a repository. **Admin only.**
   "name": "my-app",
   "url": "git@github.com:org/my-app.git",
   "defaultBranch": "main",
-  "setupScript": "pnpm install"
+  "setupScript": "./ci/session-setup"
 }
 ```
 
@@ -434,7 +434,7 @@ Add a repository. **Admin only.**
   "name": "my-app",
   "url": "git@github.com:org/my-app.git",
   "defaultBranch": "main",
-  "setupScript": "pnpm install",
+  "setupScript": "./ci/session-setup",
   "createdAt": "2026-08-01T00:00:00Z"
 }
 ```

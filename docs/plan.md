@@ -313,6 +313,11 @@ reference these by number; a phase is not done until its invariants have a passi
     worktrees, attach Provider Accounts, and configure scoped Command overrides) must be reachable
     from `services/web`. `services/host-pane`
     (`:7422`) is a local debugging tool for that host, never a required step in a normal workflow.
+11. **Session orchestration is package-manager-agnostic.** The host daemon never detects repository
+    manifests or lockfiles, and never invokes a repository package manager. A fresh session checks
+    out its assigned ref, runs only explicitly configured trusted setup scripts, then launches the
+    resolved command. Dependency installation and toolchain preparation belong to those setup
+    scripts; native resumes continue to skip setup.
 
 ---
 

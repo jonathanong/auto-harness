@@ -91,4 +91,4 @@ worktree gets stable, reusable ports across runs.
 
 ## CLAUDE.md
 
-Root `CLAUDE.md` only points here so every agent stack shares one guide.
+Root `CLAUDE.md` points here for the shared guide and carries selected cross-agent invariants.

@@ -17,11 +17,10 @@ const runTaskkill: TaskkillRun = (command, args, options) => spawnSync(command, 
  * processes never join a POSIX process group -- `SpawnProcessRunner` only
  * sets `detached` on non-Windows platforms -- so a plain `child.kill()`
  * only reaches the direct child. That under-kills whenever the direct
- * child is itself a launcher: see #348, where a workspace install spawned
- * through `cmd.exe /d /s /c pnpm install` left the `node.exe` process
- * `cmd.exe` started for the actual install running after cancel/timeout,
- * continuing to hold pipes open and mutate `node_modules`. `/T` reaches
- * the whole tree; `/F` forces termination without a confirmation prompt.
+ * child is itself a launcher: see #348, where a `cmd.exe` launcher exited
+ * while its `node.exe` descendant kept running after cancel/timeout and
+ * continued to hold inherited pipes open. `/T` reaches the whole tree;
+ * `/F` forces termination without a confirmation prompt.
  *
  * `spawnSync` never throws on a failed launch or a non-zero exit -- it
  * reports both on the returned object -- so the result is inspected and a
