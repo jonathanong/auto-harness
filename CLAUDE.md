@@ -11,3 +11,11 @@ manage command profiles, etc.) **from the control plane (`services/web`)**. The 
 (`services/host-pane`, port `:7422`) exists only for local debugging on that host — never design
 a feature that requires opening the host pane to accomplish something the control plane could
 do instead. See [docs/plan.md](docs/plan.md#5-invariants) invariant 10.
+
+## Invariant: session orchestration is package-manager-agnostic
+
+The host daemon never detects repository manifests or lockfiles, and never invokes a repository
+package manager. For a fresh session it checks out the assigned ref, runs only explicitly
+configured trusted setup scripts, then launches the resolved command. Dependency installation and
+toolchain preparation belong to those setup scripts. Native resumes continue to skip setup. See
+[docs/plan.md](docs/plan.md#5-invariants) invariant 11.
