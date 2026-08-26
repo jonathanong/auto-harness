@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -73,6 +73,19 @@ describe("resolveTrustedExecutable", () => {
     expect(resolveTrustedExecutable("git", env, "linux")).toBe(join(executableDir, "git"));
   });
 
+  it("skips a same-named directory on an earlier PATH entry, on posix", () => {
+    // A searchable directory passes an X_OK access check the same as a real
+    // executable would. Without an explicit regular-file check, a same-named
+    // directory (e.g. checked-out build output) on an earlier PATH entry
+    // would be wrongly returned instead of continuing the search.
+    const decoyDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-decoy-parent-"));
+    mkdirSync(join(decoyDir, "git"), { mode: 0o755 });
+    const realDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-real-"));
+    stubBinary(realDir, "git");
+    const env = { PATH: `${decoyDir}:${realDir}` };
+    expect(resolveTrustedExecutable("git", env, "linux")).toBe(join(realDir, "git"));
+  });
+
   it("never considers the current working directory, only env.PATH", () => {
     // Regression guard for the vulnerability itself: actually chdir() into a
     // directory containing a same-named file (simulating an untrusted
@@ -109,6 +122,15 @@ describe("resolveTrustedExecutable", () => {
       expect(resolveTrustedExecutable("pnpm", { PATH: binDir }, "win32")).toBe(
         join(binDir, "pnpm.exe"),
       );
+    });
+
+    it("skips a same-named directory on an earlier PATH entry", () => {
+      const decoyDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-decoy-parent-"));
+      mkdirSync(join(decoyDir, "pnpm.cmd"));
+      const realDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-real-"));
+      stubBinary(realDir, "pnpm.cmd");
+      const env = { PATH: `${decoyDir};${realDir}` };
+      expect(resolveTrustedExecutable("pnpm", env, "win32")).toBe(join(realDir, "pnpm.cmd"));
     });
 
     it("does not double-append an extension already present on the command", () => {

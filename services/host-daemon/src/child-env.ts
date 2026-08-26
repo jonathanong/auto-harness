@@ -17,11 +17,14 @@ const BASELINE_KEYS = new Set([
   "USER",
 ]);
 
-function isBaselineKey(key: string): boolean {
-  // Compared case-insensitively: Windows commonly reports these as
-  // "Path"/"Temp" rather than the POSIX-conventional uppercase spelling, and
-  // dropping them here would leave resolveTrustedExecutable() with no PATH
-  // to search on every Windows spawn.
+function isBaselineKey(key: string, platform: NodeJS.Platform): boolean {
+  if (platform !== "win32") return BASELINE_KEYS.has(key) || key.startsWith("LC_");
+  // Compared case-insensitively only on win32: Windows commonly reports
+  // these as "Path"/"Temp" rather than the POSIX-conventional uppercase
+  // spelling, and dropping them here would leave resolveTrustedExecutable()
+  // with no PATH to search on every Windows spawn. POSIX env var names are
+  // case-sensitive by convention; folding case there would widen the
+  // baseline allowlist to variables it was never meant to match.
   const upper = key.toUpperCase();
   return BASELINE_KEYS.has(upper) || upper.startsWith("LC_");
 }
@@ -62,7 +65,10 @@ export function parseChildEnvAllowlist(source: NodeJS.ProcessEnv): {
  * explicitly named in HARNESS_CHILD_ENV_ALLOWLIST; HARNESS_* is always owned
  * by the daemon and is never inherited by untrusted child processes.
  */
-export function createChildEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function createChildEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
   const extras = parseChildEnvAllowlist(source);
   if (extras.errors.length > 0) throw new Error(extras.errors.join("; "));
   const env: NodeJS.ProcessEnv = {};
@@ -71,7 +77,7 @@ export function createChildEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.
     if (
       value !== undefined &&
       !key.toUpperCase().startsWith("HARNESS_") &&
-      (isBaselineKey(key) || allowed.has(key))
+      (isBaselineKey(key, platform) || allowed.has(key))
     ) {
       env[key] = value;
     }

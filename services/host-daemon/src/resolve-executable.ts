@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
@@ -22,7 +22,21 @@ function envValue(
   return undefined;
 }
 
+// A directory can pass an X_OK / existence check (a searchable directory is
+// "accessible") without being a file at all. A PATH entry earlier than the
+// real binary's directory could contain a same-named directory (e.g. a
+// checked-out ref's build output), which would otherwise be wrongly returned
+// instead of continuing the search.
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function isExecutablePosix(path: string): boolean {
+  if (!isRegularFile(path)) return false;
   try {
     accessSync(path, constants.X_OK);
     return true;
@@ -83,16 +97,16 @@ export function resolveTrustedExecutable(
       // already-fully-qualified filename like "cmd.exe" unresolvable.
       if (hasExplicitExtension) {
         const explicit = join(directory, command);
-        if (existsSync(explicit)) return explicit;
+        if (isRegularFile(explicit)) return explicit;
       }
       for (const extension of extensions) {
         if (extension && lowerCommand.endsWith(extension)) continue;
         const candidate = join(directory, `${command}${extension}`);
-        if (existsSync(candidate)) return candidate;
+        if (isRegularFile(candidate)) return candidate;
       }
     } else {
       const candidate = join(directory, command);
-      if (existsSync(candidate) && isExecutablePosix(candidate)) return candidate;
+      if (isExecutablePosix(candidate)) return candidate;
     }
   }
   throw new Error(`Cannot resolve trusted executable "${command}": not found on PATH`);
