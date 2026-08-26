@@ -2,6 +2,7 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { DEFAULT_MAX_CONCURRENT_SESSIONS } from "@auto-harness/shared";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
@@ -204,6 +205,33 @@ describe("provider account lease storage", () => {
     });
   });
 
+  it("caps the provider account ConditionCheck at maxConcurrentSessions", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await backfillProviderAccountLease(
+      {
+        doc: { send },
+        tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+      } as never,
+      {
+        sessionId: "session",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 1,
+      },
+    );
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems[0]).toMatchObject({
+      ConditionCheck: {
+        TableName: "Accounts",
+        ConditionExpression: expect.stringContaining(
+          "(attribute_not_exists(maxConcurrentSessions) AND :slot < :defaultCap) OR maxConcurrentSessions > :slot",
+        ),
+        ExpressionAttributeValues: { ":slot": 1, ":defaultCap": DEFAULT_MAX_CONCURRENT_SESSIONS },
+      },
+    });
+  });
+
   it("reports a competing lease without treating it as a migration", async () => {
     const send = vi.fn().mockRejectedValue({
       name: "TransactionCanceledException",
@@ -312,6 +340,9 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
           name: "acct",
           createdAt: "now",
           updatedAt: "now",
+          // Above the default cap: this suite's cases occupy slots 0-1 across two
+          // distinct sessions; the cap boundary itself is covered separately below.
+          maxConcurrentSessions: 2,
         },
       }),
     );
@@ -370,6 +401,164 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
         hostId: "host",
         providerAccountId: "acct",
         slot: 3,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+});
+
+describe("DynamoDB Local: backfillProviderAccountLease maxConcurrentSessions cap", () => {
+  let client: DynamoDBClient;
+  let tables: DynamoTableNames;
+  let ctx: PlaneStorageCtx;
+  const session = {
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetLabels: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "running" as const,
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    hostId: "host",
+    attemptId: "attempt",
+  };
+
+  beforeAll(async () => {
+    const clients = createDynamoClients();
+    client = clients.client;
+    tables = await ensureControlPlaneTables({ client, prefix: `AhLeaseCap${process.pid}` });
+    ctx = { doc: clients.doc, tables };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "acct-default",
+          providerId: "provider",
+          name: "acct-default",
+          createdAt: "now",
+          updatedAt: "now",
+          // maxConcurrentSessions intentionally omitted: legacy rows fall back to
+          // DEFAULT_MAX_CONCURRENT_SESSIONS.
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "acct-2",
+          providerId: "provider",
+          name: "acct-2",
+          createdAt: "now",
+          updatedAt: "now",
+          maxConcurrentSessions: 2,
+        },
+      }),
+    );
+  });
+  afterAll(async () => {
+    await Promise.all(
+      Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
+    );
+  });
+
+  it("migrates a slot within the default cap when maxConcurrentSessions is unset", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "default-cap-ok",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+        providerAccountId: "acct-default",
+      },
+    });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "default-cap-ok",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-default",
+        slot: 0,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+  });
+
+  it("refuses a slot at the default cap when maxConcurrentSessions is unset", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "default-cap-over",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+        providerAccountId: "acct-default",
+      },
+    });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "default-cap-over",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-default",
+        slot: DEFAULT_MAX_CONCURRENT_SESSIONS,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+
+  it("migrates a slot within an explicit maxConcurrentSessions cap", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "explicit-cap-ok",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+        providerAccountId: "acct-2",
+      },
+    });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "explicit-cap-ok",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-2",
+        slot: 1,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+  });
+
+  it("refuses a slot at an explicit maxConcurrentSessions cap", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "explicit-cap-over",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+        providerAccountId: "acct-2",
+      },
+    });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "explicit-cap-over",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-2",
+        slot: 2,
       }),
     ).resolves.toEqual({ status: "session_changed" });
   });

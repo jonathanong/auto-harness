@@ -11,7 +11,6 @@ import {
   hostAssignmentOccupancyCount,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
-  maxConcurrentSessionsFor,
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
   releaseProviderAccountLeaseForSession,
@@ -20,6 +19,7 @@ import {
   releaseTimedOutProviderAccountLeasesForHost,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
+import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 const FINGERPRINT = "a".repeat(64);
@@ -97,6 +97,22 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
   return plane;
 }
 
+function accountsMap(maxConcurrentSessions: number) {
+  return new Map([
+    [
+      "acct",
+      {
+        id: "acct",
+        providerId: "p",
+        label: "a",
+        createdAt: NOW,
+        updatedAt: NOW,
+        maxConcurrentSessions,
+      },
+    ],
+  ]);
+}
+
 describe("provider account execution-profile leases", () => {
   it("retries another slot after a concurrent legacy lease backfill", async () => {
     const sessions = ["a", "b"].map((id) => ({
@@ -137,12 +153,56 @@ describe("provider account execution-profile leases", () => {
             };
           },
         },
+        providerAccounts: accountsMap(3),
       } as never,
       sessions,
     );
     expect(calls).toBe(3);
     expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 1);
     expect(sessions[1]).toHaveProperty("providerAccountLease.slot", 2);
+  });
+
+  it("caps a legacy backfill hydrate at the account's maxConcurrentSessions", async () => {
+    const sessions = ["a", "b"].map((id) => ({
+      id,
+      status: "running",
+      hostId: "host",
+      attemptId: `${id}-attempt`,
+      resolvedRoute: {
+        targetIndex: 0,
+        providerAccountId: "acct",
+        commandId: "command",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: `${id}-attempt`,
+      },
+    })) as never[];
+    let calls = 0;
+    await backfillLegacyProviderAccountLeases(
+      {
+        storage: {
+          backfillProviderAccountLease: async (opts: { slot: number }) => {
+            calls += 1;
+            return {
+              status: "migrated",
+              lease: {
+                concurrencyId: `provider-lease:acct:${String(opts.slot)}`,
+                providerAccountId: "acct",
+                slot: opts.slot,
+                attemptId: "attempt",
+              },
+            };
+          },
+        },
+        providerAccounts: accountsMap(1),
+      } as never,
+      sessions,
+    );
+    // Only one candidate should ever reach storage: the second must not be
+    // migrated into a slot beyond the account's maxConcurrentSessions of 1.
+    expect(calls).toBe(1);
+    expect(sessions[0]).toHaveProperty("providerAccountLease.slot", 0);
+    expect(sessions[1]).not.toHaveProperty("providerAccountLease");
   });
 
   it("handles a legacy session fenced by another hydrator", async () => {
@@ -165,6 +225,7 @@ describe("provider account execution-profile leases", () => {
         storage: {
           backfillProviderAccountLease: async () => ({ status: "session_changed" }),
         },
+        providerAccounts: accountsMap(1),
       } as never,
       [session],
     );
@@ -198,6 +259,7 @@ describe("provider account execution-profile leases", () => {
           backfillProviderAccountLease: async () => ({ status: "session_changed" }),
           getSession: async () => ({ providerAccountLease: lease }),
         },
+        providerAccounts: accountsMap(1),
       } as never,
       [session],
     );
@@ -639,7 +701,14 @@ describe("provider account execution-profile leases", () => {
       listHostInventories: async () => [],
       listProviders: async () => [],
       listProviderAccounts: async () => [
-        { id: "acct", providerId: "p", label: "a", createdAt: NOW, updatedAt: NOW },
+        {
+          id: "acct",
+          providerId: "p",
+          label: "a",
+          createdAt: NOW,
+          updatedAt: NOW,
+          maxConcurrentSessions: 2,
+        },
       ],
       listCommands: async () => [],
       listArchives: async () => [],
@@ -669,7 +738,7 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getSession("legacy")?.providerAccountLease?.concurrencyId).toBe(
       "provider-lease:acct:1",
     );
-    expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
+    expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(2);
   });
 
   it("retains the account lease until an acknowledged timeout reports terminal", () => {

@@ -121,6 +121,14 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
   state.providerAccountLeases.clear();
+  // Populate accounts before backfill so its slot-assignment loop can bound itself by
+  // each account's real maxConcurrentSessions instead of an unbounded sessions.length walk.
+  for (const record of accounts) {
+    state.providerAccounts.set(record.id, {
+      ...record,
+      maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
+    });
+  }
   await backfillLegacyProviderAccountLeases(state, sessions);
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
@@ -173,12 +181,6 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     });
   }
   for (const record of providers) state.providers.set(record.id, record);
-  for (const record of accounts) {
-    state.providerAccounts.set(record.id, {
-      ...record,
-      maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
-    });
-  }
   for (const record of commands) state.commands.set(record.id, record);
   state.slackIntegration = slackIntegration ?? undefined;
   for (const record of auditLogs) state.auditLogs.set(record.id, record);
