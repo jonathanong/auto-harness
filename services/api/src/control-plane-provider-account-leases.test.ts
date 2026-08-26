@@ -12,6 +12,7 @@ import {
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
   providerAccountLeaseWriteOpts,
+  rebuildProviderAccountLeasesFromSessions,
   releaseProviderAccountLease,
   releaseProviderAccountLeaseForSession,
   releaseProviderAccountLeaseLocal,
@@ -430,6 +431,31 @@ describe("provider account execution-profile leases", () => {
       },
     });
     expect(accountHasLeaseCapacityFromReadModel(state, "acct")).toBe(true);
+  });
+
+  it("rebuilds lease cache host IDs from timed-out and missing host metadata", () => {
+    const state = createControlPlaneState();
+    for (const [id, status, timedOutHostId] of [
+      ["timed-out", "timed_out", "timed-out-host"],
+      ["running", "running", undefined],
+    ] as const) {
+      state.sessions.set(id, {
+        id,
+        status,
+        timedOutHostId,
+        providerAccountLease: {
+          concurrencyId: `provider-lease:acct:${id === "timed-out" ? "0" : "1"}`,
+          providerAccountId: "acct",
+          slot: id === "timed-out" ? 0 : 1,
+          attemptId: `${id}-attempt`,
+        },
+      } as never);
+    }
+
+    rebuildProviderAccountLeasesFromSessions(state);
+
+    expect(state.providerAccountLeases.get("provider-lease:acct:0")?.hostId).toBe("timed-out-host");
+    expect(state.providerAccountLeases.get("provider-lease:acct:1")?.hostId).toBe("");
   });
 
   it("treats missing readiness as unavailable and honors host assignment caps", () => {

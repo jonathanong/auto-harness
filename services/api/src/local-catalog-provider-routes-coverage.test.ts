@@ -180,6 +180,16 @@ describe("local provider catalog route coverage", () => {
     }
   });
 
+  it("maps a provider-account lease listing failure to an internal error", async () => {
+    const plane = seededPlane();
+    plane.listProviderAccountLeaseStatesDurable = async () => {
+      throw new Error("storage unavailable");
+    };
+    expect(await invoke(plane, "GET", "/api/v1/provider-accounts/account/leases")).toMatchObject({
+      status: 500,
+    });
+  });
+
   it("classifies provider update validation, conflict, and not-found outcomes", async () => {
     const plane = seededPlane();
     const invalid = await invoke(plane, "PATCH", "/api/v1/providers/provider", { name: "BAD" });
