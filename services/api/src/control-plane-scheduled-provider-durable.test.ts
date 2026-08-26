@@ -176,7 +176,7 @@ describe("durable scheduled terminal and provider fallback", () => {
           prompt: "scheduled run",
           target: { providerId: "provider" },
           fallbacks: [],
-          targetLabels: ["provider"],
+          targetDisplayNames: ["provider"],
           queueTtlSeconds: 60,
           queueExpiresAt: "2026-01-01T00:01:00.000Z",
           timeout: 30,

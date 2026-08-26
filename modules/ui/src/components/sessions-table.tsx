@@ -128,19 +128,21 @@ export function SessionsTable({
               <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>
             ) : null}
             <TableCell>
-              <div>{s.targetLabel ?? s.targetLabels?.[0] ?? routeLabel(s.target) ?? "—"}</div>
-              {Math.max(s.fallbacks?.length ?? 0, Math.max((s.targetLabels?.length ?? 1) - 1, 0)) >
-              0 ? (
+              <div>{s.targetLabel ?? s.targetDisplayNames?.[0] ?? routeLabel(s.target) ?? "—"}</div>
+              {Math.max(
+                s.fallbacks?.length ?? 0,
+                Math.max((s.targetDisplayNames?.length ?? 1) - 1, 0),
+              ) > 0 ? (
                 <div className="text-xs text-muted-foreground">
                   +
                   {Math.max(
                     s.fallbacks?.length ?? 0,
-                    Math.max((s.targetLabels?.length ?? 1) - 1, 0),
+                    Math.max((s.targetDisplayNames?.length ?? 1) - 1, 0),
                   )}{" "}
                   fallback
                   {Math.max(
                     s.fallbacks?.length ?? 0,
-                    Math.max((s.targetLabels?.length ?? 1) - 1, 0),
+                    Math.max((s.targetDisplayNames?.length ?? 1) - 1, 0),
                   ) === 1
                     ? ""
                     : "s"}
@@ -205,8 +207,6 @@ export function SessionsTable({
 }
 
 function routeLabel(target?: { providerId?: string; commandId?: string } | null): string | null {
-  if (!target) return null;
-  if (target.providerId) return `provider:${target.providerId}`;
-  if (target.commandId) return `command:${target.commandId}`;
-  return null;
+  if (target?.providerId) return `provider:${target.providerId}`;
+  return target?.commandId ? `command:${target.commandId}` : null;
 }

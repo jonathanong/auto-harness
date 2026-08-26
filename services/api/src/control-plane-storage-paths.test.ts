@@ -21,7 +21,7 @@ describe("ControlPlane storage write-through paths", () => {
       name: "n",
       target: { commandId: "c" },
       fallbacks: [],
-      targetLabels: ["c"],
+      targetDisplayNames: ["c"],
       queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,

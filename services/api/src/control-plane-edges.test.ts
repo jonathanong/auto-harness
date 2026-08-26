@@ -22,7 +22,7 @@ describe("ControlPlane API edges", () => {
     if (r.ok) {
       expect(r.session.url).toBe("http://ui/sessions/sess-x");
       expect(r.session.ref).toBe("main");
-      expect(r.session.targetLabels).toEqual(["echo-prompt"]);
+      expect(r.session.targetDisplayNames).toEqual(["echo-prompt"]);
       expect(r.session.concurrencyId).toBe("ck");
       expect(r.session.metadata).toEqual({ pr: 1 });
     }

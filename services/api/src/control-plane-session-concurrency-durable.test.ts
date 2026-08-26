@@ -126,7 +126,7 @@ describe("durable session concurrency", () => {
       prompt: "resume me",
       target: { commandId: "cmd-resume-concurrency" },
       fallbacks: [],
-      targetLabels: ["resume concurrency"],
+      targetDisplayNames: ["resume concurrency"],
       queueTtlSeconds: 691_200,
       queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 30,

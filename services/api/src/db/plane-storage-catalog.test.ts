@@ -55,7 +55,7 @@ function schedule(ref?: string): ScheduleRecord {
     name: "schedule",
     target: { commandId: "command-1" },
     fallbacks: [],
-    targetLabels: ["command"],
+    targetDisplayNames: ["command"],
     cron: "* * * * *",
     enabled: true,
     timeout: 30,
@@ -324,7 +324,7 @@ describe("durable schedule creation", () => {
           fallbacks: Array.from({ length: 91 }, (_, index) => ({
             commandId: `legacy-${index}`,
           })),
-          targetLabels: [],
+          targetDisplayNames: [],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -499,7 +499,7 @@ describe("durable schedule creation", () => {
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -595,7 +595,7 @@ describe("durable schedule creation", () => {
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -702,7 +702,7 @@ describe("durable schedule creation", () => {
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -740,7 +740,7 @@ describe("durable schedule creation", () => {
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -775,7 +775,7 @@ describe("durable schedule creation", () => {
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -1044,7 +1044,7 @@ describe("durable schedule management updates", () => {
   it("removes an omitted ref and reports a concurrently deleted schedule", async () => {
     const storage = scheduleCtx(async (command) => {
       expect((command as UpdateCommand).input.UpdateExpression).toContain(
-        "REMOVE #ref, concurrencyId",
+        "REMOVE targetLabels, #ref, concurrencyId",
       );
       throw { name: "ConditionalCheckFailedException" };
     });

@@ -19,7 +19,7 @@ export type EditableSchedule = {
   name: string;
   target: SessionTargetSelection;
   fallbacks: SessionTargetSelection[];
-  targetLabels: string[];
+  targetDisplayNames: string[];
   cron: string;
   enabled: boolean;
   timeout: number;

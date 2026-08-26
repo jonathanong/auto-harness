@@ -19,7 +19,7 @@ function scheduledRunning(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "nightly",
     target: { commandId: "cmd-base" },
     fallbacks: [],
-    targetLabels: ["cmd-base"],
+    targetDisplayNames: ["cmd-base"],
     queueTtlSeconds: 3600,
     queueExpiresAt: "2026-08-21T17:19:39.015Z",
     timeout: TIMEOUT_SECONDS,

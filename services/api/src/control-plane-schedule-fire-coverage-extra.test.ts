@@ -21,7 +21,7 @@ function schedule(over: Partial<ScheduleRecord> = {}): ScheduleRecord {
     name: "nightly",
     target: { commandId: "cmd" },
     fallbacks: [],
-    targetLabels: ["cmd"],
+    targetDisplayNames: ["cmd"],
     cron: "* * * * *",
     enabled: true,
     timeout: 30,

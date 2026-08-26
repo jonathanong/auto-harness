@@ -531,7 +531,7 @@ function planeWithSessions(): ControlPlane {
       prompt: "p",
       target: { commandId: "cmd-a" },
       fallbacks: [],
-      targetLabels: [],
+      targetDisplayNames: [],
       queueTtlSeconds: 60,
       queueExpiresAt: "2099-01-01T00:00:00.000Z",
       timeout: 60,

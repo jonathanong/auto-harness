@@ -13,7 +13,7 @@ import { repositoryAdmissionFailure } from "./control-plane-repository-admission
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import {
   getRepositoryDurable,
   getScheduleDurable,
@@ -71,8 +71,12 @@ function preparePutSchedule(
   }
   const routing = validateTargetRouting(input);
   if (!routing.ok) return routing;
-  const labels = resolveTargetLabels(state, routing.value.target, routing.value.fallbacks);
-  if (!labels.ok) return labels;
+  const displayNames = resolveTargetDisplayNames(
+    state,
+    routing.value.target,
+    routing.value.fallbacks,
+  );
+  if (!displayNames.ok) return displayNames;
   const id = input.id ?? state.scheduleIdFactory();
   const concurrencyId = input.concurrencyId?.trim() || `schedule-${id}`;
   if (isReservedConcurrencyId(concurrencyId))
@@ -92,7 +96,7 @@ function preparePutSchedule(
     name: input.name,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
-    targetLabels: labels.labels,
+    targetDisplayNames: displayNames.displayNames,
     cron: input.cron,
     enabled: input.enabled ?? true,
     timeout: input.timeout,
@@ -207,14 +211,18 @@ export function prepareUpdateSchedule(
     queueTtlSeconds: patch.queueTtlSeconds ?? existing.queueTtlSeconds,
   });
   if (!routing.ok) return routing;
-  const labels = resolveTargetLabels(state, routing.value.target, routing.value.fallbacks);
-  if (!labels.ok) return labels;
+  const displayNames = resolveTargetDisplayNames(
+    state,
+    routing.value.target,
+    routing.value.fallbacks,
+  );
+  if (!displayNames.ok) return displayNames;
   const next: ScheduleRecord = {
     ...existing,
     ...patch,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
-    targetLabels: labels.labels,
+    targetDisplayNames: displayNames.displayNames,
     queueTtlSeconds: routing.value.queueTtlSeconds,
     nextRunAt,
     concurrencyId,

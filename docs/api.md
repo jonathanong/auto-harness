@@ -569,7 +569,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
   "queueExpiresAt": "2026-08-09T12:00:00Z",
-  "targetLabels": ["codex", "echo"],
+  "targetDisplayNames": ["codex", "echo"],
   "status": "queued",
   "timeout": 1800,
   "priority": 10,
@@ -583,7 +583,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
 }
 ```
 
-`targetLabels` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
+`targetDisplayNames` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
 
 The session enters the `queued` state. Assignment is attempted immediately as a best-effort side effect of create, resume, clone, host register/reconnect, terminal transitions, and capacity or cooldown changes. The one-minute EventBridge/local cron is a repair sweep (ack deadlines, running timeouts, stale hosts, and any missed assigns), not the primary dispatcher. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, the session remains queued until capacity appears or `queueExpiresAt`. The planner uses advertised host-wide `maxConcurrentAssignments` and per-account execution-profile readiness; daemons still fail closed if a late assign exceeds local capacity.
 
@@ -654,7 +654,7 @@ Get session details.
   "prompt": "Fix the failing test in src/utils.test.ts",
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
-  "targetLabels": ["codex", "echo"],
+  "targetDisplayNames": ["codex", "echo"],
   "status": "running",
   "type": "prompt",
   "source": "ui",
@@ -951,7 +951,7 @@ server's current time. Invalid cron expressions and supplied timestamps are reje
   "name": "daily-update",
   "target": { "commandId": "cmd-lint-fix" },
   "fallbacks": [{ "providerId": "prov-codex" }],
-  "targetLabels": ["lint-fix", "codex"],
+  "targetDisplayNames": ["lint-fix", "codex"],
   "queueTtlSeconds": 691200,
   "cron": "0 6 * * *",
   "enabled": true,

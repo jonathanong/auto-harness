@@ -13,7 +13,7 @@ const source = {
   prompt: "run",
   target: { commandId: "cmd" } as const,
   fallbacks: [],
-  targetLabels: ["cmd"],
+  targetDisplayNames: ["cmd"],
   queueTtlSeconds: 3600,
   timeout: 30,
   priority: 0,

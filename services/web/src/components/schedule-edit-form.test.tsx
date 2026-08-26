@@ -16,7 +16,7 @@ const schedule: EditableSchedule = {
   name: "Nightly",
   target: { providerId: "p1" },
   fallbacks: [{ commandId: "c1" }],
-  targetLabels: ["Claude", "Review"],
+  targetDisplayNames: ["Claude", "Review"],
   cron: "0 1 * * *",
   enabled: true,
   timeout: 900,

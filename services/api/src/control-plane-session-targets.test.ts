@@ -182,7 +182,7 @@ describe("listSessionTargets", () => {
       prompt: "run",
       target: { providerId: "prov-1" },
       fallbacks: [],
-      targetLabels: ["claude"],
+      targetDisplayNames: ["claude"],
       queueTtlSeconds: 60,
       queueExpiresAt: "2099-01-01T00:00:00.000Z",
       timeout: 30,

@@ -14,7 +14,7 @@ export type ScheduleRecord = {
   name: string;
   target: TargetRef;
   fallbacks: TargetRef[];
-  targetLabels: string[];
+  targetDisplayNames: string[];
   cron: string;
   enabled: boolean;
   timeout: number;

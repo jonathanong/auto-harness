@@ -18,7 +18,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     prompt: "hello",
     target: { commandId: "missing" },
     fallbacks: [],
-    targetLabels: ["x"],
+    targetDisplayNames: ["x"],
     queueTtlSeconds: 60,
     queueExpiresAt: "2099-01-01T00:00:00.000Z",
     timeout: 30,

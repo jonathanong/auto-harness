@@ -274,7 +274,7 @@ export function targetIsAvailable(
         prompt: "",
         target,
         fallbacks: [],
-        targetLabels: [],
+        targetDisplayNames: [],
         queueTtlSeconds: 1,
         queueExpiresAt: "9999-01-01T00:00:00.000Z",
         timeout: 1,

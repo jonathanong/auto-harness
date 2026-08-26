@@ -109,7 +109,7 @@ describe("shared data display composites", () => {
       <SessionRouteSummary
         session={{
           targetLabel: "primary",
-          targetLabels: ["primary", "backup"],
+          targetDisplayNames: ["primary", "backup"],
           fallbacks: [{ providerId: "ignored" }],
           resolvedProviderAccountId: "account",
           resolvedCommandId: "command",
@@ -129,7 +129,7 @@ describe("shared data display composites", () => {
       render(
         <SessionRouteSummary
           session={{
-            targetLabels: [],
+            targetDisplayNames: [],
             target: { providerId: "p" },
             fallbacks: [{ commandId: "c" }],
             resolvedRoute: { providerAccountId: "a", commandId: "c", hostId: "h" },

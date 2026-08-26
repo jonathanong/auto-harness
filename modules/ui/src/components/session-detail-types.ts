@@ -6,7 +6,7 @@ export type SessionSummary = {
   hostId?: string | null;
   worktreeId?: string | null;
   targetLabel?: string | null;
-  targetLabels?: string[] | null;
+  targetDisplayNames?: string[] | null;
   target?: { providerId?: string; commandId?: string } | null;
   fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
   queueTtlSeconds?: number | null;

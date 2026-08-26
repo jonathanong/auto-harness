@@ -17,7 +17,7 @@ function session(
     prompt: "must not reach destination selection",
     target: { commandId: "command-1" },
     fallbacks: [],
-    targetLabels: ["Codex"],
+    targetDisplayNames: ["Codex"],
     queueTtlSeconds: 60,
     queueExpiresAt: occurredAt,
     timeout: 60,

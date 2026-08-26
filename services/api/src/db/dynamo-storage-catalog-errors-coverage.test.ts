@@ -68,7 +68,7 @@ describe("DynamoDB Local catalog transport failures", () => {
       name: "Schedule",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["command"],
+      targetDisplayNames: ["command"],
       cron: "* * * * *",
       enabled: true,
       timeout: 30,

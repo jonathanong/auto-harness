@@ -127,7 +127,7 @@ describe("catalog delete references", () => {
       prompt: "done",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: [],
+      targetDisplayNames: [],
       queueTtlSeconds: 1,
       queueExpiresAt: "2026-01-01T00:01:00.000Z",
       timeout: 1,

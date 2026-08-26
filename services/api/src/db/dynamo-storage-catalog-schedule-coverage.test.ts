@@ -52,6 +52,17 @@ describe("DynamoDB Local schedule catalog adapters", () => {
     expect(nextPageKey({ id: "next" })).toEqual({ id: "next" });
     expect(scheduleAttributes(undefined)).toBeNull();
     expect(scheduleAttributes({ id: "schedule" })).toEqual({ id: "schedule" });
+    expect(scheduleAttributes({ id: "legacy", targetLabels: ["Codex"] })).toEqual({
+      id: "legacy",
+      targetDisplayNames: ["Codex"],
+    });
+    expect(
+      scheduleAttributes({
+        id: "mixed",
+        targetLabels: ["Legacy"],
+        targetDisplayNames: ["Current"],
+      }),
+    ).toEqual({ id: "mixed", targetDisplayNames: ["Current"] });
     expect(isActiveSession(null)).toBe(false);
     expect(isActiveSession({ status: "queued" } as never)).toBe(true);
     expect(isActiveSession({ status: "running" } as never)).toBe(true);
@@ -71,7 +82,7 @@ describe("DynamoDB Local schedule catalog adapters", () => {
       name: "Schedule",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["command"],
+      targetDisplayNames: ["command"],
       cron: "* * * * *",
       enabled: true,
       timeout: 30,
@@ -105,7 +116,7 @@ describe("DynamoDB Local schedule catalog adapters", () => {
           prompt: "scheduled",
           target: { commandId: "command" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,
@@ -152,7 +163,7 @@ describe("DynamoDB Local schedule catalog adapters", () => {
           prompt: "scheduled",
           target: { commandId: "command" },
           fallbacks: [],
-          targetLabels: ["command"],
+          targetDisplayNames: ["command"],
           queueTtlSeconds: 60,
           queueExpiresAt: "later",
           timeout: 30,

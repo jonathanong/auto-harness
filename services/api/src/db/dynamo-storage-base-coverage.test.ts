@@ -240,7 +240,7 @@ describe("DynamoPlaneStorageBase", () => {
       prompt: "p",
       target: { commandId: "command" },
       fallbacks: [],
-      targetLabels: ["command"],
+      targetDisplayNames: ["command"],
       queueTtlSeconds: 60,
       queueExpiresAt: "later",
       timeout: 60,

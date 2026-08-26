@@ -19,7 +19,7 @@ function terminalSession(id = "session-worker"): SessionRecord {
     prompt: "not transported",
     target: { commandId: "command-1" },
     fallbacks: [],
-    targetLabels: ["Codex"],
+    targetDisplayNames: ["Codex"],
     queueTtlSeconds: 60,
     queueExpiresAt: webhookTestNow,
     timeout: 60,

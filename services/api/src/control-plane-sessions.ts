@@ -10,7 +10,7 @@ import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
-import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 export { resumeSession, type ResumeOptions } from "./control-plane-session-resume.ts";
@@ -55,7 +55,7 @@ export function createSession(
   const v = validated.value;
   const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
   if (admissionFailure) return admissionFailure;
-  const targets = resolveTargetLabels(state, v.target, v.fallbacks);
+  const targets = resolveTargetDisplayNames(state, v.target, v.fallbacks);
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   }
@@ -77,7 +77,7 @@ export function createSession(
     prompt: v.prompt,
     target: v.target,
     fallbacks: v.fallbacks,
-    targetLabels: targets.labels,
+    targetDisplayNames: targets.displayNames,
     queueTtlSeconds: v.queueTtlSeconds,
     queueExpiresAt: new Date(Date.parse(createdAt) + v.queueTtlSeconds * 1000).toISOString(),
     timeout: v.timeout,

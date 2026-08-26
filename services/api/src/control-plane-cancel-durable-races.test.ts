@@ -11,7 +11,7 @@ const runningSession: SessionRecord = {
   prompt: "run",
   target: { commandId: "command" },
   fallbacks: [],
-  targetLabels: ["command"],
+  targetDisplayNames: ["command"],
   queueTtlSeconds: 60,
   queueExpiresAt: "2026-01-01T00:01:00.000Z",
   timeout: 30,

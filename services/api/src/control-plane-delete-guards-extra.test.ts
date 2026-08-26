@@ -28,7 +28,7 @@ const refs: DeleteReferences = {
       prompt: "run",
       target: { commandId: "command" },
       fallbacks: [{ providerId: "provider" }],
-      targetLabels: [],
+      targetDisplayNames: [],
       queueTtlSeconds: 1,
       queueExpiresAt: now,
       timeout: 1,

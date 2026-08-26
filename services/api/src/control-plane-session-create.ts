@@ -2,7 +2,7 @@ import { validateCreateSessionInput } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString } from "./control-plane-state.ts";
-import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
@@ -20,7 +20,7 @@ export function validateSessionCreate(
       ok: true;
       fields: ValidatedFields;
       record: Record<string, unknown>;
-      targetLabels: string[];
+      targetDisplayNames: string[];
       scheduleId?: string;
     }
   | { ok: false; error: string; code?: string } {
@@ -46,13 +46,17 @@ export function validateSessionCreate(
   if (!validated.ok) return validated;
   const admissionFailure = repositoryAdmissionFailure(state, validated.value.repositoryId);
   if (admissionFailure) return admissionFailure;
-  const targets = resolveTargetLabels(state, validated.value.target, validated.value.fallbacks);
+  const targets = resolveTargetDisplayNames(
+    state,
+    validated.value.target,
+    validated.value.fallbacks,
+  );
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   return {
     ok: true,
     fields: validated.value,
     record,
-    targetLabels: targets.labels,
+    targetDisplayNames: targets.displayNames,
     ...(options.allowScheduleId && typeof record.scheduleId === "string"
       ? { scheduleId: record.scheduleId }
       : {}),
@@ -73,7 +77,7 @@ export function buildSessionRecord(
     prompt: v.prompt,
     target: v.target,
     fallbacks: v.fallbacks,
-    targetLabels: prepared.targetLabels,
+    targetDisplayNames: prepared.targetDisplayNames,
     queueTtlSeconds: v.queueTtlSeconds,
     queueExpiresAt: new Date(Date.parse(createdAt) + v.queueTtlSeconds * 1000).toISOString(),
     timeout: v.timeout,

@@ -11,7 +11,7 @@ describe("session search projection", () => {
       repositoryName: "Repository Name",
       prompt: "Prompt Text",
       targetLabel: "Target Label",
-      targetLabels: ["Primary Label", "Fallback Label"],
+      targetDisplayNames: ["Primary Label", "Fallback Label"],
       target: { providerId: "Provider ID", commandId: "Command ID" },
       fallbacks: [{ providerId: "Fallback Provider", commandId: "Fallback Command" }, {}],
       queueExpiresAt: "Queue Expiry",
