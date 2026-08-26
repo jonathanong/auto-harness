@@ -1,9 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { installWorkspaceDependencies } from "./dependency-install.ts";
+import {
+  installWorkspaceDependencies,
+  invalidateImportMethodMarker,
+} from "./dependency-install.ts";
 import type { ProcessRunner } from "./executor.ts";
 
 describe("installWorkspaceDependencies import-method marker (#350 migration)", () => {
@@ -110,5 +122,67 @@ describe("installWorkspaceDependencies import-method marker (#350 migration)", (
     expect(existsSync(join(cwd, "node_modules", ".auto-harness-package-import-method"))).toBe(
       false,
     );
+  });
+
+  it("passes --force when the import-method marker is a symlink, even one pointing at a matching value (#350 hardening)", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-symlink-marker-"));
+    mkdirSync(join(cwd, "node_modules"), { recursive: true });
+    const external = join(cwd, "outside-marker-target");
+    writeFileSync(external, "copy");
+    symlinkSync(external, join(cwd, "node_modules", ".auto-harness-package-import-method"));
+    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
+    const runner: ProcessRunner = {
+      async run(options) {
+        seen = options;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
+    expect(seen?.argv).toContain("--force");
+  });
+
+  it("replaces a symlinked import-method marker with a fresh regular file instead of writing through it (#350 hardening)", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-write-symlink-marker-"));
+    mkdirSync(join(cwd, "node_modules"), { recursive: true });
+    const external = join(cwd, "outside-marker-target");
+    writeFileSync(external, "sensitive external content");
+    const markerPath = join(cwd, "node_modules", ".auto-harness-package-import-method");
+    symlinkSync(external, markerPath);
+    const runner: ProcessRunner = {
+      async run() {
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
+    expect(lstatSync(markerPath).isSymbolicLink()).toBe(false);
+    expect(readFileSync(markerPath, "utf8")).toBe("copy");
+    expect(readFileSync(external, "utf8")).toBe("sensitive external content");
+  });
+
+  it("invalidateImportMethodMarker removes an existing marker", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-invalidate-marker-"));
+    mkdirSync(join(cwd, "node_modules"), { recursive: true });
+    const markerPath = join(cwd, "node_modules", ".auto-harness-package-import-method");
+    writeFileSync(markerPath, "copy");
+    invalidateImportMethodMarker(cwd);
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it("invalidateImportMethodMarker does not throw when no marker or node_modules exists", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-invalidate-marker-missing-"));
+    expect(() => invalidateImportMethodMarker(cwd)).not.toThrow();
+  });
+
+  it("invalidateImportMethodMarker does not throw when node_modules is unreadable", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-invalidate-marker-unreadable-"));
+    const nodeModules = join(cwd, "node_modules");
+    mkdirSync(nodeModules);
+    writeFileSync(join(nodeModules, ".auto-harness-package-import-method"), "copy");
+    chmodSync(nodeModules, 0o000);
+    try {
+      expect(() => invalidateImportMethodMarker(cwd)).not.toThrow();
+    } finally {
+      chmodSync(nodeModules, 0o755);
+    }
   });
 });

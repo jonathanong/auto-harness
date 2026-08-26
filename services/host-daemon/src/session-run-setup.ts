@@ -1,7 +1,11 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import { createChildEnv } from "./child-env.ts";
-import { installWorkspaceDependencies, isPnpmWorkspace } from "./dependency-install.ts";
+import {
+  installWorkspaceDependencies,
+  invalidateImportMethodMarker,
+  isPnpmWorkspace,
+} from "./dependency-install.ts";
 import type { ProcessResult, ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
@@ -68,6 +72,14 @@ export async function runSetupIfNeeded(
   const remainingStepMs = () => Math.max(1, Math.min(remainingMs(), setupDeadline - Date.now()));
 
   if (setupScripts.length > 0) {
+    // A setup script can run its own uninstrumented `pnpm install`, which
+    // would resolve pnpm's unpinned auto/hardlink default and re-alias this
+    // worktree's node_modules — but leave the daemon's own "copy" marker
+    // from a prior install untouched. Invalidate it before any setup script
+    // runs, so the install below this block can never wrongly trust a
+    // marker whose claim a setup script had the chance to invalidate
+    // (jonathanong/auto-harness#350 Codex review).
+    invalidateImportMethodMarker(claimed.cwd);
     streamer.write("system", "Running setup script...");
     if (signal?.aborted) return { environment, failure: await abortedFailure() };
     for (const setupScript of setupScripts) {

@@ -646,6 +646,30 @@ same same-uid limitation already conceded above, so a session could forge it to 
 worktree's next `--force` — but that session could already reach the same outcome more directly, by
 writing into `storeDir` itself.
 
+The marker's fixed, well-known path inside an untrusted checked-out worktree is a stronger threat
+than a session merely forging its contents, though: a ref can commit the marker as a symlink to any
+other file the same-uid daemon process can write, and `writeFileSync`'s default behavior follows
+symlinks — so the write after a successful install (not just the read before one) was reachable
+before that session's provider sandbox even starts
+([#350](https://github.com/jonathanong/auto-harness/issues/350) Codex review; reproduced against the
+pinned pnpm — a forced relink still preserves a committed marker symlink rather than replacing it).
+The daemon now `lstat`s the marker on read and unlinks it on write rather than following it: a
+symlinked marker reads as absent (only ever costs an extra `--force`, never wrongly skips one), and a
+write always removes whatever is at the marker path first, so it only ever creates a fresh regular
+file instead of truncating a symlink's target.
+
+The marker also assumes the daemon's own pinned install is the only thing that could have touched
+`node_modules` since it was last written, which doesn't hold for a worktree with a configured setup
+script: setup scripts run _before_ this install step, and a setup script is arbitrary admin-configured
+code that can invoke its own unpinned `pnpm install`. If the checked-out ref's lockfile changed, that
+install links the new packages under pnpm's `auto` default while the marker still claims `copy` from
+a prior daemon-run install, so this step would wrongly trust the stale marker and skip `--force` even
+though the setup script may have just re-aliased those specific packages
+([#350](https://github.com/jonathanong/auto-harness/issues/350) Codex review). The daemon now
+invalidates the marker immediately before running any setup script, so the post-setup install always
+forces a relink whenever a setup script ran — scoped to that case rather than forcing every install,
+to keep the fast-path throughput benefit above for the more common case of no setup script.
+
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
 is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,

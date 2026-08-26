@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -14,6 +14,13 @@ const IMPORT_METHOD_MARKER = join("node_modules", ".auto-harness-package-import-
 
 function readImportMethodMarker(markerPath: string): string | undefined {
   try {
+    // Never follow a symlink: an untrusted checked-out ref can commit
+    // node_modules/.auto-harness-package-import-method as a symlink to any
+    // other file this same-uid daemon can read (jonathanong/auto-harness#350
+    // Codex review). Treating a symlinked marker as absent, rather than
+    // reading through it, means it can only ever cause an extra --force —
+    // never a wrongly-skipped one.
+    if (lstatSync(markerPath).isSymbolicLink()) return undefined;
     return readFileSync(markerPath, "utf8").trim();
   } catch {
     return undefined;
@@ -23,10 +30,41 @@ function readImportMethodMarker(markerPath: string): string | undefined {
 function writeImportMethodMarker(markerPath: string): void {
   try {
     mkdirSync(dirname(markerPath), { recursive: true });
+    // Remove whatever already exists at markerPath — including a symlink —
+    // before writing, so this always creates a fresh regular file instead
+    // of following a symlink an untrusted ref committed there and
+    // truncating whatever it points to (same #350 Codex finding as above;
+    // confirmed the pinned pnpm preserves a committed marker symlink
+    // through even a forced install, so this write is the only backstop).
+    // rmSync on a symlink removes the link itself, per POSIX unlink
+    // semantics, not whatever it points to.
+    rmSync(markerPath, { force: true, recursive: true });
     writeFileSync(markerPath, PACKAGE_IMPORT_METHOD);
   } catch {
     // Best-effort: a write failure here only costs a redundant --force on the
     // next install (see the marker paragraph below), not a correctness bug.
+  }
+}
+
+/**
+ * Invalidate a worktree's import-method marker before a setup script runs.
+ * A setup script is arbitrary, admin-configured code (`session-run-setup.ts`)
+ * that can run its own `pnpm install` without this module's pinned
+ * `--package-import-method`; if the checked-out ref's lockfile changed, that
+ * install would resolve and link the new packages under pnpm's `auto`
+ * default (`hardlink` on Linux — the original #350 bug) while this
+ * worktree's marker still claims `copy` from a prior successful install
+ * here. Left alone, the next `installWorkspaceDependencies` call would trust
+ * that stale claim and skip `--force` (jonathanong/auto-harness#350 Codex
+ * review). Deleting the marker first means that next call always forces a
+ * fresh relink instead of trusting a claim this module has no way to verify
+ * a setup script honored.
+ */
+export function invalidateImportMethodMarker(cwd: string): void {
+  try {
+    rmSync(join(cwd, IMPORT_METHOD_MARKER), { force: true, recursive: true });
+  } catch {
+    // Best-effort: see writeImportMethodMarker.
   }
 }
 
@@ -209,6 +247,39 @@ function writeImportMethodMarker(markerPath: string): void {
  * `--force`, but that session could already reach the same "stay on a
  * mutable, potentially-aliased `node_modules`" outcome more directly, by
  * writing into `storeDir` itself.
+ *
+ * The marker path is a fixed, well-known name inside a worktree an
+ * untrusted checked-out ref controls, which is a stronger threat than a
+ * session merely forging its *contents*: a ref can commit
+ * `IMPORT_METHOD_MARKER` as a symlink to any other file this same-uid
+ * daemon process can write, and `writeFileSync`'s default behavior follows
+ * symlinks — so the write after a successful install, not just the read
+ * before one, was reachable before the provider sandbox for that session
+ * even starts (jonathanong/auto-harness#350 Codex review; reproduced
+ * against the pinned pnpm — a forced relink still preserves a committed
+ * marker symlink rather than replacing it). `readImportMethodMarker` and
+ * `writeImportMethodMarker` both `lstat`/unlink rather than follow: a
+ * symlinked marker reads as absent (only ever costs an extra `--force`,
+ * never wrongly skips one), and a write always `rmSync`s whatever is at
+ * the path first, so `writeFileSync` only ever creates a fresh regular
+ * file rather than truncating a symlink's target.
+ *
+ * `IMPORT_METHOD_MARKER` also assumes the install this function ran is the
+ * only thing that could have touched `node_modules` since the marker was
+ * last written — untrue when a worktree has a configured setup script.
+ * `session-run-setup.ts` runs setup scripts *before* calling this function,
+ * and a setup script is arbitrary admin-configured code that can invoke its
+ * own unpinned `pnpm install`; if the checked-out ref's lockfile changed,
+ * that install resolves and links the new packages under pnpm's `auto`
+ * default while this worktree's marker still claims `copy` from a prior
+ * install here, so this function would wrongly trust the stale marker and
+ * skip `--force` even though the setup script may have just re-aliased
+ * those packages (jonathanong/auto-harness#350 Codex review). `session-run-
+ * setup.ts` calls the exported `invalidateImportMethodMarker` before
+ * running any setup script, so this function's next call always forces a
+ * relink whenever a setup script ran — scoped to that case specifically,
+ * rather than forcing every install, to keep the throughput benefit above
+ * for the more common case of no setup script.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
