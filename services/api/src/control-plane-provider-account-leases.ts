@@ -1,13 +1,11 @@
 /* eslint-disable max-lines -- provider-account capacity and lease lifecycle share one state helper. */
-import {
-  DEFAULT_MAX_CONCURRENT_SESSIONS,
-  providerAccountLeaseConcurrencyId,
-} from "@auto-harness/shared";
+import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { releaseLegacyHostAssignment } from "./control-plane-legacy-host-assignment.ts";
+import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
 
 type ProviderAccountLease = {
   concurrencyId: string;
@@ -15,12 +13,6 @@ type ProviderAccountLease = {
   slot: number;
   attemptId: string;
 };
-
-export function maxConcurrentSessionsFor(
-  account: { maxConcurrentSessions?: number } | undefined,
-): number {
-  return account?.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS;
-}
 
 export function hostProviderAccountReady(
   state: ControlPlaneState,

@@ -11,6 +11,7 @@ import {
   hostAssignmentReleaseItem,
   type HostAssignmentLease,
 } from "./plane-storage-host-assignment.ts";
+import { providerAccountCapCondition } from "./plane-storage-provider-account-cap.ts";
 
 export type ProviderAccountLeaseKey = {
   concurrencyId: string;
@@ -46,17 +47,24 @@ export async function backfillProviderAccountLease(
     slot: opts.slot,
     attemptId: opts.attemptId,
   };
-  const providerAccountValues: Record<string, unknown> = { ":providerId": opts.providerId };
-  const providerAccountCondition = opts.providerId
-    ? "attribute_exists(id) AND providerId = :providerId"
-    : "attribute_exists(id)";
+  // Mirrors providerAccountLastAssignedTransactItem's slot cap so a legacy backfill
+  // cannot migrate a lease beyond the account's real concurrency limit, even if the
+  // app-layer loop bound in control-plane-hydrate-provider-leases.ts races a
+  // concurrent maxConcurrentSessions edit.
+  const cap = providerAccountCapCondition(opts.slot);
+  const providerAccountValues: Record<string, unknown> = { ...cap.values };
+  let providerAccountCondition = `attribute_exists(id) AND (${cap.condition})`;
+  if (opts.providerId !== undefined) {
+    providerAccountCondition += " AND providerId = :providerId";
+    providerAccountValues[":providerId"] = opts.providerId;
+  }
   const transactItems = [
     {
       ConditionCheck: {
         TableName: ctx.tables.providerAccounts,
         Key: { id: opts.providerAccountId },
         ConditionExpression: providerAccountCondition,
-        ...(opts.providerId ? { ExpressionAttributeValues: providerAccountValues } : {}),
+        ExpressionAttributeValues: providerAccountValues,
       },
     },
     {
