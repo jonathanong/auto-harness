@@ -1,5 +1,7 @@
+import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { truncateUtf8 } from "./executor.ts";
+import { resolveTrustedExecutable } from "./resolve-executable.ts";
 
 type GitResult = { exitCode: number; stdout: string; stderr: string };
 
@@ -148,19 +150,31 @@ export function gitFailure(category: string, stderr?: string): Error {
   return new Error(diagnostic.length > 0 ? `${category}: ${diagnostic}` : category);
 }
 
+/**
+ * `cwd` here is always the untrusted session worktree/checkout. `git` is
+ * resolved to an absolute path via `resolveTrustedExecutable`, searching
+ * only `environment`'s `PATH` — never `cwd` — because Windows'
+ * `child_process.spawn` (libuv `search_path()`) checks the spawned
+ * process's `cwd` before `PATH` for a bare command name, so a same-named
+ * `git.exe` committed to the checked-out ref would otherwise run instead of
+ * the real trusted binary.
+ */
 export async function runGit(
   runner: ProcessRunner,
   cwd: string,
   args: string[],
   signal?: AbortSignal,
+  environment: NodeJS.ProcessEnv = createChildEnv(),
+  platform: NodeJS.Platform = process.platform,
 ): Promise<GitResult> {
   let stdout = "";
   let stderr = "";
   let stderrCaptureTruncated = false;
   let discardStderrContinuation = false;
   const result = await runner.run({
-    argv: ["git", ...args],
+    argv: [resolveTrustedExecutable("git", environment, platform), ...args],
     cwd,
+    env: environment,
     timeoutMs: 120_000,
     ...(signal ? { signal } : {}),
     onChunk: (c) => {
