@@ -42,7 +42,7 @@ UI copy uses the **label**. API, JWT, and DynamoDB store the **id**.
 | ------------ | ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `read-only`  | Read-only   | Humans, reporting keys                      | Observe. No writes.                                                                                                                                                                             |
 | `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                                                     |
-| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate. Not inventory, catalog, or IAM.                                                       |
+| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate + recover stuck provider-account leases. Not inventory, catalog, or IAM.               |
 | `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                                                      |
 | `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                                          |
 | `admin`      | Admin       | Platform owners, bootstrap `HARNESS_ADMINS` | Everything, including catalog argv, fleet exec-config (setup scripts / executable paths), accounts, Slack, audit, scheduler internals. **Must be unscoped** (no repository list, no host bind). |
@@ -69,6 +69,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos/worktrees, labels, required environment, and provider-account attachments). Does **not** accept setup-script or executable-path edits. Deleting inventory that currently stores exec-config requires `fleet:exec-config`. |
 | `fleet:exec-config`    | `PUT` `/hosts/:id/exec-config` (host/repository/worktree setup scripts, terminal hook paths, and host-local `allowedRoots`). Admin only. **This permits arbitrary execution on the selected host.** Changes are audited as `host-exec-config:update`.                                                 |
 | `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                                                                                         |
+| `providers:leases`     | Inspect held Provider Account leases and force-release a lease only after its holder session is terminal and its host assignment is detached. Repository scope applies to holders. This is an operational recovery action, not Provider Account catalog configuration.                                |
 | `catalog:write`        | Create/update/delete Commands, Providers, and Repositories — including command `argv` and repo `setupScript` / `terminalHookScript`. **This is arbitrary execution on the fleet** ([plan.md](plan.md) D4). Admin only.                                                                                |
 | `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                                                                                                |
 | `integrations:write`   | Slack integration CRUD (`/integrations/slack`), including `GET`.                                                                                                                                                                                                                                      |
@@ -107,14 +108,14 @@ still applies to every non-admin row.
 
 Stored grant lists (same file as the runtime table):
 
-| Role         | Capabilities                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------- |
-| `read-only`  | _(none — reads are “any authenticated”)_                                                 |
-| `author`     | `sessions:write`, `sessions:archive`                                                     |
-| `operator`   | author + `sessions:cancel-any`, `schedules:write`, `repositories:operate`, `fleet:drain` |
-| `maintainer` | operator + `fleet:inventory`, `providers:accounts`                                       |
-| `agent`      | `agent:protocol`, `fleet:drain`                                                          |
-| `admin`      | every capability                                                                         |
+| Role         | Capabilities                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `read-only`  | _(none — reads are “any authenticated”)_                                                                     |
+| `author`     | `sessions:write`, `sessions:archive`                                                                         |
+| `operator`   | author + `sessions:cancel-any`, `schedules:write`, `repositories:operate`, `fleet:drain`, `providers:leases` |
+| `maintainer` | operator + `fleet:inventory`, `providers:accounts`                                                           |
+| `agent`      | `agent:protocol`, `fleet:drain`                                                                              |
+| `admin`      | every capability                                                                                             |
 
 `admin` is not granted `agent:protocol` in practice: that grant also requires a
 bound service-account, which `admin` is forbidden to be.
@@ -134,6 +135,8 @@ bound service-account, which `admin` is forbidden to be.
 | `/api/v1/hosts/drain`                                              | authenticated                          | `fleet:drain`        |
 | `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`          | authenticated                          | `fleet:inventory`    |
 | `/api/v1/hosts/:id/exec-config`                                    | authenticated                          | `fleet:exec-config`  |
+| `/api/v1/provider-accounts/:id/leases`                             | `providers:leases`                     | `providers:leases`   |
+| `/api/v1/provider-accounts/:id/leases/:slot/release`               | —                                      | `providers:leases`   |
 | `/api/v1/provider-accounts`                                        | authenticated                          | `providers:accounts` |
 | `/api/v1/commands`, `/providers`, `/repositories`                  | authenticated                          | `catalog:write`      |
 | `/api/v1/auth/users`, `/auth/service-accounts`                     | `accounts:write`                       | `accounts:write`     |
@@ -217,6 +220,7 @@ key if CI should not rewrite schedules.
 | GitHub Actions / repo harness `POST /sessions`                   | `author`     | that repository           |
 | On-call: cancel anyone’s session, drain, edit schedules          | `operator`   | usually unscoped          |
 | Attach repos, add worktrees, manage provider accounts            | `maintainer` | optional repos            |
+| Recover a stuck Provider Account lease                           | `operator`   | usually unscoped          |
 | Host daemon `HARNESS_API_KEY`                                    | `agent`      | `boundHostId` = that host |
 | Create users/keys, Slack, catalog argv, fleet exec-config, audit | `admin`      | none                      |
 

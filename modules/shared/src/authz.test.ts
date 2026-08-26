@@ -31,6 +31,7 @@ describe("role capability table", () => {
       expect(USER_ROLE_DESCRIPTIONS[role].length).toBeGreaterThan(10);
       expect(USER_ROLE_LABELS[role].length).toBeGreaterThan(0);
     }
+    expect(USER_ROLE_DESCRIPTIONS.operator).toContain("Provider Account lease recovery");
   });
 
   it("grants each named role the documented writes", () => {
@@ -44,6 +45,7 @@ describe("role capability table", () => {
         "schedules:write",
         "repositories:operate",
         "fleet:drain",
+        "providers:leases",
       ],
       maintainer: [
         "sessions:write",
@@ -52,6 +54,7 @@ describe("role capability table", () => {
         "schedules:write",
         "repositories:operate",
         "fleet:drain",
+        "providers:leases",
         "fleet:inventory",
         "providers:accounts",
       ],
@@ -73,6 +76,7 @@ describe("role capability table", () => {
     expect(roleHas("maintainer", "audit:read")).toBe(false);
     expect(roleHas("author", "schedules:write")).toBe(false);
     expect(roleHas("operator", "fleet:inventory")).toBe(false);
+    expect(roleHas("operator", "providers:leases")).toBe(true);
     expect(roleHas("maintainer", "fleet:exec-config")).toBe(false);
     expect(roleHas("agent", "sessions:write")).toBe(false);
     expect(roleHas("admin", "fleet:exec-config")).toBe(true);

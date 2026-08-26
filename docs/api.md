@@ -1077,6 +1077,61 @@ provider. The response identifies every live dependency; deletion never cascades
 
 Standard CRUD. `GET /provider-accounts` returns `{ "items": [ ...accounts ] }`, not a bare array. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours) and `maxConcurrentSessions` (default `1`). Responses include `usageLimitedUntil`, `lastUsageLimitedAt`, `lastAssignedAt`, and `maxConcurrentSessions`. The scheduler enforces the cap with attempt-owned durable leases (same conditional-put pattern as `concurrencyId` locks). Assignment fails closed when a host has not advertised a ready execution profile for that exact account. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
 
+#### `GET /provider-accounts/:id/leases`
+
+List the account's currently held provider-account leases for operational recovery. This endpoint
+requires `providers:leases` (Operator, Maintainer, or Admin); it is deliberately separate from
+Provider Account catalog CRUD. Each item contains the slot, the holder's `sessionId`, `attemptId`,
+and `hostId`, the referenced session's status and lifecycle timestamps, and whether the lease can
+be safely released:
+
+```json
+{
+  "items": [
+    {
+      "providerAccountId": "acct-1",
+      "slot": 0,
+      "holder": {
+        "sessionId": "sess-da1aee11",
+        "attemptId": "attempt-1",
+        "hostId": "host-prod-1",
+        "sessionStatus": "cancelled",
+        "sessionCreatedAt": "2026-08-25T10:00:00Z",
+        "sessionStartedAt": "2026-08-25T10:00:05Z",
+        "releasable": true,
+        "releaseBlock": null
+      }
+    }
+  ]
+}
+```
+
+The API does not expose the internal `provider-lease:<providerAccountId>:<slot>` key format.
+`releasable` is true only for a lease whose holder session is terminal (`cancelled`, `failed`,
+`completed`, or `timed_out`), whose host assignment has been detached, and whose conditional
+release can still be fenced to that exact session and attempt. Active or still-attached sessions
+are reported with `releasable: false` and a non-empty `releaseBlock` explaining why an operator
+must not release them. Repository-scoped principals see only holders in their allowed
+repositories; unknown or out-of-scope holders are omitted.
+
+#### `POST /provider-accounts/:id/leases/:slot/release`
+
+Force-release one stuck provider-account lease. This endpoint requires `providers:leases` and
+always re-reads the current holder before writing. The session's `providerAccountLease` field and
+the matching `ConcurrencyLocks` row are removed atomically, each conditioned on the holder's
+`sessionId` and `attemptId`; a later legitimate owner is never clobbered. A free slot is an
+idempotent no-op and returns `released: false` with `holder: null` in both the `before` and `after`
+slot states.
+
+**Responses:** `200 OK` returns `{ "released", "before", "after" }` using the lease item shape
+above. `before` and `after` are always slot states; a free slot has `holder: null`. An
+invalid/non-integer slot returns `400 VALIDATION_ERROR`; an unknown account or out-of-scope holder
+returns `404 NOT_FOUND`; an active or still-attached holder or a lost conditional race returns
+`409 CONFLICT`. When the holder read establishes a specific safety reason, the error includes it as
+`error.releaseBlock`.
+A successful release returns the post-write state so an operator can confirm that the slot is free
+or was immediately claimed by another Session.
+
 #### `POST /commands`
 
 **Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)

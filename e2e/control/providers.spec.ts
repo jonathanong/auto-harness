@@ -72,6 +72,8 @@ test.describe("control plane providers", () => {
       "provider-account-row-",
       "",
     );
+    await expect(page.getByTestId(`provider-account-leases-${accountId}`)).toBeVisible();
+    await expect(page.locator('[data-pw^="provider-account-lease-"]')).toHaveCount(0);
     await expect(page.getByTestId(`provider-account-cooldown-${accountId}`)).toContainText("1234s");
     const concurrency = page.getByTestId(`provider-account-concurrency-${accountId}`);
     await expect(concurrency).toHaveText(/2/);

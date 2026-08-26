@@ -310,6 +310,35 @@ export class DynamoPlaneStorageBase {
     return providerAccountLeases.releaseProviderAccountLease(this.ctx, opts);
   }
 
+  getProviderAccountLeaseLock(
+    concurrencyId: string,
+  ): ReturnType<typeof providerAccountLeases.getProviderAccountLeaseLock> {
+    return providerAccountLeases.getProviderAccountLeaseLock(this.ctx, concurrencyId);
+  }
+
+  listProviderAccountLeaseLocks(
+    providerAccountId: string,
+    maxSlots: number,
+  ): ReturnType<typeof providerAccountLeases.listProviderAccountLeaseLocks> {
+    return providerAccountLeases.listProviderAccountLeaseLocks(
+      this.ctx,
+      providerAccountId,
+      maxSlots,
+    );
+  }
+
+  getProviderAccountLeaseHolderSessions(
+    leases: Parameters<typeof providerAccountLeases.getProviderAccountLeaseHolderSessions>[1],
+  ): ReturnType<typeof providerAccountLeases.getProviderAccountLeaseHolderSessions> {
+    return providerAccountLeases.getProviderAccountLeaseHolderSessions(this.ctx, leases);
+  }
+
+  forceReleaseProviderAccountLease(
+    opts: Parameters<typeof providerAccountLeases.forceReleaseProviderAccountLease>[1],
+  ): ReturnType<typeof providerAccountLeases.forceReleaseProviderAccountLease> {
+    return providerAccountLeases.forceReleaseProviderAccountLease(this.ctx, opts);
+  }
+
   releaseTimedOutProviderAccountLease(opts: {
     concurrencyId: string;
     sessionId: string;

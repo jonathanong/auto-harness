@@ -1,11 +1,18 @@
+/* eslint-disable max-lines -- catalog detail page coverage shares request fixtures and page mocks. */
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import CommandDetailPage from "./commands/[commandId]/page.tsx";
 import ProviderDetailPage from "./providers/[providerId]/page.tsx";
 import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
 
 const noSearch = Promise.resolve({});
+const originalAuthMode = process.env.HARNESS_AUTH_MODE;
+
+afterEach(() => {
+  if (originalAuthMode === undefined) delete process.env.HARNESS_AUTH_MODE;
+  else process.env.HARNESS_AUTH_MODE = originalAuthMode;
+});
 
 describe("control catalog detail routes", () => {
   it("renders a command owner and standalone command details", async () => {
@@ -126,6 +133,78 @@ describe("control catalog detail routes", () => {
     );
     expect(html).toContain('data-pw="provider-account-unattached-warning"');
     expect(html).toContain("work is not attached to any host");
+  });
+
+  it("loads lease operations for Operators and hides them from Authors", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    const base = {
+      "/api/v1/providers/p-1": { id: "p-1", name: "Claude", defaultCommandId: null },
+      "/api/v1/provider-accounts": {
+        items: [{ id: "account-1", providerId: "p-1", label: "work" }],
+      },
+      "/api/v1/commands": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+    };
+    const operatorFetch = stubApi({
+      ...base,
+      "/api/v1/auth/me": { username: "op", role: "operator", kind: "user" },
+      "/api/v1/provider-accounts/account-1/leases": {
+        items: [
+          {
+            providerAccountId: "account-1",
+            slot: 0,
+            holder: {
+              sessionId: "session-1",
+              attemptId: "attempt-1",
+              hostId: "host-1",
+              sessionStatus: "cancelled",
+              sessionCreatedAt: "2026-08-25T00:00:00.000Z",
+              sessionStartedAt: "2026-08-25T00:01:00.000Z",
+              releasable: true,
+              releaseBlock: null,
+            },
+          },
+        ],
+      },
+    });
+    let html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-1" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain("held leases");
+    expect(html).toContain("session-1");
+    expect(operatorFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/provider-accounts/account-1/leases"),
+      expect.anything(),
+    );
+
+    const authorFetch = stubApi({
+      ...base,
+      "/api/v1/auth/me": { username: "author", role: "author", kind: "user" },
+    });
+    html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-1" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).not.toContain("held leases");
+    expect(authorFetch.mock.calls.some(([input]) => String(input).includes("/leases"))).toBe(false);
+
+    stubApi({
+      ...base,
+      "/api/v1/auth/me": { username: "op", role: "operator", kind: "user" },
+      "/api/v1/provider-accounts/account-1/leases": jsonResponse({}, 503),
+    });
+    html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-1" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain("Could not load held leases");
   });
 
   it("keeps provider detail tabs empty when supporting APIs fail", async () => {

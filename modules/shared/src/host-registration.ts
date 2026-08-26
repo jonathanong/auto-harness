@@ -1,3 +1,5 @@
+import type { SessionStatus } from "./types.ts";
+
 /** Minimal repository advertisement sent by a daemon during registration. */
 export type HostRepositoryRegistration = {
   id: string;
@@ -123,6 +125,34 @@ export function validateProviderAccountReadiness(
 
 /** Attempt-owned account leases use a namespace disjoint from caller lock IDs. */
 export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-lease:";
+
+/** Public description of one provider-account slot currently held in the control plane. */
+export type ProviderAccountLeaseState = {
+  providerAccountId: string;
+  slot: number;
+  holder: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string | null;
+    sessionStatus: SessionStatus | null;
+    sessionCreatedAt: string | null;
+    sessionStartedAt: string | null;
+    releasable: boolean;
+    releaseBlock:
+      | null
+      | "session_not_terminal"
+      | "session_assignment_attached"
+      | "session_not_found"
+      | "session_lease_mismatch";
+  } | null;
+};
+
+/** Result returned by an operator release attempt, including the durable before/after state. */
+export type ProviderAccountLeaseReleaseResult = {
+  released: boolean;
+  before: ProviderAccountLeaseState;
+  after: ProviderAccountLeaseState;
+};
 
 export function providerAccountLeaseConcurrencyId(providerAccountId: string, slot: number): string {
   return `${PROVIDER_ACCOUNT_LEASE_PREFIX}${providerAccountId}:${String(slot)}`;

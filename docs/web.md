@@ -480,7 +480,25 @@ Table: name, default command, attached-account count, owned-command count. "Add 
 
 ### Provider Detail
 
-Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an Add command dialog) · **Settings** (rename in a dialog; optional usage-rate micros for configured cost views; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
+Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to, plus
+a held-leases column for operational recovery) · **Commands** (this provider's owned commands,
+plus a default-command selector and an Add command dialog) · **Settings** (rename in a dialog;
+optional usage-rate micros for configured cost views; delete — disabled while any account or
+command still references this provider, to avoid a 409 round-trip). The account create form's
+cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
+
+The Accounts tab's held-leases column uses `GET /api/v1/provider-accounts/:id/leases` and shows
+the slot, holder session, host, status, and lifecycle age. The API state also carries the holder's
+attempt, `releasable`, and `releaseBlock` fields for the safety decision; the column does not expose
+the internal concurrency key. A **Release lease** control is enabled only when the holder session
+is terminal and its host assignment has been detached; clicking it requires explicit confirmation and calls
+`POST /api/v1/provider-accounts/:id/leases/:slot/release`. The confirmation states that this
+removes the session's provider-account lease and its matching concurrency lock, and that the server
+fences both writes to the displayed session and attempt. A free slot or an already-completed
+release is rendered as free; an active or still-attached session remains non-releasable with the
+server-provided block reason. Repository-scoped operators see only leases held by Sessions in
+their allowed repositories. Read-only and author accounts do not receive the held-leases data or
+release control.
 
 ---
 

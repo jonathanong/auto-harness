@@ -49,6 +49,9 @@ export function requiredCapability(
   ) {
     return write ? "fleet:inventory" : "authenticated";
   }
+  if (/^\/api\/v1\/provider-accounts\/[^/]+\/leases(?:\/[^/]+\/release)?$/.test(pathname)) {
+    return "providers:leases";
+  }
   if (matchesRoutePrefix(pathname, "/api/v1/provider-accounts")) {
     return write ? "providers:accounts" : "authenticated";
   }

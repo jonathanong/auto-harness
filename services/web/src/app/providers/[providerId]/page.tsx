@@ -9,7 +9,7 @@ import {
   TableRow,
   Tabs,
 } from "@auto-harness/ui";
-import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
+import type { Provider } from "@auto-harness/shared";
 
 import { AddCommandDialog } from "../../../components/add-command-dialog.tsx";
 import { AddProviderAccountForm } from "../../../components/add-provider-account-form.tsx";
@@ -19,11 +19,12 @@ import { ProviderDefaultCommandForm } from "../../../components/provider-default
 import { RemoveProviderAccountButton } from "../../../components/remove-provider-account-button.tsx";
 import { ProviderAccountCooldownForm } from "../../../components/provider-account-cooldown-form.tsx";
 import { ProviderAccountConcurrencyForm } from "../../../components/provider-account-concurrency-form.tsx";
+import { ProviderAccountLeases } from "../../../components/provider-account-leases.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
+import { loadProviderDetailData } from "./provider-detail-data.ts";
 
 export const dynamic = "force-dynamic";
-
-type AgentHost = { hostId: string; providerAccounts?: Array<{ providerAccountId: string }> };
 
 export default async function ProviderDetailPage({
   params,
@@ -34,6 +35,7 @@ export default async function ProviderDetailPage({
 }) {
   const { providerId } = await params;
   const { tab } = await searchParams;
+  const canOperateProviderLeases = can(await loadPrincipal(), "providers:leases");
 
   let provider: Provider | undefined;
   try {
@@ -56,21 +58,10 @@ export default async function ProviderDetailPage({
     );
   }
 
-  let accounts: ProviderAccount[] = [];
-  let commands: Command[] = [];
-  let agentHosts: AgentHost[] = [];
-  try {
-    const [a, c, h] = await Promise.all([
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
-      apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories"),
-    ]);
-    accounts = (a.items ?? []).filter((x) => x.providerId === providerId);
-    commands = (c.items ?? []).filter((x) => x.providerId === providerId);
-    agentHosts = h.items ?? [];
-  } catch {
-    /* ignore — tabs stay empty */
-  }
+  const { accounts, commands, agentHosts, leasesByAccount } = await loadProviderDetailData(
+    providerId,
+    canOperateProviderLeases,
+  );
 
   const attachedHostCount = (accountId: string): number =>
     agentHosts.filter((h) =>
@@ -104,6 +95,7 @@ export default async function ProviderDetailPage({
                       <TableHead>label</TableHead>
                       <TableHead>attached hosts</TableHead>
                       <TableHead>health / cooldown</TableHead>
+                      {canOperateProviderLeases ? <TableHead>held leases</TableHead> : null}
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -116,6 +108,14 @@ export default async function ProviderDetailPage({
                           <ProviderAccountCooldownForm account={a} />
                           <ProviderAccountConcurrencyForm account={a} />
                         </TableCell>
+                        {canOperateProviderLeases ? (
+                          <TableCell>
+                            <ProviderAccountLeases
+                              accountId={a.id}
+                              leases={leasesByAccount.get(a.id)!}
+                            />
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           <RemoveProviderAccountButton
                             accountId={a.id}
@@ -126,7 +126,10 @@ export default async function ProviderDetailPage({
                     ))}
                     {accounts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-muted-foreground">
+                        <TableCell
+                          colSpan={canOperateProviderLeases ? 5 : 4}
+                          className="text-muted-foreground"
+                        >
                           No accounts of this provider yet.
                         </TableCell>
                       </TableRow>

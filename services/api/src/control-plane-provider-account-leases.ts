@@ -1,5 +1,11 @@
 /* eslint-disable max-lines -- provider-account capacity and lease lifecycle share one state helper. */
-import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
+import {
+  isTerminalSessionStatus,
+  MAX_CONCURRENT_SESSIONS_LIMIT,
+  providerAccountLeaseConcurrencyId,
+  type ProviderAccountLeaseReleaseResult,
+  type ProviderAccountLeaseState,
+} from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -13,6 +19,328 @@ type ProviderAccountLease = {
   slot: number;
   attemptId: string;
 };
+
+type ProviderAccountLeaseLock = ProviderAccountLease & { sessionId: string; hostId?: string };
+
+type ProviderAccountLeaseOperation =
+  | { ok: true; result: ProviderAccountLeaseReleaseResult; repositoryId?: string }
+  | { ok: false; reason: "not_found" }
+  | {
+      ok: false;
+      reason: "conflict";
+      releaseBlock?: Exclude<
+        NonNullable<ProviderAccountLeaseState["holder"]>["releaseBlock"],
+        null
+      >;
+    };
+
+type ProviderAccountLeaseAccess = (session: SessionRecord | undefined) => boolean;
+
+function sessionAttemptId(session: SessionRecord): string | undefined {
+  return session.attemptId ?? session.resolvedRoute?.attemptId;
+}
+
+function sessionMatchesProviderAccountLease(
+  session: SessionRecord | undefined,
+  lease: ProviderAccountLeaseLock,
+): session is SessionRecord {
+  const held = session?.providerAccountLease;
+  return (
+    session !== undefined &&
+    held?.concurrencyId === lease.concurrencyId &&
+    held.providerAccountId === lease.providerAccountId &&
+    held.slot === lease.slot &&
+    held.attemptId === lease.attemptId &&
+    sessionAttemptId(session) === lease.attemptId
+  );
+}
+
+function sessionAssignmentDetached(session: SessionRecord): boolean {
+  return (
+    session.worktreeId == null &&
+    session.mainCheckoutLease !== true &&
+    session.assignmentConnectionId === undefined &&
+    session.hostAssignmentLease === undefined &&
+    session.timedOutHostId === undefined &&
+    session.timedOutAssignmentConnectionId === undefined
+  );
+}
+
+function providerAccountLeaseState(
+  lease: ProviderAccountLeaseLock,
+  session: SessionRecord | undefined,
+): ProviderAccountLeaseState {
+  const matches = sessionMatchesProviderAccountLease(session, lease);
+  let releaseBlock: NonNullable<ProviderAccountLeaseState["holder"]>["releaseBlock"] = null;
+  if (!session) releaseBlock = "session_not_found";
+  else if (!matches) releaseBlock = "session_lease_mismatch";
+  else if (!isTerminalSessionStatus(session.status)) releaseBlock = "session_not_terminal";
+  else if (!sessionAssignmentDetached(session)) releaseBlock = "session_assignment_attached";
+  return {
+    providerAccountId: lease.providerAccountId,
+    slot: lease.slot,
+    holder: {
+      sessionId: lease.sessionId,
+      attemptId: lease.attemptId,
+      hostId: session?.hostId ?? lease.hostId ?? null,
+      sessionStatus: session?.status ?? null,
+      sessionCreatedAt: session?.createdAt ?? null,
+      sessionStartedAt: session?.startedAt ?? null,
+      releasable: releaseBlock === null,
+      releaseBlock,
+    },
+  };
+}
+
+function freeProviderAccountLeaseState(
+  providerAccountId: string,
+  slot: number,
+): ProviderAccountLeaseState {
+  return { providerAccountId, slot, holder: null };
+}
+
+function localProviderAccountLeaseLock(
+  state: ControlPlaneState,
+  providerAccountId: string,
+  slot: number,
+): ProviderAccountLeaseLock | null {
+  const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
+  const held = state.providerAccountLeases.get(concurrencyId);
+  if (held) {
+    return {
+      concurrencyId,
+      providerAccountId: held.providerAccountId,
+      slot: held.slot,
+      attemptId: held.attemptId,
+      sessionId: held.sessionId,
+      hostId: held.hostId,
+    };
+  }
+  for (const session of state.sessions.values()) {
+    const lease = session.providerAccountLease;
+    if (
+      lease?.concurrencyId === concurrencyId &&
+      lease.providerAccountId === providerAccountId &&
+      lease.slot === slot
+    ) {
+      return {
+        ...lease,
+        sessionId: session.id,
+        ...(session.hostId ? { hostId: session.hostId } : {}),
+      };
+    }
+  }
+  return null;
+}
+
+/** List every occupied durable provider-account slot, including legacy slots above today's cap. */
+export async function listProviderAccountLeaseStates(
+  state: ControlPlaneState,
+  providerAccountId: string,
+  mayAccessSession: ProviderAccountLeaseAccess = () => true,
+): Promise<{ ok: true; items: ProviderAccountLeaseState[] } | { ok: false; reason: "not_found" }> {
+  if (state.storage) {
+    const account = await state.storage.getProviderAccount(providerAccountId);
+    if (!account) {
+      state.providerAccounts.delete(providerAccountId);
+      return { ok: false, reason: "not_found" };
+    }
+    state.providerAccounts.set(providerAccountId, { ...account });
+    const leases = await state.storage.listProviderAccountLeaseLocks(
+      providerAccountId,
+      MAX_CONCURRENT_SESSIONS_LIMIT,
+    );
+    const sessions = await state.storage.getProviderAccountLeaseHolderSessions(leases);
+    return {
+      ok: true,
+      items: leases
+        .filter((lease) => {
+          const session = sessions.get(lease.sessionId);
+          return mayAccessSession(session);
+        })
+        .map((lease) => providerAccountLeaseState(lease, sessions.get(lease.sessionId)))
+        .toSorted((left, right) => left.slot - right.slot),
+    };
+  }
+  if (!state.providerAccounts.has(providerAccountId)) return { ok: false, reason: "not_found" };
+  const items: ProviderAccountLeaseState[] = [];
+  for (let slot = 0; slot < MAX_CONCURRENT_SESSIONS_LIMIT; slot += 1) {
+    const lease = localProviderAccountLeaseLock(state, providerAccountId, slot);
+    if (!lease) continue;
+    const session = state.sessions.get(lease.sessionId);
+    if (mayAccessSession(session)) items.push(providerAccountLeaseState(lease, session));
+  }
+  return { ok: true, items };
+}
+
+function clearReleasedLeaseCaches(
+  state: ControlPlaneState,
+  lease: ProviderAccountLeaseLock,
+  session: SessionRecord,
+): void {
+  delete session.providerAccountLease;
+  const cachedSession = state.sessions.get(session.id);
+  if (cachedSession && sessionMatchesProviderAccountLease(cachedSession, lease)) {
+    delete cachedSession.providerAccountLease;
+    state.sessions.set(cachedSession.id, { ...cachedSession });
+  }
+  const cachedLease = state.providerAccountLeases.get(lease.concurrencyId);
+  if (cachedLease?.sessionId === lease.sessionId && cachedLease.attemptId === lease.attemptId) {
+    state.providerAccountLeases.delete(lease.concurrencyId);
+  }
+}
+
+async function providerAccountLeaseStateAfterRelease(
+  state: ControlPlaneState,
+  storage: NonNullable<ControlPlaneState["storage"]>,
+  providerAccountId: string,
+  slot: number,
+  concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
+): Promise<ProviderAccountLeaseState> {
+  const lease = await storage.getProviderAccountLeaseLock(concurrencyId);
+  if (!lease) return freeProviderAccountLeaseState(providerAccountId, slot);
+  const session = (await storage.getSession(lease.sessionId, true)) ?? undefined;
+  state.providerAccountLeases.set(concurrencyId, {
+    ...lease,
+    hostId: session?.hostId ?? lease.hostId ?? "",
+  });
+  return mayAccessSession(session)
+    ? providerAccountLeaseState(lease, session)
+    : freeProviderAccountLeaseState(providerAccountId, slot);
+}
+
+async function forceReleaseDurableProviderAccountLease(
+  state: ControlPlaneState,
+  storage: NonNullable<ControlPlaneState["storage"]>,
+  providerAccountId: string,
+  slot: number,
+  concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
+): Promise<ProviderAccountLeaseOperation> {
+  const account = await storage.getProviderAccount(providerAccountId);
+  if (!account) {
+    state.providerAccounts.delete(providerAccountId);
+    return { ok: false, reason: "not_found" };
+  }
+  state.providerAccounts.set(providerAccountId, { ...account });
+  const lease = await storage.getProviderAccountLeaseLock(concurrencyId);
+  if (!lease) {
+    const free = freeProviderAccountLeaseState(providerAccountId, slot);
+    return { ok: true, result: { released: false, before: free, after: free } };
+  }
+  const session = await storage.getSession(lease.sessionId, true);
+  const matchedSession = session ?? undefined;
+  const before = providerAccountLeaseState(lease, matchedSession);
+  if (!mayAccessSession(matchedSession)) {
+    return { ok: false, reason: "not_found" };
+  }
+  if (
+    !sessionMatchesProviderAccountLease(matchedSession, lease) ||
+    !isTerminalSessionStatus(matchedSession.status) ||
+    !sessionAssignmentDetached(matchedSession)
+  ) {
+    return {
+      ok: false,
+      reason: "conflict",
+      ...(before.holder?.releaseBlock ? { releaseBlock: before.holder.releaseBlock } : {}),
+    };
+  }
+  const released = await storage.forceReleaseProviderAccountLease({
+    providerAccountId,
+    slot,
+    concurrencyId,
+    sessionId: lease.sessionId,
+    attemptId: lease.attemptId,
+  });
+  if (!released) return { ok: false, reason: "conflict" };
+  // Do not mutate either cache until the transaction commits. A stale local map must never
+  // advertise capacity after a fenced conditional failure.
+  clearReleasedLeaseCaches(state, lease, matchedSession);
+  const after = await providerAccountLeaseStateAfterRelease(
+    state,
+    storage,
+    providerAccountId,
+    slot,
+    concurrencyId,
+    mayAccessSession,
+  );
+  return {
+    ok: true,
+    result: { released: true, before, after },
+    repositoryId: matchedSession.repositoryId,
+  };
+}
+
+function forceReleaseLocalProviderAccountLease(
+  state: ControlPlaneState,
+  providerAccountId: string,
+  slot: number,
+  concurrencyId: string,
+  mayAccessSession: ProviderAccountLeaseAccess,
+): ProviderAccountLeaseOperation {
+  if (!state.providerAccounts.has(providerAccountId)) return { ok: false, reason: "not_found" };
+  const lease = localProviderAccountLeaseLock(state, providerAccountId, slot);
+  if (!lease) {
+    const free = freeProviderAccountLeaseState(providerAccountId, slot);
+    return { ok: true, result: { released: false, before: free, after: free } };
+  }
+  const session = state.sessions.get(lease.sessionId);
+  const before = providerAccountLeaseState(lease, session);
+  if (!mayAccessSession(session)) return { ok: false, reason: "not_found" };
+  if (
+    !sessionMatchesProviderAccountLease(session, lease) ||
+    !isTerminalSessionStatus(session.status) ||
+    !sessionAssignmentDetached(session)
+  ) {
+    return {
+      ok: false,
+      reason: "conflict",
+      ...(before.holder?.releaseBlock ? { releaseBlock: before.holder.releaseBlock } : {}),
+    };
+  }
+  delete session.providerAccountLease;
+  const cached = state.providerAccountLeases.get(concurrencyId);
+  if (cached?.sessionId === lease.sessionId && cached.attemptId === lease.attemptId) {
+    state.providerAccountLeases.delete(concurrencyId);
+  }
+  return {
+    ok: true,
+    repositoryId: session.repositoryId,
+    result: {
+      released: true,
+      before,
+      after: freeProviderAccountLeaseState(providerAccountId, slot),
+    },
+  };
+}
+
+/** Safely force-release only a terminal session's exact attempt-owned slot. */
+export async function forceReleaseProviderAccountLease(
+  state: ControlPlaneState,
+  providerAccountId: string,
+  slot: number,
+  mayAccessSession: ProviderAccountLeaseAccess = () => true,
+): Promise<ProviderAccountLeaseOperation> {
+  const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
+  if (state.storage) {
+    return forceReleaseDurableProviderAccountLease(
+      state,
+      state.storage,
+      providerAccountId,
+      slot,
+      concurrencyId,
+      mayAccessSession,
+    );
+  }
+  return forceReleaseLocalProviderAccountLease(
+    state,
+    providerAccountId,
+    slot,
+    concurrencyId,
+    mayAccessSession,
+  );
+}
 
 export function hostProviderAccountReady(
   state: ControlPlaneState,
