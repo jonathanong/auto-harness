@@ -204,6 +204,73 @@ describe("provider account lease storage", () => {
     });
   });
 
+  it("fences the backfilled slot against the account's maxConcurrentSessions cap", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await backfillProviderAccountLease(
+      {
+        doc: { send },
+        tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+      } as never,
+      {
+        sessionId: "session",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        providerId: "provider",
+        slot: 2,
+      },
+    );
+    const request = send.mock.calls[0]?.[0] as {
+      input: {
+        TransactItems: {
+          ConditionCheck: {
+            ConditionExpression: string;
+            ExpressionAttributeValues: Record<string, unknown>;
+          };
+        }[];
+      };
+    };
+    const conditionCheck = request.input.TransactItems[0].ConditionCheck;
+    expect(conditionCheck.ConditionExpression).toContain(
+      "((attribute_not_exists(maxConcurrentSessions) AND :slot < :defaultCap) OR maxConcurrentSessions > :slot)",
+    );
+    expect(conditionCheck.ConditionExpression).toContain("providerId = :providerId");
+    expect(conditionCheck.ExpressionAttributeValues[":slot"]).toBe(2);
+    expect(conditionCheck.ExpressionAttributeValues[":defaultCap"]).toBe(1);
+    expect(conditionCheck.ExpressionAttributeValues[":providerId"]).toBe("provider");
+  });
+
+  it("omits the providerId fence when no providerId is given, but keeps the cap fence", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await backfillProviderAccountLease(
+      {
+        doc: { send },
+        tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
+      } as never,
+      {
+        sessionId: "session",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct",
+        slot: 0,
+      },
+    );
+    const request = send.mock.calls[0]?.[0] as {
+      input: {
+        TransactItems: {
+          ConditionCheck: {
+            ConditionExpression: string;
+            ExpressionAttributeValues: Record<string, unknown>;
+          };
+        }[];
+      };
+    };
+    const conditionCheck = request.input.TransactItems[0].ConditionCheck;
+    expect(conditionCheck.ConditionExpression).not.toContain("providerId");
+    expect(conditionCheck.ExpressionAttributeValues).not.toHaveProperty(":providerId");
+    expect(conditionCheck.ExpressionAttributeValues[":slot"]).toBe(0);
+  });
+
   it("reports a competing lease without treating it as a migration", async () => {
     const send = vi.fn().mockRejectedValue({
       name: "TransactionCanceledException",
@@ -310,6 +377,22 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
           id: "acct",
           providerId: "provider",
           name: "acct",
+          // High enough that slots 0-3 below stay within the cap fence added
+          // for #345 and continue exercising only the cancellation fence.
+          maxConcurrentSessions: 5,
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "acct-capped",
+          providerId: "provider",
+          name: "acct-capped",
+          maxConcurrentSessions: 1,
           createdAt: "now",
           updatedAt: "now",
         },
@@ -370,6 +453,89 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
         hostId: "host",
         providerAccountId: "acct",
         slot: 3,
+      }),
+    ).resolves.toEqual({ status: "session_changed" });
+  });
+});
+
+describe("DynamoDB Local: backfillProviderAccountLease maxConcurrentSessions cap", () => {
+  let client: DynamoDBClient;
+  let tables: DynamoTableNames;
+  let ctx: PlaneStorageCtx;
+  const session = {
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetLabels: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "running" as const,
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    hostId: "host",
+    attemptId: "attempt",
+    resolvedRoute: {
+      targetIndex: 0,
+      commandId: "command",
+      hostId: "host",
+      worktreeId: null,
+      attemptId: "attempt",
+      providerAccountId: "acct-capped",
+    },
+  };
+
+  beforeAll(async () => {
+    const clients = createDynamoClients();
+    client = clients.client;
+    tables = await ensureControlPlaneTables({ client, prefix: `AhLeaseCap${process.pid}` });
+    ctx = { doc: clients.doc, tables };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          id: "acct-capped",
+          providerId: "provider",
+          name: "acct-capped",
+          maxConcurrentSessions: 1,
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      }),
+    );
+  });
+  afterAll(async () => {
+    await Promise.all(
+      Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
+    );
+  });
+
+  it("migrates a session into the last open slot under the cap", async () => {
+    await putSession(ctx, { ...session, id: "within-cap" });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "within-cap",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-capped",
+        providerId: "provider",
+        slot: 0,
+      }),
+    ).resolves.toMatchObject({ status: "migrated" });
+  });
+
+  it("refuses a slot at or beyond the account's maxConcurrentSessions cap", async () => {
+    await putSession(ctx, { ...session, id: "over-cap" });
+    await expect(
+      backfillProviderAccountLease(ctx, {
+        sessionId: "over-cap",
+        attemptId: "attempt",
+        hostId: "host",
+        providerAccountId: "acct-capped",
+        slot: 1,
       }),
     ).resolves.toEqual({ status: "session_changed" });
   });

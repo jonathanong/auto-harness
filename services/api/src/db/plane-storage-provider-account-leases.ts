@@ -11,6 +11,7 @@ import {
   hostAssignmentReleaseItem,
   type HostAssignmentLease,
 } from "./plane-storage-host-assignment.ts";
+import { maxConcurrentSessionsCapFence } from "./plane-storage-provider-account-assignment.ts";
 
 export type ProviderAccountLeaseKey = {
   concurrencyId: string;
@@ -46,17 +47,22 @@ export async function backfillProviderAccountLease(
     slot: opts.slot,
     attemptId: opts.attemptId,
   };
-  const providerAccountValues: Record<string, unknown> = { ":providerId": opts.providerId };
-  const providerAccountCondition = opts.providerId
-    ? "attribute_exists(id) AND providerId = :providerId"
-    : "attribute_exists(id)";
+  // Cap fence mirrors providerAccountLastAssignedTransactItem (see
+  // control-plane-hydrate-provider-leases.ts for the app-layer slot bound).
+  const capFence = maxConcurrentSessionsCapFence(opts.slot);
+  const providerAccountValues: Record<string, unknown> = { ...capFence.values };
+  let providerAccountCondition = `attribute_exists(id) AND (${capFence.condition})`;
+  if (opts.providerId) {
+    providerAccountCondition += " AND providerId = :providerId";
+    providerAccountValues[":providerId"] = opts.providerId;
+  }
   const transactItems = [
     {
       ConditionCheck: {
         TableName: ctx.tables.providerAccounts,
         Key: { id: opts.providerAccountId },
         ConditionExpression: providerAccountCondition,
-        ...(opts.providerId ? { ExpressionAttributeValues: providerAccountValues } : {}),
+        ExpressionAttributeValues: providerAccountValues,
       },
     },
     {

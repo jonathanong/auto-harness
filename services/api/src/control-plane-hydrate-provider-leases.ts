@@ -1,8 +1,12 @@
-import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
+import type { DynamoPlaneStorage, ProviderAccountRecord } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
+import { maxConcurrentSessionsFor } from "./control-plane-provider-account-leases.ts";
 
-type HydrateLeaseState = { storage: DynamoPlaneStorage | undefined };
+type HydrateLeaseState = {
+  storage: DynamoPlaneStorage | undefined;
+  providerAccounts: Map<string, ProviderAccountRecord>;
+};
 
 /** Backfill legacy provider assignments before exposing the hydrated scheduler snapshot. */
 export async function backfillLegacyProviderAccountLeases(
@@ -41,7 +45,10 @@ export async function backfillLegacyProviderAccountLeases(
     const hostId = session.hostId;
     const attemptId = session.attemptId ?? route?.attemptId;
     if (!providerAccountId || !hostId || !attemptId) continue;
-    for (let slot = 0; slot <= sessions.length; slot += 1) {
+    const maxConcurrentSessions = maxConcurrentSessionsFor(
+      state.providerAccounts.get(providerAccountId),
+    );
+    for (let slot = 0; slot < maxConcurrentSessions; slot += 1) {
       const concurrencyId = providerAccountLeaseConcurrencyId(providerAccountId, slot);
       if (occupied.has(concurrencyId)) continue;
       const result = await storage.backfillProviderAccountLease({

@@ -121,6 +121,16 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
   state.providerAccountLeases.clear();
+  for (const record of providers) state.providers.set(record.id, record);
+  for (const record of accounts) {
+    state.providerAccounts.set(record.id, {
+      ...record,
+      maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
+    });
+  }
+  // providers/providerAccounts must be populated before the backfill below,
+  // which caps each candidate's slot search by the account's configured
+  // maxConcurrentSessions (see control-plane-hydrate-provider-leases.ts).
   await backfillLegacyProviderAccountLeases(state, sessions);
   hydrateScheduledState(state, sessions);
   for (const session of sessions) {
@@ -170,13 +180,6 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.hostInventories.set(record.hostId, {
       ...record,
       capabilities: normalizeHostCapabilities(record.capabilities),
-    });
-  }
-  for (const record of providers) state.providers.set(record.id, record);
-  for (const record of accounts) {
-    state.providerAccounts.set(record.id, {
-      ...record,
-      maxConcurrentSessions: record.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS,
     });
   }
   for (const record of commands) state.commands.set(record.id, record);
