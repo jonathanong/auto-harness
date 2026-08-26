@@ -615,6 +615,37 @@ override — not same-uid direct writes to the store. Closing that would need th
 read-only outside the install step, [#350](https://github.com/jonathanong/auto-harness/issues/350)'s
 second suggested option, which is out of scope for this fix.
 
+Pinning the flag going forward does not retroactively fix a worktree whose `node_modules` was
+already materialized under a different import method — every worktree that existed before this fix
+deployed, since `hardlink` was pnpm's `auto` default here. Confirmed against `pnpm@10.28.2`: rerunning
+`--frozen-lockfile` against an unchanged lockfile hits pnpm's "Already up to date" fast path (see
+below) and skips revisiting already-linked files entirely regardless of the requested import
+method — the linked file keeps the exact same inode before and after switching `hardlink` to `copy`
+with nothing else different. The daemon closes this by recording which import method most recently
+completed a successful install in each worktree, in a marker file at
+`node_modules/.auto-harness-package-import-method` (confirmed pnpm neither prunes nor otherwise
+touches this file on a normal or forced install). When the marker is missing (a worktree from before
+this fix, or an interrupted install) or stale (a future change to the pinned import method), that one
+install additionally passes `--force`, which does revisit and relink every package — confirmed the
+same way against both a single-package repro and this repo's own multi-package workspace, including
+that `--force` preserves the per-package `link:` topology from the `modules-dir`/`virtual-store-dir`
+section above rather than collapsing it. Confirmed to relink already-resolved packages from the
+already-warm store (`reused`, not `downloaded`) — but not a strict "no network" guarantee: a lockfile
+carrying platform-specific optional dependencies (native-binary build tooling like `rollup` or
+`esbuild`, one entry per OS/arch) can have entries this worktree's store never needed before, and
+`--force` does fetch those from the registry. Those extra fetches only populate the shared store —
+confirmed they are never linked into any package's `node_modules`, so the worktree's own footprint and
+resolution are unaffected — making the real cost a one-time, bounded amount of extra network I/O on
+that worktree's first post-deploy install, not a recurring one. Later installs in that worktree return
+to the cheap fast path once the marker is rewritten after a successful install; a failed install
+leaves the marker untouched, so the next attempt forces again. A resumed session skips this install
+step entirely (the same gap the `copy` pin itself has, described above), so a worktree whose sessions
+are only ever resumed — never freshly run — stays on its old import method until a fresh run finally
+forces the migration. The marker is not itself a trust boundary: it lives in `node_modules` under the
+same same-uid limitation already conceded above, so a session could forge it to suppress its own
+worktree's next `--force` — but that session could already reach the same outcome more directly, by
+writing into `storeDir` itself.
+
 The lockfile check reruns after setup scripts, not before: a setup script can check out a
 different ref and add or remove the lockfile, so the pre-setup snapshot can't be trusted. `CI=true`
 is forced for this step only — a reused worktree's `node_modules` can need a purge-and-recreate,
@@ -642,7 +673,9 @@ whose lockfile hasn't changed is a near no-op (roughly a second): pnpm detects `
 already up to date with the lockfile and skips resolution and linking entirely (`Lockfile is up to
 date, resolution step is skipped` / `Already up to date` — confirmed against the pinned
 `pnpm@10.28.2` with `--package-import-method copy`, so this fast path does not depend on the store's
-hardlink-vs-copy import method). A first install on a fresh worktree, or one whose lockfile changed,
+hardlink-vs-copy import method). That near-no-op claim does not hold for the one migration install
+covered above: a worktree whose marker is missing or stale pays the full `--force` relink cost once,
+not the cheap fast path. A first install on a fresh worktree, or one whose lockfile changed,
 still pays the full linking cost, reusing the warm content-addressable store (under the preserved
 `HOME`) rather than re-downloading. A setup script that already runs its own `pnpm install` (as in the
 examples above) is unaffected — this step reruns after it and finds nothing to change.

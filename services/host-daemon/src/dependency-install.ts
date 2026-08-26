@@ -1,12 +1,33 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { OutputChunk, ProcessResult, ProcessRunner } from "./executor.ts";
 
 /** A pnpm workspace worktree always has a committed root lockfile. */
 export function isPnpmWorkspace(cwd: string): boolean {
   return existsSync(join(cwd, "pnpm-lock.yaml"));
+}
+
+const PACKAGE_IMPORT_METHOD = "copy";
+const IMPORT_METHOD_MARKER = join("node_modules", ".auto-harness-package-import-method");
+
+function readImportMethodMarker(markerPath: string): string | undefined {
+  try {
+    return readFileSync(markerPath, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function writeImportMethodMarker(markerPath: string): void {
+  try {
+    mkdirSync(dirname(markerPath), { recursive: true });
+    writeFileSync(markerPath, PACKAGE_IMPORT_METHOD);
+  } catch {
+    // Best-effort: a write failure here only costs a redundant --force on the
+    // next install (see the marker paragraph below), not a correctness bug.
+  }
 }
 
 /**
@@ -145,6 +166,49 @@ export function isPnpmWorkspace(cwd: string): boolean {
  * override. Closing direct same-uid store writes would need the store
  * mounted read-only outside the install step (auto-harness#350's second
  * suggested option), which is out of scope for this fix.
+ *
+ * Pinning the flag going forward does not retroactively fix a worktree
+ * whose `node_modules` was already materialized under a different import
+ * method (every worktree that existed before this fix deployed, since
+ * `hardlink` was pnpm's `auto` default here). Confirmed empirically against
+ * pnpm@10.28.2: rerunning `--frozen-lockfile` against an unchanged lockfile
+ * hits pnpm's own fast path ("Already up to date") and skips revisiting
+ * already-linked files entirely, regardless of the requested import
+ * method — the file kept the exact same inode before and after switching
+ * `hardlink` to `copy` with nothing else different. `IMPORT_METHOD_MARKER`
+ * records which import method most recently completed a successful install
+ * in this worktree; when it is missing (this worktree has `node_modules`
+ * from before this fix, or from an interrupted install) or stale (a future
+ * change to `PACKAGE_IMPORT_METHOD`), that one install additionally passes
+ * `--force`, which does revisit and relink every package — confirmed the
+ * same way, against both a single-package repro and this repo's own
+ * multi-package workspace (confirming `--force` also preserves the
+ * per-package `link:` topology from the `modules-dir`/`virtual-store-dir`
+ * paragraph above, not just single-package linking). Confirmed to relink
+ * already-resolved packages from the already-warm store (`reused`, not
+ * `downloaded`) rather than refetch them — but not a strict "no network"
+ * guarantee: a lockfile carrying platform-specific optional dependencies
+ * (build tooling that ships a native binary per OS/arch, e.g. `rollup`,
+ * `esbuild`) can have entries this worktree's store never needed to fetch
+ * before, and `--force` does fetch those from the registry. Confirmed those
+ * extra fetches only populate the shared store and are never linked into
+ * any package's `node_modules` — this worktree's own on-disk footprint and
+ * resolution are unaffected — so the real cost is a one-time, bounded
+ * amount of extra network I/O on the worktree's first post-deploy install,
+ * not a recurring one. Later installs in that worktree go back to the cheap
+ * fast path once the marker is rewritten after a successful install; a
+ * failed install leaves the marker untouched, so the next attempt still
+ * forces. A resumed session skips this install step entirely (see the
+ * `copy` paragraph above), so a worktree whose sessions are only ever
+ * resumed — never freshly run — stays on its old import method until a
+ * fresh run finally forces the migration; `IMPORT_METHOD_MARKER` is not
+ * itself the security boundary here, only a cache of the last install's
+ * outcome; like the store itself, it lives under the same same-uid
+ * limitation the "What this does *not* close" paragraph above already
+ * concedes — a session could forge it to suppress its own worktree's next
+ * `--force`, but that session could already reach the same "stay on a
+ * mutable, potentially-aliased `node_modules`" outcome more directly, by
+ * writing into `storeDir` itself.
  */
 export async function installWorkspaceDependencies(
   runner: ProcessRunner,
@@ -156,6 +220,10 @@ export async function installWorkspaceDependencies(
   platform: NodeJS.Platform = process.platform,
 ): Promise<ProcessResult> {
   const storeDir = join(environment.HOME ?? homedir(), ".auto-harness-pnpm-store");
+  const markerPath = join(cwd, IMPORT_METHOD_MARKER);
+  const needsForceRelink =
+    existsSync(join(cwd, "node_modules")) &&
+    readImportMethodMarker(markerPath) !== PACKAGE_IMPORT_METHOD;
   const installArgs = [
     "install",
     "--frozen-lockfile",
@@ -168,9 +236,10 @@ export async function installWorkspaceDependencies(
     "--virtual-store-dir",
     "node_modules/.pnpm",
     "--package-import-method",
-    "copy",
+    PACKAGE_IMPORT_METHOD,
+    ...(needsForceRelink ? ["--force"] : []),
   ];
-  return runner.run({
+  const result = await runner.run({
     argv:
       platform === "win32"
         ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...installArgs]
@@ -181,4 +250,8 @@ export async function installWorkspaceDependencies(
     ...(signal ? { signal } : {}),
     onChunk,
   });
+  if (result.exitCode === 0) {
+    writeImportMethodMarker(markerPath);
+  }
+  return result;
 }
