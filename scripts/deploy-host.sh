@@ -51,6 +51,21 @@ wait_for_host_readiness() {
   return 1
 }
 
+install_darwin_host_service() {
+  local env_file="$1"
+  if [[ -f "$env_file" ]]; then
+    env \
+      -u HARNESS_HOST_ID \
+      -u HARNESS_API_URL \
+      -u HARNESS_API_HTTP \
+      -u HARNESS_API_KEY \
+      HARNESS_ENV_FILE="$env_file" \
+      pnpm local:daemon install-service
+    return
+  fi
+  pnpm local:daemon install-service
+}
+
 main() {
   cd "$repo_root"
   if [[ "${1:-}" == "--" ]]; then
@@ -107,8 +122,8 @@ EOF
 
   case "$platform" in
     Darwin)
-      pnpm local:daemon install-service
       env_file="$HOME/Library/Application Support/auto-harness/host-daemon.env"
+      install_darwin_host_service "$env_file"
       wait_for_host_readiness 120 env \
         -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
         HARNESS_ENV_FILE="$env_file" \

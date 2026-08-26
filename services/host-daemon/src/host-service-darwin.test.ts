@@ -10,12 +10,22 @@ describe("install-service darwin", () => {
   it("writes LaunchAgent + env and kickstarts without -k", () => {
     const fs = seededFs();
     const spawn = recorder();
+    let prints = 0;
     expect(
       installHostService(
         baseOpts({
           platform: "darwin",
           fs,
-          run: spawn.run,
+          run: (command, args) => {
+            const result = spawn.run(command, args);
+            if (args[0] !== "print") return result;
+            prints += 1;
+            return prints === 1
+              ? { status: 1, stdout: "", stderr: "Could not find service" }
+              : prints === 2
+                ? { status: 0, stdout: "state = stopped\n", stderr: "" }
+                : { status: 0, stdout: "state = running\npid = 77\n", stderr: "" };
+          },
           env: {
             HARNESS_HOST_ID: "host-1",
             HARNESS_API_URL: "https://example.cloudfront.net",
@@ -35,6 +45,7 @@ describe("install-service darwin", () => {
       0o600,
     );
     expect(spawn.calls.map((c) => c.args[0])).toEqual([
+      "print",
       "bootout",
       "bootstrap",
       "print",
@@ -43,6 +54,7 @@ describe("install-service darwin", () => {
     ]);
     expect(spawn.calls.find((c) => c.args[0] === "kickstart")?.args).toEqual([
       "kickstart",
+      "-p",
       "gui/501/com.auto-harness.host-daemon",
     ]);
   });
@@ -58,14 +70,30 @@ describe("install-service darwin", () => {
         { status: 1, stdout: "", stderr: "no bootstrap" },
     });
     const logs: string[] = [];
+    let prints = 0;
     expect(
       installHostService(
-        baseOpts({ platform: "darwin", fs, run: spawn.run, log: (m) => logs.push(m) }),
+        baseOpts({
+          platform: "darwin",
+          fs,
+          run: (command, args) => {
+            const result = spawn.run(command, args);
+            if (args[0] !== "print") return result;
+            prints += 1;
+            return prints === 1
+              ? { status: 1, stdout: "", stderr: "Could not find service" }
+              : prints === 2
+                ? { status: 0, stdout: "state = stopped\n", stderr: "" }
+                : { status: 0, stdout: "state = running\npid = 77\n", stderr: "" };
+          },
+          log: (m) => logs.push(m),
+        }),
       ),
     ).toBe(0);
     expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((call) => call.args[0])).toEqual([
+      "print",
       "bootout",
       "bootstrap",
       "load",
@@ -81,6 +109,7 @@ describe("install-service darwin", () => {
       [envPath]:
         "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\nOTHER=keep\n",
     });
+    let prints = 0;
     expect(
       installHostService(
         baseOpts({
@@ -90,7 +119,13 @@ describe("install-service darwin", () => {
             HARNESS_EXECUTION_PROFILES: "/Users/op/profiles.json",
             HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "4",
           },
-          run: () => ({ status: 0, stdout: "state = running\n", stderr: "" }),
+          run: (_command, args) => {
+            if (args[0] !== "print") return { status: 0, stdout: "", stderr: "" };
+            prints += 1;
+            return prints === 1
+              ? { status: 1, stdout: "", stderr: "Could not find service" }
+              : { status: 0, stdout: "state = running\npid = 77\n", stderr: "" };
+          },
         }),
       ),
     ).toBe(0);
@@ -108,7 +143,10 @@ describe("install-service darwin", () => {
           platform: "darwin",
           fs: seededFs(),
           error: (m) => errors.push(m),
-          run: () => ({ status: 1, stdout: "", stderr: "launchctl down" }),
+          run: (_command, args) =>
+            args[0] === "print"
+              ? { status: 1, stdout: "", stderr: "Could not find service" }
+              : { status: 1, stdout: "", stderr: "launchctl down" },
         }),
       ),
     ).toBe(1);

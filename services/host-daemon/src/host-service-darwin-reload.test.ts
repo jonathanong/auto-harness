@@ -6,6 +6,7 @@ import { baseOpts, errRun, launchctlByStep, okRun, seededFs } from "./host-servi
 
 const missing = errRun(1, "Could not find service");
 const running = okRun("state = running\npid = 100\n");
+const replacement = okRun("state = running\npid = 101\n");
 const stopped = okRun("state = stopped\n");
 
 function install(run: HostServiceRun): { calls: string[]; code: number; errors: string[] } {
@@ -17,7 +18,7 @@ function install(run: HostServiceRun): { calls: string[]; code: number; errors: 
       fs: seededFs(),
       error: (msg) => errors.push(msg),
       run: (command, args, opts) => {
-        calls.push(args[0] ?? command);
+        calls.push(command === "launchctl" ? (args[0] ?? command) : command);
         return run(command, args, opts);
       },
     }),
@@ -32,10 +33,17 @@ function steps(
 }
 
 describe("install-service darwin reload", () => {
-  it("skips kickstart when bootstrap already left the agent running", () => {
-    const result = install((_command, args) => (args[0] === "print" ? running : okRun()));
+  it("accepts a new running pid after bootstrap without kickstart", () => {
+    const result = steps({ print: [missing, running] });
     expect(result.code).toBe(0);
-    expect(result.calls).toEqual(["bootout", "bootstrap", "print"]);
+    expect(result.calls).toEqual(["print", "bootout", "bootstrap", "print"]);
+  });
+
+  it("fails safely when a running pre-reload process has no pid", () => {
+    const result = steps({ print: okRun("state = running\n") });
+    expect(result.code).toBe(1);
+    expect(result.calls).toEqual(["print"]);
+    expect(result.errors.join("\n")).toMatch(/pre-reload.*without a pid/);
   });
 
   it("retries bootstrap when launchd says the job is already loaded", () => {
@@ -45,16 +53,34 @@ describe("install-service darwin reload", () => {
       errRun(1, "already been loaded"),
       errRun(37, "already in progress"),
     ]) {
-      const result = steps({ bootstrap: [first, okRun()], print: running });
+      const result = steps({ bootstrap: [first, okRun()], print: [missing, running] });
       expect(result.code).toBe(0);
-      expect(result.calls).toEqual(["bootout", "bootstrap", "bootout", "bootstrap", "print"]);
+      expect(result.calls).toEqual([
+        "print",
+        "bootout",
+        "bootstrap",
+        "bootout",
+        "bootstrap",
+        "print",
+      ]);
     }
   });
 
   it("falls back to load after an already-loaded bootstrap retry still fails", () => {
-    const result = steps({ bootstrap: errRun(5, "Input/output error"), print: running });
+    const result = steps({
+      bootstrap: errRun(5, "Input/output error"),
+      print: [missing, running],
+    });
     expect(result.code).toBe(0);
-    expect(result.calls).toEqual(["bootout", "bootstrap", "bootout", "bootstrap", "load", "print"]);
+    expect(result.calls).toEqual([
+      "print",
+      "bootout",
+      "bootstrap",
+      "bootout",
+      "bootstrap",
+      "load",
+      "print",
+    ]);
   });
 
   it("does not trust launchctl load -w's exit code when it reports a load failure", () => {
@@ -63,51 +89,70 @@ describe("install-service darwin reload", () => {
       load: { status: 0, stdout: "", stderr: "Load failed: 5: Input/output error" },
     });
     expect(result.code).toBe(1);
-    expect(result.calls).toEqual(["bootout", "bootstrap", "bootout", "bootstrap", "load"]);
+    expect(result.calls).toEqual(["print", "bootout", "bootstrap", "bootout", "bootstrap", "load"]);
     expect(result.errors.join("\n")).toMatch(
       /bootstrap\/load failed: Load failed: 5: Input\/output error/,
     );
   });
 
-  it("reloads a missing print then skips kickstart once running", () => {
-    const result = steps({ print: [missing, running] });
+  it("performs one complete reload retry when registration stays missing", () => {
+    const result = steps({
+      print: [missing, missing, replacement],
+    });
+    expect(result.code).toBe(0);
+    expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
+    expect(result.calls).not.toContain("/bin/sleep");
+  });
+
+  it("kickstarts without -k and waits for a new running pid", () => {
+    const result = steps({ print: [missing, stopped, stopped, replacement] });
     expect(result.code).toBe(0);
     expect(result.calls).toEqual([
-      "bootout",
-      "bootstrap",
       "print",
       "bootout",
       "bootstrap",
+      "print",
+      "kickstart",
+      "print",
+      "/bin/sleep",
       "print",
     ]);
   });
 
-  it("rejects a kickstart already-in-progress result", () => {
-    for (const result of [
-      steps({ print: stopped, kickstart: errRun(37, "") }),
-      steps({
-        print: okRun("state = waiting\n"),
-        kickstart: errRun(1, "already in progress"),
-      }),
-    ]) {
-      expect(result.code).toBe(1);
-      expect(result.errors.join("\n")).toMatch(/kickstart/);
-    }
-  });
-
-  it("reports kickstart failure when the agent stays stopped", () => {
-    const result = steps({ print: stopped, kickstart: errRun(1, "kick") });
-    expect(result.code).toBe(1);
-    expect(result.errors.join("\n")).toMatch(/kickstart/);
-  });
-
-  it("fails when kickstart cannot restart the registered agent", () => {
+  it("accepts exit 37 only after launchd exposes the replacement pid", () => {
     const result = steps({
-      print: [stopped, missing],
-      kickstart: errRun(37, ""),
+      print: [missing, okRun("state = waiting\n"), stopped, replacement],
+      kickstart: errRun(37, "already in progress"),
+    });
+    expect(result.code).toBe(0);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("kickstarts an unstructured transitional state", () => {
+    const result = steps({
+      print: [missing, okRun("state = transitional\n"), replacement],
+    });
+    expect(result.code).toBe(0);
+    expect(result.calls).toContain("kickstart");
+  });
+
+  it("does not accept a running pid that survived the reload", () => {
+    const result = steps({
+      print: [running, running, running, running, running, running, running, replacement],
+    });
+    expect(result.code).toBe(0);
+    expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
+    expect(result.calls.filter((step) => step === "/bin/sleep")).toHaveLength(5);
+  });
+
+  it("fails after two passes when launchd never exposes a running pid", () => {
+    const result = steps({
+      print: [missing, stopped],
     });
     expect(result.code).toBe(1);
-    expect(result.errors.join("\n")).toMatch(/kickstart/);
+    expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
+    expect(result.calls.filter((step) => step === "/bin/sleep")).toHaveLength(10);
+    expect(result.errors.join("\n")).toMatch(/launch agent is stopped/);
   });
 
   it("rejects a successful kickstart when launchd retains the prior daemon pid", () => {
@@ -132,38 +177,21 @@ describe("install-service darwin reload", () => {
     expect(errors.join("\n")).toContain("launchd kept the prior daemon pid");
   });
 
-  it("does not treat a failed or unverifiable kickstart as a restart", () => {
-    expect(steps({ print: [stopped, missing, running], kickstart: errRun(1, "kick") }).code).toBe(
-      1,
-    );
-    expect(steps({ print: [stopped, missing, missing, running] }).code).toBe(1);
+  it("reports the final kickstart failure when neither pass becomes running", () => {
+    const result = steps({ print: [missing, stopped], kickstart: errRun(1, "kick failed") });
+    expect(result.code).toBe(1);
+    expect(result.errors.join("\n")).toMatch(/kickstart.*kick failed/);
   });
 
-  it("reports unrecoverable kickstart, verification, and reload failures", () => {
-    expect(
-      install(launchctlByStep({ print: missing, kickstart: errRun(1, "kick") })).errors.join("\n"),
-    ).toMatch(/verification/);
-    expect(
-      install(launchctlByStep({ print: missing, kickstart: errRun(37, "") })).errors.join("\n"),
-    ).toMatch(/verification/);
-    expect(
-      install(
-        launchctlByStep({
-          bootstrap: [okRun(), errRun(1, "no bootstrap")],
-          load: errRun(1, "no load"),
-          print: [stopped, missing],
-          kickstart: errRun(1, "kick"),
-        }),
-      ).errors.join("\n"),
-    ).toMatch(/kickstart/);
-    expect(
-      install(
-        launchctlByStep({
-          bootstrap: [okRun(), errRun(1, "no bootstrap")],
-          load: errRun(1, "no load"),
-          print: missing,
-        }),
-      ).errors.join("\n"),
-    ).toMatch(/bootstrap\/load/);
+  it("requires a numeric pid even when launchctl reports running", () => {
+    const result = steps({ print: [missing, okRun("state = running\n")] });
+    expect(result.code).toBe(1);
+    expect(result.errors.join("\n")).toMatch(/without a pid/);
+  });
+
+  it("reports an unchanged pid after both activation passes", () => {
+    const result = steps({ print: running });
+    expect(result.code).toBe(1);
+    expect(result.errors.join("\n")).toMatch(/kept the prior daemon pid/);
   });
 });

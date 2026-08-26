@@ -388,8 +388,17 @@ the checkout as the current user. Re-running `install-service` keeps the existin
 environment file, rewrites a stable launcher under `~/Library/Application Support/auto-harness`,
 and reloads the LaunchAgent. The plist always starts that launcher; it selects the activated
 `current` tree when present and otherwise falls back to the installation checkout. After
-`bootout`/`bootstrap`, a stopped job is started with `launchctl kickstart -k` and verified as a
-running process with a PID. Exit 37 / "already in progress" is an error, not restart success.
+`bootout`/`bootstrap`, installation succeeds only after launchd reports a running process with a
+new PID. A stopped or transitional job is started with non-killing `launchctl kickstart -p`, then
+checked for up to five seconds; if verification still fails, the installer performs one complete
+reload retry. Exit 37 / "already in progress" is not success by itself, but the installer may
+continue when launchd subsequently exposes the new running PID. The updater's already-running
+restart path remains separate and uses `kickstart -k` with strict PID replacement verification.
+
+When the persisted environment already exists, `pnpm deploy:host` loads it for the settings refresh
+while clearing inherited shell identity variables. This keeps the refresh bound to the installed
+Host and avoids a misleading local-default fetch failure. A first installation without that file
+continues to use the explicitly exported identity values.
 
 ```bash
 git fetch --all --tags

@@ -102,6 +102,30 @@ describe("install-service CLI", () => {
     ]);
   });
 
+  it("refreshes install settings with the persisted service identity", async () => {
+    let loadedEnv: NodeJS.ProcessEnv | undefined;
+    let installedEnv: NodeJS.ProcessEnv | undefined;
+    const a = deps({
+      readFile: () =>
+        "HARNESS_HOST_ID=persisted\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=key\n",
+      loadConfig: async ({ env }) => {
+        loadedEnv = env;
+        return sampleConfig;
+      },
+      installService: ({ env }) => {
+        installedEnv = env;
+        return 0;
+      },
+    });
+    expect(await runCli(["node", "x", "install-service"], { HARNESS_ENV_FILE: "/e" }, a)).toBe(0);
+    expect(loadedEnv).toMatchObject({
+      HARNESS_HOST_ID: "persisted",
+      HARNESS_API_URL: "https://control.example.com",
+      HARNESS_API_KEY: "key",
+    });
+    expect(installedEnv?.HARNESS_HOST_ID).toBe("persisted");
+  });
+
   it("requires a value after --api-url", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "install-service", "--api-url"], {}, a)).toBe(1);
