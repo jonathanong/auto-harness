@@ -18,6 +18,18 @@ import {
 } from "./dependency-install.ts";
 import type { ProcessRunner } from "./executor.ts";
 
+async function installedArgv(cwd: string): Promise<string[] | undefined> {
+  let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
+  const runner: ProcessRunner = {
+    async run(options) {
+      seen = options;
+      return { exitCode: 0, timedOut: false, signal: null };
+    },
+  };
+  await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
+  return seen?.argv;
+}
+
 describe("installWorkspaceDependencies import-method marker (#350 migration)", () => {
   it("writes an import-method marker after a successful install in a fresh worktree", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-marker-fresh-"));
@@ -55,59 +67,27 @@ describe("installWorkspaceDependencies import-method marker (#350 migration)", (
 
   it("does not pass --force for a fresh worktree that has no node_modules yet", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-no-force-fresh-"));
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).not.toContain("--force");
+    expect(await installedArgv(cwd)).not.toContain("--force");
   });
 
   it("does not pass --force when node_modules already carries a matching import-method marker", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-marker-match-"));
     mkdirSync(join(cwd, "node_modules"), { recursive: true });
     writeFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "copy");
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).not.toContain("--force");
+    expect(await installedArgv(cwd)).not.toContain("--force");
   });
 
   it("passes --force when node_modules exists with no import-method marker (a worktree from before this fix)", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-missing-marker-"));
     mkdirSync(join(cwd, "node_modules"), { recursive: true });
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).toContain("--force");
+    expect(await installedArgv(cwd)).toContain("--force");
   });
 
   it("passes --force when node_modules carries a stale import-method marker", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-stale-marker-"));
     mkdirSync(join(cwd, "node_modules"), { recursive: true });
     writeFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "hardlink");
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).toContain("--force");
+    expect(await installedArgv(cwd)).toContain("--force");
   });
 
   it("leaves the import-method marker untouched when the install fails", async () => {
@@ -130,15 +110,7 @@ describe("installWorkspaceDependencies import-method marker (#350 migration)", (
     const external = join(cwd, "outside-marker-target");
     writeFileSync(external, "copy");
     symlinkSync(external, join(cwd, "node_modules", ".auto-harness-package-import-method"));
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).toContain("--force");
+    expect(await installedArgv(cwd)).toContain("--force");
   });
 
   it("replaces a symlinked import-method marker with a fresh regular file instead of writing through it (#350 hardening)", async () => {
@@ -184,5 +156,24 @@ describe("installWorkspaceDependencies import-method marker (#350 migration)", (
     } finally {
       chmodSync(nodeModules, 0o755);
     }
+  });
+
+  it("passes --force when the import-method marker path is a directory rather than a regular file (#350 hardening)", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-dir-marker-"));
+    mkdirSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), {
+      recursive: true,
+    });
+    expect(await installedArgv(cwd)).toContain("--force");
+  });
+
+  it("passes --force when the import-method marker exceeds the trusted size bound (#350 hardening)", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-oversized-marker-"));
+    mkdirSync(join(cwd, "node_modules"), { recursive: true });
+    // One byte over MAX_MARKER_BYTES (64); content is otherwise a valid value.
+    writeFileSync(
+      join(cwd, "node_modules", ".auto-harness-package-import-method"),
+      "copy".padEnd(65, "0"),
+    );
+    expect(await installedArgv(cwd)).toContain("--force");
   });
 });

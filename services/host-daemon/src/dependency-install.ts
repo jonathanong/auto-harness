@@ -11,16 +11,31 @@ export function isPnpmWorkspace(cwd: string): boolean {
 
 const PACKAGE_IMPORT_METHOD = "copy";
 const IMPORT_METHOD_MARKER = join("node_modules", ".auto-harness-package-import-method");
+// The only valid content is a short literal like "copy"; anything near this
+// size is already not a value this module wrote (see the size check below).
+const MAX_MARKER_BYTES = 64;
 
 function readImportMethodMarker(markerPath: string): string | undefined {
   try {
-    // Never follow a symlink: an untrusted checked-out ref can commit
-    // node_modules/.auto-harness-package-import-method as a symlink to any
-    // other file this same-uid daemon can read (jonathanong/auto-harness#350
-    // Codex review). Treating a symlinked marker as absent, rather than
-    // reading through it, means it can only ever cause an extra --force —
-    // never a wrongly-skipped one.
-    if (lstatSync(markerPath).isSymbolicLink()) return undefined;
+    // lstat, then require a genuine regular file, before ever calling
+    // readFileSync: an untrusted checked-out ref can commit
+    // node_modules/.auto-harness-package-import-method as something other
+    // than a plain file this same-uid daemon can safely read
+    // (jonathanong/auto-harness#350 Codex review). A symlink or directory
+    // would misdirect the read; a FIFO with no writer would block
+    // readFileSync indefinitely — before this install's own timeout/abort
+    // handling applies, since that's wired to the pnpm child process, not
+    // this synchronous call — stalling the daemon's event loop and every
+    // other session. `isFile()` on an `lstat` result (not `stat`, so a
+    // symlink is never followed) rejects all of those in one check. A
+    // regular file above MAX_MARKER_BYTES is also rejected unread: the only
+    // valid content is a few bytes, so a large file here (attacker-planted
+    // or otherwise) would make this synchronous read allocate and block on
+    // an attacker-controlled amount of I/O for no benefit. Treating any of
+    // these as absent, rather than reading through them, means they can
+    // only ever cause an extra --force — never a wrongly-skipped one.
+    const stats = lstatSync(markerPath);
+    if (!stats.isFile() || stats.size > MAX_MARKER_BYTES) return undefined;
     return readFileSync(markerPath, "utf8").trim();
   } catch {
     return undefined;
@@ -263,6 +278,21 @@ export function invalidateImportMethodMarker(cwd: string): void {
  * never wrongly skips one), and a write always `rmSync`s whatever is at
  * the path first, so `writeFileSync` only ever creates a fresh regular
  * file rather than truncating a symlink's target.
+ *
+ * The same committed-path control also lets a ref plant something other
+ * than a symlink or a small regular file there (jonathanong/auto-harness#350
+ * Codex review, second finding): a FIFO with no writer makes
+ * `readImportMethodMarker`'s `readFileSync` block indefinitely — before
+ * this install's own timeout/abort handling applies, since that governs the
+ * pnpm child process, not this synchronous call — stalling the daemon's
+ * event loop and every other session running on it; a very large regular
+ * file makes that same synchronous read allocate and block on an
+ * attacker-controlled amount of I/O, for a marker whose only valid content
+ * is a few bytes. `readImportMethodMarker` closes both by checking the
+ * `lstat` result's `isFile()` (false for a FIFO, directory, or symlink —
+ * `lstat`, so a symlink is never dereferenced first) and its `size` against
+ * `MAX_MARKER_BYTES` before ever calling `readFileSync`, treating anything
+ * that fails either check the same as a missing marker.
  *
  * `IMPORT_METHOD_MARKER` also assumes the install this function ran is the
  * only thing that could have touched `node_modules` since the marker was

@@ -658,6 +658,16 @@ symlinked marker reads as absent (only ever costs an extra `--force`, never wron
 write always removes whatever is at the marker path first, so it only ever creates a fresh regular
 file instead of truncating a symlink's target.
 
+The same committed-path control also lets a ref plant something other than a symlink or a small
+regular file there ([#350](https://github.com/jonathanong/auto-harness/issues/350) Codex review,
+second finding): a FIFO with no writer makes the marker read block indefinitely, before this
+install's own timeout/abort handling applies (that governs the pnpm child process, not this
+synchronous read), stalling the daemon's event loop and every other session running on it; a very
+large regular file makes that same read allocate and block on an attacker-controlled amount of I/O,
+for a marker whose only valid content is a few bytes. The read now checks the `lstat` result's
+`isFile()` (false for a FIFO, directory, or symlink) and its size against a small bound before ever
+calling `readFileSync`, treating anything that fails either check the same as a missing marker.
+
 The marker also assumes the daemon's own pinned install is the only thing that could have touched
 `node_modules` since it was last written, which doesn't hold for a worktree with a configured setup
 script: setup scripts run _before_ this install step, and a setup script is arbitrary admin-configured
