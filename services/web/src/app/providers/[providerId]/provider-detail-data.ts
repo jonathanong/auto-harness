@@ -31,10 +31,7 @@ export async function loadProviderDetailData(providerId: string, includeLeases: 
     );
     for (const [index, account] of accounts.entries()) {
       const result = leaseReads[index]!;
-      leasesByAccount.set(
-        account.id,
-        result.status === "fulfilled" ? (result.value.items ?? []) : null,
-      );
+      leasesByAccount.set(account.id, result.status === "fulfilled" ? result.value.items : null);
     }
   }
   return { accounts, commands, agentHosts, leasesByAccount };
