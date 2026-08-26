@@ -143,7 +143,6 @@ export async function listProviderAccountLeaseStates(
       MAX_CONCURRENT_SESSIONS_LIMIT,
     );
     const sessions = await state.storage.getProviderAccountLeaseHolderSessions(leases);
-    for (const session of sessions.values()) state.sessions.set(session.id, { ...session });
     return {
       ok: true,
       items: leases

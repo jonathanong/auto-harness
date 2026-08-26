@@ -521,7 +521,7 @@ describe("provider account execution-profile leases", () => {
       ok: true,
       items: [{ slot: 0, holder: { sessionId: "session" } }],
     });
-    expect(state.sessions.get("session")).toMatchObject({ status: "cancelled" });
+    expect(state.sessions.has("session")).toBe(false);
 
     state.storage = { getProviderAccount: async () => null } as never;
     await expect(listProviderAccountLeaseStates(state, "acct")).resolves.toEqual({
