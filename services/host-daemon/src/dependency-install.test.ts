@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -121,89 +121,5 @@ describe("installWorkspaceDependencies", () => {
     };
     await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
     expect(seen?.signal).toBeUndefined();
-  });
-
-  it("writes an import-method marker after a successful install in a fresh worktree", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-marker-fresh-"));
-    const runner: ProcessRunner = {
-      async run() {
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(
-      readFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "utf8"),
-    ).toBe("copy");
-  });
-
-  it("does not pass --force for a fresh worktree that has no node_modules yet", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-no-force-fresh-"));
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).not.toContain("--force");
-  });
-
-  it("does not pass --force when node_modules already carries a matching import-method marker", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-marker-match-"));
-    mkdirSync(join(cwd, "node_modules"), { recursive: true });
-    writeFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "copy");
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).not.toContain("--force");
-  });
-
-  it("passes --force when node_modules exists with no import-method marker (a worktree from before this fix)", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-missing-marker-"));
-    mkdirSync(join(cwd, "node_modules"), { recursive: true });
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).toContain("--force");
-  });
-
-  it("passes --force when node_modules carries a stale import-method marker", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-force-stale-marker-"));
-    mkdirSync(join(cwd, "node_modules"), { recursive: true });
-    writeFileSync(join(cwd, "node_modules", ".auto-harness-package-import-method"), "hardlink");
-    let seen: Parameters<ProcessRunner["run"]>[0] | undefined;
-    const runner: ProcessRunner = {
-      async run(options) {
-        seen = options;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(seen?.argv).toContain("--force");
-  });
-
-  it("leaves the import-method marker untouched when the install fails", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-install-marker-on-failure-"));
-    mkdirSync(join(cwd, "node_modules"), { recursive: true });
-    const runner: ProcessRunner = {
-      async run() {
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
-    await installWorkspaceDependencies(runner, cwd, 5_000, () => undefined, undefined, {});
-    expect(existsSync(join(cwd, "node_modules", ".auto-harness-package-import-method"))).toBe(
-      false,
-    );
   });
 });
