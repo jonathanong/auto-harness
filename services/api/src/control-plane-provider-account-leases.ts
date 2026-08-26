@@ -166,6 +166,50 @@ export async function listProviderAccountLeaseStates(
   return { ok: true, items };
 }
 
+function cacheLeaseHolderSession(
+  state: ControlPlaneState,
+  sessionId: string,
+  session: SessionRecord | undefined,
+): void {
+  if (session) state.sessions.set(session.id, { ...session });
+  else state.sessions.delete(sessionId);
+}
+
+function clearReleasedLeaseCaches(
+  state: ControlPlaneState,
+  lease: ProviderAccountLeaseLock,
+  session: SessionRecord,
+): void {
+  delete session.providerAccountLease;
+  const cachedSession = state.sessions.get(session.id);
+  if (cachedSession && sessionMatchesProviderAccountLease(cachedSession, lease)) {
+    delete cachedSession.providerAccountLease;
+    state.sessions.set(cachedSession.id, { ...cachedSession });
+  }
+  const cachedLease = state.providerAccountLeases.get(lease.concurrencyId);
+  if (cachedLease?.sessionId === lease.sessionId && cachedLease.attemptId === lease.attemptId) {
+    state.providerAccountLeases.delete(lease.concurrencyId);
+  }
+}
+
+async function providerAccountLeaseStateAfterRelease(
+  state: ControlPlaneState,
+  storage: NonNullable<ControlPlaneState["storage"]>,
+  providerAccountId: string,
+  slot: number,
+  concurrencyId: string,
+): Promise<ProviderAccountLeaseState> {
+  const lease = await storage.getProviderAccountLeaseLock(concurrencyId);
+  if (!lease) return freeProviderAccountLeaseState(providerAccountId, slot);
+  const session = (await storage.getSession(lease.sessionId, true)) ?? undefined;
+  state.providerAccountLeases.set(concurrencyId, {
+    ...lease,
+    hostId: session?.hostId ?? lease.hostId ?? "",
+  });
+  cacheLeaseHolderSession(state, lease.sessionId, session);
+  return providerAccountLeaseState(lease, session);
+}
+
 async function forceReleaseDurableProviderAccountLease(
   state: ControlPlaneState,
   storage: NonNullable<ControlPlaneState["storage"]>,
@@ -186,8 +230,7 @@ async function forceReleaseDurableProviderAccountLease(
     return { ok: true, result: { released: false, before: free, after: free } };
   }
   const session = await storage.getSession(lease.sessionId, true);
-  if (session) state.sessions.set(session.id, { ...session });
-  else state.sessions.delete(lease.sessionId);
+  cacheLeaseHolderSession(state, lease.sessionId, session ?? undefined);
   const matchedSession = session ?? undefined;
   const before = providerAccountLeaseState(lease, matchedSession);
   if (!mayAccessSession(matchedSession)) {
@@ -210,31 +253,14 @@ async function forceReleaseDurableProviderAccountLease(
   if (!released) return { ok: false, reason: "conflict" };
   // Do not mutate either cache until the transaction commits. A stale local map must never
   // advertise capacity after a fenced conditional failure.
-  delete matchedSession.providerAccountLease;
-  const cachedSession = state.sessions.get(matchedSession.id);
-  if (cachedSession && sessionMatchesProviderAccountLease(cachedSession, lease)) {
-    delete cachedSession.providerAccountLease;
-    state.sessions.set(cachedSession.id, { ...cachedSession });
-  }
-  const cached = state.providerAccountLeases.get(concurrencyId);
-  if (cached?.sessionId === lease.sessionId && cached.attemptId === lease.attemptId) {
-    state.providerAccountLeases.delete(concurrencyId);
-  }
-  const afterLock = await storage.getProviderAccountLeaseLock(concurrencyId);
-  const afterSession = afterLock
-    ? ((await storage.getSession(afterLock.sessionId, true)) ?? undefined)
-    : undefined;
-  if (afterLock) {
-    state.providerAccountLeases.set(concurrencyId, {
-      ...afterLock,
-      hostId: afterSession?.hostId ?? afterLock.hostId ?? "",
-    });
-    if (afterSession) state.sessions.set(afterSession.id, { ...afterSession });
-    else state.sessions.delete(afterLock.sessionId);
-  }
-  const after = afterLock
-    ? providerAccountLeaseState(afterLock, afterSession)
-    : freeProviderAccountLeaseState(providerAccountId, slot);
+  clearReleasedLeaseCaches(state, lease, matchedSession);
+  const after = await providerAccountLeaseStateAfterRelease(
+    state,
+    storage,
+    providerAccountId,
+    slot,
+    concurrencyId,
+  );
   return { ok: true, result: { released: true, before, after } };
 }
 
