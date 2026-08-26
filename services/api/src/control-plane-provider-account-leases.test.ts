@@ -20,6 +20,7 @@ import {
   releaseProviderAccountLeaseLocal,
   releaseTimedOutProviderAccountLease,
   releaseTimedOutProviderAccountLeasesForHost,
+  sessionOccupiesProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
 import { maxConcurrentSessionsFor } from "./control-plane-provider-account-capacity.ts";
@@ -478,6 +479,16 @@ describe("provider account execution-profile leases", () => {
       createdAt: NOW,
       providerAccountLease: leaseLock(0, "session"),
     } as never;
+    const mismatched = {
+      id: "missing",
+      status: "cancelled",
+      attemptId: "different-attempt",
+      createdAt: NOW,
+      providerAccountLease: {
+        ...leaseLock(2, "missing"),
+        attemptId: "different-attempt",
+      },
+    } as never;
     const state = createControlPlaneState();
     state.storage = {
       getProviderAccount: async () => ({
@@ -488,12 +499,19 @@ describe("provider account execution-profile leases", () => {
         updatedAt: NOW,
       }),
       listProviderAccountLeaseLocks: async () => [leaseLock(2, "missing"), leaseLock(0, "session")],
-      getProviderAccountLeaseHolderSessions: async () => new Map([["session", session]]),
+      getProviderAccountLeaseHolderSessions: async () =>
+        new Map([
+          ["session", session],
+          ["missing", mismatched],
+        ]),
     } as never;
 
     await expect(listProviderAccountLeaseStates(state, "acct")).resolves.toMatchObject({
       ok: true,
-      items: [{ slot: 0, holder: { sessionId: "session" } }, { slot: 2 }],
+      items: [
+        { slot: 0, holder: { sessionId: "session" } },
+        { slot: 2, holder: { releaseBlock: "session_lease_mismatch" } },
+      ],
     });
     expect(state.sessions.get("session")).toMatchObject({ status: "cancelled" });
 
@@ -565,19 +583,57 @@ describe("provider account execution-profile leases", () => {
       reason: "conflict",
     });
 
+    for (const session of [undefined, { ...terminal, status: "running" }] as const) {
+      const conflicted = createControlPlaneState();
+      conflicted.storage = {
+        getProviderAccount: async () => account,
+        getProviderAccountLeaseLock: async () => lease,
+        getSession: async () => session,
+      } as never;
+      await expect(forceReleaseProviderAccountLease(conflicted, "acct", 0)).resolves.toEqual({
+        ok: false,
+        reason: "conflict",
+      });
+    }
+
     const reacquired = {
       ...lease,
       sessionId: "replacement",
       attemptId: "replacement-attempt",
       hostId: "new-host",
     };
+    const terminalForFree = {
+      ...terminal,
+      providerAccountLease: {
+        concurrencyId,
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    } as never;
     const released = createControlPlaneState();
     released.providerAccountLeases.set(concurrencyId, {
       ...lease,
       hostId: "old-host",
     });
     const getLock = vi.fn().mockResolvedValueOnce(lease).mockResolvedValueOnce(reacquired);
-    const getSession = vi.fn().mockResolvedValueOnce(terminal).mockResolvedValueOnce(null);
+    const replacementSession = {
+      id: "replacement",
+      status: "running",
+      attemptId: "replacement-attempt",
+      hostId: "session-host",
+      createdAt: NOW,
+      providerAccountLease: {
+        concurrencyId,
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "replacement-attempt",
+      },
+    } as never;
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(terminal)
+      .mockResolvedValueOnce(replacementSession);
     released.storage = {
       getProviderAccount: async () => account,
       getProviderAccountLeaseLock: getLock,
@@ -595,9 +651,22 @@ describe("provider account execution-profile leases", () => {
     expect(terminal).not.toHaveProperty("providerAccountLease");
     expect(released.providerAccountLeases.get(concurrencyId)).toMatchObject({
       sessionId: "replacement",
-      hostId: "new-host",
+      hostId: "session-host",
     });
-    expect(released.sessions.has("replacement")).toBe(false);
+    expect(released.sessions.get("replacement")).toMatchObject({ status: "running" });
+
+    const staysFree = createControlPlaneState();
+    const getFreeLock = vi.fn().mockResolvedValueOnce(lease).mockResolvedValueOnce(null);
+    staysFree.storage = {
+      getProviderAccount: async () => account,
+      getProviderAccountLeaseLock: getFreeLock,
+      getSession: async () => terminalForFree,
+      forceReleaseProviderAccountLease: async () => true,
+    } as never;
+    await expect(forceReleaseProviderAccountLease(staysFree, "acct", 0)).resolves.toMatchObject({
+      ok: true,
+      result: { released: true, after: { holder: null } },
+    });
   });
 
   it("removes an exact cached local lease after release", async () => {
@@ -633,6 +702,25 @@ describe("provider account execution-profile leases", () => {
       result: { released: true },
     });
     expect(state.providerAccountLeases.has("provider-lease:acct:0")).toBe(false);
+  });
+
+  it("distinguishes cancelled lease occupancy with and without a host", () => {
+    const providerAccountLease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: "attempt",
+    };
+    expect(
+      sessionOccupiesProviderAccountLease({
+        status: "cancelled",
+        hostId: "host",
+        providerAccountLease,
+      } as never),
+    ).toBe(true);
+    expect(
+      sessionOccupiesProviderAccountLease({ status: "cancelled", providerAccountLease } as never),
+    ).toBe(false);
   });
 
   it("treats missing readiness as unavailable and honors host assignment caps", () => {
