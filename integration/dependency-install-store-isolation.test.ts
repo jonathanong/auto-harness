@@ -26,6 +26,16 @@ import { SpawnProcessRunner } from "../services/host-daemon/src/executor.ts";
 
 const PKG_PATH = "node_modules/.pnpm/is-number@7.0.0/node_modules/is-number/index.js";
 
+// child_process.spawn with shell:false (SpawnProcessRunner, used directly by
+// this file's fixtures) can't execute a .cmd shim, so a bare "pnpm" argv0
+// only runs on win32 through cmd.exe — same wrapping installWorkspaceDependencies
+// applies internally (dependency-install.ts) for the installs it drives itself.
+function pnpmArgv(args: string[]): string[] {
+  return process.platform === "win32"
+    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", ...args]
+    : ["pnpm", ...args];
+}
+
 let root: string | undefined;
 
 afterEach(() => {
@@ -54,7 +64,7 @@ async function seedLockfile(
   mkdirSync(seed);
   writeFileSync(join(seed, "package.json"), manifest("store-isolation-seed"), { flag: "wx" });
   const seedResult = await runner.run({
-    argv: ["pnpm", "install", "--lockfile-only", "--store-dir", storeDir],
+    argv: pnpmArgv(["install", "--lockfile-only", "--store-dir", storeDir]),
     cwd: seed,
     env: { ...process.env, HOME: homeDir },
     timeoutMs: 60_000,
@@ -142,8 +152,7 @@ describe("installWorkspaceDependencies store isolation (#350)", () => {
       // this fix: same pinned flags, but hardlink, and no migration marker.
       const legacy = makeWorktree(root, lockfile, "session-legacy");
       const legacyInstall = await runner.run({
-        argv: [
-          "pnpm",
+        argv: pnpmArgv([
           "install",
           "--frozen-lockfile",
           "--ignore-scripts",
@@ -156,7 +165,7 @@ describe("installWorkspaceDependencies store isolation (#350)", () => {
           "node_modules/.pnpm",
           "--package-import-method",
           "hardlink",
-        ],
+        ]),
         cwd: legacy,
         env: { ...process.env, HOME: homeDir, CI: "true" },
         timeoutMs: 60_000,
