@@ -181,6 +181,44 @@ function waitForReplacement(
   return inspection;
 }
 
+type ActivationPassResult = {
+  inspection: LaunchInspection;
+  kick?: HostServiceRunResult;
+  loaded: boolean;
+  verified: boolean;
+};
+
+function runActivationPass(
+  ctx: HostServiceContext,
+  domain: string,
+  plist: string,
+  service: string,
+  priorPid: string | undefined,
+  initial: LaunchInspection,
+): ActivationPassResult {
+  if (loadLaunchAgent(ctx, domain, plist, service) !== 0) {
+    return { inspection: initial, loaded: false, verified: false };
+  }
+  let inspection = inspectDarwin(ctx);
+  if (isVerifiedReplacement(inspection, priorPid)) {
+    return { inspection, loaded: true, verified: true };
+  }
+  let kick: HostServiceRunResult | undefined;
+  if (inspection.status.state === "stopped" || inspection.status.state === "unknown") {
+    kick = ctx.run("launchctl", ["kickstart", "-p", service]);
+    inspection = inspectDarwin(ctx);
+  }
+  if (inspection.status.state !== "missing" && inspection.status.state !== "failed") {
+    inspection = waitForReplacement(ctx, priorPid, inspection);
+  }
+  return {
+    inspection,
+    ...(kick === undefined ? {} : { kick }),
+    loaded: true,
+    verified: isVerifiedReplacement(inspection, priorPid),
+  };
+}
+
 function activateLaunchAgent(
   ctx: HostServiceContext,
   domain: string,
@@ -199,32 +237,26 @@ function activateLaunchAgent(
     });
   }
   const priorPid = inspection.pid;
-  let kick: HostServiceRunResult | undefined;
+  let result: ActivationPassResult = {
+    inspection,
+    loaded: false,
+    verified: false,
+  };
   for (let pass = 0; pass < INSTALL_ACTIVATION_PASSES; pass += 1) {
-    if (loadLaunchAgent(ctx, domain, plist, service) !== 0) return 1;
-    inspection = inspectDarwin(ctx);
-    if (isVerifiedReplacement(inspection, priorPid)) return 0;
-
-    kick = undefined;
-    if (inspection.status.state === "stopped" || inspection.status.state === "unknown") {
-      kick = ctx.run("launchctl", ["kickstart", "-p", service]);
-      inspection = inspectDarwin(ctx);
-    }
-    if (inspection.status.state !== "missing" && inspection.status.state !== "failed") {
-      inspection = waitForReplacement(ctx, priorPid, inspection);
-      if (isVerifiedReplacement(inspection, priorPid)) return 0;
-    }
+    result = runActivationPass(ctx, domain, plist, service, priorPid, inspection);
+    if (!result.loaded) return 1;
+    if (result.verified) return 0;
     if (pass + 1 < INSTALL_ACTIVATION_PASSES) {
       ctx.log("LaunchAgent activation was not verified; retrying reload");
     }
   }
-  if (kick !== undefined && kick.status !== 0) {
-    return failedCommand(ctx.error, "launchctl kickstart -p", kick);
+  if (result.kick !== undefined && result.kick.status !== 0) {
+    return failedCommand(ctx.error, "launchctl kickstart -p", result.kick);
   }
   return failedCommand(ctx.error, "launchctl verification", {
     status: 1,
     stdout: "",
-    stderr: activationFailureReason(inspection),
+    stderr: activationFailureReason(result.inspection),
   });
 }
 
