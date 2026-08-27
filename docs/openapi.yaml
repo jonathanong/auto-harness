@@ -135,6 +135,28 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SessionDrain" }
         default: { $ref: "#/components/responses/Error" }
+  /providers:
+    get:
+      operationId: listProviders
+      summary: List the global provider catalog, for resolving a session target by provider name
+      responses:
+        "200":
+          description: Every provider visible to the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderList" }
+        default: { $ref: "#/components/responses/Error" }
+  /commands:
+    get:
+      operationId: listCommands
+      summary: List the global command catalog, for resolving a session target by command name
+      responses:
+        "200":
+          description: Every command visible to the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandList" }
+        default: { $ref: "#/components/responses/Error" }
   /provider-accounts:
     get:
       operationId: listProviderAccounts
@@ -451,6 +473,64 @@ components:
         completedAt: { type: string, format: date-time }
         releasedAt: { type: string, format: date-time }
         failureCode: { type: string }
+    ProviderList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Provider" }
+    Provider:
+      type: object
+      required: [id, name, defaultCommandId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string, description: 'e.g. "claude", "codex", "grok"' }
+        defaultCommandId: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        usageRates:
+          type: object
+          description: Operator-supplied per-token vendor rates; Auto Harness never fetches vendor prices.
+          required: [currency]
+          properties:
+            inputTokenMicros: { type: string }
+            outputTokenMicros: { type: string }
+            cachedInputTokenMicros: { type: string }
+            reasoningTokenMicros: { type: string }
+            currency: { type: string, pattern: "^[A-Z]{3}$" }
+    CommandList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Command" }
+    Command:
+      type: object
+      required: [id, name, argv, appendPrompt, providerId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string, description: 'e.g. "claude-print", "echo hello world"' }
+        argv:
+          type: array
+          items: { type: string }
+        appendPrompt: { type: boolean }
+        appendPromptSeparator: { type: boolean }
+        resumeArgvTemplate:
+          type: array
+          items: { type: string }
+        resumeRefCapture:
+          type: object
+          required: [stream, linePrefix]
+          properties:
+            stream: { type: string, enum: [stdout, stderr, either] }
+            linePrefix: { type: string }
+        providerId:
+          type: [string, "null"]
+          description: FK to Provider, or null for a standalone command that runs anywhere ungated.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     ProviderAccountList:
       type: object
       required: [items]
