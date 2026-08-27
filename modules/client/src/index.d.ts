@@ -2,12 +2,12 @@ export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
 
-/** A provider target, by id or by its unique, server-enforced `name`. */
+/** A provider target, by id or by `name` — normally unique, checked defensively either way. */
 export type ProviderRef =
   | { providerId: string; providerName?: never; commandId?: never; commandName?: never }
   | { providerName: string; providerId?: never; commandId?: never; commandName?: never };
 
-/** A command target, by id or by `name` — command names are not server-enforced unique. */
+/** A command target, by id or by `name` — command names are not required to be unique. */
 export type CommandRef =
   | { commandId: string; commandName?: never; providerId?: never; providerName?: never }
   | { commandName: string; commandId?: never; providerId?: never; providerName?: never };
@@ -15,8 +15,7 @@ export type CommandRef =
 /**
  * Input-only target shape for `createSession()`: an id (as `TargetRef`) or a name.
  * `createSession()` resolves a name to its id via `listProviders()`/`listCommands()` before
- * sending the request; `providerName` throws on no match, `commandName` throws on no match
- * or more than one match (command names are not required to be unique).
+ * sending the request; a name throws on no match or on more than one match sharing that name.
  */
 export type TargetSpec = ProviderRef | CommandRef;
 
@@ -203,8 +202,9 @@ export type SessionDrain = {
 /**
  * Thrown for a failed HTTP response, and also, with `status: 400`, when `createSession()`
  * cannot resolve a `TargetSpec` name: `code === "UNKNOWN_PROVIDER_NAME"` /
- * `"UNKNOWN_COMMAND_NAME"` for no match, `"AMBIGUOUS_COMMAND_NAME"` for more than one command
- * sharing a name — that message never includes the matched ids.
+ * `"UNKNOWN_COMMAND_NAME"` for no match, `"AMBIGUOUS_PROVIDER_NAME"` /
+ * `"AMBIGUOUS_COMMAND_NAME"` for more than one match sharing a name — that message never
+ * includes the matched ids.
  */
 export class AutoHarnessError extends Error {
   status: number;

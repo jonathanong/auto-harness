@@ -1,22 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AutoHarnessClient, AutoHarnessError } from "../src/index.js";
-
-function makeClient(handlers) {
-  const calls = [];
-  const client = new AutoHarnessClient({
-    baseUrl: "https://harness.test",
-    fetch: async (url, init) => {
-      calls.push(url);
-      const path = new URL(url).pathname;
-      const handler = handlers[path];
-      if (!handler) throw new Error(`unexpected request: ${url}`);
-      return handler(init);
-    },
-  });
-  return { client, calls };
-}
+import { AutoHarnessError } from "../src/index.js";
+import { makeClient } from "./make-client.js";
 
 test("resolves a providerName target to providerId before sending", async () => {
   const { client, calls } = makeClient({
@@ -143,47 +129,4 @@ test("throws AutoHarnessError when no command matches the given name", async () 
       return true;
     },
   );
-});
-
-test("throws AutoHarnessError on an ambiguous command name without leaking either id", async () => {
-  const duplicateIds = [
-    "cmd-aaaaaaaa-1111-2222-3333-444444444444",
-    "cmd-bbbbbbbb-1111-2222-3333-444444444444",
-  ];
-  const { client } = makeClient({
-    "/api/v1/commands": () =>
-      Response.json({
-        items: duplicateIds.map((id) => ({ id, name: "shared-name" })),
-      }),
-  });
-  await assert.rejects(
-    client.createSession({
-      repositoryId: "repo",
-      prompt: "review",
-      target: { commandName: "shared-name" },
-      timeout: 60,
-    }),
-    (error) => {
-      assert.ok(error instanceof AutoHarnessError);
-      assert.equal(error.code, "AMBIGUOUS_COMMAND_NAME");
-      assert.match(error.message, /shared-name/);
-      assert.match(error.message, /2 commands share this name/);
-      for (const id of duplicateIds) assert.ok(!error.message.includes(id));
-      return true;
-    },
-  );
-});
-
-test("lists providers by unwrapping the items envelope", async () => {
-  const { client } = makeClient({
-    "/api/v1/providers": () => Response.json({ items: [{ id: "prov-1", name: "codex" }] }),
-  });
-  assert.deepEqual(await client.listProviders(), [{ id: "prov-1", name: "codex" }]);
-});
-
-test("lists commands by unwrapping the items envelope", async () => {
-  const { client } = makeClient({
-    "/api/v1/commands": () => Response.json({ items: [{ id: "cmd-1", name: "claude-print" }] }),
-  });
-  assert.deepEqual(await client.listCommands(), [{ id: "cmd-1", name: "claude-print" }]);
 });
