@@ -1,23 +1,7 @@
-export class AutoHarnessError extends Error {
-  constructor(message, options) {
-    super(message);
-    this.name = "AutoHarnessError";
-    this.status = options.status;
-    this.code = options.code;
-    this.retryAfter = options.retryAfter;
-    this.operationId = options.operationId;
-    this.statusUrl = options.statusUrl;
-  }
-}
+import { AutoHarnessError, AutoHarnessRequestTimeoutError } from "./errors.js";
+import { resolveCreateSessionTargets } from "./resolve-target.js";
 
-export class AutoHarnessRequestTimeoutError extends Error {
-  constructor(timeoutMs) {
-    super(`Auto Harness request timed out after ${timeoutMs}ms`);
-    this.name = "AutoHarnessRequestTimeoutError";
-    this.code = "REQUEST_TIMEOUT";
-    this.timeoutMs = timeoutMs;
-  }
-}
+export { AutoHarnessError, AutoHarnessRequestTimeoutError };
 
 export class AutoHarnessClient {
   constructor(options) {
@@ -84,8 +68,9 @@ export class AutoHarnessClient {
     }
   }
 
-  createSession(input) {
-    return this.request("/sessions", { method: "POST", body: JSON.stringify(input) });
+  async createSession(input) {
+    const body = await resolveCreateSessionTargets(this, input);
+    return this.request("/sessions", { method: "POST", body: JSON.stringify(body) });
   }
 
   getSession(id) {
@@ -169,5 +154,15 @@ export class AutoHarnessClient {
 
   repositoryOperation(id, operation) {
     return this.request(`/repositories/${encodeURIComponent(id)}/${operation}`, { method: "POST" });
+  }
+
+  async listProviders() {
+    const { items } = await this.request("/providers");
+    return items;
+  }
+
+  async listCommands() {
+    const { items } = await this.request("/commands");
+    return items;
   }
 }

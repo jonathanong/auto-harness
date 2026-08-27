@@ -22,6 +22,28 @@ const session = await harness.createSession({
 console.log(session.url);
 ```
 
+## Target by provider or command name
+
+`target` and `fallbacks` accept a `providerId`/`commandId` as before, or a human-readable
+`providerName`/`commandName`. `createSession()` resolves each name to an id via
+`listProviders()`/`listCommands()` before sending the request — at most one list call per catalog,
+regardless of how many refs need it, and none at all when every ref is already id-based.
+
+```js
+const session = await harness.createSession({
+  repositoryId: "repo-1",
+  prompt: "Review the latest changes",
+  target: { providerName: "codex" },
+  fallbacks: [{ commandName: "claude-print-plan" }],
+  timeout: 1_800,
+});
+```
+
+Provider names are unique, server-enforced, so a `providerName` always resolves to at most one
+provider. Command names are **not** server-enforced unique — an unresolvable or ambiguous name
+throws `AutoHarnessError` (`code === "UNKNOWN_PROVIDER_NAME"`, `"UNKNOWN_COMMAND_NAME"`, or
+`"AMBIGUOUS_COMMAND_NAME"`); the ambiguous-name message never includes the matched ids.
+
 ## Request deadlines
 
 Every request has a deadline that includes receiving and consuming the JSON response body.
