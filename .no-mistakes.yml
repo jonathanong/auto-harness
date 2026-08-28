@@ -12,6 +12,10 @@ projects:
 # src/components selector coverage cannot silently regress (#625).
 checks:
   commands:
+    - name: typecheck-dispatch-action
+      command: [pnpm, exec, tsc, --noEmit, --project, actions/dispatch/tsconfig.json]
+      fileArgs: none
+      always: true
     - name: typecheck-shared
       command: [pnpm, --dir, modules/shared, exec, tsc, --noEmit]
       fileArgs: none
@@ -141,7 +145,7 @@ rules:
   - rule: package-json-workspace-coverage
     scope: repository
     options:
-      packageRoots: [modules, services]
+      packageRoots: [actions, modules, services]
       requireNamedPackage: true
   - rule: package-json-registry-only
     scope: repository
@@ -209,7 +213,7 @@ rules:
   - rule: production-dependency-declarations
     scope: repository
     options:
-      workspaceRoots: [modules, services]
+      workspaceRoots: [actions, modules, services]
   - rule: finite-set-consistency
     scope: repository
     options:

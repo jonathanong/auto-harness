@@ -9,7 +9,7 @@ const actionSource = ["index.ts", "io.ts", "validation.ts"]
 describe("dispatch Action static analysis", () => {
   it("typechecks the workspace and verifies its committed bundle in CI", () => {
     expect(workflow).toContain("actions/*/tsconfig.tsbuildinfo");
-    expect(workflow).toContain("pnpm --dir actions/dispatch exec tsc --noEmit");
+    expect(workflow).toContain("pnpm exec tsc --noEmit --project actions/dispatch/tsconfig.json");
     expect(workflow).toContain("name: Verify dispatch Action bundle");
     expect(workflow).toContain("run: pnpm check:dispatch-action");
   });

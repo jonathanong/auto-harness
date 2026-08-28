@@ -90,7 +90,7 @@ jobs:
         # see each package project. Same set as `pnpm typecheck` — every workspace
         # package's tsconfig.json.
         run: >
-          pnpm --dir actions/dispatch exec tsc --noEmit
+          pnpm exec tsc --noEmit --project actions/dispatch/tsconfig.json
           && pnpm --dir modules/shared exec tsc --noEmit
           && pnpm --dir modules/ui exec tsc --noEmit
           && pnpm exec tsc --noEmit --project modules/client/tsconfig.json
