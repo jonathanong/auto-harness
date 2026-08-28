@@ -210,7 +210,7 @@ Exec-config (admin) is a partial merge onto that document:
 curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/exec-config" \
   -H 'content-type: application/json' \
   -d '{
-    "setupScript": "source \"$HOME/.zshrc\"",
+    "setupScript": ". /opt/auto-harness/setup/host-environment",
     "allowedRoots": ["/abs/path/to/repo", "/usr/local"],
     "repositories": [{
       "id": "demo",

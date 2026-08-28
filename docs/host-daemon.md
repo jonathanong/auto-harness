@@ -460,12 +460,12 @@ Ordinary `PUT /inventory` preserves omitted exec-config fields.
 
 ```json
 {
-  "setupScript": "source \"$HOME/.zshrc\"",
+  "setupScript": ". /opt/auto-harness/setup/host-environment",
   "allowedRoots": ["/home/harness"],
   "repositories": [
     {
       "id": "repo-abc",
-      "setupScript": "./ci/session-setup",
+      "setupScript": "/opt/auto-harness/setup/repo-abc",
       "terminalHookScript": "/home/harness/hooks/done.sh"
     }
   ]
@@ -486,33 +486,41 @@ existing precedence `session assignment > worktree > host/repository attachment`
 session cwd (worktree or main). They use `$SHELL` when it names an available POSIX-compatible shell
 (`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.
 
+Configured setup scripts are currently supported on POSIX hosts only. On Windows, the `/bin/sh`
+fallback is not supplied by the operating system and typical shell executables named `bash.exe` or
+`sh.exe` do not satisfy the current shell-selection contract; leave setup unset on Windows hosts.
+
 The daemon never infers a package manager from repository manifests or lockfiles, and never runs a
 package-manager command on its own. These trusted setup scripts are the sole place to install
 dependencies or prepare a repository toolchain, using the repository's own explicit command and
 policy. A repository with no configured setup launches its assigned command against its existing
 worktree state.
 
+The setup configuration is trusted, but the checkout remains untrusted. Invoking a checkout-owned
+file such as `./ci/session-setup` deliberately delegates execution to the assigned ref. Prefer
+reviewed host-owned scripts when that delegation is not intended. See
+[Trusted setup scripts: do's and don'ts](setup-scripts.md) for the execution contract, package-manager
+boundary, and operator checklist.
+
 Exported variables flow from the host script into the scoped script and then into the provider
 process. The daemon captures that environment through a mode-0600 temporary file, removes the file
 before the session continues, and never writes the captured values to logs or session metadata.
+Setup stdout/stderr is still streamed to the live and retained session log, so scripts must not
+enable tracing or print secrets.
 The reserved `HARNESS_*` namespace is always removed before provider launch. Because the provider
 can read every other exported value, setup scripts are trusted operator code; sourcing a broad shell
 profile may expose all of its exports to repository work. A successful script that replaces the
 shell and bypasses environment capture fails setup rather than launching the provider with a stale
 environment.
 
-Examples:
+Examples using reviewed, host-owned files:
 
-```bash
-git fetch && git reset --hard origin/main && pnpm install
+```text
+/opt/auto-harness/setup/repo-abc
 ```
 
-```bash
-git checkout -b claude/auto-harness/$(date +%s) && git fetch && git reset --hard origin/main && pnpm install
-```
-
-```bash
-source /home/harness/.env.codex && git fetch && git reset --hard origin/main
+```text
+. /opt/auto-harness/setup/host-environment
 ```
 
 Non-zero exit → session `failed`, worktree released.
@@ -531,9 +539,9 @@ spawning, searching only the process's own `env.PATH` — never the untrusted se
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349)
 for the git call site, and
 [jonathanong/auto-harness#365](https://github.com/jonathanong/auto-harness/issues/365)
-for the assigned CLI process. Trusted setup scripts (above) invoke `pnpm` or any other
-package manager directly through the operator's own configured command; the daemon
-does not resolve or spawn a package manager itself.
+for the assigned CLI process. Trusted setup scripts (above) invoke a package manager only
+when the operator's configured policy says to; the daemon does not resolve or spawn a
+package manager itself.
 
 ### Disk layout (example)
 
@@ -586,7 +594,7 @@ stateDiagram-v2
   "resolvedArgv": ["codex", "exec", "Fix the failing test"],
   "timeout": 1800,
   "worktreeId": "wt-1",
-  "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
+  "setupScript": "/opt/auto-harness/setup/repo-abc"
 }
 ```
 

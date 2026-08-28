@@ -14,6 +14,7 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [deploy-local.md](deploy-local.md)                       | Local stack deploy / update / teardown                      |
 | [deploy-aws.md](deploy-aws.md)                           | AWS control plane deploy / update / teardown                |
 | [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown                       |
+| [setup-scripts.md](setup-scripts.md)                     | Trusted setup scripts: execution contract, do's and don'ts  |
 | [release-client.md](release-client.md)                   | Manual npm client publish, tag, and GitHub Release          |
 | [github.md](github.md)                                   | Dependabot version updates, PR labels, actionlint           |
 | [setup.md](setup.md)                                     | Install, AWS deploy overview, VPS agent production shape    |
