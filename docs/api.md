@@ -421,8 +421,7 @@ Add a repository. **Admin only.**
 {
   "name": "my-app",
   "url": "git@github.com:org/my-app.git",
-  "defaultBranch": "main",
-  "setupScript": "/opt/auto-harness/setup/my-app"
+  "defaultBranch": "main"
 }
 ```
 
@@ -434,10 +433,15 @@ Add a repository. **Admin only.**
   "name": "my-app",
   "url": "git@github.com:org/my-app.git",
   "defaultBranch": "main",
-  "setupScript": "/opt/auto-harness/setup/my-app",
   "createdAt": "2026-08-01T00:00:00Z"
 }
 ```
+
+Repository catalog records accept optional `setupScript` and `terminalHookScript` fields for
+compatibility, but current prompt and scheduled assignment paths do not send those values to the
+host daemon. They are persisted metadata, not an executed setup or hook surface. Configure supported
+host-, repository-attachment-, and worktree-scoped execution with
+[`PUT /hosts/:id/exec-config`](#host-inventory-setup-and-provider-accounts).
 
 #### `GET /repositories`
 

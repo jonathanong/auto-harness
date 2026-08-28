@@ -5,23 +5,28 @@ Auto Harness does not inspect repository manifests or lockfiles, choose a packag
 dependencies on its own. If no setup script is configured, the daemon checks out the assigned ref
 and launches the assigned command without an additional preparation step.
 
-Setup configuration is privileged. Catalog repository setup is changed through the repository API
-with `catalog:write`; host-, repository-attachment-, and worktree-scoped setup is changed through
-host exec-config with `fleet:exec-config`. Both capabilities are admin-only arbitrary-execution
-boundaries. The configured script text is trusted operator policy, but the session checkout is not.
-A script that invokes a file from the checkout, such as `./ci/session-setup`, deliberately lets the
+Executable setup configuration is privileged and uses host exec-config with `fleet:exec-config` for
+host-, repository-attachment-, and worktree-scoped setup. This is an admin-only
+arbitrary-execution boundary. Repository catalog records also accept a `setupScript` field through
+`catalog:write`, but current prompt and scheduled assignment paths do not send that catalog value to
+the daemon; it is persisted metadata, not an executed setup surface. Configure supported setup on
+the target host instead.
+
+The configured script text is trusted operator policy, but the session checkout is not. A script
+that invokes a file from the checkout, such as `./ci/session-setup`, deliberately lets the
 checked-out ref control that part of execution.
 
 ## Execution contract
 
-| Behavior          | Contract                                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                           |
-| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.    |
-| Working directory | The claimed session worktree, or the locked main checkout for a scheduled session.                                                     |
-| Shell             | An available absolute POSIX-compatible `$SHELL` (`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.                          |
-| Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values. |
-| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting.    |
+| Behavior          | Contract                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                                                                              |
+| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.                                                       |
+| Working directory | The claimed session worktree, or the locked main checkout for a scheduled session.                                                                                                        |
+| Shell             | On POSIX hosts, an available absolute compatible `$SHELL` named `sh`, `bash`, `dash`, `ksh`, or `zsh`; otherwise `/bin/sh`. Configured setup is not currently supported on Windows hosts. |
+| Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values.                                                    |
+| Output            | Every stdout/stderr chunk from setup is streamed into the live and retained session log. The private environment snapshot does not redact printed values.                                 |
+| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting.                                                       |
 
 For a session using a Provider Account, its execution profile is applied after setup: the profile
 replaces `HOME`/`USERPROFILE` and overlays any colliding profile environment keys. The assigned
@@ -43,6 +48,8 @@ assignment, so it must tolerate repetition and partially prepared state.
   package-manager configuration, environment files, executable scripts, and symlinks.
 - Export only values the assigned CLI actually needs. Assume every non-`HARNESS_*` export becomes
   readable by repository work, unless a selected Provider Account execution profile replaces it.
+- Disable shell tracing and keep credentials, tokens, environment dumps, and other secrets off
+  stdout/stderr because setup output is retained in session logs.
 - Put repository- and ecosystem-specific policy in the operator-owned script. Test it on every host
   operating system on which it will run.
 
@@ -75,6 +82,8 @@ These paths are illustrative; use absolute, operator-controlled paths appropriat
   program.
 - Do not assume setup runs during native resume. A resumed command must use the existing worktree and
   environment it can establish without setup.
+- Do not configure setup on a Windows host until native or compatible-shell setup execution is
+  supported. Stock Windows has no usable `/bin/sh` fallback for this contract.
 - Do not use destructive resets or cleanup against a scheduled main checkout unless that behavior is
   intentional, idempotent, and safe under the repository's maintenance policy.
 
@@ -100,6 +109,7 @@ list of package-manager flags as a complete security boundary.
 - Is every executable or sourced file operator-owned, or is checkout-controlled execution intended?
 - Can any checkout file redirect reads, writes, downloads, or executable resolution?
 - Are exported credentials and environment variables limited to what the assigned CLI needs?
+- Can the script and every tool it invokes complete without printing secrets or enabling tracing?
 - Is the script repeatable, bounded by the session deadline, and safe after a partial failure?
 - Is the no-setup behavior for native resume acceptable?
 - Has the exact script been tested on each target host operating system?

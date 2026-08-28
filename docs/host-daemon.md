@@ -486,6 +486,10 @@ existing precedence `session assignment > worktree > host/repository attachment`
 session cwd (worktree or main). They use `$SHELL` when it names an available POSIX-compatible shell
 (`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.
 
+Configured setup scripts are currently supported on POSIX hosts only. On Windows, the `/bin/sh`
+fallback is not supplied by the operating system and typical shell executables named `bash.exe` or
+`sh.exe` do not satisfy the current shell-selection contract; leave setup unset on Windows hosts.
+
 The daemon never infers a package manager from repository manifests or lockfiles, and never runs a
 package-manager command on its own. These trusted setup scripts are the sole place to install
 dependencies or prepare a repository toolchain, using the repository's own explicit command and
@@ -501,6 +505,8 @@ boundary, and operator checklist.
 Exported variables flow from the host script into the scoped script and then into the provider
 process. The daemon captures that environment through a mode-0600 temporary file, removes the file
 before the session continues, and never writes the captured values to logs or session metadata.
+Setup stdout/stderr is still streamed to the live and retained session log, so scripts must not
+enable tracing or print secrets.
 The reserved `HARNESS_*` namespace is always removed before provider launch. Because the provider
 can read every other exported value, setup scripts are trusted operator code; sourcing a broad shell
 profile may expose all of its exports to repository work. A successful script that replaces the

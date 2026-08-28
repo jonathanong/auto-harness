@@ -70,7 +70,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `fleet:exec-config`    | `PUT` `/hosts/:id/exec-config` (host/repository/worktree setup scripts, terminal hook paths, and host-local `allowedRoots`). Admin only. **This permits arbitrary execution on the selected host.** Changes are audited as `host-exec-config:update`.                                                 |
 | `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                                                                                         |
 | `providers:leases`     | Inspect held Provider Account leases and force-release a lease only after its holder session is terminal and its host assignment is detached. Repository scope applies to holders. This is an operational recovery action, not Provider Account catalog configuration.                                |
-| `catalog:write`        | Create/update/delete Commands, Providers, and Repositories — including command `argv` and repo `setupScript` / `terminalHookScript`. **This is arbitrary execution on the fleet** ([plan.md](plan.md) D4). Admin only.                                                                                |
+| `catalog:write`        | Create/update/delete Commands, Providers, and Repositories. Command `argv` is **arbitrary execution on the fleet** ([plan.md](plan.md) D4). Repository setup/hook fields are persisted but not assigned. Admin only.                                                                                  |
 | `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                                                                                                |
 | `integrations:write`   | Slack integration CRUD (`/integrations/slack`), including `GET`.                                                                                                                                                                                                                                      |
 | `audit:read`           | `GET /audit-logs`.                                                                                                                                                                                                                                                                                    |
@@ -229,8 +229,9 @@ daemon, and an unbound `author` or `operator` for anything that creates
 sessions ([auth.md](auth.md#a-bound-key-cannot-create-sessions)).
 
 Do **not** give `maintainer` or `operator` `catalog:write` or `fleet:exec-config`.
-Command argv, repository setup scripts, host/worktree setup scripts, and terminal
-hook paths run on the VPS.
+Command argv and host exec-config setup scripts and terminal hook paths run on the VPS. Repository
+catalog `setupScript` / `terminalHookScript` fields are persisted but are not currently sent in
+prompt or scheduled assignments.
 
 `fleet:inventory` attaches repos and worktrees only. Setup scripts, terminal hook
 paths, and `allowedRoots` require `fleet:exec-config` (admin). The daemon enforces
