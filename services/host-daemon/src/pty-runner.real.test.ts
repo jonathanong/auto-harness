@@ -68,7 +68,7 @@ describe("PtyProcessRunner real CLI", () => {
           });
 
           expect(result).toEqual({ exitCode: 0, signal: null, timedOut: false });
-          expect(output.join("")).toContain(JSON.stringify(expected));
+          expect(output.join("").replaceAll(/[\r\n]/g, "")).toContain(JSON.stringify(expected));
         }
       } finally {
         rmSync(root, { force: true, recursive: true });
