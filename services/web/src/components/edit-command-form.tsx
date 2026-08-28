@@ -51,7 +51,8 @@ export function EditCommandForm({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const name = String(fd.get("name") ?? "").trim();
+            const submittedName = String(fd.get("name") ?? "");
+            const name = submittedName === command.name ? command.name : submittedName.trim();
             const argv = String(fd.get("argv") ?? "")
               .split("\n")
               .map((s) => s.trim())

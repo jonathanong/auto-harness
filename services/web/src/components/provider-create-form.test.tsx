@@ -229,4 +229,23 @@ describe("ProviderCreateForm", () => {
     );
     view.unmount();
   });
+
+  it("reports a transport failure while rolling back the provider", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ id: "p" }))
+        .mockResolvedValueOnce(new Response("bad", { status: 502 }))
+        .mockRejectedValueOnce(new Error("offline")),
+    );
+    const view = mountForm(<ProviderCreateForm />);
+    fill(view);
+    submit(field(view.container, "form-provider-catalog"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "provider-catalog-error").textContent).toBe(
+      'provider "codex" created, but its default command failed: bad; rollback failed: Error: offline',
+    );
+    view.unmount();
+  });
 });

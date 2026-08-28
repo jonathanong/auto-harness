@@ -72,6 +72,21 @@ describe("EditCommandForm", () => {
     view.unmount();
   });
 
+  it("preserves an untouched whitespace-bearing legacy name", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <EditCommandForm command={{ ...command, name: " Legacy Name " }} providers={providers} />,
+    );
+    press(field(view.container, "edit-command-open"));
+    submit(field(document, "form-edit-command"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      name: " Legacy Name ",
+    });
+    view.unmount();
+  });
+
   it("uses absent command fields and fallback API errors", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response("bad", { status: 500 }));
     vi.stubGlobal("fetch", fetch);
