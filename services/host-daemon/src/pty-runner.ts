@@ -41,7 +41,7 @@ function emitPtyChunk(options: RunProcessOptions, value: string): void {
 }
 
 function escapeWindowsBatchArgument(value: string): string {
-  if (/\r|\n/.test(value)) {
+  if (/[\r\n]/.test(value)) {
     throw new Error(
       "Cannot launch Windows batch command: CR/LF characters are not supported in arguments",
     );
