@@ -22,6 +22,10 @@ const dispatchDocs = readFileSync(
   new URL("../actions/dispatch/README.md", import.meta.url),
   "utf8",
 );
+const dispatchAction = readFileSync(
+  new URL("../actions/dispatch/action.yml", import.meta.url),
+  "utf8",
+);
 const compose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
 
@@ -147,7 +151,9 @@ describe("GitHub Actions pin and image alignment", () => {
     );
 
     expect(pins).toHaveLength(5);
-    expect(new Set(pins)).toEqual(new Set(["4727acc51fd29e92a6a34dbcf9c05255ad9658e8"]));
+    expect(new Set(pins)).toEqual(new Set(["e5b42ce21d701f2dde7f3fb38a5f130754acccbc"]));
+    expect(dispatchDocs).toContain(`target: '{"providerName":"codex"}'`);
+    expect(`${dispatchDocs}\n${dispatchAction}`).not.toContain('providerId":"codex');
   });
 
   it("keeps DynamoDB Local tags aligned between CI and Compose", () => {

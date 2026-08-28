@@ -9,7 +9,7 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 ## Packaged automation
 
 For GitHub workflows,
-`jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8`
+`jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc`
 wraps the fire-and-forget session create call and returns `session-id`, `session-url`, and `created`
 outputs. Pin the Action to a reviewed full commit SHA and deliberately update that SHA when adopting
 a newer revision; do not use the moving `main` ref. It accepts the control-plane URL and

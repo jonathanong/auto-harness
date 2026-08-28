@@ -7,19 +7,23 @@ Pin every use to the reviewed full commit SHA shown below, then deliberately rep
 adopting a newer revision. Do not use the moving `main` ref.
 
 ```yaml
-- uses: jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8
+- uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
   with:
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
     api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
     repository-id: repo-1
     prompt: Review this pull request
-    target: '{"providerId":"<provider-uuid>"}'
+    target: '{"providerName":"codex"}'
     timeout: "1800"
     concurrency-id: github-${{ github.run_id }}
 ```
 
 The action returns as soon as the session is accepted. Use the `session-id`, `session-url`, and
 `created` outputs for annotations or later automation.
+
+`target` and `fallbacks` accept `providerId`/`commandId` values or human-readable
+`providerName`/`commandName` values. The bundled client resolves each name through the control-plane
+catalog before dispatch and fails if a name is missing or ambiguous.
 
 Every dispatch and drain request is bounded by `request-timeout-seconds`, including receiving the
 response body. It defaults to `30` seconds and must be a finite positive number no greater than
@@ -41,7 +45,7 @@ whatever caller-side failure handling records that result.
 ```yaml
 - name: Start this service account's principal session drain
   id: drain
-  uses: jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8
+  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
   with:
     operation: start-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -51,7 +55,7 @@ whatever caller-side failure handling records that result.
 
 - name: Wait for terminal proof
   id: drain-status
-  uses: jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8
+  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
   with:
     operation: wait-for-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -63,7 +67,7 @@ whatever caller-side failure handling records that result.
 
 - name: Reopen this principal's admission after recording the result
   if: always()
-  uses: jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8
+  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
   with:
     operation: release-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
