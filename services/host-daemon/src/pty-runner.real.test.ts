@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,29 +7,43 @@ import { PtyProcessRunner } from "./pty-runner.ts";
 
 describe("PtyProcessRunner real CLI", () => {
   it("runs an argv-only command inside the documented 120x40 terminal", async () => {
-    const output: string[] = [];
-    const literal = "literal;$(never-evaluated)";
-    const result = await new PtyProcessRunner().run({
-      argv: [
-        process.execPath,
-        "-e",
-        "console.log(JSON.stringify({ tty: process.stdout.isTTY, columns: process.stdout.columns, rows: process.stdout.rows, literal: process.argv[1] }))",
-        literal,
-      ],
-      cwd: process.cwd(),
-      timeoutMs: 5_000,
-      onChunk: (chunk) => output.push(chunk.data),
-    });
+    const root = mkdtempSync(join(tmpdir(), "auto-harness-pty-relative-"));
+    try {
+      const scriptPath = join(root, "terminal-size.mjs");
+      writeFileSync(
+        scriptPath,
+        "#!/usr/bin/env node\nconsole.log(JSON.stringify({ tty: process.stdout.isTTY, columns: process.stdout.columns, rows: process.stdout.rows, literal: process.argv[2] }));\n",
+      );
+      chmodSync(scriptPath, 0o755);
+      const executable =
+        process.platform === "win32" ? ".\\terminal-size.cmd" : "./terminal-size.mjs";
+      if (process.platform === "win32") {
+        writeFileSync(
+          join(root, "terminal-size.cmd"),
+          `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+        );
+      }
+      const output: string[] = [];
+      const literal = "literal;$(never-evaluated)";
+      const result = await new PtyProcessRunner().run({
+        argv: [executable, literal],
+        cwd: root,
+        timeoutMs: 5_000,
+        onChunk: (chunk) => output.push(chunk.data),
+      });
 
-    expect(result).toEqual({ exitCode: 0, signal: null, timedOut: false });
-    expect(output.join("")).toContain(
-      JSON.stringify({
-        tty: true,
-        columns: 120,
-        rows: 40,
-        literal,
-      }),
-    );
+      expect(result).toEqual({ exitCode: 0, signal: null, timedOut: false });
+      expect(output.join("")).toContain(
+        JSON.stringify({
+          tty: true,
+          columns: 120,
+          rows: 40,
+          literal,
+        }),
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 
   it.runIf(process.platform === "win32")(
@@ -61,7 +75,7 @@ describe("PtyProcessRunner real CLI", () => {
           writeFileSync(batchPath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`);
           const output: string[] = [];
           const result = await new PtyProcessRunner().run({
-            argv: [batchPath, ...expected],
+            argv: [`.\\argument shim.${extension}`, ...expected],
             cwd: root,
             timeoutMs: 5_000,
             onChunk: (chunk) => output.push(chunk.data),
@@ -93,7 +107,7 @@ describe("PtyProcessRunner real CLI", () => {
         let childPid: number | undefined;
 
         const result = await new PtyProcessRunner().run({
-          argv: [batchPath],
+          argv: [".\\wait shim.cmd"],
           cwd: root,
           signal: controller.signal,
           timeoutMs: 5_000,

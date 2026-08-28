@@ -17,6 +17,14 @@ describe("ControlPlane command CRUD", () => {
     });
     expect(plane.createCommand({ name: "echo-hello-world", argv: [] }).ok).toBe(false);
     expect(plane.createCommand({ name: "echo-hello-world", argv: [""] }).ok).toBe(false);
+    expect(plane.createCommand({ name: "absolute", argv: ["/bin/echo"] })).toEqual({
+      ok: false,
+      error: "argv[0] must not be an absolute or drive-qualified path",
+    });
+    expect(plane.createCommand({ name: "traversal", argv: ["bin/../echo"] })).toEqual({
+      ok: false,
+      error: "argv[0] must not contain '..' path segments",
+    });
 
     const standalone = plane.createCommand({ name: "echo-hello-world", argv: ["echo", "hello"] });
     expect(standalone.ok).toBe(true);
@@ -68,6 +76,10 @@ describe("ControlPlane command CRUD", () => {
     });
     expect(plane.updateCommand("cmd-1", { name: "echo-hello-world" }).ok).toBe(true);
     expect(plane.updateCommand("cmd-1", { argv: [] }).ok).toBe(false);
+    expect(plane.updateCommand("cmd-1", { argv: ["C:echo"] })).toEqual({
+      ok: false,
+      error: "argv[0] must not be an absolute or drive-qualified path",
+    });
     const updated = plane.updateCommand("cmd-1", {
       argv: ["echo", "hi"],
       appendPromptSeparator: true,
@@ -104,6 +116,20 @@ describe("ControlPlane command CRUD", () => {
         name: "invalid",
         argv: ["tool"],
         resumeArgvTemplate: ["tool", "{unknown}"],
+      }).ok,
+    ).toBe(false);
+    expect(
+      plane.createCommand({
+        name: "dynamic-executable",
+        argv: ["tool"],
+        resumeArgvTemplate: ["{cliResumeRef}", "resume"],
+      }).ok,
+    ).toBe(false);
+    expect(
+      plane.createCommand({
+        name: "absolute-resume-executable",
+        argv: ["tool"],
+        resumeArgvTemplate: ["\\bin\\tool", "{cliResumeRef}"],
       }).ok,
     ).toBe(false);
     const created = plane.createCommand({

@@ -19,6 +19,7 @@ describe("package exports", () => {
     expect(shared.PACKAGE_SCOPE).toBe("@auto-harness");
     expect(shared.HOST_PROTOCOL_VERSION).toBe(1);
     expect(typeof shared.isHostRunningAttempt).toBe("function");
+    expect(typeof shared.validateCommandExecutable).toBe("function");
   });
 
   it("exposes session assign typing at runtime via usage", () => {

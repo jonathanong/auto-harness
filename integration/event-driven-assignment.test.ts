@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -110,7 +110,7 @@ async function startIsolatedStack(hostId: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       name: "event-assign-command",
-      argv: [process.execPath, "-e", "console.log('event-driven-assignment')"],
+      argv: [basename(process.execPath), "-e", "console.log('event-driven-assignment')"],
       appendPrompt: false,
       providerId: null,
     }),
@@ -152,6 +152,10 @@ async function startTestDaemon(hostId: string, base: string) {
   });
   const daemon = await startDaemon({
     config,
+    childEnvSource: {
+      ...process.env,
+      PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
+    },
     inventoryPollMs: 0,
     log: () => undefined,
     error: () => undefined,

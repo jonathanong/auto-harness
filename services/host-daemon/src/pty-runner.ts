@@ -12,7 +12,7 @@ import {
   type ProcessRunner,
   type RunProcessOptions,
 } from "./executor.ts";
-import { resolveTrustedExecutable } from "./resolve-executable.ts";
+import { resolveAssignedExecutable, resolveTrustedExecutable } from "./resolve-executable.ts";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_COLUMNS = 120;
@@ -127,13 +127,12 @@ export class PtyProcessRunner implements ProcessRunner {
       return { exitCode: null, timedOut: false, cancelled: true, signal: null };
     }
 
-    // Resolved to an absolute path via resolveTrustedExecutable, searching
-    // only `env`'s PATH — never `options.cwd`. Like runGit, this runner always
-    // receives the untrusted session worktree as cwd, and Windows'
-    // child_process.spawn (libuv search_path()) checks cwd before PATH for a
-    // bare command name.
+    // Bare commands are resolved through trusted PATH only. Explicit relative
+    // commands are lexically resolved against the assigned checkout before
+    // spawning; both forms become absolute so Windows cannot apply libuv's
+    // cwd-before-PATH executable search to an untrusted worktree.
     const env = options.env ?? createChildEnv();
-    const resolvedCommand = resolveTrustedExecutable(command, env, this.platform);
+    const resolvedCommand = resolveAssignedExecutable(command, options.cwd, env, this.platform);
     const [spawnCommand, spawnArgs] = ptyInvocation(resolvedCommand, args, env, this.platform);
 
     let terminal: IPty;

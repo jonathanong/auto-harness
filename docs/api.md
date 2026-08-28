@@ -1140,9 +1140,14 @@ or was immediately claimed by another Session.
 
 **Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone). `name` must be a slug unique within the Command catalog: lowercase letters and numbers joined by single dashes.
 
-**Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+**Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string. Its first element is either a bare executable name resolved from the assigned host's trusted `PATH`, or a path resolved relative to the assigned checkout (for example `./ci/agent`). Absolute and drive-qualified executables and complete `..` path segments are rejected; later argv elements may still contain ordinary absolute or relative path data.
 
-Creating or renaming a Command with an invalid or already-used name returns `400 VALIDATION_ERROR`.
+When `resumeArgvTemplate` is configured, its first element follows the same executable rule and
+must be fixed: `{prompt}` and `{cliResumeRef}` placeholders are allowed only in later elements.
+Relative executable resolution is lexical and does not inspect symlink targets.
+
+Creating or renaming a Command with an invalid or already-used name, or creating/updating one with
+an invalid executable reference, returns `400 VALIDATION_ERROR`.
 Existing catalog rows are not rewritten; name validation applies when a Command is created or its
 name is updated.
 

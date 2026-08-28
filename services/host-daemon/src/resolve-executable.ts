@@ -1,5 +1,6 @@
 import { accessSync, constants, statSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, posix, win32 } from "node:path";
+import { validateCommandExecutable } from "@auto-harness/shared";
 
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 
@@ -118,4 +119,26 @@ export function resolveTrustedExecutable(
     }
   }
   throw new Error(`Cannot resolve trusted executable "${command}": not found on PATH`);
+}
+
+/**
+ * Resolve an assigned command without accepting a host-absolute executable.
+ *
+ * Bare names retain the trusted PATH-only lookup used to close Windows'
+ * cwd-before-PATH hijack. A relative path is deliberately different: it names
+ * a file in the assigned checkout and is resolved lexically against that
+ * checkout before node-pty sees it. There is intentionally no realpath,
+ * symlink, existence, or containment check here.
+ */
+export function resolveAssignedExecutable(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const executable = validateCommandExecutable(command);
+  if (!executable.ok) throw new Error(executable.error);
+  const isWindows = platform === "win32";
+  if (executable.kind === "bare") return resolveTrustedExecutable(command, env, platform);
+  return (isWindows ? win32 : posix).resolve(cwd, command);
 }

@@ -113,6 +113,33 @@ describe("target routing residual coverage", () => {
     ).toBeNull();
   });
 
+  it("rejects unsafe frozen resume templates before materializing argv", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    for (const resumeArgvTemplate of [
+      ["/bin/tool", "{cliResumeRef}"],
+      ["bin/../tool", "{cliResumeRef}"],
+      ["{prompt}", "{cliResumeRef}"],
+    ]) {
+      const row = resumed();
+      row.cliResumeRef = "ref";
+      row.resumeSpec = {
+        argv: ["frozen"],
+        appendPrompt: false,
+        resumeArgvTemplate,
+      };
+      expect(
+        resolveSessionTargetRouteAt(
+          state,
+          buildProviderCatalog(state),
+          row,
+          worktree,
+          Date.parse(NOW),
+          0,
+        ),
+      ).toBeNull();
+    }
+  });
+
   it("rejects a resolved route whose frozen command pin changed", () => {
     const state = createControlPlaneState({ now: () => NOW });
     state.commands.set("cmd", {

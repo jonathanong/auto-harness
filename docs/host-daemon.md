@@ -273,7 +273,7 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | Piece             | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`. On Windows only, a trusted resolved `.cmd`/`.bat` target is launched through an absolute PATH-resolved `cmd.exe`; each fixed argv element is encoded separately for the two CMD parsing passes rather than accepting a caller-authored shell string. Batch arguments containing CR/LF are rejected because CMD cannot preserve them without command-separator ambiguity.                                                                                                                                                                                                                                                                                                                                                                                     |
-| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from the selected target/fallback (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero provider/account/command resolution — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `resolvedArgv`    | From `session:assign` — the target/fallback and complete argv are already resolved control-plane-side (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The daemon does not select a provider/account/Command, but it does resolve `argv[0]` deterministically: a bare name through trusted `PATH`, or a relative path against the assigned checkout. An empty `resolvedArgv` is a defensive error (`unknown_command_profile`).                                                                                                                                                                                                                                                                                                                                            |
 | Route metadata    | Optional non-secret `targetIndex`, `commandId`, and `providerAccountId` breadcrumbs for logs and UI diagnostics. They are never used to select a command. A `providerAccountId` **does** select the daemon-local execution profile (CLI `HOME` / extra env) for the assigned AI CLI. Git, setup scripts, and terminal hooks keep the daemon's own child environment.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — never accepted as a free-form shell string. The Windows batch adapter encodes it as one argv value and rejects CR/LF; direct executables receive it unchanged. A literal `--` is inserted first when the Command opts in via `appendPromptSeparator`, or implicitly whenever the Command has a `providerId` and does not opt out (`appendPromptSeparator: false`) — safe only for getopt-style executables; e.g. `printf "%s"` reads `--` as data, not a terminator. See [api.md](api.md#post-commands).                                                                                                                                                                                                                        |
 | Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -307,14 +307,17 @@ and multiline arguments fail before spawn.
 Example (illustrative):
 
 ```text
-assign.resolvedArgv = ["codex", "exec", "Fix the failing test"]  // computed control-plane-side
+assign.resolvedArgv = ["./ci/agent", "Fix the failing test"]  // computed control-plane-side
 
-→ argv: ["codex", "exec", "Fix the failing test"]  // spawned as-is, no further resolution
+→ executable: /home/harness/repos/my-app/.worktrees/wt-1/ci/agent
+→ argv: ["Fix the failing test"]  // no shell or string re-parsing
 → cwd:  /home/harness/repos/my-app/.worktrees/wt-1
 → pty:  yes (cols/rows default 120x40)
 ```
 
-If a site needs a full shell pipeline for maintenance, use a **scheduled** session whose `command` is a fixed script path on disk (e.g. `/home/harness/scripts/daily-update.sh`) rather than untrusted prompt text.
+If a site needs a full shell pipeline for maintenance, use a **scheduled** session whose Command
+names a fixed executable on `PATH` or a worktree-relative script (for example
+`./ci/daily-update.sh`) rather than untrusted prompt text.
 
 #### Signals and exit
 
@@ -340,7 +343,7 @@ assigned account, try another eligible account/fallback, or queue-wait for coold
 2. Exit `0` is always `completed`. Successful output — including adversarial or prompt-controlled phrases such as “rate limit” — never cools down a Provider Account.
 3. On a failed command (`exitCode !== 0`), the daemon requires **trusted assignment identity**
    (`providerAccountId` from the control plane), a recognized **trusted catalog argv** executable
-   (`resolvedArgv[0]`, already resolved control-plane-side), and the provider-aware adapter's
+   (`resolvedArgv[0]`, fixed control-plane-side and location-resolved by the daemon), and the provider-aware adapter's
    structured `usageLimit` signal. Untrusted stdout/stderr is never enough on its own.
 4. On that signal, report `session:status` with `status: failed`, `errorCode: "usage_limit"`,
    `errorMessage: "Usage limit detected"`, and `exitCode`. Do not retry or resolve a fallback on
@@ -537,12 +540,13 @@ conversation's existing worktree.
 
 ### Command resolution hardening
 
-`runGit` (`services/host-daemon/src/git-commands.ts`) and `PtyProcessRunner.run()`
-(`services/host-daemon/src/pty-runner.ts`) both resolve a bare executable name
-(`git`, or the assigned CLI's `resolvedArgv[0]`) to an absolute path via
-`resolveTrustedExecutable` (`services/host-daemon/src/resolve-executable.ts`) before
-spawning, searching only the process's own `env.PATH` — never the untrusted session
-`cwd`. This closes the "bare argv0 + untrusted cwd" hijack tracked in
+`runGit` (`services/host-daemon/src/git-commands.ts`) resolves its daemon-owned `git` name through
+`resolveTrustedExecutable` (`services/host-daemon/src/resolve-executable.ts`). Assigned Commands
+use a separate resolver with two explicit forms: a bare executable name such as `codex` searches
+only the process's own trusted `env.PATH`, while `./ci/agent` or `ci/agent` is resolved lexically
+against the assigned checkout and converted to an absolute spawn target. Native process lookup
+therefore never receives a bare name with the untrusted checkout as its search cwd. This closes the
+"bare argv0 + untrusted cwd" hijack tracked in
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349)
 for the git call site, and
 [jonathanong/auto-harness#365](https://github.com/jonathanong/auto-harness/issues/365)
@@ -552,10 +556,16 @@ inferred dependency-install call site. An operator may still deliberately run a 
 against the untrusted checkout through an assigned Command or a trusted setup script. Both are
 privileged arbitrary-execution policy: Command argv requires
 [`catalog:write`](roles.md#capabilities), while setup configuration requires `fleet:exec-config`.
-`PtyProcessRunner` resolves an assigned package manager through the same trusted absolute-path
+`PtyProcessRunner` resolves a bare assigned package manager through the same trusted absolute-path
 boundary described above; the
 [setup-script guide](setup-scripts.md#package-manager-boundary) documents the package manager's
 separate filesystem, tool-selection, and descendant-process risks.
+
+Command creation and the daemon boundary both reject absolute or drive-qualified assigned
+executables and any complete `..` path segment. Relative resolution is deliberately lexical: it
+does not call `realpath`, inspect symlink targets, apply `allowedRoots`, or require the executable
+to exist before spawn. A relative executable explicitly opts into running checkout-controlled
+content, and a symlink in that checkout may point elsewhere.
 
 When the assigned CLI resolves to a Windows batch shim, the PTY runner also
 resolves `cmd.exe` through that trusted `PATH`; it never falls back to a bare

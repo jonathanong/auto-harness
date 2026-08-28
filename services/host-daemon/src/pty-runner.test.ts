@@ -1,7 +1,7 @@
 /* eslint-disable max-lines, unicorn/consistent-function-scoping -- PTY resolution cases use local scenario helpers, matching git-commands.test.ts's precedent for the sibling call site. */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import type { IPty } from "node-pty";
 import { describe, expect, it } from "vitest";
 
@@ -53,7 +53,7 @@ describe("PtyProcessRunner boundary", () => {
 
     await expect(
       runner.run({
-        argv: ["/opt/tool", "literal;not-a-shell", "$(still-literal)"],
+        argv: ["./tool", "literal;not-a-shell", "$(still-literal)"],
         cwd: process.cwd(),
         env: { PATH: "/bin", TERM: "caller-value" },
         timeoutMs: 1_000,
@@ -61,7 +61,7 @@ describe("PtyProcessRunner boundary", () => {
       }),
     ).resolves.toEqual({ exitCode: 0, signal: null, timedOut: false });
     expect(spawned).toEqual([
-      "/opt/tool",
+      join(process.cwd(), "tool"),
       ["literal;not-a-shell", "$(still-literal)"],
       {
         cols: 120,
@@ -123,7 +123,7 @@ describe("PtyProcessRunner boundary", () => {
 
     await expect(
       runner.run({
-        argv: ["/opt/tool"],
+        argv: ["./tool"],
         cwd: process.cwd(),
         timeoutMs: 5,
         terminationGraceMs: 5,
@@ -150,7 +150,7 @@ describe("PtyProcessRunner boundary", () => {
       spawn: () => pty.terminal,
     });
     const run = runner.run({
-      argv: ["/opt/tool"],
+      argv: ["./tool"],
       cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 1_000,
@@ -175,7 +175,7 @@ describe("PtyProcessRunner boundary", () => {
     });
     const chunks: string[] = [];
     const run = runner.run({
-      argv: ["/opt/tool"],
+      argv: ["./tool"],
       cwd: process.cwd(),
       signal: controller.signal,
       timeoutMs: 1_000,
@@ -201,10 +201,9 @@ describe("PtyProcessRunner boundary", () => {
     });
     await expect(
       runner.run({
-        // Absolute, so resolution passes through unchanged and this test
-        // exercises the native this.spawn() ENOENT-normalization path
-        // rather than resolveTrustedExecutable's own not-found error.
-        argv: ["/opt/missing-tool"],
+        // A relative command is resolved lexically before this test exercises
+        // native this.spawn() ENOENT normalization.
+        argv: ["./missing-tool"],
         cwd: process.cwd(),
         timeoutMs: 1_000,
         onChunk: () => undefined,
@@ -347,8 +346,8 @@ describe("PtyProcessRunner executable resolution", () => {
     });
 
     await runner.run({
-      argv: [join(binDir, "tool.BAT"), "run"],
-      cwd: process.cwd(),
+      argv: [".\\tool.BAT", "run"],
+      cwd: binDir,
       env: { PATH: binDir },
       timeoutMs: 1_000,
       onChunk: () => undefined,
@@ -374,8 +373,8 @@ describe("PtyProcessRunner executable resolution", () => {
 
       await expect(
         runner.run({
-          argv: [join(binDir, "tool.cmd"), argument],
-          cwd: process.cwd(),
+          argv: [".\\tool.cmd", argument],
+          cwd: binDir,
           env: { PATH: binDir },
           timeoutMs: 1_000,
           onChunk: () => undefined,
@@ -401,8 +400,8 @@ describe("PtyProcessRunner executable resolution", () => {
 
     await expect(
       runner.run({
-        argv: [join(binDir, "tool.cmd")],
-        cwd: process.cwd(),
+        argv: [".\\tool.cmd"],
+        cwd: binDir,
         env: { PATH: binDir },
         timeoutMs: 1_000,
         onChunk: () => undefined,
@@ -413,10 +412,10 @@ describe("PtyProcessRunner executable resolution", () => {
 
   it("keeps non-batch Windows and POSIX commands on the direct argv path", async () => {
     const scenarios: Array<{ command: string; platform: NodeJS.Platform }> = [
-      { command: "/opt/tool.exe", platform: "win32" },
-      { command: "/opt/tool.com", platform: "win32" },
-      { command: "/opt/tool.cmd", platform: "linux" },
-      { command: "/opt/tool.bat", platform: "darwin" },
+      { command: ".\\tool.exe", platform: "win32" },
+      { command: ".\\tool.com", platform: "win32" },
+      { command: "./tool.cmd", platform: "linux" },
+      { command: "./tool.bat", platform: "darwin" },
     ];
 
     for (const scenario of scenarios) {
@@ -438,9 +437,36 @@ describe("PtyProcessRunner executable resolution", () => {
         onChunk: () => undefined,
       });
 
-      expect(spawned?.slice(0, 2)).toEqual([scenario.command, ["literal&argument"]]);
+      const expectedCommand =
+        scenario.platform === "win32"
+          ? win32.resolve(process.cwd(), scenario.command)
+          : posix.resolve(process.cwd(), scenario.command);
+      expect(spawned?.slice(0, 2)).toEqual([expectedCommand, ["literal&argument"]]);
     }
   });
+
+  it.each(["/opt/tool", "C:\\Tools\\tool.exe", "../tool"])(
+    "rejects unsafe direct assignment before spawning: %s",
+    async (command) => {
+      let spawnCalls = 0;
+      const runner = new PtyProcessRunner({
+        spawn: () => {
+          spawnCalls += 1;
+          return fakePty().terminal;
+        },
+      });
+
+      await expect(
+        runner.run({
+          argv: [command],
+          cwd: process.cwd(),
+          timeoutMs: 1_000,
+          onChunk: () => undefined,
+        }),
+      ).rejects.toThrow(/absolute or drive-qualified path|'\.\.' path segments/);
+      expect(spawnCalls).toBe(0);
+    },
+  );
 
   it("throws before spawning when the command is not found anywhere on PATH", async () => {
     let spawnCalls = 0;

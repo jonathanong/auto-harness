@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -93,13 +93,21 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
       commandProfiles: {},
     };
 
-    const daemon = await startDaemon({ config, log: () => undefined, error: () => undefined });
+    const daemon = await startDaemon({
+      config,
+      childEnvSource: {
+        ...process.env,
+        PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
+      },
+      log: () => undefined,
+      error: () => undefined,
+    });
     stopDaemon = daemon.stop;
     await sleep(100);
 
     const commandResult = server.plane.createCommand({
       name: "echo-prompt",
-      argv: [process.execPath, "-e", "console.log('hello world')"],
+      argv: [basename(process.execPath), "-e", "console.log('hello world')"],
       appendPrompt: false,
       providerId: null,
     });

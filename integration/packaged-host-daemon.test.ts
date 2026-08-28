@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -99,7 +99,7 @@ describe("packaged host daemon lifecycle", () => {
       body: JSON.stringify({
         name: "packaged-systemd-command",
         argv: [
-          process.execPath,
+          basename(process.execPath),
           "-e",
           "setTimeout(() => console.log('packaged-drain-complete'), 750)",
         ],
@@ -138,6 +138,7 @@ describe("packaged host daemon lifecycle", () => {
         cwd: projectRoot,
         env: {
           ...process.env,
+          PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
           HARNESS_HOST_ID: hostId,
           HARNESS_API_URL: base,
           HARNESS_LOG_LEVEL: "info",

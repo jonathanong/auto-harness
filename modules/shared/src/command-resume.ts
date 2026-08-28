@@ -10,6 +10,11 @@ const ALLOWED_PLACEHOLDERS = new Set(["prompt", "cliResumeRef"]);
 
 export type CommandResumeSpec = Pick<Command, "resumeArgvTemplate" | "resumeRefCapture">;
 
+export type CommandExecutableKind = "bare" | "relative";
+export type CommandExecutableValidation =
+  | { ok: true; kind: CommandExecutableKind }
+  | { ok: false; error: string };
+
 function safeArg(value: unknown, label: string): string | null {
   if (typeof value !== "string" || value.length === 0) {
     return `${label} must contain non-empty strings`;
@@ -31,6 +36,28 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
+/**
+ * Validate the executable element shared by command creation and host execution.
+ * This is intentionally lexical: PATH lookup, cwd resolution, and filesystem checks belong to
+ * the host daemon, while the control plane must reject traversal and absolute paths consistently
+ * on every platform.
+ */
+export function validateCommandExecutable(
+  value: unknown,
+  label = "argv[0]",
+): CommandExecutableValidation {
+  const safeError = safeArg(value, label);
+  if (safeError) return { ok: false, error: safeError };
+  const executable = value as string;
+  if (/^[\\/]/.test(executable) || /^[A-Za-z]:/.test(executable)) {
+    return { ok: false, error: `${label} must not be an absolute or drive-qualified path` };
+  }
+  if (/(^|[\\/])\.\.(?:[\\/]|$)/.test(executable)) {
+    return { ok: false, error: `${label} must not contain '..' path segments` };
+  }
+  return { ok: true, kind: /[\\/]/.test(executable) ? "relative" : "bare" };
+}
+
 export function isValidCliResumeRef(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -50,6 +77,8 @@ export function validateCommandArgv(
     const error = safeArg(arg, "argv");
     if (error) return { ok: false, error };
   }
+  const executable = validateCommandExecutable(argv[0], "argv[0]");
+  if (!executable.ok) return executable;
   return { ok: true, value: [...(argv as string[])] };
 }
 
@@ -86,6 +115,18 @@ export function validateCommandResumeSpec(input: {
         return { ok: false, error: "resumeArgvTemplate contains malformed placeholders" };
       }
     }
+    const first = input.resumeArgvTemplate[0] as string;
+    PLACEHOLDER.lastIndex = 0;
+    const firstHasPlaceholder = PLACEHOLDER.test(first);
+    PLACEHOLDER.lastIndex = 0;
+    if (firstHasPlaceholder) {
+      return {
+        ok: false,
+        error: "resumeArgvTemplate[0] must be a fixed executable without placeholders",
+      };
+    }
+    const executable = validateCommandExecutable(first, "resumeArgvTemplate[0]");
+    if (!executable.ok) return executable;
     resumeArgvTemplate = [...(input.resumeArgvTemplate as string[])];
     const cliResumeRefCount = resumeArgvTemplate.reduce(
       (count, arg) => count + (arg.match(/\{cliResumeRef\}/g)?.length ?? 0),
