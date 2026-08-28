@@ -546,12 +546,16 @@ spawning, searching only the process's own `env.PATH` — never the untrusted se
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349)
 for the git call site, and
 [jonathanong/auto-harness#365](https://github.com/jonathanong/auto-harness/issues/365)
-for the assigned CLI process. The daemon no longer detects repository manifests or lockfiles and
-does not invoke a package manager, so the pnpm-specific resolution and confinement findings from
-#349 no longer have a daemon-owned call site. An operator's trusted setup script may still choose to
-run a package manager against the untrusted checkout; the
-[setup-script guide](setup-scripts.md#package-manager-boundary) documents that explicit policy
-boundary and its filesystem and process risks.
+for the assigned CLI process. The daemon no longer detects repository manifests or lockfiles or
+automatically invokes a package manager, so the pnpm-specific findings from #349 no longer have an
+inferred dependency-install call site. An operator may still deliberately run a package manager
+against the untrusted checkout through an assigned Command or a trusted setup script. Both are
+privileged arbitrary-execution policy: Command argv requires
+[`catalog:write`](roles.md#capabilities), while setup configuration requires `fleet:exec-config`.
+`PtyProcessRunner` resolves an assigned package manager through the same trusted absolute-path
+boundary described above; the
+[setup-script guide](setup-scripts.md#package-manager-boundary) documents the package manager's
+separate filesystem, tool-selection, and descendant-process risks.
 
 When the assigned CLI resolves to a Windows batch shim, the PTY runner also
 resolves `cmd.exe` through that trusted `PATH`; it never falls back to a bare
