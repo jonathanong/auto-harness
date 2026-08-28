@@ -18,7 +18,7 @@ const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_COLUMNS = 120;
 const DEFAULT_ROWS = 40;
 
-export type PtySpawn = (file: string, args: string[], options: IPtyForkOptions) => IPty;
+export type PtySpawn = (file: string, args: string[] | string, options: IPtyForkOptions) => IPty;
 
 export type PtyProcessRunnerDependencies = {
   kill?: typeof process.kill;
@@ -38,6 +38,69 @@ function emitPtyChunk(options: RunProcessOptions, value: string): void {
   if (Buffer.byteLength(value, "utf8") > MAX_OUTPUT_CHUNK_BYTES) {
     options.onChunk({ stream: "stdout", data: "\n[output chunk truncated]\n" });
   }
+}
+
+function escapeWindowsBatchArgument(value: string): string {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(
+      "Cannot launch Windows batch command: CR/LF characters are not supported in arguments",
+    );
+  }
+  if (value.length === 0) return '""';
+
+  // Adapted from @npmcli/promise-spawn's ISC-licensed escape.cmd helper.
+  // First apply the Win32 argv quote/backslash convention, then caret-escape
+  // CMD metacharacters twice because a .cmd/.bat shim adds a second CMD parse.
+  let escaped = value;
+  if (/[ \t\n\v"]/.test(value)) {
+    escaped = '"';
+    for (let index = 0; index <= value.length; index += 1) {
+      let slashCount = 0;
+      while (value[index] === "\\") {
+        index += 1;
+        slashCount += 1;
+      }
+      if (index === value.length) {
+        escaped += "\\".repeat(slashCount * 2);
+        break;
+      }
+      if (value[index] === '"') {
+        escaped += "\\".repeat(slashCount * 2 + 1);
+      } else {
+        escaped += "\\".repeat(slashCount);
+      }
+      escaped += value[index];
+    }
+    escaped += '"';
+  }
+
+  escaped = escaped.replace(/[ !%^&()<>|"]/g, "^$&");
+  return escaped.replace(/[ !%^&()<>|"]/g, "^$&");
+}
+
+function escapeWindowsBatchCommand(value: string): string {
+  // Unlike forwarded arguments, the batch path is consumed only by the
+  // outer cmd.exe parse. Keep its escaping single-layered and let the
+  // surrounding /s /c quotes delimit the complete command line. This
+  // metacharacter set matches cross-spawn's MIT-licensed escapeCommand.
+  return value.replace(/[()\][%!^"`<>&|;, *?]/g, "^$&");
+}
+
+function ptyInvocation(
+  resolvedCommand: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): [file: string, args: string[] | string] {
+  if (platform !== "win32" || !/\.(?:cmd|bat)$/i.test(resolvedCommand)) {
+    return [resolvedCommand, args];
+  }
+  const commandLine = [
+    escapeWindowsBatchCommand(resolvedCommand),
+    ...args.map(escapeWindowsBatchArgument),
+  ].join(" ");
+  const commandInterpreter = resolveTrustedExecutable("cmd.exe", env, platform);
+  return [commandInterpreter, `/d /s /c "${commandLine}"`];
 }
 
 /**
@@ -71,10 +134,11 @@ export class PtyProcessRunner implements ProcessRunner {
     // search_path()) checks cwd before PATH for a bare command name.
     const env = options.env ?? createChildEnv();
     const resolvedCommand = resolveTrustedExecutable(command, env, this.platform);
+    const [spawnCommand, spawnArgs] = ptyInvocation(resolvedCommand, args, env, this.platform);
 
     let terminal: IPty;
     try {
-      terminal = this.spawn(resolvedCommand, args, {
+      terminal = this.spawn(spawnCommand, spawnArgs, {
         cols: DEFAULT_COLUMNS,
         cwd: options.cwd,
         encoding: "utf8",

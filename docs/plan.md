@@ -342,7 +342,11 @@ migration marker. **No product-repo automation workflow may cut over before the 
     rejects unknown profiles (D4).
   - Process executor — assigned AI CLIs use `node-pty` at 120x40; git, setup scripts, and
     terminal hooks use `child_process.spawn` with separate stdout/stderr pipes. Both paths use
-    argv arrays with **no `shell: true`**; prompt is passed as argv/stdin only (Invariant 8).
+    fixed argv with **no `shell: true`**; prompt is passed as argv/stdin only (Invariant 8).
+    The Windows PTY path has one constrained compatibility adapter: a trusted resolved
+    `.cmd`/`.bat` target is invoked through a trusted resolved `cmd.exe` with every argv value
+    encoded independently, and CR/LF arguments are rejected rather than accepted as ambiguous
+    CMD command text.
   - Session runner — claim worktree → run setup script (ref-aware) → resolve command profile →
     spawn → collect output → release.
   - Session timeout — kill after `timeout` seconds, report `timed_out`.
