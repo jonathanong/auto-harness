@@ -118,7 +118,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     );
 
     const cmd = await invoke("POST", "/api/v1/commands", {
-      name: "echo hi",
+      name: "echo-hi",
       argv: ["echo", "hi"],
       providerId: null,
       resumeArgvTemplate: ["echo", "resume", "{cliResumeRef}", "{prompt}"],
@@ -126,7 +126,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     });
     expect(cmd.status).toBe(201);
     expect(cmd.json).toMatchObject({
-      name: "echo hi",
+      name: "echo-hi",
       appendPrompt: true,
       providerId: null,
       resumeArgvTemplate: ["echo", "resume", "{cliResumeRef}", "{prompt}"],
@@ -135,7 +135,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     expect((await invoke("POST", "/api/v1/commands", { name: "x", argv: [] })).status).toBe(400);
     expect((await invoke("POST", "/api/v1/commands", {})).status).toBe(400); // name/argv absent
     expect((await invoke("GET", "/api/v1/commands")).json).toMatchObject({
-      items: expect.arrayContaining([expect.objectContaining({ name: "echo hi" })]),
+      items: expect.arrayContaining([expect.objectContaining({ name: "echo-hi" })]),
     });
     const cmdId = (cmd.json as { id: string }).id;
     expect((await invoke("GET", `/api/v1/commands/${cmdId}`)).status).toBe(200);

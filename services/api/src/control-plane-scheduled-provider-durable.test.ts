@@ -31,7 +31,7 @@ async function plane(
   });
   created.plane.createCommand({
     id: `${hostId}-command`,
-    name: "scheduled command",
+    name: "scheduled-command",
     argv: ["echo"],
     appendPrompt: true,
     providerId: null,
@@ -141,7 +141,7 @@ describe("durable scheduled terminal and provider fallback", () => {
     if (!accountB.ok) throw new Error(accountB.error);
     const command = await run.plane.createCommandDurable({
       id: "provider-command",
-      name: "provider command",
+      name: "provider-command",
       argv: ["provider"],
       appendPrompt: true,
       providerId: "provider",

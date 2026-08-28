@@ -58,7 +58,7 @@ describe("catalog mutation deletion fences", () => {
     state.commands.set(command.id, command);
     const writes: unknown[] = [];
     state.storage = {
-      getCommand: async () => command,
+      listCommands: async () => [command],
       putCommand: async (_command: unknown, markers: unknown) => void writes.push(markers),
     } as never;
     await expect(

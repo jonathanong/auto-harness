@@ -511,7 +511,11 @@ components:
       required: [id, name, argv, appendPrompt, providerId, createdAt, updatedAt]
       properties:
         id: { type: string }
-        name: { type: string, description: 'e.g. "claude-print", "echo hello world"' }
+        name:
+          {
+            type: string,
+            description: 'New and renamed commands use a slug unique within the Command catalog, e.g. "claude-print" or "echo-hello-world"',
+          }
         argv:
           type: array
           items: { type: string }

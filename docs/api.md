@@ -1134,9 +1134,13 @@ or was immediately claimed by another Session.
 
 #### `POST /commands`
 
-**Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
+**Request:** `{ "name": "claude-print", "argv": ["claude", "-p", "--output-format", "json"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone). `name` must be a slug unique within the Command catalog: lowercase letters and numbers joined by single dashes.
 
 **Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+
+Creating or renaming a Command with an invalid or already-used name returns `400 VALIDATION_ERROR`.
+Existing catalog rows are not rewritten; name validation applies when a Command is created or its
+name is updated.
 
 For compatibility with provider commands stored before structured usage reporting,
 dispatch upgrades only recognized native forms that have no explicit output setting:
@@ -1175,7 +1179,7 @@ Unified picker source for session/schedule creation: all Providers and Commands,
       "id": "prov-1",
       "label": "claude"
     },
-    { "kind": "command", "id": "cmd-1", "label": "echo hello world", "providerId": null }
+    { "kind": "command", "id": "cmd-1", "label": "echo-hello-world", "providerId": null }
   ]
 }
 ```

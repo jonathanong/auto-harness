@@ -7,7 +7,7 @@ export type ProviderRef =
   | { providerId: string; providerName?: never; commandId?: never; commandName?: never }
   | { providerName: string; providerId?: never; commandId?: never; commandName?: never };
 
-/** A command target, by id or by `name` — command names are not required to be unique. */
+/** A command target, by id or by `name` — checked defensively for legacy/racy duplicates. */
 export type CommandRef =
   | { commandId: string; commandName?: never; providerId?: never; providerName?: never }
   | { commandName: string; commandId?: never; providerId?: never; providerName?: never };
@@ -163,10 +163,10 @@ export type ResumeRefCapture = {
   linePrefix: string;
 };
 
-/** Global catalog entry: a named command invocation. `name` is not required to be unique. */
+/** Global catalog entry: a named command invocation. New and renamed names are catalog-unique slugs. */
 export type Command = {
   id: string;
-  /** e.g. "claude-print", "echo hello world" */
+  /** e.g. "claude-print", "echo-hello-world" */
   name: string;
   argv: string[];
   appendPrompt: boolean;

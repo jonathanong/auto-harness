@@ -75,7 +75,10 @@ export function CommandCreateForm({
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="name" tip="Display name for this command">
+        <Label
+          htmlFor="name"
+          tip="Lowercase letters, numbers, and dashes only; unique across the Command catalog"
+        >
           Name
         </Label>
         <Input

@@ -38,7 +38,7 @@ export type ProviderAccount = {
 
 export type Command = {
   id: string;
-  /** e.g. "claude-print", "echo hello world" */
+  /** Command-catalog-unique slug for new and renamed Commands, e.g. "claude-print". */
   name: string;
   /** Fixed argv prefix; never a shell string (D4). */
   argv: string[];

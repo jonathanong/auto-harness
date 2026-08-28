@@ -11,23 +11,31 @@ describe("ControlPlane command CRUD", () => {
     });
 
     expect(plane.createCommand({ name: "", argv: ["echo"] }).ok).toBe(false);
-    expect(plane.createCommand({ name: "echo hello world", argv: [] }).ok).toBe(false);
-    expect(plane.createCommand({ name: "echo hello world", argv: [""] }).ok).toBe(false);
+    expect(plane.createCommand({ name: "Echo Hello", argv: ["echo"] })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("name must be"),
+    });
+    expect(plane.createCommand({ name: "echo-hello-world", argv: [] }).ok).toBe(false);
+    expect(plane.createCommand({ name: "echo-hello-world", argv: [""] }).ok).toBe(false);
 
-    const standalone = plane.createCommand({ name: "echo hello world", argv: ["echo", "hello"] });
+    const standalone = plane.createCommand({ name: "echo-hello-world", argv: ["echo", "hello"] });
     expect(standalone.ok).toBe(true);
     if (!standalone.ok) {
       throw new Error("unreachable");
     }
     expect(standalone.command).toMatchObject({
       id: "cmd-1",
-      name: "echo hello world",
+      name: "echo-hello-world",
       argv: ["echo", "hello"],
       appendPrompt: true,
       appendPromptSeparator: false,
       providerId: null,
     });
 
+    expect(plane.createCommand({ name: "echo-hello-world", argv: ["x"] })).toEqual({
+      ok: false,
+      error: "command name already in use: echo-hello-world",
+    });
     expect(plane.createCommand({ id: "cmd-1", name: "dup", argv: ["x"] }).ok).toBe(false);
 
     plane.createProvider({ id: "prov-1", name: "claude" });
@@ -45,11 +53,20 @@ describe("ControlPlane command CRUD", () => {
       });
     }
 
-    expect(plane.getCommand("cmd-1")?.name).toBe("echo hello world");
+    expect(plane.getCommand("cmd-1")?.name).toBe("echo-hello-world");
     expect(plane.getCommand("missing")).toBeNull();
-    expect(plane.listCommands().map((c) => c.name)).toEqual(["claude-print", "echo hello world"]);
+    expect(plane.listCommands().map((c) => c.name)).toEqual(["claude-print", "echo-hello-world"]);
 
     expect(plane.updateCommand("missing", { name: "x" }).ok).toBe(false);
+    expect(plane.updateCommand("cmd-1", { name: "Bad Name" })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("name must be"),
+    });
+    expect(plane.updateCommand("cmd-1", { name: "claude-print" })).toEqual({
+      ok: false,
+      error: "command name already in use: claude-print",
+    });
+    expect(plane.updateCommand("cmd-1", { name: "echo-hello-world" }).ok).toBe(true);
     expect(plane.updateCommand("cmd-1", { argv: [] }).ok).toBe(false);
     const updated = plane.updateCommand("cmd-1", {
       argv: ["echo", "hi"],

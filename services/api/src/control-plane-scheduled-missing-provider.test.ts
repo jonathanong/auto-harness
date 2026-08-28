@@ -39,7 +39,7 @@ describe("scheduled provider deletion", () => {
     });
     await created.plane.createCommandDurable({
       id: "missing-provider-command",
-      name: "provider command",
+      name: "provider-command",
       argv: ["provider"],
       appendPrompt: true,
       providerId: "missing-provider",

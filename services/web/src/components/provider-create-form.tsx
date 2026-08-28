@@ -132,7 +132,7 @@ export function ProviderCreateForm() {
       <div className="space-y-1">
         <Label
           htmlFor="commandName"
-          tip="Catalog label for this command — not the binary on disk (the first argv token is the executable)"
+          tip="Unique lowercase slug for this command — not the binary on disk (the first argv token is the executable)"
         >
           Default Command Name
         </Label>
@@ -146,8 +146,8 @@ export function ProviderCreateForm() {
           onChange={(event) => setCommandName(event.currentTarget.value)}
         />
         <p className="text-xs text-muted-foreground">
-          Catalog label for this command — not the binary on disk (the first argv token is the
-          executable).
+          Unique lowercase slug for this command — not the binary on disk (the first argv token is
+          the executable).
         </p>
       </div>
       <div className="space-y-1">

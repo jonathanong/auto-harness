@@ -31,11 +31,11 @@ function providerPlane(): ControlPlane {
   });
   plane.createCommand({
     id: "provider-command",
-    name: "provider command",
+    name: "provider-command",
     argv: ["provider"],
     providerId: "provider",
   });
-  plane.createCommand({ id: "cli-fallback", name: "CLI fallback", argv: ["cli"] });
+  plane.createCommand({ id: "cli-fallback", name: "cli-fallback", argv: ["cli"] });
   plane.registerHost({
     hostId: "host",
     worktrees: [
@@ -138,7 +138,7 @@ describe("routing edge coverage", () => {
   it("expires a queued session before any capacity becomes available", () => {
     let now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ now: () => now, shardCount: 1 });
-    plane.createCommand({ id: "cli", name: "CLI", argv: ["cli"] });
+    plane.createCommand({ id: "cli", name: "cli", argv: ["cli"] });
     const created = plane.createSession({
       repositoryId: "repo",
       prompt: "p",
