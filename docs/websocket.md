@@ -54,7 +54,7 @@ Scheduled main-checkout assignments use `sessionType: "scheduled"` and
   "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",
-  "setupScript": "git fetch && git reset --hard origin/main && pnpm install",
+  "setupScript": "/opt/auto-harness/setup/repo-abc",
   "providerAccountId": "acct-claude-work",
   "commandId": "cmd-claude-print",
   "targetIndex": 0

@@ -588,7 +588,7 @@ stateDiagram-v2
   "resolvedArgv": ["codex", "exec", "Fix the failing test"],
   "timeout": 1800,
   "worktreeId": "wt-1",
-  "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
+  "setupScript": "/opt/auto-harness/setup/repo-abc"
 }
 ```
 

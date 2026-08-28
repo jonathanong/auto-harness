@@ -5,21 +5,27 @@ Auto Harness does not inspect repository manifests or lockfiles, choose a packag
 dependencies on its own. If no setup script is configured, the daemon checks out the assigned ref
 and launches the assigned command without an additional preparation step.
 
-Setup configuration is privileged: changing it requires `fleet:exec-config`. The configured script
-text is trusted operator policy, but the session checkout is not. A script that invokes a file from
-the checkout, such as `./ci/session-setup`, deliberately lets the checked-out ref control that part
-of execution.
+Setup configuration is privileged. Catalog repository setup is changed through the repository API
+with `catalog:write`; host-, repository-attachment-, and worktree-scoped setup is changed through
+host exec-config with `fleet:exec-config`. Both capabilities are admin-only arbitrary-execution
+boundaries. The configured script text is trusted operator policy, but the session checkout is not.
+A script that invokes a file from the checkout, such as `./ci/session-setup`, deliberately lets the
+checked-out ref control that part of execution.
 
 ## Execution contract
 
-| Behavior          | Contract                                                                                                                                             |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                                         |
-| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.                  |
-| Working directory | The claimed session worktree, or the locked main checkout for a scheduled session.                                                                   |
-| Shell             | An available absolute POSIX-compatible `$SHELL` (`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.                                        |
-| Environment       | Successful exports flow to the next setup script and assigned command, except reserved `HARNESS_*` values. The assigned command can read all others. |
-| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting.                  |
+| Behavior          | Contract                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                           |
+| Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.    |
+| Working directory | The claimed session worktree, or the locked main checkout for a scheduled session.                                                     |
+| Shell             | An available absolute POSIX-compatible `$SHELL` (`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.                          |
+| Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values. |
+| Failure           | A non-zero exit, timeout, cancellation, or invalid environment capture fails setup and prevents the assigned command from starting.    |
+
+For a session using a Provider Account, its execution profile is applied after setup: the profile
+replaces `HOME`/`USERPROFILE` and overlays any colliding profile environment keys. The assigned
+command can read the resulting final values, not necessarily every value setup originally exported.
 
 Setup shares the session deadline and has a ten-minute cap. It may run again for another fresh
 assignment, so it must tolerate repetition and partially prepared state.
@@ -36,7 +42,7 @@ assignment, so it must tolerate repetition and partially prepared state.
 - Treat every file read from the checkout as untrusted input, including manifests, lockfiles,
   package-manager configuration, environment files, executable scripts, and symlinks.
 - Export only values the assigned CLI actually needs. Assume every non-`HARNESS_*` export becomes
-  readable by repository work.
+  readable by repository work, unless a selected Provider Account execution profile replaces it.
 - Put repository- and ecosystem-specific policy in the operator-owned script. Test it on every host
   operating system on which it will run.
 

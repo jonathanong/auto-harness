@@ -31,9 +31,11 @@ At startup the daemon runs `git --version` before advertising capacity. A host w
 diagnosis but is not schedulable; upgrade or repair Git rather than weakening checkout recovery.
 
 The service does not implicitly start a login shell or source `.zshrc`/`.bashrc`. If a host needs
-shell-managed PATH entries or exported provider prerequisites, opt in with the host inventory's
-root `setupScript` (for example `source "$HOME/.zshrc"`); a host/repository attachment may add its
-own setup. See [host-daemon.md](host-daemon.md#setup-scripts).
+additional PATH entries or exported provider prerequisites, put only those values in a reviewed,
+host-owned environment file and opt in with the host inventory's root `setupScript` (for example,
+`. /opt/auto-harness/setup/host-environment`); a host/repository attachment may add its own setup.
+See [Trusted setup scripts: do's and don'ts](setup-scripts.md) and
+[host-daemon.md](host-daemon.md#setup-scripts).
 
 ---
 
