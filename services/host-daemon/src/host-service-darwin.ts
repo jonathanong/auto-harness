@@ -108,9 +108,11 @@ function loadLaunchAgent(
   if (boot.status === 0) return 0;
   if (isLaunchctlAlreadyLoaded(boot)) {
     ctx.run("launchctl", ["bootout", service]);
+    ctx.run("/bin/sleep", [INSTALL_VERIFY_DELAY_SECONDS]);
     const retry = ctx.run("launchctl", ["bootstrap", domain, plist]);
     if (retry.status === 0) return 0;
   }
+  ctx.run("/bin/sleep", [INSTALL_VERIFY_DELAY_SECONDS]);
   const load = ctx.run("launchctl", ["load", "-w", plist]);
   if (load.status === 0 && !isLaunchctlLoadFailed(load)) return 0;
   return failedCommand(ctx.error, "launchctl bootstrap/load", load);

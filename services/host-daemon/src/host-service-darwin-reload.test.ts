@@ -9,9 +9,10 @@ const running = okRun("state = running\npid = 100\n");
 const replacement = okRun("state = running\npid = 101\n");
 const stopped = okRun("state = stopped\n");
 
-function install(run: HostServiceRun): { calls: string[]; code: number; errors: string[] } {
+function install(run: HostServiceRun) {
   const calls: string[] = [];
   const errors: string[] = [];
+  const sleepArgs: string[][] = [];
   const code = installHostService(
     baseOpts({
       platform: "darwin",
@@ -19,11 +20,12 @@ function install(run: HostServiceRun): { calls: string[]; code: number; errors: 
       error: (msg) => errors.push(msg),
       run: (command, args, opts) => {
         calls.push(command === "launchctl" ? (args[0] ?? command) : command);
+        if (command === "/bin/sleep") sleepArgs.push(args);
         return run(command, args, opts);
       },
     }),
   );
-  return { calls, code, errors };
+  return { calls, code, errors, sleepArgs };
 }
 
 function steps(
@@ -37,6 +39,7 @@ describe("install-service darwin reload", () => {
     const result = steps({ print: [missing, running] });
     expect(result.code).toBe(0);
     expect(result.calls).toEqual(["print", "bootout", "bootstrap", "print"]);
+    expect(result.sleepArgs).toEqual([]);
   });
 
   it("fails safely when a running pre-reload process has no pid", () => {
@@ -60,9 +63,11 @@ describe("install-service darwin reload", () => {
         "bootout",
         "bootstrap",
         "bootout",
+        "/bin/sleep",
         "bootstrap",
         "print",
       ]);
+      expect(result.sleepArgs).toEqual([["1"]]);
     }
   });
 
@@ -77,10 +82,13 @@ describe("install-service darwin reload", () => {
       "bootout",
       "bootstrap",
       "bootout",
+      "/bin/sleep",
       "bootstrap",
+      "/bin/sleep",
       "load",
       "print",
     ]);
+    expect(result.sleepArgs).toEqual([["1"], ["1"]]);
   });
 
   it("does not trust launchctl load -w's exit code when it reports a load failure", () => {
@@ -89,7 +97,17 @@ describe("install-service darwin reload", () => {
       load: { status: 0, stdout: "", stderr: "Load failed: 5: Input/output error" },
     });
     expect(result.code).toBe(1);
-    expect(result.calls).toEqual(["print", "bootout", "bootstrap", "bootout", "bootstrap", "load"]);
+    expect(result.calls).toEqual([
+      "print",
+      "bootout",
+      "bootstrap",
+      "bootout",
+      "/bin/sleep",
+      "bootstrap",
+      "/bin/sleep",
+      "load",
+    ]);
+    expect(result.sleepArgs).toEqual([["1"], ["1"]]);
     expect(result.errors.join("\n")).toMatch(
       /bootstrap\/load failed: Load failed: 5: Input\/output error/,
     );
