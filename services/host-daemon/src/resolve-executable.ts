@@ -46,7 +46,7 @@ function isExecutablePosix(path: string): boolean {
 }
 
 /**
- * Resolve a trusted command name (e.g. "git", "pnpm", "cmd.exe") to an
+ * Resolve a trusted command name (e.g. "git", "claude", "cmd.exe") to an
  * absolute path by searching only `env.PATH`, never the caller's working
  * directory.
  *
@@ -54,15 +54,14 @@ function isExecutablePosix(path: string): boolean {
  * `src/win/process.c`, used by `child_process.spawn` even with
  * `shell: false`) checks the spawned process's `cwd` *before* `PATH` for a
  * bare command name. When `cwd` is an untrusted checkout, a same-named
- * `git.exe`/`pnpm.cmd` planted there would be resolved and executed instead
- * of the real trusted binary. Resolving to an absolute path here removes
- * `cwd` from the search entirely: an already-qualified path is executed
- * directly, with no search at all.
+ * `git.exe` or assigned-command shim planted there would be resolved and
+ * executed instead of the real trusted binary. Resolving to an absolute path
+ * here removes `cwd` from the search entirely: an already-qualified path is
+ * executed directly, with no search at all.
  *
- * `env` should be the actual environment the caller is about to spawn with
- * (not necessarily `process.env`): a trusted admin-configured setup script
- * can legitimately customize `PATH` before dependency installation runs, and
- * resolution must honor that, not a fixed system PATH.
+ * `env` should be the actual environment the caller is about to spawn with,
+ * not necessarily `process.env`. Callers may pass a derived child environment
+ * with a different trusted absolute `PATH`, and resolution must honor it.
  */
 export function resolveTrustedExecutable(
   command: string,
