@@ -518,11 +518,13 @@ components:
           }
         argv:
           type: array
+          description: First element is a bare executable name resolved from trusted PATH or a checkout-relative path; absolute/drive-qualified paths and complete `..` segments are rejected.
           items: { type: string }
         appendPrompt: { type: boolean }
         appendPromptSeparator: { type: boolean }
         resumeArgvTemplate:
           type: array
+          description: Native-resume argv template; element zero follows the Command executable rule and cannot contain placeholders.
           items: { type: string }
         resumeRefCapture:
           type: object

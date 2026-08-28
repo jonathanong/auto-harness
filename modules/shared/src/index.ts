@@ -244,8 +244,11 @@ export {
   MAX_RESUME_REF_CAPTURE_LENGTH,
   materializeResumeArgv,
   validateCommandArgv,
+  validateCommandExecutable,
   validateCommandResumeSpec,
   type CommandResumeSpec,
+  type CommandExecutableKind,
+  type CommandExecutableValidation,
 } from "./command-resume.ts";
 
 export {

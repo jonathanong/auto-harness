@@ -4,6 +4,7 @@ import {
   isValidCliResumeRef,
   materializeResumeArgv,
   validateCommandArgv,
+  validateCommandExecutable,
   validateCommandResumeSpec,
 } from "./command-resume.ts";
 
@@ -69,6 +70,48 @@ describe("command native resume schema", () => {
         resumeRefCapture: { stream: "stdout", linePrefix: "x".repeat(129) },
       }).ok,
     ).toBe(false);
+  });
+
+  it("classifies bare and relative executables while rejecting unsafe paths", () => {
+    expect(validateCommandExecutable("codex")).toEqual({ ok: true, kind: "bare" });
+    expect(validateCommandExecutable("./bin/codex")).toEqual({ ok: true, kind: "relative" });
+    expect(validateCommandExecutable("bin\\codex")).toEqual({ ok: true, kind: "relative" });
+    for (const executable of [
+      "/bin/codex",
+      "\\bin\\codex",
+      "C:codex",
+      "C:/codex",
+      "..",
+      "bin/../codex",
+      "bin\\..\\codex",
+    ]) {
+      expect(validateCommandExecutable(executable)).toMatchObject({ ok: false });
+    }
+    expect(validateCommandExecutable("bin/.../codex")).toEqual({ ok: true, kind: "relative" });
+  });
+
+  it("applies executable validation to argv and keeps resume argv0 fixed", () => {
+    expect(validateCommandArgv(["/bin/codex"])).toMatchObject({ ok: false });
+    expect(validateCommandArgv(["bin/../codex"])).toMatchObject({ ok: false });
+    expect(validateCommandArgv(["./bin/codex"])).toEqual({
+      ok: true,
+      value: ["./bin/codex"],
+    });
+    expect(validateCommandResumeSpec({ resumeArgvTemplate: ["{cliResumeRef}", "resume"] })).toEqual(
+      {
+        ok: false,
+        error: "resumeArgvTemplate[0] must be a fixed executable without placeholders",
+      },
+    );
+    expect(
+      validateCommandResumeSpec({ resumeArgvTemplate: ["./bin/codex", "{cliResumeRef}"] }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateCommandResumeSpec({ resumeArgvTemplate: ["C:codex", "{cliResumeRef}"] }),
+    ).toEqual({
+      ok: false,
+      error: "resumeArgvTemplate[0] must not be an absolute or drive-qualified path",
+    });
   });
 
   it("rejects malformed and oversized argv inputs", () => {

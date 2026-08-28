@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -113,7 +113,7 @@ describe("durable full-stack orchestration", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "durable-integration-command",
-        argv: [process.execPath, "-e", "console.log('durable-full-stack-output')"],
+        argv: [basename(process.execPath), "-e", "console.log('durable-full-stack-output')"],
         appendPrompt: false,
         providerId: null,
       }),
@@ -151,6 +151,10 @@ describe("durable full-stack orchestration", () => {
     });
     const daemon = await startDaemon({
       config,
+      childEnvSource: {
+        ...process.env,
+        PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
+      },
       inventoryPollMs: 0,
       log: () => undefined,
       error: () => undefined,

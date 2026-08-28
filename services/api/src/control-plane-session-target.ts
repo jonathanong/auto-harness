@@ -3,6 +3,7 @@ import {
   materializeResumeArgv,
   resolveProviderAccountCommandId,
   resolveProviderAccountEnabled,
+  validateCommandResumeSpec,
   type ProviderCatalog,
   type SessionResumeSpec,
   type TargetRef,
@@ -125,14 +126,20 @@ function resolveNativeResumeRoute(
       : providerId
         ? migrateLegacyProviderArgv(spec.resumeArgvTemplate)
         : [...spec.resumeArgvTemplate];
+  let validatedResumeArgvTemplate = resumeArgvTemplate;
+  if (resumeArgvTemplate !== undefined) {
+    const validation = validateCommandResumeSpec({ resumeArgvTemplate });
+    if (!validation.ok) return null;
+    validatedResumeArgvTemplate = validation.value.resumeArgvTemplate;
+  }
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
     ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
-    resolvedArgv: resumeArgvTemplate
+    resolvedArgv: validatedResumeArgvTemplate
       ? materializeResumeArgv(
-          resumeArgvTemplate,
+          validatedResumeArgvTemplate,
           session.cliResumeRef!,
           session.prompt,
           spec.appendPromptSeparator,
@@ -143,7 +150,7 @@ function resolveNativeResumeRoute(
         : spec.appendPromptSeparator
           ? [...argv, "--", session.prompt]
           : [...argv, session.prompt],
-    resumeSpec: copyResumeSpec(spec, argv, resumeArgvTemplate),
+    resumeSpec: copyResumeSpec(spec, argv, validatedResumeArgvTemplate),
   };
 }
 

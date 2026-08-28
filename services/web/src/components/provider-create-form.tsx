@@ -152,7 +152,10 @@ export function ProviderCreateForm() {
         </p>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="argv" tip="One argv element per line — never a shell string">
+        <Label
+          htmlFor="argv"
+          tip="One argv element per line. The first must be a PATH executable name or a worktree-relative path; absolute paths and .. segments are not allowed."
+        >
           Default Command Argv (One Per Line)
         </Label>
         <Textarea
