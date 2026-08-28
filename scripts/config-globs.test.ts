@@ -7,6 +7,10 @@ const THRESHOLD_PATH_EXCEPTIONS = new Set([
   "services/host-pane/src/lib/api.ts",
 ]);
 
+const rootPackage = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { scripts: Record<string, string> };
+
 function parseJsonc(text: string): unknown {
   return JSON.parse(text.replace(/,(\s*[}\]])/g, "$1"));
 }
@@ -54,5 +58,26 @@ describe("config file globs", () => {
     const entry = knip.workspaces?.["."]?.entry ?? [];
     expect(entry).toContain("scripts/*.mts");
     expect(entry.some((pattern) => /^scripts\/[^*/]+\.mts$/.test(pattern))).toBe(false);
+  });
+
+  it("routes the dispatch Action through workspace static analysis and bundle checks", () => {
+    const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
+    const knip = parseJsonc(readFileSync(new URL("../knip.jsonc", import.meta.url), "utf8")) as {
+      workspaces?: Record<string, { entry?: string[]; project?: string[] }>;
+    };
+    const dependencyCruiser = readFileSync(
+      new URL("../.dependency-cruiser.cjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(workspace).toContain("- actions/*");
+    expect(knip.workspaces?.["actions/dispatch"]).toEqual({
+      entry: ["src/index.ts"],
+      project: ["src/**/*.ts"],
+    });
+    expect(rootPackage.scripts.typecheck).toContain("--filter @auto-harness/dispatch-action");
+    expect(rootPackage.scripts.depcruise).toContain("actions/dispatch/src modules services");
+    expect(rootPackage.scripts.check).toContain("pnpm check:dispatch-action");
+    expect(dependencyCruiser).toContain('name: "actions-not-to-services"');
   });
 });

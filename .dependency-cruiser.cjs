@@ -21,6 +21,13 @@ module.exports = {
       to: { path: "^services/" },
     },
     {
+      name: "actions-not-to-services",
+      comment: "GitHub Actions may depend on shared modules, never deployable services.",
+      severity: "error",
+      from: { path: "^actions/" },
+      to: { path: "^services/" },
+    },
+    {
       name: "no-cross-service",
       comment: "Services must not import other services; share code via modules/.",
       severity: "error",

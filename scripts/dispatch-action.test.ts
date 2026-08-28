@@ -171,7 +171,7 @@ describe("dispatch action principal session drain operations", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(
-      `drain drain-1: ${server.origin}/api/v1/repositories/repo%2Fone/session-drains/drain-1`,
+      `drain drain-1: ${server.origin}/api/v1/repositories/repo%252Fone/session-drains/drain-1`,
     );
   });
 
