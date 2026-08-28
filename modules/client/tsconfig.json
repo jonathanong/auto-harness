@@ -5,5 +5,5 @@
     "checkJs": false,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src/index.js", "src/index.d.ts"]
+  "include": ["src/index.js", "src/index.d.ts", "src/errors.js", "src/resolve-target.js"]
 }

@@ -2,6 +2,23 @@ export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
 
+/** A provider target, by id or by `name` — normally unique, checked defensively either way. */
+export type ProviderRef =
+  | { providerId: string; providerName?: never; commandId?: never; commandName?: never }
+  | { providerName: string; providerId?: never; commandId?: never; commandName?: never };
+
+/** A command target, by id or by `name` — command names are not required to be unique. */
+export type CommandRef =
+  | { commandId: string; commandName?: never; providerId?: never; providerName?: never }
+  | { commandName: string; commandId?: never; providerId?: never; providerName?: never };
+
+/**
+ * Input-only target shape for `createSession()`: an id (as `TargetRef`) or a name.
+ * `createSession()` resolves a name to its id via `listProviders()`/`listCommands()` before
+ * sending the request; a name throws on no match or on more than one match sharing that name.
+ */
+export type TargetSpec = ProviderRef | CommandRef;
+
 /** Values accepted for a session metadata entry. */
 export type SessionMetadataValue = string | number | boolean | null;
 
@@ -17,8 +34,8 @@ export type CreatableSessionSource = "api" | "ui" | "webhook";
 export type CreateSessionInput = {
   repositoryId: string;
   prompt: string;
-  target: TargetRef;
-  fallbacks?: TargetRef[];
+  target: TargetSpec;
+  fallbacks?: TargetSpec[];
   ref?: string;
   concurrencyId?: string;
   queueTtlSeconds?: number;
@@ -120,6 +137,48 @@ export type RepositoryPage = {
   nextCursor: string | null;
 };
 
+/** Operator-supplied per-token vendor rates; Auto Harness never fetches vendor prices. */
+export type UsageRates = {
+  inputTokenMicros?: string;
+  outputTokenMicros?: string;
+  cachedInputTokenMicros?: string;
+  reasoningTokenMicros?: string;
+  currency: string;
+};
+
+/** Global catalog entry: an AI CLI vendor, keyed by a unique, server-enforced `name`. */
+export type Provider = {
+  id: string;
+  /** e.g. "claude", "codex", "grok" */
+  name: string;
+  defaultCommandId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  usageRates?: UsageRates;
+};
+
+/** Bounded literal-prefix policy used by the agent to extract a native resume reference. */
+export type ResumeRefCapture = {
+  stream: "stdout" | "stderr" | "either";
+  linePrefix: string;
+};
+
+/** Global catalog entry: a named command invocation. `name` is not required to be unique. */
+export type Command = {
+  id: string;
+  /** e.g. "claude-print", "echo hello world" */
+  name: string;
+  argv: string[];
+  appendPrompt: boolean;
+  appendPromptSeparator?: boolean;
+  resumeArgvTemplate?: string[];
+  resumeRefCapture?: ResumeRefCapture;
+  /** FK to Provider, or null for a standalone command that runs anywhere ungated. */
+  providerId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
 /** Bounded, durable progress for a principal session drain: cancels the authenticated principal's own queued/running sessions for one repository (not repository or host drain). */
@@ -140,6 +199,13 @@ export type SessionDrain = {
   failureCode?: string;
 };
 
+/**
+ * Thrown for a failed HTTP response, and also, with `status: 400`, when `createSession()`
+ * cannot resolve a `TargetSpec` name: `code === "UNKNOWN_PROVIDER_NAME"` /
+ * `"UNKNOWN_COMMAND_NAME"` for no match, `"AMBIGUOUS_PROVIDER_NAME"` /
+ * `"AMBIGUOUS_COMMAND_NAME"` for more than one match sharing a name — that message never
+ * includes the matched ids.
+ */
 export class AutoHarnessError extends Error {
   status: number;
   code: string;
@@ -192,4 +258,6 @@ export class AutoHarnessClient {
   pauseRepository(id: string): Promise<Repository>;
   drainRepository(id: string): Promise<Repository>;
   activateRepository(id: string): Promise<Repository>;
+  listProviders(): Promise<Provider[]>;
+  listCommands(): Promise<Command[]>;
 }
