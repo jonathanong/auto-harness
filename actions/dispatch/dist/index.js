@@ -310,7 +310,7 @@ function validateSession(value) {
     throw new Error("Auto Harness returned a session without a valid url");
   }
   if (typeof result.created !== "boolean") {
-    throw new Error("Auto Harness returned a session without a created result");
+    throw new TypeError("Auto Harness returned a session without a created result");
   }
   return { id: result.id, url: result.url, created: result.created };
 }
@@ -407,35 +407,35 @@ async function waitForSucceededDrain(options, repositoryId, operationId) {
   }
   return result;
 }
-async function drain(operation, options, repositoryId) {
-  const operationId = input("session-drain-id");
-  let result;
-  if (operation === "start-drain") {
-    const idempotencyKey = input("idempotency-key");
-    const response = await client(options).startSessionDrain(
-      repositoryId,
-      idempotencyKey ? { idempotencyKey } : {}
+async function startDrain(options, repositoryId) {
+  const idempotencyKey = input("idempotency-key");
+  const response = await client(options).startSessionDrain(
+    repositoryId,
+    idempotencyKey ? { idempotencyKey } : {}
+  );
+  const result = validateDrain(response, options.baseUrl, repositoryId);
+  if (result.status !== "draining" && result.status !== "succeeded") {
+    setDrainOutputs(result);
+    throw new Error(
+      `Auto Harness did not start an active principal session drain: ${result.status}`
     );
-    result = validateDrain(response, options.baseUrl, repositoryId);
-    if (result.status !== "draining" && result.status !== "succeeded") {
-      setDrainOutputs(result);
-      throw new Error(
-        `Auto Harness did not start an active principal session drain: ${result.status}`
-      );
-    }
-  } else {
-    if (!operationId) throw new Error("Input required and not supplied: session-drain-id");
-    let response;
-    if (operation === "wait-for-drain") {
-      result = await waitForSucceededDrain(options, repositoryId, operationId);
-    } else {
-      response = operation === "release-drain" ? await client(options).releaseSessionDrain(repositoryId, operationId) : await client(options).getSessionDrain(repositoryId, operationId);
-      result = validateDrain(response, options.baseUrl, repositoryId, operationId);
-      if (operation === "release-drain" && result.status !== "released") {
-        throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
-      }
-    }
   }
+  return result;
+}
+async function existingDrain(operation, options, repositoryId) {
+  const operationId = input("session-drain-id", true);
+  if (operation === "wait-for-drain") {
+    return waitForSucceededDrain(options, repositoryId, operationId);
+  }
+  const response = operation === "release-drain" ? await client(options).releaseSessionDrain(repositoryId, operationId) : await client(options).getSessionDrain(repositoryId, operationId);
+  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
+  if (operation === "release-drain" && result.status !== "released") {
+    throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
+  }
+  return result;
+}
+async function drain(operation, options, repositoryId) {
+  const result = operation === "start-drain" ? await startDrain(options, repositoryId) : await existingDrain(operation, options, repositoryId);
   setDrainOutputs(result);
   process.stdout.write(`Auto Harness session drain ${result.operationId}: ${result.status}
 `);
@@ -452,9 +452,11 @@ async function main() {
     throw new Error(actionErrorMessage(error, baseUrl, operation !== "dispatch"), { cause: error });
   }
 }
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`::error::${escapeWorkflowCommand(message)}
 `);
   process.exitCode = 1;
-});
+}

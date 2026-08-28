@@ -98,7 +98,7 @@ export function validateSession(value: unknown): ValidatedSession {
     throw new Error("Auto Harness returned a session without a valid url");
   }
   if (typeof result.created !== "boolean") {
-    throw new Error("Auto Harness returned a session without a created result");
+    throw new TypeError("Auto Harness returned a session without a created result");
   }
   return { id: result.id, url: result.url, created: result.created };
 }
