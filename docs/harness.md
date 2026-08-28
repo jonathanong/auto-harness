@@ -8,11 +8,14 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ## Packaged automation
 
-For GitHub workflows, `jonathanong/auto-harness/actions/dispatch@main` wraps the fire-and-forget
-session create call and returns `session-id`, `session-url`, and `created` outputs. It accepts the
-control-plane URL and service-account key as secrets plus repository, prompt, target JSON, and
-optional ref/concurrency/metadata inputs. Each request, including response-body consumption, has
-a configurable `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal
+For GitHub workflows,
+`jonathanong/auto-harness/actions/dispatch@4727acc51fd29e92a6a34dbcf9c05255ad9658e8`
+wraps the fire-and-forget session create call and returns `session-id`, `session-url`, and `created`
+outputs. Pin the Action to a reviewed full commit SHA and deliberately update that SHA when adopting
+a newer revision; do not use the moving `main` ref. It accepts the control-plane URL and
+service-account key as secrets plus repository, prompt, target JSON, and optional
+ref/concurrency/metadata inputs. Each request, including response-body consumption, has a
+configurable `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal
 session-drain modes start, poll, and release a durable drain for that same service account and
 repository; see
 [`actions/dispatch`](../actions/dispatch/README.md).

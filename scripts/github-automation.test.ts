@@ -17,10 +17,16 @@ const actionlintConfig = readFileSync(
   "utf8",
 );
 const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const harnessDocs = readFileSync(new URL("../docs/harness.md", import.meta.url), "utf8");
+const dispatchDocs = readFileSync(
+  new URL("../actions/dispatch/README.md", import.meta.url),
+  "utf8",
+);
 const compose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
 
 const PINNED_ACTION = /uses: ([^\s@]+)@([0-9a-f]{40}) # /g;
+const DISPATCH_ACTION = /jonathanong\/auto-harness\/actions\/dispatch@([^\s`]+)/g;
 
 function ecosystemBlock(name: string): string {
   const marker = `package-ecosystem: ${name}\n`;
@@ -133,6 +139,15 @@ describe("GitHub Actions pin and image alignment", () => {
       }
       expect([...source.matchAll(PINNED_ACTION)].length, name).toBe(uses.length);
     }
+  });
+
+  it("keeps every documented dispatch action reference on one reviewed main SHA", () => {
+    const pins = [...`${harnessDocs}\n${dispatchDocs}`.matchAll(DISPATCH_ACTION)].map(
+      (match) => match[1],
+    );
+
+    expect(pins).toHaveLength(5);
+    expect(new Set(pins)).toEqual(new Set(["4727acc51fd29e92a6a34dbcf9c05255ad9658e8"]));
   });
 
   it("keeps DynamoDB Local tags aligned between CI and Compose", () => {

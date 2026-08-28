@@ -92,6 +92,7 @@ jobs:
               *) echo "unsupported release type: $RELEASE_TYPE" >&2; exit 1 ;;
             esac
 
+            release_notes_start_tag="$(git describe --tags --match 'client-v*' --abbrev=0 HEAD 2>/dev/null || true)"
             next_version="$(node -e '
               const fs = require("node:fs");
               const [manifestPath, version, releaseType] = process.argv.slice(1);
@@ -124,47 +125,61 @@ jobs:
           }
 
           release_tag="client-v${manifest_version}"
+          if (( RUN_ATTEMPT > 1 )); then
+            run_release_tags=()
+            while IFS= read -r candidate_tag; do
+              candidate_version="${candidate_tag#client-v}"
+              candidate_subject="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${candidate_tag}")"
+              expected_candidate_subject="Release client v${candidate_version} from GitHub Actions run ${RUN_ID}"
+              if test "$candidate_subject" = "$expected_candidate_subject"; then
+                run_release_tags+=("$candidate_tag")
+              fi
+            done < <(git tag --list 'client-v*')
+            if (( ${#run_release_tags[@]} > 1 )); then
+              echo "multiple release tags belong to this workflow run" >&2
+              exit 1
+            fi
+            if (( ${#run_release_tags[@]} == 1 )); then
+              release_tag="${run_release_tags[0]}"
+              manifest_version="${release_tag#client-v}"
+              if [[ ! "$manifest_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                echo "workflow run owns an invalid release tag: ${release_tag}" >&2
+                exit 1
+              fi
+            fi
+          fi
           if git rev-parse --verify --quiet "refs/tags/${release_tag}^{commit}" >/dev/null; then
             tag_commit="$(git rev-parse "refs/tags/${release_tag}^{commit}")"
             tag_subject="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${release_tag}")"
             expected_tag_subject="Release client v${manifest_version} from GitHub Actions run ${RUN_ID}"
             head_commit="$(git rev-parse HEAD)"
-            if test "$tag_commit" = "$head_commit"; then
-              if npm_version_exists "$manifest_version"; then
-                if (( RUN_ATTEMPT > 1 )); then
+            if test "$tag_commit" != "$head_commit" && ! git merge-base --is-ancestor "$tag_commit" "$head_commit"; then
+              echo "release tag is not an ancestor of current main: ${release_tag}" >&2
+              exit 1
+            fi
+
+            if npm_version_exists "$manifest_version"; then
+              if (( RUN_ATTEMPT > 1 )); then
+                if test "$tag_subject" != "$expected_tag_subject"; then
                   echo "rerun is already published or was superseded; start a fresh workflow dispatch for another release" >&2
                   exit 1
-                else
-                  start_new_release
                 fi
+                release_mode="release-only"
               else
-                if test "$tag_subject" != "$expected_tag_subject"; then
-                  echo "unpublished release belongs to another run; this run was superseded" >&2
-                  exit 1
-                fi
-                release_mode="retry-publish"
+                start_new_release
               fi
             else
-              if ! git merge-base --is-ancestor "$tag_commit" "$head_commit"; then
-                echo "release tag is not an ancestor of current main: ${release_tag}" >&2
+              if test "$tag_subject" != "$expected_tag_subject"; then
+                echo "unpublished release belongs to another run; this run was superseded" >&2
                 exit 1
               fi
-              if npm_version_exists "$manifest_version"; then
-                if (( RUN_ATTEMPT > 1 )); then
-                  echo "rerun is already published or was superseded; start a fresh workflow dispatch for another release" >&2
-                  exit 1
-                else
-                  start_new_release
-                fi
-              else
-                if test "$tag_subject" != "$expected_tag_subject"; then
-                  echo "unpublished release belongs to another run; this run was superseded" >&2
-                  exit 1
-                fi
-                git checkout --detach "$release_tag"
-                test "$(git rev-parse HEAD)" = "$tag_commit"
-                release_mode="retry-publish"
-              fi
+              release_mode="retry-publish"
+            fi
+
+            if test "$release_mode" != "new"; then
+              git checkout --detach "$release_tag"
+              test "$(git rev-parse HEAD)" = "$tag_commit"
+              release_notes_start_tag="$(git describe --tags --match 'client-v*' --abbrev=0 "${tag_commit}^" 2>/dev/null || true)"
             fi
           else
             start_new_release
@@ -175,6 +190,7 @@ jobs:
             echo "RELEASE_VERSION=$manifest_version"
             echo "RELEASE_TAG=$release_tag"
             echo "RELEASE_RUN_ID=$RUN_ID"
+            echo "RELEASE_NOTES_START_TAG=$release_notes_start_tag"
           } >> "$GITHUB_ENV"
       - name: Install release snapshot
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -213,6 +229,7 @@ jobs:
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
             push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"
       - name: Publish with npm OIDC provenance
+        if: env.RELEASE_MODE != 'release-only'
         run: |
           set -euo pipefail
 
@@ -220,3 +237,30 @@ jobs:
           test -z "${NODE_AUTH_TOKEN:-}"
           npm publish --provenance --access public --registry=https://registry.npmjs.org
         working-directory: modules/client
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          verify_release() {
+            jq --exit-status --arg tag "$RELEASE_TAG" \
+              '.tagName == $tag and (.isDraft | not) and (.isPrerelease | not)'
+          }
+
+          if release_json="$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName 2>/dev/null)"; then
+            printf '%s\n' "$release_json" | verify_release
+            exit 0
+          fi
+
+          release_args=(
+            "$RELEASE_TAG"
+            --verify-tag
+            --title "auto-harness-client v${RELEASE_VERSION}"
+            --generate-notes
+          )
+          if test -n "$RELEASE_NOTES_START_TAG"; then
+            release_args+=(--notes-start-tag "$RELEASE_NOTES_START_TAG")
+          fi
+          gh release create "${release_args[@]}"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName | verify_release
