@@ -163,7 +163,7 @@ function prepareUpdateCommand(
   }
   const resume = validateCommandResumeSpec(patch);
   if (!resume.ok) return resume;
-  if (patch.name !== undefined) {
+  if (patch.name !== undefined && patch.name !== existing.name) {
     if (!isValidSlugName(patch.name)) {
       return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
     }

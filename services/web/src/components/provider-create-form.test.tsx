@@ -172,33 +172,42 @@ describe("ProviderCreateForm", () => {
 
   it("reports provider, command, and link failures with parsed or fallback errors", async () => {
     const cases = [
-      [json({ error: { message: "taken" } }, 409), "taken"],
-      [
-        json({ id: "p" }),
-        new Response("bad", { status: 502 }),
-        'provider "codex" created, but its default command failed: bad',
-      ],
-      [
-        json({ id: "p" }),
-        json({ id: "c" }),
-        json({}, 500),
-        'provider "codex" and command "codex-run" created, but linking the default failed: request failed (500)',
-      ],
-    ] as const;
-    for (const responses of cases) {
-      vi.stubGlobal(
-        "fetch",
-        vi
-          .fn()
-          .mockResolvedValueOnce(responses[0])
-          .mockResolvedValueOnce(responses[1])
-          .mockResolvedValueOnce(responses[2]),
-      );
+      { responses: [json({ error: { message: "taken" } }, 409)], message: "taken" },
+      {
+        responses: [
+          json({ id: "p/1" }),
+          new Response("bad", { status: 502 }),
+          new Response(null, { status: 204 }),
+        ],
+        message: 'provider "codex" was rolled back because its default command failed: bad',
+      },
+      {
+        responses: [
+          json({ id: "p/1" }),
+          new Response("bad", { status: 502 }),
+          json({ error: { message: "delete denied" } }, 500),
+        ],
+        message:
+          'provider "codex" created, but its default command failed: bad; rollback failed: delete denied',
+      },
+      {
+        responses: [json({ id: "p" }), json({ id: "c" }), json({}, 500)],
+        message:
+          'provider "codex" and command "codex-run" created, but linking the default failed: request failed (500)',
+      },
+    ];
+    for (const testCase of cases) {
+      const fetch = vi.fn();
+      for (const response of testCase.responses) fetch.mockResolvedValueOnce(response);
+      vi.stubGlobal("fetch", fetch);
       const view = mountForm(<ProviderCreateForm />);
       fill(view);
       submit(field(view.container, "form-provider-catalog"));
       await act(async () => Promise.resolve());
-      expect(field(view.container, "provider-catalog-error").textContent).toBe(responses.at(-1));
+      expect(field(view.container, "provider-catalog-error").textContent).toBe(testCase.message);
+      if (testCase.responses[1] && !testCase.responses[1].ok) {
+        expect(fetch.mock.calls[2]).toEqual(["/api/v1/providers/p%2F1", { method: "DELETE" }]);
+      }
       view.unmount();
     }
   });

@@ -40,10 +40,13 @@ describe("authoritative durable reads", () => {
     const plane = new ControlPlane(options(storage));
     await expect(plane.listCommandsDurable()).resolves.toHaveLength(3);
     await expect(
-      plane.updateCommandDurable("invalid", { appendPrompt: false }),
+      plane.updateCommandDurable("invalid", { name: "Legacy Name", appendPrompt: false }),
     ).resolves.toMatchObject({ ok: true, command: { name: "Legacy Name", appendPrompt: false } });
     await expect(
-      plane.updateCommandDurable("duplicate-b", { argv: ["echo", "updated"] }),
+      plane.updateCommandDurable("duplicate-b", {
+        name: "duplicate",
+        argv: ["echo", "updated"],
+      }),
     ).resolves.toMatchObject({
       ok: true,
       command: { name: "duplicate", argv: ["echo", "updated"] },

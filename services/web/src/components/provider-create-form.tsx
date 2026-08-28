@@ -19,6 +19,7 @@ import {
   catalogProviderKey,
   retainOrSuggestCommandName,
 } from "../lib/catalog-command-defaults.ts";
+import { rollbackProviderAfterCommandFailure } from "./provider-create-rollback.ts";
 
 /**
  * Creates a Provider and its default Command in one submit. A Provider with no default
@@ -87,10 +88,10 @@ export function ProviderCreateForm() {
             }),
           });
           if (!commandRes.ok) {
-            showToast(
-              `provider "${name}" created, but its default command failed: ${await apiErrorMessage(commandRes)}`,
-              { variant: "destructive", pw: "provider-catalog-error" },
-            );
+            showToast(await rollbackProviderAfterCommandFailure(name, provider.id, commandRes), {
+              variant: "destructive",
+              pw: "provider-catalog-error",
+            });
             return;
           }
           const command = (await commandRes.json()) as { id: string };
