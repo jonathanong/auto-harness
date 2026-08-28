@@ -1,5 +1,5 @@
 /* eslint-disable max-lines, unicorn/consistent-function-scoping -- PTY resolution cases use local scenario helpers, matching git-commands.test.ts's precedent for the sibling call site. */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IPty } from "node-pty";
@@ -277,6 +277,169 @@ describe("PtyProcessRunner executable resolution", () => {
 
     expect(spawned?.[0]).toBe(join(trustedBinDir, "claude.exe"));
     expect(spawned?.[0]).not.toBe(join(untrustedCheckout, "claude.exe"));
+  });
+
+  it("wraps a resolved Windows batch shim through a trusted cmd.exe command line", async () => {
+    const root = mkdtempSync(join(tmpdir(), "auto-harness-pty-batch-"));
+    const binDir = join(root, "trusted bin");
+    mkdirSync(binDir);
+    stubBinary(binDir, "cmd.exe");
+    stubBinary(binDir, "tool.cmd");
+    let spawned: Parameters<PtySpawn> | undefined;
+    const runner = new PtyProcessRunner({
+      platform: "win32",
+      spawn: (...spawnArgs) => {
+        spawned = spawnArgs;
+        const pty = fakePty();
+        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+        return pty.terminal;
+      },
+    });
+
+    await runner.run({
+      argv: [
+        "tool",
+        "",
+        "plain",
+        "two words",
+        'say "hi"',
+        "space slash\\",
+        'slash\\"quote',
+        "trailing\\",
+        "a&b",
+        "%PATH%",
+        "!bang!",
+        "(group)",
+        "x|y",
+        "in<out",
+        "caret^",
+      ],
+      cwd: process.cwd(),
+      env: { PATH: binDir, PATHEXT: ".CMD;.EXE" },
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+
+    const batchPath = join(binDir, "tool.cmd");
+    const escapedBatchPath = `^^^"${batchPath.replaceAll(" ", "^^^ ")}^^^"`;
+    expect(spawned?.[0]).toBe(join(binDir, "cmd.exe"));
+    expect(spawned?.[1]).toBe(
+      `/d /s /c ${escapedBatchPath} "" plain ^^^"two^^^ words^^^" ` +
+        '^^^"say^^^ \\^^^"hi\\^^^"^^^" ^^^"space^^^ slash\\\\^^^" ' +
+        '^^^"slash\\\\\\^^^"quote^^^" trailing\\ a^^^&b ^^^%PATH^^^% ' +
+        "^^^!bang^^^! ^^^(group^^^) x^^^|y in^^^<out caret^^^^",
+    );
+  });
+
+  it("detects .bat batch shims case-insensitively", async () => {
+    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-bat-"));
+    stubBinary(binDir, "cmd.exe");
+    stubBinary(binDir, "tool.BAT");
+    let spawned: Parameters<PtySpawn> | undefined;
+    const runner = new PtyProcessRunner({
+      platform: "win32",
+      spawn: (...spawnArgs) => {
+        spawned = spawnArgs;
+        const pty = fakePty();
+        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+        return pty.terminal;
+      },
+    });
+
+    await runner.run({
+      argv: [join(binDir, "tool.BAT"), "run"],
+      cwd: process.cwd(),
+      env: { PATH: binDir },
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+
+    expect(spawned?.[0]).toBe(join(binDir, "cmd.exe"));
+    expect(spawned?.[1]).toContain("/d /s /c");
+  });
+
+  it.each(["line one\nline two", "line one\rline two", "line one\r\nline two"])(
+    "rejects a Windows batch argument containing CR/LF before spawning",
+    async (argument) => {
+      const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-batch-newline-"));
+      stubBinary(binDir, "tool.cmd");
+      let spawnCalls = 0;
+      const runner = new PtyProcessRunner({
+        platform: "win32",
+        spawn: () => {
+          spawnCalls += 1;
+          return fakePty().terminal;
+        },
+      });
+
+      await expect(
+        runner.run({
+          argv: [join(binDir, "tool.cmd"), argument],
+          cwd: process.cwd(),
+          env: { PATH: binDir },
+          timeoutMs: 1_000,
+          onChunk: () => undefined,
+        }),
+      ).rejects.toThrow(
+        "Cannot launch Windows batch command: CR/LF characters are not supported in arguments",
+      );
+      expect(spawnCalls).toBe(0);
+    },
+  );
+
+  it("does not fall back to a bare cmd.exe when the trusted PATH has no interpreter", async () => {
+    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-no-cmdexe-"));
+    stubBinary(binDir, "tool.cmd");
+    let spawnCalls = 0;
+    const runner = new PtyProcessRunner({
+      platform: "win32",
+      spawn: () => {
+        spawnCalls += 1;
+        return fakePty().terminal;
+      },
+    });
+
+    await expect(
+      runner.run({
+        argv: [join(binDir, "tool.cmd")],
+        cwd: process.cwd(),
+        env: { PATH: binDir },
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).rejects.toThrow('Cannot resolve trusted executable "cmd.exe": not found on PATH');
+    expect(spawnCalls).toBe(0);
+  });
+
+  it("keeps non-batch Windows and POSIX commands on the direct argv path", async () => {
+    const scenarios: Array<{ command: string; platform: NodeJS.Platform }> = [
+      { command: "/opt/tool.exe", platform: "win32" },
+      { command: "/opt/tool.com", platform: "win32" },
+      { command: "/opt/tool.cmd", platform: "linux" },
+      { command: "/opt/tool.bat", platform: "darwin" },
+    ];
+
+    for (const scenario of scenarios) {
+      let spawned: Parameters<PtySpawn> | undefined;
+      const runner = new PtyProcessRunner({
+        platform: scenario.platform,
+        spawn: (...spawnArgs) => {
+          spawned = spawnArgs;
+          const pty = fakePty();
+          queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+          return pty.terminal;
+        },
+      });
+
+      await runner.run({
+        argv: [scenario.command, "literal&argument"],
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      });
+
+      expect(spawned?.slice(0, 2)).toEqual([scenario.command, ["literal&argument"]]);
+    }
   });
 
   it("throws before spawning when the command is not found anywhere on PATH", async () => {
