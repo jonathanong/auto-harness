@@ -321,13 +321,13 @@ describe("PtyProcessRunner executable resolution", () => {
     });
 
     const batchPath = join(binDir, "tool.cmd");
-    const escapedBatchPath = `^^^"${batchPath.replaceAll(" ", "^^^ ")}^^^"`;
+    const escapedBatchPath = batchPath.replaceAll(" ", "^ ");
     expect(spawned?.[0]).toBe(join(binDir, "cmd.exe"));
     expect(spawned?.[1]).toBe(
-      `/d /s /c ${escapedBatchPath} "" plain ^^^"two^^^ words^^^" ` +
+      `/d /s /c "${escapedBatchPath} "" plain ^^^"two^^^ words^^^" ` +
         '^^^"say^^^ \\^^^"hi\\^^^"^^^" ^^^"space^^^ slash\\\\^^^" ' +
         '^^^"slash\\\\\\^^^"quote^^^" trailing\\ a^^^&b ^^^%PATH^^^% ' +
-        "^^^!bang^^^! ^^^(group^^^) x^^^|y in^^^<out caret^^^^",
+        '^^^!bang^^^! ^^^(group^^^) x^^^|y in^^^<out caret^^^^"',
     );
   });
 

@@ -78,6 +78,14 @@ function escapeWindowsBatchArgument(value: string): string {
   return escaped.replace(/[ !%^&()<>|"]/g, "^$&");
 }
 
+function escapeWindowsBatchCommand(value: string): string {
+  // Unlike forwarded arguments, the batch path is consumed only by the
+  // outer cmd.exe parse. Keep its escaping single-layered and let the
+  // surrounding /s /c quotes delimit the complete command line. This
+  // metacharacter set matches cross-spawn's MIT-licensed escapeCommand.
+  return value.replace(/[()\][%!^"`<>&|;, *?]/g, "^$&");
+}
+
 function ptyInvocation(
   resolvedCommand: string,
   args: string[],
@@ -87,9 +95,12 @@ function ptyInvocation(
   if (platform !== "win32" || !/\.(?:cmd|bat)$/i.test(resolvedCommand)) {
     return [resolvedCommand, args];
   }
-  const commandLine = [resolvedCommand, ...args].map(escapeWindowsBatchArgument).join(" ");
+  const commandLine = [
+    escapeWindowsBatchCommand(resolvedCommand),
+    ...args.map(escapeWindowsBatchArgument),
+  ].join(" ");
   const commandInterpreter = resolveTrustedExecutable("cmd.exe", env, platform);
-  return [commandInterpreter, `/d /s /c ${commandLine}`];
+  return [commandInterpreter, `/d /s /c "${commandLine}"`];
 }
 
 /**
