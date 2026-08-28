@@ -389,11 +389,13 @@ environment file, rewrites a stable launcher under `~/Library/Application Suppor
 and reloads the LaunchAgent. The plist always starts that launcher; it selects the activated
 `current` tree when present and otherwise falls back to the installation checkout. After
 `bootout`/`bootstrap`, installation succeeds only after launchd reports a running process with a
-new PID. A stopped or transitional job is started with non-killing `launchctl kickstart -p`, then
-checked for up to five seconds; if verification still fails, the installer performs one complete
-reload retry. Exit 37 / "already in progress" is not success by itself, but the installer may
-continue when launchd subsequently exposes the new running PID. The updater's already-running
-restart path remains separate and uses `kickstart -k` with strict PID replacement verification.
+new PID. A failed registration pauses for one second before retrying `bootstrap` or falling back to
+`load -w`, giving launchd time to finish asynchronous teardown. A stopped or transitional job is
+started with non-killing `launchctl kickstart -p`, then checked for up to five seconds; if
+verification still fails, the installer performs one complete reload retry. Exit 37 / "already in
+progress" is not success by itself, but the installer may continue when launchd subsequently
+exposes the new running PID. The updater's already-running restart path remains separate and uses
+`kickstart -k` with strict PID replacement verification.
 
 When the persisted environment already exists, `pnpm deploy:host` loads it for the settings refresh
 while clearing inherited shell identity variables. This keeps the refresh bound to the installed

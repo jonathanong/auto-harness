@@ -92,15 +92,21 @@ describe("install-service darwin", () => {
     ).toBe(0);
     expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
-    expect(spawn.calls.map((call) => call.args[0])).toEqual([
+    expect(
+      spawn.calls.map((call) =>
+        call.command === "launchctl" ? (call.args[0] ?? call.command) : call.command,
+      ),
+    ).toEqual([
       "print",
       "bootout",
       "bootstrap",
+      "/bin/sleep",
       "load",
       "print",
       "kickstart",
       "print",
     ]);
+    expect(spawn.calls.find((call) => call.command === "/bin/sleep")?.args).toEqual(["1"]);
   });
 
   it("merges exported execution settings into an existing env", () => {
