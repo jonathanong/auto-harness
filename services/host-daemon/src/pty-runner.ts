@@ -128,10 +128,10 @@ export class PtyProcessRunner implements ProcessRunner {
     }
 
     // Resolved to an absolute path via resolveTrustedExecutable, searching
-    // only `env`'s PATH — never `options.cwd` — for the same reason as
-    // runGit/installWorkspaceDependencies: options.cwd is always the
-    // untrusted session worktree, and Windows' child_process.spawn (libuv
-    // search_path()) checks cwd before PATH for a bare command name.
+    // only `env`'s PATH — never `options.cwd`. Like runGit, this runner always
+    // receives the untrusted session worktree as cwd, and Windows'
+    // child_process.spawn (libuv search_path()) checks cwd before PATH for a
+    // bare command name.
     const env = options.env ?? createChildEnv();
     const resolvedCommand = resolveTrustedExecutable(command, env, this.platform);
     const [spawnCommand, spawnArgs] = ptyInvocation(resolvedCommand, args, env, this.platform);

@@ -546,9 +546,12 @@ spawning, searching only the process's own `env.PATH` — never the untrusted se
 [jonathanong/auto-harness#349](https://github.com/jonathanong/auto-harness/issues/349)
 for the git call site, and
 [jonathanong/auto-harness#365](https://github.com/jonathanong/auto-harness/issues/365)
-for the assigned CLI process. Trusted setup scripts (above) invoke a package manager only
-when the operator's configured policy says to; the daemon does not resolve or spawn a
-package manager itself.
+for the assigned CLI process. The daemon no longer detects repository manifests or lockfiles and
+does not invoke a package manager, so the pnpm-specific resolution and confinement findings from
+#349 no longer have a daemon-owned call site. An operator's trusted setup script may still choose to
+run a package manager against the untrusted checkout; the
+[setup-script guide](setup-scripts.md#package-manager-boundary) documents that explicit policy
+boundary and its filesystem and process risks.
 
 When the assigned CLI resolves to a Windows batch shim, the PTY runner also
 resolves `cmd.exe` through that trusted `PATH`; it never falls back to a bare
