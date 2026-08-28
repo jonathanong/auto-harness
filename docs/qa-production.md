@@ -604,8 +604,7 @@ chat transcript.
   completed. `POST /sessions` with `commandId: does-not-exist` returned 400. Schedule **Run now** (`POST …/schedules/:id/trigger`) created
   `sess-bf4c46c9`, `source=schedule`, prompt `scheduled:qa-hourly`,
   worktree labeled main checkout, exit 0.
-- Production (restored via `update`, `WebUrl`
-  `https://d8ib4hofj64dh.cloudfront.net`): laptop daemon registered over
+- Production (restored via `update`, `<WebUrl>`): laptop daemon registered over
   `wss://…/ws`. Operator-key `claude -p` `sess-f1ae369b` completed
   (`QA_SESSION_OK`). Operator-key `grok -p` `sess-4108eb2c` completed
   (`QA_GROK_OK`). Same `concurrencyId` re-POST returned `created:false`.
