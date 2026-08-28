@@ -7,13 +7,13 @@ import { invokeHandler } from "./local-server-test-helpers.ts";
 describe("createLocalApp session-targets", () => {
   it("GET /api/v1/session-targets lists provider accounts and standalone commands", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    plane.createCommand({ id: "cmd-1", name: "echo hello", argv: ["echo"], providerId: null });
+    plane.createCommand({ id: "cmd-1", name: "echo-hello", argv: ["echo"], providerId: null });
     const { handler } = createLocalApp({ plane });
 
     const res = await invokeHandler(handler, "GET", "/api/v1/session-targets");
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
-      items: [{ kind: "command", id: "cmd-1", label: "echo hello" }],
+      items: [{ kind: "command", id: "cmd-1", label: "echo-hello" }],
     });
   });
 

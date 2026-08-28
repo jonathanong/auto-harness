@@ -51,7 +51,8 @@ export function EditCommandForm({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            const name = String(fd.get("name") ?? "").trim();
+            const submittedName = String(fd.get("name") ?? "");
+            const name = submittedName === command.name ? command.name : submittedName.trim();
             const argv = String(fd.get("argv") ?? "")
               .split("\n")
               .map((s) => s.trim())
@@ -87,7 +88,10 @@ export function EditCommandForm({
           }}
         >
           <div className="space-y-1">
-            <Label htmlFor="name" tip="Display name for this command">
+            <Label
+              htmlFor="name"
+              tip="Lowercase letters, numbers, and dashes only; unique across the Command catalog"
+            >
               Name
             </Label>
             <Input

@@ -36,8 +36,8 @@ async function resolveRef(ref, providers, commands) {
  * `providerId`/`commandId` via `client.listProviders()`/`listCommands()`, called at most once
  * each regardless of how many refs need them. Id-shaped refs pass through untouched, so an
  * all-id call makes no extra requests. Provider and command names are both resolved defensively
- * against more than one match — provider names are server-enforced unique today, but the
- * create/update check is a read-then-write race, not an atomic constraint.
+ * against more than one match: create/update checks are read-then-write races rather than atomic
+ * constraints, and legacy catalog rows are not rewritten.
  */
 export async function resolveCreateSessionTargets(client, input) {
   let providersPromise;

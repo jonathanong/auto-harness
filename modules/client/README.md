@@ -39,10 +39,11 @@ const session = await harness.createSession({
 });
 ```
 
-Provider names are normally unique — server-enforced on create/update — but that check is a
-read-then-write race, not an atomic constraint, so `providerName` resolution still checks for
-more than one match rather than trusting uniqueness. Command names are **not** server-enforced
-unique at all. Either way, an unresolvable or ambiguous name throws `AutoHarnessError`
+Provider and Command names are server-enforced unique slugs within their respective catalogs on
+create/update, but those checks are read-then-write races rather than atomic constraints, and
+legacy catalog rows are not rewritten.
+Name resolution therefore still checks for more than one match rather than trusting uniqueness.
+Either way, an unresolvable or ambiguous name throws `AutoHarnessError`
 (`code === "UNKNOWN_PROVIDER_NAME"`, `"UNKNOWN_COMMAND_NAME"`, `"AMBIGUOUS_PROVIDER_NAME"`, or
 `"AMBIGUOUS_COMMAND_NAME"`); the ambiguous-name message never includes the matched ids.
 

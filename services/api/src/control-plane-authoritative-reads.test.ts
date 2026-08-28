@@ -21,6 +21,83 @@ function options(storage: never) {
 }
 
 describe("authoritative durable reads", () => {
+  it("keeps legacy command names readable and permits non-name updates", async () => {
+    const storage = createAuthoritativeReadStorage();
+    const legacyCommand = (id: string, name: string) => ({
+      id,
+      name,
+      argv: ["echo"],
+      appendPrompt: true,
+      appendPromptSeparator: false,
+      providerId: null,
+      createdAt: now(),
+      updatedAt: now(),
+    });
+    await storage.putCommand(legacyCommand("invalid", "Legacy Name"));
+    await storage.putCommand(legacyCommand("duplicate-a", "duplicate"));
+    await storage.putCommand(legacyCommand("duplicate-b", "duplicate"));
+
+    const plane = new ControlPlane(options(storage));
+    await expect(plane.listCommandsDurable()).resolves.toHaveLength(3);
+    await expect(
+      plane.updateCommandDurable("invalid", { name: "Legacy Name", appendPrompt: false }),
+    ).resolves.toMatchObject({ ok: true, command: { name: "Legacy Name", appendPrompt: false } });
+    await expect(
+      plane.updateCommandDurable("duplicate-b", {
+        name: "duplicate",
+        argv: ["echo", "updated"],
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: { name: "duplicate", argv: ["echo", "updated"] },
+    });
+  });
+
+  it("validates command names against the authoritative durable catalog", async () => {
+    const storage = createAuthoritativeReadStorage();
+    const writer = new ControlPlane(options(storage));
+    const reader = new ControlPlane(options(storage));
+
+    expect(
+      (
+        await writer.createCommandDurable({
+          id: "command-a",
+          name: "shared-name",
+          argv: ["echo"],
+        })
+      ).ok,
+    ).toBe(true);
+    await expect(
+      reader.createCommandDurable({
+        id: "command-b",
+        name: "shared-name",
+        argv: ["echo"],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "command name already in use: shared-name",
+    });
+
+    expect(
+      (
+        await writer.createCommandDurable({
+          id: "command-b",
+          name: "other-name",
+          argv: ["echo"],
+        })
+      ).ok,
+    ).toBe(true);
+    await expect(
+      reader.updateCommandDurable("command-b", { name: "shared-name" }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "command name already in use: shared-name",
+    });
+    await expect(
+      reader.updateCommandDurable("command-b", { name: "other-name" }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("retains activation cutoffs and consumes stale cursors in the shared storage fake", async () => {
     const storage = createAuthoritativeReadStorage() as unknown as {
       putRepository(record: Record<string, unknown>): Promise<void>;

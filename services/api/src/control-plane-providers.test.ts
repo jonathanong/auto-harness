@@ -70,7 +70,7 @@ describe("ControlPlane provider CRUD", () => {
     plane.createProvider({ id: "p2", name: "codex" });
     plane.createCommand({
       id: "c1",
-      name: "codex exec",
+      name: "codex-exec",
       argv: ["codex", "exec"],
       providerId: "p2",
     });

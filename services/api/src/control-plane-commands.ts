@@ -3,11 +3,13 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { markersFor } from "./control-plane-delete-reference-markers.ts";
 import {
+  isValidSlugName,
+  SLUG_NAME_HINT,
   validateCommandArgv,
   validateCommandResumeSpec,
   type ResumeRefCapture,
 } from "@auto-harness/shared";
-import { getCommandDurable } from "./control-plane-durable-read-catalog.ts";
+import { listCommandsDurable } from "./control-plane-durable-read-catalog.ts";
 
 export type CommandInput = {
   id?: string;
@@ -21,7 +23,27 @@ export type CommandInput = {
   providerId?: string | null;
 };
 
+type CommandPatch = Partial<{
+  name: string;
+  argv: string[];
+  appendPrompt: boolean;
+  appendPromptSeparator: boolean;
+  providerId: string | null;
+  resumeArgvTemplate: string[] | null;
+  resumeRefCapture: ResumeRefCapture | null;
+}>;
+
 export { deleteCommand } from "./control-plane-command-delete.ts";
+
+function findCommandByName(
+  state: ControlPlaneState,
+  name: string,
+  excludeId?: string,
+): CommandRecord | undefined {
+  return [...state.commands.values()].find(
+    (command) => command.name === name && command.id !== excludeId,
+  );
+}
 
 export function createCommand(
   state: ControlPlaneState,
@@ -42,6 +64,12 @@ function prepareCreateCommand(
 ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
   if (!input.name) {
     return { ok: false, error: "name is required" };
+  }
+  if (!isValidSlugName(input.name)) {
+    return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
+  }
+  if (findCommandByName(state, input.name)) {
+    return { ok: false, error: `command name already in use: ${input.name}` };
   }
   const argv = validateCommandArgv(input.argv);
   if (!argv.ok) {
@@ -81,7 +109,7 @@ export async function createCommandDurable(
   input: CommandInput,
 ): Promise<ReturnType<typeof createCommand>> {
   if (!state.storage) return createCommand(state, input);
-  if (input.id) await getCommandDurable(state, input.id);
+  await listCommandsDurable(state);
   const result = prepareCreateCommand(state, input);
   if (!result.ok) return result;
   await state.storage.putCommand(
@@ -109,15 +137,7 @@ export function listCommands(state: ControlPlaneState): CommandRecord[] {
 export function updateCommand(
   state: ControlPlaneState,
   id: string,
-  patch: Partial<{
-    name: string;
-    argv: string[];
-    appendPrompt: boolean;
-    appendPromptSeparator: boolean;
-    providerId: string | null;
-    resumeArgvTemplate: string[] | null;
-    resumeRefCapture: ResumeRefCapture | null;
-  }>,
+  patch: CommandPatch,
 ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
   const result = prepareUpdateCommand(state, id, patch);
   if (!result.ok) return result;
@@ -131,15 +151,7 @@ export function updateCommand(
 function prepareUpdateCommand(
   state: ControlPlaneState,
   id: string,
-  patch: Partial<{
-    name: string;
-    argv: string[];
-    appendPrompt: boolean;
-    appendPromptSeparator: boolean;
-    providerId: string | null;
-    resumeArgvTemplate: string[] | null;
-    resumeRefCapture: ResumeRefCapture | null;
-  }>,
+  patch: CommandPatch,
 ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
   const existing = state.commands.get(id);
   if (!existing) {
@@ -151,6 +163,14 @@ function prepareUpdateCommand(
   }
   const resume = validateCommandResumeSpec(patch);
   if (!resume.ok) return resume;
+  if (patch.name !== undefined && patch.name !== existing.name) {
+    if (!isValidSlugName(patch.name)) {
+      return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
+    }
+    if (findCommandByName(state, patch.name, id)) {
+      return { ok: false, error: `command name already in use: ${patch.name}` };
+    }
+  }
   const next: CommandRecord = {
     ...existing,
     updatedAt: state.now(),
@@ -180,7 +200,7 @@ export async function updateCommandDurable(
   patch: Parameters<typeof updateCommand>[2],
 ): Promise<ReturnType<typeof updateCommand>> {
   if (!state.storage) return updateCommand(state, id, patch);
-  await getCommandDurable(state, id);
+  await listCommandsDurable(state);
   const result = prepareUpdateCommand(state, id, patch);
   if (!result.ok) return result;
   await state.storage.putCommand(

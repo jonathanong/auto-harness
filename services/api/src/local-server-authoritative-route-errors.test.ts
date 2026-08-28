@@ -115,14 +115,14 @@ describe("durable route storage errors", () => {
     expect((response.json as { error: { code: string } }).error.code).toBe("NOT_FOUND");
   });
 
-  it("checks a supplied durable command id before creating it", async () => {
+  it("refreshes the durable command catalog before creating with a supplied id", async () => {
     let reads = 0;
     const plane = new ControlPlane({
       storage: {
         ...auditStorage,
-        getCommand: async () => {
+        listCommands: async () => {
           reads++;
-          return null;
+          return [];
         },
         putCommand: async () => undefined,
       } as never,

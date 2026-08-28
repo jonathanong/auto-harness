@@ -19,6 +19,7 @@ import {
   catalogProviderKey,
   retainOrSuggestCommandName,
 } from "../lib/catalog-command-defaults.ts";
+import { rollbackProviderAfterCommandFailure } from "./provider-create-rollback.ts";
 
 /**
  * Creates a Provider and its default Command in one submit. A Provider with no default
@@ -87,10 +88,10 @@ export function ProviderCreateForm() {
             }),
           });
           if (!commandRes.ok) {
-            showToast(
-              `provider "${name}" created, but its default command failed: ${await apiErrorMessage(commandRes)}`,
-              { variant: "destructive", pw: "provider-catalog-error" },
-            );
+            showToast(await rollbackProviderAfterCommandFailure(name, provider.id, commandRes), {
+              variant: "destructive",
+              pw: "provider-catalog-error",
+            });
             return;
           }
           const command = (await commandRes.json()) as { id: string };
@@ -132,7 +133,7 @@ export function ProviderCreateForm() {
       <div className="space-y-1">
         <Label
           htmlFor="commandName"
-          tip="Catalog label for this command — not the binary on disk (the first argv token is the executable)"
+          tip="Unique lowercase slug for this command — not the binary on disk (the first argv token is the executable)"
         >
           Default Command Name
         </Label>
@@ -146,8 +147,8 @@ export function ProviderCreateForm() {
           onChange={(event) => setCommandName(event.currentTarget.value)}
         />
         <p className="text-xs text-muted-foreground">
-          Catalog label for this command — not the binary on disk (the first argv token is the
-          executable).
+          Unique lowercase slug for this command — not the binary on disk (the first argv token is
+          the executable).
         </p>
       </div>
       <div className="space-y-1">

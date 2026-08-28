@@ -24,7 +24,7 @@ async function registeredPlane(connectionId: string) {
   });
   created.plane.createCommand({
     id: COMMAND_ID,
-    name: "cancel race",
+    name: "cancel-race",
     argv: ["echo"],
     appendPrompt: true,
     providerId: null,
