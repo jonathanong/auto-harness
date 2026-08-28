@@ -1,63 +1,272 @@
-import { appendFileSync } from "node:fs";
-
-const input = (name, required = false) => {
-  const value = process.env[`INPUT_${name.replaceAll("-", "_").toUpperCase()}`]?.trim();
-  if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
-  return value;
+// modules/client/src/errors.js
+var AutoHarnessError = class extends Error {
+  constructor(message, options) {
+    super(message);
+    this.name = "AutoHarnessError";
+    this.status = options.status;
+    this.code = options.code;
+    this.retryAfter = options.retryAfter;
+    this.operationId = options.operationId;
+    this.statusUrl = options.statusUrl;
+  }
+};
+var AutoHarnessRequestTimeoutError = class extends Error {
+  constructor(timeoutMs) {
+    super(`Auto Harness request timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessRequestTimeoutError";
+    this.code = "REQUEST_TIMEOUT";
+    this.timeoutMs = timeoutMs;
+  }
 };
 
-const parseJson = (name, value, fallback) => {
-  if (!value) return fallback;
+// modules/client/src/resolve-target.js
+async function resolveByName(name, catalog, kind, idKey) {
+  const matches = (await catalog()).filter((entry) => entry.name === name);
+  if (matches.length === 0) {
+    throw new AutoHarnessError(`no ${kind} named "${name}"`, {
+      status: 400,
+      code: `UNKNOWN_${kind.toUpperCase()}_NAME`
+    });
+  }
+  if (matches.length > 1) {
+    throw new AutoHarnessError(
+      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` }
+    );
+  }
+  return { [idKey]: matches[0].id };
+}
+async function resolveRef(ref, providers, commands) {
+  if (ref == null || typeof ref !== "object") return ref;
+  if (ref.providerId !== void 0 || ref.commandId !== void 0) return ref;
+  if (ref.providerName !== void 0) {
+    return resolveByName(ref.providerName, providers, "provider", "providerId");
+  }
+  if (ref.commandName !== void 0) {
+    return resolveByName(ref.commandName, commands, "command", "commandId");
+  }
+  return ref;
+}
+async function resolveCreateSessionTargets(client2, input2) {
+  let providersPromise;
+  let commandsPromise;
+  const providers = () => providersPromise ??= client2.listProviders();
+  const commands = () => commandsPromise ??= client2.listCommands();
+  const target = await resolveRef(input2.target, providers, commands);
+  if (input2.fallbacks === void 0) return { ...input2, target };
+  const fallbacks = await Promise.all(
+    input2.fallbacks.map((fallback) => resolveRef(fallback, providers, commands))
+  );
+  return { ...input2, target, fallbacks };
+}
+
+// modules/client/src/index.js
+var AutoHarnessClient = class {
+  constructor(options) {
+    if (!options?.baseUrl) throw new TypeError("baseUrl is required");
+    const requestTimeoutMs2 = options.requestTimeoutMs === void 0 ? 3e4 : options.requestTimeoutMs;
+    if (!Number.isFinite(requestTimeoutMs2) || requestTimeoutMs2 <= 0 || requestTimeoutMs2 > 3e5) {
+      throw new TypeError(
+        "requestTimeoutMs must be a finite positive number no greater than 300000"
+      );
+    }
+    this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
+    this.apiKey = options.apiKey;
+    this.fetch = options.fetch ?? globalThis.fetch;
+    if (!this.fetch) throw new TypeError("fetch is required");
+    this.requestTimeoutMs = requestTimeoutMs2;
+  }
+  async request(path, init = {}) {
+    const headers = { accept: "application/json", ...init.headers };
+    if (init.body !== void 0) headers["content-type"] = "application/json";
+    if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
+    const controller = new AbortController();
+    const timeoutError = new AutoHarnessRequestTimeoutError(this.requestTimeoutMs);
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(timeoutError);
+      }, this.requestTimeoutMs);
+    });
+    const request = (async () => {
+      const response = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal
+      });
+      const body = response.status === 204 ? void 0 : await response.json().catch((error) => {
+        if (controller.signal.aborted) throw error;
+        return void 0;
+      });
+      if (!response.ok) {
+        const error = body?.error;
+        throw new AutoHarnessError(
+          error?.message ?? `Auto Harness request failed (${response.status})`,
+          {
+            status: response.status,
+            code: error?.code ?? "HTTP_ERROR",
+            retryAfter: response.headers.get("retry-after") ?? void 0,
+            operationId: error?.operationId,
+            statusUrl: error?.statusUrl
+          }
+        );
+      }
+      return body;
+    })();
+    try {
+      return await Promise.race([request, timeout]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  async createSession(input2) {
+    const body = await resolveCreateSessionTargets(this, input2);
+    return this.request("/sessions", { method: "POST", body: JSON.stringify(body) });
+  }
+  getSession(id) {
+    return this.request(`/sessions/${encodeURIComponent(id)}`);
+  }
+  cancelSession(id) {
+    return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  }
+  /** Resume a previously assigned session on its pinned host, native CLI resume where supported. */
+  resumeSession(id, input2) {
+    return this.request(`/sessions/${encodeURIComponent(id)}/resume`, {
+      method: "POST",
+      ...input2 === void 0 ? {} : { body: JSON.stringify(input2) }
+    });
+  }
+  listSessions(options = {}) {
+    const query = new URLSearchParams();
+    if (options.status !== void 0) query.set("status", options.status);
+    if (options.repositoryId !== void 0) query.set("repositoryId", options.repositoryId);
+    if (options.hostId !== void 0) query.set("hostId", options.hostId);
+    if (options.source !== void 0) query.set("source", options.source);
+    if (options.sort !== void 0) query.set("sort", options.sort);
+    if (options.limit !== void 0) query.set("limit", String(options.limit));
+    if (options.cursor !== void 0) query.set("cursor", options.cursor);
+    if (options.concurrencyId !== void 0) query.set("concurrencyId", options.concurrencyId);
+    if (options.scheduleId !== void 0) query.set("scheduleId", options.scheduleId);
+    const suffix = query.toString();
+    return this.request(suffix ? `/sessions?${suffix}` : "/sessions");
+  }
+  /**
+   * Atomically fence this authenticated principal's session admission for one repository and
+   * begin cancelling its existing work. Reuse an idempotency key after an ambiguous retry.
+   */
+  startSessionDrain(repositoryId, options = {}) {
+    return this.request(`/repositories/${encodeURIComponent(repositoryId)}/session-drains`, {
+      method: "POST",
+      ...options.idempotencyKey === void 0 ? {} : { headers: { "idempotency-key": options.idempotencyKey } }
+    });
+  }
+  /** Get bounded durable progress or terminal proof for one principal session drain. */
+  getSessionDrain(repositoryId, operationId) {
+    return this.request(
+      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}`
+    );
+  }
+  /** Explicitly reopen admission after a succeeded or failed principal session drain. */
+  releaseSessionDrain(repositoryId, operationId) {
+    return this.request(
+      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
+      { method: "POST" }
+    );
+  }
+  listRepositories(options = {}) {
+    const query = new URLSearchParams();
+    if (options.limit !== void 0) query.set("limit", String(options.limit));
+    if (options.cursor !== void 0) query.set("cursor", options.cursor);
+    const suffix = query.toString();
+    return this.request(suffix ? `/repositories?${suffix}` : "/repositories");
+  }
+  pauseRepository(id) {
+    return this.repositoryOperation(id, "pause");
+  }
+  drainRepository(id) {
+    return this.repositoryOperation(id, "drain");
+  }
+  activateRepository(id) {
+    return this.repositoryOperation(id, "activate");
+  }
+  repositoryOperation(id, operation) {
+    return this.request(`/repositories/${encodeURIComponent(id)}/${operation}`, { method: "POST" });
+  }
+  async listProviders() {
+    const { items } = await this.request("/providers");
+    return items;
+  }
+  async listCommands() {
+    const { items } = await this.request("/commands");
+    return items;
+  }
+};
+
+// actions/dispatch/src/io.ts
+import { appendFileSync } from "node:fs";
+function input(name, required = false) {
+  const value = process.env[`INPUT_${name.replaceAll("-", "_").toUpperCase()}`]?.trim() ?? "";
+  if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
+  return value;
+}
+function parseJson(name, value, fallback) {
+  if (!value && fallback !== void 0) return fallback;
   try {
     return JSON.parse(value);
   } catch {
     throw new Error(`${name} must be valid JSON`);
   }
-};
-
-const setOutput = (name, value) => {
-  const output = process.env.GITHUB_OUTPUT;
-  if (!output) throw new Error("GITHUB_OUTPUT is unavailable");
-  appendFileSync(output, `${name}=${value}\n`, "utf8");
-};
-
-const positiveNumberInput = (name, maximum) => {
+}
+function positiveNumberInput(name, maximum) {
   const value = Number(input(name, true));
-  if (!Number.isFinite(value) || value <= 0 || (maximum !== undefined && value > maximum)) {
+  if (!Number.isFinite(value) || value <= 0 || maximum !== void 0 && value > maximum) {
     throw new Error(
-      maximum === undefined
-        ? `${name} must be a positive number`
-        : `${name} must be a finite positive number no greater than ${maximum}`,
+      maximum === void 0 ? `${name} must be a positive number` : `${name} must be a finite positive number no greater than ${maximum}`
     );
   }
   return value;
-};
-
-const requestTimeoutSeconds = () => {
+}
+function requestTimeoutMs() {
   const value = Number(input("request-timeout-seconds") || "30");
   if (!Number.isFinite(value) || value <= 0 || value > 300) {
     throw new Error("request-timeout-seconds must be a finite positive number no greater than 300");
   }
+  return value * 1e3;
+}
+function setOutput(name, value) {
+  const output = process.env.GITHUB_OUTPUT;
+  if (!output) throw new Error("GITHUB_OUTPUT is unavailable");
+  appendFileSync(output, `${name}=${value}
+`, "utf8");
+}
+function escapeWorkflowCommand(value) {
+  return value.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+}
+
+// actions/dispatch/src/validation.ts
+var drainStatuses = /* @__PURE__ */ new Set(["draining", "succeeded", "failed", "released"]);
+function record(value, malformedMessage) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(malformedMessage);
+  }
   return value;
-};
-
-const drainStatuses = new Set(["draining", "succeeded", "failed", "released"]);
-
-const absoluteApiUrl = (baseUrl, statusUrl) => {
+}
+function absoluteApiUrl(baseUrl, statusUrl) {
   if (typeof statusUrl !== "string" || !statusUrl.startsWith("/api/v1/")) {
     throw new Error("Auto Harness returned a malformed principal session drain statusUrl");
   }
   return new URL(statusUrl, `${baseUrl}/`).toString();
-};
-
-const validateDrain = (result, baseUrl, repositoryId, expectedOperationId) => {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    throw new Error("Auto Harness returned a malformed principal session drain response");
-  }
+}
+function validateDrain(value, baseUrl, repositoryId, expectedOperationId) {
+  const result = record(
+    value,
+    "Auto Harness returned a malformed principal session drain response"
+  );
   if (typeof result.operationId !== "string" || !result.operationId || /[\r\n]/.test(result.operationId)) {
     throw new Error("Auto Harness returned a principal session drain without an operationId");
   }
-  if (expectedOperationId !== undefined && result.operationId !== expectedOperationId) {
+  if (expectedOperationId !== void 0 && result.operationId !== expectedOperationId) {
     throw new Error("Auto Harness returned a different principal session drain operation");
   }
   if (result.repositoryId !== repositoryId) {
@@ -67,25 +276,33 @@ const validateDrain = (result, baseUrl, repositoryId, expectedOperationId) => {
     throw new Error("Auto Harness returned an unknown principal session drain status");
   }
   for (const name of ["queuedCount", "runningCount", "cancelledCount"]) {
-    if (!Number.isSafeInteger(result[name]) || result[name] < 0) {
+    if (!Number.isSafeInteger(result[name]) || Number(result[name]) < 0) {
       throw new Error(`Auto Harness returned an invalid principal session drain ${name}`);
     }
   }
-  if (result.failureCode !== undefined && (typeof result.failureCode !== "string" || /[\r\n]/.test(result.failureCode))) {
+  if (result.failureCode !== void 0 && (typeof result.failureCode !== "string" || /[\r\n]/.test(result.failureCode))) {
     throw new Error("Auto Harness returned an invalid principal session drain failureCode");
   }
   const statusUrl = absoluteApiUrl(baseUrl, result.statusUrl);
   const expectedPath = `/api/v1/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`;
   if (new URL(statusUrl).pathname !== expectedPath) {
-    throw new Error("Auto Harness returned a principal session drain statusUrl for a different operation");
+    throw new Error(
+      "Auto Harness returned a principal session drain statusUrl for a different operation"
+    );
   }
-  return { ...result, statusUrl };
-};
-
-const validateSession = (result) => {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    throw new Error("Auto Harness returned a malformed session response");
-  }
+  return {
+    operationId: result.operationId,
+    repositoryId,
+    status: result.status,
+    statusUrl,
+    queuedCount: Number(result.queuedCount),
+    runningCount: Number(result.runningCount),
+    cancelledCount: Number(result.cancelledCount),
+    ...result.failureCode === void 0 ? {} : { failureCode: result.failureCode }
+  };
+}
+function validateSession(value) {
+  const result = record(value, "Auto Harness returned a malformed session response");
   if (typeof result.id !== "string" || !result.id || /[\r\n]/.test(result.id)) {
     throw new Error("Auto Harness returned a session without a valid id");
   }
@@ -93,59 +310,11 @@ const validateSession = (result) => {
     throw new Error("Auto Harness returned a session without a valid url");
   }
   if (typeof result.created !== "boolean") {
-    throw new Error("Auto Harness returned a session without a created result");
+    throw new TypeError("Auto Harness returned a session without a created result");
   }
-  return result;
-};
-
-const drainErrorDetails = (baseUrl, error) => {
-  if (!error || typeof error !== "object" || typeof error.statusUrl !== "string") return "";
-  try {
-    return `; drain ${typeof error.operationId === "string" ? error.operationId : "unknown"}: ${absoluteApiUrl(baseUrl, error.statusUrl)}`;
-  } catch {
-    return "";
-  }
-};
-
-const request = async (baseUrl, apiKey, path, method = "GET", headers = {}, options = {}) => {
-  const { body, deadline, drain: isDrain, timeoutMs } = options;
-  const remainingMs = deadline === undefined ? Number.POSITIVE_INFINITY : deadline - Date.now();
-  if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-  const signal = AbortSignal.timeout(Math.max(1, Math.ceil(Math.min(timeoutMs, remainingMs))));
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/api/v1${path}`, {
-      method,
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${apiKey}`,
-        ...headers,
-      },
-      ...(body === undefined ? {} : { body }),
-      signal,
-    });
-    const result = await response.json().catch((error) => {
-      if (signal.aborted) throw error;
-      return {};
-    });
-    if (!response.ok) {
-      const drain = drainErrorDetails(baseUrl, result.error);
-      throw new Error(result.error?.message ? `${result.error.message}${drain}` : `Auto Harness returned ${response.status}`);
-    }
-    return result;
-  } catch (error) {
-    if (signal.aborted) {
-      throw new Error(
-        isDrain || deadline !== undefined
-          ? "Timed out waiting for principal session drain"
-          : "Timed out waiting for Auto Harness request",
-      );
-    }
-    throw error;
-  }
-};
-
-const setDrainOutputs = (result) => {
+  return { id: result.id, url: result.url, created: result.created };
+}
+function setDrainOutputs(result) {
   setOutput("operation-id", result.operationId);
   setOutput("status-url", result.statusUrl);
   setOutput("drain-status", result.status);
@@ -154,107 +323,140 @@ const setDrainOutputs = (result) => {
   setOutput("running-count", String(result.runningCount));
   setOutput("cancelled-count", String(result.cancelledCount));
   setOutput("failure-code", result.failureCode ?? "");
-};
+}
+function actionErrorMessage(error, baseUrl, isDrain) {
+  if (error instanceof AutoHarnessRequestTimeoutError) {
+    return isDrain ? "Timed out waiting for principal session drain" : "Timed out waiting for Auto Harness request";
+  }
+  if (error instanceof AutoHarnessError && error.statusUrl) {
+    try {
+      const operationId = error.operationId ?? "unknown";
+      return `${error.message}; drain ${operationId}: ${absoluteApiUrl(baseUrl, error.statusUrl)}`;
+    } catch {
+      return error.message;
+    }
+  }
+  if (error instanceof AutoHarnessError && error.code === "HTTP_ERROR") {
+    return `Auto Harness returned ${error.status}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
-const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operationId, requestTimeoutMs) => {
-  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
-  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1_000;
-  let result = validateDrain(
-    await request(baseUrl, apiKey, path, "GET", {}, { deadline, drain: true, timeoutMs: requestTimeoutMs }),
-    baseUrl,
-    repositoryId,
-    operationId,
-  );
-  while (result.status === "draining") {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remainingMs)));
-    result = validateDrain(
-      await request(baseUrl, apiKey, path, "GET", {}, { deadline, drain: true, timeoutMs: requestTimeoutMs }),
-      baseUrl,
-      repositoryId,
-      operationId,
+// actions/dispatch/src/index.ts
+function client(options) {
+  return new AutoHarnessClient(options);
+}
+function operationInput() {
+  const operation = input("operation") || "dispatch";
+  if (operation !== "dispatch" && operation !== "start-drain" && operation !== "get-drain" && operation !== "wait-for-drain" && operation !== "release-drain") {
+    throw new Error(
+      `operation must be dispatch, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`
     );
   }
+  return operation;
+}
+async function dispatch(options, repositoryId) {
+  const fallbacks = input("fallbacks");
+  const ref = input("ref");
+  const concurrencyId = input("concurrency-id");
+  const metadata = input("metadata");
+  const request = {
+    repositoryId,
+    prompt: input("prompt", true),
+    target: parseJson("target", input("target", true)),
+    timeout: positiveNumberInput("timeout"),
+    ...fallbacks ? { fallbacks: parseJson("fallbacks", fallbacks) } : {},
+    ...ref ? { ref } : {},
+    ...concurrencyId ? { concurrencyId } : {},
+    ...metadata ? { metadata: parseJson("metadata", metadata) } : {}
+  };
+  const session = validateSession(await client(options).createSession(request));
+  setOutput("session-id", session.id);
+  setOutput("session-url", session.url);
+  setOutput("created", String(session.created));
+  process.stdout.write(`Dispatched Auto Harness session ${session.id}
+`);
+}
+async function waitForSucceededDrain(options, repositoryId, operationId) {
+  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1e3;
+  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1e3;
+  let result;
+  do {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
+    const timeoutOptions = {
+      ...options,
+      requestTimeoutMs: Math.max(1, Math.ceil(Math.min(options.requestTimeoutMs, remainingMs)))
+    };
+    result = validateDrain(
+      await client(timeoutOptions).getSessionDrain(repositoryId, operationId),
+      options.baseUrl,
+      repositoryId,
+      operationId
+    );
+    if (result.status === "draining") {
+      const delayMs = Math.min(intervalMs, deadline - Date.now());
+      if (delayMs <= 0) throw new Error("Timed out waiting for principal session drain");
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  } while (result.status === "draining");
   if (result.status !== "succeeded") {
     setDrainOutputs(result);
     const failure = result.failureCode ? ` (${result.failureCode})` : "";
     throw new Error(`Principal session drain did not succeed: ${result.status}${failure}`);
   }
   return result;
-};
-
-try {
-  const baseUrl = input("server-url", true).replace(/\/$/, "").replace(/\/api\/v1$/, "");
-  const apiKey = input("api-key", true);
-  const requestTimeoutMs = requestTimeoutSeconds() * 1_000;
-  const operation = input("operation") || "dispatch";
-  const repositoryId = input("repository-id", true);
-  if (operation === "dispatch") {
-    const body = {
-      repositoryId,
-      prompt: input("prompt", true),
-      target: parseJson("target", input("target", true)),
-      timeout: positiveNumberInput("timeout"),
-      ...(input("fallbacks") ? { fallbacks: parseJson("fallbacks", input("fallbacks")) } : {}),
-      ...(input("ref") ? { ref: input("ref") } : {}),
-      ...(input("concurrency-id") ? { concurrencyId: input("concurrency-id") } : {}),
-      ...(input("metadata") ? { metadata: parseJson("metadata", input("metadata")) } : {}),
-    };
-    const result = await request(baseUrl, apiKey, "/sessions", "POST", {
-      "content-type": "application/json",
-    }, { body: JSON.stringify(body), timeoutMs: requestTimeoutMs });
-    const session = validateSession(result);
-    setOutput("session-id", session.id);
-    setOutput("session-url", session.url);
-    setOutput("created", String(session.created));
-    process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
-  } else {
-    const collection = `/repositories/${encodeURIComponent(repositoryId)}/session-drains`;
-    const drainId = input("session-drain-id");
-    let result;
-    if (operation === "start-drain") {
-      result = validateDrain(
-        await request(baseUrl, apiKey, collection, "POST", {
-          ...(input("idempotency-key") ? { "idempotency-key": input("idempotency-key") } : {}),
-        }, { drain: true, timeoutMs: requestTimeoutMs }),
-        baseUrl,
-        repositoryId,
-      );
-      if (result.status !== "draining" && result.status !== "succeeded") {
-        setDrainOutputs(result);
-        throw new Error(`Auto Harness did not start an active principal session drain: ${result.status}`);
-      }
-    } else if (operation === "get-drain" || operation === "release-drain" || operation === "wait-for-drain") {
-      if (!drainId) throw new Error("Input required and not supplied: session-drain-id");
-      const path = `${collection}/${encodeURIComponent(drainId)}`;
-      if (operation === "wait-for-drain") {
-        result = await waitForSucceededDrain(baseUrl, apiKey, path, repositoryId, drainId, requestTimeoutMs);
-      } else {
-        result = validateDrain(
-          await request(
-            baseUrl,
-            apiKey,
-            operation === "release-drain" ? `${path}/release` : path,
-            operation === "release-drain" ? "POST" : "GET",
-            {},
-            { drain: true, timeoutMs: requestTimeoutMs },
-          ),
-          baseUrl,
-          repositoryId,
-          drainId,
-        );
-        if (operation === "release-drain" && result.status !== "released") {
-          throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
-        }
-      }
-    } else {
-      throw new Error(`operation must be dispatch, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`);
-    }
+}
+async function startDrain(options, repositoryId) {
+  const idempotencyKey = input("idempotency-key");
+  const response = await client(options).startSessionDrain(
+    repositoryId,
+    idempotencyKey ? { idempotencyKey } : {}
+  );
+  const result = validateDrain(response, options.baseUrl, repositoryId);
+  if (result.status !== "draining" && result.status !== "succeeded") {
     setDrainOutputs(result);
-    process.stdout.write(`Auto Harness session drain ${result.operationId}: ${result.status}\n`);
+    throw new Error(
+      `Auto Harness did not start an active principal session drain: ${result.status}`
+    );
   }
+  return result;
+}
+async function existingDrain(operation, options, repositoryId) {
+  const operationId = input("session-drain-id", true);
+  if (operation === "wait-for-drain") {
+    return waitForSucceededDrain(options, repositoryId, operationId);
+  }
+  const response = operation === "release-drain" ? await client(options).releaseSessionDrain(repositoryId, operationId) : await client(options).getSessionDrain(repositoryId, operationId);
+  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
+  if (operation === "release-drain" && result.status !== "released") {
+    throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
+  }
+  return result;
+}
+async function drain(operation, options, repositoryId) {
+  const result = operation === "start-drain" ? await startDrain(options, repositoryId) : await existingDrain(operation, options, repositoryId);
+  setDrainOutputs(result);
+  process.stdout.write(`Auto Harness session drain ${result.operationId}: ${result.status}
+`);
+}
+async function main() {
+  const baseUrl = input("server-url", true).replace(/\/$/, "").replace(/\/api\/v1$/, "");
+  const operation = operationInput();
+  const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
+  try {
+    const repositoryId = input("repository-id", true);
+    if (operation === "dispatch") await dispatch(options, repositoryId);
+    else await drain(operation, options, repositoryId);
+  } catch (error) {
+    throw new Error(actionErrorMessage(error, baseUrl, operation !== "dispatch"), { cause: error });
+  }
+}
+try {
+  await main();
 } catch (error) {
-  process.stderr.write(`::error::${error instanceof Error ? error.message : String(error)}\n`);
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`::error::${escapeWorkflowCommand(message)}
+`);
   process.exitCode = 1;
 }

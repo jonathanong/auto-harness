@@ -13,7 +13,7 @@ adopting a newer revision. Do not use the moving `main` ref.
     api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
     repository-id: repo-1
     prompt: Review this pull request
-    target: '{"providerId":"codex"}'
+    target: '{"providerId":"<provider-uuid>"}'
     timeout: "1800"
     concurrency-id: github-${{ github.run_id }}
 ```
@@ -75,3 +75,10 @@ whatever caller-side failure handling records that result.
 Drain outputs are `operation-id`, an absolute `status-url`, `drain-status`, `drain-terminal`,
 `queued-count`, `running-count`, `cancelled-count`, and `failure-code`. A normal `dispatch` that
 loses to a principal drain fails with a message containing the durable drain ID and status URL.
+
+## Development
+
+The typed source in `src/` imports the workspace `auto-harness-client`; the checked-in
+`dist/index.js` bundles that client because Actions cannot depend on this repository's
+`node_modules` at runtime. Run `pnpm build:dispatch-action` after source or client changes.
+`pnpm check:dispatch-action` fails when the committed bundle is stale.

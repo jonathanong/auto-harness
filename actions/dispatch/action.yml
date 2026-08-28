@@ -22,7 +22,7 @@ inputs:
     description: Prompt for the session
     required: false
   target:
-    description: JSON target, for example {"providerId":"codex"}
+    description: JSON target by catalog name or ID, for example {"providerName":"codex"}
     required: false
   timeout:
     description: Maximum session runtime in seconds (required for dispatch)

@@ -9,6 +9,12 @@ describe("no-mistakes rule set", () => {
     expect(config).toContain("apps:");
     expect(config).toContain("project: control-web");
     expect(config).toContain("project: host-pane");
+    expect(config).toContain("name: typecheck-dispatch-action");
+    expect(config).toContain(
+      "command: [pnpm, exec, tsc, --noEmit, --project, actions/dispatch/tsconfig.json]",
+    );
+    expect(config).toContain("packageRoots: [actions, modules, services]");
+    expect(config).toContain("workspaceRoots: [actions, modules, services]");
 
     for (const rule of [
       "playwright-unique-test-ids",

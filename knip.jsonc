@@ -5,6 +5,10 @@
       "entry": ["scripts/*.mts"],
       "project": ["scripts/**/*.{ts,mts}", "e2e/**/*.ts"],
     },
+    "actions/dispatch": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"],
+    },
     "modules/shared": {
       "project": ["src/**/*.ts"],
     },
@@ -32,5 +36,4 @@
   },
   "ignore": ["**/*-test-helpers.ts"],
   "ignoreBinaries": ["lychee", "systemd-analyze"],
-  "ignoreDependencies": ["esbuild"],
 }

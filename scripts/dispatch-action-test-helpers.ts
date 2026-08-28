@@ -11,6 +11,7 @@ const servers: ReturnType<typeof createServer>[] = [];
 
 type Response = { body: unknown; bodyDelayMs?: number; delayMs?: number; status?: number };
 type Request = {
+  body: string;
   headers: Record<string, string | string[] | undefined>;
   method?: string;
   url?: string;
@@ -41,7 +42,10 @@ export const closeDispatchActionServers = async () => {
 export const serve = async (respond: (request: Request) => Response) => {
   const requests: Request[] = [];
   const server = createServer(async (request, response) => {
-    requests.push({ headers: request.headers, method: request.method, url: request.url });
+    let body = "";
+    request.setEncoding("utf8");
+    for await (const chunk of request) body += chunk;
+    requests.push({ body, headers: request.headers, method: request.method, url: request.url });
     const result = respond(requests.at(-1)!);
     if (result.delayMs) await new Promise((resolve) => setTimeout(resolve, result.delayMs));
     response.writeHead(result.status ?? 200, { "content-type": "application/json" });

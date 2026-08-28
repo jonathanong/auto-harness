@@ -61,6 +61,12 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)(happy-dom@20.11.6)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.4)(yaml@2.9.0)
 
+  actions/dispatch:
+    dependencies:
+      auto-harness-client:
+        specifier: workspace:*
+        version: link:../../modules/client
+
   modules/client: {}
 
   modules/shared:
