@@ -7,7 +7,7 @@ Ops is split by **surface**. Pick the doc for what you are running.
 | **Local** — DynamoDB Local + API + optional web + agent                         | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                                                                                                                       |
 | **AWS control plane** — serverless web, REST, WebSocket, schedules, and storage | **[deploy-aws.md](deploy-aws.md)**                 | **Supported** deploy/update/teardown in `us-west-2` (2026-08-17); short programmatic session dispatch proven 2026-08-18. Long-running CLI fleet E2E is still operator QA. |
 | **VPS agent** — daemon, profiles, worktrees                                     | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run                                                                                           |
-| **npm client** — manual version, tag, and trusted publish                       | **[release-client.md](release-client.md)**         | **Manual GitHub Actions release**                                                                                                                                         |
+| **npm client** — manual version, tag, trusted publish, and GitHub Release       | **[release-client.md](release-client.md)**         | **Manual GitHub Actions release**                                                                                                                                         |
 
 AWS releases use the account-backed gate in [deploy-aws.md](deploy-aws.md#gates).
 
