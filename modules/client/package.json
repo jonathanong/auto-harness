@@ -17,6 +17,10 @@
     ".": {
       "types": "./src/index.d.ts",
       "import": "./src/index.js"
+    },
+    "./actions": {
+      "types": "./src/actions/index.d.ts",
+      "import": "./src/actions/index.js"
     }
   },
   "publishConfig": {

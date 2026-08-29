@@ -5,6 +5,7 @@ import {
   type SessionMetadataValue,
   type TargetSpec,
 } from "auto-harness-client";
+import { parseRequiredLabels } from "auto-harness-client/actions";
 
 import { client } from "./client.ts";
 import { drain, type DrainOperation } from "./drain.ts";
@@ -55,14 +56,8 @@ function sourceInput(): CreatableSessionSource | undefined {
   return source;
 }
 
-function requiredLabelsInput(): string[] | undefined {
-  const value = input("required-labels");
-  if (!value) return undefined;
-  const parsed = parseJson<unknown>("required-labels", value);
-  if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
-    throw new Error("required-labels must be a JSON array of strings");
-  }
-  return parsed;
+function requiredLabelsInput(): string[] {
+  return parseRequiredLabels(input("required-labels"), "required-labels");
 }
 
 async function dispatch(options: ClientOptions, repositoryId: string): Promise<void> {
@@ -88,7 +83,7 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
     ...(concurrencyId ? { concurrencyId } : {}),
     ...(queueTtlSeconds !== undefined ? { queueTtlSeconds } : {}),
     ...(priority !== undefined ? { priority } : {}),
-    ...(requiredLabels ? { requiredLabels } : {}),
+    ...(requiredLabels.length > 0 ? { requiredLabels } : {}),
     ...(metadata
       ? { metadata: parseJson<Record<string, SessionMetadataValue>>("metadata", metadata) }
       : {}),

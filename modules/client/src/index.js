@@ -1,4 +1,5 @@
 import { AutoHarnessError, AutoHarnessRequestTimeoutError } from "./errors.js";
+import { resolveRepositoryId } from "./resolve-repository.js";
 import { resolveCreateSessionTargets } from "./resolve-target.js";
 
 export { AutoHarnessError, AutoHarnessRequestTimeoutError };
@@ -108,8 +109,9 @@ export class AutoHarnessClient {
    * Atomically fence this authenticated principal's session admission for one repository and
    * begin cancelling its existing work. Reuse an idempotency key after an ambiguous retry.
    */
-  startSessionDrain(repositoryId, options = {}) {
-    return this.request(`/repositories/${encodeURIComponent(repositoryId)}/session-drains`, {
+  async startSessionDrain(repositoryId, options = {}) {
+    const id = await resolveRepositoryId(this, repositoryId);
+    return this.request(`/repositories/${encodeURIComponent(id)}/session-drains`, {
       method: "POST",
       ...(options.idempotencyKey === undefined
         ? {}
@@ -118,18 +120,54 @@ export class AutoHarnessClient {
   }
 
   /** Get bounded durable progress or terminal proof for one principal session drain. */
-  getSessionDrain(repositoryId, operationId) {
+  async getSessionDrain(repositoryId, operationId) {
+    const id = await resolveRepositoryId(this, repositoryId);
     return this.request(
-      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}`,
+      `/repositories/${encodeURIComponent(id)}/session-drains/${encodeURIComponent(operationId)}`,
     );
   }
 
   /** Explicitly reopen admission after a succeeded or failed principal session drain. */
-  releaseSessionDrain(repositoryId, operationId) {
+  async releaseSessionDrain(repositoryId, operationId) {
+    const id = await resolveRepositoryId(this, repositoryId);
     return this.request(
-      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
+      `/repositories/${encodeURIComponent(id)}/session-drains/${encodeURIComponent(operationId)}/release`,
       { method: "POST" },
     );
+  }
+
+  /**
+   * Polls `getSessionDrain()` until it reports a terminal status, clamping each request's
+   * deadline to the time remaining before `timeoutMs` so no single request can outlive the
+   * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
+   * and "released" — callers classify success themselves. Rejects with
+   * `AutoHarnessRequestTimeoutError` when `timeoutMs` elapses first.
+   */
+  async waitForSessionDrain(repositoryId, operationId, options = {}) {
+    const { pollIntervalMs, timeoutMs } = options;
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new TypeError("pollIntervalMs must be a finite positive number");
+    }
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new TypeError("timeoutMs must be a finite positive number");
+    }
+    const id = await resolveRepositoryId(this, repositoryId);
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      const pollClient = new AutoHarnessClient({
+        baseUrl: this.baseUrl,
+        apiKey: this.apiKey,
+        fetch: this.fetch,
+        requestTimeoutMs: Math.max(1, Math.ceil(Math.min(this.requestTimeoutMs, remainingMs))),
+      });
+      const sessionDrain = await pollClient.getSessionDrain(id, operationId);
+      if (sessionDrain.status !== "draining") return sessionDrain;
+      const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
+      if (delayMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
 
   listRepositories(options = {}) {

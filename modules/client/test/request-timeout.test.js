@@ -112,6 +112,11 @@ test("applies the request deadline to every public request method", async () => 
     ["startSessionDrain", (client) => client.startSessionDrain("repo")],
     ["getSessionDrain", (client) => client.getSessionDrain("repo", "drain")],
     ["releaseSessionDrain", (client) => client.releaseSessionDrain("repo", "drain")],
+    [
+      "waitForSessionDrain",
+      (client) =>
+        client.waitForSessionDrain("repo", "drain", { pollIntervalMs: 1, timeoutMs: 10_000 }),
+    ],
     ["listRepositories", (client) => client.listRepositories()],
     ["pauseRepository", (client) => client.pauseRepository("repo")],
     ["drainRepository", (client) => client.drainRepository("repo")],

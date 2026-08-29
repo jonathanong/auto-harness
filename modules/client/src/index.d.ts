@@ -1,3 +1,6 @@
+import type { Command, Provider } from "./catalog-types.js";
+export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-types.js";
+
 export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
@@ -19,6 +22,11 @@ export type CommandRef =
  */
 export type TargetSpec = ProviderRef | CommandRef;
 
+/** A repository target, by id or by unique `name` — checked defensively for legacy/racy duplicates. */
+export type RepositoryRef =
+  | { repositoryId: string; repositoryName?: never }
+  | { repositoryName: string; repositoryId?: never };
+
 /** Values accepted for a session metadata entry. */
 export type SessionMetadataValue = string | number | boolean | null;
 
@@ -31,8 +39,7 @@ export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 /** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
 export type CreatableSessionSource = "api" | "ui" | "webhook";
 
-export type CreateSessionInput = {
-  repositoryId: string;
+export type CreateSessionInput = RepositoryRef & {
   prompt: string;
   target: TargetSpec;
   fallbacks?: TargetSpec[];
@@ -137,48 +144,6 @@ export type RepositoryPage = {
   nextCursor: string | null;
 };
 
-/** Operator-supplied per-token vendor rates; Auto Harness never fetches vendor prices. */
-export type UsageRates = {
-  inputTokenMicros?: string;
-  outputTokenMicros?: string;
-  cachedInputTokenMicros?: string;
-  reasoningTokenMicros?: string;
-  currency: string;
-};
-
-/** Global catalog entry: an AI CLI vendor, keyed by a unique, server-enforced `name`. */
-export type Provider = {
-  id: string;
-  /** e.g. "claude", "codex", "grok" */
-  name: string;
-  defaultCommandId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  usageRates?: UsageRates;
-};
-
-/** Bounded literal-prefix policy used by the agent to extract a native resume reference. */
-export type ResumeRefCapture = {
-  stream: "stdout" | "stderr" | "either";
-  linePrefix: string;
-};
-
-/** Global catalog entry: a named command invocation. New and renamed names are catalog-unique slugs. */
-export type Command = {
-  id: string;
-  /** e.g. "claude-print", "echo-hello-world" */
-  name: string;
-  argv: string[];
-  appendPrompt: boolean;
-  appendPromptSeparator?: boolean;
-  resumeArgvTemplate?: string[];
-  resumeRefCapture?: ResumeRefCapture;
-  /** FK to Provider, or null for a standalone command that runs anywhere ungated. */
-  providerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
 /** Bounded, durable progress for a principal session drain: cancels the authenticated principal's own queued/running sessions for one repository (not repository or host drain). */
@@ -200,11 +165,11 @@ export type SessionDrain = {
 };
 
 /**
- * Thrown for a failed HTTP response, and also, with `status: 400`, when `createSession()`
- * cannot resolve a `TargetSpec` name: `code === "UNKNOWN_PROVIDER_NAME"` /
- * `"UNKNOWN_COMMAND_NAME"` for no match, `"AMBIGUOUS_PROVIDER_NAME"` /
- * `"AMBIGUOUS_COMMAND_NAME"` for more than one match sharing a name — that message never
- * includes the matched ids.
+ * Thrown for a failed HTTP response, and also, with `status: 400`, when `createSession()` (or a
+ * drain method) cannot resolve a `TargetSpec` or `RepositoryRef` name: `code ===
+ * "UNKNOWN_PROVIDER_NAME"` / `"UNKNOWN_COMMAND_NAME"` / `"UNKNOWN_REPOSITORY_NAME"` for no match,
+ * `"AMBIGUOUS_PROVIDER_NAME"` / `"AMBIGUOUS_COMMAND_NAME"` / `"AMBIGUOUS_REPOSITORY_NAME"` for
+ * more than one match sharing a name — that message never includes the matched ids.
  */
 export class AutoHarnessError extends Error {
   status: number;
@@ -249,11 +214,25 @@ export class AutoHarnessClient {
   listSessions(options?: ListSessionsOptions): Promise<SessionPage>;
   /** Cancels this principal's own queued/running sessions for one repository and fences new admission from it — not repository or host drain. */
   startSessionDrain(
-    repositoryId: string,
+    repositoryId: string | RepositoryRef,
     options?: { idempotencyKey?: string },
   ): Promise<SessionDrain>;
-  getSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
-  releaseSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
+  getSessionDrain(repositoryId: string | RepositoryRef, operationId: string): Promise<SessionDrain>;
+  releaseSessionDrain(
+    repositoryId: string | RepositoryRef,
+    operationId: string,
+  ): Promise<SessionDrain>;
+  /**
+   * Polls `getSessionDrain()` until it reports a terminal status, clamping each request's
+   * deadline to the time remaining before `timeoutMs`. Resolves with the terminal
+   * `SessionDrain` for any status; callers classify success themselves. Rejects with
+   * `AutoHarnessRequestTimeoutError` when `timeoutMs` elapses first.
+   */
+  waitForSessionDrain(
+    repositoryId: string | RepositoryRef,
+    operationId: string,
+    options: { pollIntervalMs: number; timeoutMs: number },
+  ): Promise<SessionDrain>;
   listRepositories(options?: ListRepositoriesOptions): Promise<RepositoryPage>;
   pauseRepository(id: string): Promise<Repository>;
   drainRepository(id: string): Promise<Repository>;
