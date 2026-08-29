@@ -101,7 +101,7 @@ export const runActionWithEnv = async (extraEnv: Record<string, string>) => {
 // Matches the real GitHub Actions runner's INPUT_* naming (actions/toolkit's core.ts):
 // only spaces become underscores; hyphens are preserved literally.
 export const inputEnvName = (name: string): string =>
-  `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
+  `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 
 export const runAction = (inputs: Record<string, string>) =>
   runActionWithEnv(
