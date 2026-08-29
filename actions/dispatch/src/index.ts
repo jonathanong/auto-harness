@@ -77,6 +77,9 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
 }
 
+// No queue-ttl-seconds input here: a resumed session reuses its pinned host/route rather than
+// re-entering the queue, so `ResumeSessionInput` (modules/client/src/index.d.ts) and the control
+// plane's resume body allowlist (RESUME_BODY_FIELDS) have no queueTtlSeconds field to set.
 async function resume(options: ClientOptions): Promise<void> {
   const sessionId = input("session-id", true);
   const prompt = input("prompt");
