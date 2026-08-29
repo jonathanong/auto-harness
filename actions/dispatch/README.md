@@ -28,6 +28,12 @@ The action returns as soon as the session is accepted. Use the `session-id`, `se
 `providerName`/`commandName` values. The bundled client resolves each name through the control-plane
 catalog before dispatch and fails if a name is missing or ambiguous.
 
+`source` (dispatch only) records the session's origin — `api`, `ui`, or `webhook` — and is
+validated against those three values before any request is sent; omitted, it defaults to `api`.
+`required-labels` (dispatch only) is an optional JSON array of host labels the control plane must
+match when routing the session; a non-array value or a non-string element is rejected before
+dispatch.
+
 Every dispatch, resume, and drain request is bounded by `request-timeout-seconds`, including
 receiving the response body. It defaults to `30` seconds and must be a finite positive number no
 greater than `300`. The wait operation uses the shorter of this request timeout and the remaining
