@@ -1,4 +1,8 @@
-import { AutoHarnessError, AutoHarnessRequestTimeoutError } from "auto-harness-client";
+import {
+  AutoHarnessDrainWaitTimeoutError,
+  AutoHarnessError,
+  AutoHarnessRequestTimeoutError,
+} from "auto-harness-client";
 
 import { setOutput } from "./io.ts";
 
@@ -85,7 +89,7 @@ export function validateDrain(
     queuedCount: Number(result.queuedCount),
     runningCount: Number(result.runningCount),
     cancelledCount: Number(result.cancelledCount),
-    ...(result.failureCode === undefined ? {} : { failureCode: result.failureCode as string }),
+    ...(result.failureCode === undefined ? {} : { failureCode: result.failureCode }),
   };
 }
 
@@ -114,11 +118,12 @@ export function setDrainOutputs(result: ValidatedDrain): void {
   setOutput("failure-code", result.failureCode ?? "");
 }
 
-export function actionErrorMessage(error: unknown, baseUrl: string, isDrain: boolean): string {
+export function actionErrorMessage(error: unknown, baseUrl: string): string {
+  if (error instanceof AutoHarnessDrainWaitTimeoutError) {
+    return "Timed out waiting for principal session drain";
+  }
   if (error instanceof AutoHarnessRequestTimeoutError) {
-    return isDrain
-      ? "Timed out waiting for principal session drain"
-      : "Timed out waiting for Auto Harness request";
+    return "Timed out waiting for Auto Harness request";
   }
   if (error instanceof AutoHarnessError && error.statusUrl) {
     try {

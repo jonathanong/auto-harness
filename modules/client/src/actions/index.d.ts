@@ -20,20 +20,30 @@ export function parseInteger(
 /** Parses `HARNESS_REQUIRED_LABELS`-shaped input; `fieldName` customizes the error message only. */
 export function parseRequiredLabels(value: string | undefined, fieldName?: string): string[];
 
-export function parseConcurrencyId(value: string | undefined): string;
+export function parseConcurrencyId(
+  value: string | undefined,
+  options?: { fieldName?: string; optional?: boolean },
+): string | undefined;
 
 export function parseMetadata(
   value: string | undefined,
+  fieldName?: string,
 ): Record<string, string | number | boolean | null>;
+
+/**
+ * Validates a raw URL string is an exact https origin, optionally suffixed with `/api/v1`
+ * (accepted and stripped, so an API-relative origin round-trips unchanged).
+ */
+export function parseApiOrigin(rawUrl: string, fieldName?: string): URL;
 
 /** Validates `HARNESS_URL` is an exact `https://host` origin (no path/query/hash/credentials). */
 export function parseHarnessApiOrigin(environment: ActionEnvironment): URL;
 
 export const TARGET_SPEC_KEYS: readonly ["providerId", "providerName", "commandId", "commandName"];
 
-export function parseHarnessTarget(value: string): TargetSpec;
+export function parseHarnessTarget(value: string, fieldName?: string): TargetSpec;
 
-export function parseHarnessFallbacks(value: string | undefined): TargetSpec[];
+export function parseHarnessFallbacks(value: string | undefined, fieldName?: string): TargetSpec[];
 
 export type DispatchResult = {
   id: string;

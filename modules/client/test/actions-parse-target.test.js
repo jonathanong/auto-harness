@@ -97,3 +97,14 @@ test("parseHarnessFallbacks rejects an invalid entry and names its index", () =>
     /HARNESS_FALLBACKS\[1\]/,
   );
 });
+
+test("parseHarnessTarget includes a custom fieldName in its error message", () => {
+  assert.throws(() => parseHarnessTarget("not json", "target"), /target/);
+});
+
+test("parseHarnessFallbacks includes a custom fieldName in its error message and index", () => {
+  assert.throws(
+    () => parseHarnessFallbacks('[{"providerId":"p1"},{"bad":"x"}]', "fallbacks"),
+    /fallbacks\[1\]/,
+  );
+});

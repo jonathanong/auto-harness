@@ -197,6 +197,15 @@ export class AutoHarnessRequestTimeoutError extends Error {
   constructor(timeoutMs: number);
 }
 
+/** Thrown by `waitForSessionDrain()` when its overall `timeoutMs` budget elapses. */
+export class AutoHarnessDrainWaitTimeoutError extends Error {
+  code: "DRAIN_WAIT_TIMEOUT";
+  repositoryId: string;
+  operationId: string;
+  timeoutMs: number;
+  constructor(repositoryId: string, operationId: string, timeoutMs: number);
+}
+
 export type AutoHarnessClientOptions = {
   baseUrl: string;
   apiKey?: string;
@@ -226,7 +235,8 @@ export class AutoHarnessClient {
    * Polls `getSessionDrain()` until it reports a terminal status, clamping each request's
    * deadline to the time remaining before `timeoutMs`. Resolves with the terminal
    * `SessionDrain` for any status; callers classify success themselves. Rejects with
-   * `AutoHarnessRequestTimeoutError` when `timeoutMs` elapses first.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
+   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
    */
   waitForSessionDrain(
     repositoryId: string | RepositoryRef,

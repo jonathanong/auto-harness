@@ -2,10 +2,15 @@ import {
   type CreatableSessionSource,
   type CreateSessionInput,
   type ResumeSessionInput,
-  type SessionMetadataValue,
-  type TargetSpec,
 } from "auto-harness-client";
-import { parseRequiredLabels } from "auto-harness-client/actions";
+import {
+  parseApiOrigin,
+  parseConcurrencyId,
+  parseHarnessFallbacks,
+  parseHarnessTarget,
+  parseMetadata,
+  parseRequiredLabels,
+} from "auto-harness-client/actions";
 
 import { client } from "./client.ts";
 import { drain, type DrainOperation } from "./drain.ts";
@@ -14,7 +19,6 @@ import {
   input,
   optionalBoundedNumberInput,
   optionalPositiveNumberInput,
-  parseJson,
   positiveNumberInput,
   requestTimeoutMs,
   setOutput,
@@ -63,7 +67,10 @@ function requiredLabelsInput(): string[] {
 async function dispatch(options: ClientOptions, repositoryId: string): Promise<void> {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+  });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
   const source = sourceInput();
@@ -76,17 +83,15 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   const request: CreateSessionInput = {
     repositoryId,
     prompt: input("prompt", true),
-    target: parseJson<TargetSpec>("target", input("target", true)),
+    target: parseHarnessTarget(input("target", true), "target"),
     timeout: positiveNumberInput("timeout"),
-    ...(fallbacks ? { fallbacks: parseJson<TargetSpec[]>("fallbacks", fallbacks) } : {}),
+    ...(fallbacks ? { fallbacks: parseHarnessFallbacks(fallbacks, "fallbacks") } : {}),
     ...(ref ? { ref } : {}),
     ...(concurrencyId ? { concurrencyId } : {}),
     ...(queueTtlSeconds !== undefined ? { queueTtlSeconds } : {}),
     ...(priority !== undefined ? { priority } : {}),
     ...(requiredLabels.length > 0 ? { requiredLabels } : {}),
-    ...(metadata
-      ? { metadata: parseJson<Record<string, SessionMetadataValue>>("metadata", metadata) }
-      : {}),
+    ...(metadata ? { metadata: parseMetadata(metadata, "metadata") } : {}),
     ...(source ? { source } : {}),
   };
   const session = validateSession(await client(options).createSession(request));
@@ -102,7 +107,10 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
 async function resume(options: ClientOptions): Promise<void> {
   const sessionId = input("session-id", true);
   const prompt = input("prompt");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+  });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request: ResumeSessionInput = {
@@ -119,9 +127,7 @@ async function resume(options: ClientOptions): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const baseUrl = input("server-url", true)
-    .replace(/\/$/, "")
-    .replace(/\/api\/v1$/, "");
+  const baseUrl = parseApiOrigin(input("server-url", true), "server-url").origin;
   const operation = operationInput();
   const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
   try {
@@ -129,10 +135,7 @@ async function main(): Promise<void> {
     else if (operation === "resume") await resume(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
-    throw new Error(
-      actionErrorMessage(error, baseUrl, operation !== "dispatch" && operation !== "resume"),
-      { cause: error },
-    );
+    throw new Error(actionErrorMessage(error, baseUrl), { cause: error });
   }
 }
 

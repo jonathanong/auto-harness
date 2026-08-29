@@ -28,26 +28,26 @@ function parseTargetRefValue(parsed, key) {
   return { [field]: fieldValue };
 }
 
-export function parseHarnessTarget(value) {
+export function parseHarnessTarget(value, fieldName = "HARNESS_TARGET") {
   let parsed;
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new HarnessDispatchError("INVALID_TARGET", "HARNESS_TARGET must be valid JSON");
+    throw new HarnessDispatchError("INVALID_TARGET", `${fieldName} must be valid JSON`);
   }
-  return parseTargetRefValue(parsed, "HARNESS_TARGET");
+  return parseTargetRefValue(parsed, fieldName);
 }
 
-export function parseHarnessFallbacks(value) {
+export function parseHarnessFallbacks(value, fieldName = "HARNESS_FALLBACKS") {
   if (!value?.trim()) return [];
   let parsed;
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new HarnessDispatchError("INVALID_FALLBACKS", "HARNESS_FALLBACKS must be valid JSON");
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be valid JSON`);
   }
   if (!Array.isArray(parsed)) {
-    throw new HarnessDispatchError("INVALID_FALLBACKS", "HARNESS_FALLBACKS must be a JSON array");
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be a JSON array`);
   }
-  return parsed.map((entry, index) => parseTargetRefValue(entry, `HARNESS_FALLBACKS[${index}]`));
+  return parsed.map((entry, index) => parseTargetRefValue(entry, `${fieldName}[${index}]`));
 }

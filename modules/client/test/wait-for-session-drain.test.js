@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AutoHarnessClient, AutoHarnessRequestTimeoutError } from "../src/index.js";
+import {
+  AutoHarnessClient,
+  AutoHarnessDrainWaitTimeoutError,
+  AutoHarnessRequestTimeoutError,
+} from "../src/index.js";
 
 test("resolves as soon as the drain reports a non-draining status", async () => {
   let calls = 0;
@@ -54,7 +58,7 @@ test("polls again while the drain remains draining, until a terminal status arri
   assert.equal(calls, 3);
 });
 
-test("rejects with AutoHarnessRequestTimeoutError once timeoutMs elapses", async () => {
+test("rejects with AutoHarnessDrainWaitTimeoutError once the overall timeoutMs budget elapses", async () => {
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",
     fetch: async () => Response.json({ operationId: "drain-1", status: "draining" }),
@@ -62,8 +66,11 @@ test("rejects with AutoHarnessRequestTimeoutError once timeoutMs elapses", async
   await assert.rejects(
     client.waitForSessionDrain("repo", "drain-1", { pollIntervalMs: 5, timeoutMs: 20 }),
     (error) => {
-      assert.ok(error instanceof AutoHarnessRequestTimeoutError);
-      assert.equal(error.code, "REQUEST_TIMEOUT");
+      assert.ok(error instanceof AutoHarnessDrainWaitTimeoutError);
+      assert.equal(error.code, "DRAIN_WAIT_TIMEOUT");
+      assert.equal(error.repositoryId, "repo");
+      assert.equal(error.operationId, "drain-1");
+      assert.equal(error.timeoutMs, 20);
       return true;
     },
   );

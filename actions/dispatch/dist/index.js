@@ -18,6 +18,16 @@ var AutoHarnessRequestTimeoutError = class extends Error {
     this.timeoutMs = timeoutMs;
   }
 };
+var AutoHarnessDrainWaitTimeoutError = class extends Error {
+  constructor(repositoryId, operationId, timeoutMs) {
+    super(`Auto Harness session drain wait timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessDrainWaitTimeoutError";
+    this.code = "DRAIN_WAIT_TIMEOUT";
+    this.repositoryId = repositoryId;
+    this.operationId = operationId;
+    this.timeoutMs = timeoutMs;
+  }
+};
 
 // modules/client/src/resolve-by-name.js
 async function resolveByName(name, catalog, kind) {
@@ -207,7 +217,8 @@ var AutoHarnessClient = class _AutoHarnessClient {
    * deadline to the time remaining before `timeoutMs` so no single request can outlive the
    * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
    * and "released" — callers classify success themselves. Rejects with
-   * `AutoHarnessRequestTimeoutError` when `timeoutMs` elapses first.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
+   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
    */
   async waitForSessionDrain(repositoryId, operationId, options = {}) {
     const { pollIntervalMs, timeoutMs } = options;
@@ -221,7 +232,9 @@ var AutoHarnessClient = class _AutoHarnessClient {
     const deadline = Date.now() + timeoutMs;
     for (; ; ) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      if (remainingMs <= 0) {
+        throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+      }
       const pollClient = new _AutoHarnessClient({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
@@ -231,7 +244,7 @@ var AutoHarnessClient = class _AutoHarnessClient {
       const sessionDrain = await pollClient.getSessionDrain(id, operationId);
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -273,6 +286,8 @@ var HarnessDispatchError = class extends Error {
 };
 
 // modules/client/src/actions/parse.js
+var MAX_CONCURRENCY_ID_CHARACTERS = 128;
+var MAX_METADATA_BYTES = 8192;
 function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS") {
   if (!value) return [];
   let parsed;
@@ -289,6 +304,116 @@ function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS") {
   }
   return parsed;
 }
+function parseConcurrencyId(value, { fieldName = "HARNESS_CONCURRENCY_ID", optional = false } = {}) {
+  const concurrencyId = value?.trim();
+  if (!concurrencyId) {
+    if (optional) return void 0;
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} is required`);
+  }
+  if (concurrencyId.length > MAX_CONCURRENCY_ID_CHARACTERS) {
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} exceeds 128 characters`);
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/u.test(concurrencyId)) {
+    throw new HarnessDispatchError(
+      "INVALID_CONCURRENCY_ID",
+      `${fieldName} contains unsupported characters`
+    );
+  }
+  return concurrencyId;
+}
+function parseMetadata(value, fieldName = "HARNESS_METADATA") {
+  if (!value) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be valid JSON`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be a JSON object`);
+  }
+  for (const [key, fieldValue] of Object.entries(parsed)) {
+    if (!["string", "number", "boolean"].includes(typeof fieldValue) && fieldValue !== null) {
+      throw new HarnessDispatchError(
+        "INVALID_METADATA",
+        `${fieldName}.${key} must be a string, number, boolean, or null`
+      );
+    }
+  }
+  if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > MAX_METADATA_BYTES) {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} exceeds 8192 bytes`);
+  }
+  return parsed;
+}
+function parseApiOrigin(rawUrl, fieldName = "HARNESS_URL") {
+  let apiUrl;
+  try {
+    apiUrl = new URL(rawUrl);
+  } catch {
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must be a valid URL`);
+  }
+  if (apiUrl.protocol !== "https:") {
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must use https`);
+  }
+  const { origin } = apiUrl;
+  if (apiUrl.username !== "" || apiUrl.password !== "" || apiUrl.search !== "" || apiUrl.hash !== "" || ![origin, `${origin}/`, `${origin}/api/v1`, `${origin}/api/v1/`].includes(rawUrl)) {
+    throw new HarnessDispatchError(
+      "INVALID_HARNESS_URL",
+      `${fieldName} must be an exact https origin, optionally suffixed with /api/v1`
+    );
+  }
+  return new URL(origin);
+}
+
+// modules/client/src/actions/parse-target.js
+var TARGET_SPEC_KEYS = ["providerId", "providerName", "commandId", "commandName"];
+function parseTargetRefValue(parsed, key) {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_TARGET", `${key} must be a JSON object`);
+  }
+  const rest = Object.keys(parsed).filter((field2) => !TARGET_SPEC_KEYS.includes(field2));
+  if (rest.length > 0) {
+    throw new HarnessDispatchError(
+      "INVALID_TARGET",
+      `${key} must only contain providerId, providerName, commandId, or commandName`
+    );
+  }
+  const presentKeys = TARGET_SPEC_KEYS.filter((field2) => field2 in parsed);
+  if (presentKeys.length !== 1) {
+    throw new HarnessDispatchError(
+      "INVALID_TARGET",
+      `${key} must be exactly one of providerId, providerName, commandId, or commandName`
+    );
+  }
+  const field = presentKeys[0];
+  const fieldValue = parsed[field];
+  if (typeof fieldValue !== "string" || fieldValue === "") {
+    throw new HarnessDispatchError("INVALID_TARGET", `${key}.${field} must be a non-empty string`);
+  }
+  return { [field]: fieldValue };
+}
+function parseHarnessTarget(value, fieldName = "HARNESS_TARGET") {
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_TARGET", `${fieldName} must be valid JSON`);
+  }
+  return parseTargetRefValue(parsed, fieldName);
+}
+function parseHarnessFallbacks(value, fieldName = "HARNESS_FALLBACKS") {
+  if (!value?.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be valid JSON`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be a JSON array`);
+  }
+  return parsed.map((entry, index) => parseTargetRefValue(entry, `${fieldName}[${index}]`));
+}
 
 // actions/dispatch/src/client.ts
 function client(options) {
@@ -301,14 +426,6 @@ function input(name, required = false) {
   const value = process.env[`INPUT_${name.replaceAll(" ", "_").toUpperCase()}`]?.trim() ?? "";
   if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
   return value;
-}
-function parseJson(name, value, fallback) {
-  if (!value && fallback !== void 0) return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error(`${name} must be valid JSON`);
-  }
 }
 function parsePositiveNumber(name, raw, maximum, integer = false) {
   const value = Number(raw);
@@ -433,9 +550,12 @@ function setDrainOutputs(result) {
   setOutput("cancelled-count", String(result.cancelledCount));
   setOutput("failure-code", result.failureCode ?? "");
 }
-function actionErrorMessage(error, baseUrl, isDrain) {
+function actionErrorMessage(error, baseUrl) {
+  if (error instanceof AutoHarnessDrainWaitTimeoutError) {
+    return "Timed out waiting for principal session drain";
+  }
   if (error instanceof AutoHarnessRequestTimeoutError) {
-    return isDrain ? "Timed out waiting for principal session drain" : "Timed out waiting for Auto Harness request";
+    return "Timed out waiting for Auto Harness request";
   }
   if (error instanceof AutoHarnessError && error.statusUrl) {
     try {
@@ -530,7 +650,10 @@ function requiredLabelsInput() {
 async function dispatch(options, repositoryId) {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true
+  });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
   const source = sourceInput();
@@ -543,15 +666,15 @@ async function dispatch(options, repositoryId) {
   const request = {
     repositoryId,
     prompt: input("prompt", true),
-    target: parseJson("target", input("target", true)),
+    target: parseHarnessTarget(input("target", true), "target"),
     timeout: positiveNumberInput("timeout"),
-    ...fallbacks ? { fallbacks: parseJson("fallbacks", fallbacks) } : {},
+    ...fallbacks ? { fallbacks: parseHarnessFallbacks(fallbacks, "fallbacks") } : {},
     ...ref ? { ref } : {},
     ...concurrencyId ? { concurrencyId } : {},
     ...queueTtlSeconds !== void 0 ? { queueTtlSeconds } : {},
     ...priority !== void 0 ? { priority } : {},
     ...requiredLabels.length > 0 ? { requiredLabels } : {},
-    ...metadata ? { metadata: parseJson("metadata", metadata) } : {},
+    ...metadata ? { metadata: parseMetadata(metadata, "metadata") } : {},
     ...source ? { source } : {}
   };
   const session = validateSession(await client(options).createSession(request));
@@ -564,7 +687,10 @@ async function dispatch(options, repositoryId) {
 async function resume(options) {
   const sessionId = input("session-id", true);
   const prompt = input("prompt");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true
+  });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request = {
@@ -581,7 +707,7 @@ async function resume(options) {
 `);
 }
 async function main() {
-  const baseUrl = input("server-url", true).replace(/\/$/, "").replace(/\/api\/v1$/, "");
+  const baseUrl = parseApiOrigin(input("server-url", true), "server-url").origin;
   const operation = operationInput();
   const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
   try {
@@ -589,10 +715,7 @@ async function main() {
     else if (operation === "resume") await resume(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
-    throw new Error(
-      actionErrorMessage(error, baseUrl, operation !== "dispatch" && operation !== "resume"),
-      { cause: error }
-    );
+    throw new Error(actionErrorMessage(error, baseUrl), { cause: error });
   }
 }
 try {

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   HarnessDispatchError,
+  parseApiOrigin,
   parseConcurrencyId,
   parseHarnessApiOrigin,
   parseInteger,
@@ -96,6 +97,19 @@ test("parseConcurrencyId rejects blank, oversized, or malformed ids", () => {
   }
 });
 
+test("parseConcurrencyId returns undefined for blank input when optional", () => {
+  assert.equal(parseConcurrencyId(undefined, { optional: true }), undefined);
+  assert.equal(parseConcurrencyId("", { optional: true }), undefined);
+  assert.equal(parseConcurrencyId("   ", { optional: true }), undefined);
+});
+
+test("parseConcurrencyId includes a custom fieldName in its error message", () => {
+  assert.throws(
+    () => parseConcurrencyId(undefined, { fieldName: "concurrency-id" }),
+    /concurrency-id/,
+  );
+});
+
 test("parseMetadata returns an empty object for falsy input", () => {
   assert.deepEqual(parseMetadata(undefined), {});
   assert.deepEqual(parseMetadata(""), {});
@@ -133,6 +147,42 @@ test("parseMetadata rejects a payload exceeding 8192 bytes", () => {
       return true;
     },
   );
+});
+
+test("parseMetadata includes a custom fieldName in its error message", () => {
+  assert.throws(() => parseMetadata("not json", "metadata"), /metadata/);
+});
+
+test("parseApiOrigin accepts an exact https origin, with or without a trailing slash", () => {
+  assert.equal(parseApiOrigin("https://harness.test").origin, "https://harness.test");
+  assert.equal(parseApiOrigin("https://harness.test/").origin, "https://harness.test");
+});
+
+test("parseApiOrigin accepts and strips a trailing /api/v1 suffix", () => {
+  assert.equal(parseApiOrigin("https://harness.test/api/v1").origin, "https://harness.test");
+  assert.equal(parseApiOrigin("https://harness.test/api/v1/").origin, "https://harness.test");
+});
+
+test("parseApiOrigin rejects a missing, non-https, or non-origin URL", () => {
+  for (const rawUrl of [
+    "not a url",
+    "http://harness.test",
+    "https://harness.test/path",
+    "https://harness.test?query=1",
+    "https://user:pass@harness.test",
+  ]) {
+    assert.throws(
+      () => parseApiOrigin(rawUrl),
+      (error) => {
+        assert.ok(error instanceof HarnessDispatchError);
+        return true;
+      },
+    );
+  }
+});
+
+test("parseApiOrigin includes a custom fieldName in its error message", () => {
+  assert.throws(() => parseApiOrigin("not a url", "server-url"), /server-url/);
 });
 
 test("parseHarnessApiOrigin accepts an exact https origin, with or without a trailing slash", () => {

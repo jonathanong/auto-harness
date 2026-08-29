@@ -1,6 +1,7 @@
 export { requiredEnvironmentValue } from "./env.js";
 export { HarnessDispatchError } from "./errors.js";
 export {
+  parseApiOrigin,
   parseConcurrencyId,
   parseHarnessApiOrigin,
   parseInteger,

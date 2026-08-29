@@ -35,74 +35,82 @@ export function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS"
   return parsed;
 }
 
-export function parseConcurrencyId(value) {
+export function parseConcurrencyId(
+  value,
+  { fieldName = "HARNESS_CONCURRENCY_ID", optional = false } = {},
+) {
   const concurrencyId = value?.trim();
   if (!concurrencyId) {
-    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", "HARNESS_CONCURRENCY_ID is required");
+    if (optional) return undefined;
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} is required`);
   }
   if (concurrencyId.length > MAX_CONCURRENCY_ID_CHARACTERS) {
-    throw new HarnessDispatchError(
-      "INVALID_CONCURRENCY_ID",
-      "HARNESS_CONCURRENCY_ID exceeds 128 characters",
-    );
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} exceeds 128 characters`);
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/u.test(concurrencyId)) {
     throw new HarnessDispatchError(
       "INVALID_CONCURRENCY_ID",
-      "HARNESS_CONCURRENCY_ID contains unsupported characters",
+      `${fieldName} contains unsupported characters`,
     );
   }
   return concurrencyId;
 }
 
-export function parseMetadata(value) {
+export function parseMetadata(value, fieldName = "HARNESS_METADATA") {
   if (!value) return {};
   let parsed;
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new HarnessDispatchError("INVALID_METADATA", "HARNESS_METADATA must be valid JSON");
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be valid JSON`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new HarnessDispatchError("INVALID_METADATA", "HARNESS_METADATA must be a JSON object");
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be a JSON object`);
   }
   for (const [key, fieldValue] of Object.entries(parsed)) {
     if (!["string", "number", "boolean"].includes(typeof fieldValue) && fieldValue !== null) {
       throw new HarnessDispatchError(
         "INVALID_METADATA",
-        `HARNESS_METADATA.${key} must be a string, number, boolean, or null`,
+        `${fieldName}.${key} must be a string, number, boolean, or null`,
       );
     }
   }
   if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > MAX_METADATA_BYTES) {
-    throw new HarnessDispatchError("INVALID_METADATA", "HARNESS_METADATA exceeds 8192 bytes");
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} exceeds 8192 bytes`);
   }
   return parsed;
 }
 
-export function parseHarnessApiOrigin(environment) {
-  const rawUrl = requiredEnvironmentValue(environment, "HARNESS_URL");
+/**
+ * Validates a raw URL string is an exact https origin, optionally suffixed with `/api/v1`
+ * (accepted and stripped, so an API-relative origin round-trips unchanged).
+ */
+export function parseApiOrigin(rawUrl, fieldName = "HARNESS_URL") {
   let apiUrl;
   try {
     apiUrl = new URL(rawUrl);
   } catch {
-    throw new HarnessDispatchError("INVALID_HARNESS_URL", "HARNESS_URL must be a valid URL");
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must be a valid URL`);
   }
   if (apiUrl.protocol !== "https:") {
-    throw new HarnessDispatchError("INVALID_HARNESS_URL", "HARNESS_URL must use https");
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must use https`);
   }
+  const { origin } = apiUrl;
   if (
     apiUrl.username !== "" ||
     apiUrl.password !== "" ||
-    apiUrl.pathname !== "/" ||
     apiUrl.search !== "" ||
     apiUrl.hash !== "" ||
-    ![apiUrl.origin, `${apiUrl.origin}/`].includes(rawUrl)
+    ![origin, `${origin}/`, `${origin}/api/v1`, `${origin}/api/v1/`].includes(rawUrl)
   ) {
     throw new HarnessDispatchError(
       "INVALID_HARNESS_URL",
-      "HARNESS_URL must be an exact https origin",
+      `${fieldName} must be an exact https origin, optionally suffixed with /api/v1`,
     );
   }
-  return apiUrl;
+  return new URL(origin);
+}
+
+export function parseHarnessApiOrigin(environment) {
+  return parseApiOrigin(requiredEnvironmentValue(environment, "HARNESS_URL"), "HARNESS_URL");
 }

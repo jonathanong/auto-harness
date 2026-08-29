@@ -119,8 +119,9 @@ reimplementing pagination or cancellation reconciliation.
 poll loop above: it polls `getSessionDrain()` until a terminal status, clamping each request's
 deadline to the time remaining before `timeoutMs`. It resolves with the terminal `SessionDrain` for
 any status, including `"failed"` and `"released"` — callers classify success themselves — and
-rejects with `AutoHarnessRequestTimeoutError` (`code === "REQUEST_TIMEOUT"`) if `timeoutMs` elapses
-first.
+rejects with `AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) if the overall
+`timeoutMs` budget elapses, or with `AutoHarnessRequestTimeoutError` (`code === "REQUEST_TIMEOUT"`)
+if one individual poll itself times out.
 
 ```js
 const progress = await harness.waitForSessionDrain("repo-1", drain.operationId, {

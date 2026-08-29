@@ -1,8 +1,12 @@
-import { AutoHarnessError, AutoHarnessRequestTimeoutError } from "./errors.js";
+import {
+  AutoHarnessDrainWaitTimeoutError,
+  AutoHarnessError,
+  AutoHarnessRequestTimeoutError,
+} from "./errors.js";
 import { resolveRepositoryId } from "./resolve-repository.js";
 import { resolveCreateSessionTargets } from "./resolve-target.js";
 
-export { AutoHarnessError, AutoHarnessRequestTimeoutError };
+export { AutoHarnessDrainWaitTimeoutError, AutoHarnessError, AutoHarnessRequestTimeoutError };
 
 export class AutoHarnessClient {
   constructor(options) {
@@ -141,7 +145,8 @@ export class AutoHarnessClient {
    * deadline to the time remaining before `timeoutMs` so no single request can outlive the
    * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
    * and "released" — callers classify success themselves. Rejects with
-   * `AutoHarnessRequestTimeoutError` when `timeoutMs` elapses first.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
+   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
    */
   async waitForSessionDrain(repositoryId, operationId, options = {}) {
     const { pollIntervalMs, timeoutMs } = options;
@@ -155,7 +160,9 @@ export class AutoHarnessClient {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      if (remainingMs <= 0) {
+        throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+      }
       const pollClient = new AutoHarnessClient({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
@@ -165,7 +172,7 @@ export class AutoHarnessClient {
       const sessionDrain = await pollClient.getSessionDrain(id, operationId);
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new AutoHarnessRequestTimeoutError(timeoutMs);
+      if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
