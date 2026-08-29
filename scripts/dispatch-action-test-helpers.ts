@@ -64,20 +64,11 @@ export const serve = async (respond: (request: Request) => Response) => {
   return { origin: `http://127.0.0.1:${address.port}`, requests };
 };
 
-export const runAction = async (inputs: Record<string, string>) => {
+export const runActionWithEnv = async (extraEnv: Record<string, string>) => {
   const directory = await mkdtemp(join(tmpdir(), "auto-harness-dispatch-action-"));
   const output = join(directory, "github-output");
   const child = spawn(process.execPath, [actionPath], {
-    env: {
-      ...process.env,
-      GITHUB_OUTPUT: output,
-      ...Object.fromEntries(
-        Object.entries(inputs).map(([name, value]) => [
-          `INPUT_${name.replaceAll("-", "_").toUpperCase()}`,
-          value,
-        ]),
-      ),
-    },
+    env: { ...process.env, GITHUB_OUTPUT: output, ...extraEnv },
   });
   let stdout = "";
   let stderr = "";
@@ -106,6 +97,16 @@ export const runAction = async (inputs: Record<string, string>) => {
     stdout,
   };
 };
+
+// Matches the real GitHub Actions runner's INPUT_* naming (actions/toolkit's core.ts):
+// only spaces become underscores; hyphens are preserved literally.
+export const inputEnvName = (name: string): string =>
+  `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
+
+export const runAction = (inputs: Record<string, string>) =>
+  runActionWithEnv(
+    Object.fromEntries(Object.entries(inputs).map(([name, value]) => [inputEnvName(name), value])),
+  );
 
 export const drainInputs = (origin: string, operation: string) => ({
   "api-key": "test-key",

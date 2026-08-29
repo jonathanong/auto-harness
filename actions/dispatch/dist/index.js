@@ -211,7 +211,7 @@ function client(options) {
 // actions/dispatch/src/io.ts
 import { appendFileSync } from "node:fs";
 function input(name, required = false) {
-  const value = process.env[`INPUT_${name.replaceAll("-", "_").toUpperCase()}`]?.trim() ?? "";
+  const value = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`]?.trim() ?? "";
   if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
   return value;
 }

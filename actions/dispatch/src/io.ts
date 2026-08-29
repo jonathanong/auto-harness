@@ -1,7 +1,9 @@
 import { appendFileSync } from "node:fs";
 
 export function input(name: string, required = false): string {
-  const value = process.env[`INPUT_${name.replaceAll("-", "_").toUpperCase()}`]?.trim() ?? "";
+  // Mirrors @actions/core's getInput env-var construction (actions/toolkit's core.ts):
+  // only spaces become underscores before uppercasing; hyphens are preserved literally.
+  const value = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`]?.trim() ?? "";
   if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
   return value;
 }
