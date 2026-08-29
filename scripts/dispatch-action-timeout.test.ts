@@ -68,6 +68,28 @@ describe("dispatch action request timeouts", () => {
   it.each([
     ["header", { delayMs: 300 }],
     ["body", { bodyDelayMs: 300 }],
+  ])("times out a stalled resume response %s", async (_name, response) => {
+    const server = await serve(() => ({
+      body: { created: false, id: "session-1", url: "https://example.test/sessions/session-1" },
+      ...response,
+    }));
+
+    const result = await runAction({
+      "api-key": "test-key",
+      operation: "resume",
+      "request-timeout-seconds": "0.1",
+      "server-url": server.origin,
+      "session-id": "session-1",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
+    expect(server.requests).toHaveLength(1);
+  });
+
+  it.each([
+    ["header", { delayMs: 300 }],
+    ["body", { bodyDelayMs: 300 }],
   ])("times out a stalled drain response %s", async (_name, response) => {
     const server = await serve(() => ({ body: drain("succeeded"), ...response }));
 

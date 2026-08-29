@@ -1,8 +1,8 @@
 name: Auto Harness dispatch
-description: Dispatch a session, or start/poll/release a principal session drain that cancels this principal's own queued and running sessions for one repository
+description: Dispatch or resume a session, or start/poll/release a principal session drain that cancels this principal's own queued and running sessions for one repository
 inputs:
   operation:
-    description: dispatch (default) creates a session; start-drain/get-drain/wait-for-drain/release-drain manage a principal session drain, which cancels this principal's queued and running sessions for one repository (not a repository-wide or host drain)
+    description: dispatch (default) creates a session; resume continues a prior session on its pinned host; start-drain/get-drain/wait-for-drain/release-drain manage a principal session drain, which cancels this principal's queued and running sessions for one repository (not a repository-wide or host drain)
     required: false
     default: dispatch
   server-url:
@@ -12,32 +12,41 @@ inputs:
     description: Auto Harness service-account API key
     required: true
   request-timeout-seconds:
-    description: Maximum time for each dispatch or drain request, including its response body (finite positive number, at most 300)
+    description: Maximum time for each dispatch, resume, or drain request, including its response body (finite positive number, at most 300)
     required: false
     default: "30"
   repository-id:
-    description: Auto Harness repository ID
-    required: true
+    description: Auto Harness repository ID (required for dispatch and the drain operations; unused by resume)
+    required: false
+  session-id:
+    description: Session ID to resume (required for resume)
+    required: false
   prompt:
-    description: Prompt for the session
+    description: Prompt for the session (required for dispatch; optional continuation instruction override for resume)
     required: false
   target:
-    description: JSON target by catalog name or ID, for example {"providerName":"codex"}
+    description: JSON target by catalog name or ID, for example {"providerName":"codex"} (dispatch only)
     required: false
   timeout:
-    description: Maximum session runtime in seconds (required for dispatch)
+    description: Maximum session runtime in seconds (required for dispatch; optional override for resume)
     required: false
   fallbacks:
-    description: Optional JSON array of fallback targets
+    description: Optional JSON array of fallback targets (dispatch only)
     required: false
   ref:
-    description: Optional branch, tag, or SHA
+    description: Optional branch, tag, or SHA (dispatch only)
     required: false
   concurrency-id:
-    description: Optional idempotency/concurrency identity
+    description: Optional idempotency/concurrency identity for dispatch; for resume, must exactly match the source session's inherited concurrency identity
+    required: false
+  queue-ttl-seconds:
+    description: Optional integer queue lifetime in seconds, 1-2592000 (dispatch only)
+    required: false
+  priority:
+    description: Optional integer queue priority, -10000 to 10000 (dispatch and resume; dispatch default 0, resume defaults to the source session's priority)
     required: false
   metadata:
-    description: Optional JSON object with string, number, boolean, or null values
+    description: Optional JSON object with string, number, boolean, or null values (dispatch only)
     required: false
   idempotency-key:
     description: Stable 1-128 character Idempotency-Key for start-drain retries
@@ -55,7 +64,7 @@ inputs:
     default: "900"
 outputs:
   session-id:
-    description: Created or deduplicated session ID
+    description: Created, resumed, or deduplicated session ID
   session-url:
     description: Control-plane URL for the session
   created:
