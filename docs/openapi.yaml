@@ -55,6 +55,32 @@ paths:
               schema: { $ref: "#/components/schemas/Session" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/resume:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: resumeSession
+      summary: Resume a previously assigned session on its pinned host, native CLI resume where supported, falling back to fresh routing when unavailable
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResumeSession" }
+      responses:
+        "200":
+          description: Existing active session with the same inherited concurrency ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "201":
+          description: Resumed session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
   /repositories:
     get:
       operationId: listRepositories
@@ -382,6 +408,27 @@ components:
               - type: number
               - type: boolean
               - type: "null"
+      additionalProperties: false
+    ResumeSession:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: Continuation instruction. At most 65,536 UTF-8 bytes. Defaults to the agent's native resume/continue behavior.
+        concurrencyId:
+          type: string
+          description: Optional caller assertion; must exactly match the source session's inherited concurrency identity. Cannot override that identity.
+        timeout:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 604800
+          description: Override timeout in seconds. Default is the source session's timeout.
+        priority:
+          type: number
+          minimum: -10000
+          maximum: 10000
+          description: Queue priority. Default is the source session's priority.
       additionalProperties: false
     Session:
       type: object

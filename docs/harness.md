@@ -10,14 +10,15 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 For GitHub workflows,
 `jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc`
-wraps the fire-and-forget session create call and returns `session-id`, `session-url`, and `created`
-outputs. Pin the Action to a reviewed full commit SHA and deliberately update that SHA when adopting
-a newer revision; do not use the moving `main` ref. It accepts the control-plane URL and
-service-account key as secrets plus repository, prompt, target JSON, and optional
-ref/concurrency/metadata inputs. Each request, including response-body consumption, has a
-configurable `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal
-session-drain modes start, poll, and release a durable drain for that same service account and
-repository; see
+wraps the fire-and-forget session create and resume calls and returns `session-id`, `session-url`,
+and `created` outputs. Pin the Action to a reviewed full commit SHA and deliberately update that SHA
+when adopting a newer revision; do not use the moving `main` ref. It accepts the control-plane URL
+and service-account key as secrets plus, for `operation: dispatch` (the default), repository,
+prompt, target JSON, and optional ref/concurrency/queue-ttl/priority/metadata inputs; for
+`operation: resume`, a source `session-id` plus optional prompt/concurrency/timeout/priority
+overrides. Each request, including response-body consumption, has a configurable
+`request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal session-drain
+modes start, poll, and release a durable drain for that same service account and repository; see
 [`actions/dispatch`](../actions/dispatch/README.md).
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods

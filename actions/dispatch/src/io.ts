@@ -15,14 +15,37 @@ export function parseJson<T>(name: string, value: string, fallback?: T): T {
   }
 }
 
-export function positiveNumberInput(name: string, maximum?: number): number {
-  const value = Number(input(name, true));
+function parsePositiveNumber(name: string, raw: string, maximum?: number): number {
+  const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0 || (maximum !== undefined && value > maximum)) {
     throw new Error(
       maximum === undefined
         ? `${name} must be a positive number`
         : `${name} must be a finite positive number no greater than ${maximum}`,
     );
+  }
+  return value;
+}
+
+export function positiveNumberInput(name: string, maximum?: number): number {
+  return parsePositiveNumber(name, input(name, true), maximum);
+}
+
+export function optionalPositiveNumberInput(name: string, maximum?: number): number | undefined {
+  const raw = input(name);
+  return raw ? parsePositiveNumber(name, raw, maximum) : undefined;
+}
+
+export function optionalBoundedNumberInput(
+  name: string,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  const raw = input(name);
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a finite number between ${minimum} and ${maximum}`);
   }
   return value;
 }

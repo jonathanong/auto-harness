@@ -1,48 +1,45 @@
 import {
-  AutoHarnessClient,
   type CreateSessionInput,
-  type SessionDrain,
+  type ResumeSessionInput,
   type SessionMetadataValue,
   type TargetSpec,
 } from "auto-harness-client";
 
+import { client } from "./client.ts";
+import { drain, type DrainOperation } from "./drain.ts";
 import {
   escapeWorkflowCommand,
   input,
+  optionalBoundedNumberInput,
+  optionalPositiveNumberInput,
   parseJson,
   positiveNumberInput,
   requestTimeoutMs,
   setOutput,
 } from "./io.ts";
-import {
-  actionErrorMessage,
-  setDrainOutputs,
-  validateDrain,
-  validateSession,
-  type ValidatedDrain,
-} from "./validation.ts";
+import { actionErrorMessage, validateSession } from "./validation.ts";
 
-type Operation = "dispatch" | "start-drain" | "get-drain" | "wait-for-drain" | "release-drain";
-type DrainOperation = Exclude<Operation, "dispatch">;
-type ExistingDrainOperation = Exclude<DrainOperation, "start-drain">;
+type Operation = "dispatch" | "resume" | DrainOperation;
+
+const PRIORITY_MIN = -10_000;
+const PRIORITY_MAX = 10_000;
+const QUEUE_TTL_MAX_SECONDS = 2_592_000;
+const RESUME_TIMEOUT_MAX_SECONDS = 604_800;
 
 type ClientOptions = { baseUrl: string; apiKey: string; requestTimeoutMs: number };
-
-function client(options: ClientOptions): AutoHarnessClient {
-  return new AutoHarnessClient(options);
-}
 
 function operationInput(): Operation {
   const operation = input("operation") || "dispatch";
   if (
     operation !== "dispatch" &&
+    operation !== "resume" &&
     operation !== "start-drain" &&
     operation !== "get-drain" &&
     operation !== "wait-for-drain" &&
     operation !== "release-drain"
   ) {
     throw new Error(
-      `operation must be dispatch, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`,
+      `operation must be dispatch, resume, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`,
     );
   }
   return operation;
@@ -53,6 +50,8 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
   const metadata = input("metadata");
+  const queueTtlSeconds = optionalPositiveNumberInput("queue-ttl-seconds", QUEUE_TTL_MAX_SECONDS);
+  const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request: CreateSessionInput = {
     repositoryId,
     prompt: input("prompt", true),
@@ -61,6 +60,8 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
     ...(fallbacks ? { fallbacks: parseJson<TargetSpec[]>("fallbacks", fallbacks) } : {}),
     ...(ref ? { ref } : {}),
     ...(concurrencyId ? { concurrencyId } : {}),
+    ...(queueTtlSeconds !== undefined ? { queueTtlSeconds } : {}),
+    ...(priority !== undefined ? { priority } : {}),
     ...(metadata
       ? { metadata: parseJson<Record<string, SessionMetadataValue>>("metadata", metadata) }
       : {}),
@@ -72,88 +73,23 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
 }
 
-async function waitForSucceededDrain(
-  options: ClientOptions,
-  repositoryId: string,
-  operationId: string,
-): Promise<ValidatedDrain> {
-  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
-  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1_000;
-  let result: ValidatedDrain;
-  do {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    const timeoutOptions = {
-      ...options,
-      requestTimeoutMs: Math.max(1, Math.ceil(Math.min(options.requestTimeoutMs, remainingMs))),
-    };
-    result = validateDrain(
-      await client(timeoutOptions).getSessionDrain(repositoryId, operationId),
-      options.baseUrl,
-      repositoryId,
-      operationId,
-    );
-    if (result.status === "draining") {
-      const delayMs = Math.min(intervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new Error("Timed out waiting for principal session drain");
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  } while (result.status === "draining");
-  if (result.status !== "succeeded") {
-    setDrainOutputs(result);
-    const failure = result.failureCode ? ` (${result.failureCode})` : "";
-    throw new Error(`Principal session drain did not succeed: ${result.status}${failure}`);
-  }
-  return result;
-}
-
-async function startDrain(options: ClientOptions, repositoryId: string): Promise<ValidatedDrain> {
-  const idempotencyKey = input("idempotency-key");
-  const response = await client(options).startSessionDrain(
-    repositoryId,
-    idempotencyKey ? { idempotencyKey } : {},
-  );
-  const result = validateDrain(response, options.baseUrl, repositoryId);
-  if (result.status !== "draining" && result.status !== "succeeded") {
-    setDrainOutputs(result);
-    throw new Error(
-      `Auto Harness did not start an active principal session drain: ${result.status}`,
-    );
-  }
-  return result;
-}
-
-async function existingDrain(
-  operation: ExistingDrainOperation,
-  options: ClientOptions,
-  repositoryId: string,
-): Promise<ValidatedDrain> {
-  const operationId = input("session-drain-id", true);
-  if (operation === "wait-for-drain") {
-    return waitForSucceededDrain(options, repositoryId, operationId);
-  }
-  const response: SessionDrain =
-    operation === "release-drain"
-      ? await client(options).releaseSessionDrain(repositoryId, operationId)
-      : await client(options).getSessionDrain(repositoryId, operationId);
-  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
-  if (operation === "release-drain" && result.status !== "released") {
-    throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
-  }
-  return result;
-}
-
-async function drain(
-  operation: DrainOperation,
-  options: ClientOptions,
-  repositoryId: string,
-): Promise<void> {
-  const result =
-    operation === "start-drain"
-      ? await startDrain(options, repositoryId)
-      : await existingDrain(operation, options, repositoryId);
-  setDrainOutputs(result);
-  process.stdout.write(`Auto Harness session drain ${result.operationId}: ${result.status}\n`);
+async function resume(options: ClientOptions): Promise<void> {
+  const sessionId = input("session-id", true);
+  const prompt = input("prompt");
+  const concurrencyId = input("concurrency-id");
+  const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
+  const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
+  const request: ResumeSessionInput = {
+    ...(prompt ? { prompt } : {}),
+    ...(concurrencyId ? { concurrencyId } : {}),
+    ...(timeout !== undefined ? { timeout } : {}),
+    ...(priority !== undefined ? { priority } : {}),
+  };
+  const session = validateSession(await client(options).resumeSession(sessionId, request));
+  setOutput("session-id", session.id);
+  setOutput("session-url", session.url);
+  setOutput("created", String(session.created));
+  process.stdout.write(`Resumed Auto Harness session ${session.id}\n`);
 }
 
 async function main(): Promise<void> {
@@ -163,11 +99,14 @@ async function main(): Promise<void> {
   const operation = operationInput();
   const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
   try {
-    const repositoryId = input("repository-id", true);
-    if (operation === "dispatch") await dispatch(options, repositoryId);
-    else await drain(operation, options, repositoryId);
+    if (operation === "dispatch") await dispatch(options, input("repository-id", true));
+    else if (operation === "resume") await resume(options);
+    else await drain(operation, options, input("repository-id", true));
   } catch (error) {
-    throw new Error(actionErrorMessage(error, baseUrl, operation !== "dispatch"), { cause: error });
+    throw new Error(
+      actionErrorMessage(error, baseUrl, operation !== "dispatch" && operation !== "resume"),
+      { cause: error },
+    );
   }
 }
 
