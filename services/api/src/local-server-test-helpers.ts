@@ -1,3 +1,53 @@
+import { AuthService } from "./auth.ts";
+import { ControlPlane } from "./control-plane.ts";
+import { createLocalApp } from "./local-server.ts";
+
+function base64Admins(): string {
+  return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
+    "base64url",
+  );
+}
+
+/**
+ * A ControlPlane + local HTTP app wired with one repo ("repo"), one command
+ * ("command"), and one author service account per name in `accountNames`.
+ * Shared by session-resume route tests to avoid re-deriving this fixture.
+ */
+export async function createResumeRouteFixture(
+  accountNames: readonly string[] = ["automation"],
+): Promise<{
+  plane: ControlPlane;
+  accounts: Array<Awaited<ReturnType<AuthService["createServiceAccount"]>>>;
+  invoke: (path: string, body: unknown, apiKey: string) => ReturnType<typeof invokeHandler>;
+}> {
+  const plane = new ControlPlane({
+    idFactory: (() => {
+      let id = 0;
+      return () => `session-${++id}`;
+    })(),
+  });
+  plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+  plane.createCommand({ id: "command", name: "command", argv: ["echo"], providerId: null });
+  const auth = new AuthService({
+    mode: "required",
+    secret: "a".repeat(32),
+    admins: base64Admins(),
+  });
+  const accounts = await Promise.all(
+    accountNames.map((name) =>
+      auth.createServiceAccount({ name, role: "author", allowedRepositoryIds: ["repo"] }),
+    ),
+  );
+  const { handler } = createLocalApp({
+    plane,
+    authService: auth,
+    rateLimitConfig: { enabled: false },
+  });
+  const invoke = (path: string, body: unknown, apiKey: string) =>
+    invokeHandler(handler, "POST", path, body, { authorization: `Bearer ${apiKey}` });
+  return { plane, accounts, invoke };
+}
+
 /** Shared HTTP invoke fake for local-server unit tests. */
 export async function invokeHandler(
   handler: (req: never, res: never) => void | Promise<void>,
