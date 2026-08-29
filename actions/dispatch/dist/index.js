@@ -452,11 +452,20 @@ function sourceInput() {
   }
   return source;
 }
+function requiredLabelsInput() {
+  const value = input("required-labels");
+  if (!value) return void 0;
+  const parsed = parseJson("required-labels", value);
+  if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
+    throw new Error("required-labels must be a JSON array of strings");
+  }
+  return parsed;
+}
 async function dispatch(options, repositoryId) {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
-  const requiredLabels = input("required-labels");
+  const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
   const source = sourceInput();
   const queueTtlSeconds = optionalPositiveNumberInput(
@@ -475,7 +484,7 @@ async function dispatch(options, repositoryId) {
     ...concurrencyId ? { concurrencyId } : {},
     ...queueTtlSeconds !== void 0 ? { queueTtlSeconds } : {},
     ...priority !== void 0 ? { priority } : {},
-    ...requiredLabels ? { requiredLabels: parseJson("required-labels", requiredLabels) } : {},
+    ...requiredLabels ? { requiredLabels } : {},
     ...metadata ? { metadata: parseJson("metadata", metadata) } : {},
     ...source ? { source } : {}
   };
