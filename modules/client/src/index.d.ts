@@ -213,9 +213,11 @@ export type AutoHarnessClientOptions = {
   /** Per-request deadline in milliseconds (default 30,000; maximum 300,000). */
   requestTimeoutMs?: number;
   /**
-   * Allows a non-`https` `baseUrl` while `apiKey` is set, for a trusted local/self-hosted
-   * deployment reachable only over plain HTTP. Defaults to `false`: the constructor otherwise
-   * throws rather than send credentials over an unencrypted transport.
+   * Allows a non-`https` `baseUrl` while `apiKey` is set, but only when `baseUrl`'s host is
+   * genuine loopback (127.0.0.0/8, `::1`, or `localhost`) — see `isLoopbackOrigin()` in
+   * `auto-harness-client/loopback`. The constructor independently verifies this and throws for
+   * any non-loopback `http:` baseUrl even when this is `true`; a private-network address
+   * (RFC1918) still crosses real network hardware and is not loopback. Defaults to `false`.
    */
   allowInsecureHttp?: boolean;
 };

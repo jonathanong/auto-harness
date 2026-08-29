@@ -11,6 +11,7 @@ import {
   parseMetadata,
   parseRequiredLabels,
 } from "auto-harness-client/actions";
+import { isLoopbackOrigin } from "auto-harness-client/loopback";
 
 import { client } from "./client.ts";
 import { drain, type DrainOperation } from "./drain.ts";
@@ -143,9 +144,9 @@ async function main(): Promise<void> {
     baseUrl,
     apiKey: input("api-key", true),
     requestTimeoutMs: requestTimeoutMs(),
-    // The Action's own server-url input already opts into plain HTTP (allowHttp above) for
-    // self-hosted deployments reachable only on a private network; carry that same intent here.
-    allowInsecureHttp: true,
+    // server-url may use http: (allowHttp above), but plaintext credentials are only safe for
+    // genuine loopback — a private-network address still crosses real network hardware.
+    allowInsecureHttp: isLoopbackOrigin(baseUrl),
   };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));

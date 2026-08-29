@@ -29,6 +29,32 @@ var AutoHarnessDrainWaitTimeoutError = class extends Error {
   }
 };
 
+// modules/client/src/loopback.js
+function isLoopbackIpv4(hostname) {
+  const octets = hostname.split(".");
+  if (octets.length !== 4 || !octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)) {
+    return false;
+  }
+  return Number(octets[0]) === 127;
+}
+function isLoopbackHostname(hostname) {
+  return hostname === "localhost" || hostname === "[::1]" || isLoopbackIpv4(hostname);
+}
+function isLoopbackOrigin(rawUrl) {
+  try {
+    return isLoopbackHostname(new URL(rawUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+function assertSecureTransport(baseUrl, apiKey, allowInsecureHttp) {
+  if (!apiKey || baseUrl.startsWith("https://")) return;
+  if (allowInsecureHttp && isLoopbackOrigin(baseUrl)) return;
+  throw new TypeError(
+    "baseUrl must use https when apiKey is set (allowInsecureHttp only permits plain HTTP to a loopback baseUrl, e.g. http://127.0.0.1 or http://localhost)"
+  );
+}
+
 // modules/client/src/resolve-by-name.js
 async function resolveByName(name, catalog, kind) {
   const matches = (await catalog()).filter((entry) => entry.name === name);
@@ -108,11 +134,7 @@ var AutoHarnessClient = class _AutoHarnessClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
     this.allowInsecureHttp = Boolean(options.allowInsecureHttp);
-    if (this.apiKey && !this.allowInsecureHttp && !this.baseUrl.startsWith("https://")) {
-      throw new TypeError(
-        "baseUrl must use https when apiKey is set (pass allowInsecureHttp: true for a trusted local deployment)"
-      );
-    }
+    assertSecureTransport(this.baseUrl, this.apiKey, this.allowInsecureHttp);
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs2;
@@ -748,9 +770,9 @@ async function main() {
     baseUrl,
     apiKey: input("api-key", true),
     requestTimeoutMs: requestTimeoutMs(),
-    // The Action's own server-url input already opts into plain HTTP (allowHttp above) for
-    // self-hosted deployments reachable only on a private network; carry that same intent here.
-    allowInsecureHttp: true
+    // server-url may use http: (allowHttp above), but plaintext credentials are only safe for
+    // genuine loopback — a private-network address still crosses real network hardware.
+    allowInsecureHttp: isLoopbackOrigin(baseUrl)
   };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));

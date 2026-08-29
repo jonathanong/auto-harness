@@ -3,6 +3,7 @@ import {
   AutoHarnessError,
   AutoHarnessRequestTimeoutError,
 } from "./errors.js";
+import { assertSecureTransport } from "./loopback.js";
 import { resolveRepositoryId } from "./resolve-repository.js";
 import { resolveCreateSessionTargets } from "./resolve-target.js";
 
@@ -21,11 +22,7 @@ export class AutoHarnessClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
     this.allowInsecureHttp = Boolean(options.allowInsecureHttp);
-    if (this.apiKey && !this.allowInsecureHttp && !this.baseUrl.startsWith("https://")) {
-      throw new TypeError(
-        "baseUrl must use https when apiKey is set (pass allowInsecureHttp: true for a trusted local deployment)",
-      );
-    }
+    assertSecureTransport(this.baseUrl, this.apiKey, this.allowInsecureHttp);
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs;

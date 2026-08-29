@@ -17,14 +17,42 @@ test("rejects a non-https baseUrl when apiKey is set", () => {
   );
 });
 
-test("allows a non-https baseUrl with apiKey when allowInsecureHttp is true", () => {
-  const client = new AutoHarnessClient({
-    baseUrl: "http://harness.test",
-    apiKey: "key",
-    fetch: successfulFetch,
-    allowInsecureHttp: true,
+for (const baseUrl of ["http://127.0.0.1:3000", "http://[::1]:3000", "http://localhost:3000"]) {
+  test(`allows a loopback baseUrl (${baseUrl}) with apiKey when allowInsecureHttp is true`, () => {
+    const client = new AutoHarnessClient({
+      baseUrl,
+      apiKey: "key",
+      fetch: successfulFetch,
+      allowInsecureHttp: true,
+    });
+    assert.equal(client.baseUrl, baseUrl);
   });
-  assert.equal(client.baseUrl, "http://harness.test");
+}
+
+test("rejects a non-loopback baseUrl with apiKey even when allowInsecureHttp is true", () => {
+  assert.throws(
+    () =>
+      new AutoHarnessClient({
+        baseUrl: "http://harness.test",
+        apiKey: "key",
+        fetch: successfulFetch,
+        allowInsecureHttp: true,
+      }),
+    /baseUrl must use https when apiKey is set/,
+  );
+});
+
+test("rejects a private-network baseUrl with apiKey even when allowInsecureHttp is true", () => {
+  assert.throws(
+    () =>
+      new AutoHarnessClient({
+        baseUrl: "http://192.168.1.10:3000",
+        apiKey: "key",
+        fetch: successfulFetch,
+        allowInsecureHttp: true,
+      }),
+    /baseUrl must use https when apiKey is set/,
+  );
 });
 
 test("allows a non-https baseUrl without apiKey regardless of allowInsecureHttp", () => {

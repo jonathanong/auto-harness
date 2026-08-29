@@ -23,8 +23,10 @@ console.log(session.url);
 ```
 
 `baseUrl` must be `https` whenever `apiKey` is set — the constructor throws otherwise. Pass
-`allowInsecureHttp: true` to opt out for a trusted local or self-hosted deployment reachable only
-over plain HTTP.
+`allowInsecureHttp: true` to opt out, but only for a genuine loopback `baseUrl` (`127.0.0.0/8`,
+`::1`, or `localhost`) — the constructor verifies this itself and throws for any other `http:`
+`baseUrl` even when the flag is set. A private-network address (RFC1918) still crosses real network
+hardware and does not qualify.
 
 ## Target by provider or command name
 
