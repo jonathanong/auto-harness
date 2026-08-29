@@ -538,6 +538,14 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "timeout must be a positive number of seconds",
       });
+      expect(overrides.resumeSession(source.session.id, { timeout: 604_801 })).toEqual({
+        ok: false,
+        error: "timeout must be at most 604800 seconds",
+      });
+      expect(overrides.resumeSession(source.session.id, { timeout: 604_800 })).toMatchObject({
+        ok: true,
+        session: { timeout: 604_800 },
+      });
       expect(
         overrides.resumeSession(source.session.id, { priority: Number.POSITIVE_INFINITY }),
       ).toEqual({

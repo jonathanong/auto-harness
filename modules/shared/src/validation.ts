@@ -49,7 +49,7 @@ export function concurrencyIdByteLengthError(concurrencyId: string): string | nu
   return null;
 }
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */
-const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
+export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */
 const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const MAX_SESSION_PRIORITY = 10_000;
