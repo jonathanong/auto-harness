@@ -76,7 +76,7 @@ test("rejects with AutoHarnessDrainWaitTimeoutError once the overall timeoutMs b
   );
 });
 
-test("clamps each poll request to the time remaining before timeoutMs", async () => {
+test("clamps each poll request to the time remaining before timeoutMs, surfacing a drain timeout once the clamped request itself elapses at the deadline", async () => {
   let calls = 0;
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",
@@ -88,6 +88,27 @@ test("clamps each poll request to the time remaining before timeoutMs", async ()
   });
   await assert.rejects(
     client.waitForSessionDrain("repo", "drain-1", { pollIntervalMs: 1, timeoutMs: 10 }),
+    (error) => {
+      assert.ok(error instanceof AutoHarnessDrainWaitTimeoutError);
+      assert.equal(error.timeoutMs, 10);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
+
+test("surfaces AutoHarnessRequestTimeoutError when an individual poll times out with budget still remaining", async () => {
+  let calls = 0;
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    requestTimeoutMs: 10,
+    fetch: async () => {
+      calls += 1;
+      return new Promise(() => {});
+    },
+  });
+  await assert.rejects(
+    client.waitForSessionDrain("repo", "drain-1", { pollIntervalMs: 1, timeoutMs: 10_000 }),
     (error) => {
       assert.ok(error instanceof AutoHarnessRequestTimeoutError);
       return true;

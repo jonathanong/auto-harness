@@ -22,7 +22,7 @@ export function parseRequiredLabels(value: string | undefined, fieldName?: strin
 
 export function parseConcurrencyId(
   value: string | undefined,
-  options?: { fieldName?: string; optional?: boolean },
+  options?: { fieldName?: string; optional?: boolean; allowAnyCharacters?: boolean },
 ): string | undefined;
 
 export function parseMetadata(
@@ -31,10 +31,14 @@ export function parseMetadata(
 ): Record<string, string | number | boolean | null>;
 
 /**
- * Validates a raw URL string is an exact https origin, optionally suffixed with `/api/v1`
- * (accepted and stripped, so an API-relative origin round-trips unchanged).
+ * Validates a raw URL string is an exact origin, optionally suffixed with `/api/v1`
+ * (accepted and stripped, so an API-relative origin round-trips unchanged). Requires https
+ * unless `allowHttp` is set.
  */
-export function parseApiOrigin(rawUrl: string, fieldName?: string): URL;
+export function parseApiOrigin(
+  rawUrl: string,
+  options?: { fieldName?: string; allowHttp?: boolean },
+): URL;
 
 /** Validates `HARNESS_URL` is an exact `https://host` origin (no path/query/hash/credentials). */
 export function parseHarnessApiOrigin(environment: ActionEnvironment): URL;

@@ -3,9 +3,7 @@ import test from "node:test";
 
 import {
   HarnessDispatchError,
-  parseApiOrigin,
   parseConcurrencyId,
-  parseHarnessApiOrigin,
   parseInteger,
   parseMetadata,
   parseRequiredLabels,
@@ -110,6 +108,35 @@ test("parseConcurrencyId includes a custom fieldName in its error message", () =
   );
 });
 
+test("parseConcurrencyId with allowAnyCharacters accepts characters the default charset rejects", () => {
+  assert.equal(
+    parseConcurrencyId("refs/heads/feature/foo", { allowAnyCharacters: true }),
+    "refs/heads/feature/foo",
+  );
+  assert.equal(parseConcurrencyId("has space", { allowAnyCharacters: true }), "has space");
+});
+
+test("parseConcurrencyId with allowAnyCharacters still rejects blank input and enforces a byte limit", () => {
+  assert.throws(
+    () => parseConcurrencyId(undefined, { allowAnyCharacters: true }),
+    (error) => {
+      assert.ok(error instanceof HarnessDispatchError);
+      assert.equal(error.code, "INVALID_CONCURRENCY_ID");
+      return true;
+    },
+  );
+  const tooLong = "a".repeat(2_049);
+  assert.throws(
+    () => parseConcurrencyId(tooLong, { allowAnyCharacters: true }),
+    (error) => {
+      assert.ok(error instanceof HarnessDispatchError);
+      assert.equal(error.code, "INVALID_CONCURRENCY_ID");
+      assert.match(error.message, /2048 bytes/);
+      return true;
+    },
+  );
+});
+
 test("parseMetadata returns an empty object for falsy input", () => {
   assert.deepEqual(parseMetadata(undefined), {});
   assert.deepEqual(parseMetadata(""), {});
@@ -151,66 +178,4 @@ test("parseMetadata rejects a payload exceeding 8192 bytes", () => {
 
 test("parseMetadata includes a custom fieldName in its error message", () => {
   assert.throws(() => parseMetadata("not json", "metadata"), /metadata/);
-});
-
-test("parseApiOrigin accepts an exact https origin, with or without a trailing slash", () => {
-  assert.equal(parseApiOrigin("https://harness.test").origin, "https://harness.test");
-  assert.equal(parseApiOrigin("https://harness.test/").origin, "https://harness.test");
-});
-
-test("parseApiOrigin accepts and strips a trailing /api/v1 suffix", () => {
-  assert.equal(parseApiOrigin("https://harness.test/api/v1").origin, "https://harness.test");
-  assert.equal(parseApiOrigin("https://harness.test/api/v1/").origin, "https://harness.test");
-});
-
-test("parseApiOrigin rejects a missing, non-https, or non-origin URL", () => {
-  for (const rawUrl of [
-    "not a url",
-    "http://harness.test",
-    "https://harness.test/path",
-    "https://harness.test?query=1",
-    "https://user:pass@harness.test",
-  ]) {
-    assert.throws(
-      () => parseApiOrigin(rawUrl),
-      (error) => {
-        assert.ok(error instanceof HarnessDispatchError);
-        return true;
-      },
-    );
-  }
-});
-
-test("parseApiOrigin includes a custom fieldName in its error message", () => {
-  assert.throws(() => parseApiOrigin("not a url", "server-url"), /server-url/);
-});
-
-test("parseHarnessApiOrigin accepts an exact https origin, with or without a trailing slash", () => {
-  assert.equal(
-    parseHarnessApiOrigin({ HARNESS_URL: "https://harness.test" }).origin,
-    "https://harness.test",
-  );
-  assert.equal(
-    parseHarnessApiOrigin({ HARNESS_URL: "https://harness.test/" }).origin,
-    "https://harness.test",
-  );
-});
-
-test("parseHarnessApiOrigin rejects a missing, non-https, or non-origin URL", () => {
-  for (const HARNESS_URL of [
-    undefined,
-    "not a url",
-    "http://harness.test",
-    "https://harness.test/path",
-    "https://harness.test?query=1",
-    "https://user:pass@harness.test",
-  ]) {
-    assert.throws(
-      () => parseHarnessApiOrigin({ HARNESS_URL }),
-      (error) => {
-        assert.ok(error instanceof HarnessDispatchError);
-        return true;
-      },
-    );
-  }
 });

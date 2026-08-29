@@ -70,6 +70,7 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
     fieldName: "concurrency-id",
     optional: true,
+    allowAnyCharacters: true,
   });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
@@ -110,6 +111,7 @@ async function resume(options: ClientOptions): Promise<void> {
   const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
     fieldName: "concurrency-id",
     optional: true,
+    allowAnyCharacters: true,
   });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
@@ -127,7 +129,10 @@ async function resume(options: ClientOptions): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const baseUrl = parseApiOrigin(input("server-url", true), "server-url").origin;
+  const baseUrl = parseApiOrigin(input("server-url", true), {
+    fieldName: "server-url",
+    allowHttp: true,
+  }).origin;
   const operation = operationInput();
   const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
   try {

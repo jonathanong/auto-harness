@@ -145,8 +145,10 @@ export class AutoHarnessClient {
    * deadline to the time remaining before `timeoutMs` so no single request can outlive the
    * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
    * and "released" — callers classify success themselves. Rejects with
-   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
-   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses — including
+   * when a clamped per-poll request is the thing that times out at that same instant — or with
+   * `AutoHarnessRequestTimeoutError` if an individual poll times out while budget still remains
+   * (e.g. a slow server response, well inside `timeoutMs`).
    */
   async waitForSessionDrain(repositoryId, operationId, options = {}) {
     const { pollIntervalMs, timeoutMs } = options;
@@ -169,7 +171,15 @@ export class AutoHarnessClient {
         fetch: this.fetch,
         requestTimeoutMs: Math.max(1, Math.ceil(Math.min(this.requestTimeoutMs, remainingMs))),
       });
-      const sessionDrain = await pollClient.getSessionDrain(id, operationId);
+      let sessionDrain;
+      try {
+        sessionDrain = await pollClient.getSessionDrain(id, operationId);
+      } catch (error) {
+        if (error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline) {
+          throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+        }
+        throw error;
+      }
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
       if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);

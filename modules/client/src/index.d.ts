@@ -235,8 +235,9 @@ export class AutoHarnessClient {
    * Polls `getSessionDrain()` until it reports a terminal status, clamping each request's
    * deadline to the time remaining before `timeoutMs`. Resolves with the terminal
    * `SessionDrain` for any status; callers classify success themselves. Rejects with
-   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
-   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses — including
+   * when a clamped per-poll request is the thing that times out at that same instant — or with
+   * `AutoHarnessRequestTimeoutError` if an individual poll times out while budget still remains.
    */
   waitForSessionDrain(
     repositoryId: string | RepositoryRef,

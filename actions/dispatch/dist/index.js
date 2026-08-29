@@ -217,8 +217,10 @@ var AutoHarnessClient = class _AutoHarnessClient {
    * deadline to the time remaining before `timeoutMs` so no single request can outlive the
    * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
    * and "released" — callers classify success themselves. Rejects with
-   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses, or with
-   * `AutoHarnessRequestTimeoutError` if one individual poll itself times out.
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses — including
+   * when a clamped per-poll request is the thing that times out at that same instant — or with
+   * `AutoHarnessRequestTimeoutError` if an individual poll times out while budget still remains
+   * (e.g. a slow server response, well inside `timeoutMs`).
    */
   async waitForSessionDrain(repositoryId, operationId, options = {}) {
     const { pollIntervalMs, timeoutMs } = options;
@@ -241,7 +243,15 @@ var AutoHarnessClient = class _AutoHarnessClient {
         fetch: this.fetch,
         requestTimeoutMs: Math.max(1, Math.ceil(Math.min(this.requestTimeoutMs, remainingMs)))
       });
-      const sessionDrain = await pollClient.getSessionDrain(id, operationId);
+      let sessionDrain;
+      try {
+        sessionDrain = await pollClient.getSessionDrain(id, operationId);
+      } catch (error) {
+        if (error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline) {
+          throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+        }
+        throw error;
+      }
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
       if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
@@ -287,6 +297,7 @@ var HarnessDispatchError = class extends Error {
 
 // modules/client/src/actions/parse.js
 var MAX_CONCURRENCY_ID_CHARACTERS = 128;
+var MAX_CONCURRENCY_ID_BYTES = 2048;
 var MAX_METADATA_BYTES = 8192;
 function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS") {
   if (!value) return [];
@@ -304,11 +315,20 @@ function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS") {
   }
   return parsed;
 }
-function parseConcurrencyId(value, { fieldName = "HARNESS_CONCURRENCY_ID", optional = false } = {}) {
+function parseConcurrencyId(value, { fieldName = "HARNESS_CONCURRENCY_ID", optional = false, allowAnyCharacters = false } = {}) {
   const concurrencyId = value?.trim();
   if (!concurrencyId) {
     if (optional) return void 0;
     throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} is required`);
+  }
+  if (allowAnyCharacters) {
+    if (Buffer.byteLength(concurrencyId, "utf8") > MAX_CONCURRENCY_ID_BYTES) {
+      throw new HarnessDispatchError(
+        "INVALID_CONCURRENCY_ID",
+        `${fieldName} exceeds ${MAX_CONCURRENCY_ID_BYTES} bytes`
+      );
+    }
+    return concurrencyId;
   }
   if (concurrencyId.length > MAX_CONCURRENCY_ID_CHARACTERS) {
     throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} exceeds 128 characters`);
@@ -345,21 +365,22 @@ function parseMetadata(value, fieldName = "HARNESS_METADATA") {
   }
   return parsed;
 }
-function parseApiOrigin(rawUrl, fieldName = "HARNESS_URL") {
+function parseApiOrigin(rawUrl, { fieldName = "HARNESS_URL", allowHttp = false } = {}) {
   let apiUrl;
   try {
     apiUrl = new URL(rawUrl);
   } catch {
     throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must be a valid URL`);
   }
-  if (apiUrl.protocol !== "https:") {
-    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must use https`);
+  const protocolLabel = allowHttp ? "http or https" : "https";
+  if (apiUrl.protocol !== "https:" && !(allowHttp && apiUrl.protocol === "http:")) {
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must use ${protocolLabel}`);
   }
   const { origin } = apiUrl;
   if (apiUrl.username !== "" || apiUrl.password !== "" || apiUrl.search !== "" || apiUrl.hash !== "" || ![origin, `${origin}/`, `${origin}/api/v1`, `${origin}/api/v1/`].includes(rawUrl)) {
     throw new HarnessDispatchError(
       "INVALID_HARNESS_URL",
-      `${fieldName} must be an exact https origin, optionally suffixed with /api/v1`
+      `${fieldName} must be an exact ${protocolLabel} origin, optionally suffixed with /api/v1`
     );
   }
   return new URL(origin);
@@ -652,7 +673,8 @@ async function dispatch(options, repositoryId) {
   const ref = input("ref");
   const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
     fieldName: "concurrency-id",
-    optional: true
+    optional: true,
+    allowAnyCharacters: true
   });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
@@ -689,7 +711,8 @@ async function resume(options) {
   const prompt = input("prompt");
   const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
     fieldName: "concurrency-id",
-    optional: true
+    optional: true,
+    allowAnyCharacters: true
   });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
@@ -707,7 +730,10 @@ async function resume(options) {
 `);
 }
 async function main() {
-  const baseUrl = parseApiOrigin(input("server-url", true), "server-url").origin;
+  const baseUrl = parseApiOrigin(input("server-url", true), {
+    fieldName: "server-url",
+    allowHttp: true
+  }).origin;
   const operation = operationInput();
   const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
   try {
