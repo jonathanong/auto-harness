@@ -15,7 +15,9 @@ export async function resolveByName(name, catalog, kind) {
   }
   if (matches.length > 1) {
     throw new AutoHarnessError(
-      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      `ambiguous ${kind} name "${name}": ${matches.length} ${
+        kind === "repository" ? "repositories" : `${kind}s`
+      } share this name`,
       { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` },
     );
   }

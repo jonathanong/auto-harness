@@ -212,6 +212,12 @@ export type AutoHarnessClientOptions = {
   fetch?: typeof fetch;
   /** Per-request deadline in milliseconds (default 30,000; maximum 300,000). */
   requestTimeoutMs?: number;
+  /**
+   * Allows a non-`https` `baseUrl` while `apiKey` is set, for a trusted local/self-hosted
+   * deployment reachable only over plain HTTP. Defaults to `false`: the constructor otherwise
+   * throws rather than send credentials over an unencrypted transport.
+   */
+  allowInsecureHttp?: boolean;
 };
 
 export class AutoHarnessClient {

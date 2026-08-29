@@ -19,6 +19,7 @@ export function writeOutputs(environment, result, route) {
     const routeText = route
       ? route.map(formatTargetRef).join(" → ")
       : "retained from the existing session";
+    const concurrencyId = environment.HARNESS_CONCURRENCY_ID?.trim();
     appendFileSync(
       environment.GITHUB_STEP_SUMMARY,
       [
@@ -26,7 +27,7 @@ export function writeOutputs(environment, result, route) {
         "",
         `- Session: [${result.id}](${result.url})`,
         `- Created: ${result.created ? "yes" : "no"}`,
-        `- Concurrency: \`${environment.HARNESS_CONCURRENCY_ID?.trim()}\``,
+        ...(concurrencyId ? [`- Concurrency: \`${concurrencyId}\``] : []),
         `- Provider route: ${routeText}`,
         "",
       ].join("\n"),

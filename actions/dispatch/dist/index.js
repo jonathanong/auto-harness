@@ -40,7 +40,7 @@ async function resolveByName(name, catalog, kind) {
   }
   if (matches.length > 1) {
     throw new AutoHarnessError(
-      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      `ambiguous ${kind} name "${name}": ${matches.length} ${kind === "repository" ? "repositories" : `${kind}s`} share this name`,
       { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` }
     );
   }
@@ -107,6 +107,12 @@ var AutoHarnessClient = class _AutoHarnessClient {
     }
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
+    this.allowInsecureHttp = Boolean(options.allowInsecureHttp);
+    if (this.apiKey && !this.allowInsecureHttp && !this.baseUrl.startsWith("https://")) {
+      throw new TypeError(
+        "baseUrl must use https when apiKey is set (pass allowInsecureHttp: true for a trusted local deployment)"
+      );
+    }
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs2;
@@ -233,6 +239,7 @@ var AutoHarnessClient = class _AutoHarnessClient {
     const clampedClient = () => new _AutoHarnessClient({
       baseUrl: this.baseUrl,
       apiKey: this.apiKey,
+      allowInsecureHttp: this.allowInsecureHttp,
       fetch: this.fetch,
       requestTimeoutMs: Math.max(
         1,
@@ -354,10 +361,11 @@ function parseMetadata(value, fieldName = "HARNESS_METADATA") {
     throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be a JSON object`);
   }
   for (const [key, fieldValue] of Object.entries(parsed)) {
-    if (!["string", "number", "boolean"].includes(typeof fieldValue) && fieldValue !== null) {
+    const isValidScalar = ["string", "boolean"].includes(typeof fieldValue) || fieldValue === null || typeof fieldValue === "number" && Number.isFinite(fieldValue);
+    if (!isValidScalar) {
       throw new HarnessDispatchError(
         "INVALID_METADATA",
-        `${fieldName}.${key} must be a string, number, boolean, or null`
+        `${fieldName}.${key} must be a string, finite number, boolean, or null`
       );
     }
   }
@@ -736,7 +744,14 @@ async function main() {
     allowHttp: true
   }).origin;
   const operation = operationInput();
-  const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
+  const options = {
+    baseUrl,
+    apiKey: input("api-key", true),
+    requestTimeoutMs: requestTimeoutMs(),
+    // The Action's own server-url input already opts into plain HTTP (allowHttp above) for
+    // self-hosted deployments reachable only on a private network; carry that same intent here.
+    allowInsecureHttp: true
+  };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);

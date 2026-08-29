@@ -129,7 +129,7 @@ test("throws AutoHarnessError on an ambiguous repository name without leaking ei
       assert.ok(error instanceof AutoHarnessError);
       assert.equal(error.code, "AMBIGUOUS_REPOSITORY_NAME");
       assert.match(error.message, /shared-name/);
-      assert.match(error.message, /2 repositorys share this name/);
+      assert.match(error.message, /2 repositories share this name/);
       for (const id of duplicateIds) assert.ok(!error.message.includes(id));
       return true;
     },

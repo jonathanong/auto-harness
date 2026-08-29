@@ -164,6 +164,18 @@ test("parseMetadata rejects invalid JSON, non-objects, and non-scalar values", (
   }
 });
 
+test("parseMetadata rejects a non-finite number, which JSON.stringify would otherwise silently turn into null", () => {
+  assert.throws(
+    () => parseMetadata('{"a":1e999}'),
+    (error) => {
+      assert.ok(error instanceof HarnessDispatchError);
+      assert.equal(error.code, "INVALID_METADATA");
+      assert.match(error.message, /finite number/);
+      return true;
+    },
+  );
+});
+
 test("parseMetadata rejects a payload exceeding 8192 bytes", () => {
   const big = JSON.stringify({ a: "x".repeat(8200) });
   assert.throws(

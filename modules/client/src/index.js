@@ -20,6 +20,12 @@ export class AutoHarnessClient {
     }
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
+    this.allowInsecureHttp = Boolean(options.allowInsecureHttp);
+    if (this.apiKey && !this.allowInsecureHttp && !this.baseUrl.startsWith("https://")) {
+      throw new TypeError(
+        "baseUrl must use https when apiKey is set (pass allowInsecureHttp: true for a trusted local deployment)",
+      );
+    }
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs;
@@ -162,6 +168,7 @@ export class AutoHarnessClient {
       new AutoHarnessClient({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
+        allowInsecureHttp: this.allowInsecureHttp,
         fetch: this.fetch,
         requestTimeoutMs: Math.max(
           1,

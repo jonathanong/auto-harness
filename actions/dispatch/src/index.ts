@@ -32,7 +32,12 @@ const PRIORITY_MAX = 10_000;
 const QUEUE_TTL_MAX_SECONDS = 2_592_000;
 const RESUME_TIMEOUT_MAX_SECONDS = 604_800;
 
-type ClientOptions = { baseUrl: string; apiKey: string; requestTimeoutMs: number };
+type ClientOptions = {
+  baseUrl: string;
+  apiKey: string;
+  requestTimeoutMs: number;
+  allowInsecureHttp: boolean;
+};
 
 function operationInput(): Operation {
   const operation = input("operation") || "dispatch";
@@ -134,7 +139,14 @@ async function main(): Promise<void> {
     allowHttp: true,
   }).origin;
   const operation = operationInput();
-  const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
+  const options = {
+    baseUrl,
+    apiKey: input("api-key", true),
+    requestTimeoutMs: requestTimeoutMs(),
+    // The Action's own server-url input already opts into plain HTTP (allowHttp above) for
+    // self-hosted deployments reachable only on a private network; carry that same intent here.
+    allowInsecureHttp: true,
+  };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);

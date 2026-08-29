@@ -22,6 +22,10 @@ const session = await harness.createSession({
 console.log(session.url);
 ```
 
+`baseUrl` must be `https` whenever `apiKey` is set — the constructor throws otherwise. Pass
+`allowInsecureHttp: true` to opt out for a trusted local or self-hosted deployment reachable only
+over plain HTTP.
+
 ## Target by provider or command name
 
 `target` and `fallbacks` accept a `providerId`/`commandId` as before, or a human-readable
@@ -49,11 +53,14 @@ Either way, an unresolvable or ambiguous name throws `AutoHarnessError`
 
 ## Repository by name
 
-Every `repositoryId` parameter also accepts a `RepositoryRef` — `{ repositoryId }` as before, or
-`{ repositoryName }`. Repositories are not exposed as a single unpaginated catalog call, so
-resolving by name pages through `listRepositories()` in full before matching. An unresolvable or
-ambiguous name throws `AutoHarnessError` (`code === "UNKNOWN_REPOSITORY_NAME"` or
-`"AMBIGUOUS_REPOSITORY_NAME"`).
+`createSession()` and the principal session drain methods (`startSessionDrain()`,
+`getSessionDrain()`, `releaseSessionDrain()`, `waitForSessionDrain()`) accept a `RepositoryRef` —
+`{ repositoryId }` as before, or `{ repositoryName }` — wherever they take a `repositoryId`
+parameter. `listSessions()`'s `repositoryId` filter and the repository administration methods
+(`pauseRepository()`, `drainRepository()`, `activateRepository()`) remain id-only. Repositories are
+not exposed as a single unpaginated catalog call, so resolving by name pages through
+`listRepositories()` in full before matching. An unresolvable or ambiguous name throws
+`AutoHarnessError` (`code === "UNKNOWN_REPOSITORY_NAME"` or `"AMBIGUOUS_REPOSITORY_NAME"`).
 
 ```js
 const session = await harness.createSession({
@@ -116,12 +123,14 @@ plus the durable `operationId` and API-relative `statusUrl`; follow that operati
 reimplementing pagination or cancellation reconciliation.
 
 `waitForSessionDrain(repositoryId, operationId, { pollIntervalMs, timeoutMs })` replaces the manual
-poll loop above: it polls `getSessionDrain()` until a terminal status, clamping each request's
-deadline to the time remaining before `timeoutMs`. It resolves with the terminal `SessionDrain` for
-any status, including `"failed"` and `"released"` — callers classify success themselves — and
-rejects with `AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) if the overall
-`timeoutMs` budget elapses, or with `AutoHarnessRequestTimeoutError` (`code === "REQUEST_TIMEOUT"`)
-if one individual poll itself times out.
+poll loop above: it resolves `repositoryId`, then polls `getSessionDrain()` until a terminal status,
+clamping every request — including each page fetched to resolve a `repositoryName` — to the time
+remaining before `timeoutMs`. It resolves with the terminal `SessionDrain` for any status, including
+`"failed"` and `"released"` — callers classify success themselves — and rejects with
+`AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) when the overall `timeoutMs`
+budget elapses — including when a clamped request is the thing that times out at that same instant
+— or with `AutoHarnessRequestTimeoutError` (`code === "REQUEST_TIMEOUT"`) if an individual request
+times out while budget still remains.
 
 ```js
 const progress = await harness.waitForSessionDrain("repo-1", drain.operationId, {

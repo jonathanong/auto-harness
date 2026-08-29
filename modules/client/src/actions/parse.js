@@ -87,10 +87,14 @@ export function parseMetadata(value, fieldName = "HARNESS_METADATA") {
     throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be a JSON object`);
   }
   for (const [key, fieldValue] of Object.entries(parsed)) {
-    if (!["string", "number", "boolean"].includes(typeof fieldValue) && fieldValue !== null) {
+    const isValidScalar =
+      ["string", "boolean"].includes(typeof fieldValue) ||
+      fieldValue === null ||
+      (typeof fieldValue === "number" && Number.isFinite(fieldValue));
+    if (!isValidScalar) {
       throw new HarnessDispatchError(
         "INVALID_METADATA",
-        `${fieldName}.${key} must be a string, number, boolean, or null`,
+        `${fieldName}.${key} must be a string, finite number, boolean, or null`,
       );
     }
   }
