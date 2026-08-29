@@ -48,6 +48,12 @@ inputs:
   metadata:
     description: Optional JSON object with string, number, boolean, or null values (dispatch only)
     required: false
+  source:
+    description: Optional session origin — "api", "ui", or "webhook"; defaults to "api" (dispatch only)
+    required: false
+  required-labels:
+    description: Optional JSON array of required host labels (dispatch only)
+    required: false
   idempotency-key:
     description: Stable 1-128 character Idempotency-Key for start-drain retries
     required: false

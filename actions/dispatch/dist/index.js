@@ -444,11 +444,21 @@ function operationInput() {
   }
   return operation;
 }
+function sourceInput() {
+  const source = input("source");
+  if (!source) return void 0;
+  if (source !== "api" && source !== "ui" && source !== "webhook") {
+    throw new Error(`source must be api, ui, or webhook; received ${source}`);
+  }
+  return source;
+}
 async function dispatch(options, repositoryId) {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
+  const requiredLabels = input("required-labels");
   const metadata = input("metadata");
+  const source = sourceInput();
   const queueTtlSeconds = optionalPositiveNumberInput(
     "queue-ttl-seconds",
     QUEUE_TTL_MAX_SECONDS,
@@ -465,7 +475,9 @@ async function dispatch(options, repositoryId) {
     ...concurrencyId ? { concurrencyId } : {},
     ...queueTtlSeconds !== void 0 ? { queueTtlSeconds } : {},
     ...priority !== void 0 ? { priority } : {},
-    ...metadata ? { metadata: parseJson("metadata", metadata) } : {}
+    ...requiredLabels ? { requiredLabels: parseJson("required-labels", requiredLabels) } : {},
+    ...metadata ? { metadata: parseJson("metadata", metadata) } : {},
+    ...source ? { source } : {}
   };
   const session = validateSession(await client(options).createSession(request));
   setOutput("session-id", session.id);
