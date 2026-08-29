@@ -12,28 +12,13 @@ async function waitForSucceededDrain(
   repositoryId: string,
   operationId: string,
 ): Promise<ValidatedDrain> {
-  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
-  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1_000;
-  let result: ValidatedDrain;
-  do {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    const timeoutOptions = {
-      ...options,
-      requestTimeoutMs: Math.max(1, Math.ceil(Math.min(options.requestTimeoutMs, remainingMs))),
-    };
-    result = validateDrain(
-      await client(timeoutOptions).getSessionDrain(repositoryId, operationId),
-      options.baseUrl,
-      repositoryId,
-      operationId,
-    );
-    if (result.status === "draining") {
-      const delayMs = Math.min(intervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new Error("Timed out waiting for principal session drain");
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  } while (result.status === "draining");
+  const pollIntervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
+  const timeoutMs = positiveNumberInput("poll-timeout-seconds") * 1_000;
+  const response = await client(options).waitForSessionDrain(repositoryId, operationId, {
+    pollIntervalMs,
+    timeoutMs,
+  });
+  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
   if (result.status !== "succeeded") {
     setDrainOutputs(result);
     const failure = result.failureCode ? ` (${result.failureCode})` : "";

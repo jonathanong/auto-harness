@@ -2,6 +2,11 @@ export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
 
+/** A repository target, by id or by `name` — server-enforced unique, checked defensively either way. */
+export type RepositoryRef =
+  | { repositoryId: string; repositoryName?: never }
+  | { repositoryName: string; repositoryId?: never };
+
 /** A provider target, by id or by `name` — normally unique, checked defensively either way. */
 export type ProviderRef =
   | { providerId: string; providerName?: never; commandId?: never; commandName?: never }
@@ -31,8 +36,7 @@ export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 /** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
 export type CreatableSessionSource = "api" | "ui" | "webhook";
 
-export type CreateSessionInput = {
-  repositoryId: string;
+export type CreateSessionInput = RepositoryRef & {
   prompt: string;
   target: TargetSpec;
   fallbacks?: TargetSpec[];
@@ -199,38 +203,15 @@ export type SessionDrain = {
   failureCode?: string;
 };
 
-/**
- * Thrown for a failed HTTP response, and also, with `status: 400`, when `createSession()`
- * cannot resolve a `TargetSpec` name: `code === "UNKNOWN_PROVIDER_NAME"` /
- * `"UNKNOWN_COMMAND_NAME"` for no match, `"AMBIGUOUS_PROVIDER_NAME"` /
- * `"AMBIGUOUS_COMMAND_NAME"` for more than one match sharing a name — that message never
- * includes the matched ids.
- */
-export class AutoHarnessError extends Error {
-  status: number;
-  code: string;
-  retryAfter?: string;
-  /** Present when a 409 DRAINING admission response identifies its durable drain. */
-  operationId?: string;
-  /** API-relative URL for the drain that fenced this request. */
-  statusUrl?: string;
-  constructor(
-    message: string,
-    options: {
-      status: number;
-      code: string;
-      retryAfter?: string;
-      operationId?: string;
-      statusUrl?: string;
-    },
-  );
-}
+// Error classes live in errors.js; declared in the sibling errors.d.ts, re-exported here.
+export * from "./errors.js";
 
-export class AutoHarnessRequestTimeoutError extends Error {
-  code: "REQUEST_TIMEOUT";
+export type WaitForSessionDrainOptions = {
+  /** Delay between polls in milliseconds. */
+  pollIntervalMs: number;
+  /** Overall wait budget in milliseconds; each individual poll is further capped to the shorter of this remaining budget and the client's `requestTimeoutMs`. */
   timeoutMs: number;
-  constructor(timeoutMs: number);
-}
+};
 
 export type AutoHarnessClientOptions = {
   baseUrl: string;
@@ -253,6 +234,12 @@ export class AutoHarnessClient {
     options?: { idempotencyKey?: string },
   ): Promise<SessionDrain>;
   getSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
+  /** Polls `getSessionDrain()` until it leaves `"draining"`. Throws `AutoHarnessDrainWaitTimeoutError` if `options.timeoutMs` elapses first. */
+  waitForSessionDrain(
+    repositoryId: string,
+    operationId: string,
+    options: WaitForSessionDrainOptions,
+  ): Promise<SessionDrain>;
   releaseSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
   listRepositories(options?: ListRepositoriesOptions): Promise<RepositoryPage>;
   pauseRepository(id: string): Promise<Repository>;

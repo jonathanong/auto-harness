@@ -24,13 +24,19 @@ modes start, poll, and release a durable drain for that same service account and
 [`actions/dispatch`](../actions/dispatch/README.md).
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods
-cover session create/read/cancel/resume/list, principal session-drain start/read/release,
+cover session create/read/cancel/resume/list, principal session-drain start/wait/read/release,
 repository list, pause/drain/activate, and provider/command list. A session's `target`/`fallbacks`
-accept a `providerId`/`commandId` as before, or a human-readable `providerName`/`commandName` —
-`createSession()` resolves each name to an id via `listProviders()`/`listCommands()` before
-sending the request. HTTP failures, and an unresolvable or ambiguous provider/command name, are
-`AutoHarnessError` instances with `status`, stable API `code`, and optional `retryAfter`. A
-`409 DRAINING` error also carries `operationId` and `statusUrl` for durable progress polling.
+accept a `providerId`/`commandId` as before, or a human-readable `providerName`/`commandName`, and
+`createSession()`'s repository likewise accepts a `repositoryId` or a `repositoryName` —
+`createSession()` resolves each name to an id via `listProviders()`/`listCommands()`/
+`listRepositories()` before sending the request. HTTP failures, and an unresolvable or ambiguous
+provider/command/repository name, are `AutoHarnessError` instances with `status`, stable API
+`code` (`UNKNOWN_PROVIDER_NAME`, `UNKNOWN_COMMAND_NAME`, `UNKNOWN_REPOSITORY_NAME`,
+`AMBIGUOUS_PROVIDER_NAME`, `AMBIGUOUS_COMMAND_NAME`, `AMBIGUOUS_REPOSITORY_NAME`, etc.), and
+optional `retryAfter`. A `409 DRAINING` error also carries `operationId` and `statusUrl` for
+durable progress polling; `waitForSessionDrain(repositoryId, operationId, { pollIntervalMs,
+timeoutMs })` polls that same operation until it leaves `"draining"`, throwing
+`AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) if `timeoutMs` elapses first.
 Repository listing returns one bounded page plus `nextCursor`; callers follow that cursor until it
 is `null` when they need the complete visible catalog. Every request, including response-body
 consumption, is bounded by `requestTimeoutMs` (default `30_000`, maximum `300_000`); expiry throws

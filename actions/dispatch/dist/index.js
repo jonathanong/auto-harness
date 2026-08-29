@@ -18,8 +18,21 @@ var AutoHarnessRequestTimeoutError = class extends Error {
     this.timeoutMs = timeoutMs;
   }
 };
+var AutoHarnessDrainWaitTimeoutError = class extends Error {
+  constructor(repositoryId, operationId, timeoutMs) {
+    super(`Auto Harness session drain wait timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessDrainWaitTimeoutError";
+    this.code = "DRAIN_WAIT_TIMEOUT";
+    this.repositoryId = repositoryId;
+    this.operationId = operationId;
+    this.timeoutMs = timeoutMs;
+  }
+};
 
 // modules/client/src/resolve-target.js
+function pluralize(kind) {
+  return kind.endsWith("y") ? `${kind.slice(0, -1)}ies` : `${kind}s`;
+}
 async function resolveByName(name, catalog, kind, idKey) {
   const matches = (await catalog()).filter((entry) => entry.name === name);
   if (matches.length === 0) {
@@ -30,7 +43,7 @@ async function resolveByName(name, catalog, kind, idKey) {
   }
   if (matches.length > 1) {
     throw new AutoHarnessError(
-      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      `ambiguous ${kind} name "${name}": ${matches.length} ${pluralize(kind)} share this name`,
       { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` }
     );
   }
@@ -47,6 +60,30 @@ async function resolveRef(ref, providers, commands) {
   }
   return ref;
 }
+async function fetchAllRepositories(client2) {
+  const items = [];
+  let cursor;
+  do {
+    const page = await client2.listRepositories({
+      limit: 100,
+      ...cursor === void 0 ? {} : { cursor }
+    });
+    items.push(...page.items);
+    cursor = page.nextCursor ?? void 0;
+  } while (cursor !== void 0);
+  return items;
+}
+async function resolveRepository(client2, input2) {
+  if (input2.repositoryId !== void 0 || input2.repositoryName === void 0) return input2;
+  const { repositoryName, ...rest } = input2;
+  const resolved = await resolveByName(
+    repositoryName,
+    () => fetchAllRepositories(client2),
+    "repository",
+    "repositoryId"
+  );
+  return { ...rest, ...resolved };
+}
 async function resolveCreateSessionTargets(client2, input2) {
   let providersPromise;
   let commandsPromise;
@@ -58,6 +95,43 @@ async function resolveCreateSessionTargets(client2, input2) {
     input2.fallbacks.map((fallback) => resolveRef(fallback, providers, commands))
   );
   return { ...input2, target, fallbacks };
+}
+
+// modules/client/src/wait-for-drain.js
+function drainPath(repositoryId, operationId) {
+  return `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}`;
+}
+async function waitForSessionDrain(client2, repositoryId, operationId, options) {
+  const { pollIntervalMs, timeoutMs } = options ?? {};
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+    throw new TypeError("pollIntervalMs must be a finite positive number");
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new TypeError("timeoutMs must be a finite positive number");
+  }
+  const path = drainPath(repositoryId, operationId);
+  const deadline = Date.now() + timeoutMs;
+  let result;
+  do {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new AutoHarnessDrainWaitTimeoutError(repositoryId, operationId, timeoutMs);
+    }
+    result = await client2.request(
+      path,
+      {},
+      {
+        timeoutMs: Math.max(1, Math.ceil(Math.min(client2.requestTimeoutMs, remainingMs)))
+      }
+    );
+    if (result.status === "draining") {
+      const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
+      if (delayMs <= 0)
+        throw new AutoHarnessDrainWaitTimeoutError(repositoryId, operationId, timeoutMs);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  } while (result.status === "draining");
+  return result;
 }
 
 // modules/client/src/index.js
@@ -76,18 +150,18 @@ var AutoHarnessClient = class {
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs2;
   }
-  async request(path, init = {}) {
+  async request(path, init = {}, { timeoutMs = this.requestTimeoutMs } = {}) {
     const headers = { accept: "application/json", ...init.headers };
     if (init.body !== void 0) headers["content-type"] = "application/json";
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
     const controller = new AbortController();
-    const timeoutError = new AutoHarnessRequestTimeoutError(this.requestTimeoutMs);
+    const timeoutError = new AutoHarnessRequestTimeoutError(timeoutMs);
     let timeoutId;
     const timeout = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
         controller.abort();
         reject(timeoutError);
-      }, this.requestTimeoutMs);
+      }, timeoutMs);
     });
     const request = (async () => {
       const response = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
@@ -121,7 +195,8 @@ var AutoHarnessClient = class {
     }
   }
   async createSession(input2) {
-    const body = await resolveCreateSessionTargets(this, input2);
+    const withRepositoryId = await resolveRepository(this, input2);
+    const body = await resolveCreateSessionTargets(this, withRepositoryId);
     return this.request("/sessions", { method: "POST", body: JSON.stringify(body) });
   }
   getSession(id) {
@@ -173,6 +248,13 @@ var AutoHarnessClient = class {
       `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
       { method: "POST" }
     );
+  }
+  /**
+   * Polls a principal session drain until it leaves `"draining"`, on top of `getSessionDrain`.
+   * Throws `AutoHarnessDrainWaitTimeoutError` if `timeoutMs` elapses first.
+   */
+  waitForSessionDrain(repositoryId, operationId, options) {
+    return waitForSessionDrain(this, repositoryId, operationId, options);
   }
   listRepositories(options = {}) {
     const query = new URLSearchParams();
@@ -347,6 +429,9 @@ function setDrainOutputs(result) {
   setOutput("failure-code", result.failureCode ?? "");
 }
 function actionErrorMessage(error, baseUrl, isDrain) {
+  if (error instanceof AutoHarnessDrainWaitTimeoutError) {
+    return "Timed out waiting for principal session drain";
+  }
   if (error instanceof AutoHarnessRequestTimeoutError) {
     return isDrain ? "Timed out waiting for principal session drain" : "Timed out waiting for Auto Harness request";
   }
@@ -366,28 +451,13 @@ function actionErrorMessage(error, baseUrl, isDrain) {
 
 // actions/dispatch/src/drain.ts
 async function waitForSucceededDrain(options, repositoryId, operationId) {
-  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1e3;
-  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1e3;
-  let result;
-  do {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    const timeoutOptions = {
-      ...options,
-      requestTimeoutMs: Math.max(1, Math.ceil(Math.min(options.requestTimeoutMs, remainingMs)))
-    };
-    result = validateDrain(
-      await client(timeoutOptions).getSessionDrain(repositoryId, operationId),
-      options.baseUrl,
-      repositoryId,
-      operationId
-    );
-    if (result.status === "draining") {
-      const delayMs = Math.min(intervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new Error("Timed out waiting for principal session drain");
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  } while (result.status === "draining");
+  const pollIntervalMs = positiveNumberInput("poll-interval-seconds") * 1e3;
+  const timeoutMs = positiveNumberInput("poll-timeout-seconds") * 1e3;
+  const response = await client(options).waitForSessionDrain(repositoryId, operationId, {
+    pollIntervalMs,
+    timeoutMs
+  });
+  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
   if (result.status !== "succeeded") {
     setDrainOutputs(result);
     const failure = result.failureCode ? ` (${result.failureCode})` : "";

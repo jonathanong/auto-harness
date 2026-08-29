@@ -47,6 +47,22 @@ Either way, an unresolvable or ambiguous name throws `AutoHarnessError`
 (`code === "UNKNOWN_PROVIDER_NAME"`, `"UNKNOWN_COMMAND_NAME"`, `"AMBIGUOUS_PROVIDER_NAME"`, or
 `"AMBIGUOUS_COMMAND_NAME"`); the ambiguous-name message never includes the matched ids.
 
+`createSession()` accepts the same shape for its repository: a `repositoryId` as before, or a
+`repositoryName`, resolved via `listRepositories()` (following every page of the catalog, since
+unlike providers and commands it is not returned as a single flat list). Repository names are
+server-enforced unique, but resolution still checks for more than one match for the same
+read-then-write-race reason as above, throwing `AutoHarnessError` with
+`code === "UNKNOWN_REPOSITORY_NAME"` or `"AMBIGUOUS_REPOSITORY_NAME"`.
+
+```js
+const session = await harness.createSession({
+  repositoryName: "voucha",
+  prompt: "Review the latest changes",
+  target: { providerName: "codex" },
+  timeout: 1_800,
+});
+```
+
 ## Request deadlines
 
 Every request has a deadline that includes receiving and consuming the JSON response body.
@@ -79,20 +95,33 @@ may be ambiguous, poll the durable operation, and release the fence explicitly o
 recording its terminal result.
 
 ```js
+import { AutoHarnessDrainWaitTimeoutError } from "auto-harness-client";
+
 const drain = await harness.startSessionDrain("repo-1", {
   idempotencyKey: `deploy-${process.env.GITHUB_RUN_ID}`,
 });
 
-let progress = drain;
-while (progress.status === "draining") {
-  await new Promise((resolve) => setTimeout(resolve, 5_000));
-  progress = await harness.getSessionDrain("repo-1", drain.operationId);
+let progress;
+let failureCode;
+try {
+  progress = await harness.waitForSessionDrain("repo-1", drain.operationId, {
+    pollIntervalMs: 5_000,
+    timeoutMs: 300_000,
+  });
+  if (progress.status !== "succeeded") failureCode = progress.failureCode ?? progress.status;
+} catch (error) {
+  if (!(error instanceof AutoHarnessDrainWaitTimeoutError)) throw error;
+  failureCode = error.code;
 }
-const failed = progress.status !== "succeeded";
-if (failed) console.error(`Drain failed: ${progress.failureCode}`);
 await harness.releaseSessionDrain("repo-1", drain.operationId);
-if (failed) throw new Error(`Drain failed: ${progress.failureCode}`);
+if (failureCode) throw new Error(`Principal session drain did not succeed: ${failureCode}`);
 ```
+
+`waitForSessionDrain()` polls `getSessionDrain()` on top of which it's built: an immediate first
+poll, then `pollIntervalMs` between polls, until the drain leaves `"draining"`. It throws
+`AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) if `timeoutMs` elapses first.
+Each individual poll is itself bounded to the shorter of `requestTimeoutMs` and the remaining wait
+budget — a timed-out poll is not retried, and propagates as `AutoHarnessRequestTimeoutError`.
 
 When create, clone, or resume loses to the fence, `AutoHarnessError` has `code === "DRAINING"`
 plus the durable `operationId` and API-relative `statusUrl`; follow that operation rather than

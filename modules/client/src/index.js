@@ -1,7 +1,9 @@
 import { AutoHarnessError, AutoHarnessRequestTimeoutError } from "./errors.js";
-import { resolveCreateSessionTargets } from "./resolve-target.js";
+import { resolveCreateSessionTargets, resolveRepository } from "./resolve-target.js";
+import { waitForSessionDrain as pollSessionDrain } from "./wait-for-drain.js";
 
 export { AutoHarnessError, AutoHarnessRequestTimeoutError };
+export { AutoHarnessDrainWaitTimeoutError } from "./errors.js";
 
 export class AutoHarnessClient {
   constructor(options) {
@@ -20,18 +22,18 @@ export class AutoHarnessClient {
     this.requestTimeoutMs = requestTimeoutMs;
   }
 
-  async request(path, init = {}) {
+  async request(path, init = {}, { timeoutMs = this.requestTimeoutMs } = {}) {
     const headers = { accept: "application/json", ...init.headers };
     if (init.body !== undefined) headers["content-type"] = "application/json";
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
     const controller = new AbortController();
-    const timeoutError = new AutoHarnessRequestTimeoutError(this.requestTimeoutMs);
+    const timeoutError = new AutoHarnessRequestTimeoutError(timeoutMs);
     let timeoutId;
     const timeout = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
         controller.abort();
         reject(timeoutError);
-      }, this.requestTimeoutMs);
+      }, timeoutMs);
     });
     const request = (async () => {
       const response = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
@@ -69,7 +71,8 @@ export class AutoHarnessClient {
   }
 
   async createSession(input) {
-    const body = await resolveCreateSessionTargets(this, input);
+    const withRepositoryId = await resolveRepository(this, input);
+    const body = await resolveCreateSessionTargets(this, withRepositoryId);
     return this.request("/sessions", { method: "POST", body: JSON.stringify(body) });
   }
 
@@ -130,6 +133,14 @@ export class AutoHarnessClient {
       `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
       { method: "POST" },
     );
+  }
+
+  /**
+   * Polls a principal session drain until it leaves `"draining"`, on top of `getSessionDrain`.
+   * Throws `AutoHarnessDrainWaitTimeoutError` if `timeoutMs` elapses first.
+   */
+  waitForSessionDrain(repositoryId, operationId, options) {
+    return pollSessionDrain(this, repositoryId, operationId, options);
   }
 
   listRepositories(options = {}) {

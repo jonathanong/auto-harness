@@ -1,5 +1,9 @@
 import { AutoHarnessError } from "./errors.js";
 
+function pluralize(kind) {
+  return kind.endsWith("y") ? `${kind.slice(0, -1)}ies` : `${kind}s`;
+}
+
 async function resolveByName(name, catalog, kind, idKey) {
   const matches = (await catalog()).filter((entry) => entry.name === name);
   if (matches.length === 0) {
@@ -10,7 +14,7 @@ async function resolveByName(name, catalog, kind, idKey) {
   }
   if (matches.length > 1) {
     throw new AutoHarnessError(
-      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      `ambiguous ${kind} name "${name}": ${matches.length} ${pluralize(kind)} share this name`,
       { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` },
     );
   }
@@ -29,6 +33,43 @@ async function resolveRef(ref, providers, commands) {
     return resolveByName(ref.commandName, commands, "command", "commandId");
   }
   return ref;
+}
+
+async function fetchAllRepositories(client) {
+  const items = [];
+  let cursor;
+  do {
+    const page = await client.listRepositories({
+      limit: 100,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    items.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return items;
+}
+
+/**
+ * Resolves `input.repositoryName` to `repositoryId` via `client.listRepositories()`, following
+ * `nextCursor` across every page (bounded at 100 per request, the enforced max) to build the full
+ * catalog before searching — unlike providers/commands, repositories are paginated rather than
+ * returned as a flat array. Id-shaped input passes through untouched, so an id-only call makes no
+ * requests. Repository names are server-enforced unique (`findRepositoryByName` in the API), but
+ * resolved defensively against more than one match since create/update checks are read-then-write
+ * races rather than atomic constraints.
+ */
+export async function resolveRepository(client, input) {
+  // Checked by value, not `in`: a name ref built by conditional spreading can carry an explicit
+  // `repositoryId: undefined`, which `in` would treat as already resolved.
+  if (input.repositoryId !== undefined || input.repositoryName === undefined) return input;
+  const { repositoryName, ...rest } = input;
+  const resolved = await resolveByName(
+    repositoryName,
+    () => fetchAllRepositories(client),
+    "repository",
+    "repositoryId",
+  );
+  return { ...rest, ...resolved };
 }
 
 /**
