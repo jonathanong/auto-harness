@@ -223,11 +223,12 @@ function parseJson(name, value, fallback) {
     throw new Error(`${name} must be valid JSON`);
   }
 }
-function parsePositiveNumber(name, raw, maximum) {
+function parsePositiveNumber(name, raw, maximum, integer = false) {
   const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0 || maximum !== void 0 && value > maximum) {
+  const kind = integer ? "integer" : "number";
+  if (!Number.isFinite(value) || value <= 0 || maximum !== void 0 && value > maximum || integer && !Number.isInteger(value)) {
     throw new Error(
-      maximum === void 0 ? `${name} must be a positive number` : `${name} must be a finite positive number no greater than ${maximum}`
+      maximum === void 0 ? `${name} must be a positive ${kind}` : `${name} must be a finite positive ${kind} no greater than ${maximum}`
     );
   }
   return value;
@@ -235,16 +236,16 @@ function parsePositiveNumber(name, raw, maximum) {
 function positiveNumberInput(name, maximum) {
   return parsePositiveNumber(name, input(name, true), maximum);
 }
-function optionalPositiveNumberInput(name, maximum) {
+function optionalPositiveNumberInput(name, maximum, integer = false) {
   const raw = input(name);
-  return raw ? parsePositiveNumber(name, raw, maximum) : void 0;
+  return raw ? parsePositiveNumber(name, raw, maximum, integer) : void 0;
 }
 function optionalBoundedNumberInput(name, minimum, maximum) {
   const raw = input(name);
   if (!raw) return void 0;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value < minimum || value > maximum) {
-    throw new Error(`${name} must be a finite number between ${minimum} and ${maximum}`);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a finite integer between ${minimum} and ${maximum}`);
   }
   return value;
 }
@@ -417,6 +418,7 @@ async function existingDrain(operation, options, repositoryId) {
   const response = operation === "release-drain" ? await client(options).releaseSessionDrain(repositoryId, operationId) : await client(options).getSessionDrain(repositoryId, operationId);
   const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
   if (operation === "release-drain" && result.status !== "released") {
+    setDrainOutputs(result);
     throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
   }
   return result;
@@ -447,7 +449,11 @@ async function dispatch(options, repositoryId) {
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
   const metadata = input("metadata");
-  const queueTtlSeconds = optionalPositiveNumberInput("queue-ttl-seconds", QUEUE_TTL_MAX_SECONDS);
+  const queueTtlSeconds = optionalPositiveNumberInput(
+    "queue-ttl-seconds",
+    QUEUE_TTL_MAX_SECONDS,
+    true
+  );
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request = {
     repositoryId,

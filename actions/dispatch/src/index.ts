@@ -50,7 +50,11 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
   const metadata = input("metadata");
-  const queueTtlSeconds = optionalPositiveNumberInput("queue-ttl-seconds", QUEUE_TTL_MAX_SECONDS);
+  const queueTtlSeconds = optionalPositiveNumberInput(
+    "queue-ttl-seconds",
+    QUEUE_TTL_MAX_SECONDS,
+    true,
+  );
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request: CreateSessionInput = {
     repositoryId,

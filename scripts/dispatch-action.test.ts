@@ -97,6 +97,24 @@ describe("dispatch action principal session drain operations", () => {
     expect(result.output["drain-status"]).toBe("released");
   });
 
+  it("exposes drain outputs when release does not confirm release", async () => {
+    const server = await serve(() => ({
+      body: drain("failed", { failureCode: "DRAIN_DEADLINE_EXCEEDED" }),
+    }));
+
+    const result = await runAction({
+      ...drainInputs(server.origin, "release-drain"),
+      "session-drain-id": "drain-1",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.output).toMatchObject({
+      "drain-status": "failed",
+      "failure-code": "DRAIN_DEADLINE_EXCEEDED",
+    });
+    expect(result.stderr).toMatch(/did not release principal session drain: failed/);
+  });
+
   it.each([
     [
       "failed",

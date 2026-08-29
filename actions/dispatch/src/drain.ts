@@ -73,6 +73,7 @@ async function existingDrain(
       : await client(options).getSessionDrain(repositoryId, operationId);
   const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
   if (operation === "release-drain" && result.status !== "released") {
+    setDrainOutputs(result);
     throw new Error(`Auto Harness did not release principal session drain: ${result.status}`);
   }
   return result;

@@ -15,13 +15,19 @@ export function parseJson<T>(name: string, value: string, fallback?: T): T {
   }
 }
 
-function parsePositiveNumber(name: string, raw: string, maximum?: number): number {
+function parsePositiveNumber(name: string, raw: string, maximum?: number, integer = false): number {
   const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0 || (maximum !== undefined && value > maximum)) {
+  const kind = integer ? "integer" : "number";
+  if (
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    (maximum !== undefined && value > maximum) ||
+    (integer && !Number.isInteger(value))
+  ) {
     throw new Error(
       maximum === undefined
-        ? `${name} must be a positive number`
-        : `${name} must be a finite positive number no greater than ${maximum}`,
+        ? `${name} must be a positive ${kind}`
+        : `${name} must be a finite positive ${kind} no greater than ${maximum}`,
     );
   }
   return value;
@@ -31,9 +37,13 @@ export function positiveNumberInput(name: string, maximum?: number): number {
   return parsePositiveNumber(name, input(name, true), maximum);
 }
 
-export function optionalPositiveNumberInput(name: string, maximum?: number): number | undefined {
+export function optionalPositiveNumberInput(
+  name: string,
+  maximum?: number,
+  integer = false,
+): number | undefined {
   const raw = input(name);
-  return raw ? parsePositiveNumber(name, raw, maximum) : undefined;
+  return raw ? parsePositiveNumber(name, raw, maximum, integer) : undefined;
 }
 
 export function optionalBoundedNumberInput(
@@ -44,8 +54,8 @@ export function optionalBoundedNumberInput(
   const raw = input(name);
   if (!raw) return undefined;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value < minimum || value > maximum) {
-    throw new Error(`${name} must be a finite number between ${minimum} and ${maximum}`);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a finite integer between ${minimum} and ${maximum}`);
   }
   return value;
 }

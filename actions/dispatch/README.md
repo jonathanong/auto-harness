@@ -35,20 +35,24 @@ greater than `300`. The wait operation uses the shorter of this request timeout 
 
 ## Resume
 
-Continues a prior session — pass the source `session-id` (from an earlier dispatch's `session-id`
-output, Slack, or a stored comment). Native resume pins to the source host and route; if that route
-becomes unavailable, the control plane clears the pin and routes a fresh run through the session's
-original target/fallback chain. `prompt`, `concurrency-id`, `timeout`, and `priority` are optional
-overrides; omitted fields default to the source session's values.
+Continues a prior **terminal** session — pass the source `session-id` from an already-finished run
+(Slack, a stored comment, or a status check performed after the original dispatch completed). The
+control plane rejects resuming a session that has not yet reached a terminal status. Native resume
+pins to the source host and route; if that route becomes unavailable, the control plane clears the
+pin and routes a fresh run through the session's original target/fallback chain. `timeout` and
+`priority` are optional overrides that default to the source session's values; an omitted `prompt`
+does not replay the source session's original prompt, it falls back to the agent's native
+resume/continue behavior. `concurrency-id` is not an override: if supplied, it must exactly match
+the source session's inherited identity, and any other value is rejected.
 
 ```yaml
-- name: Resume the prior session
+- name: Resume a completed session
   uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
   with:
     operation: resume
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
     api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
-    session-id: ${{ steps.dispatch.outputs.session-id }}
+    session-id: ${{ steps.load-completed-session.outputs.session-id }}
     prompt: "Continue: also fix the edge case in parseDate"
 ```
 

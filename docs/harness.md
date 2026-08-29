@@ -15,8 +15,9 @@ and `created` outputs. Pin the Action to a reviewed full commit SHA and delibera
 when adopting a newer revision; do not use the moving `main` ref. It accepts the control-plane URL
 and service-account key as secrets plus, for `operation: dispatch` (the default), repository,
 prompt, target JSON, and optional ref/concurrency/queue-ttl/priority/metadata inputs; for
-`operation: resume`, a source `session-id` plus optional prompt/concurrency/timeout/priority
-overrides. Each request, including response-body consumption, has a configurable
+`operation: resume`, a source `session-id` plus optional prompt/timeout/priority overrides and an
+optional concurrency-id assertion (rejected unless it exactly matches the source session's
+inherited identity). Each request, including response-body consumption, has a configurable
 `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal session-drain
 modes start, poll, and release a durable drain for that same service account and repository; see
 [`actions/dispatch`](../actions/dispatch/README.md).

@@ -425,7 +425,7 @@ components:
           maximum: 604800
           description: Override timeout in seconds. Default is the source session's timeout.
         priority:
-          type: number
+          type: integer
           minimum: -10000
           maximum: 10000
           description: Queue priority. Default is the source session's priority.

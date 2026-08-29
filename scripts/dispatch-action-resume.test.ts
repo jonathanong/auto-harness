@@ -78,7 +78,17 @@ describe("dispatch action resume operation", () => {
     const result = await runAction(resumeInputs(server.origin, { priority: "10001" }));
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/priority must be a finite number between -10000 and 10000/);
+    expect(result.stderr).toMatch(/priority must be a finite integer between -10000 and 10000/);
+    expect(server.requests).toHaveLength(0);
+  });
+
+  it("rejects a fractional resume priority before making a request", async () => {
+    const server = await serve(() => ({ body: {} }));
+
+    const result = await runAction(resumeInputs(server.origin, { priority: "0.5" }));
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/priority must be a finite integer between -10000 and 10000/);
     expect(server.requests).toHaveLength(0);
   });
 
