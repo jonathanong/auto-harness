@@ -141,45 +141,53 @@ export class AutoHarnessClient {
   }
 
   /**
-   * Polls `getSessionDrain()` until it reports a terminal status, clamping each request's
-   * deadline to the time remaining before `timeoutMs` so no single request can outlive the
-   * overall wait. Resolves with the terminal `SessionDrain` for any status, including "failed"
-   * and "released" — callers classify success themselves. Rejects with
+   * Resolves `repositoryId`, then polls `getSessionDrain()` until it reports a terminal status,
+   * clamping every request — including each page fetched to resolve a `repositoryName` — to the
+   * time remaining before `timeoutMs`, recomputed fresh per request, so no single request can
+   * outlive the overall wait. Resolves with the terminal `SessionDrain` for any status, including
+   * "failed" and "released" — callers classify success themselves. Rejects with
    * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses — including
-   * when a clamped per-poll request is the thing that times out at that same instant — or with
-   * `AutoHarnessRequestTimeoutError` if an individual poll times out while budget still remains
-   * (e.g. a slow server response, well inside `timeoutMs`).
+   * when a clamped request is the thing that times out at that same instant — or with
+   * `AutoHarnessRequestTimeoutError` if an individual request times out while budget still
+   * remains (e.g. a slow server response, well inside `timeoutMs`).
    */
   async waitForSessionDrain(repositoryId, operationId, options = {}) {
     const { pollIntervalMs, timeoutMs } = options;
-    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0)
       throw new TypeError("pollIntervalMs must be a finite positive number");
-    }
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
       throw new TypeError("timeoutMs must be a finite positive number");
-    }
-    const id = await resolveRepositoryId(this, repositoryId);
     const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) {
-        throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
-      }
-      const pollClient = new AutoHarnessClient({
+    const clampedClient = () =>
+      new AutoHarnessClient({
         baseUrl: this.baseUrl,
         apiKey: this.apiKey,
         fetch: this.fetch,
-        requestTimeoutMs: Math.max(1, Math.ceil(Math.min(this.requestTimeoutMs, remainingMs))),
+        requestTimeoutMs: Math.max(
+          1,
+          Math.ceil(Math.min(this.requestTimeoutMs, deadline - Date.now())),
+        ),
       });
-      let sessionDrain;
-      try {
-        sessionDrain = await pollClient.getSessionDrain(id, operationId);
-      } catch (error) {
-        if (error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline) {
-          throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
-        }
-        throw error;
+    const rejectAtDeadline = (error, idForError) =>
+      error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline
+        ? new AutoHarnessDrainWaitTimeoutError(idForError, operationId, timeoutMs)
+        : error;
+
+    const id = await resolveRepositoryId(
+      { listRepositories: (listOptions) => clampedClient().listRepositories(listOptions) },
+      repositoryId,
+    ).catch((error) => {
+      throw rejectAtDeadline(error, repositoryId);
+    });
+    for (;;) {
+      if (deadline - Date.now() <= 0) {
+        throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
       }
+      const sessionDrain = await clampedClient()
+        .getSessionDrain(id, operationId)
+        .catch((error) => {
+          throw rejectAtDeadline(error, id);
+        });
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
       if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);

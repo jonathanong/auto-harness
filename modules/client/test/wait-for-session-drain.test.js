@@ -140,6 +140,31 @@ test("resolves a repositoryName before polling", async () => {
   ]);
 });
 
+test("bounds repositoryName resolution by the overall timeoutMs budget instead of the client's requestTimeoutMs", async () => {
+  let calls = 0;
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    requestTimeoutMs: 30_000,
+    fetch: async () => {
+      calls += 1;
+      return new Promise(() => {});
+    },
+  });
+  await assert.rejects(
+    client.waitForSessionDrain({ repositoryName: "svc-a" }, "drain-1", {
+      pollIntervalMs: 1,
+      timeoutMs: 10,
+    }),
+    (error) => {
+      assert.ok(error instanceof AutoHarnessDrainWaitTimeoutError);
+      assert.deepEqual(error.repositoryId, { repositoryName: "svc-a" });
+      assert.equal(error.timeoutMs, 10);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
+
 test("rejects invalid pollIntervalMs or timeoutMs options before making a request", async () => {
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",
