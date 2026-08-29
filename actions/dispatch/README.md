@@ -3,12 +3,12 @@
 `operation: dispatch` (the default) creates a session and returns immediately. `operation: resume`
 continues a prior session on its pinned host. The same action also owns the authenticated service
 account's principal session drain for a single repository. It never lists or individually cancels
-sessions in GitHub Actions: the control plane owns that durable work. Pin every use to the reviewed
-full commit SHA shown below, then deliberately replace that SHA when adopting a newer revision. Do
+sessions in GitHub Actions: the control plane owns that durable work. Replace `<sha>` below with a
+reviewed full commit SHA from `main`, then deliberately update it when adopting a newer revision. Do
 not use the moving `main` ref.
 
 ```yaml
-- uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
+- uses: jonathanong/auto-harness/actions/dispatch@<sha>
   with:
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
     api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
@@ -49,7 +49,7 @@ the source session's inherited identity, and any other value is rejected.
 
 ```yaml
 - name: Resume a completed session
-  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
   with:
     operation: resume
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -75,7 +75,7 @@ whatever caller-side failure handling records that result.
 ```yaml
 - name: Start this service account's principal session drain
   id: drain
-  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
   with:
     operation: start-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -85,7 +85,7 @@ whatever caller-side failure handling records that result.
 
 - name: Wait for terminal proof
   id: drain-status
-  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
   with:
     operation: wait-for-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -97,7 +97,7 @@ whatever caller-side failure handling records that result.
 
 - name: Reopen this principal's admission after recording the result
   if: always()
-  uses: jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
   with:
     operation: release-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}

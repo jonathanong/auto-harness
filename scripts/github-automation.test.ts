@@ -145,13 +145,13 @@ describe("GitHub Actions pin and image alignment", () => {
     }
   });
 
-  it("keeps every documented dispatch action reference on one reviewed main SHA", () => {
+  it("keeps every documented dispatch action reference on the same placeholder SHA token", () => {
     const pins = [...`${harnessDocs}\n${dispatchDocs}`.matchAll(DISPATCH_ACTION)].map(
       (match) => match[1],
     );
 
     expect(pins).toHaveLength(6);
-    expect(new Set(pins)).toEqual(new Set(["e5b42ce21d701f2dde7f3fb38a5f130754acccbc"]));
+    expect(new Set(pins)).toEqual(new Set(["<sha>"]));
     expect(dispatchDocs).toContain(`target: '{"providerName":"codex"}'`);
     expect(`${dispatchDocs}\n${dispatchAction}`).not.toContain('providerId":"codex');
   });

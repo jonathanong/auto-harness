@@ -9,11 +9,11 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 ## Packaged automation
 
 For GitHub workflows,
-`jonathanong/auto-harness/actions/dispatch@e5b42ce21d701f2dde7f3fb38a5f130754acccbc`
-wraps the fire-and-forget session create and resume calls and returns `session-id`, `session-url`,
-and `created` outputs. Pin the Action to a reviewed full commit SHA and deliberately update that SHA
-when adopting a newer revision; do not use the moving `main` ref. It accepts the control-plane URL
-and service-account key as secrets plus, for `operation: dispatch` (the default), repository,
+`jonathanong/auto-harness/actions/dispatch@<sha>` wraps the fire-and-forget session create and
+resume calls and returns `session-id`, `session-url`, and `created` outputs. Replace `<sha>` with a
+reviewed full commit SHA from `main`, and deliberately update it when adopting a newer revision; do
+not use the moving `main` ref. It accepts the control-plane URL and service-account key as secrets
+plus, for `operation: dispatch` (the default), repository,
 prompt, target JSON, and optional ref/concurrency/queue-ttl/priority/metadata inputs; for
 `operation: resume`, a source `session-id` plus optional prompt/timeout/priority overrides and an
 optional concurrency-id assertion (rejected unless it exactly matches the source session's
