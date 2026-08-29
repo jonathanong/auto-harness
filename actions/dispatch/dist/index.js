@@ -444,11 +444,30 @@ function operationInput() {
   }
   return operation;
 }
+function sourceInput() {
+  const source = input("source");
+  if (!source) return void 0;
+  if (source !== "api" && source !== "ui" && source !== "webhook") {
+    throw new Error(`source must be api, ui, or webhook; received ${source}`);
+  }
+  return source;
+}
+function requiredLabelsInput() {
+  const value = input("required-labels");
+  if (!value) return void 0;
+  const parsed = parseJson("required-labels", value);
+  if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
+    throw new Error("required-labels must be a JSON array of strings");
+  }
+  return parsed;
+}
 async function dispatch(options, repositoryId) {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
   const concurrencyId = input("concurrency-id");
+  const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
+  const source = sourceInput();
   const queueTtlSeconds = optionalPositiveNumberInput(
     "queue-ttl-seconds",
     QUEUE_TTL_MAX_SECONDS,
@@ -465,7 +484,9 @@ async function dispatch(options, repositoryId) {
     ...concurrencyId ? { concurrencyId } : {},
     ...queueTtlSeconds !== void 0 ? { queueTtlSeconds } : {},
     ...priority !== void 0 ? { priority } : {},
-    ...metadata ? { metadata: parseJson("metadata", metadata) } : {}
+    ...requiredLabels ? { requiredLabels } : {},
+    ...metadata ? { metadata: parseJson("metadata", metadata) } : {},
+    ...source ? { source } : {}
   };
   const session = validateSession(await client(options).createSession(request));
   setOutput("session-id", session.id);

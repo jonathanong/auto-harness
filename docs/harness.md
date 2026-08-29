@@ -14,7 +14,8 @@ resume calls and returns `session-id`, `session-url`, and `created` outputs. Rep
 reviewed full commit SHA from `main`, and deliberately update it when adopting a newer revision; do
 not use the moving `main` ref. It accepts the control-plane URL and service-account key as secrets
 plus, for `operation: dispatch` (the default), repository,
-prompt, target JSON, and optional ref/concurrency/queue-ttl/priority/metadata inputs; for
+prompt, target JSON, and optional ref/concurrency/queue-ttl/priority/metadata/source/required-labels
+inputs; for
 `operation: resume`, a source `session-id` plus optional prompt/timeout/priority overrides and an
 optional concurrency-id assertion (rejected unless it exactly matches the source session's
 inherited identity). Each request, including response-body consumption, has a configurable
