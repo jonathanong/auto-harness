@@ -23,7 +23,7 @@ describe("runSetupScript", () => {
     await runSetupScript(runner, "true", "/tmp", 1000, () => undefined);
     expect(seen?.[1]).toBe("-c");
     expect(seen?.[2]).toContain("true");
-    expect(seen).toContain(process.execPath);
+    expect(seen).toContain("node");
   });
 
   it("captures exported setup values without forwarding the HARNESS namespace", async () => {

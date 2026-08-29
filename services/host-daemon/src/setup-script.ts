@@ -70,7 +70,14 @@ export async function runSetupScript(
         "-c",
         setupCaptureScript(setupScript),
         "auto-harness-setup",
-        process.execPath,
+        // Resolved via PATH inside the capture trap, not process.execPath:
+        // the trap runs in the same shell as the setup script, after it, so
+        // PATH already reflects whatever node the setup script itself
+        // installed/verified. process.execPath is frozen to whatever
+        // interpreter this long-lived daemon happened to launch under, and
+        // package managers (brew, nvm, mise) routinely repoint or remove
+        // that exact versioned path without the daemon ever restarting.
+        "node",
         CAPTURE_ENV_SOURCE,
         snapshotPath,
       ],
