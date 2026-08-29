@@ -35,9 +35,11 @@ greater than `300`. The wait operation uses the shorter of this request timeout 
 
 ## Resume
 
-Continues a prior **terminal** session — pass the source `session-id` from an already-finished run
-(Slack, a stored comment, or a status check performed after the original dispatch completed). The
-control plane rejects resuming a session that has not yet reached a terminal status. Native resume
+Continues a prior **terminal** session that actually ran — pass the source `session-id` from an
+already-finished run (Slack, a stored comment, or a status check performed after the original
+dispatch completed). The control plane rejects resuming a session that has not yet reached a
+terminal status, a session that expired or was cancelled before it was ever assigned a host (there
+is no route to pin), and a session created by Auto Harness's schedule feature. Native resume
 pins to the source host and route; if that route becomes unavailable, the control plane clears the
 pin and routes a fresh run through the session's original target/fallback chain. `timeout` and
 `priority` are optional overrides that default to the source session's values; an omitted `prompt`

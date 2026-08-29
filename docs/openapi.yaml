@@ -395,7 +395,7 @@ components:
           description: At most 2,048 UTF-8 bytes.
         queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
         timeout: { type: number, exclusiveMinimum: 0, maximum: 604800 }
-        priority: { type: number, minimum: -10000, maximum: 10000 }
+        priority: { type: integer, minimum: -10000, maximum: 10000 }
         requiredLabels:
           type: array
           maxItems: 16

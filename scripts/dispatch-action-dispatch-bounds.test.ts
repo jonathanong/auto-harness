@@ -49,12 +49,15 @@ describe("dispatch action queue-ttl-seconds and priority inputs", () => {
     expect(body).not.toHaveProperty("priority");
   });
 
-  it("rejects a queue-ttl-seconds above the 2592000 second bound before making a request", async () => {
+  it.each([
+    ["above the 2592000 second bound", "2592001"],
+    ["fractional", "1.5"],
+  ])("rejects a %s queue-ttl-seconds before making a request", async (_name, value) => {
     const server = await serve(() => ({ body: {} }));
 
     const result = await runAction({
       ...drainInputs(server.origin, "dispatch"),
-      "queue-ttl-seconds": "2592001",
+      "queue-ttl-seconds": value,
       prompt: "review",
       target: '{"providerId":"provider-1"}',
       timeout: "300",
@@ -67,46 +70,15 @@ describe("dispatch action queue-ttl-seconds and priority inputs", () => {
     expect(server.requests).toHaveLength(0);
   });
 
-  it("rejects a fractional queue-ttl-seconds before making a request", async () => {
+  it.each([
+    ["outside the -10000 to 10000 bound", "-10001"],
+    ["fractional", "0.5"],
+  ])("rejects a %s dispatch priority before making a request", async (_name, value) => {
     const server = await serve(() => ({ body: {} }));
 
     const result = await runAction({
       ...drainInputs(server.origin, "dispatch"),
-      "queue-ttl-seconds": "1.5",
-      prompt: "review",
-      target: '{"providerId":"provider-1"}',
-      timeout: "300",
-    });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(
-      /queue-ttl-seconds must be a finite positive integer no greater than 2592000/,
-    );
-    expect(server.requests).toHaveLength(0);
-  });
-
-  it("rejects a dispatch priority outside the -10000 to 10000 bound before making a request", async () => {
-    const server = await serve(() => ({ body: {} }));
-
-    const result = await runAction({
-      ...drainInputs(server.origin, "dispatch"),
-      priority: "-10001",
-      prompt: "review",
-      target: '{"providerId":"provider-1"}',
-      timeout: "300",
-    });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/priority must be a finite integer between -10000 and 10000/);
-    expect(server.requests).toHaveLength(0);
-  });
-
-  it("rejects a fractional dispatch priority before making a request", async () => {
-    const server = await serve(() => ({ body: {} }));
-
-    const result = await runAction({
-      ...drainInputs(server.origin, "dispatch"),
-      priority: "0.5",
+      priority: value,
       prompt: "review",
       target: '{"providerId":"provider-1"}',
       timeout: "300",

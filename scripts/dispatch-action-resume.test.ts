@@ -72,20 +72,13 @@ describe("dispatch action resume operation", () => {
     expect(server.requests).toHaveLength(0);
   });
 
-  it("rejects a priority outside the -10000 to 10000 bound before making a request", async () => {
+  it.each([
+    ["outside the -10000 to 10000 bound", "10001"],
+    ["fractional", "0.5"],
+  ])("rejects a %s resume priority before making a request", async (_name, value) => {
     const server = await serve(() => ({ body: {} }));
 
-    const result = await runAction(resumeInputs(server.origin, { priority: "10001" }));
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/priority must be a finite integer between -10000 and 10000/);
-    expect(server.requests).toHaveLength(0);
-  });
-
-  it("rejects a fractional resume priority before making a request", async () => {
-    const server = await serve(() => ({ body: {} }));
-
-    const result = await runAction(resumeInputs(server.origin, { priority: "0.5" }));
+    const result = await runAction(resumeInputs(server.origin, { priority: value }));
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/priority must be a finite integer between -10000 and 10000/);

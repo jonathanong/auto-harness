@@ -40,10 +40,10 @@ inputs:
     description: Optional idempotency/concurrency identity for dispatch; for resume, must exactly match the source session's inherited concurrency identity
     required: false
   queue-ttl-seconds:
-    description: Optional queue lifetime in seconds, 1-2592000 (dispatch only)
+    description: Optional integer queue lifetime in seconds, 1-2592000 (dispatch only)
     required: false
   priority:
-    description: Optional queue priority, -10000 to 10000 (dispatch and resume; dispatch default 0, resume defaults to the source session's priority)
+    description: Optional integer queue priority, -10000 to 10000 (dispatch and resume; dispatch default 0, resume defaults to the source session's priority)
     required: false
   metadata:
     description: Optional JSON object with string, number, boolean, or null values (dispatch only)
