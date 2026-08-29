@@ -1,3 +1,5 @@
+import { MAX_SESSION_TIMEOUT_SECONDS } from "@auto-harness/shared";
+
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import {
@@ -17,7 +19,10 @@ function validResumeBody(
     Object.keys(body).every((key) => RESUME_BODY_FIELDS.has(key)) &&
     (body.prompt === undefined || (typeof body.prompt === "string" && body.prompt.length > 0)) &&
     (body.timeout === undefined ||
-      (typeof body.timeout === "number" && Number.isFinite(body.timeout) && body.timeout > 0)) &&
+      (typeof body.timeout === "number" &&
+        Number.isFinite(body.timeout) &&
+        body.timeout > 0 &&
+        body.timeout <= MAX_SESSION_TIMEOUT_SECONDS)) &&
     (body.priority === undefined ||
       (typeof body.priority === "number" && Number.isFinite(body.priority))) &&
     (body.concurrencyId === undefined ||

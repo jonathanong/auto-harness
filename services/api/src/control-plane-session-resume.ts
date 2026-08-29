@@ -1,6 +1,7 @@
 import {
   isActiveSessionStatus,
   isTerminalSessionStatus,
+  MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
 } from "@auto-harness/shared";
 
@@ -36,6 +37,9 @@ function validateResumeOverrides(opts: ResumeOptions): string | null {
     (typeof opts.timeout !== "number" || !Number.isFinite(opts.timeout) || opts.timeout <= 0)
   ) {
     return "timeout must be a positive number of seconds";
+  }
+  if (opts.timeout !== undefined && opts.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
+    return `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds`;
   }
   if (
     opts.priority !== undefined &&

@@ -110,6 +110,7 @@ export {
   MAX_PROMPT_BYTES,
   MAX_CONCURRENCY_ID_BYTES,
   MAX_FALLBACKS,
+  MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
   validateCreateSessionInput,
 } from "./validation.ts";
