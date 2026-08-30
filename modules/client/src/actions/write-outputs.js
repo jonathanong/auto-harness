@@ -16,7 +16,7 @@ export function writeOutputs(environment, result, route) {
     );
   }
   if (environment.GITHUB_STEP_SUMMARY) {
-    const routeText = route
+    const routeText = route?.length
       ? route.map(formatTargetRef).join(" → ")
       : "retained from the existing session";
     const concurrencyId = environment.HARNESS_CONCURRENCY_ID?.trim();

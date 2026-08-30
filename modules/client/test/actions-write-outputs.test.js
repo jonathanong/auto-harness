@@ -59,6 +59,15 @@ test("labels the route as retained when no route is given", () => {
   });
 });
 
+test("labels the route as retained when route is an empty array", () => {
+  withTempDir((dir) => {
+    const summaryPath = join(dir, "summary");
+    writeFileSync(summaryPath, "");
+    writeOutputs({ GITHUB_STEP_SUMMARY: summaryPath }, result, []);
+    assert.match(readFileSync(summaryPath, "utf8"), /retained from the existing session/);
+  });
+});
+
 test("omits the Concurrency row instead of rendering undefined when HARNESS_CONCURRENCY_ID is absent", () => {
   withTempDir((dir) => {
     const summaryPath = join(dir, "summary");

@@ -197,13 +197,19 @@ export class AutoHarnessRequestTimeoutError extends Error {
   constructor(timeoutMs: number);
 }
 
-/** Thrown by `waitForSessionDrain()` when its overall `timeoutMs` budget elapses. */
+/**
+ * Thrown by `waitForSessionDrain()` when its overall `timeoutMs` budget elapses.
+ *
+ * `repositoryId` echoes back whatever was passed to `waitForSessionDrain()`: a plain
+ * repository id string, or the `RepositoryRef` (e.g. `{ repositoryName }`) that was still
+ * unresolved when the deadline hit.
+ */
 export class AutoHarnessDrainWaitTimeoutError extends Error {
   code: "DRAIN_WAIT_TIMEOUT";
-  repositoryId: string;
+  repositoryId: string | RepositoryRef;
   operationId: string;
   timeoutMs: number;
-  constructor(repositoryId: string, operationId: string, timeoutMs: number);
+  constructor(repositoryId: string | RepositoryRef, operationId: string, timeoutMs: number);
 }
 
 export type AutoHarnessClientOptions = {
