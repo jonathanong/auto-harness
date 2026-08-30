@@ -22,6 +22,12 @@ const session = await harness.createSession({
 console.log(session.url);
 ```
 
+`baseUrl` must be `https` whenever `apiKey` is set — the constructor throws otherwise. Pass
+`allowInsecureHttp: true` to opt out, but only for a genuine loopback `baseUrl` (`127.0.0.0/8`,
+`::1`, or `localhost`) — the constructor verifies this itself and throws for any other `http:`
+`baseUrl` even when the flag is set. A private-network address (RFC1918) still crosses real network
+hardware and does not qualify.
+
 ## Target by provider or command name
 
 `target` and `fallbacks` accept a `providerId`/`commandId` as before, or a human-readable
@@ -46,6 +52,26 @@ Name resolution therefore still checks for more than one match rather than trust
 Either way, an unresolvable or ambiguous name throws `AutoHarnessError`
 (`code === "UNKNOWN_PROVIDER_NAME"`, `"UNKNOWN_COMMAND_NAME"`, `"AMBIGUOUS_PROVIDER_NAME"`, or
 `"AMBIGUOUS_COMMAND_NAME"`); the ambiguous-name message never includes the matched ids.
+
+## Repository by name
+
+`createSession()` and the principal session drain methods (`startSessionDrain()`,
+`getSessionDrain()`, `releaseSessionDrain()`, `waitForSessionDrain()`) accept a `RepositoryRef` —
+`{ repositoryId }` as before, or `{ repositoryName }` — wherever they take a `repositoryId`
+parameter. `listSessions()`'s `repositoryId` filter and the repository administration methods
+(`pauseRepository()`, `drainRepository()`, `activateRepository()`) remain id-only. Repositories are
+not exposed as a single unpaginated catalog call, so resolving by name pages through
+`listRepositories()` in full before matching. An unresolvable or ambiguous name throws
+`AutoHarnessError` (`code === "UNKNOWN_REPOSITORY_NAME"` or `"AMBIGUOUS_REPOSITORY_NAME"`).
+
+```js
+const session = await harness.createSession({
+  repositoryName: "voucha/filaments",
+  prompt: "Review the latest changes",
+  target: { providerId: "codex" },
+  timeout: 1_800,
+});
+```
 
 ## Request deadlines
 
@@ -98,6 +124,27 @@ When create, clone, or resume loses to the fence, `AutoHarnessError` has `code =
 plus the durable `operationId` and API-relative `statusUrl`; follow that operation rather than
 reimplementing pagination or cancellation reconciliation.
 
+`waitForSessionDrain(repositoryId, operationId, { pollIntervalMs, timeoutMs })` replaces the manual
+poll loop above: it resolves `repositoryId`, then polls `getSessionDrain()` until a terminal status,
+clamping every request — including each page fetched to resolve a `repositoryName` — to the time
+remaining before `timeoutMs`. It resolves with the terminal `SessionDrain` for any status, including
+`"failed"` and `"released"` — callers classify success themselves — and rejects with
+`AutoHarnessDrainWaitTimeoutError` (`code === "DRAIN_WAIT_TIMEOUT"`) when the overall `timeoutMs`
+budget elapses — including when a clamped request is the thing that times out at that same instant
+— or with `AutoHarnessRequestTimeoutError` (`code === "REQUEST_TIMEOUT"`) if an individual request
+times out while budget still remains.
+
+```js
+const progress = await harness.waitForSessionDrain("repo-1", drain.operationId, {
+  pollIntervalMs: 5_000,
+  timeoutMs: 300_000,
+});
+const failed = progress.status !== "succeeded";
+if (failed) console.error(`Drain failed: ${progress.failureCode}`);
+await harness.releaseSessionDrain("repo-1", drain.operationId);
+if (failed) throw new Error(`Drain failed: ${progress.failureCode}`);
+```
+
 ## Resume a session
 
 Resume re-runs a previously assigned session. It initially prefers the source host and its stored
@@ -131,4 +178,23 @@ while (page.nextCursor) {
   });
   sessions.push(...page.items);
 }
+```
+
+## `auto-harness-client/actions`
+
+Dependency-free helpers for authoring a GitHub Action that dispatches Auto Harness sessions from
+`INPUT_*` env vars: `requiredEnvironmentValue`, `parseInteger`, `parseRequiredLabels`,
+`parseConcurrencyId`, `parseMetadata`, `parseHarnessApiOrigin`, `parseHarnessTarget`,
+`parseHarnessFallbacks`, `TARGET_SPEC_KEYS`, `HarnessDispatchError`, and `writeOutputs` (for
+`GITHUB_OUTPUT`/`GITHUB_STEP_SUMMARY`/`::notice` reporting). These parse the same env-var contract
+that `auto-harness`'s own
+[`actions/dispatch`](https://github.com/jonathanong/auto-harness/blob/main/actions/dispatch) action
+uses, so a consuming
+workflow's inline script and a bundled composite action stay in sync with the same validation.
+
+```js
+import { parseHarnessTarget, requiredEnvironmentValue } from "auto-harness-client/actions";
+
+const target = parseHarnessTarget(process.env.HARNESS_TARGET);
+const apiKey = requiredEnvironmentValue(process.env, "HARNESS_API_KEY");
 ```

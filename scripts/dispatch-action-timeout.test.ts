@@ -100,7 +100,7 @@ describe("dispatch action request timeouts", () => {
     });
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/Timed out waiting for principal session drain/);
+    expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
     expect(server.requests).toHaveLength(1);
   });
 
@@ -116,7 +116,7 @@ describe("dispatch action request timeouts", () => {
     });
 
     expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/Timed out waiting for principal session drain/);
+    expect(result.stderr).toMatch(/Timed out waiting for Auto Harness request/);
     expect(server.requests).toHaveLength(1);
   });
 });

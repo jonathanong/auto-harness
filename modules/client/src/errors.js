@@ -18,3 +18,14 @@ export class AutoHarnessRequestTimeoutError extends Error {
     this.timeoutMs = timeoutMs;
   }
 }
+
+export class AutoHarnessDrainWaitTimeoutError extends Error {
+  constructor(repositoryId, operationId, timeoutMs) {
+    super(`Auto Harness session drain wait timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessDrainWaitTimeoutError";
+    this.code = "DRAIN_WAIT_TIMEOUT";
+    this.repositoryId = repositoryId;
+    this.operationId = operationId;
+    this.timeoutMs = timeoutMs;
+  }
+}

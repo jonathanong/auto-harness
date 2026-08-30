@@ -18,9 +18,45 @@ var AutoHarnessRequestTimeoutError = class extends Error {
     this.timeoutMs = timeoutMs;
   }
 };
+var AutoHarnessDrainWaitTimeoutError = class extends Error {
+  constructor(repositoryId, operationId, timeoutMs) {
+    super(`Auto Harness session drain wait timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessDrainWaitTimeoutError";
+    this.code = "DRAIN_WAIT_TIMEOUT";
+    this.repositoryId = repositoryId;
+    this.operationId = operationId;
+    this.timeoutMs = timeoutMs;
+  }
+};
 
-// modules/client/src/resolve-target.js
-async function resolveByName(name, catalog, kind, idKey) {
+// modules/client/src/loopback.js
+function isLoopbackIpv4(hostname) {
+  const octets = hostname.split(".");
+  if (octets.length !== 4 || !octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)) {
+    return false;
+  }
+  return Number(octets[0]) === 127;
+}
+function isLoopbackHostname(hostname) {
+  return hostname === "localhost" || hostname === "[::1]" || isLoopbackIpv4(hostname);
+}
+function isLoopbackOrigin(rawUrl) {
+  try {
+    return isLoopbackHostname(new URL(rawUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+function assertSecureTransport(baseUrl, apiKey, allowInsecureHttp) {
+  if (!apiKey || baseUrl.startsWith("https://")) return;
+  if (allowInsecureHttp && isLoopbackOrigin(baseUrl)) return;
+  throw new TypeError(
+    "baseUrl must use https when apiKey is set (allowInsecureHttp only permits plain HTTP to a loopback baseUrl, e.g. http://127.0.0.1 or http://localhost)"
+  );
+}
+
+// modules/client/src/resolve-by-name.js
+async function resolveByName(name, catalog, kind) {
   const matches = (await catalog()).filter((entry) => entry.name === name);
   if (matches.length === 0) {
     throw new AutoHarnessError(`no ${kind} named "${name}"`, {
@@ -30,20 +66,39 @@ async function resolveByName(name, catalog, kind, idKey) {
   }
   if (matches.length > 1) {
     throw new AutoHarnessError(
-      `ambiguous ${kind} name "${name}": ${matches.length} ${kind}s share this name`,
+      `ambiguous ${kind} name "${name}": ${matches.length} ${kind === "repository" ? "repositories" : `${kind}s`} share this name`,
       { status: 400, code: `AMBIGUOUS_${kind.toUpperCase()}_NAME` }
     );
   }
-  return { [idKey]: matches[0].id };
+  return matches[0].id;
 }
+
+// modules/client/src/resolve-repository.js
+async function listAllRepositories(client2) {
+  const items = [];
+  let page = await client2.listRepositories();
+  items.push(...page.items);
+  while (page.nextCursor) {
+    page = await client2.listRepositories({ cursor: page.nextCursor });
+    items.push(...page.items);
+  }
+  return items;
+}
+async function resolveRepositoryId(client2, ref) {
+  if (typeof ref === "string") return ref;
+  if (ref.repositoryId !== void 0) return ref.repositoryId;
+  return resolveByName(ref.repositoryName, () => listAllRepositories(client2), "repository");
+}
+
+// modules/client/src/resolve-target.js
 async function resolveRef(ref, providers, commands) {
   if (ref == null || typeof ref !== "object") return ref;
   if (ref.providerId !== void 0 || ref.commandId !== void 0) return ref;
   if (ref.providerName !== void 0) {
-    return resolveByName(ref.providerName, providers, "provider", "providerId");
+    return { providerId: await resolveByName(ref.providerName, providers, "provider") };
   }
   if (ref.commandName !== void 0) {
-    return resolveByName(ref.commandName, commands, "command", "commandId");
+    return { commandId: await resolveByName(ref.commandName, commands, "command") };
   }
   return ref;
 }
@@ -53,15 +108,21 @@ async function resolveCreateSessionTargets(client2, input2) {
   const providers = () => providersPromise ??= client2.listProviders();
   const commands = () => commandsPromise ??= client2.listCommands();
   const target = await resolveRef(input2.target, providers, commands);
-  if (input2.fallbacks === void 0) return { ...input2, target };
+  const repositoryId = await resolveRepositoryId(
+    client2,
+    input2.repositoryId !== void 0 ? input2.repositoryId : { repositoryName: input2.repositoryName }
+  );
+  const resolved = { ...input2, repositoryId, target };
+  delete resolved.repositoryName;
+  if (input2.fallbacks === void 0) return resolved;
   const fallbacks = await Promise.all(
     input2.fallbacks.map((fallback) => resolveRef(fallback, providers, commands))
   );
-  return { ...input2, target, fallbacks };
+  return { ...resolved, fallbacks };
 }
 
 // modules/client/src/index.js
-var AutoHarnessClient = class {
+var AutoHarnessClient = class _AutoHarnessClient {
   constructor(options) {
     if (!options?.baseUrl) throw new TypeError("baseUrl is required");
     const requestTimeoutMs2 = options.requestTimeoutMs === void 0 ? 3e4 : options.requestTimeoutMs;
@@ -72,6 +133,8 @@ var AutoHarnessClient = class {
     }
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
+    this.allowInsecureHttp = Boolean(options.allowInsecureHttp);
+    assertSecureTransport(this.baseUrl, this.apiKey, this.allowInsecureHttp);
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
     this.requestTimeoutMs = requestTimeoutMs2;
@@ -155,24 +218,75 @@ var AutoHarnessClient = class {
    * Atomically fence this authenticated principal's session admission for one repository and
    * begin cancelling its existing work. Reuse an idempotency key after an ambiguous retry.
    */
-  startSessionDrain(repositoryId, options = {}) {
-    return this.request(`/repositories/${encodeURIComponent(repositoryId)}/session-drains`, {
+  async startSessionDrain(repositoryId, options = {}) {
+    const id = await resolveRepositoryId(this, repositoryId);
+    return this.request(`/repositories/${encodeURIComponent(id)}/session-drains`, {
       method: "POST",
       ...options.idempotencyKey === void 0 ? {} : { headers: { "idempotency-key": options.idempotencyKey } }
     });
   }
   /** Get bounded durable progress or terminal proof for one principal session drain. */
-  getSessionDrain(repositoryId, operationId) {
+  async getSessionDrain(repositoryId, operationId) {
+    const id = await resolveRepositoryId(this, repositoryId);
     return this.request(
-      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}`
+      `/repositories/${encodeURIComponent(id)}/session-drains/${encodeURIComponent(operationId)}`
     );
   }
   /** Explicitly reopen admission after a succeeded or failed principal session drain. */
-  releaseSessionDrain(repositoryId, operationId) {
+  async releaseSessionDrain(repositoryId, operationId) {
+    const id = await resolveRepositoryId(this, repositoryId);
     return this.request(
-      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
+      `/repositories/${encodeURIComponent(id)}/session-drains/${encodeURIComponent(operationId)}/release`,
       { method: "POST" }
     );
+  }
+  /**
+   * Resolves `repositoryId`, then polls `getSessionDrain()` until it reports a terminal status,
+   * clamping every request — including each page fetched to resolve a `repositoryName` — to the
+   * time remaining before `timeoutMs`, recomputed fresh per request, so no single request can
+   * outlive the overall wait. Resolves with the terminal `SessionDrain` for any status, including
+   * "failed" and "released" — callers classify success themselves. Rejects with
+   * `AutoHarnessDrainWaitTimeoutError` when the overall `timeoutMs` budget elapses — including
+   * when a clamped request is the thing that times out at that same instant — or with
+   * `AutoHarnessRequestTimeoutError` if an individual request times out while budget still
+   * remains (e.g. a slow server response, well inside `timeoutMs`).
+   */
+  async waitForSessionDrain(repositoryId, operationId, options = {}) {
+    const { pollIntervalMs, timeoutMs } = options;
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0)
+      throw new TypeError("pollIntervalMs must be a finite positive number");
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+      throw new TypeError("timeoutMs must be a finite positive number");
+    const deadline = Date.now() + timeoutMs;
+    const clampedClient = () => new _AutoHarnessClient({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      allowInsecureHttp: this.allowInsecureHttp,
+      fetch: this.fetch,
+      requestTimeoutMs: Math.max(
+        1,
+        Math.ceil(Math.min(this.requestTimeoutMs, deadline - Date.now()))
+      )
+    });
+    const rejectAtDeadline = (error, idForError) => error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline ? new AutoHarnessDrainWaitTimeoutError(idForError, operationId, timeoutMs) : error;
+    const id = await resolveRepositoryId(
+      { listRepositories: (listOptions) => clampedClient().listRepositories(listOptions) },
+      repositoryId
+    ).catch((error) => {
+      throw rejectAtDeadline(error, repositoryId);
+    });
+    for (; ; ) {
+      if (deadline - Date.now() <= 0) {
+        throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+      }
+      const sessionDrain = await clampedClient().getSessionDrain(id, operationId).catch((error) => {
+        throw rejectAtDeadline(error, id);
+      });
+      if (sessionDrain.status !== "draining") return sessionDrain;
+      const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
+      if (delayMs <= 0) throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
   listRepositories(options = {}) {
     const query = new URLSearchParams();
@@ -203,6 +317,156 @@ var AutoHarnessClient = class {
   }
 };
 
+// modules/client/src/actions/errors.js
+var HarnessDispatchError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+};
+
+// modules/client/src/actions/parse.js
+var MAX_CONCURRENCY_ID_CHARACTERS = 128;
+var MAX_CONCURRENCY_ID_BYTES = 2048;
+var MAX_METADATA_BYTES = 8192;
+function parseRequiredLabels(value, fieldName = "HARNESS_REQUIRED_LABELS") {
+  if (!value) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_REQUIRED_LABELS", `${fieldName} must be valid JSON`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every((label) => typeof label === "string" && label !== "")) {
+    throw new HarnessDispatchError(
+      "INVALID_REQUIRED_LABELS",
+      `${fieldName} must be a JSON array of strings`
+    );
+  }
+  return parsed;
+}
+function parseConcurrencyId(value, { fieldName = "HARNESS_CONCURRENCY_ID", optional = false, allowAnyCharacters = false } = {}) {
+  const concurrencyId = value?.trim();
+  if (!concurrencyId) {
+    if (optional) return void 0;
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} is required`);
+  }
+  if (allowAnyCharacters) {
+    if (Buffer.byteLength(concurrencyId, "utf8") > MAX_CONCURRENCY_ID_BYTES) {
+      throw new HarnessDispatchError(
+        "INVALID_CONCURRENCY_ID",
+        `${fieldName} exceeds ${MAX_CONCURRENCY_ID_BYTES} bytes`
+      );
+    }
+    return concurrencyId;
+  }
+  if (concurrencyId.length > MAX_CONCURRENCY_ID_CHARACTERS) {
+    throw new HarnessDispatchError("INVALID_CONCURRENCY_ID", `${fieldName} exceeds 128 characters`);
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/u.test(concurrencyId)) {
+    throw new HarnessDispatchError(
+      "INVALID_CONCURRENCY_ID",
+      `${fieldName} contains unsupported characters`
+    );
+  }
+  return concurrencyId;
+}
+function parseMetadata(value, fieldName = "HARNESS_METADATA") {
+  if (!value) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be valid JSON`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} must be a JSON object`);
+  }
+  for (const [key, fieldValue] of Object.entries(parsed)) {
+    const isValidScalar = ["string", "boolean"].includes(typeof fieldValue) || fieldValue === null || typeof fieldValue === "number" && Number.isFinite(fieldValue);
+    if (!isValidScalar) {
+      throw new HarnessDispatchError(
+        "INVALID_METADATA",
+        `${fieldName}.${key} must be a string, finite number, boolean, or null`
+      );
+    }
+  }
+  if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > MAX_METADATA_BYTES) {
+    throw new HarnessDispatchError("INVALID_METADATA", `${fieldName} exceeds 8192 bytes`);
+  }
+  return parsed;
+}
+function parseApiOrigin(rawUrl, { fieldName = "HARNESS_URL", allowHttp = false } = {}) {
+  let apiUrl;
+  try {
+    apiUrl = new URL(rawUrl);
+  } catch {
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must be a valid URL`);
+  }
+  const protocolLabel = allowHttp ? "http or https" : "https";
+  if (apiUrl.protocol !== "https:" && !(allowHttp && apiUrl.protocol === "http:")) {
+    throw new HarnessDispatchError("INVALID_HARNESS_URL", `${fieldName} must use ${protocolLabel}`);
+  }
+  const { origin } = apiUrl;
+  if (apiUrl.username !== "" || apiUrl.password !== "" || apiUrl.search !== "" || apiUrl.hash !== "" || ![origin, `${origin}/`, `${origin}/api/v1`, `${origin}/api/v1/`].includes(rawUrl)) {
+    throw new HarnessDispatchError(
+      "INVALID_HARNESS_URL",
+      `${fieldName} must be an exact ${protocolLabel} origin, optionally suffixed with /api/v1`
+    );
+  }
+  return new URL(origin);
+}
+
+// modules/client/src/actions/parse-target.js
+var TARGET_SPEC_KEYS = ["providerId", "providerName", "commandId", "commandName"];
+function parseTargetRefValue(parsed, key) {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_TARGET", `${key} must be a JSON object`);
+  }
+  const rest = Object.keys(parsed).filter((field2) => !TARGET_SPEC_KEYS.includes(field2));
+  if (rest.length > 0) {
+    throw new HarnessDispatchError(
+      "INVALID_TARGET",
+      `${key} must only contain providerId, providerName, commandId, or commandName`
+    );
+  }
+  const presentKeys = TARGET_SPEC_KEYS.filter((field2) => field2 in parsed);
+  if (presentKeys.length !== 1) {
+    throw new HarnessDispatchError(
+      "INVALID_TARGET",
+      `${key} must be exactly one of providerId, providerName, commandId, or commandName`
+    );
+  }
+  const field = presentKeys[0];
+  const fieldValue = parsed[field];
+  if (typeof fieldValue !== "string" || fieldValue === "") {
+    throw new HarnessDispatchError("INVALID_TARGET", `${key}.${field} must be a non-empty string`);
+  }
+  return { [field]: fieldValue };
+}
+function parseHarnessTarget(value, fieldName = "HARNESS_TARGET") {
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_TARGET", `${fieldName} must be valid JSON`);
+  }
+  return parseTargetRefValue(parsed, fieldName);
+}
+function parseHarnessFallbacks(value, fieldName = "HARNESS_FALLBACKS") {
+  if (!value?.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be valid JSON`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new HarnessDispatchError("INVALID_FALLBACKS", `${fieldName} must be a JSON array`);
+  }
+  return parsed.map((entry, index) => parseTargetRefValue(entry, `${fieldName}[${index}]`));
+}
+
 // actions/dispatch/src/client.ts
 function client(options) {
   return new AutoHarnessClient(options);
@@ -214,14 +478,6 @@ function input(name, required = false) {
   const value = process.env[`INPUT_${name.replaceAll(" ", "_").toUpperCase()}`]?.trim() ?? "";
   if (required && !value) throw new Error(`Input required and not supplied: ${name}`);
   return value;
-}
-function parseJson(name, value, fallback) {
-  if (!value && fallback !== void 0) return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error(`${name} must be valid JSON`);
-  }
 }
 function parsePositiveNumber(name, raw, maximum, integer = false) {
   const value = Number(raw);
@@ -346,9 +602,12 @@ function setDrainOutputs(result) {
   setOutput("cancelled-count", String(result.cancelledCount));
   setOutput("failure-code", result.failureCode ?? "");
 }
-function actionErrorMessage(error, baseUrl, isDrain) {
+function actionErrorMessage(error, baseUrl) {
+  if (error instanceof AutoHarnessDrainWaitTimeoutError) {
+    return "Timed out waiting for principal session drain";
+  }
   if (error instanceof AutoHarnessRequestTimeoutError) {
-    return isDrain ? "Timed out waiting for principal session drain" : "Timed out waiting for Auto Harness request";
+    return "Timed out waiting for Auto Harness request";
   }
   if (error instanceof AutoHarnessError && error.statusUrl) {
     try {
@@ -366,28 +625,13 @@ function actionErrorMessage(error, baseUrl, isDrain) {
 
 // actions/dispatch/src/drain.ts
 async function waitForSucceededDrain(options, repositoryId, operationId) {
-  const intervalMs = positiveNumberInput("poll-interval-seconds") * 1e3;
-  const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1e3;
-  let result;
-  do {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    const timeoutOptions = {
-      ...options,
-      requestTimeoutMs: Math.max(1, Math.ceil(Math.min(options.requestTimeoutMs, remainingMs)))
-    };
-    result = validateDrain(
-      await client(timeoutOptions).getSessionDrain(repositoryId, operationId),
-      options.baseUrl,
-      repositoryId,
-      operationId
-    );
-    if (result.status === "draining") {
-      const delayMs = Math.min(intervalMs, deadline - Date.now());
-      if (delayMs <= 0) throw new Error("Timed out waiting for principal session drain");
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  } while (result.status === "draining");
+  const pollIntervalMs = positiveNumberInput("poll-interval-seconds") * 1e3;
+  const timeoutMs = positiveNumberInput("poll-timeout-seconds") * 1e3;
+  const response = await client(options).waitForSessionDrain(repositoryId, operationId, {
+    pollIntervalMs,
+    timeoutMs
+  });
+  const result = validateDrain(response, options.baseUrl, repositoryId, operationId);
   if (result.status !== "succeeded") {
     setDrainOutputs(result);
     const failure = result.failureCode ? ` (${result.failureCode})` : "";
@@ -453,18 +697,16 @@ function sourceInput() {
   return source;
 }
 function requiredLabelsInput() {
-  const value = input("required-labels");
-  if (!value) return void 0;
-  const parsed = parseJson("required-labels", value);
-  if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
-    throw new Error("required-labels must be a JSON array of strings");
-  }
-  return parsed;
+  return parseRequiredLabels(input("required-labels"), "required-labels");
 }
 async function dispatch(options, repositoryId) {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+    allowAnyCharacters: true
+  });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
   const source = sourceInput();
@@ -477,15 +719,15 @@ async function dispatch(options, repositoryId) {
   const request = {
     repositoryId,
     prompt: input("prompt", true),
-    target: parseJson("target", input("target", true)),
+    target: parseHarnessTarget(input("target", true), "target"),
     timeout: positiveNumberInput("timeout"),
-    ...fallbacks ? { fallbacks: parseJson("fallbacks", fallbacks) } : {},
+    ...fallbacks ? { fallbacks: parseHarnessFallbacks(fallbacks, "fallbacks") } : {},
     ...ref ? { ref } : {},
     ...concurrencyId ? { concurrencyId } : {},
     ...queueTtlSeconds !== void 0 ? { queueTtlSeconds } : {},
     ...priority !== void 0 ? { priority } : {},
-    ...requiredLabels ? { requiredLabels } : {},
-    ...metadata ? { metadata: parseJson("metadata", metadata) } : {},
+    ...requiredLabels.length > 0 ? { requiredLabels } : {},
+    ...metadata ? { metadata: parseMetadata(metadata, "metadata") } : {},
     ...source ? { source } : {}
   };
   const session = validateSession(await client(options).createSession(request));
@@ -498,7 +740,11 @@ async function dispatch(options, repositoryId) {
 async function resume(options) {
   const sessionId = input("session-id", true);
   const prompt = input("prompt");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+    allowAnyCharacters: true
+  });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request = {
@@ -515,18 +761,25 @@ async function resume(options) {
 `);
 }
 async function main() {
-  const baseUrl = input("server-url", true).replace(/\/$/, "").replace(/\/api\/v1$/, "");
+  const baseUrl = parseApiOrigin(input("server-url", true), {
+    fieldName: "server-url",
+    allowHttp: true
+  }).origin;
   const operation = operationInput();
-  const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
+  const options = {
+    baseUrl,
+    apiKey: input("api-key", true),
+    requestTimeoutMs: requestTimeoutMs(),
+    // server-url may use http: (allowHttp above), but plaintext credentials are only safe for
+    // genuine loopback — a private-network address still crosses real network hardware.
+    allowInsecureHttp: isLoopbackOrigin(baseUrl)
+  };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
-    throw new Error(
-      actionErrorMessage(error, baseUrl, operation !== "dispatch" && operation !== "resume"),
-      { cause: error }
-    );
+    throw new Error(actionErrorMessage(error, baseUrl), { cause: error });
   }
 }
 try {

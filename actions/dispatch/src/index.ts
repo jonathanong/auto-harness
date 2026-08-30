@@ -2,9 +2,16 @@ import {
   type CreatableSessionSource,
   type CreateSessionInput,
   type ResumeSessionInput,
-  type SessionMetadataValue,
-  type TargetSpec,
 } from "auto-harness-client";
+import {
+  parseApiOrigin,
+  parseConcurrencyId,
+  parseHarnessFallbacks,
+  parseHarnessTarget,
+  parseMetadata,
+  parseRequiredLabels,
+} from "auto-harness-client/actions";
+import { isLoopbackOrigin } from "auto-harness-client/loopback";
 
 import { client } from "./client.ts";
 import { drain, type DrainOperation } from "./drain.ts";
@@ -13,7 +20,6 @@ import {
   input,
   optionalBoundedNumberInput,
   optionalPositiveNumberInput,
-  parseJson,
   positiveNumberInput,
   requestTimeoutMs,
   setOutput,
@@ -27,7 +33,12 @@ const PRIORITY_MAX = 10_000;
 const QUEUE_TTL_MAX_SECONDS = 2_592_000;
 const RESUME_TIMEOUT_MAX_SECONDS = 604_800;
 
-type ClientOptions = { baseUrl: string; apiKey: string; requestTimeoutMs: number };
+type ClientOptions = {
+  baseUrl: string;
+  apiKey: string;
+  requestTimeoutMs: number;
+  allowInsecureHttp: boolean;
+};
 
 function operationInput(): Operation {
   const operation = input("operation") || "dispatch";
@@ -55,20 +66,18 @@ function sourceInput(): CreatableSessionSource | undefined {
   return source;
 }
 
-function requiredLabelsInput(): string[] | undefined {
-  const value = input("required-labels");
-  if (!value) return undefined;
-  const parsed = parseJson<unknown>("required-labels", value);
-  if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
-    throw new Error("required-labels must be a JSON array of strings");
-  }
-  return parsed;
+function requiredLabelsInput(): string[] {
+  return parseRequiredLabels(input("required-labels"), "required-labels");
 }
 
 async function dispatch(options: ClientOptions, repositoryId: string): Promise<void> {
   const fallbacks = input("fallbacks");
   const ref = input("ref");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+    allowAnyCharacters: true,
+  });
   const requiredLabels = requiredLabelsInput();
   const metadata = input("metadata");
   const source = sourceInput();
@@ -81,17 +90,15 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
   const request: CreateSessionInput = {
     repositoryId,
     prompt: input("prompt", true),
-    target: parseJson<TargetSpec>("target", input("target", true)),
+    target: parseHarnessTarget(input("target", true), "target"),
     timeout: positiveNumberInput("timeout"),
-    ...(fallbacks ? { fallbacks: parseJson<TargetSpec[]>("fallbacks", fallbacks) } : {}),
+    ...(fallbacks ? { fallbacks: parseHarnessFallbacks(fallbacks, "fallbacks") } : {}),
     ...(ref ? { ref } : {}),
     ...(concurrencyId ? { concurrencyId } : {}),
     ...(queueTtlSeconds !== undefined ? { queueTtlSeconds } : {}),
     ...(priority !== undefined ? { priority } : {}),
-    ...(requiredLabels ? { requiredLabels } : {}),
-    ...(metadata
-      ? { metadata: parseJson<Record<string, SessionMetadataValue>>("metadata", metadata) }
-      : {}),
+    ...(requiredLabels.length > 0 ? { requiredLabels } : {}),
+    ...(metadata ? { metadata: parseMetadata(metadata, "metadata") } : {}),
     ...(source ? { source } : {}),
   };
   const session = validateSession(await client(options).createSession(request));
@@ -107,7 +114,11 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
 async function resume(options: ClientOptions): Promise<void> {
   const sessionId = input("session-id", true);
   const prompt = input("prompt");
-  const concurrencyId = input("concurrency-id");
+  const concurrencyId = parseConcurrencyId(input("concurrency-id"), {
+    fieldName: "concurrency-id",
+    optional: true,
+    allowAnyCharacters: true,
+  });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
   const request: ResumeSessionInput = {
@@ -124,20 +135,25 @@ async function resume(options: ClientOptions): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const baseUrl = input("server-url", true)
-    .replace(/\/$/, "")
-    .replace(/\/api\/v1$/, "");
+  const baseUrl = parseApiOrigin(input("server-url", true), {
+    fieldName: "server-url",
+    allowHttp: true,
+  }).origin;
   const operation = operationInput();
-  const options = { baseUrl, apiKey: input("api-key", true), requestTimeoutMs: requestTimeoutMs() };
+  const options = {
+    baseUrl,
+    apiKey: input("api-key", true),
+    requestTimeoutMs: requestTimeoutMs(),
+    // server-url may use http: (allowHttp above), but plaintext credentials are only safe for
+    // genuine loopback — a private-network address still crosses real network hardware.
+    allowInsecureHttp: isLoopbackOrigin(baseUrl),
+  };
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
-    throw new Error(
-      actionErrorMessage(error, baseUrl, operation !== "dispatch" && operation !== "resume"),
-      { cause: error },
-    );
+    throw new Error(actionErrorMessage(error, baseUrl), { cause: error });
   }
 }
 

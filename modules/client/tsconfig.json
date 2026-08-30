@@ -5,5 +5,20 @@
     "checkJs": false,
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["src/index.js", "src/index.d.ts", "src/errors.js", "src/resolve-target.js"]
+  "include": [
+    "src/index.js",
+    "src/index.d.ts",
+    "src/catalog-types.d.ts",
+    "src/errors.js",
+    "src/resolve-target.js",
+    "src/resolve-by-name.js",
+    "src/resolve-repository.js",
+    "src/actions/index.js",
+    "src/actions/index.d.ts",
+    "src/actions/errors.js",
+    "src/actions/env.js",
+    "src/actions/parse.js",
+    "src/actions/parse-target.js",
+    "src/actions/write-outputs.js"
+  ]
 }

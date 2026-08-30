@@ -8,15 +8,6 @@ export function input(name: string, required = false): string {
   return value;
 }
 
-export function parseJson<T>(name: string, value: string, fallback?: T): T {
-  if (!value && fallback !== undefined) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    throw new Error(`${name} must be valid JSON`);
-  }
-}
-
 function parsePositiveNumber(name: string, raw: string, maximum?: number, integer = false): number {
   const value = Number(raw);
   const kind = integer ? "integer" : "number";
