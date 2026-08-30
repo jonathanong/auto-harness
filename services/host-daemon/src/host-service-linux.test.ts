@@ -385,6 +385,29 @@ describe("install-service linux", () => {
     expect(errors.join("\n")).toMatch(/enable failed/);
   });
 
+  it("splices the running node's directory into the persisted PATH", () => {
+    const fs = seededFs();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs,
+          nodePath: "/home/op/.nvm/versions/node/v20.11.0/bin/node",
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+            HARNESS_API_KEY: "secret",
+          },
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain(
+      "PATH=/home/op/.nvm/versions/node/v20.11.0/bin:/usr/local/bin:/usr/bin:/bin",
+    );
+  });
+
   it("persists execution profile settings from the install environment", () => {
     const fs = seededFs();
     expect(

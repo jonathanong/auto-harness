@@ -181,6 +181,21 @@ type LinuxInstall = {
   writeEnv: boolean;
 };
 
+// The persisted systemd env file never captures the raw ambient PATH (that
+// would leak whatever happens to be on the installer's shell into a 0600
+// root-owned file). It must still resolve `node`, so splice in the directory
+// of the node binary actually running install-service alongside the
+// checked-in template's defaults.
+const LINUX_DEFAULT_PATH_DIRS = ["/usr/local/bin", "/usr/bin", "/bin"];
+
+function persistedLinuxPath(nodePath: string): string {
+  const nodeDir = dirname(nodePath);
+  const dirs = LINUX_DEFAULT_PATH_DIRS.includes(nodeDir)
+    ? LINUX_DEFAULT_PATH_DIRS
+    : [nodeDir, ...LINUX_DEFAULT_PATH_DIRS];
+  return dirs.join(":");
+}
+
 function prepareLinuxInstall(ctx: HostServiceContext): LinuxInstall | undefined {
   const envExists = ctx.fs.existsSync(LINUX_ENV_DEST);
   if (ctx.uid !== 0 && envExists) {
@@ -195,9 +210,9 @@ function prepareLinuxInstall(ctx: HostServiceContext): LinuxInstall | undefined 
   const preparedEnv = preparePersistedEnv({
     existing: existingEnv,
     example: ctx.fs.readFileSync(ctx.envExamplePath),
-    env: ctx.env,
+    env: { ...ctx.env, PATH: persistedLinuxPath(ctx.nodePath) },
     apiUrl: ctx.apiUrl,
-    capturePath: false,
+    capturePath: true,
   });
   if (preparedEnv.errors.length > 0) {
     ctx.error(persistedEnvError(preparedEnv.errors));
