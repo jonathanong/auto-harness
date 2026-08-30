@@ -53,9 +53,16 @@ export function renderLinuxUnit(
     .replace(/^ExecStart=.*$/m, `ExecStart=/bin/sh ${systemdArgument(launcherPath)}`);
 }
 
-/** A stable supervisor entrypoint that selects the atomically activated tree. */
+/**
+ * A stable supervisor entrypoint that selects the atomically activated tree.
+ *
+ * Resolves `node` via the shell's own PATH lookup at each invocation rather
+ * than baking in an absolute interpreter path: a Homebrew (or similar) node
+ * upgrade deletes the previous keg outright, and an absolute path captured
+ * once at install-service time would silently break on the next daemon
+ * restart with no on-disk trace of why.
+ */
 export function renderUnixLaunchScript(opts: {
-  nodePath: string;
   currentRoot: string;
   currentLauncherPath: string;
   fallbackRoot: string;
@@ -66,15 +73,15 @@ export function renderUnixLaunchScript(opts: {
   const prepare =
     opts.prepareLauncherPath === undefined
       ? ""
-      : `${shellArgument(opts.nodePath)} ${shellArgument(opts.prepareLauncherPath)} prepare-update-boot\nexport HARNESS_UPDATE_BOOT_PREPARED=1\n`;
+      : `node ${shellArgument(opts.prepareLauncherPath)} prepare-update-boot\nexport HARNESS_UPDATE_BOOT_PREPARED=1\n`;
   return `#!/bin/sh
 set -eu
 ${prepare}if [ -f ${shellArgument(opts.currentLauncherPath)} ]; then
   cd ${shellArgument(opts.currentRoot)}
-  exec ${shellArgument(opts.nodePath)} ${shellArgument(opts.currentLauncherPath)} start "$@"
+  exec node ${shellArgument(opts.currentLauncherPath)} start "$@"
 fi
 cd ${shellArgument(opts.fallbackRoot)}
-exec ${shellArgument(opts.nodePath)} ${shellArgument(opts.fallbackLauncherPath)} start "$@"
+exec node ${shellArgument(opts.fallbackLauncherPath)} start "$@"
 `;
 }
 

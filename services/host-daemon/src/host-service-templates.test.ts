@@ -99,7 +99,6 @@ describe("launchd plist / windows cmd", () => {
 
   it("keeps a Unix supervisor launcher outside the activated tree", () => {
     const launcher = renderUnixLaunchScript({
-      nodePath: "/usr/bin/node",
       currentRoot: "/updates/current",
       currentLauncherPath: "/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs",
       fallbackRoot: "/checkout",
@@ -114,6 +113,26 @@ describe("launchd plist / windows cmd", () => {
     expect(launcher).toContain("cd '/updates/current'");
     expect(launcher).toContain("cd '/checkout'");
     expect(launcher).toContain('start "$@"');
+  });
+
+  it("resolves node via PATH instead of baking in an absolute interpreter path", () => {
+    const launcher = renderUnixLaunchScript({
+      currentRoot: "/updates/current",
+      currentLauncherPath: "/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      fallbackRoot: "/checkout",
+      fallbackLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+      prepareLauncherPath: "/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs",
+    });
+    expect(launcher).toContain(
+      "node '/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs' prepare-update-boot",
+    );
+    expect(launcher).toContain(
+      "exec node '/updates/current/services/host-daemon/bin/auto-harness-host-daemon.mjs' start",
+    );
+    expect(launcher).toContain(
+      "exec node '/checkout/services/host-daemon/bin/auto-harness-host-daemon.mjs' start",
+    );
+    expect(launcher).not.toMatch(/'\/[^']*\/node'/);
   });
 });
 

@@ -270,7 +270,6 @@ function renderDarwinLauncher(ctx: HostServiceContext): string {
   });
   const currentRoot = join(updateRoot, "current");
   return renderUnixLaunchScript({
-    nodePath: ctx.nodePath,
     currentRoot,
     currentLauncherPath: join(currentRoot, "services/host-daemon/bin/auto-harness-host-daemon.mjs"),
     fallbackRoot: ctx.checkoutRoot,

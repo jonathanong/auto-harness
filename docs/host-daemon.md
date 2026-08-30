@@ -959,18 +959,20 @@ on every daemon restart, so even the systemd unit's `WorkingDirectory=` can go s
 running process's actual cwd via `/proc` is the only way to know the live root for certain. Likewise
 don't assume a bare `node` resolves under `sudo` — its secure-path default excludes anything installed
 outside `/usr/bin`, `/bin`, `/usr/sbin`, `/sbin` (nvm included), so pull the exact absolute node path
-the daemon itself was installed with out of the launcher script instead:
+from the live daemon process's own `/proc/$pid/exe` instead. The launcher script itself now execs a
+bare `node` resolved via `PATH` rather than baking in an absolute path at install time, so that path
+is no longer recoverable by parsing the script — `/proc/$pid/exe` reflects whatever binary the launcher's
+`exec` actually resolved to, so it stays correct regardless of how that resolution happened:
 
 ```bash
-# 1. Root reads the persisted profiles path, the live daemon's actual working root (from its
-#    running process, not the static unit config), and the absolute node path baked into its
-#    launcher at install time.
+# 1. Root reads the persisted profiles path, the live daemon's actual working root and node
+#    interpreter (both from its running process, not the static unit config or launcher script).
 sudo sh <<'SCRIPT'
 set -eu
 profiles=$(sed -n 's/^HARNESS_EXECUTION_PROFILES=//p' /etc/auto-harness/host-daemon.env | tail -1)
 pid=$(systemctl show auto-harness-host-daemon.service --property=MainPID --value)
 root=$(readlink -f "/proc/$pid/cwd")
-node_path=$(sed -n "s/^exec '\([^']*\)'.*/\1/p" /usr/local/lib/auto-harness/run-host-daemon.sh | head -1)
+node_path=$(readlink -f "/proc/$pid/exe")
 echo "PROFILES=$profiles"
 echo "ROOT=$root"
 echo "NODE_PATH=$node_path"
