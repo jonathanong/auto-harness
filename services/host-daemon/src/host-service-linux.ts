@@ -59,7 +59,6 @@ function renderedUnit(ctx: HostServiceContext, paths: LinuxPaths): string {
 
 function renderedLauncher(ctx: HostServiceContext, paths: LinuxPaths): string {
   return renderUnixLaunchScript({
-    nodePath: ctx.nodePath,
     currentRoot: paths.currentRoot,
     currentLauncherPath: join(
       paths.currentRoot,
