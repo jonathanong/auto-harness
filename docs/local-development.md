@@ -20,6 +20,8 @@ pnpm install
 
 Each git worktree needs its **own** `pnpm install`. Do not symlink another checkout's `node_modules` — `pnpm check` typecheck then fails with `TS7016: Could not find a declaration file for module 'react-dom/client'` even though `@types/react-dom` is declared on `@auto-harness/ui`. CI already typechecks that package; this is a local install trap, not a missing types dep.
 
+`next`, `react`, and `react-dom` are default-catalog entries in `pnpm-workspace.yaml`. `@auto-harness/web`, `@auto-harness/host-pane`, and `@auto-harness/ui` must depend on them with `"catalog:"`. A per-package Next pin (even a compatible `^` range) lets pnpm install a second copy into the UI package; shared components then import `useRouter` from a different App Router context than the apps, and tests fail with the app-router-not-mounted invariant. `scripts/ui-runtime-catalog.test.ts` rejects a split lockfile snapshot.
+
 There is **no compile step**. Scripts and CLIs run TypeScript directly via Node type stripping (`node …/*.ts`).
 
 ---

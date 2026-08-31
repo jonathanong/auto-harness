@@ -3,6 +3,13 @@ packages:
   - modules/*
   - services/*
 
+# One pin for the shared UI runtime. Apps and @auto-harness/ui must use `catalog:`.
+# A per-package Next pin installs a second copy and splits App Router context.
+catalog:
+  next: ^16.3.3
+  react: ^19.1.0
+  react-dom: ^19.1.0
+
 onlyBuiltDependencies:
   - "@ast-grep/cli"
   - node-pty

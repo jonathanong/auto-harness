@@ -4,6 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    next:
+      specifier: ^16.3.3
+      version: 16.3.3
+    react:
+      specifier: ^19.1.0
+      version: 19.2.8
+    react-dom:
+      specifier: ^19.1.0
+      version: 19.2.8
+
 overrides:
   nanoid: 3.3.18
   postcss: 8.5.26
@@ -114,13 +126,13 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       next:
-        specifier: ^16.3.3
+        specifier: 'catalog:'
         version: 16.3.3(@playwright/test@1.62.1)(@types/node@26.4.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
-        specifier: ^19.0.0
+        specifier: 'catalog:'
         version: 19.2.8
       react-dom:
-        specifier: ^19.0.0
+        specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
       tailwind-merge:
         specifier: ^3.3.0
@@ -211,13 +223,13 @@ importers:
         specifier: workspace:*
         version: link:../../modules/ui
       next:
-        specifier: ^16.3.3
+        specifier: 'catalog:'
         version: 16.3.3(@playwright/test@1.62.1)(@types/node@26.4.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
-        specifier: ^19.1.0
+        specifier: 'catalog:'
         version: 19.2.8
       react-dom:
-        specifier: ^19.1.0
+        specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
     devDependencies:
       '@tailwindcss/postcss':
@@ -251,13 +263,13 @@ importers:
         specifier: workspace:*
         version: link:../../modules/ui
       next:
-        specifier: ^16.3.3
+        specifier: 'catalog:'
         version: 16.3.3(@playwright/test@1.62.1)(@types/node@26.4.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
-        specifier: ^19.1.0
+        specifier: 'catalog:'
         version: 19.2.8
       react-dom:
-        specifier: ^19.1.0
+        specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
     devDependencies:
       '@tailwindcss/postcss':
