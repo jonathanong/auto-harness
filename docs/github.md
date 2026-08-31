@@ -59,5 +59,4 @@ rules.
 **CI status** from Shepherd's readiness verdict (it often reports "Review rate limited"). It does
 **not** hide CodeRabbit review comments, threads, or `CHANGES_REQUESTED` reviews. Those stay
 visible so a bot `CHANGES_REQUESTED` can be dismissed with `--dismiss-review-ids`. Do not add a
-blanket `.pr-shepherd/classification` rule for `coderabbitai`. `scripts/pr-shepherd-config.test.ts`
-encodes that split.
+blanket `.pr-shepherd/classification` rule for `coderabbitai`.
