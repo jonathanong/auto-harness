@@ -34,10 +34,33 @@ function parseDefaultCatalog(source: string): Record<string, string> {
   return entries;
 }
 
-function lockfileVersions(source: string, name: string): string[] {
+function lockfileSection(source: string, heading: string, nextHeading?: string): string {
+  const start = source.search(new RegExp(`^${heading}:\\n`, "m"));
+  if (start === -1) return "";
+  const rest = source.slice(start);
+  if (!nextHeading) return rest;
+  const end = rest.search(new RegExp(`\\n${nextHeading}:\\n`));
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+function identityVersions(source: string, name: string): string[] {
+  const packages = lockfileSection(source, "packages", "snapshots");
   const versions = new Set<string>();
-  const pattern = new RegExp(`(?:^|\\n)  ${name}@([^(\\s:]+)`, "g");
-  for (const match of source.matchAll(pattern)) {
+  const pattern = new RegExp(`(?:^|\\n)  ${name}@([^(\\s:]+):`, "g");
+  for (const match of packages.matchAll(pattern)) {
+    versions.add(match[1]);
+  }
+  return [...versions].toSorted();
+}
+
+function importerVersions(source: string, name: string): string[] {
+  const importers = lockfileSection(source, "importers", "packages");
+  const versions = new Set<string>();
+  const pattern = new RegExp(
+    `^ {6}${name}:\\n {8}specifier: [^\\n]+\\n {8}version: ([^(\\n]+)`,
+    "gm",
+  );
+  for (const match of importers.matchAll(pattern)) {
     versions.add(match[1]);
   }
   return [...versions].toSorted();
@@ -114,20 +137,45 @@ describe("shared UI runtime catalog", () => {
 
   it("resolves each catalog runtime package to one lockfile version", () => {
     for (const name of RUNTIME_PACKAGES) {
-      expect(lockfileVersions(lockfile, name), name).toHaveLength(1);
+      expect(identityVersions(lockfile, name), `${name} packages identity`).toHaveLength(1);
+      expect(importerVersions(lockfile, name), `${name} importer resolution`).toEqual(
+        identityVersions(lockfile, name),
+      );
     }
     expect(lockfile).toMatch(/^ {6}next:\n {8}specifier: '?catalog:'?$/m);
     expect(lockfile).toMatch(/^ {6}react:\n {8}specifier: '?catalog:'?$/m);
     expect(lockfile).toMatch(/^ {6}react-dom:\n {8}specifier: '?catalog:'?$/m);
   });
 
-  it("treats two Next snapshots as a split", () => {
+  it("treats two packages identities as a split", () => {
     expect(
-      lockfileVersions(
-        "  next@16.3.2:\n  next@16.3.3:\n  next@16.3.3(@playwright/test@1.62.1):\n",
+      identityVersions(
+        [
+          "packages:",
+          "  next@16.3.2:",
+          "  next@16.3.3:",
+          "snapshots:",
+          "  next@16.3.3(@playwright/test@1.62.1):",
+          "",
+        ].join("\n"),
         "next",
       ),
     ).toEqual(["16.3.2", "16.3.3"]);
+  });
+
+  it("does not treat a packages identity plus its snapshots peer graph as a split", () => {
+    expect(
+      identityVersions(
+        [
+          "packages:",
+          "  next@16.3.3:",
+          "snapshots:",
+          "  next@16.3.3(@playwright/test@1.62.1):",
+          "",
+        ].join("\n"),
+        "next",
+      ),
+    ).toEqual(["16.3.3"]);
   });
 
   it("documents the catalog pin for Dependabot and local installs", () => {
