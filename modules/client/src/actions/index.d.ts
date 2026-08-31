@@ -67,7 +67,11 @@ export function writeOutputs(
   route?: TargetSpec[],
 ): void;
 
-export type HarnessDrainOperation = "start-drain" | "wait-for-drain" | "release-drain";
+export type HarnessDrainOperation =
+  | "start-drain"
+  | "get-drain"
+  | "wait-for-drain"
+  | "release-drain";
 
 export function isHarnessDrainOperation(value: string | undefined): value is HarnessDrainOperation;
 
