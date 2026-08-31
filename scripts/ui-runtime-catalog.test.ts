@@ -75,7 +75,7 @@ describe("shared UI runtime catalog", () => {
   });
 
   it("does not let any other workspace package.json pin next, react, or react-dom", () => {
-    const allowed = new Set(CONSUMERS.map((consumer) => consumer.path));
+    const allowed = new Set(CONSUMERS.map((consumer) => join(...consumer.path.split("/"))));
     const extras: string[] = [];
     for (const workspaceDir of ["actions", "modules", "services"]) {
       for (const pkgDir of readdirSync(join(repoRoot, workspaceDir), { withFileTypes: true })) {
