@@ -50,6 +50,8 @@ area/ci:
           - .github/**
           - actions/**
           - docker-compose.yml
+          - .pr-shepherdrc.yml
+          - .pr-shepherd/**
 
 documentation:
   - changed-files:
