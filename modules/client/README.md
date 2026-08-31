@@ -192,6 +192,11 @@ that `auto-harness`'s own
 uses, so a consuming
 workflow's inline script and a bundled composite action stay in sync with the same validation.
 
+The same module also covers session drain from a workflow: `isHarnessDrainOperation` (a type
+guard for the `start-drain`/`get-drain`/`wait-for-drain`/`release-drain` operation vocabulary) and
+`writeDrainOutputs` (writes `operation-id`/`status`/`queued-count`/`running-count`/
+`cancelled-count`/`failure-code` to `GITHUB_OUTPUT` for a `SessionDrain`).
+
 ```js
 import { parseHarnessTarget, requiredEnvironmentValue } from "auto-harness-client/actions";
 

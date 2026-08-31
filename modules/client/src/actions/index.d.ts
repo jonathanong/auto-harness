@@ -1,4 +1,4 @@
-import type { TargetSpec } from "../index.js";
+import type { SessionDrain, TargetSpec } from "../index.js";
 
 /** Dependency-free env→`CreateSessionInput` adapter for GitHub Actions consumers of Auto Harness. */
 
@@ -66,3 +66,17 @@ export function writeOutputs(
   result: DispatchResult,
   route?: TargetSpec[],
 ): void;
+
+export type HarnessDrainOperation =
+  | "start-drain"
+  | "get-drain"
+  | "wait-for-drain"
+  | "release-drain";
+
+export function isHarnessDrainOperation(value: string | undefined): value is HarnessDrainOperation;
+
+/**
+ * Writes `operation-id`/`status`/`queued-count`/`running-count`/`cancelled-count`/`failure-code`
+ * to `GITHUB_OUTPUT`, only when it is set.
+ */
+export function writeDrainOutputs(environment: ActionEnvironment, drain: SessionDrain): void;
