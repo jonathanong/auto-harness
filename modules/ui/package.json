@@ -30,9 +30,9 @@
   },
   "devDependencies": {
     "@types/react": "^19.1.6",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "next": "^16.3.3",
