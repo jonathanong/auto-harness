@@ -95,6 +95,8 @@ describe("pull request labeler", () => {
     expect(labelerConfig).toContain("- .github/**");
     expect(labelerConfig).toContain("- actions/**");
     expect(labelerConfig).toContain("- docker-compose.yml");
+    expect(labelerConfig).toContain("- .pr-shepherdrc.yml");
+    expect(labelerConfig).toContain("- .pr-shepherd/**");
     expect(labelerConfig).toContain("documentation:");
     expect(labelerConfig).toContain('- "**/*.md"');
   });

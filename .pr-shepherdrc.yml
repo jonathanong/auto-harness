@@ -1,0 +1,12 @@
+# ignoreChecks entries must be the RAW name — either a Checks API check_run `name`
+# or a Statuses API commit status `context` (this repo's is 'CodeRabbit') — not
+# the composite display name shown in the PR UI. pr-shepherd matches the raw name;
+# composite-name entries silently never match.
+#
+# This list drops checks from Shepherd's readiness verdict only. It does not hide
+# review comments, threads, or CHANGES_REQUESTED reviews. Do not add a blanket
+# `.pr-shepherd/classification` rule for coderabbitai; rate-limit notices may be
+# classified later, but real CodeRabbit findings must stay visible so they can
+# be dismissed with --dismiss-review-ids.
+ignoreChecks:
+  - "CodeRabbit"

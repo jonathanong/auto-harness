@@ -48,3 +48,15 @@ actionlint
 ```
 
 Add the `actionlint` check to branch protection if you want it required alongside CI.
+
+## pr-shepherd
+
+[`.pr-shepherdrc.yml`](../.pr-shepherdrc.yml) is this repository's pr-shepherd config. Run
+`pr-shepherd` from an auto-harness worktree so this file loads instead of another checkout's
+rules.
+
+`ignoreChecks` lists the raw GitHub Checks/Statuses name `CodeRabbit`. That drops the CodeRabbit
+**CI status** from Shepherd's readiness verdict (it often reports "Review rate limited"). It does
+**not** hide CodeRabbit review comments, threads, or `CHANGES_REQUESTED` reviews. Those stay
+visible so a bot `CHANGES_REQUESTED` can be dismissed with `--dismiss-review-ids`. Do not add a
+blanket `.pr-shepherd/classification` rule for `coderabbitai`.
