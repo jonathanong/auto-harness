@@ -154,6 +154,10 @@ runs:
               --jq '.[] | select(.author != null and .author.type != "Bot") | .sha' \
               2>/dev/null)"; then
               echo "::warning::Prompt context check: gh api failed for PR $PR_NUMBER commits — treating as no prior automated fix"
+              # A failure partway through pagination can still leave earlier pages' SHAs in
+              # NON_BOT_SHAS (command substitution captures stdout regardless of exit status);
+              # discard them so a partial failure fails open instead of setting skip=true.
+              NON_BOT_SHAS=""
             fi
             NON_BOT="0"
             if [[ -n "$NON_BOT_SHAS" ]]; then
