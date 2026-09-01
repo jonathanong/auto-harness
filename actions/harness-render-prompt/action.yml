@@ -8,6 +8,9 @@ description: >
   docs/prompts/automation/ in the calling repository's own checkout; consumers should keep an
   equivalent merge-authority policy doc of their own, since the rendered prompt's CI merge
   guard postlude states the policy generically and does not point at any single repo's doc.
+  The rendered preamble likewise tells the session not to run "any repository-specific
+  worktree-reset script" rather than naming one; if the calling repository has its own such
+  script, document it separately for the dispatched session.
 
 inputs:
   template:

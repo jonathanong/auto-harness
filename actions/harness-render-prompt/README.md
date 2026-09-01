@@ -37,3 +37,7 @@ when adopting a newer revision. Do not use the moving `main` ref.
   point at any repo-specific policy document — consumers that want a longer-form merge
   authority doc of their own should keep one and link to it from wherever their agents read
   repository instructions.
+- The rendered preamble likewise tells the session not to run "any repository-specific
+  worktree-reset script," rather than naming one — if the calling repository has its own such
+  script, document it separately (e.g. in the same repository-instructions doc the dispatched
+  session already reads).

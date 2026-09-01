@@ -50,6 +50,8 @@ describe("render-harness-prompt.mts", () => {
     expect(result.stdout).toContain("## CI merge authority");
     expect(result.stdout).toContain("Never run `gh pr merge` in any form");
     expect(result.stdout).not.toContain("merge-authority.md");
+    expect(result.stdout).toContain("any repository-specific worktree-reset script");
+    expect(result.stdout).not.toContain("reset-worktree");
   });
 
   it("prefers a later --var-file over an earlier --var for the same NAME", () => {

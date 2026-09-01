@@ -4,7 +4,7 @@ import { parseArgs as nodeParseArgs } from "node:util";
 
 const CI_PREAMBLE = `## Auto Harness session
 
-You are running in an isolated CI-only checkout and Auto Harness worktree. Treat the current directory as the workspace and read the repository instructions before acting. Repository dependencies are not preinstalled; initialize only the tooling your task needs with the repository's pinned package manager. Do not create a second worktree. Do not run \`./dev/reset-worktree\`; either action can discard or detach the session state. Follow the repository's ordinary implementation, validation, commit, push, and pull-request rules whenever the task authorizes those actions. Never expose credentials, raw environment values, or other secrets in logs, artifacts, commits, comments, or pull requests.`;
+You are running in an isolated CI-only checkout and Auto Harness worktree. Treat the current directory as the workspace and read the repository instructions before acting. Repository dependencies are not preinstalled; initialize only the tooling your task needs with the repository's pinned package manager. Do not create a second worktree. Do not run any repository-specific worktree-reset script; either action can discard or detach the session state. Follow the repository's ordinary implementation, validation, commit, push, and pull-request rules whenever the task authorizes those actions. Never expose credentials, raw environment values, or other secrets in logs, artifacts, commits, comments, or pull requests.`;
 
 const CI_MERGE_GUARD_POSTLUDE = `## CI merge authority
 
