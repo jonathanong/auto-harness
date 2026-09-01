@@ -1,26 +1,13 @@
 import { readFileSync, rmSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  type Fixture,
-  fixture,
   readGithubOutput,
   run,
   stubGh,
+  useFixtures,
 } from "./harness-prompt-context-test-helpers.ts";
 
-const fixtures: Fixture[] = [];
-
-afterEach(() => {
-  for (const fx of fixtures.splice(0)) {
-    rmSync(fx.root, { force: true, recursive: true });
-  }
-});
-
-function make(): Fixture {
-  const fx = fixture();
-  fixtures.push(fx);
-  return fx;
-}
+const { make } = useFixtures();
 
 describe("harness-prompt-context run script", () => {
   it("sets skip=true when the known PR already has a prior non-bot commit", () => {

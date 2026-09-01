@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach } from "vitest";
 
 const actionYml = readFileSync(
   new URL("../actions/harness-prompt-context/action.yml", import.meta.url),
@@ -128,6 +129,25 @@ export function fixture(): Fixture {
     githubWorkspace: workspace,
     root,
     runScript,
+  };
+}
+
+// Registers an afterEach cleanup for the calling test file's suite and returns a `make()`
+// that tracks each fixture it creates, so every test file doesn't need to repeat that
+// bookkeeping itself.
+export function useFixtures(): { make: () => Fixture } {
+  const fixtures: Fixture[] = [];
+  afterEach(() => {
+    for (const fx of fixtures.splice(0)) {
+      rmSync(fx.root, { force: true, recursive: true });
+    }
+  });
+  return {
+    make(): Fixture {
+      const fx = fixture();
+      fixtures.push(fx);
+      return fx;
+    },
   };
 }
 
