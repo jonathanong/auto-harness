@@ -89,8 +89,8 @@ runs:
           exit 1
         fi
 
-        if [[ "$SEARCH_MODE" == "pr-commits" && ! "$TOPIC_KEY" =~ ^[0-9]+$ ]]; then
-          echo "::error::pr-commits mode requires a numeric topic-key (PR number); got: '$TOPIC_KEY'"
+        if [[ "$SEARCH_MODE" == "pr-commits" && ! "$TOPIC_KEY" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::pr-commits mode requires a positive numeric topic-key (PR number); got: '$TOPIC_KEY'"
           exit 1
         fi
 

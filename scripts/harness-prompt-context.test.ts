@@ -12,7 +12,7 @@ const fixtures: Fixture[] = [];
 
 afterEach(() => {
   for (const fx of fixtures.splice(0)) {
-    rmSync(fx.bin, { force: true, recursive: true });
+    rmSync(fx.root, { force: true, recursive: true });
   }
 });
 
@@ -140,7 +140,19 @@ esac`,
     const calls = readFileSync(fx.callLog, "utf8");
 
     expect(result.status).not.toBe(0);
-    expect(result.stdout).toContain("pr-commits mode requires a numeric topic-key");
+    expect(result.stdout).toContain("pr-commits mode requires a positive numeric topic-key");
+    expect(calls).toBe("");
+  });
+
+  it("rejects a zero topic-key in pr-commits mode before any gh call", () => {
+    const fx = make();
+    stubGh(fx.bin, fx.callLog, 'echo "unexpected gh call: $*" >&2; exit 1');
+
+    const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "0" });
+    const calls = readFileSync(fx.callLog, "utf8");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("pr-commits mode requires a positive numeric topic-key");
     expect(calls).toBe("");
   });
 

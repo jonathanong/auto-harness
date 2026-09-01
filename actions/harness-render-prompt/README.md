@@ -32,7 +32,10 @@ when adopting a newer revision. Do not use the moving `main` ref.
   [`vouchington-tooling`](https://www.npmjs.com/package/vouchington-tooling) installed as a
   dependency (available under `$GITHUB_WORKSPACE/node_modules`) before it runs — it resolves
   `vouchington-tooling`'s bundled `scripts/gha/write-github-multiline-output.sh` helper via
-  Node module resolution rather than shipping its own copy.
+  Node module resolution rather than shipping its own copy. That helper shells out to `uuidgen`
+  to mint its output delimiter, so the runner needs `uuidgen` on `PATH` as well — present by
+  default on GitHub-hosted `ubuntu-*`/`macos-*`/`windows-*` runners; a minimal or self-hosted
+  runner must install it separately.
 - The rendered prompt's CI merge-authority postlude states the policy generically. It does not
   point at any repo-specific policy document — consumers that want a longer-form merge
   authority doc of their own should keep one and link to it from wherever their agents read

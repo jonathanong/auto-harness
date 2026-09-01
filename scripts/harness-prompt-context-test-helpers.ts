@@ -89,6 +89,7 @@ export interface Fixture {
   githubOutput: string;
   githubStepSummary: string;
   githubWorkspace: string;
+  root: string;
   runScript: string;
 }
 
@@ -125,6 +126,7 @@ export function fixture(): Fixture {
     githubOutput: join(root, "github-output"),
     githubStepSummary: join(root, "github-step-summary"),
     githubWorkspace: workspace,
+    root,
     runScript,
   };
 }
