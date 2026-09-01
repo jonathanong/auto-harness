@@ -4,25 +4,27 @@ Short entry points. Prefer the focused pages over mega-guides.
 
 ## Get running
 
-| Doc                                                      | Contents                                                    |
-| -------------------------------------------------------- | ----------------------------------------------------------- |
-| [local-development.md](local-development.md)             | Local stack: DynamoDB Local, `pnpm local:*`, e2e, manage UI |
-| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy technical checklist (stack + real CLI)           |
-| [qa-local.md](qa-local.md)                               | **Local E2E QA** — gates, UI, real CLIs, schedule, teardown |
-| [qa-production.md](qa-production.md)                     | **Production QA** — AWS restore/deploy, UI, host, purge     |
-| [deploy.md](deploy.md)                                   | Deploy index → local / AWS / VPS agent                      |
-| [deploy-local.md](deploy-local.md)                       | Local stack deploy / update / teardown                      |
-| [deploy-aws.md](deploy-aws.md)                           | AWS control plane deploy / update / teardown                |
-| [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown                       |
-| [setup-scripts.md](setup-scripts.md)                     | Trusted setup scripts: execution contract, do's and don'ts  |
-| [release-client.md](release-client.md)                   | Manual npm client publish, tag, and GitHub Release          |
-| [github.md](github.md)                                   | Dependabot, PR labels, actionlint, pr-shepherd CodeRabbit   |
-| [setup.md](setup.md)                                     | Install, AWS deploy overview, VPS agent production shape    |
-| [cli.md](cli.md)                                         | `auto-harness-agent` commands                               |
-| [harness.md](harness.md)                                 | Repo harness hookup examples, requirements                  |
-| [GitHub dispatch action](../actions/dispatch/README.md)  | Fire-and-forget session dispatch from GitHub Actions        |
-| [Node client](../modules/client/README.md)               | Public dependency-free `auto-harness-client`                |
-| [e2e.md](e2e.md)                                         | Playwright E2E: ports, `data-pw` conventions, stack startup |
+| Doc                                                                  | Contents                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------- |
+| [local-development.md](local-development.md)                         | Local stack: DynamoDB Local, `pnpm local:*`, e2e, manage UI |
+| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md)             | Pre-deploy technical checklist (stack + real CLI)           |
+| [qa-local.md](qa-local.md)                                           | **Local E2E QA** — gates, UI, real CLIs, schedule, teardown |
+| [qa-production.md](qa-production.md)                                 | **Production QA** — AWS restore/deploy, UI, host, purge     |
+| [deploy.md](deploy.md)                                               | Deploy index → local / AWS / VPS agent                      |
+| [deploy-local.md](deploy-local.md)                                   | Local stack deploy / update / teardown                      |
+| [deploy-aws.md](deploy-aws.md)                                       | AWS control plane deploy / update / teardown                |
+| [deploy-host-daemon.md](deploy-host-daemon.md)                       | VPS agent install / update / teardown                       |
+| [setup-scripts.md](setup-scripts.md)                                 | Trusted setup scripts: execution contract, do's and don'ts  |
+| [release-client.md](release-client.md)                               | Manual npm client publish, tag, and GitHub Release          |
+| [github.md](github.md)                                               | Dependabot, PR labels, actionlint, pr-shepherd CodeRabbit   |
+| [setup.md](setup.md)                                                 | Install, AWS deploy overview, VPS agent production shape    |
+| [cli.md](cli.md)                                                     | `auto-harness-agent` commands                               |
+| [harness.md](harness.md)                                             | Repo harness hookup examples, requirements                  |
+| [GitHub dispatch action](../actions/dispatch/README.md)              | Fire-and-forget session dispatch from GitHub Actions        |
+| [Prompt context action](../actions/harness-prompt-context/README.md) | Dedup + related-candidates context for a dispatch prompt    |
+| [Render prompt action](../actions/harness-render-prompt/README.md)   | Renders a Codex prompt template with CI preamble/postlude   |
+| [Node client](../modules/client/README.md)                           | Public dependency-free `auto-harness-client`                |
+| [e2e.md](e2e.md)                                                     | Playwright E2E: ports, `data-pw` conventions, stack startup |
 
 ## Protocols
 

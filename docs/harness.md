@@ -37,6 +37,16 @@ consumption, is bounded by `requestTimeoutMs` (default `30_000`, maximum `300_00
 `AutoHarnessRequestTimeoutError` with `code === "REQUEST_TIMEOUT"` and `timeoutMs`. The client
 makes no automatic retries.
 
+Two composite actions cover prompt-side dispatch plumbing that many consumers need but
+`actions/dispatch` itself does not do:
+[`actions/harness-prompt-context`](../actions/harness-prompt-context/README.md) emits
+non-gating related-open-PR/issue JSON for a dispatch prompt (default mode), or checks a known
+PR for a prior non-bot commit as a Dependabot re-dispatch loop-breaker (`pr-commits` mode);
+[`actions/harness-render-prompt`](../actions/harness-render-prompt/README.md) renders a Codex
+prompt template with a fixed CI-session preamble and merge-authority postlude. Both require
+the calling repository to have `vouchington-tooling` installed as a dependency before they
+run.
+
 The source contract for this supported subset is [`docs/openapi.yaml`](openapi.yaml). Direct HTTP
 remains supported; all dispatch forms return after acceptance and never wait for completion.
 

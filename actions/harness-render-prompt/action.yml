@@ -1,0 +1,85 @@
+name: Render Codex Prompt
+description: >
+  Renders a Codex prompt template via render-harness-prompt.mts (bundled in this action's own
+  directory) and emits the result as a multiline output. The caller must run its own Node
+  setup step before invoking this action so that node (v22.18+) and node_modules are
+  available. Requires the calling repository to have "vouchington-tooling" installed as a
+  dependency before this action runs. The template must live at a path under
+  docs/prompts/automation/ in the calling repository's own checkout; consumers should keep an
+  equivalent merge-authority policy doc of their own, since the rendered prompt's CI merge
+  guard postlude states the policy generically and does not point at any single repo's doc.
+  The rendered preamble likewise tells the session not to run "any repository-specific
+  worktree-reset script" rather than naming one; if the calling repository has its own such
+  script, document it separately for the dispatched session.
+
+inputs:
+  template:
+    description: "Path to the prompt template (relative to repo root)"
+    required: true
+  vars:
+    description: |
+      Newline-separated KEY=VALUE pairs passed as --var flags to render-harness-prompt.mts.
+      Each non-empty line is one scalar KEY=VALUE record. Use var-files for multiline
+      or untrusted values.
+    default: ""
+  var-files:
+    description: |
+      Newline-separated KEY=PATH pairs passed as --var-file flags to render-harness-prompt.mts.
+    default: ""
+
+outputs:
+  prompt:
+    description: "Rendered prompt text"
+    value: ${{ steps.render.outputs.prompt }}
+
+runs:
+  using: composite
+  steps:
+    - name: Render prompt
+      id: render
+      shell: bash
+      env:
+        TEMPLATE: ${{ inputs.template }}
+        VARS_INPUT: ${{ inputs.vars }}
+        VAR_FILES_INPUT: ${{ inputs.var-files }}
+      run: |
+        set -euo pipefail
+
+        # Resolve the write-github-multiline-output.sh helper from the calling repo's own
+        # installed vouchington-tooling package. Fail fast, before rendering, if the
+        # dependency is missing.
+        WRITE_MULTILINE_OUTPUT_SH="$(node -e '
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+          try {
+            const req = createRequire(path.join(process.env.GITHUB_WORKSPACE, "package.json"));
+            const pkgJsonPath = req.resolve("vouchington-tooling/package.json");
+            console.log(path.join(path.dirname(pkgJsonPath), "scripts/gha/write-github-multiline-output.sh"));
+          } catch (error) {
+            console.error(
+              "harness-render-prompt: could not resolve vouchington-tooling from " +
+                process.env.GITHUB_WORKSPACE +
+                " — install it as a dependency before running this action. " +
+                (error instanceof Error ? error.message : String(error)),
+            );
+            process.exit(1);
+          }
+        ')"
+
+        args=(node "${{ github.action_path }}/render-harness-prompt.mts" --template "$TEMPLATE" --output codex-prompt-rendered.md)
+
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then
+            args+=(--var "$line")
+          fi
+        done <<< "${VARS_INPUT:-}"
+
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then
+            args+=(--var-file "$line")
+          fi
+        done <<< "${VAR_FILES_INPUT:-}"
+
+        "${args[@]}"
+
+        "$WRITE_MULTILINE_OUTPUT_SH" prompt < codex-prompt-rendered.md
