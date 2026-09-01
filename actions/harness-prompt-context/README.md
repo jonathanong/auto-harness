@@ -15,23 +15,32 @@ Replace `<sha>` below with a reviewed full commit SHA from `main`, then delibera
 when adopting a newer revision. Do not use the moving `main` ref.
 
 ```yaml
-- name: Gather related-candidates context
-  id: prompt-context
-  uses: jonathanong/auto-harness/actions/harness-prompt-context@<sha>
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    related-title-key: "flaky test"
-    related-extra-labels: automation
+permissions:
+  pull-requests: read
+  issues: read
+
+steps:
+  - name: Gather related-candidates context
+    id: prompt-context
+    uses: jonathanong/auto-harness/actions/harness-prompt-context@<sha>
+    with:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      related-title-key: "flaky test"
+      related-extra-labels: automation
 ```
 
 ```yaml
-- name: Check for a prior automated fix on this PR
-  id: dedup
-  uses: jonathanong/auto-harness/actions/harness-prompt-context@<sha>
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    search-mode: pr-commits
-    topic-key: ${{ github.event.pull_request.number }}
+permissions:
+  pull-requests: read
+
+steps:
+  - name: Check for a prior automated fix on this PR
+    id: dedup
+    uses: jonathanong/auto-harness/actions/harness-prompt-context@<sha>
+    with:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      search-mode: pr-commits
+      topic-key: ${{ github.event.pull_request.number }}
 ```
 
 ## Requirements
@@ -41,3 +50,12 @@ This action requires the calling repository to have
 dependency (available under `$GITHUB_WORKSPACE/node_modules`) before it runs — it resolves
 `vouchington-tooling`'s bundled `scripts/gha/write-github-multiline-output.sh` helper via Node
 module resolution rather than shipping its own copy.
+
+## Permissions
+
+The `github-token` needs `pull-requests: read` for both modes (`gh pr view`, `gh pr list`, and
+the `pr-commits` mode's commit-author check). Add `issues: read` as well when
+`check-issues: true` (the default) enables the issue half of `related-candidates` mode. A token
+scoped narrower than this fails the underlying `gh` calls open rather than closed — they warn
+and return an empty/no-match result — so an under-scoped token silently disables the action's
+dedup behavior instead of erroring.

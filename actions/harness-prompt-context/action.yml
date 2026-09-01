@@ -84,6 +84,11 @@ runs:
       run: |
         set -euo pipefail
 
+        if [[ "$SEARCH_MODE" != "related-candidates" && "$SEARCH_MODE" != "pr-commits" ]]; then
+          echo "::error::Unsupported search-mode: $SEARCH_MODE (expected 'related-candidates' or 'pr-commits')"
+          exit 1
+        fi
+
         # Resolve the write-github-multiline-output.sh helper from the calling repo's own
         # installed vouchington-tooling package. Fail fast, before any gh API work, if the
         # dependency is missing.
@@ -126,7 +131,7 @@ runs:
             NON_BOT_SHAS=""
             if ! NON_BOT_SHAS="$(gh api --paginate \
               "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
-              --jq '.[] | select(.author == null or (.author.login != "dependabot[bot]" and .author.login != "github-actions[bot]")) | .sha' \
+              --jq '.[] | select(.author == null or .author.type != "Bot") | .sha' \
               2>/dev/null)"; then
               echo "::warning::Prompt context check: gh api failed for PR $PR_NUMBER commits — treating as no prior automated fix"
             fi
