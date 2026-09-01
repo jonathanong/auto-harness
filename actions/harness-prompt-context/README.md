@@ -56,6 +56,13 @@ its output delimiter, so the runner needs `uuidgen` on `PATH` as well — presen
 GitHub-hosted `ubuntu-*`/`macos-*`/`windows-*` runners; a minimal or self-hosted runner must
 install it separately.
 
+This action also directly invokes the `gh` and `jq` binaries — also present by default on
+GitHub-hosted `ubuntu-*`/`macos-*`/`windows-*` runners, but not guaranteed on a minimal or
+self-hosted runner. A missing `gh` is swallowed by this action's fail-open branches (the run
+succeeds with `skip=false` or an empty related-candidates result); a missing `jq` aborts
+related-candidate processing outright. Install both explicitly on a runner image that doesn't
+already carry them, since either gap silently disables deduplication rather than erroring.
+
 ## Permissions
 
 The `github-token` needs `pull-requests: read` for both modes (`gh pr view`, `gh pr list`, and

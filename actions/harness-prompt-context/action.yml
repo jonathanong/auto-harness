@@ -183,7 +183,12 @@ runs:
           echo "::notice::Auto Harness prompt context: existing item at $EXISTING_URL — skipping dispatch."
         else
           if [[ -n "$RELATED_TITLE_KEY" ]]; then
-            RELATED_QUERY="\"$RELATED_TITLE_KEY\" in:title"
+            # GitHub's search syntax recognizes only \\ and \" as escapes inside a quoted
+            # phrase; escape backslashes first so a literal backslash isn't reinterpreted as
+            # part of the quote escape it precedes.
+            RELATED_TITLE_KEY_ESCAPED="${RELATED_TITLE_KEY//\\/\\\\}"
+            RELATED_TITLE_KEY_ESCAPED="${RELATED_TITLE_KEY_ESCAPED//\"/\\\"}"
+            RELATED_QUERY="\"$RELATED_TITLE_KEY_ESCAPED\" in:title"
             while IFS= read -r label; do
               [[ -z "$label" ]] && continue
               RELATED_QUERY="$RELATED_QUERY label:\"$label\""
