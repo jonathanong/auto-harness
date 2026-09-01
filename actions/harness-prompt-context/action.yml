@@ -1,0 +1,219 @@
+name: Auto Harness prompt context
+
+description: >
+  Auto Harness dispatch dedup lives on the concurrency-id passed to this repository's
+  actions/dispatch action: re-POSTing the same id while a session is queued/running returns
+  the existing session instead of creating a second one. This action covers what that
+  primitive cannot: in "pr-commits" mode, it checks whether a known PR already received a
+  non-bot commit (a prior automated fix push), the loop-breaker Dependabot re-dispatch needs
+  since each retry mints a fresh head-sha concurrency id. In its default mode it emits
+  non-gating related-candidates context for the dispatch prompt, so the dispatched agent can
+  find and update same-topic open PRs/issues itself instead of opening a duplicate. Requires
+  the calling repository to have "vouchington-tooling" installed as a dependency before this
+  action runs.
+
+inputs:
+  topic-key:
+    description: 'In "pr-commits" mode: the PR number to check directly for non-bot commits. Unused otherwise.'
+    default: ""
+  check-issues:
+    description: Include open issues in the related-candidates search.
+    default: "true"
+  check-prs:
+    description: Include open PRs in the related-candidates search.
+    default: "true"
+  search-mode:
+    description: >
+      "related-candidates" (default) emits non-gating related-candidates JSON for the dispatch
+      prompt. "pr-commits" checks the known PR number (topic-key) directly for non-bot commits,
+      setting skip=true when found (use when a re-dispatch on the same PR must not repeat a fix
+      that already landed).
+    default: related-candidates
+  github-token:
+    description: Token used for gh CLI and API calls.
+    required: true
+  related-title-key:
+    description: >
+      Title substring to search open PRs/issues for. Matches are emitted as related-candidates
+      JSON and never set skip=true.
+    default: ""
+  related-extra-labels:
+    description: >
+      Space-separated label names to add as label: qualifiers for related title
+      searches. Leave empty to skip label filtering; fix-main does this
+      because open auto-fix PRs may not be automation-labeled.
+    default: automation
+  related-limit:
+    description: Maximum related PRs and issues to return per kind.
+    default: "5"
+
+outputs:
+  skip:
+    description: '"true" when pr-commits mode found a prior non-bot commit; "false" otherwise.'
+    value: ${{ steps.check.outputs.skip }}
+  existing-url:
+    description: URL of the matched PR (pr-commits mode only; empty when skip=false).
+    value: ${{ steps.check.outputs.existing_url }}
+  existing-number:
+    description: Number of the matched PR (pr-commits mode only; empty when skip=false).
+    value: ${{ steps.check.outputs.existing_number }}
+  existing-kind:
+    description: 'Kind of matched item: "pr", or empty when skip=false.'
+    value: ${{ steps.check.outputs.existing_kind }}
+  related-candidates:
+    description: >
+      JSON array of related open PRs/issues matching related-title-key. authorized:true entries
+      may be terminal mutation targets; authorized:false entries are evidence-only.
+    value: ${{ steps.check.outputs.related_candidates }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check for prior automated fix and related candidates
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TOPIC_KEY: ${{ inputs.topic-key }}
+        CHECK_ISSUES: ${{ inputs.check-issues }}
+        CHECK_PRS: ${{ inputs.check-prs }}
+        SEARCH_MODE: ${{ inputs.search-mode }}
+        RELATED_TITLE_KEY: ${{ inputs.related-title-key }}
+        RELATED_EXTRA_LABELS: ${{ inputs.related-extra-labels }}
+        RELATED_LIMIT: ${{ inputs.related-limit }}
+      run: |
+        set -euo pipefail
+
+        # Resolve the write-github-multiline-output.sh helper from the calling repo's own
+        # installed vouchington-tooling package. Fail fast, before any gh API work, if the
+        # dependency is missing.
+        WRITE_MULTILINE_OUTPUT_SH="$(node -e '
+          const { createRequire } = require("node:module");
+          const path = require("node:path");
+          try {
+            const req = createRequire(path.join(process.env.GITHUB_WORKSPACE, "package.json"));
+            const pkgJsonPath = req.resolve("vouchington-tooling/package.json");
+            console.log(path.join(path.dirname(pkgJsonPath), "scripts/gha/write-github-multiline-output.sh"));
+          } catch (error) {
+            console.error(
+              "harness-prompt-context: could not resolve vouchington-tooling from " +
+                process.env.GITHUB_WORKSPACE +
+                " — install it as a dependency before running this action. " +
+                (error instanceof Error ? error.message : String(error)),
+            );
+            process.exit(1);
+          }
+        ')"
+
+        EXISTING_NUMBER=""
+        EXISTING_URL=""
+        EXISTING_KIND=""
+        RELATED_CANDIDATES="[]"
+
+        if [[ "$SEARCH_MODE" == "pr-commits" ]]; then
+          # PR-commits mode: PR number is already known; check it directly for
+          # non-dependabot[bot] commits (proxy for a prior automated fix push).
+          PR_NUMBER="$TOPIC_KEY"
+          PR_URL="$(gh pr view "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json url -q '.url' 2>/dev/null || true)"
+
+          if [[ -z "$PR_URL" ]]; then
+            echo "::warning::Prompt context check: gh pr view failed for PR $PR_NUMBER — treating as no prior automated fix (skip check disabled for this run)"
+          fi
+
+          if [[ -n "$PR_URL" ]]; then
+            NON_BOT_SHAS=""
+            if ! NON_BOT_SHAS="$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+              --jq '.[] | select(.author == null or (.author.login != "dependabot[bot]" and .author.login != "github-actions[bot]")) | .sha' \
+              2>/dev/null)"; then
+              echo "::warning::Prompt context check: gh api failed for PR $PR_NUMBER commits — treating as no prior automated fix"
+            fi
+            NON_BOT="0"
+            if [[ -n "$NON_BOT_SHAS" ]]; then
+              NON_BOT="$(echo "$NON_BOT_SHAS" | wc -l | tr -d ' ')"
+            fi
+            if [[ "$NON_BOT" -gt 0 ]]; then
+              EXISTING_NUMBER="$PR_NUMBER"
+              EXISTING_URL="$PR_URL"
+              EXISTING_KIND="pr"
+            fi
+          fi
+        fi
+
+        if [[ -n "$EXISTING_NUMBER" ]]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "existing_number=$EXISTING_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "existing_url=$EXISTING_URL" >> "$GITHUB_OUTPUT"
+          echo "existing_kind=$EXISTING_KIND" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Auto Harness prompt context — skipping duplicate dispatch"
+            echo ""
+            echo "A prior automated fix already landed on this PR; no new automation run needed."
+            echo ""
+            echo "**Kind:** $EXISTING_KIND"
+            echo "**Existing:** $EXISTING_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Auto Harness prompt context: existing item at $EXISTING_URL — skipping dispatch."
+        else
+          if [[ -n "$RELATED_TITLE_KEY" ]]; then
+            RELATED_QUERY="\"$RELATED_TITLE_KEY\" in:title"
+            for label in $RELATED_EXTRA_LABELS; do
+              RELATED_QUERY="$RELATED_QUERY label:$label"
+            done
+
+            RELATED_PRS="[]"
+            if [[ "$CHECK_PRS" == "true" ]]; then
+              if ! RELATED_PRS="$(gh pr list \
+                --repo "$GITHUB_REPOSITORY" \
+                --search "$RELATED_QUERY is:open sort:updated-desc" \
+                --json number,title,url,headRefName,headRepositoryOwner,isCrossRepository,labels \
+                --limit "$RELATED_LIMIT" \
+                --jq 'map({kind:"pr", authorized:true, number, title, url, headRefName, headRepoOwner: .headRepositoryOwner.login, isCrossRepository, labels: [.labels[]?.name]})' \
+                2>/dev/null)"; then
+                echo "::warning::Prompt context check: related gh pr list failed — treating as no related PRs found"
+                RELATED_PRS="[]"
+              fi
+            fi
+
+            RELATED_ISSUES="[]"
+            if [[ "$CHECK_ISSUES" == "true" ]]; then
+              if ! RELATED_ISSUES="$(gh issue list \
+                --repo "$GITHUB_REPOSITORY" \
+                --search "$RELATED_QUERY is:open sort:updated-desc" \
+                --json number,title,url,labels \
+                --limit "$RELATED_LIMIT" \
+                --jq 'map({kind:"issue", authorized:true, number, title, url, headRefName:null, labels: [.labels[]?.name]})' \
+                2>/dev/null)"; then
+                echo "::warning::Prompt context check: related gh issue list failed — treating as no related issues found"
+                RELATED_ISSUES="[]"
+              fi
+            fi
+
+            RELATED_CANDIDATES="$(jq -c -n \
+              --argjson prs "$RELATED_PRS" \
+              --argjson issues "$RELATED_ISSUES" \
+              '$prs + $issues')"
+          fi
+
+          if [[ "$RELATED_CANDIDATES" != "[]" ]]; then
+            {
+              echo "## Auto Harness prompt context — related candidates"
+              echo ""
+              echo "Open PRs or issues may already cover this broader topic."
+              echo ""
+              echo '```json'
+              echo "$RELATED_CANDIDATES"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Auto Harness prompt context: found related candidates."
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "existing_number=" >> "$GITHUB_OUTPUT"
+          echo "existing_url=" >> "$GITHUB_OUTPUT"
+          echo "existing_kind=" >> "$GITHUB_OUTPUT"
+        fi
+        printf '%s' "$RELATED_CANDIDATES" | \
+          "$WRITE_MULTILINE_OUTPUT_SH" related_candidates
