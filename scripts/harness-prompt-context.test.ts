@@ -168,6 +168,18 @@ esac`,
     expect(calls).toBe("");
   });
 
+  it("rejects a non-positive-integer related-limit before any gh call", () => {
+    const fx = make();
+    stubGh(fx.bin, fx.callLog, 'echo "unexpected gh call: $*" >&2; exit 1');
+
+    const result = run(fx, { RELATED_LIMIT: "0" });
+    const calls = readFileSync(fx.callLog, "utf8");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("related-limit must be a positive integer");
+    expect(calls).toBe("");
+  });
+
   it("quotes newline-separated related-extra-labels so spaces survive in the search query", () => {
     const fx = make();
     stubGh(

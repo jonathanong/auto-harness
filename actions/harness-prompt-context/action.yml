@@ -104,6 +104,11 @@ runs:
           exit 1
         fi
 
+        if [[ ! "$RELATED_LIMIT" =~ ^[0-9]+$ || "$RELATED_LIMIT" -lt 1 ]]; then
+          echo "::error::related-limit must be a positive integer; got: '$RELATED_LIMIT'"
+          exit 1
+        fi
+
         # Resolve the write-github-multiline-output.sh helper from the calling repo's own
         # installed vouchington-tooling package. Fail fast, before any gh API work, if the
         # dependency is missing.
