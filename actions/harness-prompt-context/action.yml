@@ -94,6 +94,16 @@ runs:
           exit 1
         fi
 
+        if [[ "$CHECK_PRS" != "true" && "$CHECK_PRS" != "false" ]]; then
+          echo "::error::check-prs must be 'true' or 'false'; got: '$CHECK_PRS'"
+          exit 1
+        fi
+
+        if [[ "$CHECK_ISSUES" != "true" && "$CHECK_ISSUES" != "false" ]]; then
+          echo "::error::check-issues must be 'true' or 'false'; got: '$CHECK_ISSUES'"
+          exit 1
+        fi
+
         # Resolve the write-github-multiline-output.sh helper from the calling repo's own
         # installed vouchington-tooling package. Fail fast, before any gh API work, if the
         # dependency is missing.

@@ -16,6 +16,7 @@ when adopting a newer revision. Do not use the moving `main` ref.
 
 ```yaml
 permissions:
+  contents: read
   pull-requests: read
   issues: read
 
@@ -31,6 +32,7 @@ steps:
 
 ```yaml
 permissions:
+  contents: read
   pull-requests: read
 
 steps:

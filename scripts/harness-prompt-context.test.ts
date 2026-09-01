@@ -144,6 +144,30 @@ esac`,
     expect(calls).toBe("");
   });
 
+  it("rejects a non-boolean check-prs value before any gh call", () => {
+    const fx = make();
+    stubGh(fx.bin, fx.callLog, 'echo "unexpected gh call: $*" >&2; exit 1');
+
+    const result = run(fx, { CHECK_PRS: "yes" });
+    const calls = readFileSync(fx.callLog, "utf8");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("check-prs must be 'true' or 'false'");
+    expect(calls).toBe("");
+  });
+
+  it("rejects a non-boolean check-issues value before any gh call", () => {
+    const fx = make();
+    stubGh(fx.bin, fx.callLog, 'echo "unexpected gh call: $*" >&2; exit 1');
+
+    const result = run(fx, { CHECK_ISSUES: "1" });
+    const calls = readFileSync(fx.callLog, "utf8");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("check-issues must be 'true' or 'false'");
+    expect(calls).toBe("");
+  });
+
   it("quotes newline-separated related-extra-labels so spaces survive in the search query", () => {
     const fx = make();
     stubGh(
