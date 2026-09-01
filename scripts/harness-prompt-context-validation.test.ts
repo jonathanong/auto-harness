@@ -35,6 +35,11 @@ const REJECTIONS: Array<{ name: string; env: Record<string, string>; message: st
     env: { RELATED_LIMIT: "0" },
     message: "related-limit must be a positive integer",
   },
+  {
+    name: "a leading-zero related-limit",
+    env: { RELATED_LIMIT: "08" },
+    message: "related-limit must be a positive integer",
+  },
 ];
 
 describe("harness-prompt-context run script input validation", () => {

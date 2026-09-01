@@ -163,4 +163,36 @@ esac`,
     expect(output.skip).toBe("false");
     expect(output.existing_number).toBe("");
   });
+
+  it("does not treat a commit with an unassociated (null) author as proof of a non-bot commit", () => {
+    const fx = make();
+    // GitHub's pulls/commits API returns author: null when the commit's email isn't linked to
+    // an account — including for bot commits like renovate[bot] with an unassociated address.
+    // An unknown author is insufficient proof of a human commit; it must not clear skip=true.
+    const commits = JSON.stringify([{ sha: "bbb2222", author: null }]);
+    stubGh(
+      fx.bin,
+      fx.callLog,
+      `case "$1 $2" in
+  "pr view") echo "https://github.com/example/repo/pull/42" ;;
+  "api --paginate")
+    filter=""
+    prev=""
+    for arg in "$@"; do
+      if [[ "$prev" == "--jq" ]]; then filter="$arg"; fi
+      prev="$arg"
+    done
+    printf '%s' '${commits}' | jq -r "$filter"
+    ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac`,
+    );
+
+    const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
+    const output = readGithubOutput(fx.githubOutput);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(output.skip).toBe("false");
+    expect(output.existing_number).toBe("");
+  });
 });

@@ -104,7 +104,7 @@ runs:
           exit 1
         fi
 
-        if [[ ! "$RELATED_LIMIT" =~ ^[0-9]+$ || "$RELATED_LIMIT" -lt 1 ]]; then
+        if [[ ! "$RELATED_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
           echo "::error::related-limit must be a positive integer; got: '$RELATED_LIMIT'"
           exit 1
         fi
@@ -151,7 +151,7 @@ runs:
             NON_BOT_SHAS=""
             if ! NON_BOT_SHAS="$(gh api --paginate \
               "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
-              --jq '.[] | select(.author == null or .author.type != "Bot") | .sha' \
+              --jq '.[] | select(.author != null and .author.type != "Bot") | .sha' \
               2>/dev/null)"; then
               echo "::warning::Prompt context check: gh api failed for PR $PR_NUMBER commits — treating as no prior automated fix"
             fi
