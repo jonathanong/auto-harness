@@ -39,9 +39,9 @@ inputs:
     default: ""
   related-extra-labels:
     description: >
-      Space-separated label names to add as label: qualifiers for related title
-      searches. Leave empty to skip label filtering; fix-main does this
-      because open auto-fix PRs may not be automation-labeled.
+      Newline-separated label names to add as label:"<name>" qualifiers for related title
+      searches (quoting preserves labels containing spaces). Leave empty to skip label
+      filtering; fix-main does this because open auto-fix PRs may not be automation-labeled.
     default: automation
   related-limit:
     description: Maximum related PRs and issues to return per kind.
@@ -86,6 +86,11 @@ runs:
 
         if [[ "$SEARCH_MODE" != "related-candidates" && "$SEARCH_MODE" != "pr-commits" ]]; then
           echo "::error::Unsupported search-mode: $SEARCH_MODE (expected 'related-candidates' or 'pr-commits')"
+          exit 1
+        fi
+
+        if [[ "$SEARCH_MODE" == "pr-commits" && ! "$TOPIC_KEY" =~ ^[0-9]+$ ]]; then
+          echo "::error::pr-commits mode requires a numeric topic-key (PR number); got: '$TOPIC_KEY'"
           exit 1
         fi
 
@@ -164,9 +169,10 @@ runs:
         else
           if [[ -n "$RELATED_TITLE_KEY" ]]; then
             RELATED_QUERY="\"$RELATED_TITLE_KEY\" in:title"
-            for label in $RELATED_EXTRA_LABELS; do
-              RELATED_QUERY="$RELATED_QUERY label:$label"
-            done
+            while IFS= read -r label; do
+              [[ -z "$label" ]] && continue
+              RELATED_QUERY="$RELATED_QUERY label:\"$label\""
+            done <<< "$RELATED_EXTRA_LABELS"
 
             RELATED_PRS="[]"
             if [[ "$CHECK_PRS" == "true" ]]; then

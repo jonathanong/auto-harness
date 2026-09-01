@@ -49,7 +49,10 @@ This action requires the calling repository to have
 [`vouchington-tooling`](https://www.npmjs.com/package/vouchington-tooling) installed as a
 dependency (available under `$GITHUB_WORKSPACE/node_modules`) before it runs — it resolves
 `vouchington-tooling`'s bundled `scripts/gha/write-github-multiline-output.sh` helper via Node
-module resolution rather than shipping its own copy.
+module resolution rather than shipping its own copy. That helper shells out to `uuidgen` to mint
+its output delimiter, so the runner needs `uuidgen` on `PATH` as well — present by default on
+GitHub-hosted `ubuntu-*`/`macos-*`/`windows-*` runners; a minimal or self-hosted runner must
+install it separately.
 
 ## Permissions
 
