@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -140,7 +140,7 @@ describe("DaemonLoop execution profiles", () => {
       await loop.waitForIdle();
       transport.deliver(assign({ sessionId: "s-b", attemptId: "a2", providerAccountId: "acct-b" }));
       await loop.waitForIdle();
-      expect(homes).toEqual([homeA, homeB]);
+      expect(homes).toEqual([realpathSync(homeA), realpathSync(homeB)]);
       rmSync(homeA, { recursive: true, force: true });
       await loop.keepalive();
       expect(serverMsgs.at(-1)).toMatchObject({

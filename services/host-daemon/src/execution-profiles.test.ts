@@ -14,6 +14,8 @@ import {
   resolveExecutionProfile,
 } from "./execution-profiles.ts";
 
+const identity = (path: string) => path;
+
 describe("execution profiles", () => {
   it("parses per-account homes without exposing credentials", () => {
     const parsed = parseExecutionProfiles({
@@ -167,10 +169,12 @@ describe("execution profiles", () => {
     const a = applyExecutionProfile(
       { PATH: "/bin", HOME: "/daemon", HARNESS_API_KEY: "keep-out" },
       { providerAccountId: "a", home: "/homes/a", env: { FOO: "one" } },
+      identity,
     );
     const b = applyExecutionProfile(
       { PATH: "/bin", HOME: "/daemon" },
       { providerAccountId: "b", home: "/homes/b", env: { FOO: "two" } },
+      identity,
     );
     expect(a.HOME).toBe("/homes/a");
     expect(a.USERPROFILE).toBe("/homes/a");
@@ -182,6 +186,7 @@ describe("execution profiles", () => {
       applyExecutionProfile(
         { PATH: "/bin" },
         { providerAccountId: "c", home: "/homes/c", env: { HARNESS_SKIP: "nope", OK: "yes" } },
+        identity,
       ),
     ).toMatchObject({ HOME: "/homes/c", OK: "yes" });
     expect(
@@ -192,6 +197,7 @@ describe("execution profiles", () => {
           home: "/homes/d",
           env: { HOME: "/injected", USERPROFILE: "/injected", FOO: "ok" },
         },
+        identity,
       ),
     ).toMatchObject({ HOME: "/homes/d", USERPROFILE: "/homes/d", FOO: "ok" });
   });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, normalize } from "node:path";
 
 import {
@@ -178,10 +178,20 @@ export function resolveExecutionProfile(
 /**
  * Overlay a profile's CLI home and extra env. Git/setup keep the daemon home;
  * callers apply this only to the assigned provider CLI.
+ *
+ * HOME/USERPROFILE are set to the *resolved* home, not the configured path: a
+ * single-operator host satisfies the home-uniqueness check with a symlink farm
+ * (docs/host-daemon.md, "Single-operator host running every provider CLI under
+ * one real account"), and at least one provider CLI's sandbox (codex's Seatbelt
+ * profile) refuses to grant a writable root whose path has a symlink component.
+ * Resolving here keeps the configured `home` (still distinct per account, still
+ * what the uniqueness check and fingerprint operate on) while every spawned CLI
+ * sees a real, symlink-free path.
  */
 export function applyExecutionProfile(
   base: NodeJS.ProcessEnv,
   profile: ExecutionProfile,
+  resolveHome: typeof realpathSync = realpathSync,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base };
   for (const [key, value] of Object.entries(profile.env)) {
@@ -189,7 +199,8 @@ export function applyExecutionProfile(
     if (upper.startsWith("HARNESS_") || upper === "HOME" || upper === "USERPROFILE") continue;
     env[key] = value;
   }
-  env.HOME = profile.home;
-  env.USERPROFILE = profile.home;
+  const resolvedHome = resolveHome(profile.home).toString();
+  env.HOME = resolvedHome;
+  env.USERPROFILE = resolvedHome;
   return env;
 }
