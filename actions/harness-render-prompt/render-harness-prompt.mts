@@ -38,6 +38,37 @@ const isInside = (child: string, parent: string): boolean => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
+interface OptionToken {
+  kind: string;
+  name?: string;
+  value?: string;
+}
+
+const applyVarFile = (args: Args, name: string, path: string): void => {
+  if (path.includes("\0")) fail(`Invalid file path for ${name}.`);
+  try {
+    args.values.set(name, readFileSync(path, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    fail(`Failed to read file for ${name} at ${path}: ${message}`);
+  }
+};
+
+const applyToken = (args: Args, token: OptionToken): void => {
+  if (token.kind !== "option") return;
+  if (token.name === "template") {
+    args.template = token.value;
+  } else if (token.name === "output") {
+    args.output = token.value;
+  } else if (token.name === "var") {
+    const [name, value] = parseNameValue(token.value ?? "", "--var");
+    args.values.set(name, value);
+  } else if (token.name === "var-file") {
+    const [name, path] = parseNameValue(token.value ?? "", "--var-file");
+    applyVarFile(args, name, path);
+  }
+};
+
 const parseArgs = (argv: string[]): Args => {
   const args: Args = { values: new Map() };
 
@@ -57,26 +88,7 @@ const parseArgs = (argv: string[]): Args => {
     // Iterate tokens in original argv order (not the aggregated values.var /
     // values['var-file'] arrays) so a later --var-file can overwrite an earlier
     // --var for the same NAME, and vice versa.
-    for (const token of tokens) {
-      if (token.kind !== "option") continue;
-      if (token.name === "template") {
-        args.template = token.value;
-      } else if (token.name === "output") {
-        args.output = token.value;
-      } else if (token.name === "var") {
-        const [name, value] = parseNameValue(token.value ?? "", "--var");
-        args.values.set(name, value);
-      } else if (token.name === "var-file") {
-        const [name, path] = parseNameValue(token.value ?? "", "--var-file");
-        if (path.includes("\0")) fail(`Invalid file path for ${name}.`);
-        try {
-          args.values.set(name, readFileSync(path, "utf8"));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          fail(`Failed to read file for ${name} at ${path}: ${message}`);
-        }
-      }
-    }
+    for (const token of tokens) applyToken(args, token);
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
