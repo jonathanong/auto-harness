@@ -191,7 +191,9 @@ runs:
             RELATED_QUERY="\"$RELATED_TITLE_KEY_ESCAPED\" in:title"
             while IFS= read -r label; do
               [[ -z "$label" ]] && continue
-              RELATED_QUERY="$RELATED_QUERY label:\"$label\""
+              LABEL_ESCAPED="${label//\\/\\\\}"
+              LABEL_ESCAPED="${LABEL_ESCAPED//\"/\\\"}"
+              RELATED_QUERY="$RELATED_QUERY label:\"$LABEL_ESCAPED\""
             done <<< "$RELATED_EXTRA_LABELS"
 
             RELATED_PRS="[]"

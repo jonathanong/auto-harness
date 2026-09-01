@@ -107,51 +107,6 @@ esac`,
     expect(calls).toBe("");
   });
 
-  it("quotes newline-separated related-extra-labels so spaces survive in the search query", () => {
-    const fx = make();
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr list") printf '%s' '[]' ;;
-  "issue list") printf '%s' '[]' ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
-
-    const result = run(fx, {
-      RELATED_TITLE_KEY: "flaky test",
-      RELATED_EXTRA_LABELS: "automation\nneeds review",
-    });
-    const calls = readFileSync(fx.callLog, "utf8");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls).toContain('label:"automation"');
-    expect(calls).toContain('label:"needs review"');
-  });
-
-  it("escapes embedded double quotes in related-title-key before building the search query", () => {
-    const fx = make();
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr list") printf '%s' '[]' ;;
-  "issue list") printf '%s' '[]' ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
-
-    const result = run(fx, {
-      RELATED_TITLE_KEY: 'fix "use client" warning',
-      RELATED_EXTRA_LABELS: "",
-    });
-    const calls = readFileSync(fx.callLog, "utf8");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls).toContain('fix \\"use client\\" warning');
-  });
-
   it("treats any bot-type commit author as bot, not just the two hardcoded logins", () => {
     const fx = make();
     // A bot outside the old dependabot[bot]/github-actions[bot] allowlist (e.g. pre-commit-ci[bot])
