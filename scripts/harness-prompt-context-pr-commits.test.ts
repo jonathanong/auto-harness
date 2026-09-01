@@ -1,25 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  readGithubOutput,
-  run,
-  stubGh,
-  useFixtures,
-} from "./harness-prompt-context-test-helpers.ts";
+  stubPrCommits,
+  stubPrCommitsJq,
+} from "./harness-prompt-context-pr-commits-test-helpers.ts";
+import { readGithubOutput, run, useFixtures } from "./harness-prompt-context-test-helpers.ts";
 
 const { make } = useFixtures();
 
 describe("harness-prompt-context run script pr-commits mode", () => {
   it("sets skip=true when the known PR already has a prior non-bot commit", () => {
     const fx = make();
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr view") echo "https://github.com/example/repo/pull/42" ;;
-  "api --paginate") printf 'abc123\\ndef456\\n' ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
+    stubPrCommits(fx, `printf 'abc123\\ndef456\\n'`);
 
     const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
     const output = readGithubOutput(fx.githubOutput);
@@ -33,15 +24,7 @@ esac`,
 
   it("sets skip=false when the known PR has no non-bot commits", () => {
     const fx = make();
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr view") echo "https://github.com/example/repo/pull/42" ;;
-  "api --paginate") printf '' ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
+    stubPrCommits(fx, `printf ''`);
 
     const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
     const output = readGithubOutput(fx.githubOutput);
@@ -60,23 +43,7 @@ esac`,
     const commits = JSON.stringify([
       { sha: "aaa1111", author: { login: "pre-commit-ci[bot]", type: "Bot" } },
     ]);
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr view") echo "https://github.com/example/repo/pull/42" ;;
-  "api --paginate")
-    filter=""
-    prev=""
-    for arg in "$@"; do
-      if [[ "$prev" == "--jq" ]]; then filter="$arg"; fi
-      prev="$arg"
-    done
-    printf '%s' '${commits}' | jq -r "$filter"
-    ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
+    stubPrCommitsJq(fx, commits);
 
     const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
     const output = readGithubOutput(fx.githubOutput);
@@ -92,23 +59,7 @@ esac`,
     // an account — including for bot commits like renovate[bot] with an unassociated address.
     // An unknown author is insufficient proof of a human commit; it must not clear skip=true.
     const commits = JSON.stringify([{ sha: "bbb2222", author: null }]);
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr view") echo "https://github.com/example/repo/pull/42" ;;
-  "api --paginate")
-    filter=""
-    prev=""
-    for arg in "$@"; do
-      if [[ "$prev" == "--jq" ]]; then filter="$arg"; fi
-      prev="$arg"
-    done
-    printf '%s' '${commits}' | jq -r "$filter"
-    ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
-    );
+    stubPrCommitsJq(fx, commits);
 
     const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
     const output = readGithubOutput(fx.githubOutput);
@@ -124,17 +75,10 @@ esac`,
     // nonzero, so a failure after gh api --paginate has already emitted a SHA from an earlier
     // page must not leave that partial output usable — it must fail open just like a
     // first-page failure does.
-    stubGh(
-      fx.bin,
-      fx.callLog,
-      `case "$1 $2" in
-  "pr view") echo "https://github.com/example/repo/pull/42" ;;
-  "api --paginate")
-    echo "aaa1111"
-    exit 1
-    ;;
-  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
-esac`,
+    stubPrCommits(
+      fx,
+      `echo "aaa1111"
+    exit 1`,
     );
 
     const result = run(fx, { SEARCH_MODE: "pr-commits", TOPIC_KEY: "42" });
