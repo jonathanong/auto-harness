@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { principalHas, type HostToServerMessage, type HostWireMessage } from "@auto-harness/shared";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { AuthService, type Principal } from "./auth.ts";
@@ -56,6 +57,7 @@ export type LambdaCronContext = {
 export type CronResult = {
   ackDeadlinesEnforced: number;
   archivesRetried: number;
+  cancelsRedelivered: number;
   runningTimeoutsEnforced: number;
   repositoriesReconciled: number;
   sessionDrainsReconciled: number;
@@ -78,6 +80,15 @@ export type { HttpApiEvent, HttpApiResponse } from "./lambda-http-adapter.ts";
 type SsmClient = Pick<SSMClient, "send">;
 
 type BootstrapSecrets = { admins: string; cursorSecret: string; sessionSecret: string };
+
+/**
+ * A half-open API Gateway connection otherwise hangs `PostToConnectionCommand`
+ * indefinitely (the SDK's default client has no timeout), burning an
+ * invocation to the Lambda timeout instead of failing fast into the
+ * `GoneException`/disconnect handling `postToHost` already has.
+ */
+const MANAGEMENT_API_CONNECTION_TIMEOUT_MS = 3_000;
+const MANAGEMENT_API_REQUEST_TIMEOUT_MS = 5_000;
 
 /**
  * The three secrets AuthService and the session-cursor signer need. Lambda's environment
@@ -154,6 +165,10 @@ async function postToHost(
 ): Promise<void> {
   const connectionId = plane.getHostConnectionId(hostId);
   if (!connectionId) return;
+  const startedAt = Date.now();
+  console.log(
+    JSON.stringify({ msg: "postToHost start", hostId, messageType: message.type, connectionId }),
+  );
   try {
     await management.send(
       new PostToConnectionCommand({
@@ -161,7 +176,24 @@ async function postToHost(
         Data: Buffer.from(JSON.stringify(message)),
       }),
     );
+    console.log(
+      JSON.stringify({
+        msg: "postToHost success",
+        hostId,
+        messageType: message.type,
+        durationMs: Date.now() - startedAt,
+      }),
+    );
   } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "postToHost failure",
+        hostId,
+        messageType: message.type,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     if (error instanceof GoneException || (error as { name?: string }).name === "GoneException") {
       await plane.disconnectHostDurable(connectionId);
       return;
@@ -205,7 +237,13 @@ export async function createLambdaRuntime(
   if (!dependencies.auth) await auth.hydrate(created.storage);
   const management =
     dependencies.management ??
-    new ApiGatewayManagementApiClient({ endpoint: requiredEnv("WS_API_ENDPOINT") });
+    new ApiGatewayManagementApiClient({
+      endpoint: requiredEnv("WS_API_ENDPOINT"),
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: MANAGEMENT_API_CONNECTION_TIMEOUT_MS,
+        requestTimeout: MANAGEMENT_API_REQUEST_TIMEOUT_MS,
+      }),
+    });
   const deliveryContext = new AsyncLocalStorage<Set<Promise<void>>>();
   const track = (delivery: Promise<void>): void => {
     const deliveries = deliveryContext.getStore();
@@ -245,11 +283,22 @@ export async function createLambdaRuntime(
       console.error("durable write failed after invocation", error);
     }
   };
-  const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const runInvocation = async <T>(
+    operation: () => Promise<T>,
+    options: { drainDeliveries?: boolean } = {},
+  ): Promise<T> => {
+    const { drainDeliveries = true } = options;
     const deliveries = new Set<Promise<void>>();
     return deliveryContext.run(deliveries, async () => {
       const result = await operation();
-      while (deliveries.size > 0) await Promise.all(deliveries);
+      // REST responses must not block on WebSocket pushes to agent hosts, which can hang
+      // indefinitely on a half-open connection: those deliveries keep draining in the
+      // background (tracked via `track`/`trackDelivery`) after the response returns.
+      // `flushPendingWrites` below stays unconditional regardless of this flag — losing a
+      // durable write would be worse than the hang this flag exists to avoid.
+      if (drainDeliveries) {
+        while (deliveries.size > 0) await Promise.all(deliveries);
+      }
       await flushPendingWrites();
       return result;
     });
@@ -299,6 +348,10 @@ export async function createLambdaRuntime(
           25,
           () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
         );
+        const cancelsRedelivered = await created.plane.redeliverPendingCancelsDurable(
+          25,
+          () => (context?.getRemainingTimeInMillis?.() ?? Number.POSITIVE_INFINITY) > 10_000,
+        );
         const queuedForMetrics = await listQueuedSessionsDurableForMetric(created.plane.state);
         await flushPendingWrites();
         if (slackWorker) await slackWorker.runOnce();
@@ -310,6 +363,7 @@ export async function createLambdaRuntime(
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           archivesRetried,
+          cancelsRedelivered,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: assignments.queuedAssigned.length,
           repositoriesReconciled: repositoriesReconciled.length,
@@ -321,11 +375,41 @@ export async function createLambdaRuntime(
       });
     },
     async rest(event) {
-      return runInvocation(async () => {
-        const capture = createLambdaResponseCapture();
-        await app.handler(requestForLambdaEvent(event), capture.response);
-        return capture.result();
-      });
+      const method = event.requestContext?.http?.method ?? "UNKNOWN";
+      const path = event.rawPath ?? "";
+      const startedAt = Date.now();
+      console.log(JSON.stringify({ msg: "rest start", method, path }));
+      try {
+        const result = await runInvocation(
+          async () => {
+            const capture = createLambdaResponseCapture();
+            await app.handler(requestForLambdaEvent(event), capture.response);
+            return capture.result();
+          },
+          { drainDeliveries: false },
+        );
+        console.log(
+          JSON.stringify({
+            msg: "rest success",
+            method,
+            path,
+            statusCode: result.statusCode,
+            durationMs: Date.now() - startedAt,
+          }),
+        );
+        return result;
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "rest failure",
+            method,
+            path,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        throw error;
+      }
     },
     async websocket(event) {
       return runInvocation(async () => {

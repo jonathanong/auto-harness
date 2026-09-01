@@ -104,6 +104,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async listLogs() {
       return [];
     },
+    async listPendingCancelRedeliveries() {
+      return [];
+    },
     async listProviderAccounts() {
       return [];
     },
@@ -978,6 +981,7 @@ describe("Lambda runtime adapters", () => {
       await expect((await fixture.runtime).cron()).resolves.toEqual({
         ackDeadlinesEnforced: 1,
         archivesRetried: 0,
+        cancelsRedelivered: 0,
         runningTimeoutsEnforced: 1,
         queuedAssigned: 0,
         repositoriesReconciled: 1,
@@ -1048,7 +1052,7 @@ describe("Lambda runtime adapters", () => {
     const retry = vi.spyOn(fixture.plane, "retryPendingArchivesDurable");
     await (await fixture.runtime).cron({ getRemainingTimeInMillis: () => 9_000 });
     expect(retry).toHaveBeenCalledWith(25, expect.any(Function));
-    expect((retry.mock.calls[0]?.[1] as (() => boolean) | undefined)?.()).toBe(false);
+    expect(retry.mock.calls[0]?.[1]?.()).toBe(false);
   });
 
   it("posts through the management API and prunes gone connections", async () => {
@@ -1110,7 +1114,9 @@ describe("Lambda runtime adapters", () => {
     try {
       fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
       fixture.plane.state.onHostMessage?.("host-1", assignment);
-      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(2));
+      // Each failed delivery now logs twice: postToHost's own structured failure log,
+      // plus trackDelivery's pre-existing catch-all — 2 messages x 2 logs each.
+      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(4));
       const assignmentMetrics = metricLog.mock.calls.filter(([line]) =>
         String(line).includes('"AssignmentFailures":1'),
       );

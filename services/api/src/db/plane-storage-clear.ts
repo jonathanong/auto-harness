@@ -25,6 +25,7 @@ const SESSION_DRAIN_LEDGER_RECORD_KEY = "ACTIVITY-V1";
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   await clearSessionDrains(ctx);
   await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
+  await clearByKey(ctx, ctx.tables.sessionCancelRedeliveries, "sessionId");
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);
   }

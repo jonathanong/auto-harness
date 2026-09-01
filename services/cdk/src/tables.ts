@@ -174,6 +174,17 @@ export const DYNAMO_TABLES: TableDef[] = [
       },
     ],
   },
+  {
+    name: "SessionCancelRedeliveries",
+    partitionKey: { name: "sessionId", type: "S" },
+    gsis: [
+      {
+        name: "status-createdAt",
+        partitionKey: { name: "status", type: "S" },
+        sortKey: { name: "createdAt", type: "S" },
+      },
+    ],
+  },
 ];
 
 const S3_ARCHIVE_BUCKET = {

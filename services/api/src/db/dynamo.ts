@@ -37,6 +37,7 @@ export type DynamoTableNames = {
   integrations: string;
   notificationDeliveries: string;
   webhookDeliveries: string;
+  sessionCancelRedeliveries: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -65,6 +66,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     integrations: `${p}-Integrations`,
     notificationDeliveries: `${p}-NotificationDeliveries`,
     webhookDeliveries: `${p}-WebhookDeliveries`,
+    sessionCancelRedeliveries: `${p}-SessionCancelRedeliveries`,
   };
 }
 

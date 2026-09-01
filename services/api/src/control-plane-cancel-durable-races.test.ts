@@ -58,4 +58,46 @@ describe("durable cancellation assignment fence", () => {
       },
     ]);
   });
+
+  it("records a durable redelivery marker before notifying the host", async () => {
+    const fixedNow = "2026-01-01T00:00:00.000Z";
+    const state = createControlPlaneState({ now: () => fixedNow });
+    const recorded: unknown[] = [];
+    const session = {
+      ...runningSession,
+      assignmentConnectionId: "connection",
+      attemptId: "attempt-1",
+    };
+    state.sessions.set(session.id, session);
+    setDurableReadStorage(state, {
+      getSession: async () => session,
+      cancelRunningSession: async () => true,
+      recordPendingCancelRedelivery: async (input: unknown) => void recorded.push(input),
+    });
+
+    await expect(cancelSessionDurable(state, session.id)).resolves.toMatchObject({ ok: true });
+
+    expect(recorded).toEqual([
+      { sessionId: "session", hostId: "host", attemptId: "attempt-1", now: fixedNow },
+    ]);
+  });
+
+  it("does not fail the cancellation when the redelivery marker write fails", async () => {
+    const state = createControlPlaneState();
+    const session = {
+      ...runningSession,
+      assignmentConnectionId: "connection",
+      attemptId: "attempt-1",
+    };
+    state.sessions.set(session.id, session);
+    setDurableReadStorage(state, {
+      getSession: async () => session,
+      cancelRunningSession: async () => true,
+      recordPendingCancelRedelivery: async () => {
+        throw new Error("write unavailable");
+      },
+    });
+
+    await expect(cancelSessionDurable(state, session.id)).resolves.toMatchObject({ ok: true });
+  });
 });

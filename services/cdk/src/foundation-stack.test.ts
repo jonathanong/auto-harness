@@ -17,7 +17,7 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 23);
+    template.resourceCountIs("AWS::DynamoDB::Table", 24);
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-SessionDrains",
       KeySchema: [
@@ -236,7 +236,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(26);
+    ).toHaveLength(27);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",
@@ -250,11 +250,11 @@ describe("AutoHarnessFoundationStack", () => {
   });
 
   it("accepts the longest safe table prefix and rejects the next character", () => {
-    const longestSafePrefix = "a".repeat(232);
+    const longestSafePrefix = "a".repeat(229);
 
     foundationTemplate({ tablePrefix: longestSafePrefix }).hasResourceProperties(
       "AWS::DynamoDB::Table",
-      { TableName: `${longestSafePrefix}-NotificationDeliveries` },
+      { TableName: `${longestSafePrefix}-SessionCancelRedeliveries` },
     );
     expect(() => foundationTemplate({ tablePrefix: `${longestSafePrefix}a` })).toThrow(
       "tablePrefix is too long",

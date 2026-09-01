@@ -20,6 +20,7 @@ import {
   enableTableTtl,
   rateLimitTableDefinition,
 } from "./ensure-rate-limit-table.ts";
+import { sessionCancelRedeliveriesTableDefinition } from "./ensure-session-cancel-redeliveries-table.ts";
 import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
 import {
   backfillQueuedSessionQueueOrder,
@@ -298,6 +299,10 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
   await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
   await createIfMissing(ddb, webhookDeliveriesTableDefinition(names.webhookDeliveries));
+  await createIfMissing(
+    ddb,
+    sessionCancelRedeliveriesTableDefinition(names.sessionCancelRedeliveries),
+  );
 
   await createIfMissing(ddb, {
     TableName: names.sessionUsage,

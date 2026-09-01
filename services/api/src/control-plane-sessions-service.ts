@@ -11,6 +11,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as assign from "./control-plane-assign.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
+import * as cancelRedelivery from "./control-plane-cancel-redelivery.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as messages from "./control-plane-messages.ts";
 import * as runningTimeout from "./control-plane-running-timeout.ts";
@@ -197,6 +198,10 @@ export class ControlPlaneSessionsService {
 
   retryPendingArchivesDurable(limit = 25, shouldContinue?: () => boolean): Promise<number> {
     return lifecycle.retryPendingArchives(this.state, limit, shouldContinue);
+  }
+
+  redeliverPendingCancelsDurable(limit = 25, shouldContinue?: () => boolean): Promise<number> {
+    return cancelRedelivery.redeliverPendingCancels(this.state, limit, shouldContinue);
   }
 
   /** Scheduler-owned, bounded bootstrap for archive rows written before the retry GSI. */

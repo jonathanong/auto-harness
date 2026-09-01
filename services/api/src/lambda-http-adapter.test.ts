@@ -36,6 +36,33 @@ describe("Lambda HTTP adapter", () => {
     ).resolves.toMatchObject({ statusCode: 200 });
   });
 
+  it("defaults the logged path to an empty string when the event omits rawPath", async () => {
+    const runtime = await createLambdaRuntime({
+      auth: {} as never,
+      created: { plane: new ControlPlane(), storage: {} } as never,
+      management: { send: async () => ({}) },
+    });
+    await expect(runtime.rest({})).resolves.toMatchObject({ statusCode: 404 });
+  });
+
+  it("logs and rethrows when translating the Lambda event fails", async () => {
+    const runtime = await createLambdaRuntime({
+      auth: {} as never,
+      created: { plane: new ControlPlane(), storage: {} } as never,
+      management: { send: async () => ({}) },
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(runtime.rest({ body: 123, rawPath: "/health" } as never)).rejects.toThrow(
+      "must be of type string",
+    );
+    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
+      msg: "rest failure",
+      method: "UNKNOWN",
+      path: "/health",
+    });
+    error.mockRestore();
+  });
+
   it("flushes pending durable writes before returning from an invocation", async () => {
     const plane = new ControlPlane();
     let released = false;
