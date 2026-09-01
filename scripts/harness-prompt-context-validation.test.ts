@@ -6,6 +6,11 @@ const { make } = useFixtures();
 
 const REJECTIONS: Array<{ name: string; env: Record<string, string>; message: string }> = [
   {
+    name: "an empty github-token",
+    env: { GH_TOKEN: "" },
+    message: "github-token must not be empty",
+  },
+  {
     name: "an unsupported search-mode",
     env: { SEARCH_MODE: "pr-commit" },
     message: "Unsupported search-mode: pr-commit",

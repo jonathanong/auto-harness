@@ -172,6 +172,7 @@ export function run(fx: Fixture, env: Record<string, string>) {
       GITHUB_STEP_SUMMARY: fx.githubStepSummary,
       GITHUB_WORKSPACE: fx.githubWorkspace,
       PATH: `${fx.bin}:${process.env.PATH ?? ""}`,
+      GH_TOKEN: "gh-token-fixture",
       CHECK_ISSUES: "true",
       CHECK_PRS: "true",
       RELATED_EXTRA_LABELS: "automation",

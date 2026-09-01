@@ -84,6 +84,15 @@ runs:
       run: |
         set -euo pipefail
 
+        if [[ -z "$GH_TOKEN" ]]; then
+          # action.yml's `required: true` only rejects a wholly-omitted input, not an
+          # explicitly empty string; an empty token would otherwise let every gh call below
+          # fail unauthenticated and be swallowed by this action's fail-open branches,
+          # silently disabling dedup instead of erroring.
+          echo "::error::github-token must not be empty"
+          exit 1
+        fi
+
         if [[ "$SEARCH_MODE" != "related-candidates" && "$SEARCH_MODE" != "pr-commits" ]]; then
           echo "::error::Unsupported search-mode: $SEARCH_MODE (expected 'related-candidates' or 'pr-commits')"
           exit 1
