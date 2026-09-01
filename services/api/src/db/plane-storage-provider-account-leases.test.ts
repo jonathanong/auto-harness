@@ -21,6 +21,75 @@ import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { putSession } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
+const MOCK_TABLES = {
+  sessions: "Sessions",
+  providerAccounts: "Accounts",
+  concurrencyLocks: "Locks",
+};
+
+function backfillWithSend(send: ReturnType<typeof vi.fn>, slot = 0) {
+  return backfillProviderAccountLease({ doc: { send }, tables: MOCK_TABLES } as never, {
+    sessionId: "session",
+    attemptId: "attempt",
+    hostId: "host",
+    providerAccountId: "acct",
+    slot,
+  });
+}
+
+function leaseSession(status: "cancelled" | "running") {
+  return {
+    repositoryId: "repo",
+    prompt: "prompt",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: ["command"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2026-01-01T01:00:00.000Z",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status,
+    queueShard: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    hostId: "host",
+    attemptId: "attempt",
+  };
+}
+
+async function createLeaseTestContext(
+  prefix: string,
+  accounts: Array<{ id: string; maxConcurrentSessions?: number }>,
+): Promise<{ client: DynamoDBClient; tables: DynamoTableNames; ctx: PlaneStorageCtx }> {
+  const clients = createDynamoClients();
+  const tables = await ensureControlPlaneTables({ client: clients.client, prefix });
+  const ctx = { doc: clients.doc, tables };
+  for (const account of accounts) {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.providerAccounts,
+        Item: {
+          ...account,
+          providerId: "provider",
+          name: account.id,
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      }),
+    );
+  }
+  return { client: clients.client, tables, ctx };
+}
+
+async function deleteLeaseTestTables(
+  client: DynamoDBClient,
+  tables: DynamoTableNames,
+): Promise<void> {
+  await Promise.all(
+    Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
+  );
+}
+
 describe("provider account lease storage", () => {
   it("fences a force release by account, slot, session, and attempt in one transaction", async () => {
     const send = vi.fn().mockResolvedValue({});
@@ -408,19 +477,7 @@ describe("provider account lease storage", () => {
 
   it("caps the provider account ConditionCheck at maxConcurrentSessions", async () => {
     const send = vi.fn().mockResolvedValue({});
-    await backfillProviderAccountLease(
-      {
-        doc: { send },
-        tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
-      } as never,
-      {
-        sessionId: "session",
-        attemptId: "attempt",
-        hostId: "host",
-        providerAccountId: "acct",
-        slot: 1,
-      },
-    );
+    await backfillWithSend(send, 1);
     const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
     expect(request.input.TransactItems[0]).toMatchObject({
       ConditionCheck: {
@@ -438,21 +495,7 @@ describe("provider account lease storage", () => {
       name: "TransactionCanceledException",
       CancellationReasons: [{ Code: "None" }, { Code: "None" }, { Code: "ConditionalCheckFailed" }],
     });
-    await expect(
-      backfillProviderAccountLease(
-        {
-          doc: { send },
-          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
-        } as never,
-        {
-          sessionId: "session",
-          attemptId: "attempt",
-          hostId: "host",
-          providerAccountId: "acct",
-          slot: 0,
-        },
-      ),
-    ).resolves.toEqual({ status: "lease_collision" });
+    await expect(backfillWithSend(send)).resolves.toEqual({ status: "lease_collision" });
   });
 
   it("reports a fenced session when its condition loses", async () => {
@@ -460,40 +503,12 @@ describe("provider account lease storage", () => {
       name: "TransactionCanceledException",
       CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }, { Code: "None" }],
     });
-    await expect(
-      backfillProviderAccountLease(
-        {
-          doc: { send },
-          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
-        } as never,
-        {
-          sessionId: "session",
-          attemptId: "attempt",
-          hostId: "host",
-          providerAccountId: "acct",
-          slot: 0,
-        },
-      ),
-    ).resolves.toEqual({ status: "session_changed" });
+    await expect(backfillWithSend(send)).resolves.toEqual({ status: "session_changed" });
   });
 
   it("rethrows non-conditional transaction failures", async () => {
     const send = vi.fn().mockRejectedValue(new Error("capacity unavailable"));
-    await expect(
-      backfillProviderAccountLease(
-        {
-          doc: { send },
-          tables: { sessions: "Sessions", providerAccounts: "Accounts", concurrencyLocks: "Locks" },
-        } as never,
-        {
-          sessionId: "session",
-          attemptId: "attempt",
-          hostId: "host",
-          providerAccountId: "acct",
-          slot: 0,
-        },
-      ),
-    ).rejects.toThrow("capacity unavailable");
+    await expect(backfillWithSend(send)).rejects.toThrow("capacity unavailable");
   });
 });
 
@@ -703,21 +718,7 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
   let tables: DynamoTableNames;
   let ctx: PlaneStorageCtx;
   const session = {
-    repositoryId: "repo",
-    prompt: "prompt",
-    target: { commandId: "command" },
-    fallbacks: [],
-    targetDisplayNames: ["command"],
-    queueTtlSeconds: 60,
-    queueExpiresAt: "2026-01-01T01:00:00.000Z",
-    timeout: 60,
-    priority: 0,
-    requiredLabels: [],
-    status: "cancelled" as const,
-    queueShard: 0,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    hostId: "host",
-    attemptId: "attempt",
+    ...leaseSession("cancelled"),
     resolvedRoute: {
       targetIndex: 0,
       commandId: "command",
@@ -729,30 +730,12 @@ describe("DynamoDB Local: backfillProviderAccountLease cancellation fence", () =
   };
 
   beforeAll(async () => {
-    const clients = createDynamoClients();
-    client = clients.client;
-    tables = await ensureControlPlaneTables({ client, prefix: `AhLeaseFence${process.pid}` });
-    ctx = { doc: clients.doc, tables };
-    await ctx.doc.send(
-      new PutCommand({
-        TableName: tables.providerAccounts,
-        Item: {
-          id: "acct",
-          providerId: "provider",
-          name: "acct",
-          createdAt: "now",
-          updatedAt: "now",
-          // Above the default cap: this suite's cases occupy slots 0-1 across two
-          // distinct sessions; the cap boundary itself is covered separately below.
-          maxConcurrentSessions: 2,
-        },
-      }),
-    );
+    ({ client, tables, ctx } = await createLeaseTestContext(`AhLeaseFence${process.pid}`, [
+      { id: "acct", maxConcurrentSessions: 2 },
+    ]));
   });
   afterAll(async () => {
-    await Promise.all(
-      Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
-    );
+    await deleteLeaseTestTables(client, tables);
   });
 
   it("migrates a cancelled session still holding a live worktreeId claim", async () => {
@@ -812,61 +795,17 @@ describe("DynamoDB Local: backfillProviderAccountLease maxConcurrentSessions cap
   let client: DynamoDBClient;
   let tables: DynamoTableNames;
   let ctx: PlaneStorageCtx;
-  const session = {
-    repositoryId: "repo",
-    prompt: "prompt",
-    target: { commandId: "command" },
-    fallbacks: [],
-    targetDisplayNames: ["command"],
-    queueTtlSeconds: 60,
-    queueExpiresAt: "2026-01-01T01:00:00.000Z",
-    timeout: 60,
-    priority: 0,
-    requiredLabels: [],
-    status: "running" as const,
-    queueShard: 0,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    hostId: "host",
-    attemptId: "attempt",
-  };
+  const session = leaseSession("running");
 
   beforeAll(async () => {
-    const clients = createDynamoClients();
-    client = clients.client;
-    tables = await ensureControlPlaneTables({ client, prefix: `AhLeaseCap${process.pid}` });
-    ctx = { doc: clients.doc, tables };
-    await ctx.doc.send(
-      new PutCommand({
-        TableName: tables.providerAccounts,
-        Item: {
-          id: "acct-default",
-          providerId: "provider",
-          name: "acct-default",
-          createdAt: "now",
-          updatedAt: "now",
-          // maxConcurrentSessions intentionally omitted: legacy rows fall back to
-          // DEFAULT_MAX_CONCURRENT_SESSIONS.
-        },
-      }),
-    );
-    await ctx.doc.send(
-      new PutCommand({
-        TableName: tables.providerAccounts,
-        Item: {
-          id: "acct-2",
-          providerId: "provider",
-          name: "acct-2",
-          createdAt: "now",
-          updatedAt: "now",
-          maxConcurrentSessions: 2,
-        },
-      }),
-    );
+    ({ client, tables, ctx } = await createLeaseTestContext(`AhLeaseCap${process.pid}`, [
+      // An omitted cap preserves the legacy DEFAULT_MAX_CONCURRENT_SESSIONS fallback.
+      { id: "acct-default" },
+      { id: "acct-2", maxConcurrentSessions: 2 },
+    ]));
   });
   afterAll(async () => {
-    await Promise.all(
-      Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
-    );
+    await deleteLeaseTestTables(client, tables);
   });
 
   it("migrates a slot within the default cap when maxConcurrentSessions is unset", async () => {
