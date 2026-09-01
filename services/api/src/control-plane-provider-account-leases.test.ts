@@ -111,6 +111,17 @@ function seedAccountPlane(opts?: { maxConcurrentSessions?: number; ready?: boole
   return plane;
 }
 
+function createProviderSession(plane: ControlPlane, prompt: string): void {
+  expect(
+    plane.createSession({
+      repositoryId: "repo-1",
+      prompt,
+      target: { providerId: "prov-1" },
+      timeout: 30,
+    }).ok,
+  ).toBe(true);
+}
+
 function accountsMap(maxConcurrentSessions: number) {
   return new Map([
     [
@@ -295,13 +306,7 @@ describe("provider account execution-profile leases", () => {
 
   it("keeps legacy generic locks separate from provider-account leases", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
-    const created = plane.createSession({
-      repositoryId: "repo-1",
-      prompt: "legacy lock",
-      target: { providerId: "prov-1" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
+    createProviderSession(plane, "legacy lock");
     const queued = plane.state.sessions.get("sess-1")!;
     queued.concurrencyId = "provider-account:acct-1:0";
 
@@ -316,22 +321,8 @@ describe("provider account execution-profile leases", () => {
     const connectionId = plane.state.hostConnection.get("host-1")!;
     const conn = plane.state.connections.get(connectionId)!;
     plane.state.connections.set(connectionId, { ...conn, maxConcurrentAssignments: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "two",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
+    createProviderSession(plane, "two");
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.assignQueued()).toEqual([]);
   });
@@ -363,22 +354,8 @@ describe("provider account execution-profile leases", () => {
 
   it("exhausts account slots at maxConcurrentSessions", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "two",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
+    createProviderSession(plane, "two");
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.assignQueued()).toEqual([]);
     expect(plane.getSession("sess-1")?.status).toBe("running");
@@ -981,14 +958,7 @@ describe("provider account execution-profile leases", () => {
 
   it("reconciles unacked leases when a host goes stale", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.state.providerAccountLeases.size).toBe(1);
     plane.heartbeat("host-1", NOW);
@@ -1147,14 +1117,7 @@ describe("provider account execution-profile leases", () => {
 
   it("retains the account lease until an acknowledged timeout reports terminal", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
     expect(plane.assignQueued()).toHaveLength(1);
     const session = plane.getSession("sess-1")!;
     expect(
@@ -1170,14 +1133,7 @@ describe("provider account execution-profile leases", () => {
     expect(plane.enforceRunningTimeouts(due)).toEqual(["sess-1"]);
     expect(plane.state.providerAccountLeases.size).toBe(1);
     expect(plane.getSession("sess-1")).toHaveProperty("providerAccountLease");
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "two",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "two");
     expect(plane.assignQueued()).toHaveLength(0);
     expect(
       plane.handleHostMessage({
@@ -1194,14 +1150,7 @@ describe("provider account execution-profile leases", () => {
 
   it("retains a provider-account lease through durable timeout", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
     expect(plane.assignQueued()).toHaveLength(1);
     const session = plane.getSession("sess-1")!;
     expect(
@@ -1237,25 +1186,11 @@ describe("provider account execution-profile leases", () => {
     const connectionId = plane.state.hostConnection.get("host-1")!;
     const conn = plane.state.connections.get(connectionId)!;
     plane.state.connections.set(connectionId, { ...conn, maxConcurrentAssignments: 1 });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "one",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "one");
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.cancelSession("sess-1").ok).toBe(true);
     expect(plane.getSession("sess-1")).toMatchObject({ status: "cancelled", hostId: "host-1" });
-    expect(
-      plane.createSession({
-        repositoryId: "repo-1",
-        prompt: "two",
-        target: { providerId: "prov-1" },
-        timeout: 30,
-      }).ok,
-    ).toBe(true);
+    createProviderSession(plane, "two");
     expect(plane.assignQueued()).toEqual([]);
   });
 
