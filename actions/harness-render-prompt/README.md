@@ -25,7 +25,8 @@ when adopting a newer revision. Do not use the moving `main` ref.
 
 - The template must live at a path under `docs/prompts/automation/` in the **calling**
   repository's own checkout — the script resolves `--template` relative to `process.cwd()`,
-  which a composite action `run:` step executes at the calling repo's checkout root.
+  which a composite action `run:` step executes at the calling repo's checkout root. Set the
+  `template-dir` input to require a different directory instead.
 - The caller must run its own Node setup step (node v22.18+, `node_modules` installed) before
   invoking this action.
 - This action requires the calling repository to have
@@ -36,10 +37,11 @@ when adopting a newer revision. Do not use the moving `main` ref.
   to mint its output delimiter, so the runner needs `uuidgen` on `PATH` as well — present by
   default on GitHub-hosted `ubuntu-*`/`macos-*`/`windows-*` runners; a minimal or self-hosted
   runner must install it separately.
-- The rendered prompt's CI merge-authority postlude states the policy generically. It does not
-  point at any repo-specific policy document — consumers that want a longer-form merge
+- The rendered prompt's CI merge-authority postlude states the policy generically by default. It
+  does not point at any repo-specific policy document — consumers that want a longer-form merge
   authority doc of their own should keep one and link to it from wherever their agents read
-  repository instructions.
+  repository instructions, or set the `merge-authority-doc` input to have the postlude point at
+  it directly.
 - The rendered preamble likewise tells the session not to run "any repository-specific
   worktree-reset script," rather than naming one — if the calling repository has its own such
   script, document it separately (e.g. in the same repository-instructions doc the dispatched
