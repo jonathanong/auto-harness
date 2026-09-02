@@ -127,4 +127,46 @@ describe("render-harness-prompt.mts", () => {
       "Template must be a markdown file under docs/prompts/automation/.",
     );
   });
+
+  it("resolves the template under a custom --template-dir", () => {
+    const cwd = repo();
+    mkdirSync(join(cwd, "prompts"), { recursive: true });
+    writeFileSync(join(cwd, "prompts/fix.md"), "no placeholders");
+
+    const result = run(cwd, ["--template", "prompts/fix.md", "--template-dir", "prompts"]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("no placeholders");
+  });
+
+  it("rejects a template outside a custom --template-dir", () => {
+    const cwd = repo();
+    mkdirSync(join(cwd, "prompts"), { recursive: true });
+    writeFileSync(join(cwd, "docs/prompts/automation/fix.md"), "no placeholders");
+
+    const result = run(cwd, [
+      "--template",
+      "docs/prompts/automation/fix.md",
+      "--template-dir",
+      "prompts",
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Template must be a markdown file under prompts/.");
+  });
+
+  it("points the CI merge authority postlude at --merge-authority-doc when given", () => {
+    const cwd = repo();
+    writeFileSync(join(cwd, "docs/prompts/automation/fix.md"), "no placeholders");
+
+    const result = run(cwd, [
+      "--template",
+      "docs/prompts/automation/fix.md",
+      "--merge-authority-doc",
+      "docs/merge-authority.md",
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("See `docs/merge-authority.md`.");
+  });
 });
