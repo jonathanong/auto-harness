@@ -274,7 +274,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | Integrations              | `id`              | —              | —                                                 | Encrypted integration configuration                                     |
 | NotificationDeliveries    | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                          |
 | WebhookDeliveries         | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                       |
-| SessionCancelRedeliveries | `sessionId`       | —              | `status-createdAt`                                | Cron-drained outbox for lost operator `session:cancel` pushes           |
+| SessionCancelRedeliveries | `sessionId`       | —              | `status-queuedAt`                                 | Cron-drained outbox for lost operator `session:cancel` pushes           |
 
 Unrestricted repository pages use bounded, strongly consistent table scans with opaque storage
 continuations. Scoped principals use strongly consistent keyed reads of only their allowed IDs.
