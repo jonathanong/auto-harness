@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
-import { listPendingCancelRedeliveries } from "./plane-storage-cancel-redeliveries.ts";
+import {
+  claimCancelRedeliveryAttempt,
+  deferPendingCancelRedelivery,
+  listPendingCancelRedeliveries,
+} from "./plane-storage-cancel-redeliveries.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const ctx = createDynamoTestCtx("CancelRedeliver");
@@ -16,6 +20,28 @@ describe("cancel redelivery outbox query response handling", () => {
     } as unknown as PlaneStorageCtx;
 
     await expect(listPendingCancelRedeliveries(mockCtx, 10)).resolves.toEqual([]);
+  });
+
+  it("rethrows a real error from deferPendingCancelRedelivery", async () => {
+    const mockCtx = {
+      doc: { send: vi.fn().mockRejectedValue(new Error("table unavailable")) },
+      tables: { sessionCancelRedeliveries: "SessionCancelRedeliveries" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(deferPendingCancelRedelivery(mockCtx, "session-a", t0)).rejects.toThrow(
+      "table unavailable",
+    );
+  });
+
+  it("rethrows a real error from claimCancelRedeliveryAttempt", async () => {
+    const mockCtx = {
+      doc: { send: vi.fn().mockRejectedValue(new Error("table unavailable")) },
+      tables: { sessionCancelRedeliveries: "SessionCancelRedeliveries" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(claimCancelRedeliveryAttempt(mockCtx, "session-a", t0, 3)).rejects.toThrow(
+      "table unavailable",
+    );
   });
 });
 
