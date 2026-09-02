@@ -28,7 +28,6 @@ export type {
   RepositoryRecord,
   SessionDrainRecord,
 } from "./plane-storage-types.ts";
-export type { CancelRedeliveryRecord } from "./plane-storage-cancel-redeliveries.ts";
 export {
   isSessionDrainLedgerUnavailable,
   isSessionDrainScopeUnavailable,
