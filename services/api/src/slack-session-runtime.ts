@@ -74,6 +74,18 @@ export async function reconcileSlackSession(input: {
  * reconciliation path: a WS/REST writer on a cold container (no hydration, and this
  * session's own log chunks landed on a different container) would otherwise enqueue the
  * terminal row with an empty tail.
+ *
+ * Two known, accepted limitations, shared with the pre-existing cron-path helper this
+ * mirrors (hydrateSlackSnapshotInputs in slack-runtime.ts) rather than introduced by it:
+ * the `has()` check treats "some cached content" as "complete," so a container that
+ * already holds a partial prefix from its own live writes won't refresh from storage even
+ * if newer chunks landed on a different container; and `listLogs` is a full, unbounded
+ * durable scan, so an unusually log-heavy failed session pays for the whole transcript to
+ * read the last five stderr lines. Both would need a bounded, reverse-ordered tail query
+ * (ScanIndexForward: false) added to the storage layer to fix properly — real, separate
+ * follow-up work, not done here. The try/catch below bounds the blast radius of the
+ * second one in the meantime: a failed fetch drops just the stderr tail, not the entire
+ * Slack notification this call sits in front of.
  */
 async function ensureFailedSessionLogsLoaded(
   state: SlackSessionWriterState,
@@ -81,8 +93,11 @@ async function ensureFailedSessionLogsLoaded(
   session: SessionRecord,
 ): Promise<void> {
   const failed = session.status === "failed" || session.status === "timed_out";
-  if (failed && !state.logs.has(session.id) && typeof storage.listLogs === "function") {
+  if (!failed || state.logs.has(session.id) || typeof storage.listLogs !== "function") return;
+  try {
     state.logs.set(session.id, await storage.listLogs(session.id));
+  } catch (error) {
+    console.error("failed to load durable logs for a failed-session Slack snapshot", error);
   }
 }
 

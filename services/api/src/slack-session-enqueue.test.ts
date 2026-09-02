@@ -257,4 +257,28 @@ describe("Slack enqueue on session transitions", () => {
     const failedReply = store.items.get("slack:session-cold:session_failed:reply");
     expect(failedReply?.text).toContain("boom: out of memory");
   });
+
+  it("still enqueues the failed notification when the durable log fetch itself fails", async () => {
+    const { store, plane } = await slackPlane("session-log-fault");
+    const running = await runSession(store, plane, "session-log-fault");
+    store.listLogs = async () => {
+      throw new Error("dynamo unavailable");
+    };
+
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "session:status",
+          sessionId: running.id,
+          worktreeId: "wt-1",
+          attemptId: "attempt-1",
+          status: "failed",
+          errorMessage: "provider crashed",
+        })
+      ).ok,
+    ).toBe(true);
+    await settleStorage(plane.state);
+
+    expect(store.items.get("slack:session-log-fault:session_failed:reply")).toBeDefined();
+  });
 });
