@@ -190,7 +190,20 @@ export async function deleteLog(
   );
 }
 
-export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise<LogRecord[]> {
+/**
+ * `consistentRead` defaults to false (eventually consistent, half the RCU cost) for the
+ * common high-volume readers — REST/viewer tail display and archive writes, both of which
+ * self-correct on the next read. A caller that bakes this result into something immutable
+ * (the Slack outbox's one-ID-per-lifecycle-action rows) must pass `true`: an eventually
+ * consistent read racing the host's own final `session:log` write could legally return a
+ * transcript missing that last chunk, and unlike the other callers there is no later read
+ * that would ever surface the miss.
+ */
+export async function listLogs(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  consistentRead = false,
+): Promise<LogRecord[]> {
   const records: LogRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -200,6 +213,7 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
         KeyConditionExpression: "sessionId = :s",
         ExpressionAttributeValues: { ":s": sessionId },
         ScanIndexForward: true,
+        ...(consistentRead ? { ConsistentRead: true } : {}),
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );

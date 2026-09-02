@@ -271,7 +271,9 @@ describe("Slack production runtime", () => {
     expect(await worker!.runOnce()).toBe(true);
     listRunning = false;
     expect(await worker!.runOnce()).toBe(true);
-    expect(listLogs).toHaveBeenCalledWith("running-1");
+    // consistentRead: true — this feeds an immutable Slack outbox row, so it must not
+    // risk missing the host's last log write to an eventually consistent read.
+    expect(listLogs).toHaveBeenCalledWith("running-1", true);
     expect(
       fetchImpl.mock.calls.some((call) => String(call[1].body).includes("Session failed")),
     ).toBe(true);
