@@ -808,8 +808,8 @@ export class DynamoPlaneStorageBase {
     return catalog.deleteLog(this.ctx, sessionId, timestampSeq);
   }
 
-  listLogs(sessionId: string): Promise<LogRecord[]> {
-    return catalog.listLogs(this.ctx, sessionId);
+  listLogs(sessionId: string, consistentRead = false): Promise<LogRecord[]> {
+    return catalog.listLogs(this.ctx, sessionId, consistentRead);
   }
 
   queryLogs(sessionId: string, query: LogQuery): Promise<LogRecord[]> {

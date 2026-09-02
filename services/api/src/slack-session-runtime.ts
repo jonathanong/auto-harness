@@ -17,7 +17,10 @@ export type SlackLifecycleConfig = {
 /** Structural slice of control-plane state — kept local to avoid a circular import. */
 type SlackSessionStorage = SlackOutboxStore & {
   getSlackIntegration?: () => Promise<SlackIntegrationRecord | null>;
-  listLogs?: (sessionId: string) => Promise<ReadonlyArray<{ stream: string; content: string }>>;
+  listLogs?: (
+    sessionId: string,
+    consistentRead?: boolean,
+  ) => Promise<ReadonlyArray<{ stream: string; content: string }>>;
 };
 
 type SlackSessionLogCache = {
@@ -75,17 +78,22 @@ export async function reconcileSlackSession(input: {
  * session's own log chunks landed on a different container) would otherwise enqueue the
  * terminal row with an empty tail.
  *
- * Two known, accepted limitations, shared with the pre-existing cron-path helper this
- * mirrors (hydrateSlackSnapshotInputs in slack-runtime.ts) rather than introduced by it:
- * the `has()` check treats "some cached content" as "complete," so a container that
- * already holds a partial prefix from its own live writes won't refresh from storage even
- * if newer chunks landed on a different container; and `listLogs` is a full, unbounded
- * durable scan, so an unusually log-heavy failed session pays for the whole transcript to
- * read the last five stderr lines. Both would need a bounded, reverse-ordered tail query
- * (ScanIndexForward: false) added to the storage layer to fix properly — real, separate
- * follow-up work, not done here. The try/catch below bounds the blast radius of the
- * second one in the meantime: a failed fetch drops just the stderr tail, not the entire
- * Slack notification this call sits in front of.
+ * Reads with `consistentRead: true`: this result is baked into an immutable outbox row, so
+ * an eventually consistent read racing the host's own final `session:log` write — which can
+ * legally return a transcript missing that last chunk — would freeze the miss permanently,
+ * unlike listLogs's other callers (REST/viewer tail display, archive writes), which get a
+ * later read that self-corrects.
+ *
+ * One known, accepted limitation, shared with the pre-existing cron-path helper this mirrors
+ * (hydrateSlackSnapshotInputs in slack-runtime.ts) rather than introduced by it: the `has()`
+ * check treats "some cached content" as "complete," so a container that already holds a
+ * partial prefix from its own live writes won't refresh from storage even if newer chunks
+ * landed on a different container. Fixing that, and bounding `listLogs`'s full-transcript
+ * scan for an unusually log-heavy session, both need a reverse-ordered tail query
+ * (ScanIndexForward: false) added to the storage layer — real, separate follow-up work, not
+ * done here. The try/catch below bounds today's unbounded-scan blast radius in the
+ * meantime: a failed fetch drops just the stderr tail, not the entire Slack notification
+ * this call sits in front of.
  */
 async function ensureFailedSessionLogsLoaded(
   state: SlackSessionWriterState,
@@ -95,7 +103,7 @@ async function ensureFailedSessionLogsLoaded(
   const failed = session.status === "failed" || session.status === "timed_out";
   if (!failed || state.logs.has(session.id) || typeof storage.listLogs !== "function") return;
   try {
-    state.logs.set(session.id, await storage.listLogs(session.id));
+    state.logs.set(session.id, await storage.listLogs(session.id, true));
   } catch (error) {
     console.error("failed to load durable logs for a failed-session Slack snapshot", error);
   }

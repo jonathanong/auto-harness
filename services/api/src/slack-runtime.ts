@@ -168,7 +168,11 @@ async function hydrateSlackSnapshotInputs(
     storage &&
     typeof storage.listLogs === "function"
   ) {
-    plane.state.logs.set(session.id, await storage.listLogs(session.id));
+    // consistentRead: true — see the identical fetch (and its full rationale) in
+    // ensureFailedSessionLogsLoaded, slack-session-runtime.ts. This result feeds the same
+    // immutable outbox rows, so it needs the same guarantee against a racing eventually
+    // consistent read missing the host's last session:log write.
+    plane.state.logs.set(session.id, await storage.listLogs(session.id, true));
   }
 }
 

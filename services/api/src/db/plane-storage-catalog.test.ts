@@ -2,6 +2,7 @@
 import {
   GetCommand,
   PutCommand,
+  QueryCommand,
   TransactWriteCommand,
   type TransactWriteCommandInput,
   UpdateCommand,
@@ -13,6 +14,7 @@ import {
   getHostInventory,
   deleteSchedule,
   disableLegacyFallbackScheduleAndAudit,
+  listLogs,
   listSchedules,
   putLog,
   putLogFenced,
@@ -1305,5 +1307,24 @@ describe("session log ttl", () => {
         },
       },
     ]);
+  });
+});
+
+describe("session log read consistency", () => {
+  it("reads eventually consistent by default and strongly consistent on request", async () => {
+    const send = vi.fn(async (command: unknown) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      return { Items: [] };
+    });
+    const ctx: PlaneStorageCtx = {
+      doc: { send } as never,
+      tables: { sessionLogs: "SessionLogs" } as never,
+    };
+
+    await listLogs(ctx, "session-1");
+    expect((send.mock.calls[0]![0] as QueryCommand).input.ConsistentRead).toBeUndefined();
+
+    await listLogs(ctx, "session-1", true);
+    expect((send.mock.calls[1]![0] as QueryCommand).input.ConsistentRead).toBe(true);
   });
 });
