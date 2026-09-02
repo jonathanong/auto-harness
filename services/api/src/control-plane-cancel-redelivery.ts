@@ -28,7 +28,11 @@ export async function redeliverPendingCancels(
       // reconnect, `reconcileHostRunningSessions` silently drops a stale
       // reported session (it isn't "running" anymore) without telling the
       // daemon to stop it, so this outbox is the only thing that will ever
-      // redeliver the cancel to that host once it reconnects.
+      // redeliver the cancel to that host once it reconnects. Bump it to the
+      // back of the queue so a run of disconnected hosts can't permanently
+      // occupy every oldest-page query and starve a newer, deliverable
+      // candidate — see `deferPendingCancelRedelivery`.
+      await storage.deferPendingCancelRedelivery(candidate.sessionId, state.now());
       continue;
     }
     const claimed = await storage.claimCancelRedeliveryAttempt(

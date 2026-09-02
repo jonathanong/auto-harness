@@ -145,6 +145,10 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return cancelRedeliveries.clearPendingCancelRedelivery(this.ctx, sessionId);
   }
 
+  deferPendingCancelRedelivery(sessionId: string, now: string): Promise<void> {
+    return cancelRedeliveries.deferPendingCancelRedelivery(this.ctx, sessionId, now);
+  }
+
   getSlackIntegration(): Promise<
     import("../slack-integration-types.ts").SlackIntegrationRecord | null
   > {

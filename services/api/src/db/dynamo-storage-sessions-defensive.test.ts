@@ -70,9 +70,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
         queueShard: 0,
       }),
     ).resolves.toBe(true);
-    const write = commands.find((command) => command instanceof TransactWriteCommand) as
-      | TransactWriteCommand
-      | undefined;
+    const write = commands.find((command) => command instanceof TransactWriteCommand);
     const sessionUpdate = write?.input.TransactItems?.find(
       (item) => item.Update?.TableName === "sessions",
     )?.Update;
@@ -108,7 +106,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
         send: async (command: unknown) => {
           commands.push(command);
           if (command instanceof QueryCommand) {
-            const index = (command as QueryCommand).input.IndexName;
+            const index = command.input.IndexName;
             if (index === SESSIONS_QUEUE_ORDER_INDEX) {
               return {
                 Items: [
@@ -316,16 +314,16 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
   });
 
   it("fences running cancellation and preserves non-conditional failures", async () => {
-    const commands: UpdateCommand[] = [];
+    const commands: TransactWriteCommand[] = [];
     const ctx = {
       doc: {
         send: async (command: unknown) => {
-          expect(command).toBeInstanceOf(UpdateCommand);
-          commands.push(command as UpdateCommand);
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          commands.push(command as TransactWriteCommand);
           return {};
         },
       },
-      tables: { sessions: "sessions" },
+      tables: { sessions: "sessions", sessionCancelRedeliveries: "redeliveries" },
     } as unknown as PlaneStorageCtx;
     const options = {
       sessionId: "session",
@@ -342,10 +340,22 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
     await expect(
       cancelRunningSession(ctx, { ...options, drainOperationId: "drain" }),
     ).resolves.toBe(true);
-    expect(commands[0]?.input.UpdateExpression).not.toContain("cancelledByDrainOperationId");
-    expect(commands[1]?.input).toMatchObject({
+    const firstUpdate = commands[0]?.input.TransactItems?.[0]?.Update;
+    const secondUpdate = commands[1]?.input.TransactItems?.[0]?.Update;
+    expect(firstUpdate?.UpdateExpression).not.toContain("cancelledByDrainOperationId");
+    expect(secondUpdate).toMatchObject({
       UpdateExpression: expect.stringContaining("cancelledByDrainOperationId"),
-      ExpressionAttributeValues: { ":drainOperationId": "drain" },
+      ExpressionAttributeValues: expect.objectContaining({ ":drainOperationId": "drain" }),
+    });
+    expect(commands[0]?.input.TransactItems?.[1]?.Put).toMatchObject({
+      TableName: "redeliveries",
+      Item: expect.objectContaining({
+        sessionId: "session",
+        hostId: "host",
+        attemptId: "attempt",
+        createdAt: "done",
+        queuedAt: "done",
+      }),
     });
 
     const conditional = {

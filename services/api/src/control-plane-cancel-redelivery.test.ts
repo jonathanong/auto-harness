@@ -16,6 +16,7 @@ function candidate(overrides: Partial<CancelRedeliveryRecord> = {}): CancelRedel
     status: "pending",
     attempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
+    queuedAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
@@ -56,9 +57,11 @@ describe("redeliverPendingCancels", () => {
     ]);
   });
 
-  it("leaves the marker pending, without claiming or clearing, while the host is disconnected", async () => {
-    const state = createControlPlaneState();
+  it("defers the marker to the back of the queue, without claiming or clearing, while the host is disconnected", async () => {
+    const fixedNow = "2026-02-02T00:00:00.000Z";
+    const state = createControlPlaneState({ now: () => fixedNow });
     const cleared: string[] = [];
+    const deferred: Array<{ sessionId: string; now: string }> = [];
     let claimCalled = false;
     setDurableReadStorage(state, {
       listPendingCancelRedeliveries: async () => [candidate()],
@@ -68,12 +71,15 @@ describe("redeliverPendingCancels", () => {
         return true;
       },
       clearPendingCancelRedelivery: async (sessionId: string) => void cleared.push(sessionId),
+      deferPendingCancelRedelivery: async (sessionId: string, now: string) =>
+        void deferred.push({ sessionId, now }),
     });
     let pushCount = 0;
     state.onHostMessage = () => void (pushCount += 1);
 
     await expect(redeliverPendingCancels(state)).resolves.toBe(0);
 
+    expect(deferred).toEqual([{ sessionId: "session-1", now: fixedNow }]);
     expect(cleared).toEqual([]);
     expect(pushCount).toBe(0);
     expect(claimCalled).toBe(false);

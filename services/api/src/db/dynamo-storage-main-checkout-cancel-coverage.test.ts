@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { listPendingCancelRedeliveries } from "./plane-storage-cancel-redeliveries.ts";
 import { cancelRunningMainCheckoutSession } from "./plane-storage-main-checkout-cancel.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -65,6 +66,17 @@ describe("DynamoDB Local main-checkout cancellation", () => {
       reconnectDeadlineAt: opts.deadlineAt,
       errorMessage: opts.errorMessage,
     });
+    expect(await listPendingCancelRedeliveries(ctx, 10)).toEqual([
+      expect.objectContaining({
+        sessionId: opts.sessionId,
+        hostId: opts.hostId,
+        attemptId: opts.attemptId,
+        status: "pending",
+        attempts: 0,
+        createdAt: opts.completedAt,
+        queuedAt: opts.completedAt,
+      }),
+    ]);
     expect(await cancelRunningMainCheckoutSession(ctx, opts)).toBe(false);
   });
 

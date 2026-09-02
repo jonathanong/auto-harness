@@ -179,9 +179,9 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "sessionId", type: "S" },
     gsis: [
       {
-        name: "status-createdAt",
+        name: "status-queuedAt",
         partitionKey: { name: "status", type: "S" },
-        sortKey: { name: "createdAt", type: "S" },
+        sortKey: { name: "queuedAt", type: "S" },
       },
     ],
   },

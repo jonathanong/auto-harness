@@ -59,45 +59,14 @@ describe("durable cancellation assignment fence", () => {
     ]);
   });
 
-  it("records a durable redelivery marker before notifying the host", async () => {
-    const fixedNow = "2026-01-01T00:00:00.000Z";
-    const state = createControlPlaneState({ now: () => fixedNow });
-    const recorded: unknown[] = [];
-    const session = {
-      ...runningSession,
-      assignmentConnectionId: "connection",
-      attemptId: "attempt-1",
-    };
-    state.sessions.set(session.id, session);
-    setDurableReadStorage(state, {
-      getSession: async () => session,
-      cancelRunningSession: async () => true,
-      recordPendingCancelRedelivery: async (input: unknown) => void recorded.push(input),
-    });
-
-    await expect(cancelSessionDurable(state, session.id)).resolves.toMatchObject({ ok: true });
-
-    expect(recorded).toEqual([
-      { sessionId: "session", hostId: "host", attemptId: "attempt-1", now: fixedNow },
-    ]);
-  });
-
-  it("does not fail the cancellation when the redelivery marker write fails", async () => {
-    const state = createControlPlaneState();
-    const session = {
-      ...runningSession,
-      assignmentConnectionId: "connection",
-      attemptId: "attempt-1",
-    };
-    state.sessions.set(session.id, session);
-    setDurableReadStorage(state, {
-      getSession: async () => session,
-      cancelRunningSession: async () => true,
-      recordPendingCancelRedelivery: async () => {
-        throw new Error("write unavailable");
-      },
-    });
-
-    await expect(cancelSessionDurable(state, session.id)).resolves.toMatchObject({ ok: true });
-  });
+  // The redelivery marker is no longer a separately-mockable `storage.recordPendingCancelRedelivery`
+  // call at this layer: `cancelRunningSession`/`cancelRunningMainCheckoutSession` now write it inside
+  // their own `TransactWriteCommand`, atomically with the session-cancel update (see
+  // `writeCancelledSessionUpdate` in `db/plane-storage-session-cancel-write.ts`). That means a marker
+  // write can no longer fail independently of the cancel itself — a failure there now fails the whole
+  // transaction, which is the correct, tightened guarantee, not a preserved tolerance. Ordering
+  // relative to the host notification is enforced by control flow (`await cancelRunningSession(...)`
+  // precedes `state.onHostMessage?.(...)` in `cancelSessionDurable`), not by a mock assertion. The
+  // atomic transaction's shape is covered by `db/plane-storage-session-cancel-write.test.ts` and
+  // `db/dynamo-storage-sessions-defensive.test.ts`.
 });

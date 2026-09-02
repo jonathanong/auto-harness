@@ -36,6 +36,7 @@ describe("DynamoDB cancel redelivery outbox", () => {
         status: "pending",
         attempts: 0,
         createdAt: t0,
+        queuedAt: t0,
         updatedAt: t0,
       },
     ]);
@@ -90,5 +91,56 @@ describe("DynamoDB cancel redelivery outbox", () => {
 
     await ctx.storage.clearPendingCancelRedelivery("session-older");
     await ctx.storage.clearPendingCancelRedelivery("session-newer");
+  });
+
+  it("deferring a candidate moves it behind an unrelated newer one, unblocking it", async () => {
+    if (!ctx.storage) return;
+    // Two disconnected-host rows created before a third, connected-host row: without
+    // deferral, a limit-2 page returns only the stuck pair forever and the connected-host
+    // row is never seen.
+    await ctx.storage.recordPendingCancelRedelivery({
+      sessionId: "session-stuck-1",
+      hostId: "host-down",
+      attemptId: "attempt-stuck-1",
+      now: t0,
+    });
+    await ctx.storage.recordPendingCancelRedelivery({
+      sessionId: "session-stuck-2",
+      hostId: "host-down",
+      attemptId: "attempt-stuck-2",
+      now: t0,
+    });
+    const t2 = "2026-08-12T20:02:00.000Z";
+    await ctx.storage.recordPendingCancelRedelivery({
+      sessionId: "session-connected",
+      hostId: "host-up",
+      attemptId: "attempt-connected",
+      now: t2,
+    });
+
+    const firstPage = await ctx.storage.listPendingCancelRedeliveries(2);
+    expect(firstPage.map((r) => r.sessionId)).toEqual(["session-stuck-1", "session-stuck-2"]);
+
+    // Distinct defer timestamps per candidate, matching the real loop (`state.now()` is called
+    // once per candidate in `redeliverPendingCancels`) — deferring both to the same instant would
+    // leave their relative order on the `status-queuedAt` GSI unspecified.
+    const t3 = "2026-08-12T20:03:00.000Z";
+    const t4 = "2026-08-12T20:04:00.000Z";
+    await ctx.storage.deferPendingCancelRedelivery("session-stuck-1", t3);
+    await ctx.storage.deferPendingCancelRedelivery("session-stuck-2", t4);
+
+    const secondPage = await ctx.storage.listPendingCancelRedeliveries(2);
+    expect(secondPage.map((r) => r.sessionId)).toEqual(["session-connected", "session-stuck-1"]);
+
+    await ctx.storage.clearPendingCancelRedelivery("session-stuck-1");
+    await ctx.storage.clearPendingCancelRedelivery("session-stuck-2");
+    await ctx.storage.clearPendingCancelRedelivery("session-connected");
+  });
+
+  it("no-ops deferring a candidate that was already cleared", async () => {
+    if (!ctx.storage) return;
+    await expect(
+      ctx.storage.deferPendingCancelRedelivery("session-already-cleared", t1),
+    ).resolves.toBeUndefined();
   });
 });

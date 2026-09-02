@@ -129,6 +129,12 @@ export async function cancelRunningSession(
         ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
       },
     },
+    {
+      sessionId: opts.sessionId,
+      hostId: opts.hostId,
+      attemptId: opts.attemptId,
+      now: opts.completedAt,
+    },
     drain,
   );
 }

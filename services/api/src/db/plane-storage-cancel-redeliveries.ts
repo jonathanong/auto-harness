@@ -1,6 +1,6 @@
 import { DeleteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { isConditionalFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /**
  * Durable marker for an operator-initiated `session:cancel` push to a host.
@@ -16,6 +16,7 @@ export type CancelRedeliveryRecord = {
   status: "pending";
   attempts: number;
   createdAt: string;
+  queuedAt: string;
   updatedAt: string;
 };
 
@@ -37,6 +38,7 @@ export async function recordPendingCancelRedelivery(
         status: "pending",
         attempts: 0,
         createdAt: input.now,
+        queuedAt: input.now,
         updatedAt: input.now,
       },
     }),
@@ -50,7 +52,7 @@ export async function listPendingCancelRedeliveries(
   const response = await ctx.doc.send(
     new QueryCommand({
       TableName: ctx.tables.sessionCancelRedeliveries,
-      IndexName: "status-createdAt",
+      IndexName: "status-queuedAt",
       KeyConditionExpression: "#status = :pending",
       ExpressionAttributeNames: { "#status": "status" },
       ExpressionAttributeValues: { ":pending": "pending" },
@@ -62,10 +64,44 @@ export async function listPendingCancelRedeliveries(
 }
 
 /**
+ * Push a candidate that can't be redelivered yet (host disconnected) to the back of the
+ * `status-queuedAt` index by bumping its `queuedAt` cursor to now. Without this, a run of
+ * ≥`limit` disconnected-host rows would occupy every oldest-page query forever — since they
+ * never clear on their own — permanently starving any newer, deliverable candidate queued
+ * behind them. Mirrors `releaseArchiveRetry`'s `retryOrder` bump for the same reason.
+ */
+export async function deferPendingCancelRedelivery(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  now: string,
+): Promise<void> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessionCancelRedeliveries,
+        Key: { sessionId },
+        UpdateExpression: "SET queuedAt = :now, updatedAt = :now",
+        ConditionExpression: "attribute_exists(sessionId) AND #status = :pending",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":now": now, ":pending": "pending" },
+      }),
+    );
+  } catch (error) {
+    if (isConditionalFailed(error)) return;
+    throw error;
+  }
+}
+
+/**
  * Atomically claims one redelivery attempt, returning `false` (no dispatch should
- * follow) when a concurrent cron invocation already claimed this tick or the
- * attempt limit was already reached. Guards against two overlapping cron runs
- * both reading `attempts` below the limit and both dispatching.
+ * follow) once the attempt limit is reached. The conditional write bounds the
+ * total attempts at `maxAttempts` even under overlapping cron invocations, but
+ * does not fence a single invocation: two overlapping invocations racing this
+ * same row can each observe `attempts < max` and each successfully claim and
+ * dispatch. That is acceptable because `session:cancel` redelivery is
+ * idempotent on the host (see `redeliverPendingCancels`'s host-daemon comment),
+ * so a few near-simultaneous redeliveries are harmless — only the count, not
+ * the pacing, needs to stay bounded.
  */
 export async function claimCancelRedeliveryAttempt(
   ctx: PlaneStorageCtx,

@@ -128,6 +128,21 @@ describe("AutoHarnessFoundationStack", () => {
         },
       ]),
     });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      TableName: "AutoHarness-SessionCancelRedeliveries",
+      KeySchema: [{ AttributeName: "sessionId", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: Match.arrayWith([
+        {
+          IndexName: "status-queuedAt",
+          KeySchema: [
+            { AttributeName: "status", KeyType: "HASH" },
+            { AttributeName: "queuedAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ]),
+    });
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketEncryption: {
         ServerSideEncryptionConfiguration: [

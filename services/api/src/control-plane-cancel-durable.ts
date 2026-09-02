@@ -1,32 +1,12 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { cancelSession } from "./control-plane-cancel-local.ts";
-import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import { releaseWorktree } from "./control-plane-worktree-release.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
-
-/**
- * Record a durable marker so a lost `session:cancel` push can be redelivered by cron.
- * Best-effort: a failure here must not fail the cancellation itself, since the session's
- * durable status transition has already committed and the host push is about to fire.
- * Takes `storage` (not `state`) so callers pass it only where `state.storage` is already
- * known non-null, keeping that guarantee visible at the call site instead of re-checked here.
- */
-async function recordCancelRedeliveryMarker(
-  storage: DynamoPlaneStorage,
-  now: string,
-  input: { sessionId: string; hostId: string; attemptId: string },
-): Promise<void> {
-  try {
-    await storage.recordPendingCancelRedelivery({ ...input, now });
-  } catch (error) {
-    console.error("failed to record cancel redelivery marker", error);
-  }
-}
 
 /** Persist a queued cancellation and its lock release as one durable transition. */
 export async function cancelSessionDurable(
@@ -89,11 +69,6 @@ export async function cancelSessionDurable(
       };
       state.sessions.set(id, updatedSession);
       noteSlackSessionLifecycle(state, updatedSession);
-      await recordCancelRedeliveryMarker(state.storage, state.now(), {
-        sessionId: id,
-        hostId: assignment.hostId,
-        attemptId: assignment.attemptId,
-      });
       state.onHostMessage?.(assignment.hostId, {
         type: "session:cancel",
         sessionId: id,
@@ -144,11 +119,6 @@ export async function cancelSessionDurable(
     // assignment.hostId (not session.hostId) — the guard above validated this exact
     // value as the host that actually holds the lease being cancelled; session is the
     // separately-fetched fresh record and isn't guaranteed to agree in a race.
-    await recordCancelRedeliveryMarker(state.storage, state.now(), {
-      sessionId: id,
-      hostId: assignment.hostId,
-      attemptId: assignment.attemptId,
-    });
     state.onHostMessage?.(assignment.hostId, {
       type: "session:cancel",
       sessionId: id,
