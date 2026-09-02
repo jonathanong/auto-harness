@@ -47,6 +47,12 @@ export async function cancelRunningMainCheckoutSession(
         ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
       },
     },
+    {
+      sessionId: opts.sessionId,
+      hostId: opts.hostId,
+      attemptId: opts.attemptId,
+      now: opts.completedAt,
+    },
     drainCancelScope(opts),
   );
 }

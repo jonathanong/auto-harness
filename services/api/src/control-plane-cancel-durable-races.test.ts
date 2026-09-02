@@ -58,4 +58,15 @@ describe("durable cancellation assignment fence", () => {
       },
     ]);
   });
+
+  // The redelivery marker is no longer a separately-mockable `storage.recordPendingCancelRedelivery`
+  // call at this layer: `cancelRunningSession`/`cancelRunningMainCheckoutSession` now write it inside
+  // their own `TransactWriteCommand`, atomically with the session-cancel update (see
+  // `writeCancelledSessionUpdate` in `db/plane-storage-session-cancel-write.ts`). That means a marker
+  // write can no longer fail independently of the cancel itself — a failure there now fails the whole
+  // transaction, which is the correct, tightened guarantee, not a preserved tolerance. Ordering
+  // relative to the host notification is enforced by control flow (`await cancelRunningSession(...)`
+  // precedes `state.onHostMessage?.(...)` in `cancelSessionDurable`), not by a mock assertion. The
+  // atomic transaction's shape is covered by `db/plane-storage-session-cancel-write.test.ts` and
+  // `db/dynamo-storage-sessions-defensive.test.ts`.
 });

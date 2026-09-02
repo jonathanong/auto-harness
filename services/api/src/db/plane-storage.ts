@@ -12,6 +12,7 @@ import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
 import * as locks from "./plane-storage-locks.ts";
+import * as cancelRedeliveries from "./plane-storage-cancel-redeliveries.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
 import * as webhookOutbox from "./plane-storage-webhook-outbox.ts";
 import * as webhookSettlement from "./plane-storage-webhook-settlement.ts";
@@ -115,6 +116,37 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean> {
     return webhookSettlement.deadLetterExhaustedWebhookDelivery(this.ctx, input);
+  }
+
+  recordPendingCancelRedelivery(input: {
+    sessionId: string;
+    hostId: string;
+    attemptId: string;
+    now: string;
+  }): Promise<void> {
+    return cancelRedeliveries.recordPendingCancelRedelivery(this.ctx, input);
+  }
+
+  listPendingCancelRedeliveries(
+    limit: number,
+  ): Promise<cancelRedeliveries.CancelRedeliveryRecord[]> {
+    return cancelRedeliveries.listPendingCancelRedeliveries(this.ctx, limit);
+  }
+
+  claimCancelRedeliveryAttempt(
+    sessionId: string,
+    now: string,
+    maxAttempts: number,
+  ): Promise<boolean> {
+    return cancelRedeliveries.claimCancelRedeliveryAttempt(this.ctx, sessionId, now, maxAttempts);
+  }
+
+  clearPendingCancelRedelivery(sessionId: string): Promise<void> {
+    return cancelRedeliveries.clearPendingCancelRedelivery(this.ctx, sessionId);
+  }
+
+  deferPendingCancelRedelivery(sessionId: string, now: string): Promise<void> {
+    return cancelRedeliveries.deferPendingCancelRedelivery(this.ctx, sessionId, now);
   }
 
   getSlackIntegration(): Promise<

@@ -28,6 +28,7 @@ describe("CDK table catalog", () => {
       "Integrations",
       "NotificationDeliveries",
       "WebhookDeliveries",
+      "SessionCancelRedeliveries",
     ]);
     expect(DYNAMO_TABLES.find((table) => table.name === "Worktrees")?.gsis).toEqual([
       {

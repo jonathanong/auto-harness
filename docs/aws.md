@@ -170,7 +170,21 @@ Keepalive is agent-initiated because Lambda has no persistent process timer.
 Each daemon sends periodic `host:keepalive` activity before API Gateway's idle
 timeout.
 
-**Outbound push:** Lambda uses API Gateway Management API (`postToConnection`) with the stored `connectionId` from DynamoDB.
+**Outbound push:** Lambda uses API Gateway Management API (`postToConnection`) with the stored `connectionId` from DynamoDB, via a client bounded by a 3s connect / 5s request timeout (`ApiGatewayManagementApiClient` + `NodeHttpHandler`) so a half-open connection fails fast instead of hanging the invocation.
+
+REST responses do not wait on this push: every host-bound message is written to durable storage
+before the push fires, so the HTTP response reflects that committed state regardless of delivery.
+Cron still drains its own pushes (nothing else is waiting on it, and it carries a remaining-time
+guard). Most message types already self-heal if a push is lost — `session:assign` and `host:drain`
+have dedicated cron reconcilers, and timeout-cancel is re-emitted by the cron tick that produces it.
+The one type with no reconciler, operator-initiated `session:cancel`, gets a durable
+`SessionCancelRedeliveries` outbox row (see [Tables and access patterns](#tables-and-access-patterns))
+written before the push; the cron drains it (`redeliverPendingCancelsDurable`, capped at 3 attempts
+per session) until the host has no lock on the session or attempts are exhausted. Redelivery is
+attempt-bounded, not ack-based — a successfully delivered cancel is not proactively cleared, since
+the host daemon's cancel handler is idempotent. **Deploy note:** the CDK foundation stack must
+provision `SessionCancelRedeliveries` before an API/Cron deploy that calls
+`listPendingCancelRedeliveries` — that call fails once per minute against a missing table otherwise.
 
 ---
 
@@ -238,28 +252,29 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                  | PK                | SK             | GSIs                                              | Primary access patterns                                                 |
-| ---------------------- | ----------------- | -------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| Users                  | `id`              | —              | `username`                                        | Login by username                                                       |
-| Repositories           | `id`              | —              | —                                                 | CRUD by id; bounded strongly consistent catalog pages                   |
-| Worktrees              | `id`              | —              | `repositoryId-id`                                 | List repository worktrees                                               |
-| Sessions               | `id`              | —              | `statusShard-createdAt`, `statusShard-queueOrder` | Sharded queue query; `queueOrder` is inverted priority, `createdAt`, id |
-| HostLocks              | `hostId`          | —              | —                                                 | Conditional host assignment lock                                        |
-| ConcurrencyLocks       | `concurrencyId`   | —              | —                                                 | Conditional concurrency lock                                            |
-| SessionLogs            | `sessionId`       | `timestampSeq` | —                                                 | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes    |
-| Schedules              | `id`              | —              | `repositoryId-id`                                 | CRUD by id; count schedules by repository                               |
-| Connections            | `connectionId`    | —              | —                                                 | Connection state                                                        |
-| Archives               | `key`             | —              | —                                                 | Archive metadata                                                        |
-| HostInventories        | `hostId`          | —              | —                                                 | Host inventory                                                          |
-| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                                                 | Append-only newest-first query                                          |
-| RateLimits             | `bucketKey`       | —              | —                                                 | Atomic fixed-window counters + TTL                                      |
-| ViewerTickets          | `ticketHash`      | —              | —                                                 | Hashed one-time viewer tickets + TTL                                    |
-| Providers              | `id`              | —              | —                                                 | Provider catalog                                                        |
-| ProviderAccounts       | `id`              | —              | —                                                 | Provider account catalog                                                |
-| Commands               | `id`              | —              | —                                                 | Command catalog                                                         |
-| Integrations           | `id`              | —              | —                                                 | Encrypted integration configuration                                     |
-| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                          |
-| WebhookDeliveries      | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                       |
+| Table                     | PK                | SK             | GSIs                                              | Primary access patterns                                                 |
+| ------------------------- | ----------------- | -------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| Users                     | `id`              | —              | `username`                                        | Login by username                                                       |
+| Repositories              | `id`              | —              | —                                                 | CRUD by id; bounded strongly consistent catalog pages                   |
+| Worktrees                 | `id`              | —              | `repositoryId-id`                                 | List repository worktrees                                               |
+| Sessions                  | `id`              | —              | `statusShard-createdAt`, `statusShard-queueOrder` | Sharded queue query; `queueOrder` is inverted priority, `createdAt`, id |
+| HostLocks                 | `hostId`          | —              | —                                                 | Conditional host assignment lock                                        |
+| ConcurrencyLocks          | `concurrencyId`   | —              | —                                                 | Conditional concurrency lock                                            |
+| SessionLogs               | `sessionId`       | `timestampSeq` | —                                                 | Append/range read; `ttl` is epoch-seconds 7-day expiry on new writes    |
+| Schedules                 | `id`              | —              | `repositoryId-id`                                 | CRUD by id; count schedules by repository                               |
+| Connections               | `connectionId`    | —              | —                                                 | Connection state                                                        |
+| Archives                  | `key`             | —              | —                                                 | Archive metadata                                                        |
+| HostInventories           | `hostId`          | —              | —                                                 | Host inventory                                                          |
+| AuditLogs                 | `scope` (`audit`) | `timestampId`  | —                                                 | Append-only newest-first query                                          |
+| RateLimits                | `bucketKey`       | —              | —                                                 | Atomic fixed-window counters + TTL                                      |
+| ViewerTickets             | `ticketHash`      | —              | —                                                 | Hashed one-time viewer tickets + TTL                                    |
+| Providers                 | `id`              | —              | —                                                 | Provider catalog                                                        |
+| ProviderAccounts          | `id`              | —              | —                                                 | Provider account catalog                                                |
+| Commands                  | `id`              | —              | —                                                 | Command catalog                                                         |
+| Integrations              | `id`              | —              | —                                                 | Encrypted integration configuration                                     |
+| NotificationDeliveries    | `id`              | —              | `status-nextAttemptAt`                            | Leased durable delivery outbox                                          |
+| WebhookDeliveries         | `id`              | —              | `state-dueAt`                                     | Bounded future outbox lease/retry                                       |
+| SessionCancelRedeliveries | `sessionId`       | —              | `status-queuedAt`                                 | Cron-drained outbox for lost operator `session:cancel` pushes           |
 
 Unrestricted repository pages use bounded, strongly consistent table scans with opaque storage
 continuations. Scoped principals use strongly consistent keyed reads of only their allowed IDs.
