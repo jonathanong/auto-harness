@@ -133,8 +133,12 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return cancelRedeliveries.listPendingCancelRedeliveries(this.ctx, limit);
   }
 
-  recordCancelRedeliveryAttempt(sessionId: string, now: string): Promise<void> {
-    return cancelRedeliveries.recordCancelRedeliveryAttempt(this.ctx, sessionId, now);
+  claimCancelRedeliveryAttempt(
+    sessionId: string,
+    now: string,
+    maxAttempts: number,
+  ): Promise<boolean> {
+    return cancelRedeliveries.claimCancelRedeliveryAttempt(this.ctx, sessionId, now, maxAttempts);
   }
 
   clearPendingCancelRedelivery(sessionId: string): Promise<void> {

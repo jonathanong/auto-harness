@@ -4,9 +4,10 @@ import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /**
  * Durable marker for an operator-initiated `session:cancel` push to a host.
- * No lease/fence: `handleCancel` on the host daemon is idempotent (it aborts
- * an already-aborted controller as a no-op), so redelivery needs only a
- * bounded attempt counter, not exclusive claim semantics.
+ * `handleCancel` on the host daemon is idempotent (it aborts an already-aborted
+ * controller as a no-op), so redelivery needs no ack/fence on the host side —
+ * only a conditionally-claimed attempt counter, to keep the bound accurate
+ * under overlapping cron invocations.
  */
 export type CancelRedeliveryRecord = {
   sessionId: string;
@@ -60,19 +61,35 @@ export async function listPendingCancelRedeliveries(
   return (response.Items ?? []).map(record);
 }
 
-export async function recordCancelRedeliveryAttempt(
+/**
+ * Atomically claims one redelivery attempt, returning `false` (no dispatch should
+ * follow) when a concurrent cron invocation already claimed this tick or the
+ * attempt limit was already reached. Guards against two overlapping cron runs
+ * both reading `attempts` below the limit and both dispatching.
+ */
+export async function claimCancelRedeliveryAttempt(
   ctx: PlaneStorageCtx,
   sessionId: string,
   now: string,
-): Promise<void> {
-  await ctx.doc.send(
-    new UpdateCommand({
-      TableName: ctx.tables.sessionCancelRedeliveries,
-      Key: { sessionId },
-      UpdateExpression: "SET attempts = attempts + :one, updatedAt = :now",
-      ExpressionAttributeValues: { ":one": 1, ":now": now },
-    }),
-  );
+  maxAttempts: number,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessionCancelRedeliveries,
+        Key: { sessionId },
+        UpdateExpression: "SET attempts = attempts + :one, updatedAt = :now",
+        ConditionExpression: "attempts < :max",
+        ExpressionAttributeValues: { ":one": 1, ":now": now, ":max": maxAttempts },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "name" in error) {
+      if ((error as { name?: unknown }).name === "ConditionalCheckFailedException") return false;
+    }
+    throw error;
+  }
 }
 
 export async function clearPendingCancelRedelivery(

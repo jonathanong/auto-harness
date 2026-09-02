@@ -86,6 +86,10 @@ type BootstrapSecrets = { admins: string; cursorSecret: string; sessionSecret: s
  * indefinitely (the SDK's default client has no timeout), burning an
  * invocation to the Lambda timeout instead of failing fast into the
  * `GoneException`/disconnect handling `postToHost` already has.
+ *
+ * `requestTimeout` alone only logs a warning past the deadline — Smithy's
+ * `NodeHttpHandler` requires `throwOnRequestTimeout: true` for it to actually
+ * destroy the socket and reject the call.
  */
 const MANAGEMENT_API_CONNECTION_TIMEOUT_MS = 3_000;
 const MANAGEMENT_API_REQUEST_TIMEOUT_MS = 5_000;
@@ -242,6 +246,7 @@ export async function createLambdaRuntime(
       requestHandler: new NodeHttpHandler({
         connectionTimeout: MANAGEMENT_API_CONNECTION_TIMEOUT_MS,
         requestTimeout: MANAGEMENT_API_REQUEST_TIMEOUT_MS,
+        throwOnRequestTimeout: true,
       }),
     });
   const deliveryContext = new AsyncLocalStorage<Set<Promise<void>>>();

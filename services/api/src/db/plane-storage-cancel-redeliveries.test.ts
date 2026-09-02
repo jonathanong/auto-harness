@@ -40,13 +40,35 @@ describe("DynamoDB cancel redelivery outbox", () => {
       },
     ]);
 
-    await ctx.storage.recordCancelRedeliveryAttempt("session-a", t1);
+    await expect(ctx.storage.claimCancelRedeliveryAttempt("session-a", t1, 3)).resolves.toBe(true);
     expect(await ctx.storage.listPendingCancelRedeliveries(10)).toEqual([
       expect.objectContaining({ sessionId: "session-a", attempts: 1, updatedAt: t1 }),
     ]);
 
     await ctx.storage.clearPendingCancelRedelivery("session-a");
     expect(await ctx.storage.listPendingCancelRedeliveries(10)).toEqual([]);
+  });
+
+  it("fails the claim once the attempt limit is reached, leaving the record unchanged", async () => {
+    if (!ctx.storage) return;
+    await ctx.storage.recordPendingCancelRedelivery({
+      sessionId: "session-limit",
+      hostId: "host-1",
+      attemptId: "attempt-1",
+      now: t0,
+    });
+
+    await expect(ctx.storage.claimCancelRedeliveryAttempt("session-limit", t1, 1)).resolves.toBe(
+      true,
+    );
+    await expect(ctx.storage.claimCancelRedeliveryAttempt("session-limit", t1, 1)).resolves.toBe(
+      false,
+    );
+    expect(await ctx.storage.listPendingCancelRedeliveries(10)).toEqual([
+      expect.objectContaining({ sessionId: "session-limit", attempts: 1, updatedAt: t1 }),
+    ]);
+
+    await ctx.storage.clearPendingCancelRedelivery("session-limit");
   });
 
   it("lists only up to the requested limit, oldest first", async () => {

@@ -27,15 +27,16 @@ describe("redeliverPendingCancels", () => {
     await expect(redeliverPendingCancels(state)).resolves.toBe(0);
   });
 
-  it("redelivers to a connected host and bumps the attempt counter", async () => {
+  it("redelivers to a connected host once the attempt claim succeeds", async () => {
     const fixedNow = "2026-01-01T00:00:00.000Z";
     const state = createControlPlaneState({ now: () => fixedNow });
-    const attempts: Array<{ sessionId: string; now: string }> = [];
+    const claims: Array<{ sessionId: string; now: string; maxAttempts: number }> = [];
     setDurableReadStorage(state, {
       listPendingCancelRedeliveries: async () => [candidate()],
       getHostLock: async () => "connection-1",
-      recordCancelRedeliveryAttempt: async (sessionId: string, now: string) => {
-        attempts.push({ sessionId, now });
+      claimCancelRedeliveryAttempt: async (sessionId: string, now: string, maxAttempts: number) => {
+        claims.push({ sessionId, now, maxAttempts });
+        return true;
       },
       clearPendingCancelRedelivery: async () => undefined,
     });
@@ -50,16 +51,22 @@ describe("redeliverPendingCancels", () => {
         message: { type: "session:cancel", sessionId: "session-1", attemptId: "attempt-1" },
       },
     ]);
-    expect(attempts).toEqual([{ sessionId: "session-1", now: fixedNow }]);
+    expect(claims).toEqual([
+      { sessionId: "session-1", now: fixedNow, maxAttempts: MAX_CANCEL_REDELIVERY_ATTEMPTS },
+    ]);
   });
 
-  it("stops redelivering and clears the marker once the host has disconnected", async () => {
+  it("leaves the marker pending, without claiming or clearing, while the host is disconnected", async () => {
     const state = createControlPlaneState();
     const cleared: string[] = [];
+    let claimCalled = false;
     setDurableReadStorage(state, {
       listPendingCancelRedeliveries: async () => [candidate()],
       getHostLock: async () => null,
-      recordCancelRedeliveryAttempt: async () => undefined,
+      claimCancelRedeliveryAttempt: async () => {
+        claimCalled = true;
+        return true;
+      },
       clearPendingCancelRedelivery: async (sessionId: string) => void cleared.push(sessionId),
     });
     let pushCount = 0;
@@ -67,19 +74,18 @@ describe("redeliverPendingCancels", () => {
 
     await expect(redeliverPendingCancels(state)).resolves.toBe(0);
 
-    expect(cleared).toEqual(["session-1"]);
+    expect(cleared).toEqual([]);
     expect(pushCount).toBe(0);
+    expect(claimCalled).toBe(false);
   });
 
-  it("stops redelivering and clears the marker after the attempt bound is reached", async () => {
+  it("skips dispatch and clears the marker when the attempt claim fails", async () => {
     const state = createControlPlaneState();
     const cleared: string[] = [];
     setDurableReadStorage(state, {
-      listPendingCancelRedeliveries: async () => [
-        candidate({ attempts: MAX_CANCEL_REDELIVERY_ATTEMPTS }),
-      ],
+      listPendingCancelRedeliveries: async () => [candidate({ attempts: 2 })],
       getHostLock: async () => "connection-1",
-      recordCancelRedeliveryAttempt: async () => undefined,
+      claimCancelRedeliveryAttempt: async () => false,
       clearPendingCancelRedelivery: async (sessionId: string) => void cleared.push(sessionId),
     });
     let pushCount = 0;
@@ -99,7 +105,7 @@ describe("redeliverPendingCancels", () => {
         candidate({ sessionId: "session-2" }),
       ],
       getHostLock: async () => "connection-1",
-      recordCancelRedeliveryAttempt: async () => undefined,
+      claimCancelRedeliveryAttempt: async () => true,
       clearPendingCancelRedelivery: async () => undefined,
     });
     let pushCount = 0;

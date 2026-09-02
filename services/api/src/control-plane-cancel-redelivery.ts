@@ -23,10 +23,20 @@ export async function redeliverPendingCancels(
     if (!shouldContinue()) break;
     const hostLock = await storage.getHostLock(candidate.hostId);
     if (hostLock === null) {
-      await storage.clearPendingCancelRedelivery(candidate.sessionId);
+      // The host has no live connection right now, so there is nowhere to push
+      // the cancel. Leave the marker pending rather than clearing it: on
+      // reconnect, `reconcileHostRunningSessions` silently drops a stale
+      // reported session (it isn't "running" anymore) without telling the
+      // daemon to stop it, so this outbox is the only thing that will ever
+      // redeliver the cancel to that host once it reconnects.
       continue;
     }
-    if (candidate.attempts >= MAX_CANCEL_REDELIVERY_ATTEMPTS) {
+    const claimed = await storage.claimCancelRedeliveryAttempt(
+      candidate.sessionId,
+      state.now(),
+      MAX_CANCEL_REDELIVERY_ATTEMPTS,
+    );
+    if (!claimed) {
       await storage.clearPendingCancelRedelivery(candidate.sessionId);
       continue;
     }
@@ -35,7 +45,6 @@ export async function redeliverPendingCancels(
       sessionId: candidate.sessionId,
       attemptId: candidate.attemptId,
     });
-    await storage.recordCancelRedeliveryAttempt(candidate.sessionId, state.now());
     redelivered += 1;
   }
   return redelivered;
