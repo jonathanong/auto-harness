@@ -5,17 +5,26 @@ description: >
   setup step before invoking this action so that node (v22.18+) and node_modules are
   available. Requires the calling repository to have "vouchington-tooling" installed as a
   dependency before this action runs. The template must live at a path under
-  docs/prompts/automation/ in the calling repository's own checkout; consumers should keep an
-  equivalent merge-authority policy doc of their own, since the rendered prompt's CI merge
-  guard postlude states the policy generically and does not point at any single repo's doc.
-  The rendered preamble likewise tells the session not to run "any repository-specific
-  worktree-reset script" rather than naming one; if the calling repository has its own such
-  script, document it separately for the dispatched session.
+  docs/prompts/automation/ in the calling repository's own checkout (override with
+  template-dir); consumers should keep an equivalent merge-authority policy doc of their own,
+  since the rendered prompt's CI merge guard postlude states the policy generically and does
+  not point at any single repo's doc by default (override with merge-authority-doc to have it
+  point at one). The rendered preamble likewise tells the session not to run "any
+  repository-specific worktree-reset script" rather than naming one; if the calling repository
+  has its own such script, document it separately for the dispatched session.
 
 inputs:
   template:
     description: "Path to the prompt template (relative to repo root)"
     required: true
+  template-dir:
+    description: "Directory the template must live under (relative to repo root)"
+    default: "docs/prompts/automation"
+  merge-authority-doc:
+    description: >
+      Optional path to a repo-specific merge-authority policy doc. When set, the rendered CI
+      merge guard postlude points at this doc instead of staying generic.
+    default: ""
   vars:
     description: |
       Newline-separated KEY=VALUE pairs passed as --var flags to render-harness-prompt.mts.
@@ -40,6 +49,8 @@ runs:
       shell: bash
       env:
         TEMPLATE: ${{ inputs.template }}
+        TEMPLATE_DIR: ${{ inputs.template-dir }}
+        MERGE_AUTHORITY_DOC: ${{ inputs.merge-authority-doc }}
         VARS_INPUT: ${{ inputs.vars }}
         VAR_FILES_INPUT: ${{ inputs.var-files }}
       run: |
@@ -67,6 +78,14 @@ runs:
         ')"
 
         args=(node "${{ github.action_path }}/render-harness-prompt.mts" --template "$TEMPLATE" --output codex-prompt-rendered.md)
+
+        if [ -n "${TEMPLATE_DIR:-}" ]; then
+          args+=(--template-dir "$TEMPLATE_DIR")
+        fi
+
+        if [ -n "${MERGE_AUTHORITY_DOC:-}" ]; then
+          args+=(--merge-authority-doc "$MERGE_AUTHORITY_DOC")
+        fi
 
         while IFS= read -r line; do
           if [ -n "$line" ]; then
