@@ -80,7 +80,11 @@ export class AutoHarnessRuntimeStack extends Stack {
       environment: { ...commonEnvironment, ...archiveAndKms },
       handler: "rest",
       logGroup: functionLogGroup(this, "RestFunction"),
-      timeout: Duration.seconds(15),
+      // Just under the HTTP API's 30s integration timeout ceiling, matching the
+      // headroom WebSocket (30s) and Cron (60s) already have against the shared
+      // createLambdaRuntime cold-start cost. 15s left zero margin and caused a full
+      // outage once that cost crept past it (see control-plane-hydrate.ts).
+      timeout: Duration.seconds(29),
     });
     const websocketFunction = new nodejs.NodejsFunction(this, "WebSocketFunction", {
       ...functionProps,

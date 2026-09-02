@@ -74,7 +74,6 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     accounts,
     commands,
     archives,
-    auditLogs,
     usageRecords,
     slackIntegration,
   ] = await Promise.all([
@@ -88,21 +87,11 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.storage.listProviderAccounts(),
     state.storage.listCommands(),
     state.storage.listArchives(),
-    state.storage.listAllAuditLogs(),
     listUsageRecords,
     "getSlackIntegration" in state.storage
       ? state.storage.getSlackIntegration()
       : Promise.resolve(null),
   ]);
-  const logs = new Map<string, LogRecord[]>();
-  for (const session of sessions) {
-    logs.set(
-      session.id,
-      (await state.storage.listLogs(session.id)).toSorted((a, b) =>
-        a.timestampSeq.localeCompare(b.timestampSeq),
-      ),
-    );
-  }
 
   state.worktrees.clear();
   state.connections.clear();
@@ -183,10 +172,20 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   for (const record of providers) state.providers.set(record.id, record);
   for (const record of commands) state.commands.set(record.id, record);
   state.slackIntegration = slackIntegration ?? undefined;
-  for (const record of auditLogs) state.auditLogs.set(record.id, record);
+  // state.auditLogs, like state.logs above, is the no-storage fallback for
+  // listAuditLogs (control-plane-audit.ts): in storage mode that function returns
+  // straight from state.storage.listAuditLogs(query) and never reads this map. Hydrating
+  // it here was a full-table scan (5,497+ rows and growing) that only fed a cache no
+  // reader consults in this mode.
   for (const record of usageRecords) {
     state.usageRecords.set(`${record.sessionId}\0${record.attemptId}\0${record.sequence}`, record);
   }
-  for (const [sessionId, records] of logs) state.logs.set(sessionId, records);
+  // state.logs is a bounded in-memory replay cache (see retainLogs in
+  // control-plane-messages.ts), not a durable-snapshot mirror. In storage mode every
+  // reader — getLogsDurable, archiveBody, hydrateSlackSnapshotInputs — loads logs from
+  // DynamoDB on demand and never consults this cache, so hydrating it here used to cost
+  // one serial listLogs round trip per session for no reader. That cost grew with the
+  // session count until it pushed the REST Lambda's cold start past its own timeout,
+  // taking the whole API down (see docs/plan.md history / the Sep 2026 outage).
   for (const record of archives) state.archives.set(record.key, record);
 }
