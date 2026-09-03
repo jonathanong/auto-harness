@@ -47,6 +47,9 @@ function isLaunchctlLoadFailed(result: HostServiceRunResult): boolean {
 
 type TeardownBudget = { attemptsLeft: number };
 
+/** The launchd job an activation pass installs and verifies. */
+type LaunchTarget = { domain: string; plist: string; service: string };
+
 /** Poll until launchd reports the job missing, or the shared budget runs out. */
 function waitForRemoval(ctx: HostServiceContext, budget: TeardownBudget): void {
   let inspection = inspectDarwin(ctx);
@@ -68,40 +71,36 @@ function withLastBootstrap(
 
 function loadLaunchAgent(
   ctx: HostServiceContext,
-  domain: string,
-  plist: string,
-  service: string,
+  target: LaunchTarget,
   wasLoaded: boolean,
   budget: TeardownBudget,
 ): number {
-  ctx.run("launchctl", ["bootout", service]);
+  ctx.run("launchctl", ["bootout", target.service]);
   if (wasLoaded) waitForRemoval(ctx, budget);
-  let attempt = ctx.run("launchctl", ["bootstrap", domain, plist]);
+  let attempt = ctx.run("launchctl", ["bootstrap", target.domain, target.plist]);
   if (attempt.status === 0) return 0;
   while (isLaunchctlAlreadyLoaded(attempt) && budget.attemptsLeft > 0) {
     budget.attemptsLeft -= 1;
-    ctx.run("launchctl", ["bootout", service]);
+    ctx.run("launchctl", ["bootout", target.service]);
     waitForRemoval(ctx, budget);
-    attempt = ctx.run("launchctl", ["bootstrap", domain, plist]);
+    attempt = ctx.run("launchctl", ["bootstrap", target.domain, target.plist]);
     if (attempt.status === 0) return 0;
   }
   ctx.run("/bin/sleep", [INSTALL_VERIFY_DELAY_SECONDS]);
-  const load = ctx.run("launchctl", ["load", "-w", plist]);
+  const load = ctx.run("launchctl", ["load", "-w", target.plist]);
   if (load.status === 0 && !isLaunchctlLoadFailed(load)) return 0;
   return failedCommand(ctx.error, "launchctl bootstrap/load", withLastBootstrap(load, attempt));
 }
 
 function runActivationPass(
   ctx: HostServiceContext,
-  domain: string,
-  plist: string,
-  service: string,
+  target: LaunchTarget,
   priorPid: string | undefined,
   initial: LaunchInspection,
   wasLoaded: boolean,
   budget: TeardownBudget,
 ): ActivationPassResult {
-  if (loadLaunchAgent(ctx, domain, plist, service, wasLoaded, budget) !== 0) {
+  if (loadLaunchAgent(ctx, target, wasLoaded, budget) !== 0) {
     return { inspection: initial, loaded: false, verified: false };
   }
   let inspection = inspectDarwin(ctx);
@@ -110,7 +109,7 @@ function runActivationPass(
   }
   let kick: HostServiceRunResult | undefined;
   if (inspection.status.state === "stopped" || inspection.status.state === "unknown") {
-    kick = ctx.run("launchctl", ["kickstart", "-p", service]);
+    kick = ctx.run("launchctl", ["kickstart", "-p", target.service]);
     inspection = inspectDarwin(ctx);
   }
   if (inspection.status.state !== "missing" && inspection.status.state !== "failed") {
@@ -124,12 +123,7 @@ function runActivationPass(
   };
 }
 
-export function activateLaunchAgent(
-  ctx: HostServiceContext,
-  domain: string,
-  plist: string,
-  service: string,
-): number {
+export function activateLaunchAgent(ctx: HostServiceContext, target: LaunchTarget): number {
   const inspection = inspectDarwin(ctx);
   if (
     inspection.status.state === "failed" ||
@@ -152,9 +146,7 @@ export function activateLaunchAgent(
   for (let pass = 0; pass < INSTALL_ACTIVATION_PASSES; pass += 1) {
     result = runActivationPass(
       ctx,
-      domain,
-      plist,
-      service,
+      target,
       priorPid,
       inspection,
       pass === 0 ? wasLoaded : true,

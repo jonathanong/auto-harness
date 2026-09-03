@@ -92,7 +92,7 @@ export function installDarwin(ctx: HostServiceContext): number {
   ctx.log(`Wrote ${paths.plist}`);
   const domain = launchDomain(ctx.uid);
   const service = `${domain}/${DARWIN_LABEL}`;
-  const activated = activateLaunchAgent(ctx, domain, paths.plist, service);
+  const activated = activateLaunchAgent(ctx, { domain, plist: paths.plist, service });
   if (activated !== 0) return activated;
   ctx.log(`Enabled LaunchAgent ${DARWIN_LABEL} as the current user`);
   return 0;
