@@ -241,14 +241,16 @@ function geminiResourceExhausted(value: unknown): boolean {
   return value === GEMINI_RESOURCE_EXHAUSTED;
 }
 
+function geminiEnvelopeExhausted(error: JsonRecord): boolean {
+  return geminiResourceExhausted(error.status) || geminiResourceExhausted(error.code);
+}
+
 function geminiUsageLimit(value: JsonRecord): boolean {
   const error = record(value.error);
   if (!error) return false;
-  if (geminiResourceExhausted(error.status) || geminiResourceExhausted(error.code)) return true;
+  if (geminiEnvelopeExhausted(error)) return true;
   const nested = record(error.error);
-  if (nested && (geminiResourceExhausted(nested.status) || geminiResourceExhausted(nested.code))) {
-    return true;
-  }
+  if (nested && geminiEnvelopeExhausted(nested)) return true;
   return (
     typeof error.message === "string" && GEMINI_RESOURCE_EXHAUSTED_IN_MESSAGE.test(error.message)
   );
