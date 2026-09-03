@@ -258,29 +258,34 @@ var AutoHarnessClient = class _AutoHarnessClient {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
       throw new TypeError("timeoutMs must be a finite positive number");
     const deadline = Date.now() + timeoutMs;
-    const clampedClient = () => new _AutoHarnessClient({
-      baseUrl: this.baseUrl,
-      apiKey: this.apiKey,
-      allowInsecureHttp: this.allowInsecureHttp,
-      fetch: this.fetch,
-      requestTimeoutMs: Math.max(
-        1,
-        Math.ceil(Math.min(this.requestTimeoutMs, deadline - Date.now()))
-      )
-    });
-    const rejectAtDeadline = (error, idForError) => error instanceof AutoHarnessRequestTimeoutError && Date.now() >= deadline ? new AutoHarnessDrainWaitTimeoutError(idForError, operationId, timeoutMs) : error;
+    const clampedClient = () => {
+      const remainingMs = deadline - Date.now();
+      const requestTimeoutMs2 = Math.max(1, Math.ceil(Math.min(this.requestTimeoutMs, remainingMs)));
+      return {
+        client: new _AutoHarnessClient({
+          baseUrl: this.baseUrl,
+          apiKey: this.apiKey,
+          allowInsecureHttp: this.allowInsecureHttp,
+          fetch: this.fetch,
+          requestTimeoutMs: requestTimeoutMs2
+        }),
+        clampedToWaitBudget: remainingMs <= this.requestTimeoutMs
+      };
+    };
+    const rejectAtDeadline = (error, idForError, clampedToWaitBudget) => error instanceof AutoHarnessRequestTimeoutError && (clampedToWaitBudget || Date.now() >= deadline) ? new AutoHarnessDrainWaitTimeoutError(idForError, operationId, timeoutMs) : error;
+    const repositoryLookup = clampedClient();
     const id = await resolveRepositoryId(
-      { listRepositories: (listOptions) => clampedClient().listRepositories(listOptions) },
+      { listRepositories: (opts) => repositoryLookup.client.listRepositories(opts) },
       repositoryId
     ).catch((error) => {
-      throw rejectAtDeadline(error, repositoryId);
+      throw rejectAtDeadline(error, repositoryId, repositoryLookup.clampedToWaitBudget);
     });
     for (; ; ) {
-      if (deadline - Date.now() <= 0) {
+      if (deadline - Date.now() <= 0)
         throw new AutoHarnessDrainWaitTimeoutError(id, operationId, timeoutMs);
-      }
-      const sessionDrain = await clampedClient().getSessionDrain(id, operationId).catch((error) => {
-        throw rejectAtDeadline(error, id);
+      const { client: client2, clampedToWaitBudget } = clampedClient();
+      const sessionDrain = await client2.getSessionDrain(id, operationId).catch((error) => {
+        throw rejectAtDeadline(error, id, clampedToWaitBudget);
       });
       if (sessionDrain.status !== "draining") return sessionDrain;
       const delayMs = Math.min(pollIntervalMs, deadline - Date.now());
