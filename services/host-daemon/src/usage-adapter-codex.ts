@@ -16,16 +16,14 @@ const CODEX_USAGE_LIMIT_SENTENCE = /you['’]ve hit your usage limit/i;
 /**
  * Codex's own error envelope only — `{"type":"error"}` (top-level) or `turn.failed.error`.
  * By construction this never reads `item.*` content, which is model-authored and untrusted.
+ * Only called once `codexUsageLimit` has confirmed `value.type` is one of `CODEX_ERROR_TYPES`.
  */
 function codexErrorMessage(value: JsonRecord): string | undefined {
   if (value.type === "error") {
     return typeof value.message === "string" ? value.message : undefined;
   }
-  if (value.type === "turn.failed") {
-    const error = record(value.error);
-    return typeof error?.message === "string" ? error.message : undefined;
-  }
-  return undefined;
+  const error = record(value.error);
+  return typeof error?.message === "string" ? error.message : undefined;
 }
 
 function codexUsageLimit(value: JsonRecord): boolean {
