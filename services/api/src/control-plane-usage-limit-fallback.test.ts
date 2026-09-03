@@ -189,6 +189,29 @@ describe("durable usage-limit fallback on an empty worker", () => {
     );
   });
 
+  it("still assigns when source-connection hydration rejects", async () => {
+    const state = emptyWorkerState();
+    let connectionReads = 0;
+    setDurableReadStorage(state, {
+      getHostLock: async () => "connection",
+      getConnection: async () => {
+        connectionReads += 1;
+        if (connectionReads === 1) throw new Error("connection store unavailable");
+        return liveConnection;
+      },
+      listConnections: async () => [liveConnection],
+      requeueUsageLimitedSession: async () => true,
+      tryAssignSession: async () => true,
+      expireQueuedSession: async () => false,
+    });
+
+    expect((await handleHostMessageDurable(state, usageLimitStatus(), "connection")).ok).toBe(true);
+    expect(state.sessions.get("sess")?.resolvedRoute).toMatchObject({
+      targetIndex: 1,
+      providerAccountId: "acct-cursor",
+    });
+  });
+
   it("assigns the next provider from a listed live socket when create has no source connection", async () => {
     const state = emptyWorkerState();
     setDurableReadStorage(state, {
