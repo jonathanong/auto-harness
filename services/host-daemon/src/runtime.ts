@@ -29,7 +29,9 @@ export async function runAssignedSession(
   assign: SessionAssign,
   onLog: (line: string) => void,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
-  commandRunner: ProcessRunner = new UsageCapturingProcessRunner(new PtyProcessRunner()),
+  commandRunner: ProcessRunner = new UsageCapturingProcessRunner(
+    new PtyProcessRunner({ emitUntruncated: true }),
+  ),
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   const runtime = await probeGitReadiness(processRunner);

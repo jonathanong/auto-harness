@@ -191,6 +191,27 @@ describe("PtyProcessRunner boundary", () => {
     expect(chunks[1]).toContain("output chunk truncated");
   });
 
+  it("emits a read whole, unmarked, when emitUntruncated opts out of the runner's own cap", async () => {
+    const pty = fakePty();
+    const runner = new PtyProcessRunner({
+      emitUntruncated: true,
+      platform: "linux",
+      spawn: () => pty.terminal,
+    });
+    const chunks: string[] = [];
+    const run = runner.run({
+      argv: ["./tool"],
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+    const oversized = "x".repeat(40_000);
+    pty.emitData(oversized);
+    pty.emitExit({ exitCode: 0 });
+    await expect(run).resolves.toMatchObject({ exitCode: 0 });
+    expect(chunks).toEqual([oversized]);
+  });
+
   it("normalizes missing-command errors from the native boundary", async () => {
     const runner = new PtyProcessRunner({
       spawn() {

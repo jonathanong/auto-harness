@@ -126,7 +126,8 @@ export class DaemonLoop {
     this.runtime = options.runtime;
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
     const innerCommandRunner =
-      options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
+      options.commandRunner ??
+      (options.processRunner ? processRunner : new PtyProcessRunner({ emitUntruncated: true }));
     // Preserve explicitly supplied command runners as test and operator seams;
     // production command execution is wrapped so provider usage envelopes are retained.
     const commandRunner = options.commandRunner

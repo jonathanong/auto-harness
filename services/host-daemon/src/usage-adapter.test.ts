@@ -1,7 +1,14 @@
 /* eslint-disable max-lines -- provider envelope acceptance and rejection cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
-import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+import {
+  MAX_OUTPUT_CHUNK_BYTES,
+  OUTPUT_CHUNK_TRUNCATION_MARKER,
+  type OutputChunk,
+  type ProcessResult,
+  type ProcessRunner,
+  type RunProcessOptions,
+} from "./executor.ts";
 import { CODEX_PENDING_LINE_MAX_BYTES, foldCodexRecord } from "./usage-adapter-codex.ts";
 import {
   UsageCapturingProcessRunner,
@@ -628,7 +635,15 @@ describe("UsageCapturingProcessRunner", () => {
       signal: null,
       usage: { inputTokens: "9" },
     });
-    expect(chunks).toHaveLength(2);
+    // The oversized first chunk is still capped on the forwarding path (independent of
+    // capture, which saw it whole above) — truncated data, then a marker chunk, then the
+    // untouched envelope.
+    expect(chunks).toHaveLength(3);
+    expect(Buffer.byteLength(chunks[0]!, "utf8")).toBe(MAX_OUTPUT_CHUNK_BYTES);
+    expect(chunks[1]).toBe(OUTPUT_CHUNK_TRUNCATION_MARKER);
+    expect(chunks[2]).toBe(
+      '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":9}}',
+    );
   });
 
   it("keeps the trailing window intact when the trim boundary bisects a multi-byte codepoint", async () => {
@@ -811,5 +826,59 @@ describe("UsageCapturingProcessRunner", () => {
         onChunk: () => undefined,
       }),
     ).resolves.toEqual({ exitCode: 1, timedOut: false, signal: null });
+  });
+
+  it("detects a usage-limit line past the old 32 KiB single-chunk cutoff, while forwarding stays capped", async () => {
+    // Regression for the root PR3 bug: a raw runner's own per-read truncation used to run
+    // *before* capture ever saw the bytes, so a usage-limit record past the first 32 KiB of a
+    // single oversized read was silently dropped. Capture must see the whole chunk regardless
+    // of size; only the *forwarded* copy (to the real log/streamer) stays capped per chunk.
+    const padding = "noop diagnostic line, not JSON\n".repeat(2_000);
+    expect(Buffer.byteLength(padding, "utf8")).toBeGreaterThan(MAX_OUTPUT_CHUNK_BYTES);
+    const singleOversizedChunk = `${padding}${turnFailedLine}\n`;
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: singleOversizedChunk });
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    const forwarded: OutputChunk[] = [];
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["codex", "exec", "--json"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: (chunk) => forwarded.push(chunk),
+      }),
+    ).resolves.toMatchObject({ usageLimit: true });
+    expect(forwarded.length).toBeGreaterThan(1);
+    for (const chunk of forwarded) {
+      expect(Buffer.byteLength(chunk.data, "utf8")).toBeLessThanOrEqual(MAX_OUTPUT_CHUNK_BYTES);
+    }
+    expect(forwarded.some((chunk) => chunk.data === OUTPUT_CHUNK_TRUNCATION_MARKER)).toBe(true);
+  });
+
+  it("does not double-mark a chunk the inner runner already truncated", async () => {
+    // UsageCapturingProcessRunner's forward-capping step must be a no-op when `this.inner`
+    // already enforces the same cap (e.g. wrapping a default, non-opted-in PtyProcessRunner,
+    // or SpawnProcessRunner) — no second marker, and the marker chunk itself passes through.
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: "x".repeat(MAX_OUTPUT_CHUNK_BYTES) });
+        options.onChunk({ stream: "stdout", data: OUTPUT_CHUNK_TRUNCATION_MARKER });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const forwarded: OutputChunk[] = [];
+    await new UsageCapturingProcessRunner(inner, () => observedAt).run({
+      argv: ["echo"],
+      cwd: "/",
+      timeoutMs: 1_000,
+      onChunk: (chunk) => forwarded.push(chunk),
+    });
+    expect(forwarded).toEqual([
+      { stream: "stdout", data: "x".repeat(MAX_OUTPUT_CHUNK_BYTES) },
+      { stream: "stdout", data: OUTPUT_CHUNK_TRUNCATION_MARKER },
+    ]);
   });
 });

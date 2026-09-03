@@ -7,6 +7,7 @@ import type { SessionUsage } from "@auto-harness/shared";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 export const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
+export const OUTPUT_CHUNK_TRUNCATION_MARKER = "\n[output chunk truncated]\n";
 
 export function truncateUtf8(data: string, maxBytes: number): string {
   if (Buffer.byteLength(data, "utf8") <= maxBytes) return data;
@@ -210,7 +211,7 @@ export class SpawnProcessRunner implements ProcessRunner {
         );
         options.onChunk({ stream, data });
         if (buf.length > MAX_OUTPUT_CHUNK_BYTES) {
-          options.onChunk({ stream, data: "\n[output chunk truncated]\n" });
+          options.onChunk({ stream, data: OUTPUT_CHUNK_TRUNCATION_MARKER });
         }
       };
 
