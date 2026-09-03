@@ -391,13 +391,16 @@ environment file, rewrites a stable launcher under `~/Library/Application Suppor
 and reloads the LaunchAgent. The plist always starts that launcher; it selects the activated
 `current` tree when present and otherwise falls back to the installation checkout. After
 `bootout`/`bootstrap`, installation succeeds only after launchd reports a running process with a
-new PID. A failed registration pauses for one second before retrying `bootstrap` or falling back to
-`load -w`, giving launchd time to finish asynchronous teardown. A stopped or transitional job is
-started with non-killing `launchctl kickstart -p`, then checked for up to five seconds; if
-verification still fails, the installer performs one complete reload retry. Exit 37 / "already in
-progress" is not success by itself, but the installer may continue when launchd subsequently
-exposes the new running PID. The updater's already-running restart path remains separate and uses
-`kickstart -k` with strict PID replacement verification.
+new PID. `launchctl bootout` only signals a job — launchd can take several seconds to actually
+deregister it — so a bootout that finds a job already loaded polls `launchctl print` until it
+reports the job missing (up to 90 x 1s, shared across every bootstrap retry and both activation
+passes) before retrying `bootstrap`, rather than racing a fixed sleep into a misleading "already in
+progress"/"Input/output error" failure. Only once that budget is exhausted does the installer fall
+back to `load -w`. A stopped or transitional job is started with non-killing `launchctl kickstart
+-p`, then checked for up to five seconds; if verification still fails, the installer performs one
+complete reload retry. Exit 37 / "already in progress" is not success by itself, but the installer
+may continue when launchd subsequently exposes the new running PID. The updater's already-running
+restart path remains separate and uses `kickstart -k` with strict PID replacement verification.
 
 When the persisted environment already exists, `pnpm deploy:host` loads it for the settings refresh
 while clearing inherited shell identity variables. This keeps the refresh bound to the installed
