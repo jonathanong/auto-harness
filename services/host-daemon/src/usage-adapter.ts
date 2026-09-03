@@ -221,13 +221,42 @@ function claudeUsageLimit(value: JsonRecord): boolean {
   return value.terminal_reason === "budget_exhausted";
 }
 
+const GEMINI_RESOURCE_EXHAUSTED = "RESOURCE_EXHAUSTED";
+// Gemini CLI 0.46.0 `--output-format json` (JsonFormatter.formatError) emits
+// `{error:{type, message, code?}}`. `code` is an exit code or the original
+// error's `code`/`status`, not Google's RPC status. The RPC token
+// RESOURCE_EXHAUSTED rides `error.message` when the CLI copies the API body
+// (Gaxios/ApiError) or formats `(Status: RESOURCE_EXHAUSTED)`.
+const GEMINI_RESOURCE_EXHAUSTED_IN_MESSAGE = /\bRESOURCE_EXHAUSTED\b/;
+
+// Grok CLI 1.0.13 `--output-format json` errors are `{type:"error", message}`
+// with no structured code. HTTP 429 is mapped to ACP -32003, then
+// `format_rate_limited_user_message` writes one of these three sentences
+// (unicode apostrophe). Curly apostrophe is what the binary emits; ASCII is
+// tolerated the same way as Codex. A generic "rate limit" phrase is not enough.
+const GROK_USAGE_LIMIT_SENTENCE =
+  /you['’]ve (?:hit (?:the rate limit for your plan|your team['’]s api rate limit)|reached your free grok build usage limit)/i;
+
+function geminiResourceExhausted(value: unknown): boolean {
+  return value === GEMINI_RESOURCE_EXHAUSTED;
+}
+
 function geminiUsageLimit(value: JsonRecord): boolean {
   const error = record(value.error);
-  return error?.status === "RESOURCE_EXHAUSTED" || error?.code === "RESOURCE_EXHAUSTED";
+  if (!error) return false;
+  if (geminiResourceExhausted(error.status) || geminiResourceExhausted(error.code)) return true;
+  const nested = record(error.error);
+  if (nested && (geminiResourceExhausted(nested.status) || geminiResourceExhausted(nested.code))) {
+    return true;
+  }
+  return (
+    typeof error.message === "string" && GEMINI_RESOURCE_EXHAUSTED_IN_MESSAGE.test(error.message)
+  );
 }
 
 function grokUsageLimit(value: JsonRecord): boolean {
   if (value.type !== "error" && value.status !== "error") return false;
   const code = structuredErrorCode(value);
-  return code === "rate_limit_error" || code === "usage_limit";
+  if (code === "rate_limit_error" || code === "usage_limit") return true;
+  return typeof value.message === "string" && GROK_USAGE_LIMIT_SENTENCE.test(value.message);
 }

@@ -383,6 +383,146 @@ describe("parseCliUsage", () => {
     ).toEqual({});
   });
 
+  it("detects grok/gemini CLI-authored usage-limit envelopes from first-party CLI source", () => {
+    // Grok CLI 1.0.13 headless.rs: `{type:"error", message}` only. HTTP 429 maps to
+    // ACP -32003, then format_rate_limited_user_message writes these sentences
+    // (unicode apostrophe). Keep the structured-code arm as forward-compat.
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message:
+            "You\u2019ve hit the rate limit for your plan. Upgrade your account or try again later.",
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message:
+            "You\u2019ve hit your team\u2019s API rate limit. Ask a team admin to purchase more credits for higher limits, or try again later. See https://docs.x.ai/developers/rate-limits#rate-limit-tiers",
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message:
+            "You\u2019ve reached your free Grok Build usage limit for now. Get SuperGrok for much higher limits, or try again later: https://grok.com/supergrok?referrer=grok-build",
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message:
+            "You've hit the rate limit for your plan. Upgrade your account or try again later.",
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message: "Couldn't start session: permission denied",
+        }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ type: "error", message: "rate limit exceeded" }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          type: "error",
+          message: "You've hit your weekly limit · resets 12pm (America/Los_Angeles)",
+        }),
+        observedAt,
+      }),
+    ).toEqual({});
+
+    // Gemini CLI 0.46.0 JsonFormatter.formatError: `{error:{type, message, code?}}`.
+    // RESOURCE_EXHAUSTED is Google's RPC status copied into error.message; a bare
+    // 429 is not enough (same overload risk as Claude HTTP 429).
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          error: {
+            type: "Error",
+            message:
+              "[API Error: You exceeded your current quota, please check your plan and billing details. (Status: RESOURCE_EXHAUSTED)]\nPlease wait and try again later.",
+            code: 1,
+          },
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          error: {
+            type: "GaxiosError",
+            message:
+              '{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}',
+            code: 429,
+          },
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          error: { error: { status: "RESOURCE_EXHAUSTED" } },
+        }),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          error: { type: "Error", message: "[API Error: boom]", code: 429 },
+        }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["gemini", "-p", "--output-format", "json"],
+        output: JSON.stringify({
+          error: {
+            type: "FatalAuthenticationError",
+            message: "IneligibleTierError",
+            code: 41,
+          },
+        }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
   it("maps every token field and handles alternate structured error codes", () => {
     const usage = parseCliUsage({
       argv: ["claude", "-p", "--output-format", "json"],
