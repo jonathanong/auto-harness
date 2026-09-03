@@ -43,7 +43,7 @@ async function run(
   signal?: AbortSignal,
 ) {
   const { streamer, logs } = noopStreamer();
-  return runSetupIfNeeded(
+  const { failure } = await runSetupIfNeeded(
     runner,
     streamer,
     logs,
@@ -53,6 +53,18 @@ async function run(
     () => false,
     () => 30_000,
   );
+  // The streamer coalesces consecutive same-stream writes into fewer emitted
+  // chunks, so joined stdout is what a caller should assert on, not a specific split.
+  const stdout = logs
+    .filter((chunk) => chunk.stream === "stdout")
+    .map((chunk) => chunk.content)
+    .join("");
+  return { failure, stdout };
+}
+
+/** A "prepare" setup script run, for the CRLF normalization tests below. */
+function runSetup(claimed: ClaimedWorktree, runner: ProcessRunner) {
+  return run(baseAssign({ setupScript: "prepare" }), claimed, runner);
 }
 
 describe("runSetupIfNeeded setup edge cases", () => {
@@ -103,24 +115,8 @@ describe("runSetupIfNeeded setup edge cases", () => {
         return { exitCode: 0, timedOut: false, signal: null, environment: {} };
       },
     };
-    const { streamer, logs } = noopStreamer();
-    const { failure } = await runSetupIfNeeded(
-      runner,
-      streamer,
-      logs,
-      baseAssign({ setupScript: "prepare" }),
-      claim(cwd),
-      undefined,
-      () => false,
-      () => 30_000,
-    );
+    const { failure, stdout } = await runSetup(claim(cwd), runner);
     expect(failure).toBeNull();
-    // The streamer coalesces consecutive same-stream writes into fewer emitted
-    // chunks, so assert on the joined content rather than a specific split.
-    const stdout = logs
-      .filter((chunk) => chunk.stream === "stdout")
-      .map((chunk) => chunk.content)
-      .join("");
     expect(stdout).toBe("line one\r\nline two\r\nline three\r\n");
   });
 
@@ -143,23 +139,9 @@ describe("runSetupIfNeeded setup edge cases", () => {
         return { exitCode: 0, timedOut: false, signal: null, environment: {} };
       },
     };
-    const { streamer, logs } = noopStreamer();
-    const { failure } = await runSetupIfNeeded(
-      runner,
-      streamer,
-      logs,
-      baseAssign({ setupScript: "prepare" }),
-      claim(cwd, undefined, "host-prepare"),
-      undefined,
-      () => false,
-      () => 30_000,
-    );
+    const { failure, stdout } = await runSetup(claim(cwd, undefined, "host-prepare"), runner);
     expect(failure).toBeNull();
     expect(invocation).toBe(2);
-    const stdout = logs
-      .filter((chunk) => chunk.stream === "stdout")
-      .map((chunk) => chunk.content)
-      .join("");
     expect(stdout).toBe("host line\r\nrepo line\r\n");
   });
 });
