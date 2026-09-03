@@ -157,7 +157,6 @@ function plannerContext(
   return {
     now: state.now(),
     source,
-    usageLimitRetryCeiling: state.usageLimitRetryCeiling,
     ...(providerAccount !== undefined ? { providerAccount } : {}),
   };
 }

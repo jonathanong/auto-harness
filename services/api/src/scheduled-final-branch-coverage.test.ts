@@ -142,7 +142,7 @@ describe("scheduled final branch coverage", () => {
   });
 
   it("covers scheduled terminal claim loss and successful retry release", async () => {
-    const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
+    const state = createControlPlaneState({ now: () => NOW });
     const run = scheduled({ ackReceivedAt: NOW });
     state.sessions.set(run.id, run);
     setDurableReadStorage(state, { releaseMainCheckoutSession: async () => false });

@@ -27,7 +27,10 @@ import {
   releaseProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
-import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
+import {
+  clearAbandonedUsageLimitRetryFields,
+  type AssignmentWriteResult,
+} from "./db/plane-storage-types.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -101,6 +104,7 @@ export function assignQueued(
       else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
       delete session.ackReceivedAt;
+      clearAbandonedUsageLimitRetryFields(session);
       state.pendingAcks.set(session.id, {
         sessionId: session.id,
         worktreeId: candidate.id,
@@ -294,6 +298,7 @@ export async function assignQueuedDurable(
           ? { hostAssignmentLease: { hostId: candidate.hostId } }
           : {}),
       };
+      clearAbandonedUsageLimitRetryFields(nextSession);
       const nextWorktree = {
         ...candidate,
         status: "busy" as const,

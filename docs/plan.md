@@ -250,7 +250,7 @@ erDiagram
 **Changed from earlier drafts of this document:** free-form `command` first became a named
 `commandProfile`, then the current catalog-backed `target` plus ordered `fallbacks` model (D4);
 `pinnedWorktreeId` removed, `pinExpiresAt` added (D5); `ref`, `concurrencyKey`/`concurrencyId`, `onConflict`,
-`queueShard`, `metadata`, `queueExpiresAt`, `retryAfter`, `retryCount`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
+`queueShard`, `metadata`, `queueExpiresAt`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
 bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHookScript` added.
 
 ### Access patterns

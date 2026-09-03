@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { itemToSession, normalizeTargetDisplayNames } from "./plane-storage-types.ts";
+import {
+  clearAbandonedUsageLimitRetryFields,
+  itemToSession,
+  normalizeTargetDisplayNames,
+} from "./plane-storage-types.ts";
 
 describe("target display-name hydration", () => {
   it("migrates the legacy targetLabels attribute and removes storage-only keys", () => {
@@ -25,5 +29,13 @@ describe("target display-name hydration", () => {
         targetDisplayNames: ["Current"],
       }),
     ).toEqual({ id: "mixed-session", targetDisplayNames: ["Current"] });
+  });
+});
+
+describe("abandoned usage-limit retry attributes", () => {
+  it("strips leftover retryCount and retryAfter without requiring them on SessionRecord", () => {
+    const session = { id: "s", retryCount: 2, retryAfter: "later" };
+    clearAbandonedUsageLimitRetryFields(session);
+    expect(session).toEqual({ id: "s" });
   });
 });

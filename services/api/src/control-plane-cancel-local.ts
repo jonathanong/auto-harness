@@ -19,7 +19,6 @@ export function cancelSession(
     {
       now: state.now(),
       source: "local",
-      usageLimitRetryCeiling: state.usageLimitRetryCeiling,
     },
   );
   const rejected = transitionEffect(plan, "reject");

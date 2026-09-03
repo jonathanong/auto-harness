@@ -40,8 +40,6 @@ describe("DynamoDB Local main-checkout release", () => {
       exitCode: 0,
       errorCode: "retryable",
       cliResumeRef: "resume",
-      retryCount: 0,
-      retryAfter: "2026-01-01T00:02:00.000Z",
       attemptId: "attempt",
       queueOrder: "explicit-order",
     };
@@ -107,8 +105,6 @@ describe("DynamoDB Local main-checkout release", () => {
       exitCode: 0,
       errorCode: opts.errorCode,
       cliResumeRef: opts.cliResumeRef,
-      retryCount: 0,
-      retryAfter: opts.retryAfter,
       queueOrder: "explicit-order",
     });
     expect(await releaseMainCheckoutSession(ctx, opts)).toBe(false);

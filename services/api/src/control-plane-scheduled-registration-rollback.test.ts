@@ -48,7 +48,6 @@ describe("scheduled registration rollback", () => {
       status: "queued",
       queueShard: 0,
       createdAt: NOW,
-      retryCount: 0,
       type: "scheduled",
       source: "schedule",
     };

@@ -153,7 +153,7 @@ export async function tryAssignMainCheckoutSession(
           (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
             ? ", hostAssignmentLease = :hostAssignmentLease"
             : "") +
-          " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter",
+          " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount",
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {

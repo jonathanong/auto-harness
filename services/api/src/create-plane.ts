@@ -64,9 +64,6 @@ export async function createControlPlane(
     ...(options.sessionDrainTimeoutMs !== undefined
       ? { sessionDrainTimeoutMs: options.sessionDrainTimeoutMs }
       : {}),
-    ...(options.usageLimitRetryCeiling !== undefined
-      ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }
-      : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
     archiveWriter: options.archiveWriter ?? configuredArchiveWriter(),
     ...(options.sessionCursorSecret !== undefined

@@ -79,7 +79,6 @@ export type ControlPlaneOptions = {
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
   reconnectGraceMs?: number;
-  usageLimitRetryCeiling?: number;
   archivePrefix?: string;
   /** Optional object-store boundary. Dynamo archive metadata remains durable separately. */
   archiveWriter?: ArchiveWriter | undefined;

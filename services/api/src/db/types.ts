@@ -26,10 +26,6 @@ export type SessionRecord = {
   attemptId?: string | undefined;
   /** Providerless target indexes that reported a usage limit for this session. */
   suppressedTargetIndexes?: number[];
-  /** Consecutive usage_limit retries so far (Invariant 6's exponential backoff). */
-  retryCount?: number;
-  /** Backoff deadline before a usage_limit retry may be scheduled again. */
-  retryAfter?: string;
   /** Final argv, resolved once assigned to a worktree (cascade walk + prompt append). */
   resolvedArgv?: string[];
   /** Frozen native-resume configuration from the first assignment. */

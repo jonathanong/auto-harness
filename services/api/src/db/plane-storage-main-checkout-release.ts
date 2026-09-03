@@ -30,8 +30,6 @@ type ReleaseMainCheckoutOptions = {
   exitCode?: number | null | undefined;
   errorCode?: string | undefined;
   cliResumeRef?: string | undefined;
-  retryCount?: number;
-  retryAfter?: string;
   suppressedTargetIndex?: number;
   queueOrder?: string;
   expectedStatus?: "running" | "cancelled";
@@ -178,8 +176,6 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.exitCode !== undefined ? ", exitCode = :exitCode" : "") +
     (opts.errorCode ? ", errorCode = :errorCode" : "") +
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
-    (opts.retryCount !== undefined ? ", retryCount = :retryCount" : "") +
-    (opts.retryAfter ? ", retryAfter = :retryAfter" : "") +
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
@@ -212,8 +208,6 @@ function expressionValues(
     ...(opts.exitCode !== undefined ? { ":exitCode": opts.exitCode } : {}),
     ...(opts.errorCode ? { ":errorCode": opts.errorCode } : {}),
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
-    ...(opts.retryCount !== undefined ? { ":retryCount": opts.retryCount } : {}),
-    ...(opts.retryAfter ? { ":retryAfter": opts.retryAfter } : {}),
     ...(opts.suppressedTargetIndex !== undefined
       ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
       : {}),

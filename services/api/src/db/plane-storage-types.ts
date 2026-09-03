@@ -304,6 +304,12 @@ export function itemToSession(item: Record<string, unknown>): SessionRecord {
   return normalizeTargetDisplayNames(rest) as SessionRecord;
 }
 
+/** Drop leftover session retry attributes from the rejected D8 retry-counter design. */
+export function clearAbandonedUsageLimitRetryFields(session: object): void {
+  delete (session as { retryAfter?: unknown }).retryAfter;
+  delete (session as { retryCount?: unknown }).retryCount;
+}
+
 export function isConditionalFailed(err: unknown): boolean {
   return (
     typeof err === "object" &&
