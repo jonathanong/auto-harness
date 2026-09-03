@@ -9,7 +9,11 @@ type UsageLimitInput = {
   failed: boolean;
   /** Control-plane assignment account. Providerless commands fail closed. */
   providerAccountId?: string;
-  /** Adapter-supplied vendor quota; never inferred from untrusted output. */
+  /**
+   * Adapter-supplied vendor quota. Sourced only from a CLI's own structured error envelope
+   * (e.g. `error.type`/`code`/`status`, or Codex's own error-path message text) — never from
+   * model/agent-generated content such as Codex's `item.*` records.
+   */
   adapterUsageLimit?: boolean;
 };
 

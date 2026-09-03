@@ -4,6 +4,7 @@ import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import { baseAssign, testExecutionProfiles } from "./session-runner-test-helpers.ts";
+import { UsageCapturingProcessRunner } from "./usage-adapter.ts";
 
 const claimed = {
   repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
@@ -114,6 +115,32 @@ describe("claimed session usage-limit classification", () => {
       expect(outcome.status).toBe("failed");
       expect(outcome.errorCode).toBeUndefined();
     }
+  });
+
+  it("reports usage_limit from a real codex JSONL usage-limit envelope end to end", async () => {
+    // Real JSONL captured from the failing live session sess-fa52d870, run through the real
+    // UsageCapturingProcessRunner/parseCliUsage pipeline (not a fake usageLimit flag) to prove
+    // the codex parser itself, not just the downstream errorCode plumbing, is wired correctly.
+    const jsonl = [
+      '{"type":"error","message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}',
+      '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}}',
+    ].join("\n");
+    const runner = new UsageCapturingProcessRunner(
+      outputRunner(jsonl, { exitCode: 1 }),
+      () => "2026-01-01T00:00:00.000Z",
+    );
+    const outcome = await runClaimed(
+      baseAssign({
+        resolvedArgv: ["codex", "exec", "--json"],
+        providerAccountId: "acct-1",
+      }),
+      runner,
+    );
+    expect(outcome).toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "Usage limit detected",
+    });
   });
 
   it("reports usage_limit from a trusted adapter failure channel", async () => {
