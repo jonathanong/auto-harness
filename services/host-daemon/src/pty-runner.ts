@@ -7,6 +7,7 @@ import { createChildEnv } from "./child-env.ts";
 import {
   formatSpawnEnoent,
   MAX_OUTPUT_CHUNK_BYTES,
+  OUTPUT_CHUNK_TRUNCATION_MARKER,
   truncateUtf8,
   type ProcessResult,
   type ProcessRunner,
@@ -24,6 +25,13 @@ export type PtyProcessRunnerDependencies = {
   kill?: typeof process.kill;
   platform?: NodeJS.Platform;
   spawn?: PtySpawn;
+  /**
+   * Skip this runner's own 32 KiB-per-read truncation and emit each PTY read whole.
+   * Only a wrapper that re-applies the same byte cap on its own forwarding path
+   * (e.g. {@link UsageCapturingProcessRunner}) may set this — an unwrapped runner
+   * must keep truncating so a noisy process can't allocate unbounded memory.
+   */
+  emitUntruncated?: boolean;
 };
 
 function signalName(signal: number | undefined): NodeJS.Signals | null {
@@ -32,11 +40,15 @@ function signalName(signal: number | undefined): NodeJS.Signals | null {
   return (match?.[0] as NodeJS.Signals | undefined) ?? null;
 }
 
-function emitPtyChunk(options: RunProcessOptions, value: string): void {
+function emitPtyChunk(options: RunProcessOptions, value: string, emitUntruncated: boolean): void {
+  if (emitUntruncated) {
+    options.onChunk({ stream: "stdout", data: value });
+    return;
+  }
   const data = truncateUtf8(value, MAX_OUTPUT_CHUNK_BYTES);
   options.onChunk({ stream: "stdout", data });
   if (Buffer.byteLength(value, "utf8") > MAX_OUTPUT_CHUNK_BYTES) {
-    options.onChunk({ stream: "stdout", data: "\n[output chunk truncated]\n" });
+    options.onChunk({ stream: "stdout", data: OUTPUT_CHUNK_TRUNCATION_MARKER });
   }
 }
 
@@ -106,17 +118,24 @@ function ptyInvocation(
 /**
  * Assigned-command runner backed by one pseudoterminal. Setup, git, and hook
  * processes intentionally remain on {@link SpawnProcessRunner}.
+ *
+ * Truncates each read to `MAX_OUTPUT_CHUNK_BYTES` by default, exactly like
+ * `SpawnProcessRunner`. `dependencies.emitUntruncated` lifts that cap for a
+ * caller that re-applies it itself on the forwarding path — used only by
+ * `UsageCapturingProcessRunner`, so its own capture step sees a complete read.
  */
 export class PtyProcessRunner implements ProcessRunner {
   readonly outputStreams = "merged" as const;
   private readonly kill: typeof process.kill;
   private readonly platform: NodeJS.Platform;
   private readonly spawn: PtySpawn;
+  private readonly emitUntruncated: boolean;
 
   constructor(dependencies: PtyProcessRunnerDependencies = {}) {
     this.kill = dependencies.kill ?? process.kill.bind(process);
     this.platform = dependencies.platform ?? process.platform;
     this.spawn = dependencies.spawn ?? spawnPty;
+    this.emitUntruncated = dependencies.emitUntruncated ?? false;
   }
 
   async run(options: RunProcessOptions): Promise<ProcessResult> {
@@ -189,7 +208,9 @@ export class PtyProcessRunner implements ProcessRunner {
       const timer = setTimeout(() => stop("timeout"), options.timeoutMs);
       const onAbort = () => stop("cancel");
       options.signal?.addEventListener("abort", onAbort, { once: true });
-      const dataSubscription = terminal.onData((data) => emitPtyChunk(options, data));
+      const dataSubscription = terminal.onData((data) =>
+        emitPtyChunk(options, data, this.emitUntruncated),
+      );
       terminal.onExit((event) => {
         closed = true;
         clearTimeout(timer);

@@ -1,4 +1,12 @@
-import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+import {
+  MAX_OUTPUT_CHUNK_BYTES,
+  OUTPUT_CHUNK_TRUNCATION_MARKER,
+  truncateUtf8,
+  type OutputChunk,
+  type ProcessResult,
+  type ProcessRunner,
+  type RunProcessOptions,
+} from "./executor.ts";
 import { createCodexUsageStream, parseCodexRecords } from "./usage-adapter-codex.ts";
 import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
 import {
@@ -90,7 +98,7 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
             capturedBytes = Buffer.byteLength(captured, "utf8");
           }
         }
-        options.onChunk(chunk);
+        forwardTruncated(chunk, options.onChunk);
       },
     });
     const parsed = codexStream
@@ -102,6 +110,23 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
       ...(result.usageLimit === true || parsed.usageLimit ? { usageLimit: true } : {}),
     };
   }
+}
+
+/**
+ * `this.inner` may hand a single read whole (see `PtyProcessRunner`'s
+ * `emitUntruncated`) so the capture step above sees complete data. Re-apply
+ * `SpawnProcessRunner`'s own per-chunk byte cap here before forwarding, so the
+ * downstream log/streamer keeps the same memory bound regardless of which
+ * runner is wrapped. A chunk `this.inner` already truncated (or the marker
+ * chunk itself) is at or under the cap and passes through unchanged.
+ */
+function forwardTruncated(chunk: OutputChunk, onChunk: (chunk: OutputChunk) => void): void {
+  if (Buffer.byteLength(chunk.data, "utf8") <= MAX_OUTPUT_CHUNK_BYTES) {
+    onChunk(chunk);
+    return;
+  }
+  onChunk({ ...chunk, data: truncateUtf8(chunk.data, MAX_OUTPUT_CHUNK_BYTES) });
+  onChunk({ stream: chunk.stream, data: OUTPUT_CHUNK_TRUNCATION_MARKER });
 }
 
 /**
