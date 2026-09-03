@@ -105,6 +105,42 @@ describe("parseCliUsage", () => {
     ).toMatchObject({ inputTokens: "5", outputTokens: "7", reasoningTokens: "1" });
   });
 
+  it("sums grok split-cache token fields from the documented json envelope", () => {
+    // Grok CLI 1.0.13's --output-format json docs (and the #430 live probe) emit
+    // Anthropic-style cache_read/cache_creation buckets, not cached_input_tokens.
+    // cache_creation is non-zero so a first-key-wins mapping cannot pass.
+    const output = JSON.stringify({
+      text: "Here's a summary of the codebase...",
+      stopReason: "end_turn",
+      sessionId: "abc123",
+      requestId: "xyz789",
+      num_turns: 7,
+      usage: {
+        input_tokens: 7210,
+        cache_read_input_tokens: 41000,
+        cache_creation_input_tokens: 12,
+        output_tokens: 1893,
+        reasoning_tokens: 412,
+        total_tokens: 50115,
+      },
+    });
+    expect(
+      parseCliUsage({ argv: ["grok", "-p", "--output-format", "json"], output, observedAt }),
+    ).toEqual({
+      usage: {
+        kind: "cumulative",
+        sequence: 0,
+        source: "cli",
+        observedAt,
+        inputTokens: "7210",
+        outputTokens: "1893",
+        cachedInputTokens: "41012",
+        reasoningTokens: "412",
+        totalTokens: "50115",
+      },
+    });
+  });
+
   it("rejects nested and forged records while accepting terminal structured errors", () => {
     const grok = JSON.stringify({
       response: "done",
