@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+import { CODEX_PENDING_LINE_MAX_BYTES, foldCodexRecord } from "./usage-adapter-codex.ts";
 import {
   UsageCapturingProcessRunner,
   executableStem,
@@ -499,6 +500,34 @@ describe("codex usage-limit detection", () => {
   });
 });
 
+describe("foldCodexRecord", () => {
+  it("folds a turn.completed usage record into an empty accumulator", () => {
+    expect(
+      foldCodexRecord({}, { type: "turn.completed", usage: { input_tokens: 4 } }, observedAt),
+    ).toEqual({
+      usage: { kind: "cumulative", sequence: 0, source: "cli", observedAt, inputTokens: "4" },
+    });
+  });
+
+  it("merges a usage-limit record onto an accumulator that already has usage", () => {
+    const withUsageAlready = foldCodexRecord(
+      {},
+      { type: "turn.completed", usage: { input_tokens: 4 } },
+      observedAt,
+    );
+    expect(
+      foldCodexRecord(withUsageAlready, { type: "error", message: "unrelated" }, observedAt),
+    ).toBe(withUsageAlready);
+    expect(
+      foldCodexRecord(
+        withUsageAlready,
+        { type: "error", message: "You've hit your usage limit." },
+        observedAt,
+      ),
+    ).toEqual({ ...withUsageAlready, usageLimit: true });
+  });
+});
+
 describe("structured JSON scanners", () => {
   it("skips malformed and incomplete objects while finding a later valid envelope", () => {
     expect(jsonObject("{incomplete")).toBeUndefined();
@@ -528,6 +557,25 @@ describe("UsageCapturingProcessRunner", () => {
     ).resolves.toEqual({ exitCode: 0, timedOut: false, signal: null });
   });
 
+  it("defaults observedAt to the current time when no clock is provided", async () => {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({
+          stream: "stdout",
+          data: '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}}',
+        });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new UsageCapturingProcessRunner(inner).run({
+      argv: ["claude", "-p", "--output-format", "json"],
+      cwd: "/",
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+    expect(result.usage?.observedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
   it("retains a complete structured envelope larger than 256 KiB", async () => {
     const envelope = JSON.stringify({
       response: "x".repeat(300 * 1024),
@@ -551,7 +599,11 @@ describe("UsageCapturingProcessRunner", () => {
     ).resolves.toMatchObject({ usage: { inputTokens: "321" } });
   });
 
-  it("forwards but discards an oversized structured envelope", async () => {
+  it("still parses a structured envelope that arrives after an oversized capture (trailing window, not discard-on-overflow)", async () => {
+    // Regression for the old behavior, where exceeding MAX_STRUCTURED_ENVELOPE_BYTES cleared
+    // `captured` and permanently stopped capturing for the rest of the run. The capture buffer
+    // is now a bounded trailing window: it keeps appending and trims from the front, so a
+    // terminal envelope that arrives after the cap is still within the retained window.
     const chunks: string[] = [];
     const inner: ProcessRunner = {
       async run(options: RunProcessOptions): Promise<ProcessResult> {
@@ -570,8 +622,47 @@ describe("UsageCapturingProcessRunner", () => {
         timeoutMs: 1_000,
         onChunk: (chunk) => chunks.push(chunk.data),
       }),
-    ).resolves.toEqual({ exitCode: 0, timedOut: false, signal: null });
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      timedOut: false,
+      signal: null,
+      usage: { inputTokens: "9" },
+    });
     expect(chunks).toHaveLength(2);
+  });
+
+  it("keeps the trailing window intact when the trim boundary bisects a multi-byte codepoint", async () => {
+    // Regression for a follow-on bug in the trailing-window fix above: slicing a Buffer at a
+    // fixed byte offset can land inside a multi-byte UTF-8 sequence. The orphaned bytes decode
+    // to a U+FFFD (3 bytes in UTF-8) each, which can re-encode *longer* than the bytes they
+    // replaced. MAX_STRUCTURED_ENVELOPE_BYTES is deliberately equal to jsonObject()'s own scan
+    // cap with zero headroom, so if the trimmed window comes back even one byte over budget,
+    // jsonObject() hard-rejects the whole thing and the envelope below is lost entirely.
+    //
+    // "€" is a 3-byte codepoint. Sized so the filler plus envelope lands 2 bytes over the cap,
+    // the trim point falls 2 bytes into the first "€" — exactly the case a naive byte slice
+    // gets wrong.
+    const envelope =
+      '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":"90"}}';
+    const maxBytes = 4 * 1024 * 1024;
+    const fillerBytes = maxBytes + 2 - Buffer.byteLength(envelope, "utf8");
+    if (fillerBytes % 3 !== 0) throw new Error("test fixture must land the cut inside a codepoint");
+    const filler = "€".repeat(fillerBytes / 3);
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: filler });
+        options.onChunk({ stream: "stdout", data: envelope });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["claude", "-p", "--output-format", "json"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toMatchObject({ usage: { inputTokens: "90" } });
   });
 
   it("attaches parsed usage without replacing an inner adapter report", async () => {
@@ -640,5 +731,85 @@ describe("UsageCapturingProcessRunner", () => {
         onChunk: () => undefined,
       }),
     ).resolves.toMatchObject({ usageLimit: true });
+  });
+
+  // Same real sess-fa52d870 turn.failed fixture text as the "codex usage-limit detection"
+  // describe block above, restated here since that block's consts are scoped to it.
+  const turnFailedLine =
+    '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}}';
+
+  // Shared by the chunk-boundary/overflow cases below, which differ only in the chunks fed to
+  // the PTY and (for the exit-0 usage case) the exit code — everything else about driving
+  // UsageCapturingProcessRunner through the codex path is identical.
+  function runCodexCapture(chunks: readonly string[], exitCode = 1): Promise<ProcessResult> {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        for (const data of chunks) options.onChunk({ stream: "stdout", data });
+        return { exitCode, timedOut: false, signal: null };
+      },
+    };
+    return new UsageCapturingProcessRunner(inner, () => observedAt).run({
+      argv: ["codex", "exec", "--json"],
+      cwd: "/",
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+  }
+
+  it("detects a codex usage-limit line split across two chunks at an arbitrary byte offset", async () => {
+    // No trailing newline: codex's last line may not be newline-terminated, exercising
+    // createCodexUsageStream's finish() flush of a non-empty pending fragment.
+    const splitAt = 47; // arbitrary offset inside the JSON body
+    await expect(
+      runCodexCapture([turnFailedLine.slice(0, splitAt), turnFailedLine.slice(splitAt)]),
+    ).resolves.toMatchObject({ usageLimit: true });
+  });
+
+  it("reassembles a codex record whose trailing \\r\\n is split exactly between chunks", async () => {
+    const line = '{"type":"turn.completed","usage":{"input_tokens":5}}\r\n';
+    const splitIndex = line.length - 1; // right after the "\r", right before the "\n"
+    await expect(
+      runCodexCapture([line.slice(0, splitIndex), line.slice(splitIndex)], 0),
+    ).resolves.toMatchObject({ usage: { inputTokens: "5" } });
+  });
+
+  it("still detects a usage-limit line after codex output exceeds the old 4 MiB whole-envelope cap", async () => {
+    // Before the fix, exceeding MAX_STRUCTURED_ENVELOPE_BYTES cleared `captured` and permanently
+    // stopped capturing for codex, so a usage-limit line arriving after that point was lost.
+    // Codex now folds JSONL incrementally per chunk with no whole-envelope cap at all.
+    const noise = "noop diagnostic line, not JSON\n".repeat(45_000); // ~1.3 MiB per chunk
+    await expect(
+      runCodexCapture([noise, noise, noise, noise, `${turnFailedLine}\n`]),
+    ).resolves.toMatchObject({ usageLimit: true });
+  });
+
+  it("drops an oversized unterminated codex line without throwing, then still detects a later valid line", async () => {
+    const oversizedFragment = "x".repeat(CODEX_PENDING_LINE_MAX_BYTES + 1);
+    await expect(
+      runCodexCapture([oversizedFragment, `\n${turnFailedLine}\n`]),
+    ).resolves.toMatchObject({ usageLimit: true });
+  });
+
+  it("skips a codex JSONL line that parses but is not an object", async () => {
+    await expect(runCodexCapture([`[1,2,3]\n${turnFailedLine}\n`])).resolves.toMatchObject({
+      usageLimit: true,
+    });
+  });
+
+  it("does not capture codex output when structured JSON mode is not requested", async () => {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: `${turnFailedLine}\n` });
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["codex", "exec"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toEqual({ exitCode: 1, timedOut: false, signal: null });
   });
 });

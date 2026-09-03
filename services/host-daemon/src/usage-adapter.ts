@@ -1,5 +1,5 @@
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
-import { parseCodexRecords } from "./usage-adapter-codex.ts";
+import { createCodexUsageStream, parseCodexRecords } from "./usage-adapter-codex.ts";
 import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
 import {
   CLI_PROVIDERS,
@@ -12,8 +12,9 @@ import {
   type ParsedCliUsage,
 } from "./usage-adapter-shared.ts";
 
-// Structured provider envelopes may include a long response alongside the final usage block.
-// Keep a bounded whole envelope rather than trimming its opening JSON delimiters.
+// Claude/Gemini/Grok's terminal result line can trail a long response; codex is folded
+// incrementally instead (see usage-adapter-codex.ts) so this bound doesn't apply to it.
+// Kept equal to usage-adapter-json.ts's own scan cap so jsonObject() never rejects the window.
 const MAX_STRUCTURED_ENVELOPE_BYTES = 4 * 1024 * 1024;
 
 export function executableStem(command: string | undefined): string {
@@ -61,39 +62,63 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
   }
 
   async run(options: RunProcessOptions): Promise<ProcessResult> {
-    let captured = "";
-    let capturedBytes = 0;
-    let captureOverflowed = false;
     const provider = resolveCliProvider(options.argv);
     const captureStructuredOutput =
       provider !== undefined && hasStructuredOutputMode(provider, options.argv);
+    // Captured once, before the process starts, rather than after completion as
+    // before: codex's incremental fold needs a timestamp at fold time, and one
+    // shared value per run keeps claude/gemini/grok's whole-buffer parse consistent
+    // with it.
+    const observedAt = this.now();
+    const codexStream =
+      captureStructuredOutput && provider === "codex"
+        ? createCodexUsageStream(observedAt)
+        : undefined;
+    let captured = "";
+    let capturedBytes = 0;
     const result = await this.inner.run({
       ...options,
       onChunk: (chunk) => {
-        if (captureStructuredOutput && !captureOverflowed) {
-          const chunkBytes = Buffer.byteLength(chunk.data);
-          if (capturedBytes + chunkBytes > MAX_STRUCTURED_ENVELOPE_BYTES) {
-            captured = "";
-            captureOverflowed = true;
-          } else {
-            captured += chunk.data;
-            capturedBytes += chunkBytes;
+        if (codexStream) {
+          codexStream.push(chunk.data);
+        } else if (captureStructuredOutput) {
+          captured += chunk.data;
+          capturedBytes += Buffer.byteLength(chunk.data);
+          if (capturedBytes > MAX_STRUCTURED_ENVELOPE_BYTES) {
+            captured = trailingWindow(captured, MAX_STRUCTURED_ENVELOPE_BYTES);
+            // A trim can drop a partial codepoint, so recount instead of assuming.
+            capturedBytes = Buffer.byteLength(captured, "utf8");
           }
         }
         options.onChunk(chunk);
       },
     });
-    const parsed = parseCliUsage({
-      argv: options.argv,
-      output: captured,
-      observedAt: this.now(),
-    });
+    const parsed = codexStream
+      ? codexStream.finish()
+      : parseCliUsage({ argv: options.argv, output: captured, observedAt });
     return {
       ...result,
       ...(result.usage === undefined && parsed.usage ? { usage: parsed.usage } : {}),
       ...(result.usageLimit === true || parsed.usageLimit ? { usageLimit: true } : {}),
     };
   }
+}
+
+/**
+ * Keep only the trailing `maxBytes` of a UTF-8 string. Callers only invoke this once the
+ * value already exceeds `maxBytes`, so this always trims. Slicing a Buffer at a fixed byte
+ * offset can bisect a multi-byte codepoint; the orphaned bytes decode to one or more U+FFFD,
+ * which re-encode longer than the bytes they replaced. MAX_STRUCTURED_ENVELOPE_BYTES equals
+ * jsonObject()'s own scan cap with zero headroom, so this must never return more than
+ * `maxBytes` — stripping the leading replacement run (never real content jsonObject() would
+ * scan for a literal `{` after) restores that guarantee instead of just hoping for it.
+ */
+function trailingWindow(value: string, maxBytes: number): string {
+  const buffer = Buffer.from(value, "utf8");
+  return buffer
+    .subarray(buffer.byteLength - maxBytes)
+    .toString("utf8")
+    .replace(/^�+/, "");
 }
 
 function hasOption(argv: readonly string[], name: string, value?: string): boolean {
