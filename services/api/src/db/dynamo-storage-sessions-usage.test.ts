@@ -89,7 +89,7 @@ describe("DynamoDB Local usage limit transitions", () => {
         usageLimitedUntil: "later",
       }),
     ).toBe(true);
-    const requeued = await getSession(ctx, "limited");
+    const requeued = await getSession(ctx, "limited", true);
     expect(requeued).toMatchObject({
       status: "queued",
       worktreeId: null,
