@@ -94,7 +94,7 @@ describe("runSetupIfNeeded setup edge cases", () => {
     expect(calls).toEqual([]);
   });
 
-  it("normalizes bare newlines in setup output for the viewer, across step and chunk boundaries", async () => {
+  it("normalizes bare newlines in setup output for the viewer, across chunk boundaries", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "auto-harness-setup-crlf-"));
     const runner: ProcessRunner = {
       async run(options) {
@@ -122,5 +122,44 @@ describe("runSetupIfNeeded setup edge cases", () => {
       .map((chunk) => chunk.content)
       .join("");
     expect(stdout).toBe("line one\r\nline two\r\nline three\r\n");
+  });
+
+  it("carries the pending CR across the host-setup/repo-setup script boundary, not just a chunk boundary", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-setup-crlf-scripts-"));
+    let invocation = 0;
+    const runner: ProcessRunner = {
+      async run(options) {
+        invocation += 1;
+        // Host setup runs first and ends its output on a lone \r (no \n yet).
+        // The repo-scoped setup below runs as a second, separate runner.run()
+        // call and opens with the matching \n. A normalizer recreated per
+        // setup script (instead of once for the whole runSetupIfNeeded call)
+        // would miss that the \r already belongs to it and double it.
+        if (invocation === 1) {
+          options.onChunk({ stream: "stdout", data: "host line\r" });
+        } else {
+          options.onChunk({ stream: "stdout", data: "\nrepo line\n" });
+        }
+        return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+      },
+    };
+    const { streamer, logs } = noopStreamer();
+    const { failure } = await runSetupIfNeeded(
+      runner,
+      streamer,
+      logs,
+      baseAssign({ setupScript: "prepare" }),
+      claim(cwd, undefined, "host-prepare"),
+      undefined,
+      () => false,
+      () => 30_000,
+    );
+    expect(failure).toBeNull();
+    expect(invocation).toBe(2);
+    const stdout = logs
+      .filter((chunk) => chunk.stream === "stdout")
+      .map((chunk) => chunk.content)
+      .join("");
+    expect(stdout).toBe("host line\r\nrepo line\r\n");
   });
 });
