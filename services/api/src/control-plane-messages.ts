@@ -63,7 +63,13 @@ async function requestAssignmentAfterHostEvent(
   state: ControlPlaneState,
   connectionId: string | undefined,
 ): Promise<void> {
-  if (connectionId) await hydrateAssignmentConnectionDurable(state, connectionId);
+  if (connectionId) {
+    try {
+      await hydrateAssignmentConnectionDurable(state, connectionId);
+    } catch {
+      // Continue with the durable assignment sweep.
+    }
+  }
   await requestAssignment(state);
 }
 
