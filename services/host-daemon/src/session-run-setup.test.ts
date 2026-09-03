@@ -43,7 +43,7 @@ async function run(
   signal?: AbortSignal,
 ) {
   const { streamer, logs } = noopStreamer();
-  return runSetupIfNeeded(
+  const { failure } = await runSetupIfNeeded(
     runner,
     streamer,
     logs,
@@ -53,6 +53,18 @@ async function run(
     () => false,
     () => 30_000,
   );
+  // The streamer coalesces consecutive same-stream writes into fewer emitted
+  // chunks, so joined stdout is what a caller should assert on, not a specific split.
+  const stdout = logs
+    .filter((chunk) => chunk.stream === "stdout")
+    .map((chunk) => chunk.content)
+    .join("");
+  return { failure, stdout };
+}
+
+/** A "prepare" setup script run, for the CRLF normalization tests below. */
+function runSetup(claimed: ClaimedWorktree, runner: ProcessRunner) {
+  return run(baseAssign({ setupScript: "prepare" }), claimed, runner);
 }
 
 describe("runSetupIfNeeded setup edge cases", () => {
@@ -92,5 +104,44 @@ describe("runSetupIfNeeded setup edge cases", () => {
     const { failure } = await run(baseAssign(), claim(cwd), runner);
     expect(failure).toBeNull();
     expect(calls).toEqual([]);
+  });
+
+  it("normalizes bare newlines in setup output for the viewer, across chunk boundaries", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-setup-crlf-"));
+    const runner: ProcessRunner = {
+      async run(options) {
+        options.onChunk({ stream: "stdout", data: "line one\nline two\r" });
+        options.onChunk({ stream: "stdout", data: "\nline three\n" });
+        return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+      },
+    };
+    const { failure, stdout } = await runSetup(claim(cwd), runner);
+    expect(failure).toBeNull();
+    expect(stdout).toBe("line one\r\nline two\r\nline three\r\n");
+  });
+
+  it("carries the pending CR across the host-setup/repo-setup script boundary, not just a chunk boundary", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-setup-crlf-scripts-"));
+    let invocation = 0;
+    const runner: ProcessRunner = {
+      async run(options) {
+        invocation += 1;
+        // Host setup runs first and ends its output on a lone \r (no \n yet).
+        // The repo-scoped setup below runs as a second, separate runner.run()
+        // call and opens with the matching \n. A normalizer recreated per
+        // setup script (instead of once for the whole runSetupIfNeeded call)
+        // would miss that the \r already belongs to it and double it.
+        if (invocation === 1) {
+          options.onChunk({ stream: "stdout", data: "host line\r" });
+        } else {
+          options.onChunk({ stream: "stdout", data: "\nrepo line\n" });
+        }
+        return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+      },
+    };
+    const { failure, stdout } = await runSetup(claim(cwd, undefined, "host-prepare"), runner);
+    expect(failure).toBeNull();
+    expect(invocation).toBe(2);
+    expect(stdout).toBe("host line\r\nrepo line\r\n");
   });
 });
