@@ -383,6 +383,62 @@ describe("parseCliUsage", () => {
     ).toEqual({});
   });
 
+  it("detects grok/gemini CLI-authored usage-limit envelopes from first-party CLI source", () => {
+    const parseProvider = (stem: "grok" | "gemini", envelope: object) =>
+      parseCliUsage({
+        argv: [stem, "-p", "--output-format", "json"],
+        output: JSON.stringify(envelope),
+        observedAt,
+      });
+    // Grok CLI 1.0.13 headless.rs: `{type:"error", message}` only. HTTP 429 maps to
+    // ACP -32003, then format_rate_limited_user_message writes these sentences
+    // (unicode apostrophe). Keep the structured-code arm as forward-compat.
+    for (const message of [
+      "You\u2019ve hit the rate limit for your plan. Upgrade your account or try again later.",
+      "You\u2019ve hit your team\u2019s API rate limit. Ask a team admin to purchase more credits for higher limits, or try again later. See https://docs.x.ai/developers/rate-limits#rate-limit-tiers",
+      "You\u2019ve reached your free Grok Build usage limit for now. Get SuperGrok for much higher limits, or try again later: https://grok.com/supergrok?referrer=grok-build",
+      "You've hit the rate limit for your plan. Upgrade your account or try again later.",
+    ]) {
+      expect(parseProvider("grok", { type: "error", message })).toEqual({ usageLimit: true });
+    }
+    for (const message of [
+      "Couldn't start session: permission denied",
+      "rate limit exceeded",
+      "You've hit your weekly limit · resets 12pm (America/Los_Angeles)",
+    ]) {
+      expect(parseProvider("grok", { type: "error", message })).toEqual({});
+    }
+
+    // Gemini CLI 0.46.0 JsonFormatter.formatError: `{error:{type, message, code?}}`.
+    // RESOURCE_EXHAUSTED is Google's RPC status copied into error.message; a bare
+    // 429 is not enough (same overload risk as Claude HTTP 429).
+    for (const error of [
+      {
+        type: "Error",
+        message:
+          "[API Error: You exceeded your current quota, please check your plan and billing details. (Status: RESOURCE_EXHAUSTED)]\nPlease wait and try again later.",
+        code: 1,
+      },
+      {
+        type: "GaxiosError",
+        message:
+          '{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}',
+        code: 429,
+      },
+      { status: "RESOURCE_EXHAUSTED" },
+      { code: "RESOURCE_EXHAUSTED" },
+      { error: { status: "RESOURCE_EXHAUSTED" } },
+    ]) {
+      expect(parseProvider("gemini", { error })).toEqual({ usageLimit: true });
+    }
+    for (const error of [
+      { type: "Error", message: "[API Error: boom]", code: 429 },
+      { type: "FatalAuthenticationError", message: "IneligibleTierError", code: 41 },
+    ]) {
+      expect(parseProvider("gemini", { error })).toEqual({});
+    }
+  });
+
   it("maps every token field and handles alternate structured error codes", () => {
     const usage = parseCliUsage({
       argv: ["claude", "-p", "--output-format", "json"],

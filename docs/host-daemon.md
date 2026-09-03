@@ -385,6 +385,18 @@ can still read `subtype: "success"`. The adapter instead reads the CLI's own `te
 "budget_exhausted"` field — the same trust tier as the coded fields, since the CLI sets it on its
 own terminal result line rather than the model.
 
+Grok `--output-format json` failures are a top-level `{"type":"error","message":"…"}` object with no
+`error.type`/`code`/`status`. HTTP 429 is mapped internally to ACP `-32003`, then the CLI writes one
+of three sentences onto `message` (`You've hit the rate limit for your plan…`, `You've hit your
+team's API rate limit…`, or `You've reached your free Grok Build usage limit…`). Those sentences are
+the same trust tier as Codex's usage-limit sentence. A generic “rate limit” phrase is not enough.
+
+Gemini `--output-format json` failures are `{error:{type, message, code?}}`. `code` is an exit code
+or the original error's `code`/`status`, not Google's RPC status. The adapter still accepts
+`error.status` / `error.code` of `RESOURCE_EXHAUSTED` when present, and otherwise requires that
+token as a whole word in `error.message` (the CLI copies the API body's `status:
+"RESOURCE_EXHAUSTED"`). A bare `429` is not enough.
+
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
