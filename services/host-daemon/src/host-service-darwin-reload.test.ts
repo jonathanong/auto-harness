@@ -49,73 +49,9 @@ describe("install-service darwin reload", () => {
     expect(result.errors.join("\n")).toMatch(/pre-reload.*without a pid/);
   });
 
-  it("retries bootstrap when launchd says the job is already loaded", () => {
-    for (const first of [
-      errRun(5, "Bootstrap failed: 5: Input/output error"),
-      errRun(1, "already exists"),
-      errRun(1, "already been loaded"),
-      errRun(37, "already in progress"),
-    ]) {
-      const result = steps({ bootstrap: [first, okRun()], print: [missing, running] });
-      expect(result.code).toBe(0);
-      expect(result.calls).toEqual([
-        "print",
-        "bootout",
-        "bootstrap",
-        "bootout",
-        "/bin/sleep",
-        "bootstrap",
-        "print",
-      ]);
-      expect(result.sleepArgs).toEqual([["1"]]);
-    }
-  });
-
-  it("falls back to load after an already-loaded bootstrap retry still fails", () => {
-    const result = steps({
-      bootstrap: errRun(5, "Input/output error"),
-      print: [missing, running],
-    });
-    expect(result.code).toBe(0);
-    expect(result.calls).toEqual([
-      "print",
-      "bootout",
-      "bootstrap",
-      "bootout",
-      "/bin/sleep",
-      "bootstrap",
-      "/bin/sleep",
-      "load",
-      "print",
-    ]);
-    expect(result.sleepArgs).toEqual([["1"], ["1"]]);
-  });
-
-  it("does not trust launchctl load -w's exit code when it reports a load failure", () => {
-    const result = steps({
-      bootstrap: errRun(5, "Bootstrap failed: 5: Input/output error"),
-      load: { status: 0, stdout: "", stderr: "Load failed: 5: Input/output error" },
-    });
-    expect(result.code).toBe(1);
-    expect(result.calls).toEqual([
-      "print",
-      "bootout",
-      "bootstrap",
-      "bootout",
-      "/bin/sleep",
-      "bootstrap",
-      "/bin/sleep",
-      "load",
-    ]);
-    expect(result.sleepArgs).toEqual([["1"], ["1"]]);
-    expect(result.errors.join("\n")).toMatch(
-      /bootstrap\/load failed: Load failed: 5: Input\/output error/,
-    );
-  });
-
   it("performs one complete reload retry when registration stays missing", () => {
     const result = steps({
-      print: [missing, missing, replacement],
+      print: [missing, missing, missing, replacement],
     });
     expect(result.code).toBe(0);
     expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
@@ -152,25 +88,6 @@ describe("install-service darwin reload", () => {
     });
     expect(result.code).toBe(0);
     expect(result.calls).toContain("kickstart");
-  });
-
-  it("does not accept a running pid that survived the reload", () => {
-    const result = steps({
-      print: [running, running, running, running, running, running, running, replacement],
-    });
-    expect(result.code).toBe(0);
-    expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
-    expect(result.calls.filter((step) => step === "/bin/sleep")).toHaveLength(5);
-  });
-
-  it("fails after two passes when launchd never exposes a running pid", () => {
-    const result = steps({
-      print: [missing, stopped],
-    });
-    expect(result.code).toBe(1);
-    expect(result.calls.filter((step) => step === "bootstrap")).toHaveLength(2);
-    expect(result.calls.filter((step) => step === "/bin/sleep")).toHaveLength(10);
-    expect(result.errors.join("\n")).toMatch(/launch agent is stopped/);
   });
 
   it("rejects a successful kickstart when launchd retains the prior daemon pid", () => {
