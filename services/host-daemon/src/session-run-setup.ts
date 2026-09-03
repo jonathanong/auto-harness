@@ -1,6 +1,7 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import { createChildEnv } from "./child-env.ts";
+import { createCrlfNormalizer } from "./crlf-normalize.ts";
 import type { ProcessResult, ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
@@ -65,6 +66,12 @@ export async function runSetupIfNeeded(
 
   streamer.write("system", "Running setup script...");
   if (signal?.aborted) return { environment, failure: await abortedFailure() };
+  // Setup runs on the plain-piped processRunner (never a PTY), so its stdout/stderr
+  // never gets ONLCR's \n -> \r\n. Normalize here so the terminal viewer's xterm.js
+  // returns to column 0 on every line, matching what the PTY-backed agent command
+  // already gets for free. One normalizer spans both setup scripts below so a
+  // \r/\n pair split across the host-setup/repo-setup boundary is still caught.
+  const crlf = createCrlfNormalizer();
   for (const setupScript of setupScripts) {
     try {
       await claimed.currentExecutionTarget?.();
@@ -76,7 +83,7 @@ export async function runSetupIfNeeded(
       setupScript,
       claimed.cwd,
       remainingStepMs(),
-      (c) => streamer.write(c.stream, c.data),
+      (c) => streamer.write(c.stream, crlf(c.stream, c.data)),
       signal,
       environment,
     );

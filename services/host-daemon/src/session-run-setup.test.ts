@@ -93,4 +93,34 @@ describe("runSetupIfNeeded setup edge cases", () => {
     expect(failure).toBeNull();
     expect(calls).toEqual([]);
   });
+
+  it("normalizes bare newlines in setup output for the viewer, across step and chunk boundaries", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "auto-harness-setup-crlf-"));
+    const runner: ProcessRunner = {
+      async run(options) {
+        options.onChunk({ stream: "stdout", data: "line one\nline two\r" });
+        options.onChunk({ stream: "stdout", data: "\nline three\n" });
+        return { exitCode: 0, timedOut: false, signal: null, environment: {} };
+      },
+    };
+    const { streamer, logs } = noopStreamer();
+    const { failure } = await runSetupIfNeeded(
+      runner,
+      streamer,
+      logs,
+      baseAssign({ setupScript: "prepare" }),
+      claim(cwd),
+      undefined,
+      () => false,
+      () => 30_000,
+    );
+    expect(failure).toBeNull();
+    // The streamer coalesces consecutive same-stream writes into fewer emitted
+    // chunks, so assert on the joined content rather than a specific split.
+    const stdout = logs
+      .filter((chunk) => chunk.stream === "stdout")
+      .map((chunk) => chunk.content)
+      .join("");
+    expect(stdout).toBe("line one\r\nline two\r\nline three\r\n");
+  });
 });
