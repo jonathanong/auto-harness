@@ -54,7 +54,6 @@ describe("durable scheduled main-checkout leases", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
-      retryCount: 0,
       type: "scheduled",
       source: "schedule",
       principalId: "system",

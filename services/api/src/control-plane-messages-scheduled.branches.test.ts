@@ -53,7 +53,7 @@ function storage(over: Record<string, unknown> = {}) {
 }
 
 function durable(row: SessionRecord, methods: Record<string, unknown> = {}) {
-  const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
+  const state = createControlPlaneState({ now: () => NOW });
   setDurableReadStorage(state, storage(methods));
   state.sessions.set(row.id, row);
   return state;
@@ -116,7 +116,7 @@ describe("scheduled terminal and retry message branches", () => {
 
   it("keeps a leased providerless usage_limit queued until the original deadline", async () => {
     const calls: Record<string, unknown>[] = [];
-    const row = session({ retryCount: 1 });
+    const row = session();
     const state = durable(row, {
       releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
         calls.push(input);

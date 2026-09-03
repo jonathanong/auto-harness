@@ -69,7 +69,6 @@ export type SessionTransitionPlan = { effects: SessionTransitionEffect[] };
 export type SessionTransitionContext = {
   now: string;
   source: "local" | "durable";
-  usageLimitRetryCeiling: number;
   providerAccount?: { usageLimitCooldownSeconds: number } | null;
   reconnectGraceMs?: number;
 };

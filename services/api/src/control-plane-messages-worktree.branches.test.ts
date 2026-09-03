@@ -34,7 +34,7 @@ function row(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 function run(session: SessionRecord) {
-  const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
+  const state = createControlPlaneState({ now: () => NOW });
   setDurableReadStorage(state, {
     finishSession: async () => true,
     suppressProviderlessUsageLimit: async () => true,

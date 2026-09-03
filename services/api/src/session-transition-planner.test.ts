@@ -52,7 +52,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 function ctx(over: Partial<SessionTransitionContext> = {}): SessionTransitionContext {
-  return { now: NOW, source: "durable", usageLimitRetryCeiling: 3, ...over };
+  return { now: NOW, source: "durable", ...over };
 }
 
 function types(event: SessionTransitionEvent, row: SessionRecord = session(), extra = ctx()) {
@@ -361,14 +361,14 @@ describe("session-transition planner", () => {
       types(
         status({ worktreeId: null, status: "failed", errorCode: "usage_limit" }),
         providerlessLeased,
-        ctx({ usageLimitRetryCeiling: 1 }),
+        ctx(),
       ),
     ).toEqual(["suppress_target", "release_lease", "requeue", "reschedule"]);
     expect(
       types(
         status({ worktreeId: null, status: "failed", errorCode: "usage_limit" }),
-        { ...providerlessLeased, retryCount: 1, fallbacks: [{ commandId: "fallback" }] },
-        ctx({ usageLimitRetryCeiling: 1 }),
+        { ...providerlessLeased, fallbacks: [{ commandId: "fallback" }] },
+        ctx(),
       ),
     ).toEqual(["suppress_target", "release_lease", "fallback", "requeue", "reschedule"]);
   });

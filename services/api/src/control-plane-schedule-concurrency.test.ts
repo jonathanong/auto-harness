@@ -40,7 +40,6 @@ function makeDurableSchedulePlane() {
     status: "running" as const,
     queueShard: 0,
     createdAt: "2025-12-31T23:59:00.000Z",
-    retryCount: 0,
     concurrencyId: "schedule-nightly",
   };
   return { plane, schedule, active };

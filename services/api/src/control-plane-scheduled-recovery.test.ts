@@ -57,7 +57,6 @@ async function setup(suffix: string) {
     status: "queued",
     queueShard: 0,
     createdAt: NOW,
-    retryCount: 0,
     type: "scheduled",
     source: "schedule",
     principalId: "system",

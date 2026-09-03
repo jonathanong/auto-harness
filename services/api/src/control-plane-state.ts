@@ -125,7 +125,6 @@ export type ControlPlaneState = {
   heartbeatStaleMs: number;
   reconnectGraceMs: number;
   sessionDrainTimeoutMs: number;
-  usageLimitRetryCeiling: number;
   archivePrefix: string;
   /** Shared HMAC key for session-list and repository-list cursors. */
   sessionCursorSecret: string;
@@ -199,7 +198,6 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       : DEFAULT_HEARTBEAT_STALE_MS,
     reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
     sessionDrainTimeoutMs: options.sessionDrainTimeoutMs ?? 15 * 60_000,
-    usageLimitRetryCeiling: options.usageLimitRetryCeiling ?? 3,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     sessionCursorSecret:
       options.sessionCursorSecret ??

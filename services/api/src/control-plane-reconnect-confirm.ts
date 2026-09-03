@@ -15,7 +15,6 @@ export function ignoreStaleReconnectClaim(
         {
           now: state.now(),
           source: state.storage ? "durable" : "local",
-          usageLimitRetryCeiling: state.usageLimitRetryCeiling,
         },
       ),
       "ignore",

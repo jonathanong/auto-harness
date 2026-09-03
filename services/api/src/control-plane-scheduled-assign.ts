@@ -24,7 +24,10 @@ import {
   hostAssignmentOccupancyCount,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
-import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
+import {
+  clearAbandonedUsageLimitRetryFields,
+  type AssignmentWriteResult,
+} from "./db/plane-storage-types.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -247,7 +250,7 @@ export async function assignScheduledQueuedDurable(
     delete next.exitCode;
     delete next.errorCode;
     delete next.errorMessage;
-    delete next.retryAfter;
+    clearAbandonedUsageLimitRetryFields(next);
     state.sessions.set(session.id, next);
     if (target.providerAccountId) {
       const account = state.providerAccounts.get(target.providerAccountId);

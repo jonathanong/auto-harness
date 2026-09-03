@@ -135,7 +135,6 @@ describe("durable session concurrency", () => {
       status: "completed",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
-      retryCount: 0,
       hostId: "host-1",
       concurrencyId: "resume-lock",
       cliResumeRef: "resume-ref",

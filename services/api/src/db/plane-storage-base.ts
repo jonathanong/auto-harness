@@ -436,8 +436,6 @@ export class DynamoPlaneStorageBase {
     exitCode?: number | null | undefined;
     errorCode?: string | undefined;
     cliResumeRef?: string | undefined;
-    retryCount?: number;
-    retryAfter?: string;
     suppressedTargetIndex?: number;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
