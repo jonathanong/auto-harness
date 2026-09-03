@@ -208,9 +208,17 @@ function parseGrokRecord(value: JsonRecord, observedAt: string): ParsedCliUsage 
 
 function claudeUsageLimit(value: JsonRecord): boolean {
   const code = structuredErrorCode(value) ?? value.subtype;
-  return (
-    typeof code === "string" && /^(?:rate_limit_error|usage_limit|insufficient_quota)$/.test(code)
-  );
+  if (
+    typeof code === "string" &&
+    /^(?:rate_limit_error|usage_limit|insufficient_quota)$/.test(code)
+  ) {
+    return true;
+  }
+  // Claude's own account-level 5h/weekly/model-specific plan quota is enforced client-side,
+  // not as an Anthropic API error: the CLI reports it via this terminal_reason, with no
+  // rate_limit_error/usage_limit code and no `error` object at all (subtype can still read
+  // "success"). This is the exact shape of the real incident this detector must catch.
+  return value.terminal_reason === "budget_exhausted";
 }
 
 function geminiUsageLimit(value: JsonRecord): boolean {
