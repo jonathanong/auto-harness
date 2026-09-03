@@ -11,6 +11,13 @@ token counts or prices, and the control plane accepts only `source: "cli"`. Coun
 monetary values are decimal strings; monetary values use integer micros. Provider rates are
 optional operator configuration and are never fetched from a vendor.
 
+The adapter's own capture buffer is bounded differently per provider. Codex's JSONL event stream is
+folded incrementally as PTY chunks arrive, so a long-running turn keeps yielding usage/usage-limit
+signal with no whole-output cap; only a single unterminated JSONL line is bounded, and an oversized
+one is dropped and resynced at the next newline. Claude, Gemini, and Grok still buffer their whole
+result envelope up to a fixed cap, but on overflow they retain a trailing window of that buffer
+instead of discarding it and giving up on the rest of the run.
+
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
 | Install / config / systemd | [setup.md](setup.md)                         |

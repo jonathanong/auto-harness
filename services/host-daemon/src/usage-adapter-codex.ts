@@ -35,17 +35,76 @@ function codexUsageLimit(value: JsonRecord): boolean {
   return typeof message === "string" && CODEX_USAGE_LIMIT_SENTENCE.test(message);
 }
 
+/** Fold one decoded JSONL record into a running `ParsedCliUsage` accumulator. */
+export function foldCodexRecord(
+  parsed: ParsedCliUsage,
+  value: JsonRecord,
+  observedAt: string,
+): ParsedCliUsage {
+  let next = parsed;
+  if (value.type === "turn.completed") {
+    const usage = record(value.usage);
+    if (usage) next = { ...next, ...withUsage(usageFromRecord(usage, observedAt, "codex")) };
+  }
+  if (codexUsageLimit(value)) {
+    next = { ...next, usageLimit: true };
+  }
+  return next;
+}
+
 /** Parse Codex's JSONL event stream, tracking terminal usage and Codex's own error envelopes. */
 export function parseCodexRecords(values: JsonRecord[], observedAt: string): ParsedCliUsage {
   let parsed: ParsedCliUsage = {};
   for (const value of values) {
-    if (value.type === "turn.completed") {
-      const usage = record(value.usage);
-      if (usage) parsed = { ...parsed, ...withUsage(usageFromRecord(usage, observedAt, "codex")) };
-    }
-    if (codexUsageLimit(value)) {
-      parsed = { ...parsed, usageLimit: true };
-    }
+    parsed = foldCodexRecord(parsed, value, observedAt);
   }
   return parsed;
+}
+
+// A JSONL line is normally a few KB. This only guards a single unterminated
+// fragment against an unbounded/broken stream; it is not a whole-output cap.
+export const CODEX_PENDING_LINE_MAX_BYTES = 1024 * 1024;
+
+export interface CodexUsageStream {
+  push(chunkData: string): void;
+  finish(): ParsedCliUsage;
+}
+
+/**
+ * Incrementally fold Codex's JSONL stream as PTY chunks arrive, so a long run
+ * still yields usage/usage-limit signal even if it never reaches a terminal
+ * line within any single-buffer cap. `observedAt` is fixed at construction —
+ * one run shares one timestamp, mirroring the prior whole-buffer behavior.
+ */
+export function createCodexUsageStream(observedAt: string): CodexUsageStream {
+  let pending = "";
+  let parsed: ParsedCliUsage = {};
+
+  function foldLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const value = JSON.parse(trimmed) as unknown;
+      const decoded = record(value);
+      if (decoded) parsed = foldCodexRecord(parsed, decoded, observedAt);
+    } catch {
+      // Non-JSON diagnostics cannot become telemetry, matching jsonLines().
+    }
+  }
+
+  return {
+    push(chunkData: string): void {
+      const combined = pending + chunkData;
+      const lines = combined.split(/\r?\n/);
+      const tail = lines.pop()!; // split() always returns at least one element
+      for (const line of lines) foldLine(line);
+      // Drop an oversized unterminated fragment and resync at the next newline
+      // rather than growing `pending` unbounded.
+      pending = Buffer.byteLength(tail, "utf8") > CODEX_PENDING_LINE_MAX_BYTES ? "" : tail;
+    },
+    finish(): ParsedCliUsage {
+      if (pending) foldLine(pending);
+      return parsed;
+    },
+  };
 }
