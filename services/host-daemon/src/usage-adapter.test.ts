@@ -738,44 +738,38 @@ describe("UsageCapturingProcessRunner", () => {
   const turnFailedLine =
     '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}}';
 
+  // Shared by the chunk-boundary/overflow cases below, which differ only in the chunks fed to
+  // the PTY and (for the exit-0 usage case) the exit code — everything else about driving
+  // UsageCapturingProcessRunner through the codex path is identical.
+  function runCodexCapture(chunks: readonly string[], exitCode = 1): Promise<ProcessResult> {
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        for (const data of chunks) options.onChunk({ stream: "stdout", data });
+        return { exitCode, timedOut: false, signal: null };
+      },
+    };
+    return new UsageCapturingProcessRunner(inner, () => observedAt).run({
+      argv: ["codex", "exec", "--json"],
+      cwd: "/",
+      timeoutMs: 1_000,
+      onChunk: () => undefined,
+    });
+  }
+
   it("detects a codex usage-limit line split across two chunks at an arbitrary byte offset", async () => {
     // No trailing newline: codex's last line may not be newline-terminated, exercising
     // createCodexUsageStream's finish() flush of a non-empty pending fragment.
     const splitAt = 47; // arbitrary offset inside the JSON body
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: turnFailedLine.slice(0, splitAt) });
-        options.onChunk({ stream: "stdout", data: turnFailedLine.slice(splitAt) });
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
     await expect(
-      new UsageCapturingProcessRunner(inner, () => observedAt).run({
-        argv: ["codex", "exec", "--json"],
-        cwd: "/",
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
+      runCodexCapture([turnFailedLine.slice(0, splitAt), turnFailedLine.slice(splitAt)]),
     ).resolves.toMatchObject({ usageLimit: true });
   });
 
   it("reassembles a codex record whose trailing \\r\\n is split exactly between chunks", async () => {
     const line = '{"type":"turn.completed","usage":{"input_tokens":5}}\r\n';
     const splitIndex = line.length - 1; // right after the "\r", right before the "\n"
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: line.slice(0, splitIndex) });
-        options.onChunk({ stream: "stdout", data: line.slice(splitIndex) });
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
     await expect(
-      new UsageCapturingProcessRunner(inner, () => observedAt).run({
-        argv: ["codex", "exec", "--json"],
-        cwd: "/",
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
+      runCodexCapture([line.slice(0, splitIndex), line.slice(splitIndex)], 0),
     ).resolves.toMatchObject({ usage: { inputTokens: "5" } });
   });
 
@@ -784,59 +778,22 @@ describe("UsageCapturingProcessRunner", () => {
     // stopped capturing for codex, so a usage-limit line arriving after that point was lost.
     // Codex now folds JSONL incrementally per chunk with no whole-envelope cap at all.
     const noise = "noop diagnostic line, not JSON\n".repeat(45_000); // ~1.3 MiB per chunk
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        for (let index = 0; index < 4; index += 1) {
-          options.onChunk({ stream: "stdout", data: noise });
-        }
-        options.onChunk({ stream: "stdout", data: `${turnFailedLine}\n` });
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
     await expect(
-      new UsageCapturingProcessRunner(inner, () => observedAt).run({
-        argv: ["codex", "exec", "--json"],
-        cwd: "/",
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
+      runCodexCapture([noise, noise, noise, noise, `${turnFailedLine}\n`]),
     ).resolves.toMatchObject({ usageLimit: true });
   });
 
   it("drops an oversized unterminated codex line without throwing, then still detects a later valid line", async () => {
     const oversizedFragment = "x".repeat(CODEX_PENDING_LINE_MAX_BYTES + 1);
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: oversizedFragment });
-        options.onChunk({ stream: "stdout", data: `\n${turnFailedLine}\n` });
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
     await expect(
-      new UsageCapturingProcessRunner(inner, () => observedAt).run({
-        argv: ["codex", "exec", "--json"],
-        cwd: "/",
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
+      runCodexCapture([oversizedFragment, `\n${turnFailedLine}\n`]),
     ).resolves.toMatchObject({ usageLimit: true });
   });
 
   it("skips a codex JSONL line that parses but is not an object", async () => {
-    const inner: ProcessRunner = {
-      async run(options: RunProcessOptions): Promise<ProcessResult> {
-        options.onChunk({ stream: "stdout", data: `[1,2,3]\n${turnFailedLine}\n` });
-        return { exitCode: 1, timedOut: false, signal: null };
-      },
-    };
-    await expect(
-      new UsageCapturingProcessRunner(inner, () => observedAt).run({
-        argv: ["codex", "exec", "--json"],
-        cwd: "/",
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
-    ).resolves.toMatchObject({ usageLimit: true });
+    await expect(runCodexCapture([`[1,2,3]\n${turnFailedLine}\n`])).resolves.toMatchObject({
+      usageLimit: true,
+    });
   });
 
   it("does not capture codex output when structured JSON mode is not requested", async () => {
