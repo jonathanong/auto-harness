@@ -291,6 +291,22 @@ If `codex` is on `PATH`:
 codex exec --json 'Reply with exactly: OK'
 ```
 
+If `cursor-agent` is on `PATH`:
+
+```bash
+cursor-agent --print --force 'Reply with exactly: OK'
+```
+
+Run this with `HOME` set to the provider account's execution-profile home
+([host-daemon.md#config-loader](host-daemon.md#config-loader)), not the
+operator's own shell home — cursor-agent reads its login from
+`$HOME/.cursor/cli-config.json`, and a login in the operator's home proves
+nothing about the account the daemon will actually use. If this fails the same
+way a live session does, the account (not the daemon) is the problem — see
+[host-daemon.md#command-execution-model](host-daemon.md#command-execution-model)
+for binding a Cursor account via `CURSOR_API_KEY` in that account's execution
+profile instead of a logged-in `$HOME`.
+
 Persist the daemon so it survives logout/reboot. Same command on linux
 (systemd), macOS (LaunchAgent, current user), and Windows (logon scheduled
 task, current user). Details:
