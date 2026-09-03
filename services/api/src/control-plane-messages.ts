@@ -41,6 +41,7 @@ import {
   requeueUsageLimitedSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
+import { hydrateAssignmentConnectionDurable } from "./control-plane-assignment-readiness.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type {
@@ -57,6 +58,21 @@ import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
+
+async function requestAssignmentAfterHostEvent(
+  state: ControlPlaneState,
+  connectionId: string | undefined,
+): Promise<void> {
+  if (connectionId) {
+    try {
+      await hydrateAssignmentConnectionDurable(state, connectionId);
+    } catch {
+      // Continue with the durable assignment sweep.
+    }
+  }
+  await requestAssignment(state);
+}
+
 export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
@@ -744,7 +760,7 @@ async function applySessionStatusDurable(
         ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       });
       state.pendingAcks.delete(session.id);
-      await requestAssignment(state);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     }
     return { ok: true };
   }
@@ -790,7 +806,7 @@ async function applySessionStatusDurable(
       delete next.reconnectDeadlineAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
-      await requestAssignment(state);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     }
     return { ok: true };
   }
@@ -830,7 +846,7 @@ async function applySessionStatusDurable(
         errorCode: "usage_limit",
       });
       state.pendingAcks.delete(session.id);
-      await requestAssignment(state);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
       return { ok: true };
     }
     if (requeue && cooldown && providerAccountId) {
@@ -872,7 +888,7 @@ async function applySessionStatusDurable(
         });
       }
       state.pendingAcks.delete(session.id);
-      await requestAssignment(state);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
       return { ok: true };
     }
     if (suppress && requeue?.reason === "providerless") {
@@ -912,7 +928,7 @@ async function applySessionStatusDurable(
       delete next.startedAt;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
-      await requestAssignment(state);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
       return { ok: true };
     }
     const completedAt = state.now();
@@ -953,7 +969,7 @@ async function applySessionStatusDurable(
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
     await archiveSessionLogs(state, session.id, undefined, true);
-    await requestAssignment(state);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -976,15 +992,11 @@ async function applySessionStatusDurable(
       });
     }
     state.sessions.set(session.id, {
-      ...session,
-      status: "queued",
-      worktreeId: null,
-      hostId: null,
+      ...queueReconnectSession(session, msg.errorMessage ?? "provider usage limit; requeued"),
       errorCode: "usage_limit",
-      errorMessage: msg.errorMessage ?? "provider usage limit; requeued",
     });
     state.pendingAcks.delete(session.id);
-    await requestAssignment(state);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true };
   }
   const shouldSuppressTarget = suppress !== undefined;
@@ -1006,7 +1018,7 @@ async function applySessionStatusDurable(
       suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
     });
     state.pendingAcks.delete(session.id);
-    await requestAssignment(state);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true };
   }
   const committed = await storage.finishSession(
@@ -1057,7 +1069,7 @@ async function applySessionStatusDurable(
     await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
-  await requestAssignment(state);
+  await requestAssignmentAfterHostEvent(state, fence?.connectionId);
   return { ok: true };
 }
 

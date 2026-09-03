@@ -124,6 +124,14 @@ describe("session storage conditional outcomes", () => {
     await expect(suppressProviderlessUsageLimit(ctx(boomSuppress), suppress)).rejects.toThrow(
       "dynamo unavailable",
     );
+    const committed = vi.fn().mockResolvedValue({});
+    await expect(requeueUsageLimitedSession(ctx(committed), requeue)).resolves.toBe(true);
+    const sessionUpdate = committed.mock.calls[1][0].input.TransactItems.find(
+      (entry: { Update?: { Key?: { id?: string } } }) => entry.Update?.Key?.id === "session",
+    )?.Update?.UpdateExpression as string;
+    expect(sessionUpdate).toContain("REMOVE");
+    expect(sessionUpdate).toContain("assignmentConnectionId");
+    expect(sessionUpdate).toContain("assignmentSentAt");
   });
 
   it("retries only a sole provider-lease Put collision", async () => {

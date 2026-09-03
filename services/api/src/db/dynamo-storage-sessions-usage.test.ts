@@ -62,6 +62,10 @@ describe("DynamoDB Local usage limit transitions", () => {
       status: "running",
       worktreeId: "limited-wt",
       attemptId: "attempt",
+      assignmentConnectionId: "connection",
+      assignmentSentAt: "now",
+      startedAt: "now",
+      ackReceivedAt: "now",
     });
     await putWorktree(ctx, {
       id: "limited-wt",
@@ -85,6 +89,17 @@ describe("DynamoDB Local usage limit transitions", () => {
         usageLimitedUntil: "later",
       }),
     ).toBe(true);
+    const requeued = await getSession(ctx, "limited", true);
+    expect(requeued).toMatchObject({
+      status: "queued",
+      worktreeId: null,
+      hostId: null,
+      errorCode: "usage_limit",
+    });
+    expect(requeued).not.toHaveProperty("assignmentConnectionId");
+    expect(requeued).not.toHaveProperty("assignmentSentAt");
+    expect(requeued).not.toHaveProperty("startedAt");
+    expect(requeued).not.toHaveProperty("ackReceivedAt");
     expect(
       await requeueUsageLimitedSession(ctx, {
         sessionId: "limited",
