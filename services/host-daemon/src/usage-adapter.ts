@@ -1,19 +1,20 @@
-/* eslint-disable max-lines -- provider envelope validation and token mapping must stay coupled. */
-import type { SessionUsage } from "@auto-harness/shared";
-
 import type { ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+import { parseCodexRecords } from "./usage-adapter-codex.ts";
 import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
+import {
+  CLI_PROVIDERS,
+  record,
+  structuredErrorCode,
+  usageFromRecord,
+  withUsage,
+  type CliProvider,
+  type JsonRecord,
+  type ParsedCliUsage,
+} from "./usage-adapter-shared.ts";
 
 // Structured provider envelopes may include a long response alongside the final usage block.
 // Keep a bounded whole envelope rather than trimming its opening JSON delimiters.
 const MAX_STRUCTURED_ENVELOPE_BYTES = 4 * 1024 * 1024;
-const PROVIDERS = ["claude", "codex", "gemini", "grok"] as const;
-type CliProvider = (typeof PROVIDERS)[number];
-
-type ParsedCliUsage = {
-  usage?: SessionUsage;
-  usageLimit?: boolean;
-};
 
 export function executableStem(command: string | undefined): string {
   if (!command) return "";
@@ -24,7 +25,7 @@ export function executableStem(command: string | undefined): string {
 
 export function resolveCliProvider(argv: readonly string[]): CliProvider | undefined {
   const stem = executableStem(argv[0]);
-  return PROVIDERS.find((name) => name === stem);
+  return CLI_PROVIDERS.find((name) => name === stem);
 }
 
 /**
@@ -95,14 +96,6 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
   }
 }
 
-type JsonRecord = Record<string, unknown>;
-
-function record(value: unknown): JsonRecord | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : undefined;
-}
-
 function hasOption(argv: readonly string[], name: string, value?: string): boolean {
   return argv.some((arg, index) => {
     if (value !== undefined && arg === `${name}=${value}`) return true;
@@ -147,20 +140,6 @@ function parseClaudeRecord(value: JsonRecord, observedAt: string): ParsedCliUsag
   };
 }
 
-function parseCodexRecords(values: JsonRecord[], observedAt: string): ParsedCliUsage {
-  let parsed: ParsedCliUsage = {};
-  for (const value of values) {
-    if (value.type === "turn.completed") {
-      const usage = record(value.usage);
-      if (usage) parsed = { ...parsed, ...withUsage(usageFromRecord(usage, observedAt, "codex")) };
-    }
-    if (value.type === "turn.failed" && codexUsageLimit(value)) {
-      parsed = { ...parsed, usageLimit: true };
-    }
-  }
-  return parsed;
-}
-
 function parseGeminiRecord(value: JsonRecord, observedAt: string): ParsedCliUsage {
   if (geminiUsageLimit(value)) return { usageLimit: true };
   if (typeof value.response !== "string") return {};
@@ -177,26 +156,11 @@ function parseGrokRecord(value: JsonRecord, observedAt: string): ParsedCliUsage 
   return usage ? withUsage(usageFromRecord(usage, observedAt, "grok")) : {};
 }
 
-function withUsage(usage: SessionUsage | undefined): ParsedCliUsage {
-  return usage ? { usage } : {};
-}
-
-function structuredErrorCode(value: JsonRecord): string | undefined {
-  const error = record(value.error);
-  const code = error?.type ?? error?.code ?? error?.status;
-  return typeof code === "string" ? code.toLowerCase() : undefined;
-}
-
 function claudeUsageLimit(value: JsonRecord): boolean {
   const code = structuredErrorCode(value) ?? value.subtype;
   return (
     typeof code === "string" && /^(?:rate_limit_error|usage_limit|insufficient_quota)$/.test(code)
   );
-}
-
-function codexUsageLimit(value: JsonRecord): boolean {
-  const code = structuredErrorCode(value);
-  return code === "insufficient_quota" || code === "rate_limit_error";
 }
 
 function geminiUsageLimit(value: JsonRecord): boolean {
@@ -208,92 +172,4 @@ function grokUsageLimit(value: JsonRecord): boolean {
   if (value.type !== "error" && value.status !== "error") return false;
   const code = structuredErrorCode(value);
   return code === "rate_limit_error" || code === "usage_limit";
-}
-
-function usageFromRecord(
-  nested: JsonRecord,
-  observedAt: string,
-  provider: CliProvider,
-): SessionUsage | undefined {
-  const fields = usageFields(provider);
-  const inputTokens = tokenString(nested, ...fields.input);
-  const outputTokens = tokenString(nested, ...fields.output);
-  const cachedInputTokens =
-    provider === "claude"
-      ? (sumTokenFields(nested, "cache_read_input_tokens", "cache_creation_input_tokens") ??
-        tokenString(nested, ...fields.cached))
-      : tokenString(nested, ...fields.cached);
-  const reasoningTokens = tokenString(nested, ...fields.reasoning);
-  const totalTokens = tokenString(nested, ...fields.total);
-  if (
-    inputTokens === undefined &&
-    outputTokens === undefined &&
-    cachedInputTokens === undefined &&
-    reasoningTokens === undefined &&
-    totalTokens === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    kind: "cumulative",
-    sequence: 0,
-    source: "cli",
-    observedAt,
-    ...(inputTokens !== undefined ? { inputTokens } : {}),
-    ...(outputTokens !== undefined ? { outputTokens } : {}),
-    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
-    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-    ...(totalTokens !== undefined ? { totalTokens } : {}),
-  };
-}
-
-function usageFields(provider: CliProvider): {
-  input: string[];
-  output: string[];
-  cached: string[];
-  reasoning: string[];
-  total: string[];
-} {
-  if (provider === "gemini") {
-    return {
-      input: ["promptTokenCount", "inputTokens"],
-      output: ["candidatesTokenCount", "outputTokens"],
-      cached: ["cachedContentTokenCount", "cachedInputTokens"],
-      reasoning: ["thoughtsTokenCount", "reasoningTokens"],
-      total: ["totalTokenCount", "totalTokens"],
-    };
-  }
-  return {
-    input: ["input_tokens", "prompt_tokens", "inputTokens"],
-    output: ["output_tokens", "completion_tokens", "outputTokens"],
-    cached: ["cached_input_tokens", "cachedInputTokens"],
-    reasoning: ["reasoning_tokens", "reasoningTokens"],
-    total: ["total_tokens", "totalTokens"],
-  };
-}
-
-function sumTokenFields(fields: JsonRecord, ...keys: string[]): string | undefined {
-  let total = 0n;
-  let found = false;
-  for (const key of keys) {
-    const value = tokenString(fields, key);
-    if (value === undefined) continue;
-    total += BigInt(value);
-    found = true;
-  }
-  const rendered = total.toString();
-  return found && rendered.length <= 30 ? rendered : undefined;
-}
-
-function tokenString(fields: JsonRecord, ...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = fields[key];
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-      return BigInt(Math.trunc(value)).toString();
-    }
-    if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value) && value.length <= 30) {
-      return value;
-    }
-  }
-  return undefined;
 }

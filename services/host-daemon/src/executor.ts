@@ -45,7 +45,10 @@ export type ProcessResult = {
   signal: NodeJS.Signals | null;
   /** Supplied by a provider-aware CLI adapter; never inferred from output. */
   usage?: SessionUsage;
-  /** Adapter-supplied vendor quota; never inferred from untrusted output. */
+  /**
+   * Adapter-supplied vendor quota, read only from a CLI's own structured error envelope
+   * (including Codex's own error-path message text) — never from model/agent-generated content.
+   */
   usageLimit?: boolean;
   /** Exported environment captured after a trusted setup script succeeds. */
   environment?: NodeJS.ProcessEnv;

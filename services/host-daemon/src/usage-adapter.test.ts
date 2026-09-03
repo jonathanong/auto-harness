@@ -136,6 +136,8 @@ describe("parseCliUsage", () => {
       },
       usageLimit: true,
     });
+    // Forward-compatible arm: OpenAI hasn't shipped a structured error code for this yet,
+    // but the detector keeps a code-based check alongside the message check in case it does.
     expect(
       parseCliUsage({
         argv: ["codex", "exec", "--json"],
@@ -368,6 +370,129 @@ describe("parseCliUsage", () => {
       parseCliUsage({
         argv: ["codex", "exec", "--json"],
         output: JSON.stringify({ type: "turn.completed", usage: [] }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+});
+
+describe("codex usage-limit detection", () => {
+  // Real JSONL captured from the failing live session sess-fa52d870: codex-cli emits its own
+  // usage-limit sentence on `error.message`/top-level `message`, never a structured error code.
+  const topLevelError =
+    '{"type":"error","message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}';
+  const turnFailed =
+    '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 6th, 2026 7:25 PM."}}';
+
+  it("detects a top-level {type:error} envelope from sess-fa52d870", () => {
+    expect(
+      parseCliUsage({ argv: ["codex", "exec", "--json"], output: topLevelError, observedAt }),
+    ).toEqual({ usageLimit: true });
+  });
+
+  it("detects a turn.failed envelope from sess-fa52d870", () => {
+    expect(
+      parseCliUsage({ argv: ["codex", "exec", "--json"], output: turnFailed, observedAt }),
+    ).toEqual({ usageLimit: true });
+  });
+
+  it("detects usage limit from a full captured session transcript", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: [topLevelError, turnFailed].join("\n"),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+  });
+
+  it("tolerates a curly-apostrophe variant of the sentence", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: '{"type":"error","message":"You’ve hit your usage limit today."}',
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+  });
+
+  it("tolerates \\r\\n line endings from a PTY-wrapped session", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: [topLevelError, turnFailed].join("\r\n"),
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+  });
+
+  it("never trusts model-authored item.* content repeating the trigger phrase", () => {
+    // Regression guard: an agent turn can be made to emit this exact sentence as ordinary
+    // assistant text. Only codex's own error envelope (`error`/`turn.failed`) is trusted.
+    const modelEcho = JSON.stringify({
+      type: "item.completed",
+      item: { type: "agent_message", text: "You've hit your usage limit." },
+    });
+    expect(
+      parseCliUsage({ argv: ["codex", "exec", "--json"], output: modelEcho, observedAt }),
+    ).toEqual({});
+  });
+
+  it("does not flag a turn.failed error with no usage-limit signal", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "turn.failed", error: { message: "network timeout" } }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("does not flag a turn.failed record with no error payload at all", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "turn.failed" }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("does not flag a top-level error record with a non-string message", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "error", message: { nested: true } }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("does not flag a top-level error record with no message at all", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: "error" }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("ignores records whose type is not a string", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ type: 42, message: "You've hit your usage limit." }),
+        observedAt,
+      }),
+    ).toEqual({});
+  });
+
+  it("ignores a record with no type field", () => {
+    expect(
+      parseCliUsage({
+        argv: ["codex", "exec", "--json"],
+        output: JSON.stringify({ message: "You've hit your usage limit." }),
         observedAt,
       }),
     ).toEqual({});

@@ -364,6 +364,14 @@ limit`, `too many requests`, or a bare `429` is **never** enough, even with a tr
 and a non-zero exit. The adapter signal is also ignored on success, on unknown/providerless argv,
 and when the assignment has no `providerAccountId`.
 
+The trusted surface is each CLI's own structured error envelope — never model/agent-generated
+content. For Codex this includes the sentence its own Rust CLI error path writes verbatim onto
+`turn.failed.error.message` or a top-level `{"type":"error"}.message` when it hits a usage limit;
+that text is as trustworthy as the `error.type`/`code`/`status` fields the other adapters key off,
+because it is written by the CLI process itself, not by the model. Codex's `item.*` records (agent
+text, reasoning, tool output) are model-authored and are never inspected for this classification,
+regardless of what they say.
+
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
