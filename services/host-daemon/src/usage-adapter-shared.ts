@@ -35,8 +35,10 @@ export function usageFromRecord(
   const fields = usageFields(provider);
   const inputTokens = tokenString(nested, ...fields.input);
   const outputTokens = tokenString(nested, ...fields.output);
+  // Grok's --output-format json usage object uses the same Anthropic-style split-cache
+  // names as Claude (CLI 1.0.13 docs + #430 probe).
   const cachedInputTokens =
-    provider === "claude"
+    provider === "claude" || provider === "grok"
       ? (sumTokenFields(nested, "cache_read_input_tokens", "cache_creation_input_tokens") ??
         tokenString(nested, ...fields.cached))
       : tokenString(nested, ...fields.cached);
