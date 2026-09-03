@@ -379,6 +379,12 @@ because it is written by the CLI process itself, not by the model. Codex's `item
 text, reasoning, tool output) are model-authored and are never inspected for this classification,
 regardless of what they say.
 
+Claude's own account-level plan quota (5h/weekly/model-specific caps) is enforced client-side, not
+as an Anthropic API error: the result envelope carries no `rate_limit_error`/`usage_limit` code and
+can still read `subtype: "success"`. The adapter instead reads the CLI's own `terminal_reason:
+"budget_exhausted"` field — the same trust tier as the coded fields, since the CLI sets it on its
+own terminal result line rather than the model.
+
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases

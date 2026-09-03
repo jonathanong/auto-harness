@@ -144,6 +144,24 @@ describe("parseCliUsage", () => {
       },
       usageLimit: true,
     });
+    // The account-level 5h/weekly/model plan quota is enforced client-side, not as an
+    // Anthropic API error: no rate_limit_error/usage_limit code, subtype still "success".
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output:
+          '{"type":"result","subtype":"success","is_error":true,"terminal_reason":"budget_exhausted","result":"You\'ve hit your weekly limit \xB7 resets 12pm (America/Los_Angeles)"}',
+        observedAt,
+      }).usageLimit,
+    ).toBe(true);
+    expect(
+      parseCliUsage({
+        argv: ["claude", "-p", "--output-format", "json"],
+        output:
+          '{"type":"result","subtype":"success","is_error":true,"terminal_reason":"api_error","api_error_status":401}',
+        observedAt,
+      }).usageLimit,
+    ).toBeUndefined();
     // Forward-compatible arm: OpenAI hasn't shipped a structured error code for this yet,
     // but the detector keeps a code-based check alongside the message check in case it does.
     expect(
