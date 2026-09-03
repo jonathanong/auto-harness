@@ -425,6 +425,8 @@ describe("parseCliUsage", () => {
           '{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}',
         code: 429,
       },
+      { status: "RESOURCE_EXHAUSTED" },
+      { code: "RESOURCE_EXHAUSTED" },
       { error: { status: "RESOURCE_EXHAUSTED" } },
     ]) {
       expect(parseProvider("gemini", { error })).toEqual({ usageLimit: true });
