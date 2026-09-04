@@ -79,6 +79,7 @@ describe("DynamoDB Local queued session lifecycle", () => {
       pinnedTargetIndex: 0,
       pinnedCommandId: "command",
       cliResumeRef: "opaque",
+      resumeSpec: { argv: ["stale"], appendPrompt: false },
     });
     expect(
       await clearResumePin(ctx, {
@@ -105,6 +106,10 @@ describe("DynamoDB Local queued session lifecycle", () => {
     const cleared = await getSession(ctx, "clear");
     expect(cleared?.resumeFallback).toBe(true);
     expect(cleared?.prompt).toBe("with context");
+    // The pin's old Command's frozen snapshot must not survive to attach itself — via the
+    // write-once `if_not_exists` assignment write — to whatever fresh Command this session
+    // lands on next (#439 review finding).
+    expect(cleared?.resumeSpec).toBeUndefined();
     await expect(
       failExpiredResumeSession(
         { ...ctx, tables: { ...tables, sessions: "missing-sessions" } },

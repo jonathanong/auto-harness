@@ -366,7 +366,11 @@ function touchAccount(state: ControlPlaneState, id: string | undefined, at: stri
  * Clear a native-resume pin, dropping to fresh target/fallback routing. The
  * prompt gets the prior-context pointer appended here (idempotent) so the
  * placement pass immediately following this call bakes it into the resolved
- * argv on the same pass — see `resolveTargets`/`buildArgv`.
+ * argv on the same pass — see `resolveTargets`/`buildArgv`. Also clears the
+ * frozen `resumeSpec`: it belongs to the pin's old Command, and the write-once
+ * `session.resumeSpec === undefined` guard at assignment would otherwise keep
+ * advertising its `resumeRefCapture` (and, if a later resume ever captures a
+ * ref, replay its frozen argv shape) under the fresh Command's identity.
  */
 function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinnedHostId;
@@ -375,6 +379,7 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinnedCommandId;
   delete session.pinExpiresAt;
   delete session.cliResumeRef;
+  delete session.resumeSpec;
   session.resumeFallback = true;
   session.prompt = appendPriorContextPointer(session.prompt);
 }

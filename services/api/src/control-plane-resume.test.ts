@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 
 import { describe, expect, it } from "vitest";
+import { appendPriorContextPointer } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 
@@ -817,6 +818,94 @@ describe("control-plane native resume", () => {
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
       resolvedArgv: ["edited", "run", "Continue from the previous session."],
+    });
+  });
+
+  it("clears the pin instead of silently reusing a live route when the frozen template fails validation", () => {
+    const { plane, messages, sourceId } = startTerminalSession(
+      [
+        {
+          id: "cmd",
+          name: "codex",
+          argv: ["codex", "exec"],
+          resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
+        },
+      ],
+      { target: { commandId: "cmd" } },
+      "cli-1",
+    );
+    // The live Command is untouched and would resolve fine on its own; only the
+    // *frozen* snapshot on the terminal source session is corrupted here, simulating a
+    // legacy snapshot that no longer passes validateCommandResumeSpec (two {cliResumeRef}
+    // placeholders). Falling through to the live route in this state would send
+    // `resume: true` plus the stale cliResumeRef while executing plain live argv, instead
+    // of invalidating the pin and routing fresh.
+    plane.state.sessions.get(sourceId)!.resumeSpec!.resumeArgvTemplate = [
+      "codex",
+      "resume",
+      "{cliResumeRef}",
+      "{cliResumeRef}",
+    ];
+
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed.ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      // clear_pin appends the prior-context pointer to the prompt (see
+      // clearResumePin) — confirming this is the fresh-fallback path, not a
+      // coincidentally pin-matching live route.
+      resolvedArgv: [
+        "codex",
+        "exec",
+        appendPriorContextPointer("Continue from the previous session."),
+      ],
+    });
+    expect(messages.at(-1)).not.toHaveProperty("resume");
+    expect(messages.at(-1)).not.toHaveProperty("cliResumeRef");
+  });
+
+  it("replaces the frozen snapshot instead of leaking a deleted Command's template onto its live fallback", () => {
+    const { plane, messages, sourceId } = startTerminalSession(
+      [
+        {
+          id: "primary",
+          name: "primary",
+          argv: ["primary", "run"],
+          resumeArgvTemplate: ["primary", "resume", "{cliResumeRef}", "{prompt}"],
+        },
+        {
+          id: "fallback",
+          name: "fallback",
+          argv: ["fallback", "run"],
+          resumeArgvTemplate: ["fallback", "resume", "{cliResumeRef}", "{prompt}"],
+        },
+      ],
+      { target: { commandId: "primary" }, fallbacks: [{ commandId: "fallback" }] },
+      "cli-1",
+    );
+    expect(plane.deleteCommand("primary").ok).toBe(true);
+
+    // Falls through to the live fallback (proven separately above); this fallback run
+    // itself then captures a fresh native-resume reference.
+    const firstResumed = plane.resumeSession(sourceId);
+    expect(firstResumed.ok).toBe(true);
+    const fallbackId = firstResumed.ok ? firstResumed.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, fallbackId);
+    finish(plane, fallbackId, "completed", "cli-2");
+
+    // A later resume of the fallback run must use *its own* frozen template — not
+    // primary's, which the write-once resumeSpec field would otherwise have kept
+    // attached across the fallback despite resolvedRoute.commandId already saying
+    // "fallback".
+    const secondResumed = plane.resumeSession(fallbackId);
+    expect(secondResumed.ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      commandId: "fallback",
+      resolvedArgv: ["fallback", "resume", "cli-2", "Continue from the previous session."],
     });
   });
 });

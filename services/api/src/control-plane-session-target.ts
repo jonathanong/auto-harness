@@ -79,9 +79,14 @@ export function resolveSessionTargetRouteAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return null;
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return null;
-  if (prefersNativeResumeRoute(session)) {
+  if (prefersNativeResumeRoute(session) && session.pinnedTargetIndex === targetIndex) {
+    // The pinned index is the only place a native continuation can resolve. If it fails
+    // here — a deleted Command, or (unlike deletion) a frozen template that no longer
+    // passes validation — falling through to a live route that happens to match the pin
+    // would silently mix a stale cliResumeRef with plain live argv instead of invalidating
+    // the pin and routing fresh (docs/plan.md invariant 7).
     const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
-    if (native) return matchesNativeResumePin(session, native) ? native : null;
+    return native && matchesNativeResumePin(session, native) ? native : null;
   }
   const route = resolveTarget(
     state,
@@ -300,11 +305,12 @@ export function resolveSessionTargetRoutesAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return [];
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return [];
-  const preferNative = prefersNativeResumeRoute(session);
-  const native = preferNative
-    ? resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex)
-    : undefined;
-  if (native) return matchesNativeResumePin(session, native) ? [native] : [];
+  if (prefersNativeResumeRoute(session) && session.pinnedTargetIndex === targetIndex) {
+    // See resolveSessionTargetRouteAt: the pinned index must resolve to the native route
+    // or nothing, never a live route that happens to match the pin.
+    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    return native && matchesNativeResumePin(session, native) ? [native] : [];
+  }
   const routes = resolveTargets(
     state,
     catalog,
@@ -315,12 +321,14 @@ export function resolveSessionTargetRoutesAt(
     session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
   ).map((route) => ({ ...route, targetIndex }));
   if (routes.length === 0) {
-    // `native` was already computed above when a native continuation was preferred; a
-    // null result there is deterministic (pure function of unchanged state), so only
-    // resolve it again when it was skipped outright.
-    const fallback = preferNative
-      ? undefined
-      : resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    const fallback = resolveNativeResumeRoute(
+      state,
+      catalog,
+      session,
+      worktree,
+      nowMs,
+      targetIndex,
+    );
     return fallback && matchesNativeResumePin(session, fallback) ? [fallback] : [];
   }
   return routes.filter((route) => matchesNativeResumePin(session, route));
