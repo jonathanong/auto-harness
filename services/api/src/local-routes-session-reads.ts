@@ -156,6 +156,8 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
           error: { code: "NOT_FOUND", message: "prior session context not available" },
         });
       } else {
+        // Contains a source session's prompt and transcript — never cacheable.
+        res.setHeader("Cache-Control", "no-store");
         send(res, 200, context);
       }
     } catch {

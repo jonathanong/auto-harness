@@ -28,6 +28,7 @@ describe("GET /sessions/:id/prior-context", () => {
     expect(response.status).toBe(200);
     expect(response.json).toMatchObject({ sourceSessionId: "s1", truncated: false });
     expect((response.json as { content: string }).content).toContain("did the thing");
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("404s when the session has no resumedFromSessionId", async () => {
