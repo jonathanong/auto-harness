@@ -753,16 +753,22 @@ and placement pin, then routes a fresh run through the configured target/fallbac
   "prompt": "Continue: also fix the edge case in parseDate",
   "concurrencyId": "filaments:shepherd:123",
   "timeout": 1800,
-  "priority": 10
+  "priority": 10,
+  "target": { "commandId": "cmd-new" },
+  "fallbacks": [{ "providerId": "prov-codex" }]
 }
 ```
 
-| Field           | Type   | Required | Description                                                                                                                                                                                                                                                                       |
-| --------------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`        | string | ✗        | Continuation instruction. Same UTF-8 cap as create: at most 65,536 bytes; 65,537 is `400 VALIDATION_ERROR` (`prompt must be at most 65536 bytes`). If omitted, the agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
-| `concurrencyId` | string | ✗        | Optional caller assertion; when set, it must exactly match the source session’s inherited concurrency identity. It cannot override that identity.                                                                                                                                 |
-| `timeout`       | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                                                                                                                                                    |
-| `priority`      | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                                                                                                                                               |
+| Field           | Type     | Required | Description                                                                                                                                                                                                                                                                       |
+| --------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`        | string   | ✗        | Continuation instruction. Same UTF-8 cap as create: at most 65,536 bytes; 65,537 is `400 VALIDATION_ERROR` (`prompt must be at most 65536 bytes`). If omitted, the agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
+| `concurrencyId` | string   | ✗        | Optional caller assertion; when set, it must exactly match the source session’s inherited concurrency identity. It cannot override that identity.                                                                                                                                 |
+| `timeout`       | number   | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                                                                                                                                                    |
+| `priority`      | number   | ✗        | Queue priority. Default: source session’s priority.                                                                                                                                                                                                                               |
+| `target`        | object   | ✗        | Rebinding override: `{ providerId }` or `{ commandId }`, same shape as create. When present, it **replaces** the inherited `target`/`fallbacks` policy wholesale (see "Repointing a target" below) instead of continuing the source session's original route.                     |
+| `fallbacks`     | object[] | ✗        | Ordered fallback targets for the override. Only valid together with `target`; `fallbacks` without `target` is `400 VALIDATION_ERROR` ("fallbacks requires target"). Omitted, it defaults to `[]` — a `target` override never inherits the source's old fallbacks.                 |
+
+The Node client (`modules/client`) accepts `providerName`/`commandName` sugar in `target`/`fallbacks` here too, resolved to ids client-side before the request, exactly as `createSession()` resolves it — see [modules/client/README.md](../modules/client/README.md).
 
 **Response:** `201 Created`
 
@@ -789,20 +795,23 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 
 **Scheduling:**
 
-1. New session keeps `resumedFromSessionId` and initially pins the source host plus stored native command/account route and CLI reference. It does not pin a worktree.
+1. New session keeps `resumedFromSessionId` and initially pins the source host plus stored native command/account route and CLI reference — unless a `target` override is given (step 3a below), which never pins.
 2. Scheduler may assign that native route to any eligible worktree for the repository and `ref` on the pinned host when it is idle, online, and not draining.
-3. If the native route is unavailable or `pinExpiresAt` passes, clear `cliResumeRef` and every placement/route pin, mark the session as a resume fallback, and assign a fresh run through target/fallback order.
-4. `session:assign` includes `resume: true` only for the native route; fresh fallback assignments preserve `resumedFromSessionId` but omit the stale native ref/pins.
+3. If the native route is unavailable or `pinExpiresAt` passes, clear `cliResumeRef` and every placement/route pin, mark the session as a resume fallback, and assign a fresh run through target/fallback order. If the host advertises the `prior-session-context` capability, `session:assign` also carries `priorContext` — see [Prior-session context](#get-sessionsidprior-context) below.
+   1. A `target` override takes this same fallback path immediately: it replaces `target`/`fallbacks` wholesale, drops every pin and `cliResumeRef`/`resumeSpec` up front (there is no native route to try), and recomputes `targetDisplayNames` against the current catalog — an unknown `commandId`/`providerId` in the override fails the request exactly as it would at create.
+4. `session:assign` includes `resume: true` only for the native route; fresh fallback assignments (including every `target`-override resume) preserve `resumedFromSessionId` but omit the stale native ref/pins.
 
 **Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally. Native resume being unschedulable is not terminal; it becomes a fresh target/fallback assignment.
 
+**Repointing a target:** to move an already-dispatched-but-still-resumable session onto a different Command or Provider — e.g. after rotating which Command a CI variable points at — resume it with a `target` override instead of the previous workaround of tombstoning checkpoint records to force a full re-dispatch. The override fully replaces the route policy (pass `fallbacks` too if the old ones should still apply) and always lands on a fresh assignment: there is no frozen argv to carry the old Command forward, and no worktree/host pin, so the run may land on a different host than the source did. Uncommitted worktree state from the source session is not preserved — the same caveat resume already carries generally (see the clone-vs-resume table below).
+
 **Errors:**
 
-| Status | Code               | When                                                                                                       |
-| ------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued`; prompt over 65,536 UTF-8 bytes |
-| 404    | `NOT_FOUND`        | Unknown session id                                                                                         |
-| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)                                              |
+| Status | Code               | When                                                                                                                                                                                                                                         |
+| ------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued`; prompt over 65,536 UTF-8 bytes; malformed/unknown `target`/`fallbacks`; `fallbacks` given without `target`; duplicate target/fallback references in the override |
+| 404    | `NOT_FOUND`        | Unknown session id                                                                                                                                                                                                                           |
+| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)                                                                                                                                                                                |
 
 **Clone vs resume:**
 
@@ -815,6 +824,44 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 
 Resume pin and provenance fields are server-managed. The supported product path is
 **`POST /sessions/:id/resume`**; `POST /sessions` does not accept placement pins.
+
+#### `GET /sessions/:id/prior-context`
+
+Fetch a bounded, plain-markdown transcript of the session that **`:id`** was resumed from. Meant
+to be fetched by the host daemon on a fresh-routed resume and written into the worktree as a file
+for the agent to read or grep — see [host-daemon.md — Resume](host-daemon.md#session-resume) and
+[harness.md](harness.md) for the `.auto-harness/` convention — but any caller with access to `:id`
+can fetch it directly for debugging.
+
+**Same access rule as `GET /sessions/:id/logs`:** `canAccess(repositoryId)` and
+`mayAccessHost(hostId)` against **`:id`** (the new, running session) — not the source session,
+which may have already detached its `hostId` on a terminal transition and may have run on a
+different host. A host-bound key passes because assignment sets `session.hostId` to that same
+daemon's host.
+
+**Response:** `200 OK`
+
+```json
+{
+  "sourceSessionId": "sess-x1y2z3",
+  "content": "# Prior session sess-x1y2z3\n\n- Status: failed\n...\n## Transcript\n\n...",
+  "truncated": false
+}
+```
+
+`content` is markdown: a header (source status, error code/message, completion time, the original
+prompt — each independently byte-capped) followed by the chronological transcript, `stdout` lines
+verbatim and `stderr`/`system` lines prefixed `[stderr] ` / `[system] `. `truncated: true` means the
+transcript exceeded the internal cap and only the most recent portion is included. No redaction
+pass runs here: a captured CLI resume reference is already replaced with a placeholder before it is
+logged, and git credentials are already scrubbed from `system` lines — this route is not a second
+place secrets could leak through.
+
+**Errors:**
+
+| Status | Code        | When                                                                                                                                                                                                        |
+| ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `NOT_FOUND` | Unknown `:id`; caller lacks repository/host access; `:id` was not created via resume; or the source's logs have expired (`SessionLogs` carries a 7-day TTL) — treated the same as "no transcript available" |
 
 #### `POST /sessions/:id/cancel`
 

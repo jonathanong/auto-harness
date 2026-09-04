@@ -160,6 +160,20 @@ const resumed = await harness.resumeSession("session-1", { prompt: "Address the 
 console.log(resumed.status);
 ```
 
+Pass `target` (and, only alongside it, `fallbacks`) to **rebind** the resume onto a different
+Command/Provider instead of continuing the source session's original route — the same
+`providerId`/`commandId`/`providerName`/`commandName` shapes as `createSession()`, resolved to ids
+the same way. This replaces the source session's whole target/fallback policy (a bare `fallbacks`
+override with no `target` is rejected) and always resumes on a fresh assignment: there is no native
+CLI resume onto a different Command, so it may also land on a different host.
+
+```js
+const resumed = await harness.resumeSession("session-1", {
+  prompt: "Continue with the updated Command.",
+  target: { commandName: "claude-print-auto" },
+});
+```
+
 ## List sessions
 
 Session listings are bounded pages with the same cursor shape as repository listings, plus

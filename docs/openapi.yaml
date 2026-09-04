@@ -429,6 +429,13 @@ components:
           minimum: -10000
           maximum: 10000
           description: Queue priority. Default is the source session's priority.
+        target:
+          $ref: "#/components/schemas/Target"
+          description: Rebinding override. Replaces the source session's target/fallbacks policy wholesale and always resumes on a fresh assignment (no native CLI resume, no host/worktree pin).
+        fallbacks:
+          type: array
+          items: { $ref: "#/components/schemas/Target" }
+          description: Ordered fallback targets for the override. Valid only together with target; omitted it defaults to an empty list rather than inheriting the source session's fallbacks.
       additionalProperties: false
     Session:
       type: object

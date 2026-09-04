@@ -294,6 +294,32 @@ The create response is `201`/`created: true` for the first active run and `200`/
 with the existing session for a duplicate delivery. Once the run is terminal, the identity is
 released and the next explicit delivery can retry it.
 
+### Repointing a target
+
+If your dispatch surface repoints which Command/Provider it uses (e.g. a repo variable your GHA
+reads into `target`), that change alone does not affect an already-dispatched session's resume —
+resume otherwise continues the session's original route. Pass `target` (and optionally
+`fallbacks`) directly on the resume call to rebind it:
+
+```bash
+curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions/${SESSION_ID}/resume" \
+  -H "Authorization: Bearer ${HARNESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Continue with the updated Command.","target":{"commandId":"cmd-new"}}'
+```
+
+This always lands on a fresh assignment — there is no native CLI resume to a different Command, so
+the new run starts a new CLI conversation, on whatever eligible worktree/host the new route
+resolves to (not necessarily the source session's). See
+[api.md — Repointing a target](api.md#post-sessionsidresume) for the full override contract, and
+[api.md — GET /sessions/:id/prior-context](api.md#get-sessionsidprior-context) for how the new run
+gets the prior conversation's transcript as a file (`.auto-harness/prior-session.md` in the
+worktree) instead of starting completely cold.
+
+`.auto-harness/` is a reserved directory inside every worktree: the daemon writes and later removes
+it around a fresh-routed resume, and it is `.gitignore`d from inside itself so it never shows up in
+`git status` or gets committed. Do not create a file or directory at that path in your repository.
+
 ---
 
 ## Pattern D — Dependabot CI red

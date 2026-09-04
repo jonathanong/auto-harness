@@ -224,7 +224,7 @@ remote URL userinfo and token-shaped credential values are redacted.
 
 ### Session resume
 
-Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The control plane first prefers the source session's native route. If that route is no longer schedulable, it discards the stored `cliResumeRef` and placement pins, preserves `resumedFromSessionId`, and schedules a fresh run through the configured target and ordered fallbacks. The agent then tries native resume only when the assignment includes a usable route.
+Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The control plane first prefers the source session's native route. If that route is no longer schedulable, it discards the stored `cliResumeRef` and placement pins, preserves `resumedFromSessionId`, and schedules a fresh run through the configured target and ordered fallbacks. The agent then tries native resume only when the assignment includes a usable route. A resume request may also pass a `target`/`fallbacks` override (see [api.md — Repointing a target](api.md#post-sessionsidresume)); that always takes the fresh-route path immediately — there is no native route to try once the policy has been replaced.
 
 ```mermaid
 sequenceDiagram
@@ -270,6 +270,17 @@ Order of preference:
 #### Capturing `cliResumeRef`
 
 When a CLI emits a session/conversation id, parse and return it on terminal `session:status` (or a dedicated field). The control plane stores it on the session row and passes it back in `session:assign` only for a native-route resume. A provider/account/route id is diagnostic metadata; it never changes the daemon's command resolution.
+
+#### Prior-session context (fresh-routed resume)
+
+A fresh route has no CLI conversation state to resume into — the new run starts cold. When the assignment carries `priorContext: { sourceSessionId }` (present only on a fresh-routed resume, and only when this host advertised the `prior-session-context` capability at register time), the daemon:
+
+1. After setup scripts run (or are skipped) and before spawning the CLI, calls `GET /sessions/<this session's id>/prior-context` — **the new session's id, not `sourceSessionId`** — using the same bearer credential it uses for every other control-plane request.
+2. Writes the response's `content` to `.auto-harness/prior-session.md` in the assigned worktree, alongside a `.auto-harness/.gitignore` containing `*` so the directory (including the ignore file itself) is invisible to `git status` and cannot be committed. This runs after setup deliberately: a setup script may `git clean -xfd`, which would otherwise delete the file before the CLI ever saw it.
+3. Sets `HARNESS_PRIOR_CONTEXT_FILE` to the file's absolute path in the child process environment.
+4. Removes the file after the CLI process exits, before reporting terminal status.
+
+The resumed session's prompt already carries a fixed pointer sentence naming `.auto-harness/prior-session.md`, appended by the control plane — the model finds the file by reading its own prompt, not by an env var (a Command configured with `appendPrompt: false` never receives the prompt at all, so `HARNESS_PRIOR_CONTEXT_FILE` is that case's only channel). Every step here is best-effort: a fetch failure, a 404 (the source session's logs may have expired under the 7-day `SessionLogs` TTL), or a byte cap being hit all degrade to "no file written," logged as a `system` line — never a failed session. Advertise `prior-session-context` only from a daemon build that implements this; an older daemon simply ignores the unknown `priorContext` field and starts with no file, so the pointer sentence is a hedge ("may be available"), not a promise.
 
 ### Executor
 
