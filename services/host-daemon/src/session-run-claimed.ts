@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- claimed run covers setup, profile env, and terminal outcomes. */
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
-import type { ProcessRunner } from "./executor.ts";
+import type { ProcessResult, ProcessRunner } from "./executor.ts";
 import {
   applyExecutionProfile,
   emptyExecutionProfiles,
@@ -189,24 +189,32 @@ async function runProcessAndFinish(
           identity,
           ...(claimed.allowedRoots ? { allowedRoots: claimed.allowedRoots } : {}),
           onLog: (message) => streamer.write("system", message),
+          ...(signal ? { signal } : {}),
+          timeoutMs: Math.max(0, remainingMs()),
         })
       : null;
   if (priorContextPath) streamer.write("system", "Wrote prior-session context for this run");
   const spawnEnv = priorContextPath
     ? { ...commandEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
     : commandEnv;
-  const result = await commandRunner.run({
-    argv,
-    cwd: claimed.cwd,
-    env: spawnEnv,
-    timeoutMs: remainingMs(),
-    ...(signal ? { signal } : {}),
-    onChunk: (c) => {
-      const safeContent = resumeRef.push(c.stream, c.data);
-      if (safeContent) streamer.write(c.stream, safeContent);
-    },
-  });
-  await removePriorContextFile(priorContextPath);
+  let result: ProcessResult;
+  try {
+    result = await commandRunner.run({
+      argv,
+      cwd: claimed.cwd,
+      env: spawnEnv,
+      timeoutMs: remainingMs(),
+      ...(signal ? { signal } : {}),
+      onChunk: (c) => {
+        const safeContent = resumeRef.push(c.stream, c.data);
+        if (safeContent) streamer.write(c.stream, safeContent);
+      },
+    });
+  } finally {
+    // Must run even if the process rejects — otherwise the transcript of a
+    // *different* session lingers in this (likely reused) worktree.
+    await removePriorContextFile(priorContextPath);
+  }
   const cliResumeRef = resumeRef.finish();
   for (const trailing of resumeRef.drainTrailing()) {
     streamer.write(trailing.stream, trailing.content);
