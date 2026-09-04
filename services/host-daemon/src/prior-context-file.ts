@@ -83,7 +83,7 @@ async function fetchPriorContext(input: {
     }
     const body = (await response.json()) as { content?: unknown };
     if (typeof body.content !== "string") {
-      throw new Error("prior-context response missing content");
+      throw new TypeError("prior-context response missing content");
     }
     return body.content.length > MAX_RESPONSE_BYTES
       ? body.content.slice(0, MAX_RESPONSE_BYTES)
