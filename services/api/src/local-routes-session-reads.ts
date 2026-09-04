@@ -137,6 +137,33 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
 
+  const priorContextMatch = /^\/api\/v1\/sessions\/([^/]+)\/prior-context$/.exec(url.pathname);
+  if (method === "GET" && priorContextMatch) {
+    try {
+      const session = await plane.getSessionDurable(priorContextMatch[1]!);
+      if (
+        !session ||
+        !canAccess(ctx, session.repositoryId) ||
+        !mayAccessHost(ctx.principal, session.hostId) ||
+        !session.resumedFromSessionId
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+        return true;
+      }
+      const context = await plane.loadPriorSessionContextDurable(session.resumedFromSessionId);
+      if (!context) {
+        send(res, 404, {
+          error: { code: "NOT_FOUND", message: "prior session context not available" },
+        });
+      } else {
+        send(res, 200, context);
+      }
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
+
   const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
   if (method !== "GET" || !sessionMatch) return false;
   try {
