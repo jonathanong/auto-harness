@@ -35,6 +35,12 @@ export async function writePriorContextFile(input: {
   allowedRoots?: readonly string[];
   fetchFn?: FetchFn;
   onLog?: (message: string) => void;
+  /** Aborts the fetch immediately on session cancel, instead of waiting out
+   * the fixed fetch timeout while holding the claimed worktree. */
+  signal?: AbortSignal;
+  /** Session time remaining; shortens (never extends) the fixed fetch timeout
+   * so a near-deadline session doesn't hold its worktree for the full cap. */
+  timeoutMs?: number;
 }): Promise<string | null> {
   try {
     const content = await fetchPriorContext(input);
@@ -65,6 +71,8 @@ async function fetchPriorContext(input: {
   sessionId: string;
   identity: PriorContextIdentity;
   fetchFn?: FetchFn;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<string | null> {
   const fetchFn = input.fetchFn ?? fetch;
   const base = httpBaseFromApiUrl(input.identity.apiUrl);
@@ -72,7 +80,14 @@ async function fetchPriorContext(input: {
   const headers: Record<string, string> = { accept: "application/json" };
   if (input.identity.apiKey) headers.authorization = `Bearer ${input.identity.apiKey}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const effectiveTimeoutMs = Math.max(
+    0,
+    Math.min(input.timeoutMs ?? FETCH_TIMEOUT_MS, FETCH_TIMEOUT_MS),
+  );
+  const timer = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+  const onAbort = () => controller.abort();
+  if (input.signal?.aborted) controller.abort();
+  else input.signal?.addEventListener("abort", onAbort, { once: true });
   try {
     const response = await fetchFn(url, { headers, signal: controller.signal });
     if (response.status === 404) return null;
@@ -90,5 +105,6 @@ async function fetchPriorContext(input: {
       : body.content;
   } finally {
     clearTimeout(timer);
+    input.signal?.removeEventListener("abort", onAbort);
   }
 }
