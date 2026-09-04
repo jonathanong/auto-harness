@@ -805,7 +805,7 @@ The Node client (`modules/client`) accepts `providerName`/`commandName` sugar in
 
 **Repointing a target:** to move an already-dispatched-but-still-resumable session onto a different Command or Provider — e.g. after rotating which Command a CI variable points at — resume it with a `target` override instead of the previous workaround of tombstoning checkpoint records to force a full re-dispatch. The override fully replaces the route policy (pass `fallbacks` too if the old ones should still apply) and always lands on a fresh assignment: there is no frozen argv to carry the old Command forward, and no worktree/host pin, so the run may land on a different host than the source did. Uncommitted worktree state from the source session is not preserved — the same caveat resume already carries generally (see the clone-vs-resume table below).
 
-Deleting the pinned Command is a second, implicit lever for the same repoint problem: a still-resumable session's frozen argv can never replay a Command that no longer exists in the catalog, so `DELETE /commands/:id` — normally blocked only by a `queued`/`running` reference (see `DELETE /commands/:id` below) — succeeds against a terminal-but-resumable session and the next resume falls through to a live fallback (or waits, then queue-expires, if none resolves) instead of replaying the deleted Command's argv.
+Deleting the pinned Command is a second, implicit lever for the same repoint problem: a still-resumable session's frozen argv can never replay a Command that no longer exists in the catalog, so `DELETE /commands/:id` — while other live catalog and queued/running session dependencies still block deletion (see `DELETE /commands/:id` below) — succeeds against a terminal-but-resumable session and the next resume falls through to a live fallback (or waits, then queue-expires, if none resolves) instead of replaying the deleted Command's argv.
 
 **Errors:**
 
@@ -1221,7 +1221,7 @@ starting with `-` would otherwise be misread as a flag.
 
 #### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
 
-Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is a provider default, inventory override, schedule target, or queued/running session target. The response identifies live dependencies; deletion never cascades. A **terminal-but-resumable** session referencing the command through a native-resume pin does *not* block deletion — deleting it is itself the invalidation lever for that case (see "Repointing a target" above): the next resume of that session cannot replay the deleted command's frozen argv and falls through to a live fallback instead.
+Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is a provider default, inventory override, schedule target, or queued/running session target. The response identifies live dependencies; deletion never cascades. A **terminal-but-resumable** session referencing the command through a native-resume pin does _not_ block deletion — deleting it is itself the invalidation lever for that case (see "Repointing a target" above): the next resume of that session cannot replay the deleted command's frozen argv and falls through to a live fallback instead.
 
 #### `GET /session-targets`
 

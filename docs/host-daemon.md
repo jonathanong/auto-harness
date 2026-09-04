@@ -244,13 +244,13 @@ sequenceDiagram
 
 #### Placement (control plane)
 
-| Rule             | Behavior                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| Prefer           | Pin the source `hostId`; select any eligible repository worktree there for `cliResumeRef`         |
-| Re-establish ref | Check out the source session's `ref`, or its default branch, before starting the native CLI route |
+| Rule             | Behavior                                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Prefer           | Pin the source `hostId`; select any eligible repository worktree there for `cliResumeRef`                                   |
+| Re-establish ref | Check out the source session's `ref`, or its default branch, before starting the native CLI route                           |
 | Re-route         | If unavailable — including a deleted pinned Command — clear `cliResumeRef` and the host pin, then use target/fallback order |
-| Preserve         | Keep `resumedFromSessionId` on the fresh assignment for audit/history                             |
-| Same agent state | Native resume uses CLI conversation state stored outside the repository worktree                  |
+| Preserve         | Keep `resumedFromSessionId` on the fresh assignment for audit/history                                                       |
+| Same agent state | Native resume uses CLI conversation state stored outside the repository worktree                                            |
 
 #### How the agent “tries to resume”
 

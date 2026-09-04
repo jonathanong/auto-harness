@@ -29,7 +29,11 @@ export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog 
   };
 }
 
-/** Resolve one worktree against the ordered route policy. */
+/**
+ * Resolve one worktree against the ordered route policy, exhausting every target/fallback
+ * index. A thin wrapper around `resolveSessionTargetRouteAt` so this and the scheduler's
+ * own per-index resolution can never drift on native-continuation precedence again.
+ */
 export function resolveSessionTargetRoute(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
@@ -37,22 +41,17 @@ export function resolveSessionTargetRoute(
   worktree: WorktreeRecord,
   nowMs: number,
 ): ResolvedSessionRoute | null {
-  const targets = [session.target, ...session.fallbacks];
-  for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
-    if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
-    const target = targets[targetIndex]!;
-    const route = resolveTarget(
+  const targetCount = 1 + session.fallbacks.length;
+  for (let targetIndex = 0; targetIndex < targetCount; targetIndex++) {
+    const resolved = resolveSessionTargetRouteAt(
       state,
       catalog,
-      target,
-      session.prompt,
+      session,
       worktree,
       nowMs,
-      session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+      targetIndex,
     );
-    if (route && matchesNativeResumePin(session, { ...route, targetIndex })) {
-      return { ...route, targetIndex };
-    }
+    if (resolved) return resolved;
   }
   return null;
 }

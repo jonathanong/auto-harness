@@ -56,17 +56,17 @@ remains supported; all dispatch forms return after acceptance and never wait for
 
 ### Auto Harness must provide
 
-| Requirement                                  | Notes                                                                                              |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                    |
-| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                           |
-| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                            |
-| Non-interactive CLI execution                | Subscription path; not Agent SDKs ([why.md](why.md))                                               |
-| Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md))               |
-| Terminal statuses including `usage_limit`    | Visible in Slack / API; account cooldown/fallback routing is automatic for provider-backed targets |
-| Session id in Slack (and API)                | Resume, UI deep links                                                                              |
+| Requirement                                  | Notes                                                                                                                                        |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                                                              |
+| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                                                                     |
+| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                                                                      |
+| Non-interactive CLI execution                | Subscription path; not Agent SDKs ([why.md](why.md))                                                                                         |
+| Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md))                                                         |
+| Terminal statuses including `usage_limit`    | Visible in Slack / API; account cooldown/fallback routing is automatic for provider-backed targets                                           |
+| Session id in Slack (and API)                | Resume, UI deep links                                                                                                                        |
 | Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh, including when the pinned Command has been deleted |
-| Cancel, timeout, agent drain-on-update       | Ops                                                                                                |
+| Cancel, timeout, agent drain-on-update       | Ops                                                                                                                                          |
 
 ### Repo harness owns (out of scope for Auto Harness)
 
