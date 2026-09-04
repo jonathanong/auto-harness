@@ -31,6 +31,42 @@ function finish(
   });
 }
 
+type CommandInput = Parameters<ControlPlane["createCommand"]>[0];
+
+/** Create the given Commands, register a single-worktree host, then create, assign, and
+ * finish a session against `target`/`fallbacks` (optionally capturing a `cliResumeRef`).
+ * Shared by the native-continuation-preference and deleted-Command-replay tests below,
+ * which otherwise repeat identical fixture setup before diverging on what happens at
+ * resume. */
+function startTerminalSession(
+  commands: CommandInput[],
+  session: { target: { commandId: string }; fallbacks?: Array<{ commandId: string }> },
+  cliResumeRef?: string,
+): { plane: ControlPlane; messages: unknown[]; sourceId: string } {
+  const messages: unknown[] = [];
+  const plane = new ControlPlane({ shardCount: 1 });
+  plane.setOnHostMessage((_host, message) => messages.push(message));
+  for (const command of commands) plane.createCommand(command);
+  plane.registerHost({
+    hostId: "host",
+    worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+    commandProfiles: [],
+  });
+  const created = plane.createSession({
+    repositoryId: "repo",
+    prompt: "first",
+    timeout: 30,
+    target: session.target,
+    ...(session.fallbacks ? { fallbacks: session.fallbacks } : {}),
+  });
+  expect(created.ok).toBe(true);
+  const sourceId = created.ok ? created.session.id : "";
+  plane.assignQueued();
+  acknowledge(plane, sourceId);
+  finish(plane, sourceId, "completed", cliResumeRef);
+  return { plane, messages, sourceId };
+}
+
 describe("control-plane native resume", () => {
   it("snapshots the command resume spec and materializes native argv", () => {
     const messages: unknown[] = [];
@@ -699,28 +735,14 @@ describe("control-plane native resume", () => {
   });
 
   it("does not replay a deleted primary Command's frozen snapshot; falls through to a live fallback", () => {
-    const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.setOnHostMessage((_host, message) => messages.push(message));
-    plane.createCommand({ id: "primary", name: "primary", argv: ["primary"] });
-    plane.createCommand({ id: "fallback", name: "fallback", argv: ["fallback"] });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: [],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "first",
-      target: { commandId: "primary" },
-      fallbacks: [{ commandId: "fallback" }],
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    finish(plane, sourceId, "completed", "cli-1");
+    const { plane, messages, sourceId } = startTerminalSession(
+      [
+        { id: "primary", name: "primary", argv: ["primary"] },
+        { id: "fallback", name: "fallback", argv: ["fallback"] },
+      ],
+      { target: { commandId: "primary" }, fallbacks: [{ commandId: "fallback" }] },
+      "cli-1",
+    );
 
     // Source is terminal, so deletion is allowed even though it is still resumable —
     // this is the invalidation lever #402/#438 asked for.
@@ -740,24 +762,11 @@ describe("control-plane native resume", () => {
   });
 
   it("does not replay a deleted Command's frozen snapshot when nothing else resolves", () => {
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.createCommand({ id: "cmd", name: "cmd", argv: ["cmd"] });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: [],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "first",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    finish(plane, sourceId, "completed", "cli-1");
+    const { plane, sourceId } = startTerminalSession(
+      [{ id: "cmd", name: "cmd", argv: ["cmd"] }],
+      { target: { commandId: "cmd" } },
+      "cli-1",
+    );
     expect(plane.deleteCommand("cmd").ok).toBe(true);
 
     const resumed = plane.resumeSession(sourceId);
@@ -766,36 +775,23 @@ describe("control-plane native resume", () => {
   });
 
   it("prefers the frozen resumeArgvTemplate over a live, untouched Command", () => {
-    const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.setOnHostMessage((_host, message) => messages.push(message));
-    plane.createCommand({
-      id: "cmd",
-      name: "codex",
-      argv: ["codex", "exec"],
-      resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
-    });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: [],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "first",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    finish(plane, sourceId, "completed", "cli-1");
-
     // The Command is entirely untouched — regression test for the ordering bug where a
     // native continuation with a captured ref and a frozen template was silently given
     // the plain command argv (starting a *new* CLI conversation) whenever live resolution
     // still happened to succeed.
+    const { plane, messages, sourceId } = startTerminalSession(
+      [
+        {
+          id: "cmd",
+          name: "codex",
+          argv: ["codex", "exec"],
+          resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
+        },
+      ],
+      { target: { commandId: "cmd" } },
+      "cli-1",
+    );
+
     const resumed = plane.resumeSession(sourceId);
     expect(resumed.ok).toBe(true);
     plane.assignQueued();
@@ -806,29 +802,13 @@ describe("control-plane native resume", () => {
   });
 
   it("resolves a resumeFallback continuation with no template live, picking up a catalog edit", () => {
-    const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.setOnHostMessage((_host, message) => messages.push(message));
-    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool", "run"] });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: [],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "first",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    // Finishes without a cliResumeRef: this resume has no native continuation to make, so
-    // prefersNativeResumeRoute must stay false and live resolution — including this edit —
-    // must still win, unlike the native-continuation case above.
-    finish(plane, sourceId);
+    // No cliResumeRef captured: this resume has no native continuation to make, so
+    // prefersNativeResumeRoute must stay false and live resolution — including the edit
+    // below — must still win, unlike the native-continuation case above.
+    const { plane, messages, sourceId } = startTerminalSession(
+      [{ id: "cmd", name: "tool", argv: ["tool", "run"] }],
+      { target: { commandId: "cmd" } },
+    );
     plane.updateCommand("cmd", { argv: ["edited", "run"] });
 
     const resumed = plane.resumeSession(sourceId);
