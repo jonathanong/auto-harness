@@ -3,48 +3,14 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
-import { minimalSession } from "./control-plane-prior-context-test-helpers.ts";
+import {
+  finishedLoggedSessionPlane,
+  minimalSession,
+} from "./control-plane-prior-context-test-helpers.ts";
 
 describe("GET /sessions/:id/prior-context", () => {
   it("returns the rendered transcript of the resumed-from session", async () => {
-    const plane = new ControlPlane({
-      shardCount: 1,
-      idFactory: (() => {
-        let n = 0;
-        return () => `s${++n}`;
-      })(),
-      now: () => "2026-01-01T00:00:00.000Z",
-    });
-    plane.createCommand({ id: "cmd", name: "echo", argv: ["echo"], appendPrompt: true });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: [],
-    });
-    plane.createSession({
-      repositoryId: "repo",
-      prompt: "first run",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    plane.assignQueued();
-    const source = plane.getSession("s1")!;
-    plane.handleHostMessage({
-      type: "session:log",
-      sessionId: "s1",
-      attemptId: source.attemptId!,
-      stream: "stdout",
-      content: "did the thing",
-      timestamp: plane.state.now(),
-      seq: 1,
-    });
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: "s1",
-      worktreeId: source.worktreeId!,
-      attemptId: source.attemptId!,
-      status: "completed",
-    });
+    const plane = finishedLoggedSessionPlane("did the thing");
     // A running session's hostId is set at assign time; a fallback resume records
     // resumedFromSessionId without a native pin. Set both directly to exercise the
     // route without needing the full resume + fallback-routing pipeline here.
