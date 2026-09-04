@@ -85,14 +85,18 @@ export function renderPriorSessionContext(
     "",
   ].join("\n");
   const body = logs.map((log) => `${streamPrefix(log.stream)}${log.content}`).join("\n");
+  const notice = "> Truncated: showing only the most recent portion of this transcript.\n\n";
   const headerBytes = new TextEncoder().encode(header).length;
+  const noticeBytes = new TextEncoder().encode(notice).length;
   const bodyBudget = Math.max(0, MAX_PRIOR_CONTEXT_BYTES - headerBytes);
-  const trimmedBody = truncateUtf8Tail(body, bodyBudget);
-  const truncated = trimmedBody.truncated || logs.length >= PRIOR_CONTEXT_LOG_RECORDS;
-  const notice = truncated
-    ? "> Truncated: showing only the most recent portion of this transcript.\n\n"
-    : "";
-  return { content: header + notice + trimmedBody.text + "\n", truncated };
+  const bodyBytes = new TextEncoder().encode(body).length;
+  const truncated = bodyBytes > bodyBudget || logs.length >= PRIOR_CONTEXT_LOG_RECORDS;
+  // Reserve the notice's own bytes out of the same budget so adding it never
+  // pushes the total content past MAX_PRIOR_CONTEXT_BYTES.
+  const trimmedBody = truncated
+    ? truncateUtf8Tail(body, Math.max(0, bodyBudget - noticeBytes))
+    : { text: body };
+  return { content: header + (truncated ? notice : "") + trimmedBody.text + "\n", truncated };
 }
 
 function boundedQuery(): LogQuery {

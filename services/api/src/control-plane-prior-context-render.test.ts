@@ -1,3 +1,4 @@
+import { MAX_PRIOR_CONTEXT_BYTES } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import type { LogRecord } from "./control-plane-types.ts";
@@ -72,6 +73,11 @@ describe("renderPriorSessionContext", () => {
     const rendered = renderPriorSessionContext(source, logs);
     expect(rendered!.truncated).toBe(true);
     expect(rendered!.content).toContain("Truncated");
+    // The truncation notice must be reserved out of the same budget, not
+    // appended on top of it, or a truncated render could itself exceed the cap.
+    expect(new TextEncoder().encode(rendered!.content).length).toBeLessThanOrEqual(
+      MAX_PRIOR_CONTEXT_BYTES + 1,
+    );
   });
 
   it("truncates an oversized prompt excerpt", () => {
