@@ -141,6 +141,14 @@ export class DaemonLoop {
       commandRunner,
       ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
       executionProfiles: this.executionProfiles,
+      ...(options.config.apiUrl
+        ? {
+            identity: {
+              apiUrl: options.config.apiUrl,
+              ...(options.config.apiKey ? { apiKey: options.config.apiKey } : {}),
+            },
+          }
+        : {}),
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });

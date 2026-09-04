@@ -5,6 +5,7 @@ import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { failSession, finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
+import type { PriorContextIdentity } from "./prior-context-file.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 
 export type { SessionRunResult } from "./session-outcome.ts";
@@ -19,6 +20,8 @@ export type SessionRunnerDeps = {
   childEnvSource?: NodeJS.ProcessEnv;
   /** Daemon-local CLI homes; never forwarded to the control plane. */
   executionProfiles?: ExecutionProfiles;
+  /** Used only to fetch `assign.priorContext`; never forwarded to the CLI. */
+  identity?: PriorContextIdentity;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
 };
@@ -194,6 +197,7 @@ export class SessionRunner {
           this.deps.commandRunner ?? this.deps.processRunner,
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
+          this.deps.identity,
         );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

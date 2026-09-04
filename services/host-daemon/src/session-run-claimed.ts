@@ -14,6 +14,11 @@ import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
 import { ResumeRefCaptureReader } from "./resume-ref-capture.ts";
 import { detectUsageLimit } from "./usage-limit.ts";
+import {
+  removePriorContextFile,
+  writePriorContextFile,
+  type PriorContextIdentity,
+} from "./prior-context-file.ts";
 
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
@@ -34,6 +39,8 @@ export async function runClaimedSession(
   commandRunner: ProcessRunner = processRunner,
   childEnvSource: NodeJS.ProcessEnv = process.env,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
+  /** Daemon identity used only to fetch `assign.priorContext`; never forwarded to the CLI. */
+  identity?: PriorContextIdentity,
 ): Promise<SessionRunResult> {
   try {
     await claimed.currentExecutionTarget?.();
@@ -127,6 +134,7 @@ export async function runClaimedSession(
     remainingMs,
     setup.environment,
     executionProfiles,
+    identity,
   );
 }
 
@@ -143,6 +151,7 @@ async function runProcessAndFinish(
   remainingMs: () => number,
   environment: NodeJS.ProcessEnv,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
+  identity?: PriorContextIdentity,
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -170,10 +179,26 @@ async function runProcessAndFinish(
     );
   }
   const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
+  // Written after setup (which may `git clean`/reset the checkout — resumeWireFields omits
+  // `resume: true` for a fallback, so setup still runs) and removed once the process exits.
+  const priorContextPath =
+    assign.priorContext && identity
+      ? await writePriorContextFile({
+          cwd: claimed.cwd,
+          sessionId: assign.sessionId,
+          identity,
+          ...(claimed.allowedRoots ? { allowedRoots: claimed.allowedRoots } : {}),
+          onLog: (message) => streamer.write("system", message),
+        })
+      : null;
+  if (priorContextPath) streamer.write("system", "Wrote prior-session context for this run");
+  const spawnEnv = priorContextPath
+    ? { ...commandEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
+    : commandEnv;
   const result = await commandRunner.run({
     argv,
     cwd: claimed.cwd,
-    env: commandEnv,
+    env: spawnEnv,
     timeoutMs: remainingMs(),
     ...(signal ? { signal } : {}),
     onChunk: (c) => {
@@ -181,6 +206,7 @@ async function runProcessAndFinish(
       if (safeContent) streamer.write(c.stream, safeContent);
     },
   });
+  await removePriorContextFile(priorContextPath);
   const cliResumeRef = resumeRef.finish();
   for (const trailing of resumeRef.drainTrailing()) {
     streamer.write(trailing.stream, trailing.content);
