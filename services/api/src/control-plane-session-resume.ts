@@ -32,37 +32,45 @@ export type ResumeOptions = {
 
 type ResumeRouting = { target: TargetRef; fallbacks: TargetRef[] };
 
+function validatePromptOverride(opts: ResumeOptions): string | undefined {
+  if (opts.prompt === undefined) return undefined;
+  if (typeof opts.prompt !== "string" || opts.prompt.length === 0) {
+    return "prompt must be a non-empty string";
+  }
+  return promptByteLengthError(opts.prompt) ?? undefined;
+}
+
+function validateTimeoutOverride(opts: ResumeOptions): string | undefined {
+  if (opts.timeout === undefined) return undefined;
+  if (typeof opts.timeout !== "number" || !Number.isFinite(opts.timeout) || opts.timeout <= 0) {
+    return "timeout must be a positive number of seconds";
+  }
+  if (opts.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
+    return `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds`;
+  }
+  return undefined;
+}
+
+function validatePriorityOverride(opts: ResumeOptions): string | undefined {
+  if (opts.priority === undefined) return undefined;
+  if (typeof opts.priority !== "number" || !Number.isFinite(opts.priority)) {
+    return "priority must be a number";
+  }
+  return Number.isInteger(opts.priority) ? undefined : "priority must be an integer";
+}
+
 function validateResumeOverrides(
   opts: ResumeOptions,
 ): { ok: true; routing?: ResumeRouting } | { ok: false; error: string } {
   if (opts.principalId !== undefined && typeof opts.principalId !== "string") {
     return { ok: false, error: "principalId must be a string" };
   }
-  if (opts.prompt !== undefined) {
-    if (typeof opts.prompt !== "string" || opts.prompt.length === 0) {
-      return { ok: false, error: "prompt must be a non-empty string" };
-    }
-    const promptBytes = promptByteLengthError(opts.prompt);
-    if (promptBytes) return { ok: false, error: promptBytes };
-  }
-  if (
-    opts.timeout !== undefined &&
-    (typeof opts.timeout !== "number" || !Number.isFinite(opts.timeout) || opts.timeout <= 0)
-  ) {
-    return { ok: false, error: "timeout must be a positive number of seconds" };
-  }
-  if (opts.timeout !== undefined && opts.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
-    return { ok: false, error: `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds` };
-  }
-  if (
-    opts.priority !== undefined &&
-    (typeof opts.priority !== "number" || !Number.isFinite(opts.priority))
-  ) {
-    return { ok: false, error: "priority must be a number" };
-  }
-  if (opts.priority !== undefined && !Number.isInteger(opts.priority)) {
-    return { ok: false, error: "priority must be an integer" };
-  }
+  const promptError = validatePromptOverride(opts);
+  if (promptError) return { ok: false, error: promptError };
+  const timeoutError = validateTimeoutOverride(opts);
+  if (timeoutError) return { ok: false, error: timeoutError };
+  const priorityError = validatePriorityOverride(opts);
+  if (priorityError) return { ok: false, error: priorityError };
   if (opts.target === undefined) {
     // An override replaces the whole route policy; inheriting a stale primary in
     // front of a fresh fallback list is exactly the bug a rebind is meant to fix.
