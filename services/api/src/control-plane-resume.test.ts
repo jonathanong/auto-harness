@@ -343,30 +343,14 @@ describe("control-plane native resume", () => {
   });
 
   it("uses the frozen normal command with a continuation override when native resume is absent", () => {
-    const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.setOnHostMessage((_host, message) => messages.push(message));
-    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool", "run"] });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: ["tool"],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "original",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    finish(plane, sourceId);
     // No captured cliResumeRef and no resumeArgvTemplate, so this never qualifies as a
     // native continuation (see prefersNativeResumeRoute) — live resolution must actually
     // fail to reach the frozen fallback. Re-point providerId (a soft FK with no eligible
     // accounts) instead of deleting, since deletion is covered by dedicated tests below.
+    const { plane, messages, sourceId } = startTerminalSession(
+      [{ id: "cmd", name: "tool", argv: ["tool", "run"] }],
+      { target: { commandId: "cmd" } },
+    );
     plane.updateCommand("cmd", { argv: ["changed"], providerId: "unrouted" });
 
     const resumed = plane.resumeSession(sourceId, { prompt: "continue here" });
@@ -387,34 +371,13 @@ describe("control-plane native resume", () => {
   });
 
   it("inserts -- in the frozen native-resume-pin fallback only when appendPromptSeparator opts in", () => {
-    const messages: unknown[] = [];
-    const plane = new ControlPlane({ shardCount: 1 });
-    plane.setOnHostMessage((_host, message) => messages.push(message));
-    plane.createCommand({
-      id: "cmd",
-      name: "claude-print",
-      argv: ["claude", "-p"],
-      appendPromptSeparator: true,
-    });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
-      commandProfiles: ["claude-print"],
-    });
-    const created = plane.createSession({
-      repositoryId: "repo",
-      prompt: "original",
-      target: { commandId: "cmd" },
-      timeout: 30,
-    });
-    expect(created.ok).toBe(true);
-    const sourceId = created.ok ? created.session.id : "";
-    plane.assignQueued();
-    acknowledge(plane, sourceId);
-    finish(plane, sourceId);
     // No cliResumeRef captured and no resumeArgvTemplate, so this stays outside the
     // native-continuation preference — re-point providerId to make live resolution fail
     // instead of deleting the Command (deletion is covered by dedicated tests below).
+    const { plane, messages, sourceId } = startTerminalSession(
+      [{ id: "cmd", name: "claude-print", argv: ["claude", "-p"], appendPromptSeparator: true }],
+      { target: { commandId: "cmd" } },
+    );
     plane.updateCommand("cmd", { argv: ["changed"], providerId: "unrouted" });
 
     const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
