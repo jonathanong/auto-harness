@@ -73,11 +73,26 @@ describe("renderPriorSessionContext", () => {
     const rendered = renderPriorSessionContext(source, logs);
     expect(rendered!.truncated).toBe(true);
     expect(rendered!.content).toContain("Truncated");
-    // The truncation notice must be reserved out of the same budget, not
-    // appended on top of it, or a truncated render could itself exceed the cap.
+    // The truncation notice and the trailing newline this function always appends
+    // must both be reserved out of the same budget, not appended on top of it, or
+    // a truncated render could itself exceed the cap.
     expect(new TextEncoder().encode(rendered!.content).length).toBeLessThanOrEqual(
-      MAX_PRIOR_CONTEXT_BYTES + 1,
+      MAX_PRIOR_CONTEXT_BYTES,
     );
+  });
+
+  it("keeps the newest content and drops the oldest when truncating, without joining every record first", () => {
+    const logs = Array.from({ length: 3000 }, (_, i) =>
+      logRecord({
+        content: i === 0 ? "OLDEST-MARKER" : i === 2999 ? "NEWEST-MARKER" : "x".repeat(1000),
+        seq: i,
+        timestampSeq: `2026-01-01T00:00:00.000Z#${String(i).padStart(10, "0")}`,
+      }),
+    );
+    const rendered = renderPriorSessionContext(source, logs);
+    expect(rendered!.truncated).toBe(true);
+    expect(rendered!.content).not.toContain("OLDEST-MARKER");
+    expect(rendered!.content).toContain("NEWEST-MARKER");
   });
 
   it("truncates an oversized prompt excerpt", () => {
@@ -136,13 +151,15 @@ describe("renderPriorSessionContext", () => {
   it("backs up over a continuation byte that lands exactly on the tail-trim cutoff", () => {
     // An all-"é" body guarantees the byte cutoff falls inside the multi-byte run
     // (unlike the mixed ASCII+é case above, where it never reaches the é region). A
-    // single trailing ASCII byte shifts the cutoff by one without disturbing the "é"
-    // run's own byte alignment, landing the cutoff on a continuation byte.
-    const rendered = renderPriorSessionContext(source, [
-      logRecord({ content: `${"é".repeat(1_200_000)}z` }),
-    ]);
-    expect(rendered!.truncated).toBe(true);
-    expect(rendered!.content).not.toContain("�");
+    // one-byte trailing pad shifts the cutoff's parity relative to the "é" run's own
+    // alignment without changing where the run itself starts; across the padded and
+    // unpadded variants, one of the two always lands exactly on a continuation byte,
+    // regardless of the exact header/notice byte count.
+    for (const content of ["é".repeat(1_200_000), `${"é".repeat(1_200_000)}z`]) {
+      const rendered = renderPriorSessionContext(source, [logRecord({ content })]);
+      expect(rendered!.truncated).toBe(true);
+      expect(rendered!.content).not.toContain("�");
+    }
   });
 
   it("omits the completed-at line when the source has not recorded one", () => {

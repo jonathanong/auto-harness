@@ -47,6 +47,28 @@ function streamPrefix(stream: string): string {
 }
 
 /**
+ * Drop whole records that provably cannot survive the final tail-trim, before
+ * ever joining them into one string. Up to `PRIOR_CONTEXT_LOG_RECORDS` records
+ * at up to 32 KiB each can otherwise mean joining and re-encoding ~128 MiB just
+ * to throw most of it away. Walks from the newest record backward, so the
+ * kept suffix is still in chronological order; keeps one extra record past
+ * the budget so `truncateUtf8Tail` can still cut it mid-content exactly as it
+ * would have cut the untrimmed body.
+ */
+function boundedTailRecords(logs: readonly LogRecord[], maxBytes: number): readonly LogRecord[] {
+  let bytes = 0;
+  let start = logs.length;
+  for (let i = logs.length - 1; i >= 0; i--) {
+    if (bytes > maxBytes) break;
+    const separatorBytes = start < logs.length ? 1 : 0; // the "\n" join separator
+    const prefix = streamPrefix(logs[i]!.stream); // always ASCII: length is its byte length
+    bytes += prefix.length + new TextEncoder().encode(logs[i]!.content).length + separatorBytes;
+    start = i;
+  }
+  return logs.slice(start);
+}
+
+/**
  * Render a bounded, plain-markdown transcript of a terminal session for a
  * *different* session to read as a file. Not the archived NDJSON: this exists
  * to be read and grepped by a model, and NDJSON forces it to parse.
@@ -84,15 +106,19 @@ export function renderPriorSessionContext(
     "## Transcript",
     "",
   ].join("\n");
-  const body = logs.map((log) => `${streamPrefix(log.stream)}${log.content}`).join("\n");
   const notice = "> Truncated: showing only the most recent portion of this transcript.\n\n";
   const headerBytes = new TextEncoder().encode(header).length;
   const noticeBytes = new TextEncoder().encode(notice).length;
-  const bodyBudget = Math.max(0, MAX_PRIOR_CONTEXT_BYTES - headerBytes);
+  // Reserve both the notice and the trailing "\n" this function always appends, so a
+  // maximally-truncated result never exceeds MAX_PRIOR_CONTEXT_BYTES by even one byte.
+  const bodyBudget = Math.max(0, MAX_PRIOR_CONTEXT_BYTES - headerBytes - 1);
+  const tailRecords = boundedTailRecords(logs, bodyBudget);
+  const body = tailRecords.map((log) => `${streamPrefix(log.stream)}${log.content}`).join("\n");
   const bodyBytes = new TextEncoder().encode(body).length;
-  const truncated = bodyBytes > bodyBudget || logs.length >= PRIOR_CONTEXT_LOG_RECORDS;
-  // Reserve the notice's own bytes out of the same budget so adding it never
-  // pushes the total content past MAX_PRIOR_CONTEXT_BYTES.
+  const truncated =
+    bodyBytes > bodyBudget ||
+    tailRecords.length < logs.length ||
+    logs.length >= PRIOR_CONTEXT_LOG_RECORDS;
   const trimmedBody = truncated
     ? truncateUtf8Tail(body, Math.max(0, bodyBudget - noticeBytes))
     : { text: body };
