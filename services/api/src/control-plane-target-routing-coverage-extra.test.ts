@@ -56,9 +56,23 @@ function resumed(accountId?: string): SessionRecord {
   });
 }
 
+/** The pinned Command each `resumed()` row references — must exist for these tests to
+ * reach the branch they name, rather than short-circuiting on the "deleted Command"
+ * guard (covered separately below). */
+function seedFrozenCommand(state: ReturnType<typeof createControlPlaneState>): void {
+  state.commands.set("frozen", {
+    id: "frozen",
+    name: "frozen",
+    argv: ["frozen"],
+    appendPrompt: false,
+    providerId: null,
+  });
+}
+
 describe("target routing residual coverage", () => {
   it("rejects a frozen account route when its account disappeared", () => {
     const state = createControlPlaneState({ now: () => NOW });
+    seedFrozenCommand(state);
     expect(
       resolveSessionTargetRouteAt(
         state,
@@ -73,6 +87,7 @@ describe("target routing residual coverage", () => {
 
   it("rejects limited and scope-disabled frozen account routes", () => {
     const state = createControlPlaneState({ now: () => NOW });
+    seedFrozenCommand(state);
     state.providerAccounts.set("account", {
       id: "account",
       providerId: "provider",
@@ -95,6 +110,7 @@ describe("target routing residual coverage", () => {
 
   it("requires a native resume reference when the frozen template uses one", () => {
     const state = createControlPlaneState({ now: () => NOW });
+    seedFrozenCommand(state);
     const row = resumed();
     row.resumeSpec = {
       argv: ["tool"],
@@ -115,6 +131,7 @@ describe("target routing residual coverage", () => {
 
   it("rejects unsafe frozen resume templates before materializing argv", () => {
     const state = createControlPlaneState({ now: () => NOW });
+    seedFrozenCommand(state);
     for (const resumeArgvTemplate of [
       ["/bin/tool", "{cliResumeRef}"],
       ["bin/../tool", "{cliResumeRef}"],
@@ -138,6 +155,23 @@ describe("target routing residual coverage", () => {
         ),
       ).toBeNull();
     }
+  });
+
+  it("rejects a frozen route whose pinned Command was deleted", () => {
+    // No seedFrozenCommand: "frozen" is absent from the catalog entirely — the case
+    // Part A of #438 blocks, distinct from the account/template branches above, which
+    // all require the pinned Command to still exist.
+    const state = createControlPlaneState({ now: () => NOW });
+    expect(
+      resolveSessionTargetRouteAt(
+        state,
+        buildProviderCatalog(state),
+        resumed(),
+        worktree,
+        Date.parse(NOW),
+        0,
+      ),
+    ).toBeNull();
   });
 
   it("rejects a resolved route whose frozen command pin changed", () => {

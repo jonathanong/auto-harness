@@ -66,7 +66,17 @@ function catalogState() {
 describe("target optional routing residual coverage", () => {
   it("returns a frozen native route with its provider account", () => {
     const state = catalogState();
+    // "cmd" is the session's live *target* and must stay unresolvable so this reaches
+    // the frozen path; "frozen" is the pinned Command the frozen route actually replays
+    // and must exist, or the deleted-Command guard (#438 Part A) would reject it first.
     state.commands.delete("cmd");
+    state.commands.set("frozen", {
+      id: "frozen",
+      name: "frozen",
+      argv: ["frozen"],
+      appendPrompt: false,
+      providerId: null,
+    });
     state.providerAccounts.set("account", {
       id: "account",
       providerId: "provider",

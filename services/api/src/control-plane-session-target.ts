@@ -29,7 +29,11 @@ export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog 
   };
 }
 
-/** Resolve one worktree against the ordered route policy. */
+/**
+ * Resolve one worktree against the ordered route policy, exhausting every target/fallback
+ * index. A thin wrapper around `resolveSessionTargetRouteAt` so this and the scheduler's
+ * own per-index resolution can never drift on native-continuation precedence again.
+ */
 export function resolveSessionTargetRoute(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
@@ -37,24 +41,30 @@ export function resolveSessionTargetRoute(
   worktree: WorktreeRecord,
   nowMs: number,
 ): ResolvedSessionRoute | null {
-  const targets = [session.target, ...session.fallbacks];
-  for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
-    if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
-    const target = targets[targetIndex]!;
-    const route = resolveTarget(
+  const targetCount = 1 + session.fallbacks.length;
+  for (let targetIndex = 0; targetIndex < targetCount; targetIndex++) {
+    const resolved = resolveSessionTargetRouteAt(
       state,
       catalog,
-      target,
-      session.prompt,
+      session,
       worktree,
       nowMs,
-      session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+      targetIndex,
     );
-    if (route && matchesNativeResumePin(session, { ...route, targetIndex })) {
-      return { ...route, targetIndex };
-    }
+    if (resolved) return resolved;
   }
   return null;
+}
+
+/**
+ * A captured CLI ref plus a frozen resume template is a real native continuation: live
+ * resolution would hand back the plain command argv and start a *new* CLI conversation
+ * instead of resuming the existing one. A `resumeFallback` continuation with no template
+ * (frozen argv is just `argv + prompt`) is deliberately excluded so it keeps picking up
+ * catalog edits, which is the point of resolving live for that case.
+ */
+function prefersNativeResumeRoute(session: SessionRecord): boolean {
+  return session.cliResumeRef !== undefined && session.resumeSpec?.resumeArgvTemplate !== undefined;
 }
 
 /** Resolve one explicit policy entry. Scheduler uses this to exhaust each target before fallbacks. */
@@ -69,6 +79,15 @@ export function resolveSessionTargetRouteAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return null;
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return null;
+  if (prefersNativeResumeRoute(session) && session.pinnedTargetIndex === targetIndex) {
+    // The pinned index is the only place a native continuation can resolve. If it fails
+    // here — a deleted Command, or (unlike deletion) a frozen template that no longer
+    // passes validation — falling through to a live route that happens to match the pin
+    // would silently mix a stale cliResumeRef with plain live argv instead of invalidating
+    // the pin and routing fresh (docs/plan.md invariant 7).
+    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    return native && matchesNativeResumePin(session, native) ? native : null;
+  }
   const route = resolveTarget(
     state,
     catalog,
@@ -84,7 +103,12 @@ export function resolveSessionTargetRouteAt(
   return resolved && matchesNativeResumePin(session, resolved) ? resolved : null;
 }
 
-/** A pinned continuation can use its frozen command snapshot after catalog edits. */
+/**
+ * A native continuation (captured ref + frozen resume template) uses its frozen command
+ * snapshot ahead of live catalog state, and survives an edit to that Command — but never
+ * its deletion: a deleted pinned Command must not be replayed out of a frozen snapshot
+ * (#402/#438), so deletion remains an operator's invalidation lever.
+ */
 function resolveNativeResumeRoute(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
@@ -99,7 +123,8 @@ function resolveNativeResumeRoute(
     !spec ||
     (!session.cliResumeRef && !session.resumeFallback) ||
     session.pinnedTargetIndex !== targetIndex ||
-    session.pinnedCommandId === undefined
+    session.pinnedCommandId === undefined ||
+    !state.commands.has(session.pinnedCommandId)
   ) {
     return null;
   }
@@ -280,6 +305,12 @@ export function resolveSessionTargetRoutesAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return [];
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return [];
+  if (prefersNativeResumeRoute(session) && session.pinnedTargetIndex === targetIndex) {
+    // See resolveSessionTargetRouteAt: the pinned index must resolve to the native route
+    // or nothing, never a live route that happens to match the pin.
+    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    return native && matchesNativeResumePin(session, native) ? [native] : [];
+  }
   const routes = resolveTargets(
     state,
     catalog,
@@ -290,8 +321,15 @@ export function resolveSessionTargetRoutesAt(
     session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
   ).map((route) => ({ ...route, targetIndex }));
   if (routes.length === 0) {
-    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
-    return native && matchesNativeResumePin(session, native) ? [native] : [];
+    const fallback = resolveNativeResumeRoute(
+      state,
+      catalog,
+      session,
+      worktree,
+      nowMs,
+      targetIndex,
+    );
+    return fallback && matchesNativeResumePin(session, fallback) ? [fallback] : [];
   }
   return routes.filter((route) => matchesNativeResumePin(session, route));
 }

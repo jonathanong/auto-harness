@@ -160,8 +160,12 @@ export async function clearResumePin(
       new UpdateCommand({
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
+        // Also removes resumeSpec: it belongs to the pin's old Command, and the
+        // write-once `if_not_exists(resumeSpec, ...)` assignment write would
+        // otherwise keep it — and its resumeRefCapture/argv shape — attached
+        // under whatever fresh Command this session lands on next.
         UpdateExpression:
-          "SET resumeFallback = :true, #prompt = :prompt REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef",
+          "SET resumeFallback = :true, #prompt = :prompt REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef, resumeSpec",
         ConditionExpression:
           "#s = :queued AND pinnedHostId = :pinnedHostId" +
           (opts.pinExpiresAt === undefined ? "" : " AND pinExpiresAt = :pinExpiresAt"),

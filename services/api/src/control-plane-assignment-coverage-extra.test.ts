@@ -259,6 +259,15 @@ describe("assignment residual coverage", () => {
       attemptIdFactory: () => "attempt",
       shardCount: 1,
     });
+    // The pinned Command must still exist in the catalog, or the deleted-Command guard
+    // (#438 Part A) rejects the frozen route before this test ever reaches assignment.
+    state.commands.set("frozen", {
+      id: "frozen",
+      name: "frozen",
+      argv: ["frozen"],
+      appendPrompt: true,
+      providerId: null,
+    });
     state.sessions.set(
       "s",
       session({

@@ -56,17 +56,17 @@ remains supported; all dispatch forms return after acceptance and never wait for
 
 ### Auto Harness must provide
 
-| Requirement                                  | Notes                                                                                              |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                    |
-| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                           |
-| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                            |
-| Non-interactive CLI execution                | Subscription path; not Agent SDKs ([why.md](why.md))                                               |
-| Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md))               |
-| Terminal statuses including `usage_limit`    | Visible in Slack / API; account cooldown/fallback routing is automatic for provider-backed targets |
-| Session id in Slack (and API)                | Resume, UI deep links                                                                              |
-| Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh           |
-| Cancel, timeout, agent drain-on-update       | Ops                                                                                                |
+| Requirement                                  | Notes                                                                                                                                        |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                                                              |
+| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                                                                     |
+| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                                                                      |
+| Non-interactive CLI execution                | Subscription path; not Agent SDKs ([why.md](why.md))                                                                                         |
+| Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md))                                                         |
+| Terminal statuses including `usage_limit`    | Visible in Slack / API; account cooldown/fallback routing is automatic for provider-backed targets                                           |
+| Session id in Slack (and API)                | Resume, UI deep links                                                                                                                        |
+| Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh, including when the pinned Command has been deleted |
+| Cancel, timeout, agent drain-on-update       | Ops                                                                                                                                          |
 
 ### Repo harness owns (out of scope for Auto Harness)
 
@@ -315,6 +315,15 @@ resolves to (not necessarily the source session's). See
 [api.md — GET /sessions/:id/prior-context](api.md#get-sessionsidprior-context) for how the new run
 gets the prior conversation's transcript as a file (`.auto-harness/prior-session.md` in the
 worktree) instead of starting completely cold.
+
+**Deleting the old Command works too, without an explicit `target` override.** A still-resumable
+session can only replay a native continuation's frozen argv while its pinned Command still exists
+in the catalog — `DELETE /commands/:cmd-old-id` succeeds even though a terminal session still
+references it, and the next resume of that session falls through to a live fallback (or waits and
+then queue-expires, if none resolves) instead of silently repeating the old Command. This is a
+coarser lever than the `target` override above — it invalidates every session pinned to that
+Command, not just one — so prefer the explicit override when you only need to redirect a single
+session.
 
 `.auto-harness/` is a reserved directory inside every worktree: the daemon writes and later removes
 it around a fresh-routed resume, and it is `.gitignore`d from inside itself so it never shows up in
