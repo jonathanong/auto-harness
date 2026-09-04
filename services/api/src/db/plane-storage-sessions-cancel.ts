@@ -142,11 +142,18 @@ export async function cancelRunningSession(
 /**
  * Persist the transition from a native-resume attempt to a fresh queued run.
  * The observed host is conditional so an older scheduler cannot erase a pin
- * installed by a newer resume request.
+ * installed by a newer resume request. `prompt` carries the prior-context
+ * pointer already appended in memory, so the durable row does not disagree
+ * with the argv the very next placement pass resolves from it.
  */
 export async function clearResumePin(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; pinnedHostId: string; pinExpiresAt?: string | undefined },
+  opts: {
+    sessionId: string;
+    pinnedHostId: string;
+    pinExpiresAt?: string | undefined;
+    prompt: string;
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -154,15 +161,16 @@ export async function clearResumePin(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression:
-          "SET resumeFallback = :true REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef",
+          "SET resumeFallback = :true, #prompt = :prompt REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef",
         ConditionExpression:
           "#s = :queued AND pinnedHostId = :pinnedHostId" +
           (opts.pinExpiresAt === undefined ? "" : " AND pinExpiresAt = :pinExpiresAt"),
-        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeNames: { "#s": "status", "#prompt": "prompt" },
         ExpressionAttributeValues: {
           ":true": true,
           ":queued": "queued",
           ":pinnedHostId": opts.pinnedHostId,
+          ":prompt": opts.prompt,
           ...(opts.pinExpiresAt === undefined ? {} : { ":pinExpiresAt": opts.pinExpiresAt }),
         },
       }),

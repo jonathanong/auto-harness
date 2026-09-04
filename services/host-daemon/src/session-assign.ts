@@ -38,6 +38,7 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
       ? { resumeRefCapture: message.resumeRefCapture }
       : {}),
     ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
+    ...(message.priorContext !== undefined ? { priorContext: message.priorContext } : {}),
     // commandId/targetIndex are informational. providerAccountId selects the
     // daemon-local CLI home/env profile in runClaimedSession.
     ...(route.targetIndex !== undefined ? { targetIndex: route.targetIndex } : {}),
