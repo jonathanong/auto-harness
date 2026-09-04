@@ -109,6 +109,16 @@ describe("renderPriorSessionContext", () => {
     expect(rendered!.content).not.toContain("�");
   });
 
+  it("backs up over a continuation byte that lands exactly on the head-excerpt cutoff", () => {
+    // A one-byte ASCII prefix shifts every "é" pair onto an odd byte offset, so the
+    // fixed 2048-byte cutoff (even) lands on a continuation byte and forces a backup —
+    // unlike the aligned case above, where the cutoff always lands on a lead byte.
+    const rendered = renderPriorSessionContext({ ...source, prompt: "x" + "é".repeat(1200) }, [
+      logRecord({}),
+    ]);
+    expect(rendered!.content).not.toContain("�");
+  });
+
   it("does not split a multi-byte codepoint at the transcript tail boundary", () => {
     const logs = [
       logRecord({ content: "x".repeat(3_000_000) }),
@@ -121,5 +131,24 @@ describe("renderPriorSessionContext", () => {
     const rendered = renderPriorSessionContext(source, logs);
     expect(rendered!.truncated).toBe(true);
     expect(rendered!.content).not.toContain("�");
+  });
+
+  it("backs up over a continuation byte that lands exactly on the tail-trim cutoff", () => {
+    // An all-"é" body guarantees the byte cutoff falls inside the multi-byte run
+    // (unlike the mixed ASCII+é case above, where it never reaches the é region). A
+    // single trailing ASCII byte shifts the cutoff by one without disturbing the "é"
+    // run's own byte alignment, landing the cutoff on a continuation byte.
+    const rendered = renderPriorSessionContext(source, [
+      logRecord({ content: `${"é".repeat(1_200_000)}z` }),
+    ]);
+    expect(rendered!.truncated).toBe(true);
+    expect(rendered!.content).not.toContain("�");
+  });
+
+  it("omits the completed-at line when the source has not recorded one", () => {
+    const rendered = renderPriorSessionContext({ ...source, completedAt: undefined }, [
+      logRecord({}),
+    ]);
+    expect(rendered!.content).not.toContain("Completed at:");
   });
 });

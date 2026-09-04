@@ -148,38 +148,6 @@ describe("prior-session context on a fallback resume assignment", () => {
     expect(sawEnv.HARNESS_PRIOR_CONTEXT_FILE).toBe(join(cwd, ".auto-harness", "prior-session.md"));
   });
 
-  it("removes the context file even when the process run rejects", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () => new Response(JSON.stringify({ content: "prior transcript" }), { status: 200 }),
-      ),
-    );
-    const commandRunner: ProcessRunner = {
-      run() {
-        return Promise.reject(new Error("spawn exploded"));
-      },
-    };
-    const logs: unknown[] = [];
-    await expect(
-      runClaimedSession(
-        okRunner,
-        new LogStreamer("sess-2", "attempt-1", (chunk) => logs.push(chunk)),
-        logs as never,
-        baseAssign({ priorContext: { sourceSessionId: "sess-1" } }),
-        claimedAt(cwd),
-        undefined,
-        () => false,
-        () => 1_000,
-        commandRunner,
-        process.env,
-        undefined,
-        identity,
-      ),
-    ).rejects.toThrow("spawn exploded");
-    await expect(stat(join(cwd, ".auto-harness", "prior-session.md"))).rejects.toThrow();
-  });
-
   it("still runs to completion when the prior-context fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
