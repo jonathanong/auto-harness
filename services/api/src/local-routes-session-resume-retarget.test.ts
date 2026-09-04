@@ -57,9 +57,9 @@ describe("session resume target/fallbacks override — route validation", () => 
     );
     expect(result.status).toBe(201);
     const audits = await fixture.plane.listAuditLogs({ action: "session:resume" });
-    expect((audits.items[0] as { metadata?: Record<string, unknown> }).metadata?.retargeted).toBe(
-      undefined,
-    );
+    expect(
+      (audits.items[0] as { metadata?: Record<string, unknown> }).metadata?.retargeted,
+    ).toBeUndefined();
   });
 
   it("classifies fallbacks-without-target as 400, not the coarse route shape error", async () => {
