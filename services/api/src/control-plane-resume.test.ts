@@ -501,6 +501,33 @@ describe("control-plane native resume", () => {
       });
     }
 
+    const paused = new ControlPlane({ shardCount: 1 });
+    paused.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
+    const pausedSource = paused.createSession({
+      repositoryId: "repo",
+      prompt: "paused",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(pausedSource.ok).toBe(true);
+    if (pausedSource.ok) {
+      paused.forceStatus(pausedSource.session.id, "completed");
+      paused.state.repositories.set("repo", {
+        id: "repo",
+        name: "repo",
+        url: "/repo",
+        defaultBranch: "main",
+        admissionState: "paused",
+        admissionStateChangedAt: "2026-01-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      expect(paused.resumeSession(pausedSource.session.id)).toMatchObject({
+        ok: false,
+        code: "REPOSITORY_ADMISSION_CLOSED",
+      });
+    }
+
     const overrides = new ControlPlane({ shardCount: 1 });
     overrides.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
     overrides.registerHost({
@@ -556,6 +583,10 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "priority must be an integer",
       });
+      expect(overrides.resumeSession(source.session.id, { priority: 5 })).toMatchObject({
+        ok: true,
+        session: { priority: 5 },
+      });
       expect(
         overrides.resumeSession(source.session.id, { pinExpiresAt: "not-a-timestamp" }),
       ).toEqual({
@@ -570,6 +601,39 @@ describe("control-plane native resume", () => {
         session: { pinExpiresAt: "2026-01-01T01:00:00.000Z" },
       });
     }
+  });
+
+  it("returns an already-active session sharing the source's concurrencyId instead of resuming (in-memory path)", () => {
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const source = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+      concurrencyId: "resume-key",
+    });
+    expect(source.ok).toBe(true);
+    if (!source.ok) return;
+    plane.assignQueued();
+    plane.forceStatus(source.session.id, "completed");
+    // Only the process cache (no storage backend) makes this branch reachable —
+    // simulate a second worker's active session already holding this identity.
+    plane.state.sessions.set("active-elsewhere", {
+      ...plane.state.sessions.get(source.session.id)!,
+      id: "active-elsewhere",
+      status: "queued",
+    });
+    expect(plane.resumeSession(source.session.id)).toMatchObject({
+      ok: true,
+      created: false,
+      session: { id: "active-elsewhere" },
+    });
   });
 
   it("uses the frozen argv without appending a prompt when resuming a command", () => {

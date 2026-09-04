@@ -24,6 +24,7 @@ describe("sessionAssignFromWire", () => {
         targetIndex: 1,
         commandId: "cmd-1",
         providerAccountId: "acct-1",
+        priorContext: { sourceSessionId: "old" },
         assignedAt: "now",
       }),
     ).toMatchObject({
@@ -36,6 +37,7 @@ describe("sessionAssignFromWire", () => {
       targetIndex: 1,
       commandId: "cmd-1",
       providerAccountId: "acct-1",
+      priorContext: { sourceSessionId: "old" },
     });
   });
 

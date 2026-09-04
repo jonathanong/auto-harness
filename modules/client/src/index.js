@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one small client class covering every REST method is the published surface. */
 import {
   AutoHarnessDrainWaitTimeoutError,
   AutoHarnessError,
@@ -5,7 +6,7 @@ import {
 } from "./errors.js";
 import { assertSecureTransport } from "./loopback.js";
 import { resolveRepositoryId } from "./resolve-repository.js";
-import { resolveCreateSessionTargets } from "./resolve-target.js";
+import { resolveCreateSessionTargets, resolveTargetSpecs } from "./resolve-target.js";
 
 export { AutoHarnessDrainWaitTimeoutError, AutoHarnessError, AutoHarnessRequestTimeoutError };
 
@@ -89,11 +90,19 @@ export class AutoHarnessClient {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }
 
-  /** Resume a previously assigned session on its pinned host, native CLI resume where supported. */
-  resumeSession(id, input) {
+  /**
+   * Resume a previously assigned session on its pinned host, native CLI resume where supported.
+   * An optional `target`/`fallbacks` override rebinds the resume to a different Command/Provider
+   * — a repoint applying on the next resume, instead of only to new dispatches — and its
+   * `providerName`/`commandName` sugar is resolved the same way `createSession()` resolves it.
+   * Resolution only runs when `target` is present, so an id-only or bodyless resume makes no
+   * extra `listCommands()`/`listProviders()` requests.
+   */
+  async resumeSession(id, input) {
+    const body = input?.target === undefined ? input : await resolveTargetSpecs(this, input);
     return this.request(`/sessions/${encodeURIComponent(id)}/resume`, {
       method: "POST",
-      ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   }
 

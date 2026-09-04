@@ -102,23 +102,28 @@ async function resolveRef(ref, providers, commands) {
   }
   return ref;
 }
-async function resolveCreateSessionTargets(client2, input2) {
+async function resolveTargetSpecs(client2, input2) {
   let providersPromise;
   let commandsPromise;
   const providers = () => providersPromise ??= client2.listProviders();
   const commands = () => commandsPromise ??= client2.listCommands();
   const target = await resolveRef(input2.target, providers, commands);
-  const repositoryId = await resolveRepositoryId(
-    client2,
-    input2.repositoryId !== void 0 ? input2.repositoryId : { repositoryName: input2.repositoryName }
-  );
-  const resolved = { ...input2, repositoryId, target };
-  delete resolved.repositoryName;
+  const resolved = { ...input2, target };
   if (input2.fallbacks === void 0) return resolved;
   const fallbacks = await Promise.all(
     input2.fallbacks.map((fallback) => resolveRef(fallback, providers, commands))
   );
   return { ...resolved, fallbacks };
+}
+async function resolveCreateSessionTargets(client2, input2) {
+  const withTargets = await resolveTargetSpecs(client2, input2);
+  const repositoryId = await resolveRepositoryId(
+    client2,
+    input2.repositoryId !== void 0 ? input2.repositoryId : { repositoryName: input2.repositoryName }
+  );
+  const resolved = { ...withTargets, repositoryId };
+  delete resolved.repositoryName;
+  return resolved;
 }
 
 // modules/client/src/index.js
@@ -193,11 +198,19 @@ var AutoHarnessClient = class _AutoHarnessClient {
   cancelSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
   }
-  /** Resume a previously assigned session on its pinned host, native CLI resume where supported. */
-  resumeSession(id, input2) {
+  /**
+   * Resume a previously assigned session on its pinned host, native CLI resume where supported.
+   * An optional `target`/`fallbacks` override rebinds the resume to a different Command/Provider
+   * — a repoint applying on the next resume, instead of only to new dispatches — and its
+   * `providerName`/`commandName` sugar is resolved the same way `createSession()` resolves it.
+   * Resolution only runs when `target` is present, so an id-only or bodyless resume makes no
+   * extra `listCommands()`/`listProviders()` requests.
+   */
+  async resumeSession(id, input2) {
+    const body = input2?.target === void 0 ? input2 : await resolveTargetSpecs(this, input2);
     return this.request(`/sessions/${encodeURIComponent(id)}/resume`, {
       method: "POST",
-      ...input2 === void 0 ? {} : { body: JSON.stringify(input2) }
+      ...body === void 0 ? {} : { body: JSON.stringify(body) }
     });
   }
   listSessions(options = {}) {
@@ -752,11 +765,20 @@ async function resume(options) {
   });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
+  const targetInput = input("target");
+  const fallbacksInput = input("fallbacks");
+  if (fallbacksInput && !targetInput) {
+    throw new Error("fallbacks requires target");
+  }
   const request = {
     ...prompt ? { prompt } : {},
     ...concurrencyId ? { concurrencyId } : {},
     ...timeout !== void 0 ? { timeout } : {},
-    ...priority !== void 0 ? { priority } : {}
+    ...priority !== void 0 ? { priority } : {},
+    // An optional rebinding override: replaces the whole target/fallbacks policy and
+    // invalidates any native-resume pin — see ResumeSessionInput in modules/client.
+    ...targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {},
+    ...fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}
   };
   const session = validateSession(await client(options).resumeSession(sessionId, request));
   setOutput("session-id", session.id);

@@ -97,7 +97,7 @@ describe("DynamoDB Local session storage failures", () => {
       }),
     ).rejects.toThrow();
     await expect(
-      clearResumePin(missing, { sessionId: "session", pinnedHostId: "host" }),
+      clearResumePin(missing, { sessionId: "session", pinnedHostId: "host", prompt: "p" }),
     ).rejects.toThrow();
     await expect(
       tryRequeueSession(missing, {

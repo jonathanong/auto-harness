@@ -133,6 +133,9 @@ export type LogQuery = {
   /** Exact durable cursor used by viewer reconnects. */
   after?: string;
   limit: number;
+  /** Internal read shape only — never exposed via `parseLogQuery`. Ignored when `after`
+   * is set (a viewer reconnect cursor is always forward). Defaults to ascending. */
+  order?: "asc" | "desc";
 };
 
 export type LogRecord = {

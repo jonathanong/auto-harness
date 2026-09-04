@@ -9,7 +9,14 @@ import {
   sendSessionForbidden,
 } from "./local-routes-session-access.ts";
 
-const RESUME_BODY_FIELDS = new Set(["prompt", "timeout", "priority", "concurrencyId"]);
+const RESUME_BODY_FIELDS = new Set([
+  "prompt",
+  "timeout",
+  "priority",
+  "concurrencyId",
+  "target",
+  "fallbacks",
+]);
 
 function validResumeBody(
   body: Record<string, unknown>,
@@ -26,7 +33,13 @@ function validResumeBody(
     (body.priority === undefined ||
       (typeof body.priority === "number" && Number.isFinite(body.priority))) &&
     (body.concurrencyId === undefined ||
-      (typeof body.concurrencyId === "string" && body.concurrencyId === sourceConcurrencyId))
+      (typeof body.concurrencyId === "string" && body.concurrencyId === sourceConcurrencyId)) &&
+    // Coarse shape only — precise routing errors (unknown commandId, malformed
+    // target shape, duplicate fallbacks, …) come back from the control plane as
+    // a VALIDATION_ERROR with the exact message.
+    (body.target === undefined ||
+      (typeof body.target === "object" && body.target !== null && !Array.isArray(body.target))) &&
+    (body.fallbacks === undefined || Array.isArray(body.fallbacks))
   );
 }
 
@@ -105,11 +118,14 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid resume overrides" } });
     return true;
   }
+  const retargeted = body.target !== undefined;
   try {
     const result = await plane.resumeSessionDurable(id, {
       ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
       ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
       ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
+      ...(body.target !== undefined ? { target: body.target } : {}),
+      ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
       ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
     });
     if (!result.ok) {
@@ -160,7 +176,7 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
         resourceType: "session",
         resourceId: result.session.id,
         repositoryId: result.session.repositoryId,
-        metadata: { created: result.created },
+        metadata: { created: result.created, ...(retargeted ? { retargeted: true } : {}) },
       }))
     )
       return true;

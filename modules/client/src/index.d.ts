@@ -77,12 +77,16 @@ export type Session = {
   created?: boolean;
 };
 
-/** Body accepted by `POST /sessions/:id/resume`. */
+/** Body accepted by `POST /sessions/:id/resume`. `target`/`fallbacks` are an optional
+ * rebinding override — passing `target` alone clears any inherited `fallbacks`, and
+ * a bare `fallbacks` without `target` is rejected. */
 export type ResumeSessionInput = {
   prompt?: string;
   concurrencyId?: string;
   timeout?: number;
   priority?: number;
+  target?: TargetSpec;
+  fallbacks?: TargetSpec[];
 };
 
 /** `status` filter accepted by `GET /sessions`. */

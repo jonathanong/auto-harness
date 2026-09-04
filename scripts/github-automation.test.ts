@@ -152,7 +152,7 @@ describe("GitHub Actions pin and image alignment", () => {
       (match) => match[1],
     );
 
-    expect(pins).toHaveLength(6);
+    expect(pins).toHaveLength(7);
     expect(new Set(pins)).toEqual(new Set(["<sha>"]));
     expect(dispatchDocs).toContain(`target: '{"providerName":"codex"}'`);
     expect(`${dispatchDocs}\n${dispatchAction}`).not.toContain('providerId":"codex');

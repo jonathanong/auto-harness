@@ -513,6 +513,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     pinnedHostId: string;
     pinExpiresAt?: string | undefined;
+    prompt: string;
   }): Promise<boolean> {
     return sessions.clearResumePin(this.ctx, opts);
   }

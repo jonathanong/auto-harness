@@ -66,6 +66,24 @@ the source session's inherited identity, and any other value is rejected.
 
 `repository-id` is not required for resume — the control plane resolves it from the source session.
 
+Pass `target` (and, only alongside it, `fallbacks`) on a resume to **rebind** the session onto a
+different Command/Provider instead of continuing its original route — for example after rotating
+which Command a repo variable points at. This always resumes on a fresh assignment (no native CLI
+resume, no host pin), and replaces the source session's whole target/fallback policy rather than
+extending it:
+
+```yaml
+- name: Resume onto a different Command
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
+  with:
+    operation: resume
+    server-url: ${{ secrets.AUTO_HARNESS_URL }}
+    api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
+    session-id: ${{ steps.load-completed-session.outputs.session-id }}
+    prompt: "Continue with the updated Command."
+    target: '{"commandName":"claude-print-auto"}'
+```
+
 ## Principal session drain
 
 Cancels this service account's own queued and running sessions for one repository, then fences

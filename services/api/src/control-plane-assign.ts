@@ -1,5 +1,9 @@
 /* eslint-disable max-lines */
-import { type HostWireMessage } from "@auto-harness/shared";
+import {
+  appendPriorContextPointer,
+  hasHostCapability,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -131,7 +135,7 @@ export function assignQueued(
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         commandId: route.commandId,
         targetIndex: route.targetIndex,
-        ...resumeWireFields(session),
+        ...resumeWireFields(session, hostAdvertisesPriorContext(state, candidate.hostId)),
       };
       state.onHostMessage?.(candidate.hostId, msg);
       assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
@@ -180,6 +184,7 @@ export async function assignQueuedDurable(
         sessionId: session.id,
         pinnedHostId: session.pinnedHostId!,
         pinExpiresAt: session.pinExpiresAt,
+        prompt: appendPriorContextPointer(session.prompt),
       });
       if (!cleared) continue;
       clearResumePin(session);
@@ -333,7 +338,13 @@ export async function assignQueuedDurable(
         ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
         commandId: route.commandId,
         targetIndex: route.targetIndex,
-        ...resumeWireFields(session),
+        ...resumeWireFields(
+          session,
+          hasHostCapability(
+            state.connections.get(connectionId)?.capabilities,
+            "prior-session-context",
+          ),
+        ),
       };
       state.onHostMessage?.(candidate.hostId, msg);
       assigned.push({ session: toPublic(state, nextSession), worktree: { ...nextWorktree } });
@@ -351,6 +362,12 @@ function touchAccount(state: ControlPlaneState, id: string | undefined, at: stri
   state.providerAccounts.set(id, next);
 }
 
+/**
+ * Clear a native-resume pin, dropping to fresh target/fallback routing. The
+ * prompt gets the prior-context pointer appended here (idempotent) so the
+ * placement pass immediately following this call bakes it into the resolved
+ * argv on the same pass — see `resolveTargets`/`buildArgv`.
+ */
 function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinnedHostId;
   delete session.pinnedProviderAccountId;
@@ -359,22 +376,39 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinExpiresAt;
   delete session.cliResumeRef;
   session.resumeFallback = true;
+  session.prompt = appendPriorContextPointer(session.prompt);
 }
 
-function resumeWireFields(session: import("./db/types.ts").SessionRecord): {
+/** Whether the assigned host's daemon has advertised support for fetching
+ * `GET /sessions/:id/prior-context` and writing the result to the worktree. */
+function hostAdvertisesPriorContext(state: ControlPlaneState, hostId: string): boolean {
+  const connectionId = state.hostConnection.get(hostId);
+  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  return hasHostCapability(connection?.capabilities, "prior-session-context");
+}
+
+function resumeWireFields(
+  session: import("./db/types.ts").SessionRecord,
+  priorContextAvailable: boolean,
+): {
   resumedFromSessionId?: string;
   resume?: true;
   cliResumeRef?: string;
+  priorContext?: { sourceSessionId: string };
 } {
   if (!session.resumedFromSessionId) return {};
+  if (!session.resumeFallback) {
+    return {
+      resumedFromSessionId: session.resumedFromSessionId,
+      resume: true as const,
+      cliResumeRef: session.cliResumeRef!,
+    };
+  }
   return {
     resumedFromSessionId: session.resumedFromSessionId,
-    ...(session.resumeFallback
-      ? {}
-      : {
-          resume: true as const,
-          cliResumeRef: session.cliResumeRef!,
-        }),
+    ...(priorContextAvailable
+      ? { priorContext: { sourceSessionId: session.resumedFromSessionId } }
+      : {}),
   };
 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session create/list/assign/resume/cancel/log/usage reads share one facade. */
 import type { HostToServerMessage, SessionStatus } from "@auto-harness/shared";
 
 import type {
@@ -19,6 +20,7 @@ import * as clone from "./control-plane-session-clone.ts";
 import * as sessions from "./control-plane-sessions.ts";
 import * as durableSessions from "./control-plane-sessions-durable.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
+import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
 
@@ -106,6 +108,12 @@ export class ControlPlaneSessionsService {
 
   getLogsDurable(sessionId: string, query?: LogQuery): Promise<LogRecord[]> {
     return durableRuntime.getLogsDurable(this.state, sessionId, query);
+  }
+
+  loadPriorSessionContextDurable(
+    sourceSessionId: string,
+  ): ReturnType<typeof priorContext.loadPriorSessionContextDurable> {
+    return priorContext.loadPriorSessionContextDurable(this.state, sourceSessionId);
   }
 
   assignQueued(): Array<{

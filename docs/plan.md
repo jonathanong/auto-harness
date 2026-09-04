@@ -298,10 +298,17 @@ reference these by number; a phase is not done until its invariants have a passi
 7. **Native resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** It may
    use any eligible worktree for the repository and `ref` on that host. If the native route is
    unavailable or `pinExpiresAt` passes, the scheduler atomically clears the host, route, and CLI
-   reference pins and continues as a fresh target/fallback run rather than waiting indefinitely.
+   reference pins and continues as a fresh target/fallback run rather than waiting indefinitely. An
+   explicit `target`/`fallbacks` override on `POST /sessions/:id/resume` invalidates the pin
+   immediately at resume time, the same way expiry or unschedulability does — it is not a second,
+   separate mechanism, and the override still resolves through the ordinary catalog validation a
+   fresh route would.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
-   the control plane or the agent.
+   the control plane or the agent. The prior-session-context pointer appended to a fresh-routed
+   resume's prompt (`.auto-harness/prior-session.md`) is a fixed literal baked in at build time,
+   never interpolated from a wire value or file content, so it carries the same guarantee as the
+   rest of the prompt it rides inside.
 9. **`concurrencyId` is globally exact and atomic.** A durable lock table permits only one active
    session for an identity across API workers. Duplicate manual creates return the existing
    session (`200`, `created: false`); new creates return `201`, `created: true`. Terminal

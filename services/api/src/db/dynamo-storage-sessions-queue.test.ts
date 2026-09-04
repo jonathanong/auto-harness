@@ -80,12 +80,31 @@ describe("DynamoDB Local queued session lifecycle", () => {
       pinnedCommandId: "command",
       cliResumeRef: "opaque",
     });
-    expect(await clearResumePin(ctx, { sessionId: "clear", pinnedHostId: "wrong" })).toBe(false);
     expect(
-      await clearResumePin(ctx, { sessionId: "clear", pinnedHostId: "host", pinExpiresAt: "pin" }),
+      await clearResumePin(ctx, {
+        sessionId: "clear",
+        pinnedHostId: "wrong",
+        prompt: "with context",
+      }),
+    ).toBe(false);
+    expect(
+      await clearResumePin(ctx, {
+        sessionId: "clear",
+        pinnedHostId: "host",
+        pinExpiresAt: "pin",
+        prompt: "with context",
+      }),
     ).toBe(true);
-    expect(await clearResumePin(ctx, { sessionId: "clear", pinnedHostId: "host" })).toBe(false);
-    expect((await getSession(ctx, "clear"))?.resumeFallback).toBe(true);
+    expect(
+      await clearResumePin(ctx, {
+        sessionId: "clear",
+        pinnedHostId: "host",
+        prompt: "with context",
+      }),
+    ).toBe(false);
+    const cleared = await getSession(ctx, "clear");
+    expect(cleared?.resumeFallback).toBe(true);
+    expect(cleared?.prompt).toBe("with context");
     await expect(
       failExpiredResumeSession(
         { ...ctx, tables: { ...tables, sessions: "missing-sessions" } },
@@ -95,7 +114,7 @@ describe("DynamoDB Local queued session lifecycle", () => {
     await expect(
       clearResumePin(
         { ...ctx, tables: { ...tables, sessions: "missing-sessions" } },
-        { sessionId: "missing", pinnedHostId: "host" },
+        { sessionId: "missing", pinnedHostId: "host", prompt: "with context" },
       ),
     ).rejects.toThrow();
   });
