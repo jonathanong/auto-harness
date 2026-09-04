@@ -121,11 +121,20 @@ async function resume(options: ClientOptions): Promise<void> {
   });
   const timeout = optionalPositiveNumberInput("timeout", RESUME_TIMEOUT_MAX_SECONDS);
   const priority = optionalBoundedNumberInput("priority", PRIORITY_MIN, PRIORITY_MAX);
+  const targetInput = input("target");
+  const fallbacksInput = input("fallbacks");
+  if (fallbacksInput && !targetInput) {
+    throw new Error("fallbacks requires target");
+  }
   const request: ResumeSessionInput = {
     ...(prompt ? { prompt } : {}),
     ...(concurrencyId ? { concurrencyId } : {}),
     ...(timeout !== undefined ? { timeout } : {}),
     ...(priority !== undefined ? { priority } : {}),
+    // An optional rebinding override: replaces the whole target/fallbacks policy and
+    // invalidates any native-resume pin — see ResumeSessionInput in modules/client.
+    ...(targetInput ? { target: parseHarnessTarget(targetInput, "target") } : {}),
+    ...(fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}),
   };
   const session = validateSession(await client(options).resumeSession(sessionId, request));
   setOutput("session-id", session.id);

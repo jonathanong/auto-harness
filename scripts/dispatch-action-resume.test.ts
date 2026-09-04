@@ -118,6 +118,60 @@ describe("dispatch action resume operation", () => {
     );
   });
 
+  it("forwards an id-shaped target/fallbacks rebinding override untouched", async () => {
+    const server = await serve(() => ({
+      body: { created: true, id: "session-2", url: "https://example.test/sessions/session-2" },
+    }));
+
+    const result = await runAction(
+      resumeInputs(server.origin, {
+        target: '{"commandId":"cmd-new"}',
+        fallbacks: '[{"providerId":"prov-1"}]',
+      }),
+    );
+
+    expect(result.code).toBe(0);
+    expect(server.requests).toHaveLength(1);
+    expect(JSON.parse(server.requests[0]!.body)).toEqual({
+      target: { commandId: "cmd-new" },
+      fallbacks: [{ providerId: "prov-1" }],
+    });
+  });
+
+  it("resolves a commandName target via the catalog before resuming", async () => {
+    const server = await serve((request) =>
+      request.url?.startsWith("/api/v1/commands")
+        ? { body: { items: [{ id: "cmd-new", name: "claude-print-auto" }] } }
+        : {
+            body: {
+              created: true,
+              id: "session-2",
+              url: "https://example.test/sessions/session-2",
+            },
+          },
+    );
+
+    const result = await runAction(
+      resumeInputs(server.origin, { target: '{"commandName":"claude-print-auto"}' }),
+    );
+
+    expect(result.code).toBe(0);
+    const resumeRequest = server.requests.find((r) => r.url?.includes("/resume"));
+    expect(JSON.parse(resumeRequest!.body)).toEqual({ target: { commandId: "cmd-new" } });
+  });
+
+  it("rejects fallbacks without target before making a request", async () => {
+    const server = await serve(() => ({ body: {} }));
+
+    const result = await runAction(
+      resumeInputs(server.origin, { fallbacks: '[{"commandId":"cmd-1"}]' }),
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/fallbacks requires target/);
+    expect(server.requests).toHaveLength(0);
+  });
+
   it("rejects a malformed successful resume response", async () => {
     const server = await serve(() => ({ body: {} }));
 

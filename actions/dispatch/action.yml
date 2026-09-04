@@ -25,13 +25,13 @@ inputs:
     description: Prompt for the session (required for dispatch; optional continuation instruction override for resume)
     required: false
   target:
-    description: JSON target by catalog name or ID, for example {"providerName":"codex"} (dispatch only)
+    description: JSON target by catalog name or ID, for example {"providerName":"codex"} (dispatch; also accepted by resume as an optional rebinding override — replaces the whole target/fallbacks policy, invalidating any native-resume pin)
     required: false
   timeout:
     description: Maximum session runtime in seconds (required for dispatch; optional override for resume)
     required: false
   fallbacks:
-    description: Optional JSON array of fallback targets (dispatch only)
+    description: Optional JSON array of fallback targets (dispatch; also accepted by resume, but only alongside target — a bare fallbacks override with no target is rejected)
     required: false
   ref:
     description: Optional branch, tag, or SHA (dispatch only)
