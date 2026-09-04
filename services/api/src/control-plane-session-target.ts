@@ -57,6 +57,17 @@ export function resolveSessionTargetRoute(
   return null;
 }
 
+/**
+ * A captured CLI ref plus a frozen resume template is a real native continuation: live
+ * resolution would hand back the plain command argv and start a *new* CLI conversation
+ * instead of resuming the existing one. A `resumeFallback` continuation with no template
+ * (frozen argv is just `argv + prompt`) is deliberately excluded so it keeps picking up
+ * catalog edits, which is the point of resolving live for that case.
+ */
+function prefersNativeResumeRoute(session: SessionRecord): boolean {
+  return session.cliResumeRef !== undefined && session.resumeSpec?.resumeArgvTemplate !== undefined;
+}
+
 /** Resolve one explicit policy entry. Scheduler uses this to exhaust each target before fallbacks. */
 export function resolveSessionTargetRouteAt(
   state: ControlPlaneState,
@@ -69,6 +80,10 @@ export function resolveSessionTargetRouteAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return null;
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return null;
+  if (prefersNativeResumeRoute(session)) {
+    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    if (native) return matchesNativeResumePin(session, native) ? native : null;
+  }
   const route = resolveTarget(
     state,
     catalog,
@@ -84,7 +99,12 @@ export function resolveSessionTargetRouteAt(
   return resolved && matchesNativeResumePin(session, resolved) ? resolved : null;
 }
 
-/** A pinned continuation can use its frozen command snapshot after catalog edits. */
+/**
+ * A native continuation (captured ref + frozen resume template) uses its frozen command
+ * snapshot ahead of live catalog state, and survives an edit to that Command — but never
+ * its deletion: a deleted pinned Command must not be replayed out of a frozen snapshot
+ * (#402/#438), so deletion remains an operator's invalidation lever.
+ */
 function resolveNativeResumeRoute(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
@@ -99,7 +119,8 @@ function resolveNativeResumeRoute(
     !spec ||
     (!session.cliResumeRef && !session.resumeFallback) ||
     session.pinnedTargetIndex !== targetIndex ||
-    session.pinnedCommandId === undefined
+    session.pinnedCommandId === undefined ||
+    !state.commands.has(session.pinnedCommandId)
   ) {
     return null;
   }
@@ -280,6 +301,11 @@ export function resolveSessionTargetRoutesAt(
   if (session.suppressedTargetIndexes?.includes(targetIndex)) return [];
   const target = [session.target, ...session.fallbacks][targetIndex];
   if (!target) return [];
+  const preferNative = prefersNativeResumeRoute(session);
+  const native = preferNative
+    ? resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex)
+    : undefined;
+  if (native) return matchesNativeResumePin(session, native) ? [native] : [];
   const routes = resolveTargets(
     state,
     catalog,
@@ -290,8 +316,13 @@ export function resolveSessionTargetRoutesAt(
     session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
   ).map((route) => ({ ...route, targetIndex }));
   if (routes.length === 0) {
-    const native = resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
-    return native && matchesNativeResumePin(session, native) ? [native] : [];
+    // `native` was already computed above when a native continuation was preferred; a
+    // null result there is deterministic (pure function of unchanged state), so only
+    // resolve it again when it was skipped outright.
+    const fallback = preferNative
+      ? undefined
+      : resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+    return fallback && matchesNativeResumePin(session, fallback) ? [fallback] : [];
   }
   return routes.filter((route) => matchesNativeResumePin(session, route));
 }

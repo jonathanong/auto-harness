@@ -224,7 +224,7 @@ remote URL userinfo and token-shaped credential values are redacted.
 
 ### Session resume
 
-Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The control plane first prefers the source session's native route. If that route is no longer schedulable, it discards the stored `cliResumeRef` and placement pins, preserves `resumedFromSessionId`, and schedules a fresh run through the configured target and ordered fallbacks. The agent then tries native resume only when the assignment includes a usable route. A resume request may also pass a `target`/`fallbacks` override (see [api.md — Repointing a target](api.md#post-sessionsidresume)); that always takes the fresh-route path immediately — there is no native route to try once the policy has been replaced.
+Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). When the resumed session has a captured `cliResumeRef` and a frozen `resumeArgvTemplate` (a real native continuation), the control plane prefers that frozen argv snapshot ahead of the pinned Command's live catalog state — an edit to the Command does not change what gets replayed. It is no longer schedulable, and the control plane falls back to fresh routing, when the pinned account is unschedulable, `pinExpiresAt` has passed, or — deliberately, so that deleting a Command works as an invalidation lever — the pinned Command has been **deleted**. On fallback, the control plane discards the stored `cliResumeRef` and placement pins, preserves `resumedFromSessionId`, and schedules a fresh run through the configured target and ordered fallbacks. The agent then tries native resume only when the assignment includes a usable route. A resume request may also pass a `target`/`fallbacks` override (see [api.md — Repointing a target](api.md#post-sessionsidresume)); that always takes the fresh-route path immediately — there is no native route to try once the policy has been replaced.
 
 ```mermaid
 sequenceDiagram
@@ -248,7 +248,7 @@ sequenceDiagram
 | ---------------- | ------------------------------------------------------------------------------------------------- |
 | Prefer           | Pin the source `hostId`; select any eligible repository worktree there for `cliResumeRef`         |
 | Re-establish ref | Check out the source session's `ref`, or its default branch, before starting the native CLI route |
-| Re-route         | If unavailable, clear `cliResumeRef` and the host pin, then use target/fallback order             |
+| Re-route         | If unavailable — including a deleted pinned Command — clear `cliResumeRef` and the host pin, then use target/fallback order |
 | Preserve         | Keep `resumedFromSessionId` on the fresh assignment for audit/history                             |
 | Same agent state | Native resume uses CLI conversation state stored outside the repository worktree                  |
 
@@ -256,8 +256,8 @@ sequenceDiagram
 
 Order of preference:
 
-1. **Native CLI resume** — after the assigned worktree checks out `ref` (or the default branch), invoke the tool's resume/continue mode with `cliResumeRef` and the continuation prompt.
-2. **Fresh route** — if the native route cannot be scheduled, the control plane discards the native ref/host pin and executes the normal target/fallback chain. This is a fresh CLI run, but retains `resumedFromSessionId`.
+1. **Native CLI resume** — after the assigned worktree checks out `ref` (or the default branch), invoke the tool's resume/continue mode with `cliResumeRef` and the continuation prompt. The argv for this comes from the frozen `resumeArgvTemplate` snapshot, not the pinned Command's current catalog row.
+2. **Fresh route** — if the native route cannot be scheduled (including because the pinned Command was deleted), the control plane discards the native ref/host pin and executes the normal target/fallback chain. This is a fresh CLI run, but retains `resumedFromSessionId`.
 
 #### Must / must not
 

@@ -296,13 +296,17 @@ reference these by number; a phase is not done until its invariants have a passi
    (`failed` without that code, `timed_out`, `cancelled`) triggers account cooldown or fallback routing;
    queued sessions wait only until their fixed `queueExpiresAt` deadline.
 7. **Native resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** It may
-   use any eligible worktree for the repository and `ref` on that host. If the native route is
-   unavailable or `pinExpiresAt` passes, the scheduler atomically clears the host, route, and CLI
-   reference pins and continues as a fresh target/fallback run rather than waiting indefinitely. An
-   explicit `target`/`fallbacks` override on `POST /sessions/:id/resume` invalidates the pin
-   immediately at resume time, the same way expiry or unschedulability does — it is not a second,
-   separate mechanism, and the override still resolves through the ordinary catalog validation a
-   fresh route would.
+   use any eligible worktree for the repository and `ref` on that host. A native continuation — a
+   captured CLI reference plus a frozen `resumeArgvTemplate` — runs its frozen command snapshot
+   ahead of live catalog state, and survives an edit to the pinned Command, but never its deletion:
+   a deleted pinned Command is never replayed out of a frozen snapshot, so Command deletion is
+   itself a repoint-invalidation lever, alongside expiry and an explicit override. If the native
+   route is unavailable (deleted Command, unschedulable account, or `pinExpiresAt` passing), the
+   scheduler atomically clears the host, route, and CLI reference pins and continues as a fresh
+   target/fallback run rather than waiting indefinitely. An explicit `target`/`fallbacks` override
+   on `POST /sessions/:id/resume` invalidates the pin immediately at resume time, the same way
+   expiry or unschedulability does — it is not a second, separate mechanism, and the override still
+   resolves through the ordinary catalog validation a fresh route would.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
    the control plane or the agent. The prior-session-context pointer appended to a fresh-routed

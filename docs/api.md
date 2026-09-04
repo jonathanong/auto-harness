@@ -796,14 +796,16 @@ The Node client (`modules/client`) accepts `providerName`/`commandName` sugar in
 **Scheduling:**
 
 1. New session keeps `resumedFromSessionId` and initially pins the source host plus stored native command/account route and CLI reference — unless a `target` override is given (step 3a below), which never pins.
-2. Scheduler may assign that native route to any eligible worktree for the repository and `ref` on the pinned host when it is idle, online, and not draining.
-3. If the native route is unavailable or `pinExpiresAt` passes, clear `cliResumeRef` and every placement/route pin, mark the session as a resume fallback, and assign a fresh run through target/fallback order. If the host advertises the `prior-session-context` capability, `session:assign` also carries `priorContext` — see [Prior-session context](#get-sessionsidprior-context) below.
+2. Scheduler may assign that native route to any eligible worktree for the repository and `ref` on the pinned host when it is idle, online, and not draining. A native continuation — a captured `cliResumeRef` plus a frozen `resumeArgvTemplate` — runs its frozen argv snapshot ahead of the pinned Command's live, current catalog state, and survives an edit to that Command. It does not survive the Command's **deletion**: a deleted pinned Command is never replayed out of the frozen snapshot, so deleting a Command is itself a way to invalidate a still-resumable session's route, alongside expiry and an explicit `target` override.
+3. If the native route is unavailable (deleted Command, an unschedulable pinned account, or `pinExpiresAt` passing) clear `cliResumeRef` and every placement/route pin, mark the session as a resume fallback, and assign a fresh run through target/fallback order. If the host advertises the `prior-session-context` capability, `session:assign` also carries `priorContext` — see [Prior-session context](#get-sessionsidprior-context) below.
    1. A `target` override takes this same fallback path immediately: it replaces `target`/`fallbacks` wholesale, drops every pin and `cliResumeRef`/`resumeSpec` up front (there is no native route to try), and recomputes `targetDisplayNames` against the current catalog — an unknown `commandId`/`providerId` in the override fails the request exactly as it would at create.
 4. `session:assign` includes `resume: true` only for the native route; fresh fallback assignments (including every `target`-override resume) preserve `resumedFromSessionId` but omit the stale native ref/pins.
 
 **Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally. Native resume being unschedulable is not terminal; it becomes a fresh target/fallback assignment.
 
 **Repointing a target:** to move an already-dispatched-but-still-resumable session onto a different Command or Provider — e.g. after rotating which Command a CI variable points at — resume it with a `target` override instead of the previous workaround of tombstoning checkpoint records to force a full re-dispatch. The override fully replaces the route policy (pass `fallbacks` too if the old ones should still apply) and always lands on a fresh assignment: there is no frozen argv to carry the old Command forward, and no worktree/host pin, so the run may land on a different host than the source did. Uncommitted worktree state from the source session is not preserved — the same caveat resume already carries generally (see the clone-vs-resume table below).
+
+Deleting the pinned Command is a second, implicit lever for the same repoint problem: a still-resumable session's frozen argv can never replay a Command that no longer exists in the catalog, so `DELETE /commands/:id` — normally blocked only by a `queued`/`running` reference (see `DELETE /commands/:id` below) — succeeds against a terminal-but-resumable session and the next resume falls through to a live fallback (or waits, then queue-expires, if none resolves) instead of replaying the deleted Command's argv.
 
 **Errors:**
 
@@ -1219,7 +1221,7 @@ starting with `-` would otherwise be misread as a flag.
 
 #### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
 
-Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is a provider default, inventory override, schedule target, or queued/running session target. The response identifies live dependencies; deletion never cascades.
+Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is a provider default, inventory override, schedule target, or queued/running session target. The response identifies live dependencies; deletion never cascades. A **terminal-but-resumable** session referencing the command through a native-resume pin does *not* block deletion — deleting it is itself the invalidation lever for that case (see "Repointing a target" above): the next resume of that session cannot replay the deleted command's frozen argv and falls through to a live fallback instead.
 
 #### `GET /session-targets`
 

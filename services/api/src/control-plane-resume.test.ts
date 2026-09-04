@@ -70,12 +70,16 @@ describe("control-plane native resume", () => {
     });
     acknowledge(plane, "s1");
     finish(plane, "s1", "completed", "cli-1");
+    // The Command is edited but not deleted: a native continuation (captured cliResumeRef +
+    // frozen resumeArgvTemplate) still uses its frozen snapshot ahead of the edited live
+    // Command — deleting it entirely is covered separately (see the "does not replay a
+    // deleted Command" tests below, and the terminal-session delete-allowed contract at
+    // control-plane-delete-guards.test.ts's "does not preserve terminal session history").
     plane.updateCommand("cmd", {
       argv: ["changed"],
       resumeArgvTemplate: ["changed", "{cliResumeRef}"],
       resumeRefCapture: { stream: "stderr", linePrefix: "changed: " },
     });
-    expect(plane.deleteCommand("cmd").ok).toBe(true);
     const resumed = plane.resumeSession("s1");
     expect(resumed.ok).toBe(true);
     plane.assignQueued();
@@ -178,7 +182,8 @@ describe("control-plane native resume", () => {
       "{cliResumeRef}",
       "{prompt}",
     ];
-    plane.state.commands.delete("cmd");
+    // The Command is left live (not deleted): a native continuation still uses this frozen
+    // legacy snapshot ahead of the live Command's current, already-migrated template.
     expect(plane.resumeSession(source.session.id).ok).toBe(true);
     plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
@@ -288,7 +293,8 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId, "completed", "cli-1");
-    expect(plane.deleteCommand("cmd").ok).toBe(true);
+    // Command is left live: the captured cliResumeRef plus frozen resumeArgvTemplate make
+    // this a native continuation, which uses the frozen snapshot ahead of live resolution.
 
     const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
     expect(resumed.ok).toBe(true);
@@ -320,8 +326,11 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId);
-    plane.updateCommand("cmd", { argv: ["changed"] });
-    expect(plane.deleteCommand("cmd").ok).toBe(true);
+    // No captured cliResumeRef and no resumeArgvTemplate, so this never qualifies as a
+    // native continuation (see prefersNativeResumeRoute) — live resolution must actually
+    // fail to reach the frozen fallback. Re-point providerId (a soft FK with no eligible
+    // accounts) instead of deleting, since deletion is covered by dedicated tests below.
+    plane.updateCommand("cmd", { argv: ["changed"], providerId: "unrouted" });
 
     const resumed = plane.resumeSession(sourceId, { prompt: "continue here" });
     expect(resumed.ok).toBe(true);
@@ -366,8 +375,10 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     acknowledge(plane, sourceId);
     finish(plane, sourceId);
-    plane.updateCommand("cmd", { argv: ["changed"] });
-    expect(plane.deleteCommand("cmd").ok).toBe(true);
+    // No cliResumeRef captured and no resumeArgvTemplate, so this stays outside the
+    // native-continuation preference — re-point providerId to make live resolution fail
+    // instead of deleting the Command (deletion is covered by dedicated tests below).
+    plane.updateCommand("cmd", { argv: ["changed"], providerId: "unrouted" });
 
     const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
     expect(resumed.ok).toBe(true);
@@ -685,5 +696,147 @@ describe("control-plane native resume", () => {
     // delete guards intentionally reject removal while the session is queued.
     plane.state.commands.delete("cmd");
     expect(plane.assignQueued()).toEqual([]);
+  });
+
+  it("does not replay a deleted primary Command's frozen snapshot; falls through to a live fallback", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.setOnHostMessage((_host, message) => messages.push(message));
+    plane.createCommand({ id: "primary", name: "primary", argv: ["primary"] });
+    plane.createCommand({ id: "fallback", name: "fallback", argv: ["fallback"] });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "primary" },
+      fallbacks: [{ commandId: "fallback" }],
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId, "completed", "cli-1");
+
+    // Source is terminal, so deletion is allowed even though it is still resumable —
+    // this is the invalidation lever #402/#438 asked for.
+    expect(plane.deleteCommand("primary").ok).toBe(true);
+
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed.ok).toBe(true);
+    expect(plane.assignQueued()).toHaveLength(1);
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      commandId: "fallback",
+      targetIndex: 1,
+      resumedFromSessionId: sourceId,
+    });
+    expect(messages.at(-1)).not.toHaveProperty("resume");
+    expect(messages.at(-1)).not.toHaveProperty("cliResumeRef");
+  });
+
+  it("does not replay a deleted Command's frozen snapshot when nothing else resolves", () => {
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.createCommand({ id: "cmd", name: "cmd", argv: ["cmd"] });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId, "completed", "cli-1");
+    expect(plane.deleteCommand("cmd").ok).toBe(true);
+
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed.ok).toBe(true);
+    expect(plane.assignQueued()).toEqual([]);
+  });
+
+  it("prefers the frozen resumeArgvTemplate over a live, untouched Command", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.setOnHostMessage((_host, message) => messages.push(message));
+    plane.createCommand({
+      id: "cmd",
+      name: "codex",
+      argv: ["codex", "exec"],
+      resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
+    });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId, "completed", "cli-1");
+
+    // The Command is entirely untouched — regression test for the ordering bug where a
+    // native continuation with a captured ref and a frozen template was silently given
+    // the plain command argv (starting a *new* CLI conversation) whenever live resolution
+    // still happened to succeed.
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed.ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      resolvedArgv: ["codex", "resume", "cli-1", "Continue from the previous session."],
+    });
+  });
+
+  it("resolves a resumeFallback continuation with no template live, picking up a catalog edit", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.setOnHostMessage((_host, message) => messages.push(message));
+    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool", "run"] });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    // Finishes without a cliResumeRef: this resume has no native continuation to make, so
+    // prefersNativeResumeRoute must stay false and live resolution — including this edit —
+    // must still win, unlike the native-continuation case above.
+    finish(plane, sourceId);
+    plane.updateCommand("cmd", { argv: ["edited", "run"] });
+
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed.ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      resolvedArgv: ["edited", "run", "Continue from the previous session."],
+    });
   });
 });
