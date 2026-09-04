@@ -38,5 +38,5 @@ export function appendPriorContextPointer(prompt: string): string {
 }
 
 export function hasPriorContextPointer(prompt: string): boolean {
-  return prompt.includes(PRIOR_CONTEXT_RELATIVE_PATH);
+  return prompt.includes(PRIOR_CONTEXT_PROMPT_POINTER);
 }

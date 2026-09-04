@@ -24,6 +24,14 @@ describe("prior-context", () => {
     expect(hasPriorContextPointer(withPointer)).toBe(true);
   });
 
+  it("still appends the pointer when the prompt already mentions only the bare path", () => {
+    const mentionsPathOnly = `See \`${PRIOR_CONTEXT_RELATIVE_PATH}\` from an earlier run.`;
+    expect(hasPriorContextPointer(mentionsPathOnly)).toBe(false);
+    const withPointer = appendPriorContextPointer(mentionsPathOnly);
+    expect(withPointer).not.toBe(mentionsPathOnly);
+    expect(hasPriorContextPointer(withPointer)).toBe(true);
+  });
+
   it("is idempotent — a second append is a no-op", () => {
     const once = appendPriorContextPointer("Continue.");
     const twice = appendPriorContextPointer(once);
