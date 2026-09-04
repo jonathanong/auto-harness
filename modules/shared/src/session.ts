@@ -44,6 +44,11 @@ export type SessionAssign = {
   /** Non-secret resolved route breadcrumb for observability. */
   commandId?: string;
   targetIndex?: number;
+  /** The session this run continues, when the resume routed fresh instead of
+   * natively. Presence tells a capability-advertising daemon to fetch
+   * `GET /sessions/<this session id>/prior-context` and write the result to
+   * the fixed prior-context path. No URL or path ever crosses the wire. */
+  priorContext?: { sourceSessionId: string };
 };
 
 export type SessionLogChunk = {
@@ -120,6 +125,11 @@ export type HostWireMessage =
       providerAccountId?: string;
       commandId?: string;
       targetIndex?: number;
+      /** The session this run continues, when the resume routed fresh instead of
+       * natively. Presence tells a capability-advertising daemon to fetch
+       * `GET /sessions/<this session id>/prior-context` and write the result to
+       * the fixed prior-context path. No URL or path ever crosses the wire. */
+      priorContext?: { sourceSessionId: string };
       assignedAt: string;
       /** Immutable execution-attempt fence; echo in ACK and status messages. */
       attemptId: string;

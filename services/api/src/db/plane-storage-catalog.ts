@@ -228,6 +228,12 @@ export async function listLogs(
  * lets DynamoDB skip older history; stream is not indexed, so it is applied
  * as a Dynamo filter while pagination continues until enough matching rows
  * are collected. Full unbounded reads remain available only for hydration.
+ *
+ * `query.order === "desc"` walks the same key range backwards (DynamoDB
+ * pagination works identically in either scan direction), returning the
+ * newest `limit` records in descending order — the caller re-sorts if it
+ * wants them chronological. Ignored when `after` is set: a viewer reconnect
+ * cursor is always forward.
  */
 export async function queryLogs(
   ctx: PlaneStorageCtx,
@@ -276,7 +282,7 @@ export async function queryLogs(
               ExpressionAttributeNames: { "#stream": "stream" },
             }
           : {}),
-        ScanIndexForward: true,
+        ScanIndexForward: query.order !== "desc",
         Limit: query.limit - records.length,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),

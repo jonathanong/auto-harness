@@ -68,4 +68,13 @@ describe("historical log query contract", () => {
       ),
     ).toEqual(["third"]);
   });
+
+  it("order: desc takes the newest records but still returns them chronologically", () => {
+    expect(
+      selectLogs(records, { limit: 2, order: "desc" }).map((record) => record.content),
+    ).toEqual(["second", "third"]);
+    expect(
+      selectLogs(records, { limit: 10, order: "desc" }).map((record) => record.content),
+    ).toEqual(["first", "second", "third"]);
+  });
 });

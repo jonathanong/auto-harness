@@ -51,6 +51,15 @@ export {
 } from "./host-capabilities.ts";
 
 export {
+  MAX_PRIOR_CONTEXT_BYTES,
+  PRIOR_CONTEXT_DIR,
+  PRIOR_CONTEXT_FILENAME,
+  PRIOR_CONTEXT_RELATIVE_PATH,
+  appendPriorContextPointer,
+  hasPriorContextPointer,
+} from "./prior-context.ts";
+
+export {
   environmentNamesAreCaseSensitive,
   GIT_READINESS_REASONS,
   isHostRuntimeReport,

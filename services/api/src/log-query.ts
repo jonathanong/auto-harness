@@ -82,16 +82,22 @@ export function parseLogQuery(searchParams: URLSearchParams): LogQueryParseResul
  * Filter before applying the limit, then impose the durable timestampSeq
  * order. This is shared by in-memory reads and the defensive storage result
  * ordering so callers see one contract before a future archive reader exists.
+ *
+ * `query.order === "desc"` (an internal read shape, never exposed via
+ * `parseLogQuery`) takes the newest `limit` records instead of the oldest,
+ * still returned in ascending `timestampSeq` order \u2014 same contract as the
+ * durable descending query in `plane-storage-catalog.ts`.
  */
 export function selectLogs(records: LogRecord[], query: LogQuery): LogRecord[] {
   const afterSortKey = query.since ? `${query.since}\uffff` : undefined;
-  return records
+  const sorted = records
     .filter(
       (record) =>
         (query.stream === undefined || record.stream === query.stream) &&
         (afterSortKey === undefined || record.timestampSeq > afterSortKey),
     )
-    .toSorted((left, right) => left.timestampSeq.localeCompare(right.timestampSeq))
-    .slice(0, query.limit)
-    .map((record) => ({ ...record }));
+    .toSorted((left, right) => left.timestampSeq.localeCompare(right.timestampSeq));
+  const bounded =
+    query.order === "desc" ? sorted.slice(-query.limit) : sorted.slice(0, query.limit);
+  return bounded.map((record) => ({ ...record }));
 }
