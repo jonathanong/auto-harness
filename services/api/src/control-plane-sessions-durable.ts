@@ -97,6 +97,9 @@ export async function resumeSessionDurable(
   await getSessionRecordDurable(state, sessionId);
   const source = state.sessions.get(sessionId);
   if (source) await getRepositoryDurable(state, source.repositoryId);
+  // A target override validates against state.commands/state.providers, which a cold
+  // Lambda has not populated — gated so an ordinary resume pays nothing extra.
+  if (opts.target !== undefined) await refreshTargetCatalogDurable(state);
   const prepared = prepareResumedSession(state, sessionId, opts);
   if (!prepared.ok) return prepared;
   // The storage transaction below is the only concurrency authority.
