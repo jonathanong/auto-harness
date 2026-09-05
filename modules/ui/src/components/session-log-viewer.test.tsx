@@ -23,7 +23,14 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 
-afterEach(reset);
+afterEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    // Node workers may not expose storage.
+  }
+  reset();
+});
 
 function entry(content: string, seq: number, stream = "stdout"): TerminalLogEntry {
   return {
@@ -95,7 +102,7 @@ describe("readable session logs", () => {
   it("expands collapsed JSON and keeps the empty state", () => {
     const huge = JSON.stringify({
       type: "item.completed",
-      item: { type: "command_execution", command: "x", aggregated_output: "z".repeat(600) },
+      item: { type: "command_execution", command: "x".repeat(600) },
     });
     const view = mount(<SessionTerminalViewer sessionId="s2" items={[entry(huge, 1)]} />);
     expect(field(view.container, "session-log-expand-1").textContent).toBe("Show more");
