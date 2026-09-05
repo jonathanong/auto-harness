@@ -64,6 +64,7 @@ export function SessionLogRow({
         BORDER[record.category],
         highlighted ? "bg-yellow-300/10" : undefined,
       )}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 3rem" }}
     >
       <a
         href={`#L${record.line}`}

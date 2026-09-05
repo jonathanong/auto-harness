@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  droppedPrefixLineCount,
   foldCarriageReturnLine,
   parseSessionLogText,
   prettyJson,
@@ -20,6 +21,11 @@ describe("session log records", () => {
     expect(foldCarriageReturnLine("plain")).toBe("plain");
     expect(foldCarriageReturnLine("aa\rbbb")).toBe("bbb");
     expect(foldCarriageReturnLine("abcd\rxy")).toBe("xycd");
+    expect(droppedPrefixLineCount("", "a\n")).toBe(0);
+    expect(droppedPrefixLineCount("keep\n", "keep\nmore\n")).toBe(0);
+    expect(droppedPrefixLineCount("gone\nkeep\n", "keep\n")).toBe(1);
+    expect(droppedPrefixLineCount("alpha", "beta")).toBe(0);
+    expect(parseSessionLogText("only\n", 4).map((record) => record.line)).toEqual([5]);
   });
 
   it("numbers records and pretty-prints JSONL", () => {

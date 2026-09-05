@@ -48,6 +48,15 @@ describe("classifyLogLine", () => {
       ),
     ).toMatchObject({ category: "event", preview: "input 4 · output 5" });
     expect(classifyLogLine(json({ type: "result" }))).toMatchObject({ category: "event" });
+    expect(
+      classifyLogLine(json({ type: "result", is_error: true, result: "quota" })),
+    ).toMatchObject({
+      category: "error",
+      preview: "quota",
+    });
+    expect(
+      classifyLogLine(`${String.fromCharCode(27)}[?25l${json({ type: "result", result: "ok" })}`),
+    ).toMatchObject({ category: "event", typeLabel: "result" });
     expect(classifyLogLine(json({ type: "error", message: "nope" }))).toMatchObject({
       category: "error",
       preview: "nope",

@@ -1,3 +1,4 @@
+import { stripAnsi } from "./session-log-ansi.ts";
 import { errorPreview, eventPreview, isRecord, str, toolPreview } from "./session-log-preview.ts";
 
 export type LogCategory =
@@ -41,7 +42,7 @@ const THINKING_TYPES = new Set(["reasoning", "agent_reasoning", "thinking"]);
 const MESSAGE_TYPES = new Set(["agent_message", "message"]);
 
 export function parseJsonLine(line: string): object | undefined {
-  const trimmed = line.trim();
+  const trimmed = stripAnsi(line).trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
   try {
     const value: unknown = JSON.parse(trimmed);
@@ -80,6 +81,13 @@ function classifyJson(value: object): Omit<ClassifiedLine, "json"> {
       category: "system",
       typeLabel: type,
       preview: str(record, "message", "text") || type,
+    };
+  }
+  if (type === "result" && record.is_error === true) {
+    return {
+      category: "error",
+      typeLabel: "result",
+      preview: str(record, "result", "error", "message") || "error",
     };
   }
   if (type.startsWith("turn.") || type.startsWith("thread.") || type === "result") {

@@ -8,7 +8,7 @@ export type AnsiSpan = {
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 const ESCAPE = new RegExp(
-  `${ESC}\\[([0-9;]*)([A-Za-z])|${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)|${ESC}.`,
+  `${ESC}\\[([0-9;?]*)([A-Za-z])|${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)|${ESC}.`,
   "g",
 );
 

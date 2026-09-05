@@ -81,6 +81,12 @@ describe("readable session logs", () => {
     press(field(view.container, "session-terminal-search-next"));
     expect(field(view.container, "session-terminal-search-result").textContent).toBe("1 of 1");
     press(field(view.container, "session-terminal-search-previous"));
+    press(field(view.container, "session-log-pretty"));
+    setValue(search, "item.completed");
+    press(field(view.container, "session-terminal-search-next"));
+    expect(field(view.container, "session-terminal-search-result").textContent).toBe("1 of 1");
+    press(field(view.container, "session-log-pretty"));
+    expect(field(view.container, "session-terminal-search-result").textContent).toBe("No match");
     setValue(search, "missing");
     press(field(view.container, "session-terminal-search-next"));
     expect(field(view.container, "session-terminal-search-result").textContent).toBe("No match");

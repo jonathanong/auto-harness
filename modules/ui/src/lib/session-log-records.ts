@@ -9,8 +9,8 @@ export type SessionLogRecord = {
   json: unknown | undefined;
 };
 
-export const COLLAPSE_CHAR_THRESHOLD = 500;
-export const COLLAPSE_LINE_THRESHOLD = 8;
+const COLLAPSE_CHAR_THRESHOLD = 500;
+const COLLAPSE_LINE_THRESHOLD = 8;
 
 export function foldCarriageReturnLine(line: string): string {
   if (!line.includes("\r")) return line;
@@ -28,9 +28,17 @@ export function splitLogText(text: string): string[] {
   return lines.map(foldCarriageReturnLine);
 }
 
-export function parseSessionLogText(text: string): SessionLogRecord[] {
+export function droppedPrefixLineCount(previousText: string, nextText: string): number {
+  if (!previousText || previousText === nextText || nextText.length >= previousText.length) {
+    return 0;
+  }
+  if (!previousText.endsWith(nextText)) return 0;
+  return splitLogText(previousText.slice(0, previousText.length - nextText.length)).length;
+}
+
+export function parseSessionLogText(text: string, lineBase = 0): SessionLogRecord[] {
   return splitLogText(text).map((raw, index) => ({
-    line: index + 1,
+    line: lineBase + index + 1,
     raw,
     ...classifyLogLine(raw),
   }));

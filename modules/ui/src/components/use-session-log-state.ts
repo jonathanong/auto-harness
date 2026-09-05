@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LogCategory } from "../lib/session-log-classify.ts";
 import { parseLogLineHash, replaceLogLineHash } from "../lib/session-log-hash.ts";
@@ -9,6 +9,7 @@ import {
   storeSessionLogView,
 } from "../lib/session-log-prefs.ts";
 import {
+  droppedPrefixLineCount,
   parseSessionLogText,
   presentCategories,
   toggleSetValue,
@@ -17,7 +18,17 @@ import {
 import { findRecordMatches, nextMatchIndex, searchResultLabel } from "../lib/session-log-search.ts";
 
 export function useSessionLogState(text: string) {
-  const records = useMemo(() => parseSessionLogText(text), [text]);
+  const prevTextRef = useRef("");
+  const pendingHashRef = useRef(
+    parseLogLineHash(typeof location === "undefined" ? "" : location.hash),
+  );
+  const [lineBase, setLineBase] = useState(0);
+  useEffect(() => {
+    const dropped = droppedPrefixLineCount(prevTextRef.current, text);
+    if (dropped) setLineBase((base) => base + dropped);
+    prevTextRef.current = text;
+  }, [text]);
+  const records = useMemo(() => parseSessionLogText(text, lineBase), [lineBase, text]);
   const [rawMode, setRawMode] = useState(false);
   const [pretty, setPretty] = useState(true);
   const [selected, setSelected] = useState<Set<LogCategory>>(() => new Set());
@@ -40,20 +51,47 @@ export function useSessionLogState(text: string) {
   }, []);
 
   useEffect(() => {
-    const apply = () => {
+    const line = pendingHashRef.current;
+    if (!line || !records.some((record) => record.line === line)) return;
+    setRawMode(false);
+    setSelected(new Set());
+    setHighlightedLine(line);
+    pendingHashRef.current = undefined;
+    requestAnimationFrame(() =>
+      document.getElementById(`L${line}`)?.scrollIntoView({ block: "center" }),
+    );
+  }, [records]);
+
+  useEffect(() => {
+    const onHashChange = () => {
       const line = parseLogLineHash(location.hash);
+      pendingHashRef.current = line;
       if (!line) return;
       setRawMode(false);
       setSelected(new Set());
       setHighlightedLine(line);
+      pendingHashRef.current = undefined;
       requestAnimationFrame(() =>
         document.getElementById(`L${line}`)?.scrollIntoView({ block: "center" }),
       );
     };
-    apply();
-    window.addEventListener("hashchange", apply);
-    return () => window.removeEventListener("hashchange", apply);
-  }, [records]);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (!searched) return;
+    if (matches.length === 0) {
+      setActiveIndex(-1);
+      setSearchResult("No match");
+      return;
+    }
+    setActiveIndex((current) => {
+      const next = current >= 0 && current < matches.length ? current : 0;
+      setSearchResult(searchResultLabel(matches.length, next, true));
+      return next;
+    });
+  }, [matches, searched]);
 
   const searchReadable = useCallback(
     (direction: "next" | "previous") => {
@@ -110,6 +148,7 @@ export function useSessionLogState(text: string) {
     toggleExpand: (line: number) => setExpanded((current) => toggleSetValue(current, line)),
     onLineClick: (line: number) => {
       setHighlightedLine(line);
+      pendingHashRef.current = undefined;
       const href = replaceLogLineHash(line);
       const clipboard = navigator.clipboard;
       if (clipboard) void clipboard.writeText(href).catch(() => undefined);
