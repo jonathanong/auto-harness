@@ -590,8 +590,8 @@ surfaces. Its API-backed create-session UI includes target/fallback routing, ref
 identity, priority, and label constraints populated from online worktrees; it also provides
 authenticated live-log tailing and Slack configuration. `services/host-pane` on `:7422` is a
 local, per-host debugging tool and is never required for normal management workflows (Invariant
-10). The log viewer is a read-only xterm.js renderer with ANSI, search, font-size, fullscreen, and
-download controls, and the daemon feeds it the assigned CLI's merged 120x40 PTY output. Git
+10). The log viewer defaults to a wrapping readable document (pretty JSONL, type labels, line
+links) with an optional xterm.js 120×40 raw replay for ANSI/cursor-addressed PTY output. Git
 operations, setup scripts, and terminal hooks remain pipe-based. Slack configuration is
 encrypted at rest; lifecycle delivery runs through the leased outbox when a secret encryptor or
 injected transport is attached (cron in AWS, local worker otherwise). If the token cannot be

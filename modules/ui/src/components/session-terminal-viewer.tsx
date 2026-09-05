@@ -10,7 +10,11 @@ import {
   terminalText,
   type TerminalLogEntry,
 } from "../lib/session-terminal.ts";
+import { SessionLogFilters } from "./session-log-filters.tsx";
+import { SessionLogViewer } from "./session-log-viewer.tsx";
 import { SessionTerminalControls } from "./session-terminal-controls.tsx";
+import { useLogStickBottom } from "./use-log-stick-bottom.ts";
+import { useSessionLogState } from "./use-session-log-state.ts";
 import { useSessionTerminal } from "./use-session-terminal.ts";
 
 export function SessionTerminalViewer({
@@ -21,14 +25,15 @@ export function SessionTerminalViewer({
   items: TerminalLogEntry[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const text = useMemo(() => terminalText(items), [items]);
+  const log = useSessionLogState(text);
   const [fontSize, setFontSize] = useState(DEFAULT_TERMINAL_FONT_SIZE);
   const [fullscreen, setFullscreen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [searchResult, setSearchResult] = useState("Search logs");
-
-  const { refresh, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize);
+  const { refresh, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize, log.rawMode);
+  useLogStickBottom(scrollerRef, text, !log.rawMode);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -40,11 +45,15 @@ export function SessionTerminalViewer({
   }, [refresh]);
 
   const search = (direction: "next" | "previous") => {
+    if (!log.rawMode) {
+      log.searchReadable(direction);
+      return;
+    }
     const found =
       direction === "next"
-        ? runtimeRef.current?.search.findNext(query, { caseSensitive: false })
-        : runtimeRef.current?.search.findPrevious(query, { caseSensitive: false });
-    setSearchResult(found ? "Match found" : "No match");
+        ? runtimeRef.current?.search.findNext(log.query, { caseSensitive: false })
+        : runtimeRef.current?.search.findPrevious(log.query, { caseSensitive: false });
+    log.setSearchResult(found ? "Match found" : "No match");
   };
 
   const toggleFullscreen = () => {
@@ -54,7 +63,7 @@ export function SessionTerminalViewer({
       return;
     }
     setFullscreen(true);
-    void hostRef.current?.parentElement?.requestFullscreen?.().catch(() => undefined);
+    void sectionRef.current?.requestFullscreen?.().catch(() => undefined);
     requestAnimationFrame(refresh);
   };
 
@@ -69,6 +78,7 @@ export function SessionTerminalViewer({
 
   return (
     <section
+      ref={sectionRef}
       className={
         fullscreen
           ? "fixed inset-0 z-50 flex flex-col gap-2 bg-background p-4"
@@ -76,6 +86,7 @@ export function SessionTerminalViewer({
       }
       data-pw="session-terminal"
       data-fullscreen={fullscreen ? "true" : "false"}
+      data-view={log.rawMode ? "raw" : "readable"}
       aria-label="Session terminal log viewer"
       onKeyDownCapture={(event) => {
         const shortcut = terminalShortcut(event.nativeEvent);
@@ -94,9 +105,9 @@ export function SessionTerminalViewer({
       <SessionTerminalControls
         sessionId={sessionId}
         searchInputRef={searchInputRef}
-        query={query}
-        setQuery={setQuery}
-        searchResult={searchResult}
+        query={log.query}
+        setQuery={log.setQuery}
+        searchResult={log.searchResult}
         search={search}
         fontSize={fontSize}
         changeFontSize={(delta) =>
@@ -105,7 +116,18 @@ export function SessionTerminalViewer({
         fullscreen={fullscreen}
         toggleFullscreen={toggleFullscreen}
         download={download}
+        pretty={log.pretty}
+        togglePretty={() => log.setPretty(!log.pretty)}
+        rawMode={log.rawMode}
+        toggleRawMode={() => log.setRawMode(!log.rawMode)}
       />
+      {log.rawMode ? null : (
+        <SessionLogFilters
+          categories={log.categories}
+          selected={log.selected}
+          onChange={log.setSelected}
+        />
+      )}
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-pw="session-logs-empty">
           No logs yet.
@@ -114,12 +136,28 @@ export function SessionTerminalViewer({
       <pre className="sr-only" aria-live="polite" data-pw="session-terminal-transcript">
         {text}
       </pre>
-      <div
-        ref={hostRef}
-        className={fullscreen ? "min-h-0 flex-1 overflow-auto" : "overflow-x-auto"}
-        data-pw="session-logs"
-        aria-label="Read-only ANSI session output"
-      />
+      {log.rawMode ? (
+        <div
+          ref={hostRef}
+          className={fullscreen ? "min-h-0 flex-1 overflow-auto" : "overflow-x-auto"}
+          data-pw="session-logs"
+          aria-label="Read-only ANSI session output"
+        />
+      ) : items.length === 0 ? null : (
+        <SessionLogViewer
+          records={log.visible}
+          pretty={log.pretty}
+          fontSize={fontSize}
+          query={log.searched ? log.query : ""}
+          activeMatch={log.matches[log.activeIndex]}
+          highlightedLine={log.highlightedLine}
+          expanded={log.expanded}
+          fullscreen={fullscreen}
+          scrollerRef={scrollerRef}
+          onLineClick={log.onLineClick}
+          onToggleExpand={log.toggleExpand}
+        />
+      )}
     </section>
   );
 }

@@ -170,7 +170,7 @@ test.describe("host pane sessions", () => {
 
         await expect(detailPage).toHaveURL(new RegExp(`/sessions/${id}$`));
         await expect(detailPage.getByTestId("page-session-detail")).toBeVisible();
-        // Host pane renders the same xterm viewer as the control plane (design review #6) —
+        // Host pane renders the same session log viewer as the control plane (design review #6) —
         // no live log content is streamed in this scenario, so this just guards against the
         // component failing to mount at all.
         await expect(detailPage.getByTestId("session-terminal")).toBeVisible();

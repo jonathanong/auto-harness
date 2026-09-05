@@ -9,12 +9,14 @@ import { SessionTerminalControls } from "./session-terminal-controls.tsx";
 afterEach(reset);
 
 describe("SessionTerminalControls", () => {
-  it("forwards search, font, fullscreen, and download actions", () => {
+  it("forwards search, font, fullscreen, download, pretty, and raw actions", () => {
     const setQuery = vi.fn();
     const search = vi.fn();
     const changeFontSize = vi.fn();
     const toggleFullscreen = vi.fn();
     const download = vi.fn();
+    const togglePretty = vi.fn();
+    const toggleRawMode = vi.fn();
     const searchInputRef = createRef<HTMLInputElement>();
     const view = mount(
       <SessionTerminalControls
@@ -29,6 +31,10 @@ describe("SessionTerminalControls", () => {
         fullscreen={false}
         toggleFullscreen={toggleFullscreen}
         download={download}
+        pretty={true}
+        togglePretty={togglePretty}
+        rawMode={false}
+        toggleRawMode={toggleRawMode}
       />,
     );
 
@@ -49,9 +55,15 @@ describe("SessionTerminalControls", () => {
     press(field(view.container, "session-terminal-font-increase"));
     press(field(view.container, "session-terminal-fullscreen"));
     press(field(view.container, "session-terminal-download"));
+    press(field(view.container, "session-log-pretty"));
+    press(field(view.container, "session-log-raw"));
     expect(changeFontSize).toHaveBeenCalledWith(-1);
     expect(changeFontSize).toHaveBeenCalledWith(1);
     expect(toggleFullscreen).toHaveBeenCalled();
     expect(download).toHaveBeenCalled();
+    expect(togglePretty).toHaveBeenCalled();
+    expect(toggleRawMode).toHaveBeenCalled();
+    expect(field(view.container, "session-log-pretty").getAttribute("aria-pressed")).toBe("true");
+    expect(field(view.container, "session-log-raw").getAttribute("aria-pressed")).toBe("false");
   });
 });

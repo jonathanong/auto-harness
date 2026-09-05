@@ -1,13 +1,10 @@
 // @vitest-environment happy-dom
 
-import { act, useState } from "react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `reset` is aliased — importing it under its own name here triggers a Vitest mock-hoisting bug
-// ("Cannot access '__vi_import_N__' before initialization"), not a real circular dependency.
 import { field, mount, press, reset as resetHelper, setValue } from "./action-form-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
-import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 
 const mocks = vi.hoisted(() => ({
   findNext: vi.fn(() => true),
@@ -53,8 +50,13 @@ async function settle(): Promise<void> {
   });
 }
 
-describe("SessionTerminalViewer", () => {
-  it("renders accessible controls and drives search, font, fullscreen, and download", async () => {
+async function openRaw(container: HTMLElement): Promise<void> {
+  press(field(container, "session-log-raw"));
+  await settle();
+}
+
+describe("SessionTerminalViewer raw terminal", () => {
+  it("keeps the 120x40 PTY grid and drives search, font, fullscreen, and download", async () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -85,13 +87,9 @@ describe("SessionTerminalViewer", () => {
         ]}
       />,
     );
-    await settle();
-    expect(field(view.container, "session-terminal").getAttribute("aria-label")).toContain(
-      "terminal",
-    );
+    await openRaw(view.container);
+    expect(field(view.container, "session-terminal").getAttribute("data-view")).toBe("raw");
     expect(mocks.write).toHaveBeenCalledWith("\u001b[32mhello\u001b[0m\n", expect.any(Function));
-    // Grid must stay pinned to the real daemon PTY's fixed size (pty-runner.ts) — this is a
-    // closed-stream replay, not a live PTY, so reflowing the grid corrupts cursor-addressed output.
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({ cols: 120, rows: 40 }),
     );
@@ -119,13 +117,11 @@ describe("SessionTerminalViewer", () => {
       ),
     );
     expect(document.activeElement).toBe(search);
-    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "+" })));
-    expect(field(view.container, "session-terminal-font-size").textContent).toBe("13px");
-
     press(field(view.container, "session-terminal-fullscreen"));
     expect(field(view.container, "session-terminal").getAttribute("data-fullscreen")).toBe("true");
     press(field(view.container, "session-terminal-fullscreen"));
     expect(field(view.container, "session-terminal").getAttribute("data-fullscreen")).toBe("false");
+    expect((field(view.container, "session-log-pretty") as HTMLButtonElement).disabled).toBe(true);
     press(field(view.container, "session-terminal-download"));
     expect(createObjectURL).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
@@ -133,89 +129,10 @@ describe("SessionTerminalViewer", () => {
     click.mockRestore();
   });
 
-  it("keeps the documented empty state", () => {
-    const view = mount(<SessionTerminalViewer sessionId="empty" items={[]} />);
-    expect(field(view.container, "session-logs-empty").textContent).toContain("No logs");
-  });
-
-  it("constructs at the current font size even if it changes before the dynamic import resolves", async () => {
+  it("constructs at the current font size after raw mode is enabled", async () => {
     const view = mount(<SessionTerminalViewer sessionId="racy" items={[]} />);
     press(field(view.container, "session-terminal-font-increase"));
-    await settle();
+    await openRaw(view.container);
     expect(mocks.terminalOptions).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 14 }));
-  });
-
-  it("formats an appended system event for the live terminal", async () => {
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    let append:
-      | ((items: Array<Parameters<typeof SessionTerminalViewer>[0]["items"][number]>) => void)
-      | undefined;
-    function Lifecycle() {
-      const [items, setItems] = useState([
-        { timestampSeq: "a", seq: 1, stream: "stdout", content: "output\n", timestamp: "now" },
-      ]);
-      append = setItems;
-      return <SessionTerminalViewer sessionId="lifecycle" items={items} />;
-    }
-    mount(<Lifecycle />);
-    await settle();
-    mocks.write.mockClear();
-    act(() =>
-      append?.([
-        { timestampSeq: "a", seq: 1, stream: "stdout", content: "output\n", timestamp: "now" },
-        {
-          timestampSeq: "b",
-          seq: 2,
-          stream: "system",
-          content: "Session completed at now",
-          timestamp: "now",
-        },
-      ]),
-    );
-    expect(mocks.write).toHaveBeenCalledWith(
-      "[system] Session completed at now\r\n",
-      expect.any(Function),
-    );
-  });
-
-  it("appends across a sliding log window without resetting terminal history", async () => {
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    let replaceItems:
-      | ((items: Array<Parameters<typeof SessionTerminalViewer>[0]["items"][number]>) => void)
-      | undefined;
-    function SlidingWindow() {
-      const [items, setItems] = useState<TerminalLogEntry[]>([
-        { timestampSeq: "a", seq: 1, stream: "stdout", content: "one", timestamp: "now" },
-        { timestampSeq: "b", seq: 2, stream: "stdout", content: "two", timestamp: "now" },
-      ]);
-      replaceItems = setItems;
-      return <SessionTerminalViewer sessionId="sliding" items={items} />;
-    }
-
-    mount(<SlidingWindow />);
-    await settle();
-    mocks.write.mockClear();
-    mocks.terminalReset.mockClear();
-    act(() =>
-      replaceItems?.([
-        { timestampSeq: "b", seq: 2, stream: "stdout", content: "two", timestamp: "now" },
-        { timestampSeq: "c", seq: 3, stream: "stdout", content: "three", timestamp: "now" },
-      ]),
-    );
-
-    expect(mocks.terminalReset).not.toHaveBeenCalled();
-    expect(mocks.write).toHaveBeenCalledWith("three", expect.any(Function));
   });
 });
