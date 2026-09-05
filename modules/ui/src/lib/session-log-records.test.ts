@@ -25,6 +25,7 @@ describe("session log records", () => {
     expect(droppedPrefixLineCount("", "a\n")).toBe(0);
     expect(droppedPrefixLineCount("keep\n", "keep\nmore\n")).toBe(0);
     expect(droppedPrefixLineCount("gone\nkeep\n", "keep\n")).toBe(1);
+    expect(droppedPrefixLineCount("one\ntwo\n", "two\nthree\n")).toBe(1);
     expect(droppedPrefixLineCount("alpha", "beta")).toBe(0);
     expect(parseSessionLogText("only\n", 4).map((record) => record.line)).toEqual([5]);
   });
@@ -58,6 +59,7 @@ describe("session log records", () => {
     expect(truncateDisplay(Array.from({ length: 10 }, (_, i) => String(i)).join("\n"))).toBe(
       Array.from({ length: 8 }, (_, i) => String(i)).join("\n"),
     );
+    expect(truncateDisplay(`${"z".repeat(400)}\n${"y".repeat(400)}`).length).toBe(500);
     const records = parseSessionLogText("out\n" + JSON.stringify({ type: "error", message: "e" }));
     expect(presentCategories(records)).toEqual(["error", "output"]);
     expect(visibleRecords(records, new Set()).map((record) => record.line)).toEqual([1, 2]);

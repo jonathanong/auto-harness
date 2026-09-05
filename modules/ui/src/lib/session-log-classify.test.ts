@@ -81,6 +81,9 @@ describe("classifyLogLine", () => {
       category: "other",
       typeLabel: "json",
     });
+    expect(
+      classifyLogLine(json({ error: { type: "RESOURCE_EXHAUSTED", message: "quota" } })),
+    ).toMatchObject({ category: "error", typeLabel: "RESOURCE_EXHAUSTED", preview: "quota" });
     expect(classifyLogLine(json({ type: 1 }))).toMatchObject({
       category: "other",
       typeLabel: "json",

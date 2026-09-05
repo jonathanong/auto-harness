@@ -94,6 +94,13 @@ function classifyJson(value: object): Omit<ClassifiedLine, "json"> {
     return { category: "event", typeLabel: type, preview: eventPreview(type, record) };
   }
   if (type) return { category: "other", typeLabel: type, preview: type };
+  if (isRecord(record.error)) {
+    return {
+      category: "error",
+      typeLabel: str(record.error, "type") || "error",
+      preview: errorPreview(record),
+    };
+  }
   return { category: "other", typeLabel: "json", preview: "json" };
 }
 

@@ -32,11 +32,13 @@ export function splitLogText(text: string): string[] {
 }
 
 export function droppedPrefixLineCount(previousText: string, nextText: string): number {
-  if (!previousText || previousText === nextText || nextText.length >= previousText.length) {
-    return 0;
-  }
-  if (!previousText.endsWith(nextText)) return 0;
-  return splitLogText(previousText.slice(0, previousText.length - nextText.length)).length;
+  if (!previousText || previousText === nextText) return 0;
+  const previous = splitLogText(previousText);
+  const next = splitLogText(nextText);
+  const first = next[0];
+  if (first === undefined) return previous.length;
+  const index = previous.indexOf(first);
+  return index > 0 ? index : 0;
 }
 
 export function parseSessionLogText(text: string, lineBase = 0): SessionLogRecord[] {
@@ -67,10 +69,13 @@ export function shouldCollapse(text: string): boolean {
 
 export function truncateDisplay(text: string): string {
   const lines = text.split("\n");
-  if (lines.length > COLLAPSE_LINE_THRESHOLD) {
-    return lines.slice(0, COLLAPSE_LINE_THRESHOLD).join("\n");
-  }
-  return text.length > COLLAPSE_CHAR_THRESHOLD ? text.slice(0, COLLAPSE_CHAR_THRESHOLD) : text;
+  const clipped =
+    lines.length > COLLAPSE_LINE_THRESHOLD
+      ? lines.slice(0, COLLAPSE_LINE_THRESHOLD).join("\n")
+      : text;
+  return clipped.length > COLLAPSE_CHAR_THRESHOLD
+    ? clipped.slice(0, COLLAPSE_CHAR_THRESHOLD)
+    : clipped;
 }
 
 export function visibleRecords(
