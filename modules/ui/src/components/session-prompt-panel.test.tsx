@@ -61,6 +61,7 @@ describe("SessionPromptPanel", () => {
     expect(html).toContain("Ship it");
     expect(html).toContain("‹prompt›");
     expect(html).toContain("codex exec --json -- Ship it");
+    expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="codex exec --json -- ‹prompt›"');
     expect(html).not.toContain('class="sr-only"');
     expect(html).toContain("Copy prompt");

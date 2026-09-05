@@ -99,6 +99,7 @@ export function SessionPromptPanel({
         </p>
         {assigned ? (
           <div
+            role="group"
             className="mt-2 flex flex-wrap gap-1.5 font-mono text-sm"
             data-pw="session-detail-resolved-argv"
             aria-label={elidedLabel}
