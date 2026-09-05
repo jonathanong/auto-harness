@@ -3,7 +3,8 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, mount, press, reset } from "./action-form-test-helpers.ts";
+import { mount, reset } from "./action-form-test-helpers.ts";
+import { openRawTerminal } from "./session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 
@@ -50,23 +51,9 @@ function stubComputedTerminalTheme(values: Record<string, string>): void {
   );
 }
 
-async function settle(): Promise<void> {
-  for (let i = 0; i < 8; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
-
 afterEach(reset);
 
-async function openRaw(container: HTMLElement): Promise<void> {
-  await settle();
-  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
-    press(field(container, "session-log-raw"));
-    await settle();
-  }
-}
+const openRaw = openRawTerminal;
 
 describe("SessionTerminalViewer theme", () => {
   it("reads terminal colors from CSS variables and rebuilds them live on a theme change", async () => {

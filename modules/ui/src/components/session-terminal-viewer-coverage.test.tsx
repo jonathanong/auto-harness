@@ -4,6 +4,7 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { field, mount, press, reset as resetHelper, setValue } from "./action-form-test-helpers.ts";
+import { openRawTerminal, settleTerminal } from "./session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 
@@ -39,21 +40,8 @@ vi.mock("@xterm/xterm", () => ({
 
 afterEach(resetHelper);
 
-async function settle(): Promise<void> {
-  for (let i = 0; i < 8; i++) {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-}
-
-async function openRaw(container: HTMLElement): Promise<void> {
-  await settle();
-  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
-    press(field(container, "session-log-raw"));
-    await settle();
-  }
-}
+const settle = settleTerminal;
+const openRaw = openRawTerminal;
 
 describe("SessionTerminalViewer remaining branches", () => {
   it("applies fullscreen layout, shortcuts, and hash misses in readable mode", () => {
