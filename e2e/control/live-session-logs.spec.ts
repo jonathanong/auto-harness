@@ -150,6 +150,7 @@ test.describe("live session logs", () => {
       );
 
       await page.getByTestId("session-logs").click();
+      await page.getByTestId("session-logs").focus();
       await page.keyboard.press("Control+f");
       await expect(page.getByTestId("session-terminal-search")).toBeFocused();
       await page.getByTestId("session-terminal-search").fill("ANSI red output");

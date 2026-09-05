@@ -40,10 +40,19 @@ vi.mock("@xterm/xterm", () => ({
 afterEach(resetHelper);
 
 async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  for (let i = 0; i < 8; i++) {
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+}
+
+async function openRaw(container: HTMLElement): Promise<void> {
+  await settle();
+  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
+    press(field(container, "session-log-raw"));
+    await settle();
+  }
 }
 
 describe("SessionTerminalViewer remaining branches", () => {
@@ -119,8 +128,7 @@ describe("SessionTerminalViewer remaining branches", () => {
       return <SessionTerminalViewer sessionId="grow" items={items} />;
     }
     const view = mount(<Grow />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     mocks.write.mockClear();
     act(() =>
       replaceItems?.([
@@ -138,8 +146,7 @@ describe("SessionTerminalViewer remaining branches", () => {
       return <SessionTerminalViewer sessionId="empty-then" items={items} />;
     }
     const view = mount(<EmptyThen />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     mocks.write.mockClear();
     act(() =>
       replaceItems?.([
@@ -165,8 +172,7 @@ describe("SessionTerminalViewer remaining branches", () => {
       throw new Error("hidden");
     });
     const view = mount(<SessionTerminalViewer sessionId="refresh" items={[]} />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     act(() => document.dispatchEvent(new Event("fullscreenchange")));
   });
 });

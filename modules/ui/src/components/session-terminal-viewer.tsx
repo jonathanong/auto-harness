@@ -141,6 +141,7 @@ export function SessionTerminalViewer({
           ref={hostRef}
           className={fullscreen ? "min-h-0 flex-1 overflow-auto" : "overflow-x-auto"}
           data-pw="session-logs"
+          tabIndex={0}
           aria-label="Read-only ANSI session output"
         />
       ) : items.length === 0 ? null : (

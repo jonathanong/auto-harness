@@ -39,6 +39,7 @@ export function SessionLogViewer({
           : "max-h-[70vh] w-full min-w-0 overflow-auto bg-terminal text-terminal-foreground"
       }
       data-pw="session-logs"
+      tabIndex={0}
       aria-label="Session logs"
       style={{ fontSize }}
     >

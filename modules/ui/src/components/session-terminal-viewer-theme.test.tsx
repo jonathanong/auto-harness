@@ -51,17 +51,21 @@ function stubComputedTerminalTheme(values: Record<string, string>): void {
 }
 
 async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  for (let i = 0; i < 8; i++) {
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
 }
 
 afterEach(reset);
 
 async function openRaw(container: HTMLElement): Promise<void> {
-  press(field(container, "session-log-raw"));
   await settle();
+  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
+    press(field(container, "session-log-raw"));
+    await settle();
+  }
 }
 
 describe("SessionTerminalViewer theme", () => {

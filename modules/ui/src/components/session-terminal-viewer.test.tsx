@@ -44,15 +44,20 @@ vi.mock("@xterm/xterm", () => ({
 afterEach(resetHelper);
 
 async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  for (let i = 0; i < 8; i++) {
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
 }
 
 async function openRaw(container: HTMLElement): Promise<void> {
-  press(field(container, "session-log-raw"));
   await settle();
+  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
+    press(field(container, "session-log-raw"));
+    await settle();
+  }
+  expect(mocks.terminalOptions).toHaveBeenCalled();
 }
 
 describe("SessionTerminalViewer raw terminal", () => {

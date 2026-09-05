@@ -40,10 +40,19 @@ vi.mock("@xterm/xterm", () => ({
 afterEach(resetHelper);
 
 async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  for (let i = 0; i < 8; i++) {
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+}
+
+async function openRaw(container: HTMLElement): Promise<void> {
+  await settle();
+  if (field(container, "session-terminal").getAttribute("data-view") !== "raw") {
+    press(field(container, "session-log-raw"));
+    await settle();
+  }
 }
 
 describe("SessionTerminalViewer live raw writes", () => {
@@ -66,8 +75,7 @@ describe("SessionTerminalViewer live raw writes", () => {
       return <SessionTerminalViewer sessionId="lifecycle" items={items} />;
     }
     const view = mount(<Lifecycle />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     mocks.write.mockClear();
     act(() =>
       append?.([
@@ -108,8 +116,7 @@ describe("SessionTerminalViewer live raw writes", () => {
     }
 
     const view = mount(<SlidingWindow />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     mocks.write.mockClear();
     mocks.terminalReset.mockClear();
     act(() =>
@@ -135,8 +142,7 @@ describe("SessionTerminalViewer live raw writes", () => {
       return <SessionTerminalViewer sessionId="replace" items={items} />;
     }
     const view = mount(<Replace />);
-    press(field(view.container, "session-log-raw"));
-    await settle();
+    await openRaw(view.container);
     mocks.write.mockClear();
     mocks.terminalReset.mockClear();
     act(() =>
