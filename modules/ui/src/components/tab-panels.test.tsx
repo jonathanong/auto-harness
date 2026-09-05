@@ -48,6 +48,11 @@ describe("TabPanels", () => {
     ).toBe("active");
     expect(view.container.textContent).toContain("details-body");
     expect(view.container.textContent).toContain("logs-body");
+    const logsPanel = [...view.container.querySelectorAll("[data-state]")].find((el) =>
+      el.textContent?.includes("logs-body"),
+    );
+    expect(logsPanel?.getAttribute("data-state")).toBe("inactive");
+    expect(logsPanel?.className).toContain("data-[state=inactive]:hidden");
     view.unmount();
   });
 });

@@ -81,7 +81,7 @@ describe("SessionDetail static markup", () => {
     const prompts = render(
       <SessionDetail session={linkedSession} breadcrumbs={[]} defaultTab="prompts" />,
     );
-    expect(prompts).toContain("agent run");
+    expect(prompts).toContain('aria-label="agent run"');
     expect(prompts).toContain('data-pw="session-detail-prompt"');
     expect(prompts).toContain('data-pw="session-detail-prompt-content" tabindex="0"');
     expect(prompts).toContain("Ship it");

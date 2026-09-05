@@ -57,6 +57,12 @@ describe("SessionDetail tabs", () => {
       "4",
     );
     expect(view.container.querySelector('[data-pw="logs-body"]')).not.toBeNull();
+    expect(
+      view.container.querySelector('[data-pw="session-tab-logs"]')?.getAttribute("data-state"),
+    ).toBe("inactive");
+    expect(view.container.querySelector('[data-pw="session-tab-logs"]')?.className).toContain(
+      "data-[state=inactive]:hidden",
+    );
 
     act(() => {
       (view.container.querySelector('[data-pw="tab-prompts"]') as HTMLButtonElement).dispatchEvent(

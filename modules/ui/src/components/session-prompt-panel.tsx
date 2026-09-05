@@ -65,6 +65,7 @@ export function SessionPromptPanel({
 }) {
   const argv = argvDisplay(resolvedArgv ?? [], prompt);
   const assigned = argv.tokens.length > 0 || argv.appendedPrompt;
+  const elidedLabel = [...argv.tokens, ...(argv.appendedPrompt ? ["‹prompt›"] : [])].join(" ");
   return (
     <div className="space-y-6">
       <section aria-labelledby="session-detail-prompt-heading" data-pw="session-detail-prompt">
@@ -100,22 +101,26 @@ export function SessionPromptPanel({
           <div
             className="mt-2 flex flex-wrap gap-1.5 font-mono text-sm"
             data-pw="session-detail-resolved-argv"
+            aria-label={elidedLabel}
             title={argv.joined}
           >
             {argv.tokens.map((token, index) => (
               <span
                 key={`${index}-${token}`}
+                aria-hidden="true"
                 className="rounded-md border border-border bg-muted/50 px-2 py-0.5"
               >
                 {token}
               </span>
             ))}
             {argv.appendedPrompt ? (
-              <span className="rounded-md border border-dashed border-border px-2 py-0.5 text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="rounded-md border border-dashed border-border px-2 py-0.5 text-muted-foreground"
+              >
                 ‹prompt›
               </span>
             ) : null}
-            <span className="sr-only">{argv.joined}</span>
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">Not assigned yet.</p>
