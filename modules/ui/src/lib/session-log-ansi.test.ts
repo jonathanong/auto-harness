@@ -8,6 +8,7 @@ describe("session log ANSI", () => {
     expect(stripAnsi("\u001b]0;title\u0007plain")).toBe("plain");
     expect(stripAnsi("\u001b[2Kleft")).toBe("left");
     expect(stripAnsi('\u001b[?25l{"type":"result"}')).toBe('{"type":"result"}');
+    expect(stripAnsi("\u001b[200~ok")).toBe("ok");
     expect(stripAnsi("plain")).toBe("plain");
   });
 

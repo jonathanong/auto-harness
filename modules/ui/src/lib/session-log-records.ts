@@ -1,3 +1,4 @@
+import { stripAnsi } from "./session-log-ansi.ts";
 import { classifyLogLine, LOG_CATEGORIES, type LogCategory } from "./session-log-classify.ts";
 
 export type SessionLogRecord = {
@@ -16,7 +17,9 @@ export function foldCarriageReturnLine(line: string): string {
   if (!line.includes("\r")) return line;
   let result = "";
   for (const part of line.split("\r")) {
-    result = part.length >= result.length ? part : part + result.slice(part.length);
+    const visiblePart = stripAnsi(part).length;
+    const visibleResult = stripAnsi(result).length;
+    result = visiblePart >= visibleResult ? part : part + stripAnsi(result).slice(visiblePart);
   }
   return result;
 }

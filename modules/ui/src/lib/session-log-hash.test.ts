@@ -12,17 +12,22 @@ describe("session log hashes", () => {
   });
 
   it("replaces the location hash without a navigation", () => {
-    const replaceState = vi.fn();
-    vi.stubGlobal("location", {
+    const loc = {
       pathname: "/sessions/s1",
       search: "",
       href: "https://example.test/sessions/s1",
       hash: "",
+    };
+    vi.stubGlobal("location", loc);
+    vi.stubGlobal("history", {
+      replaceState: (_state: unknown, _title: string, url: string) => {
+        const hash = url.includes("#") ? `#${url.split("#")[1]}` : "";
+        loc.hash = hash;
+        loc.href = `https://example.test/sessions/s1${hash}`;
+      },
     });
-    vi.stubGlobal("history", { replaceState });
     const href = replaceLogLineHash(7);
-    expect(replaceState).toHaveBeenCalledWith(null, "", "/sessions/s1#L7");
-    expect(href).toBe("https://example.test/sessions/s1");
+    expect(href).toBe("https://example.test/sessions/s1#L7");
     vi.unstubAllGlobals();
   });
 });

@@ -18,6 +18,7 @@ export function useLogStickBottom(
   }, [enabled, ref]);
   useEffect(() => {
     if (!enabled) {
+      stick.current = true;
       primed.current = false;
       return;
     }

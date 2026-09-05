@@ -21,6 +21,7 @@ describe("session log records", () => {
     expect(foldCarriageReturnLine("plain")).toBe("plain");
     expect(foldCarriageReturnLine("aa\rbbb")).toBe("bbb");
     expect(foldCarriageReturnLine("abcd\rxy")).toBe("xycd");
+    expect(foldCarriageReturnLine("\u001b[31mabc\rde")).toBe("dec");
     expect(droppedPrefixLineCount("", "a\n")).toBe(0);
     expect(droppedPrefixLineCount("keep\n", "keep\nmore\n")).toBe(0);
     expect(droppedPrefixLineCount("gone\nkeep\n", "keep\n")).toBe(1);
