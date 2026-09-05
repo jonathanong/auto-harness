@@ -18,10 +18,10 @@ export function SessionDetailsCard({
   worktreeHrefBase,
 }: {
   session: SessionSummary;
-  detailsExtra?: ReactNode;
-  repoHrefBase?: string;
-  hostHrefBase?: string;
-  worktreeHrefBase?: string;
+  detailsExtra?: ReactNode | undefined;
+  repoHrefBase?: string | undefined;
+  hostHrefBase?: string | undefined;
+  worktreeHrefBase?: string | undefined;
 }) {
   return (
     <Card>
