@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type SessionSummary } from "@auto-harness/ui";
+import { resolveSessionDetailTab, type SessionSummary } from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
@@ -17,8 +17,15 @@ type LogEntry = {
   content: string;
   timestamp: string;
 };
-export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SessionDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const tab = resolveSessionDetailTab((await searchParams)?.tab);
 
   let session: SessionSummary | undefined;
   try {
@@ -87,40 +94,40 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
         canResume={canWrite}
         canClone={canWrite}
         canArchive={canArchive}
+        defaultTab={tab}
+        detailsExtra={
+          <div className="rounded-md border p-4" data-pw="session-usage-summary">
+            <h3 className="text-sm font-medium">Session usage</h3>
+            {hasReportedUsage(usage) ? (
+              <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                <div>
+                  <dt className="text-muted-foreground">Input tokens</dt>
+                  <dd data-pw="session-usage-input">{usage.inputTokens}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Output tokens</dt>
+                  <dd data-pw="session-usage-output">{usage.outputTokens}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Total tokens</dt>
+                  <dd data-pw="session-usage-total">{usage.totalTokens}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Configured cost</dt>
+                  <dd data-pw="session-usage-cost">{configuredCost(usage)}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">No CLI usage reported.</p>
+            )}
+          </div>
+        }
       >
-        <div className="mb-4 rounded-md border p-4" data-pw="session-usage-summary">
-          <h3 className="text-sm font-medium">Session usage</h3>
-          {hasReportedUsage(usage) ? (
-            <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-              <div>
-                <dt className="text-muted-foreground">Input tokens</dt>
-                <dd data-pw="session-usage-input">{usage.inputTokens}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Output tokens</dt>
-                <dd data-pw="session-usage-output">{usage.outputTokens}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Total tokens</dt>
-                <dd data-pw="session-usage-total">{usage.totalTokens}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Configured cost</dt>
-                <dd data-pw="session-usage-cost">{configuredCost(usage)}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">No CLI usage reported.</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Logs</h3>
-          <SessionLiveLogs
-            sessionId={session.id}
-            initialItems={logs}
-            initialStatus={session.status}
-          />
-        </div>
+        <SessionLiveLogs
+          sessionId={session.id}
+          initialItems={logs}
+          initialStatus={session.status}
+        />
       </SessionLiveDetail>
     </div>
   );

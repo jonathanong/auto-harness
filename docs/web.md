@@ -183,43 +183,38 @@ Clicking a session in the list opens the session detail view.
 
 ### Header
 
-The header displays session metadata:
+The header is the session id (monospace, copyable) plus cancel/resume/archive actions.
 
-| Field      | Display                                                                                                                                                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Session ID | Monospaced, copyable                                                                                                                                                                                                                                   |
-| Status     | Badge with status color; queued sessions note that assignment is attempted immediately and a one-minute repair sweep retries missed work; terminal `usage_limit` and `queue_expired` errors include distinct “Usage limit” and “Queue expired” reasons |
-| Repository | Link to repository                                                                                                                                                                                                                                     |
-| Target     | Configured target/fallback chain; once assigned, show selected Provider Account, Command, Host, Worktree, and exact resolved argv                                                                                                                      |
-| Queue      | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline                                                                                                                   |
-| Agent      | Agent name (if assigned)                                                                                                                                                                                                                               |
-| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                                                                                                                                                                                    |
-| Priority   | Numeric value                                                                                                                                                                                                                                          |
-| Source     | Origin badge                                                                                                                                                                                                                                           |
-| Created    | Full timestamp                                                                                                                                                                                                                                         |
-| Started    | Full timestamp (if started)                                                                                                                                                                                                                            |
-| Duration   | Live elapsed time (running) or total time (completed)                                                                                                                                                                                                  |
-| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions.                                                                                                                                                            |
-| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                                                                                                                                                                                    |
+### Status bar
 
-### Prompt
+A compact strip under the title always shows the key run fields. Full metadata lives on the **Details** tab.
 
-The initial prompt is displayed in a highlighted, read-only block below the header. The full prompt text is shown — not truncated. For long prompts, the bounded block is scrollable and keyboard-focusable so keyboard users can inspect all of its content.
+| Field    | Display                                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Status   | Badge with status color; queued sessions note that assignment is attempted immediately and a one-minute repair sweep retries missed work; terminal `usage_limit` and `queue_expired` errors include distinct “Usage limit” and “Queue expired” reasons |
+| Provider | Primary `targetDisplayNames` entry (`"<provider> — <command>"` for a provider-backed command)                                                                                                                                                          |
+| Duration | Live elapsed time (running) or total time (completed), once the session has started                                                                                                                                                                    |
+| Exit     | Shown on completion — `0` (green) or non-zero (red)                                                                                                                                                                                                    |
+| Source   | Origin badge                                                                                                                                                                                                                                           |
+| Queue    | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline                                                                                                                   |
 
-```
-┌─ Prompt ─────────────────────────────────────────────────────┐
-│                                                              │
-│  Fix the failing test in src/utils.test.ts. The test         │
-│  "should parse dates correctly" is failing because the       │
-│  date parser doesn't handle timezone offsets. Update the     │
-│  parser to support ISO 8601 timezone formats.                │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+Execution errors, resume-fallback notices, and a disconnected-host warning stay above the tabs so they remain visible on Logs.
+
+### Tabs
+
+In-page tabs (not a full navigation) default to **Logs**. Switching tabs does not remount the live log viewer.
+
+| Tab         | Contents                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Logs**    | The terminal log viewer (below)                                                                                                                                                                                                                                                                                                                                                        |
+| **Details** | Repository, ref, host, worktree ("Main checkout" for scheduled sessions), target/fallback chain and resolved route, priority, concurrency id, created/started/completed timestamps, timeout (humanized, with a remaining-time bar while running), and session usage                                                                                                                    |
+| **Prompts** | The operator/schedule **prompt** (boxed, full text, copyable) and **resolved argv** (tokenized spawned command). When the Command has `appendPrompt`, the prompt is the last argv element — the UI shows that last token as `‹prompt›` instead of repeating the body. They are not the same field: prompt is the session text; resolved argv is the catalog command that actually ran. |
+
+`?tab=details` and `?tab=prompts` are optional shareable URLs. The default Logs tab uses the bare session URL. Tab changes update the query with `history.replaceState` so the live log WebSocket is not torn down.
 
 ### Live Log Viewer
 
-Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
+The Logs tab is a terminal-like viewer for session output. This is the core feature of the session detail view.
 
 **Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer (`SessionTerminalViewer`,
 shared from `modules/ui`) renders the assigned CLI's merged PTY-backed log chunks, including ANSI

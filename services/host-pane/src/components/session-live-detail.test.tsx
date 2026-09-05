@@ -83,8 +83,8 @@ describe("host session live detail", () => {
     });
     expect(view.container.querySelector('[data-pw="session-detail-queue-deadline"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).not.toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
     view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("keeps the last state, reports a failure, and schedules a retry", async () => {

@@ -4,17 +4,15 @@ import { Alert } from "./alert.tsx";
 
 export type SessionExecutionSummaryProps = {
   status: string;
-  resolvedArgv?: string[] | null | undefined;
   errorCode?: string | null | undefined;
   errorMessage?: string | null | undefined;
   resumeFallback?: boolean | null | undefined;
   resumedFromSessionId?: string | null | undefined;
 };
 
-/** Render execution output metadata and terminal/fresh-resume notices. */
+/** Terminal error and fresh-resume notices shown above session detail tabs. */
 export function SessionExecutionSummary({
   status,
-  resolvedArgv,
   errorCode,
   errorMessage,
   resumeFallback,
@@ -24,17 +22,6 @@ export function SessionExecutionSummary({
   const showError = Boolean(errorMessage || (terminal && errorCode));
   return (
     <>
-      {resolvedArgv && resolvedArgv.length > 0 ? (
-        <div>
-          <dt className="text-xs uppercase text-muted-foreground">Resolved argv</dt>
-          <dd
-            className="whitespace-pre-wrap break-words font-mono text-sm"
-            data-pw="session-detail-resolved-argv"
-          >
-            {resolvedArgv.join(" ")}
-          </dd>
-        </div>
-      ) : null}
       {showError ? (
         <Alert variant="danger" data-pw="session-detail-error" role={terminal ? "alert" : "status"}>
           {errorCode ? (

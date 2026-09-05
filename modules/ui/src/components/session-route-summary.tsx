@@ -19,6 +19,11 @@ export type SessionRouteSummaryProps = {
   worktreeId?: string | null;
 };
 
+/** Human-readable primary target, matching status-bar and table route labels. */
+export function sessionProviderLabel(s: SessionRouteSummaryProps): string {
+  return s.targetLabel ?? s.targetDisplayNames?.[0] ?? routeLabel(s.target) ?? "—";
+}
+
 /** Shared route/queue metadata block for session detail pages. */
 export function SessionRouteSummary({ session: s }: { session: SessionRouteSummaryProps }) {
   return (
@@ -26,7 +31,7 @@ export function SessionRouteSummary({ session: s }: { session: SessionRouteSumma
       <div>
         <dt className="text-xs uppercase text-muted-foreground">Target</dt>
         <dd className="font-mono text-sm" data-pw="session-detail-target">
-          {s.targetLabel ?? s.targetDisplayNames?.[0] ?? routeLabel(s.target) ?? "—"}
+          {sessionProviderLabel(s)}
         </dd>
         {Math.max(s.fallbacks?.length ?? 0, Math.max((s.targetDisplayNames?.length ?? 1) - 1, 0)) >
         0 ? (

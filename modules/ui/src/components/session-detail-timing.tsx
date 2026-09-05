@@ -4,18 +4,19 @@ import { useEffect, useState } from "react";
 
 import { formatDuration, sessionDurationMs } from "./session-time.tsx";
 
-export function SessionDetailTiming({
-  createdAt,
+export function SessionDurationValue({
+  status,
   startedAt,
   completedAt,
-  status,
   initialNow = Date.now(),
+  pw = "session-detail-duration",
 }: {
-  createdAt?: string | null | undefined;
+  status: string;
   startedAt?: string | null | undefined;
   completedAt?: string | null | undefined;
-  status: string;
   initialNow?: number | undefined;
+  /** Pass `null` when a sibling already owns `session-detail-duration`. */
+  pw?: string | null | undefined;
 }) {
   const running = status === "running";
   const [now, setNow] = useState(initialNow);
@@ -27,7 +28,28 @@ export function SessionDetailTiming({
   }, [running]);
 
   const duration = sessionDurationMs({ status, startedAt, completedAt }, now);
+  return (
+    <span className="tabular-nums" data-pw={pw ?? undefined} suppressHydrationWarning>
+      {duration === null ? "—" : formatDuration(duration)}
+    </span>
+  );
+}
 
+export function SessionDetailTiming({
+  createdAt,
+  startedAt,
+  completedAt,
+  status,
+  initialNow = Date.now(),
+  durationPw = "session-detail-duration",
+}: {
+  createdAt?: string | null | undefined;
+  startedAt?: string | null | undefined;
+  completedAt?: string | null | undefined;
+  status: string;
+  initialNow?: number | undefined;
+  durationPw?: string | null | undefined;
+}) {
   return (
     <>
       <TimeField label="Created" value={createdAt} pw="session-detail-created" />
@@ -35,12 +57,14 @@ export function SessionDetailTiming({
       <TimeField label="Completed" value={completedAt} pw="session-detail-completed" />
       <div>
         <dt className="text-xs uppercase text-muted-foreground">Duration</dt>
-        <dd
-          className="text-sm tabular-nums"
-          data-pw="session-detail-duration"
-          suppressHydrationWarning
-        >
-          {duration === null ? "—" : formatDuration(duration)}
+        <dd className="text-sm">
+          <SessionDurationValue
+            status={status}
+            startedAt={startedAt}
+            completedAt={completedAt}
+            initialNow={initialNow}
+            pw={durationPw}
+          />
         </dd>
       </div>
     </>
