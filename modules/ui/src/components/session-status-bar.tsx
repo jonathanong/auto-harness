@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { cn } from "../lib/utils.ts";
 import { SessionDurationValue } from "./session-detail-timing.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
 import { SessionExitCode } from "./session-exit-code.tsx";
@@ -24,7 +25,7 @@ function StatusItem({
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 border-border py-0.5 not-first:border-l not-first:pl-4">
       <dt className="text-xs uppercase text-muted-foreground">{label}</dt>
-      <dd className={valueClassName ?? "text-sm"} data-pw={pw}>
+      <dd className={cn("text-sm", valueClassName)} data-pw={pw}>
         {children}
       </dd>
     </div>

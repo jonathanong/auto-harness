@@ -12,7 +12,6 @@ export function resolveSessionDetailTab(tab: unknown): SessionDetailTab {
 
 /** Update `?tab=` without a Next navigation so the live log island is not remounted. */
 export function persistSessionDetailTab(tab: SessionDetailTab): void {
-  if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (tab === "logs") url.searchParams.delete("tab");
   else url.searchParams.set("tab", tab);
