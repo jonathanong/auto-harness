@@ -182,7 +182,9 @@ test.describe("live session logs", () => {
           assignment.attemptId,
         ),
       );
-      await expect(page.getByTestId("session-log-line-6")).toContainText('"type": "item.completed"');
+      await expect(page.getByTestId("session-log-line-6")).toContainText(
+        '"type": "item.completed"',
+      );
       await page.getByTestId("session-log-line-link-6").click();
       expect(new URL(page.url()).hash).toBe("#L6");
 
