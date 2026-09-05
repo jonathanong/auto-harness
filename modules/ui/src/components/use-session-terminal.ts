@@ -49,6 +49,7 @@ export function useSessionTerminal(
   items: readonly TerminalLogEntry[],
   text: string,
   fontSize: number,
+  enabled: boolean,
 ) {
   const runtimeRef = useRef<SessionTerminalRuntime | null>(null);
   const fontSizeRef = useRef(fontSize);
@@ -60,6 +61,7 @@ export function useSessionTerminal(
   const refresh = useCallback(() => repaintTerminal(runtimeRef.current), []);
 
   useEffect(() => {
+    if (!enabled) return;
     let disposed = false;
     void Promise.all([import("@xterm/xterm"), import("@xterm/addon-search")]).then(
       ([xterm, searchModule]) => {
@@ -95,7 +97,7 @@ export function useSessionTerminal(
       runtimeRef.current?.terminal.dispose();
       runtimeRef.current = null;
     };
-  }, [hostRef]);
+  }, [enabled, hostRef]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

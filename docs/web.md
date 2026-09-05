@@ -216,19 +216,21 @@ In-page tabs (not a full navigation) default to **Logs**. Switching tabs does no
 
 The Logs tab is a terminal-like viewer for session output. This is the core feature of the session detail view.
 
-**Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer (`SessionTerminalViewer`,
-shared from `modules/ui`) renders the assigned CLI's merged PTY-backed log chunks, including ANSI
-colors and cursor control sequences, and live-tails over the viewer WebSocket. Search, selectable
-text, scrollback, font sizing, fullscreen, and `.txt` download controls are available. The viewer
-remains deliberately non-interactive: it does not send browser input to the running process. Git,
-setup, and hook output remains pipe-based.
+**Current implementation:** `SessionTerminalViewer` (shared from `modules/ui`) live-tails the assigned
+CLI's merged PTY-backed log chunks over the viewer WebSocket. The default **readable** view is a
+full-width wrapping document: JSONL lines can be pretty-printed with 2-space `JSON.stringify`, each
+record is numbered and linkable (`#L12`), and events are labeled by type (message, thinking, tool,
+event, error, system, output). **Raw terminal** switches to a read-only [xterm.js](https://xtermjs.org/)
+replay pinned to the daemon PTY's 120×40 grid so ANSI cursor addressing and `\r` progress bars stay
+faithful. The viewer does not send browser input to the running process. Git, setup, and hook output
+remains pipe-based. Pretty JSON and the raw/readable choice persist in `localStorage`; download still
+emits the raw transcript, not the pretty-printed view.
 
-The host pane's session detail view (`:7422`) uses the same viewer for the same reason — a plain-text
-log dump can't render ANSI colors or cursor-addressed output (progress bars, TUI redraws), so
-assigned CLI output there used to print as literal escape bytes. Host pane fetches logs once at page
+The host pane's session detail view (`:7422`) uses the same viewer. Host pane fetches logs once at page
 load rather than live-tailing (it has no WebSocket viewer infrastructure), so its controls work
-against a static snapshot — search, font sizing, fullscreen, and download all function identically,
-there's just no live update after the initial fetch.
+against a static snapshot — search, font sizing, fullscreen, pretty JSON, type filters, line links,
+raw terminal, and download all function identically, there's just no live update after the initial
+fetch.
 
 **Behavior:**
 
@@ -239,14 +241,18 @@ there's just no live update after the initial fetch.
 
 **Terminal controls:**
 
-| Control    | Function                                                                                                          |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| Search     | `Ctrl+F` to search within log output                                                                              |
-| Copy       | Select text and copy. Right-click context menu.                                                                   |
-| Scroll     | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up). |
-| Font size  | `Ctrl+`/`Ctrl-` to adjust                                                                                         |
-| Fullscreen | Expand the terminal to fill the viewport                                                                          |
-| Download   | Download the full log as a `.txt` file                                                                            |
+| Control      | Function                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.        |
+| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                    |
+| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable. |
+| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                            |
+| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                    |
+| Copy         | Select text and copy. Right-click context menu.                                                                   |
+| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up). |
+| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                         |
+| Fullscreen   | Expand the viewer to fill the viewport                                                                            |
+| Download     | Download the raw log as a `.txt` file                                                                             |
 
 **Status transitions** are displayed as system messages in the terminal:
 
