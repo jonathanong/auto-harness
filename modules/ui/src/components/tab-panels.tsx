@@ -30,7 +30,7 @@ export const TabTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     value={value}
-    data-pw={value != null ? `tab-${value}` : undefined}
+    data-pw={`tab-${value}`}
     className={cn(
       "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium",
       "transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",

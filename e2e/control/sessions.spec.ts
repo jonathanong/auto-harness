@@ -638,6 +638,7 @@ test.describe("control plane sessions", () => {
       // Keep the host socket alive in this page while a second production page verifies the timer.
       const detailPage = await page.context().newPage();
       await detailPage.goto(`/sessions/${sessionId}`);
+      await detailPage.getByTestId("tab-details").click();
       const timeoutProgress = detailPage.getByTestId("session-timeout-progress");
       await expect(timeoutProgress).toBeVisible();
       await expect(timeoutProgress.getByRole("progressbar")).toHaveAttribute(
