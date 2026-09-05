@@ -260,10 +260,12 @@ test.describe("control plane sessions", () => {
         const queueDeadline = page.getByTestId("session-detail-queue-deadline");
         await expect(queueDeadline.locator("time")).toHaveAttribute("datetime");
         await expect(queueDeadline).toContainText("remaining");
+        await page.getByTestId("tab-details").click();
         await expect(page.getByTestId("session-detail-priority")).toHaveText("0");
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
         );
+        await page.getByTestId("tab-prompts").click();
         const promptContent = page.getByTestId("session-detail-prompt-content");
         await expect(promptContent).toBeVisible();
         expect(await promptContent.textContent()).toBe(prompt);
@@ -636,6 +638,7 @@ test.describe("control plane sessions", () => {
       // Keep the host socket alive in this page while a second production page verifies the timer.
       const detailPage = await page.context().newPage();
       await detailPage.goto(`/sessions/${sessionId}`);
+      await detailPage.getByTestId("tab-details").click();
       const timeoutProgress = detailPage.getByTestId("session-timeout-progress");
       await expect(timeoutProgress).toBeVisible();
       await expect(timeoutProgress.getByRole("progressbar")).toHaveAttribute(
@@ -687,6 +690,7 @@ test.describe("control plane sessions", () => {
         .toBe("12");
 
       await page.goto(`/sessions/${sessionId}`);
+      await page.getByTestId("tab-details").click();
       await expect(page.getByTestId("session-usage-summary")).toBeVisible();
       await expect(page.getByTestId("session-usage-input")).toHaveText("12");
       await expect(page.getByTestId("session-usage-output")).toHaveText("0");

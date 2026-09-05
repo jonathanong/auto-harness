@@ -59,21 +59,19 @@ describe("shared data display composites", () => {
     expect(render(<ProviderAccountHealth />)).toContain("Available");
   });
 
-  it("renders execution argv, errors, and resume fallback notices by presence", () => {
-    expect(render(<SessionExecutionSummary status="queued" resolvedArgv={[]} />)).not.toContain(
-      "Resolved argv",
+  it("renders execution errors and resume fallback notices by presence", () => {
+    expect(render(<SessionExecutionSummary status="queued" />)).not.toContain(
+      "session-detail-error",
     );
     const markup = render(
       <SessionExecutionSummary
         status="failed"
-        resolvedArgv={["run", "--fast"]}
         errorCode="E_RUN"
         errorMessage="Could not run"
         resumeFallback
         resumedFromSessionId="old-session"
       />,
     );
-    expect(markup).toContain("run --fast");
     expect(markup).toContain("E_RUN:");
     expect(markup).toContain("Could not run");
     expect(markup).toContain("Resumed from old-session.");

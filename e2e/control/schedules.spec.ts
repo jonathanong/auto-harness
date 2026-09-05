@@ -103,6 +103,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("schedule-run-now")).toHaveText("Run now");
     await page.getByTestId("schedule-run-now").click();
     await expect(page).toHaveURL(/\/sessions\/[^/?]+/);
+    await page.getByTestId("tab-details").click();
     await expect(page.getByTestId("session-detail-worktree")).toHaveText("Main checkout");
     await page.goto(detailUrl);
     await expect(page.getByTestId("schedule-detail-active-session")).toBeVisible();

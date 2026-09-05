@@ -176,26 +176,28 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("session-terminal")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
+        await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
+        await expect(detailPage.getByTestId("session-detail-source")).toContainText("api");
+        await expect(detailPage.getByTestId("session-source-api")).toBeVisible();
+        await detailPage.getByTestId("tab-details").click();
         await expect(
           detailPage.getByTestId("session-detail-created").locator("time"),
         ).toHaveAttribute("datetime");
         await expect(
           detailPage.getByTestId("session-detail-started").locator("time"),
         ).toHaveAttribute("datetime");
-        await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
-        await expect(detailPage.getByTestId("session-detail-source")).toContainText("api");
-        await expect(detailPage.getByTestId("session-source-api")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
         await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
+        await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
+        await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
+          "remaining",
+        );
+        await detailPage.getByTestId("tab-prompts").click();
         const promptContent = detailPage.getByTestId("session-detail-prompt-content");
         await expect(promptContent).toBeVisible();
         expect(await promptContent.textContent()).toBe(prompt);
         await promptContent.focus();
         await expect(promptContent).toBeFocused();
-        await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
-        await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
-          "remaining",
-        );
 
         await page.evaluate(
           ({ sessionId, attemptId, worktreeId }) => {

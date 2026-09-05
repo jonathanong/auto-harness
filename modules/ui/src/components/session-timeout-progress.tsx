@@ -100,7 +100,7 @@ export function SessionTimeoutDetail(props: SessionTimeoutProgressProps) {
     <div>
       <dt className="text-xs uppercase text-muted-foreground">Timeout</dt>
       <dd className="text-sm" data-pw="session-detail-timeout">
-        {props.timeout != null ? `${props.timeout}s` : "—"}
+        {props.timeout != null ? formatRemainingTime(props.timeout) : "—"}
         <SessionTimeoutProgress {...props} />
       </dd>
     </div>

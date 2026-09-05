@@ -17,9 +17,11 @@ export async function fetchSessionLiveState(sessionId: string): Promise<SessionS
 export function SessionLiveDetail({
   initialSession,
   children,
+  defaultTab,
 }: {
   initialSession: SessionSummary;
   children?: ReactNode;
+  defaultTab?: string;
 }) {
   const [session, setSession] = useState(initialSession);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -53,12 +55,15 @@ export function SessionLiveDetail({
       actions={<SessionActions sessionId={session.id} status={session.status} />}
       repoHrefBase="/repositories"
       worktreeHrefBase="/worktrees"
+      defaultTab={defaultTab}
+      notices={
+        refreshFailed ? (
+          <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
+            Session status refresh paused; retrying…
+          </p>
+        ) : null
+      }
     >
-      {refreshFailed ? (
-        <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
-          Session status refresh paused; retrying…
-        </p>
-      ) : null}
       {children}
     </SessionDetail>
   );
