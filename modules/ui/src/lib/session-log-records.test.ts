@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  droppedItemLineCount,
   droppedPrefixLineCount,
   foldCarriageReturnLine,
   parseSessionLogText,
@@ -27,6 +28,15 @@ describe("session log records", () => {
     expect(droppedPrefixLineCount("gone\nkeep\n", "keep\n")).toBe(1);
     expect(droppedPrefixLineCount("one\ntwo\n", "two\nthree\n")).toBe(1);
     expect(droppedPrefixLineCount("alpha", "beta")).toBe(0);
+    expect(
+      droppedItemLineCount(
+        [
+          { timestampSeq: "a", seq: 1, stream: "stdout", content: "gone\n", timestamp: "t" },
+          { timestampSeq: "b", seq: 2, stream: "stdout", content: "keep\n", timestamp: "t" },
+        ],
+        [{ timestampSeq: "b", seq: 2, stream: "stdout", content: "keep\n", timestamp: "t" }],
+      ),
+    ).toBe(1);
     expect(parseSessionLogText("only\n", 4).map((record) => record.line)).toEqual([5]);
   });
 

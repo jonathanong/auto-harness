@@ -1,5 +1,6 @@
 import { stripAnsi } from "./session-log-ansi.ts";
 import { classifyLogLine, LOG_CATEGORIES, type LogCategory } from "./session-log-classify.ts";
+import { terminalText, type TerminalLogEntry } from "./session-terminal.ts";
 
 export type SessionLogRecord = {
   line: number;
@@ -39,6 +40,17 @@ export function droppedPrefixLineCount(previousText: string, nextText: string): 
   if (first === undefined) return previous.length;
   const index = previous.indexOf(first);
   return index > 0 ? index : 0;
+}
+
+export function droppedItemLineCount(
+  previous: readonly TerminalLogEntry[],
+  next: readonly TerminalLogEntry[],
+): number {
+  const first = next[0];
+  if (!first || previous.length === 0) return 0;
+  const index = previous.findIndex((item) => item.timestampSeq === first.timestampSeq);
+  if (index <= 0) return 0;
+  return splitLogText(terminalText(previous.slice(0, index))).length;
 }
 
 export function parseSessionLogText(text: string, lineBase = 0): SessionLogRecord[] {

@@ -29,7 +29,7 @@ export function SessionTerminalViewer({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const text = useMemo(() => terminalText(items), [items]);
-  const log = useSessionLogState(text);
+  const log = useSessionLogState(text, items);
   const [fontSize, setFontSize] = useState(DEFAULT_TERMINAL_FONT_SIZE);
   const [fullscreen, setFullscreen] = useState(false);
   const { refresh, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize, log.rawMode);
@@ -144,7 +144,7 @@ export function SessionTerminalViewer({
           tabIndex={0}
           aria-label="Read-only ANSI session output"
         />
-      ) : items.length === 0 ? null : (
+      ) : (
         <SessionLogViewer
           records={log.visible}
           pretty={log.pretty}

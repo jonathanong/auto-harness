@@ -9,25 +9,26 @@ import {
   storeSessionLogView,
 } from "../lib/session-log-prefs.ts";
 import {
-  droppedPrefixLineCount,
+  droppedItemLineCount,
   parseSessionLogText,
   presentCategories,
   toggleSetValue,
   visibleRecords,
 } from "../lib/session-log-records.ts";
+import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 import { findRecordMatches, nextMatchIndex, searchResultLabel } from "../lib/session-log-search.ts";
 
-export function useSessionLogState(text: string) {
-  const prevTextRef = useRef("");
+export function useSessionLogState(text: string, items: readonly TerminalLogEntry[] = []) {
+  const prevItemsRef = useRef(items);
   const pendingHashRef = useRef(
     parseLogLineHash(typeof location === "undefined" ? "" : location.hash),
   );
   const [lineBase, setLineBase] = useState(0);
   useEffect(() => {
-    const dropped = droppedPrefixLineCount(prevTextRef.current, text);
+    const dropped = droppedItemLineCount(prevItemsRef.current, items);
     if (dropped) setLineBase((base) => base + dropped);
-    prevTextRef.current = text;
-  }, [text]);
+    prevItemsRef.current = items;
+  }, [items]);
   const records = useMemo(() => parseSessionLogText(text, lineBase), [lineBase, text]);
   const [rawMode, setRawMode] = useState(false);
   const [pretty, setPretty] = useState(true);
@@ -139,6 +140,9 @@ export function useSessionLogState(text: string) {
     setRawMode: (next: boolean) => {
       setRawMode(next);
       storeSessionLogView(next ? "raw" : "readable");
+      setSearched(false);
+      setActiveIndex(-1);
+      setSearchResult("");
     },
     setPretty: (next: boolean) => {
       setPretty(next);
