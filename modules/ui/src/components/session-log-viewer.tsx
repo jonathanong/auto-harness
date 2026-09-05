@@ -21,8 +21,8 @@ export function SessionLogViewer({
   pretty: boolean;
   fontSize: number;
   query: string;
-  activeMatch?: SearchMatch;
-  highlightedLine?: number;
+  activeMatch?: SearchMatch | undefined;
+  highlightedLine?: number | undefined;
   expanded: ReadonlySet<number>;
   fullscreen: boolean;
   scrollerRef: RefObject<HTMLDivElement | null>;

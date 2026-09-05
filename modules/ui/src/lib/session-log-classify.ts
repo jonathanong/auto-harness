@@ -40,11 +40,12 @@ const TOOL_TYPES = new Set([
 const THINKING_TYPES = new Set(["reasoning", "agent_reasoning", "thinking"]);
 const MESSAGE_TYPES = new Set(["agent_message", "message"]);
 
-export function parseJsonLine(line: string): unknown | undefined {
+export function parseJsonLine(line: string): object | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
   try {
-    return JSON.parse(trimmed) as object;
+    const value: unknown = JSON.parse(trimmed);
+    return typeof value === "object" && value !== null ? value : undefined;
   } catch {
     return undefined;
   }

@@ -24,7 +24,7 @@ export function MarkedText({
 }: {
   text: string;
   query: string;
-  activeStart?: number;
+  activeStart?: number | undefined;
 }) {
   return (
     <>

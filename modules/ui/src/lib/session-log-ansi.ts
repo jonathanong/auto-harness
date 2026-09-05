@@ -42,7 +42,7 @@ const BG: Record<number, string> = {
   47: "#e5e7eb",
 };
 
-type Style = { color?: string; background?: string; bold: boolean };
+type Style = { color?: string | undefined; background?: string | undefined; bold: boolean };
 
 export function stripAnsi(text: string): string {
   return text.replace(ESCAPE, "");

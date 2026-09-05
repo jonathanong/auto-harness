@@ -64,7 +64,11 @@ export function nextMatchIndex(
   return (current - 1 + count) % count;
 }
 
-export function markSearchText(text: string, query: string, activeStart?: number): TextMark[] {
+export function markSearchText(
+  text: string,
+  query: string,
+  activeStart?: number | undefined,
+): TextMark[] {
   const spans = findTextMatches(text, query);
   if (spans.length === 0) return [{ text, kind: "plain" }];
   const marks: TextMark[] = [];

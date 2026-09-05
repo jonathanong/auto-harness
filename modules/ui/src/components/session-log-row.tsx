@@ -44,7 +44,7 @@ export function SessionLogRow({
   record: SessionLogRecord;
   pretty: boolean;
   query: string;
-  activeStart?: number;
+  activeStart?: number | undefined;
   highlighted: boolean;
   expanded: boolean;
   gutterCh: number;

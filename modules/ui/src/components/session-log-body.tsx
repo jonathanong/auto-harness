@@ -16,7 +16,7 @@ export function SessionLogBody({
   record: SessionLogRecord;
   pretty: boolean;
   query: string;
-  activeStart?: number;
+  activeStart?: number | undefined;
   collapsed: boolean;
 }) {
   const display = recordDisplayText(record, pretty);
