@@ -1,4 +1,5 @@
-import { awsArgs, cdkContext, queryOk } from "./deployment-support.ts";
+import { awsArgs } from "./aws-cli.ts";
+import { cdkContext, queryOk } from "./deployment-support.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
 import type { DeploymentDependencies } from "./deployment-support.ts";
 

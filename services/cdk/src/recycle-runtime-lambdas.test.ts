@@ -15,6 +15,7 @@ describe("recycleRuntimeLambdas", () => {
     expect(deps.query).toHaveBeenCalledWith(
       "aws",
       expect.arrayContaining([
+        "--no-cli-pager",
         "cloudformation",
         "list-stack-resources",
         "--stack-name",
@@ -23,6 +24,7 @@ describe("recycleRuntimeLambdas", () => {
     );
     expect(deps.runs).toEqual([
       expect.arrayContaining([
+        "--no-cli-pager",
         "lambda",
         "update-function-configuration",
         "--function-name",
@@ -31,6 +33,7 @@ describe("recycleRuntimeLambdas", () => {
         "public-base-url recycle /auto-harness/review/public-base-url",
       ]),
       expect.arrayContaining([
+        "--no-cli-pager",
         "lambda",
         "update-function-configuration",
         "--function-name",

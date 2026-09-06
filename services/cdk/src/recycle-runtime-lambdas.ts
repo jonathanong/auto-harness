@@ -1,3 +1,4 @@
+import { awsArgs } from "./aws-cli.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
 
 type RecycleDependencies = {
@@ -14,18 +15,19 @@ export async function recycleRuntimeLambdas(
   config: DeploymentConfig,
   dependencies: RecycleDependencies,
 ): Promise<void> {
-  const result = await dependencies.query("aws", [
-    "cloudformation",
-    "list-stack-resources",
-    "--stack-name",
-    config.runtimeStackName,
-    "--query",
-    "StackResourceSummaries[?ResourceType=='AWS::Lambda::Function'].PhysicalResourceId",
-    "--output",
-    "text",
-    "--region",
-    config.region,
-  ]);
+  const result = await dependencies.query(
+    "aws",
+    awsArgs(config, [
+      "cloudformation",
+      "list-stack-resources",
+      "--stack-name",
+      config.runtimeStackName,
+      "--query",
+      "StackResourceSummaries[?ResourceType=='AWS::Lambda::Function'].PhysicalResourceId",
+      "--output",
+      "text",
+    ]),
+  );
   if (result.status !== 0) {
     throw new Error(
       `aws cloudformation list-stack-resources failed: ${result.stderr || result.stdout}`,
@@ -33,16 +35,17 @@ export async function recycleRuntimeLambdas(
   }
   const names = result.stdout.trim().split(/\s+/).filter(Boolean);
   for (const name of names) {
-    await dependencies.run("aws", [
-      "lambda",
-      "update-function-configuration",
-      "--function-name",
-      name,
-      "--description",
-      `public-base-url recycle ${config.publicBaseUrlSsmParam}`,
-      "--region",
-      config.region,
-    ]);
+    await dependencies.run(
+      "aws",
+      awsArgs(config, [
+        "lambda",
+        "update-function-configuration",
+        "--function-name",
+        name,
+        "--description",
+        `public-base-url recycle ${config.publicBaseUrlSsmParam}`,
+      ]),
+    );
   }
   if (names.length > 0) {
     dependencies.log(
