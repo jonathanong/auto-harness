@@ -84,10 +84,12 @@ test.describe("terminal clipping", () => {
       }
 
       await page.goto(`${CONTROL_BASE}/sessions/${session.id}`);
-      await expect(page.getByTestId("session-logs")).toBeVisible();
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         `line ${String(LINE_COUNT).padStart(3, "0")}`,
       );
+      await page.getByTestId("session-log-raw").click();
+      await expect(page.getByTestId("session-logs")).toBeVisible();
+      await expect(page.getByTestId("session-logs").locator(".xterm-screen")).toBeVisible();
 
       await page.getByTestId("session-logs").scrollIntoViewIfNeeded();
       await shot(page, "terminal-clipping");

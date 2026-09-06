@@ -1,7 +1,6 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { buildSessionsApiPath } from "@auto-harness/shared";
-import { SessionFilters, WithTooltip } from "@auto-harness/ui";
+import { SessionFilters } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
@@ -74,19 +73,9 @@ export default async function SessionsPage({
 
   return (
     <div className="space-y-4" data-pw="page-sessions">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold tracking-tight" data-pw="sessions-heading">
-          Sessions
-        </h2>
-        <WithTooltip tip="Create a one-off session">
-          <Link
-            href="/sessions/new"
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            New session
-          </Link>
-        </WithTooltip>
-      </div>
+      <h2 className="text-2xl font-semibold tracking-tight" data-pw="sessions-heading">
+        Sessions
+      </h2>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
         <SessionFilters repositories={repositories} hosts={hosts} />
       </Suspense>

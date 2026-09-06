@@ -8,9 +8,9 @@ describe("withTimeout", () => {
   });
 
   it("rejects with the promise's own error when it rejects before the deadline", async () => {
-    await expect(
-      withTimeout(Promise.reject(new Error("boom")), 1_000, "too slow"),
-    ).rejects.toThrow("boom");
+    await expect(withTimeout(Promise.reject(new Error("boom")), 1_000, "too slow")).rejects.toThrow(
+      "boom",
+    );
   });
 
   it("rejects with the timeout message when the promise never settles", async () => {
@@ -35,9 +35,7 @@ describe("withTimeout", () => {
         if (timer === fakeTimer) cleared = true;
       }) as typeof clearTimeout,
     };
-    await expect(withTimeout(Promise.resolve("ok"), 1_000, "too slow", timers)).resolves.toBe(
-      "ok",
-    );
+    await expect(withTimeout(Promise.resolve("ok"), 1_000, "too slow", timers)).resolves.toBe("ok");
     expect(cleared).toBe(true);
   });
 });

@@ -14,6 +14,10 @@ export function SessionTerminalControls({
   fullscreen,
   toggleFullscreen,
   download,
+  pretty,
+  togglePretty,
+  rawMode,
+  toggleRawMode,
 }: {
   sessionId: string;
   searchInputRef: RefObject<HTMLInputElement | null>;
@@ -26,6 +30,10 @@ export function SessionTerminalControls({
   fullscreen: boolean;
   toggleFullscreen: () => void;
   download: () => void;
+  pretty: boolean;
+  togglePretty: () => void;
+  rawMode: boolean;
+  toggleRawMode: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-pw="session-terminal-controls">
@@ -65,7 +73,11 @@ export function SessionTerminalControls({
       >
         Next
       </Button>
-      <span className="sr-only" aria-live="polite" data-pw="session-terminal-search-result">
+      <span
+        className="text-xs text-muted-foreground"
+        aria-live="polite"
+        data-pw="session-terminal-search-result"
+      >
         {searchResult}
       </span>
       <Button
@@ -100,6 +112,27 @@ export function SessionTerminalControls({
         data-pw="session-terminal-fullscreen"
       >
         {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-pressed={pretty}
+        disabled={rawMode}
+        onClick={togglePretty}
+        data-pw="session-log-pretty"
+      >
+        Pretty JSON
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-pressed={rawMode}
+        onClick={toggleRawMode}
+        data-pw="session-log-raw"
+      >
+        Raw terminal
       </Button>
       <Button
         type="button"

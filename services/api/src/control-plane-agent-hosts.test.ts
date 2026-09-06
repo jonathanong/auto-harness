@@ -189,4 +189,19 @@ describe("agent host inventory", () => {
       conflict: true,
     });
   });
+
+  it("ignores a viewer's browser connection when listing hosts", () => {
+    const plane = new ControlPlane();
+    // A browser viewer WebSocket shares the same connections map, keyed by a
+    // "user:<name>"-shaped principal id rather than a real hostId. listHosts
+    // must never surface it as an online host.
+    plane.state.connections.set("viewer-conn", {
+      connectionId: "viewer-conn",
+      type: "client",
+      hostId: "user:alice",
+      connectedAt: "t",
+      lastHeartbeatAt: "t",
+    });
+    expect(plane.listHosts().find((a) => a.hostId === "user:alice")).toBeUndefined();
+  });
 });

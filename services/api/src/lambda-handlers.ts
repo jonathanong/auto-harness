@@ -209,54 +209,15 @@ async function postToHost(
 }
 
 /**
- * Relay a rejected host message back over the connection that sent it.
+ * Force-close a reclaimed host's physical API Gateway connection at the
+ * moment the stale-heartbeat sweep reclaims it.
  *
- * `ws-hub.ts`'s self-hosted transport already does this for every
- * `!result.ok`: the daemon handles a received `{type:"error"}` frame by
- * closing (1008) and reconnecting (`ws-transport.ts:253-254`), so a rejected
- * message there is self-healing. On API Gateway the `$default` route only
- * ever returned an HTTP status code (409/401) to API Gateway itself — never
- * to the daemon — so the daemon had no way to learn its message was rejected
- * and no reason to reconnect. This mirrors the ws-hub behavior for the
- * Lambda transport.
- */
-async function postErrorToConnection(
-  management: ManagementClient,
-  connectionId: string,
-  error: string | undefined,
-): Promise<void> {
-  try {
-    await management.send(
-      new PostToConnectionCommand({
-        ConnectionId: connectionId,
-        Data: Buffer.from(JSON.stringify({ type: "error", message: error })),
-      }),
-    );
-  } catch (err) {
-    // The connection is already gone; nothing to relay to.
-    if (err instanceof GoneException || (err as { name?: string }).name === "GoneException") {
-      return;
-    }
-    console.error(
-      JSON.stringify({
-        msg: "postErrorToConnection failure",
-        connectionId,
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  }
-}
-
-/**
- * Force-close a reclaimed host's physical API Gateway connection.
- *
- * The reclaim sweep only ever touches durable state — deleting the connection
- * row is all a Lambda process can do to itself. Without also calling
- * DeleteConnection here, the daemon's socket stays open and ESTABLISHED
- * forever: every later frame from it hits `getConnection` returning null and
- * gets a bare 401 that is never relayed over the wire, so the daemon has no
- * signal telling it to reconnect. This is what makes a reclaim otherwise
- * unrecoverable without a manual daemon restart.
+ * This is complementary to, not a replacement for, `forceCloseStaleConnection`
+ * below: that one closes reactively the next time a frame arrives on a
+ * connection with no authenticated row, which still requires the daemon to
+ * send another frame first (up to a full keepalive interval later). Closing
+ * here too, right when `reclaimStaleHostsDurable` releases the lease, cuts
+ * that window to zero for the specific case the sweep itself causes.
  */
 async function closeReclaimedConnection(
   management: ManagementClient,
@@ -280,6 +241,33 @@ async function closeReclaimedConnection(
       }),
     );
   }
+}
+
+/**
+ * A daemon whose lease was released (stale-heartbeat reclaim, disconnect, or a
+ * superseding registration) otherwise keeps its physical WebSocket open forever:
+ * `releaseHostConnection` only deletes DynamoDB rows, and a rejected `$default`
+ * frame's status code is never delivered back to the client over the socket. Force
+ * closing here is what actually notifies the daemon — it trips the daemon's own
+ * `onDisconnected`/reconnect path, which otherwise has no way to learn its lease
+ * is gone and keeps heartbeating into the void. Best-effort: a failure here just
+ * means this stale connection sits until API Gateway's own idle/max-duration limit
+ * reaps it, no worse than before this call existed.
+ *
+ * Returns its promise rather than firing-and-forgetting internally: Lambda may
+ * freeze the execution environment as soon as the invocation's returned promise
+ * settles, so an untracked background send here is not guaranteed to ever run.
+ * Callers must route this through the same `track`/`deliveries` mechanism
+ * `trackDelivery` uses, so `runInvocation` awaits it before the response returns.
+ */
+function forceCloseStaleConnection(
+  management: ManagementClient,
+  connectionId: string,
+): Promise<void> {
+  return management.send(new DeleteConnectionCommand({ ConnectionId: connectionId })).then(
+    () => {},
+    () => {},
+  );
 }
 
 /** Create the AWS event adapters without performing any deployment. */
@@ -536,13 +524,25 @@ export async function createLambdaRuntime(
         }
         const viewerStatus = await viewerSockets.message(connectionId, event.body ?? "");
         if (viewerStatus !== undefined) return { statusCode: viewerStatus };
-        if (!authenticated) return { statusCode: 401 };
+        if (!authenticated) {
+          track(forceCloseStaleConnection(management, connectionId));
+          return { statusCode: 401 };
+        }
         if (authenticated.type !== "host") return { statusCode: 403 };
         const message = parseHostMessage(event.body ?? "", {
           protocolVersion: authenticated.protocolVersion ?? 0,
         });
-        if (!message || !validHostMessage(message, authenticated.hostId))
+        // A parse failure or a hostId that doesn't match this connection's own
+        // authenticated lease means the *sender* is misbehaving (or misconfigured
+        // with the wrong HARNESS_HOST_ID for its API key) — not that the lease
+        // itself is gone. Force-closing here would be actively harmful: the
+        // daemon's transport resends its last host:register verbatim on every
+        // reconnect (services/host-daemon/src/ws-transport.ts), so a persistent
+        // hostId mismatch would force-close, reconnect, and immediately resend
+        // the same mismatched register, forever. Leave this a plain rejection.
+        if (!message || !validHostMessage(message, authenticated.hostId)) {
           return { statusCode: 403 };
+        }
         const result =
           message.type === "host:register" && authenticated.registered === false
             ? await created.plane.handlePendingHostMessageDurable(message, connectionId)
@@ -569,8 +569,6 @@ export async function createLambdaRuntime(
             type: "host:draining",
             hostId: result.hostDraining,
           });
-        } else if (!result.ok) {
-          track(postErrorToConnection(management, connectionId, result.error));
         }
         return { statusCode: result.ok ? 200 : 409 };
       });

@@ -16,7 +16,7 @@ import {
   parseCliUsage,
   resolveCliProvider,
 } from "./usage-adapter.ts";
-import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
+import { jsonLines, jsonObject, jsonObjects } from "./usage-adapter-json.ts";
 
 const observedAt = "2026-01-01T00:00:00.000Z";
 
@@ -398,6 +398,10 @@ describe("parseCliUsage", () => {
       "You\u2019ve hit your team\u2019s API rate limit. Ask a team admin to purchase more credits for higher limits, or try again later. See https://docs.x.ai/developers/rate-limits#rate-limit-tiers",
       "You\u2019ve reached your free Grok Build usage limit for now. Get SuperGrok for much higher limits, or try again later: https://grok.com/supergrok?referrer=grok-build",
       "You've hit the rate limit for your plan. Upgrade your account or try again later.",
+      // Grok CLI 1.0.13's separate HTTP-402 (billing exhaustion) path — not a
+      // 429, so no "you've hit/reached" lead-in (#441 incident, sess-3409f51f
+      // and the grok fallback target of sess-a7289536/44df438e).
+      'Internal error: {\n  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",\n  "http_status": 402\n}',
     ]) {
       expect(parseProvider("grok", { type: "error", message })).toEqual({ usageLimit: true });
     }
@@ -405,6 +409,10 @@ describe("parseCliUsage", () => {
       "Couldn't start session: permission denied",
       "rate limit exceeded",
       "You've hit your weekly limit · resets 12pm (America/Los_Angeles)",
+      // Bare status text or bare "usage balance" alone must not be enough —
+      // both anchors of the 402 sentence are required together.
+      "API error (status 402 Payment Required): something unrelated",
+      "usage balance exhausted",
     ]) {
       expect(parseProvider("grok", { type: "error", message })).toEqual({});
     }
@@ -437,6 +445,53 @@ describe("parseCliUsage", () => {
     ]) {
       expect(parseProvider("gemini", { error })).toEqual({});
     }
+  });
+
+  it("finds grok's real usage-limit envelope even when a later re-print also parses as JSON", () => {
+    // Real captured PTY output from the #441 incident (sess-3409f51f,
+    // sess-a7289536): grok's own CLI first prints its proper
+    // `{type:"error", message}` envelope, then separately re-prints the same
+    // failure as plain text whose embedded `{message, http_status}` object
+    // ALSO parses as valid JSON. jsonObject()'s old "last complete object"
+    // pick silently preferred that trailing re-print — which has neither
+    // `type` nor `status` — and lost the usage-limit signal entirely.
+    const capture =
+      '{"type":"error","message":"Internal error: {\\n  \\"message\\": \\"API error (status 402 Payment Required): Grok Build usage balance exhausted\\",\\n  \\"http_status\\": 402\\n}"}\n' +
+      'Error: Internal error: {\n  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",\n  "http_status": 402\n}\n';
+    expect(
+      parseCliUsage({
+        argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
+        output: capture,
+        observedAt,
+      }),
+    ).toEqual({ usageLimit: true });
+    // The trailing re-print alone (no proper envelope present) must still be inert —
+    // it carries neither `type` nor `status`, so it is never mistaken for grok's own
+    // error envelope regardless of ordering.
+    expect(
+      parseCliUsage({
+        argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
+        output:
+          'Error: Internal error: {\n  "message": "some unrelated failure",\n  "http_status": 500\n}\n',
+        observedAt,
+      }),
+    ).toEqual({});
+    // A recognized-shape candidate earlier in the capture must not outrank a later
+    // genuine one: a spurious `type:"error"` usage-limit-shaped blob followed by a
+    // real terminal success envelope reports the real (later) outcome, not the
+    // earlier one — the same "trust the terminal envelope" rule every other
+    // provider gets, and the reason folding every candidate unconditionally would
+    // be wrong (it would let stale/unrelated diagnostics manufacture a false
+    // usage-limit signal and needlessly cool the account down for 5h).
+    const laterSuccess = parseCliUsage({
+      argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
+      output:
+        '{"type":"error","message":"You\'ve hit the rate limit for your plan. Upgrade your account or try again later."}\n' +
+        '{"response":"done","usage":{"input_tokens":3}}\n',
+      observedAt,
+    });
+    expect(laterSuccess.usageLimit).toBeUndefined();
+    expect(laterSuccess.usage).toMatchObject({ inputTokens: "3" });
   });
 
   it("maps every token field and handles alternate structured error codes", () => {
@@ -654,6 +709,12 @@ describe("structured JSON scanners", () => {
     });
     expect(jsonLines('\nnot-json\nnull\n[]\n{"ok":true}\n')).toEqual([{ ok: true }]);
   });
+
+  it("jsonObjects returns every candidate in order; jsonObject stays the last one", () => {
+    expect(jsonObjects("no braces here")).toEqual([]);
+    expect(jsonObjects('{bad} {"a":1} noise {"b":2}')).toEqual([{ a: 1 }, { b: 2 }]);
+    expect(jsonObject('{bad} {"a":1} noise {"b":2}')).toEqual({ b: 2 });
+  });
 });
 
 describe("UsageCapturingProcessRunner", () => {
@@ -856,6 +917,30 @@ describe("UsageCapturingProcessRunner", () => {
         onChunk: () => undefined,
       }),
     ).resolves.toMatchObject({ usageLimit: true });
+  });
+
+  it("detects grok's 402 usage-limit envelope end-to-end through chunked PTY capture", async () => {
+    // The real #441 incident capture, split mid-stream the way a PTY read can
+    // arrive in pieces: grok's own envelope first, then its plain-text re-print.
+    const chunks = [
+      '{"type":"error","message":"Internal error: {\\n  \\"message\\": \\"API error (status ',
+      '402 Payment Required): Grok Build usage balance exhausted\\",\\n  \\"http_status\\": 402\\n}"}\n',
+      'Error: Internal error: {\n  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",\n  "http_status": 402\n}\n',
+    ];
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        for (const data of chunks) options.onChunk({ stream: "stdout", data });
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      new UsageCapturingProcessRunner(inner, () => observedAt).run({
+        argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
+        cwd: "/",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toMatchObject({ exitCode: 1, usageLimit: true });
   });
 
   // Same real sess-fa52d870 turn.failed fixture text as the "codex usage-limit detection"

@@ -81,6 +81,7 @@ export {
   type SessionSummary,
   type SessionDetailProps,
 } from "./components/session-detail.tsx";
+export { resolveSessionDetailTab } from "./components/session-detail-tab.ts";
 export {
   SessionRouteSummary,
   type SessionRouteSummaryProps,

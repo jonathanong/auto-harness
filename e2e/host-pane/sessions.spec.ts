@@ -170,32 +170,34 @@ test.describe("host pane sessions", () => {
 
         await expect(detailPage).toHaveURL(new RegExp(`/sessions/${id}$`));
         await expect(detailPage.getByTestId("page-session-detail")).toBeVisible();
-        // Host pane renders the same xterm viewer as the control plane (design review #6) —
+        // Host pane renders the same session log viewer as the control plane (design review #6) —
         // no live log content is streamed in this scenario, so this just guards against the
         // component failing to mount at all.
         await expect(detailPage.getByTestId("session-terminal")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
+        await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
+        await expect(detailPage.getByTestId("session-detail-source")).toContainText("api");
+        await expect(detailPage.getByTestId("session-source-api")).toBeVisible();
+        await detailPage.getByTestId("tab-details").click();
         await expect(
           detailPage.getByTestId("session-detail-created").locator("time"),
         ).toHaveAttribute("datetime");
         await expect(
           detailPage.getByTestId("session-detail-started").locator("time"),
         ).toHaveAttribute("datetime");
-        await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
-        await expect(detailPage.getByTestId("session-detail-source")).toContainText("api");
-        await expect(detailPage.getByTestId("session-source-api")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
         await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
+        await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
+        await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
+          "remaining",
+        );
+        await detailPage.getByTestId("tab-prompts").click();
         const promptContent = detailPage.getByTestId("session-detail-prompt-content");
         await expect(promptContent).toBeVisible();
         expect(await promptContent.textContent()).toBe(prompt);
         await promptContent.focus();
         await expect(promptContent).toBeFocused();
-        await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
-        await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
-          "remaining",
-        );
 
         await page.evaluate(
           ({ sessionId, attemptId, worktreeId }) => {

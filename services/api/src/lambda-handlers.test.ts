@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
+import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -611,14 +612,6 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 409 });
-    // A rejected frame is relayed back to the connection that sent it — not just
-    // reported as an HTTP status to API Gateway — so the daemon actually learns
-    // its message was rejected and reconnects, mirroring ws-hub.ts's behavior.
-    expect(JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data))).toEqual({
-      type: "error",
-      message: "stale host connection",
-    });
-    fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
         body: JSON.stringify({
@@ -629,11 +622,6 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 409 });
-    expect(JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data))).toEqual({
-      type: "error",
-      message: "stale host connection",
-    });
-    fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
         body: JSON.stringify({
@@ -660,7 +648,16 @@ describe("Lambda runtime adapters", () => {
     expect(fixture.plane.getHostConnectionId("host-1")).toBe("gateway-1");
     expect(fixture.registrations[0]).toMatchObject({ consumePendingConnection: true });
     expect(fixture.connections.get("gateway-1")?.registered).toBeUndefined();
-    expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toEqual({
+    // Earlier steps in this test intentionally sent a couple of rejected frames
+    // (an empty body, and a hostId mismatch) that now also force-close the stale
+    // connection, adding earlier management.send calls — so find the actual
+    // registration push by its payload rather than assuming it's call index 0.
+    const registeredPush = fixture.management.send.mock.calls
+      .map((call) => call[0].input.Data)
+      .filter((data): data is Buffer | string => data !== undefined)
+      .map((data) => JSON.parse(String(data)))
+      .find((payload) => payload.type === "host:registered");
+    expect(registeredPush).toEqual({
       type: "host:registered",
       hostId: "host-1",
       connectionId: "gateway-1",
@@ -880,6 +877,16 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "missing", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 401 });
+    // A frame for a connectionId with no authenticated row (its lease was
+    // released, e.g. by the stale-heartbeat sweeper) must force-close the
+    // physical socket — otherwise a daemon whose lease is gone has no way to
+    // learn that and never reconnects.
+    expect(
+      fixture.management.send.mock.calls.some(
+        (call) =>
+          call[0] instanceof DeleteConnectionCommand && call[0].input.ConnectionId === "missing",
+      ),
+    ).toBe(true);
     await runtime.websocket({
       requestContext: { connectionId: "pending", routeKey: "$connect" },
     });
@@ -894,6 +901,47 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "missing", routeKey: "$disconnect" },
       }),
     ).resolves.toEqual({ statusCode: 200 });
+  });
+
+  it("swallows a failed force-close instead of surfacing it to the caller", async () => {
+    // A connectionId with no authenticated row is already gone from this
+    // API's perspective, so a failure closing its (possibly already-dead)
+    // physical socket must never fail the frame's own rejection response.
+    const fixture = runtimeFixture();
+    const runtime = await fixture.runtime;
+    fixture.management.send.mockRejectedValueOnce(new Error("management unavailable"));
+    await expect(
+      runtime.websocket({
+        requestContext: { connectionId: "missing", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 401 });
+  });
+
+  it("awaits the force-close before completing the invocation", async () => {
+    // Lambda may freeze the execution environment as soon as the handler's
+    // returned promise settles, so the DeleteConnectionCommand must be
+    // tracked through the same deliveries mechanism as postToHost — an
+    // untracked background send is not guaranteed to ever run.
+    const fixture = runtimeFixture();
+    const runtime = await fixture.runtime;
+    let release: (() => void) | undefined;
+    fixture.management.send.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    let settled = false;
+    const rejection = runtime
+      .websocket({
+        requestContext: { connectionId: "missing", routeKey: "$default" },
+      })
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    release!();
+    await expect(rejection).resolves.toEqual({ statusCode: 401 });
+    expect(fixture.management.send.mock.calls[0]?.[0]).toBeInstanceOf(DeleteConnectionCommand);
   });
 
   it("lazily creates one shared runtime for all exported handler shapes", async () => {

@@ -18,7 +18,8 @@ Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktree
 **Settings** — one dropdown per group. Header and main use the viewport width with horizontal
 padding (dialogs stay `max-w-lg`). **New session** is a button on the slim secondary row with
 the theme toggle, keyboard-shortcuts button, and logout (only when `HARNESS_AUTH_MODE=required`),
-next to the page subtitle, not inside Operate. The host pane's own shell reuses the same chrome
+next to the page subtitle, not inside Operate — it is not repeated in any page header. The host
+pane's own shell reuses the same chrome
 with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane
 is **debug-only** and has no login form — a visible badge and subtitle tell operators to use the
 control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or a 401 from
@@ -65,7 +66,6 @@ The dashboard is the landing page and shows a high-level overview:
 - **Queue depth** — number of sessions waiting for a worktree
 - **Connected agents** — agent count with status indicators (online/offline)
 - **Worktree utilization** — busy vs idle across all agents
-- **New Session** button — opens the session creation form
 
 The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five seconds. Agent,
 session, and utilization changes appear without a page reload; a paused banner retains the last
@@ -183,57 +183,54 @@ Clicking a session in the list opens the session detail view.
 
 ### Header
 
-The header displays session metadata:
+The header is the session id (monospace, copyable) plus cancel/resume/archive actions.
 
-| Field      | Display                                                                                                                                                                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Session ID | Monospaced, copyable                                                                                                                                                                                                                                   |
-| Status     | Badge with status color; queued sessions note that assignment is attempted immediately and a one-minute repair sweep retries missed work; terminal `usage_limit` and `queue_expired` errors include distinct “Usage limit” and “Queue expired” reasons |
-| Repository | Link to repository                                                                                                                                                                                                                                     |
-| Target     | Configured target/fallback chain; once assigned, show selected Provider Account, Command, Host, Worktree, and exact resolved argv                                                                                                                      |
-| Queue      | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline                                                                                                                   |
-| Agent      | Agent name (if assigned)                                                                                                                                                                                                                               |
-| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                                                                                                                                                                                    |
-| Priority   | Numeric value                                                                                                                                                                                                                                          |
-| Source     | Origin badge                                                                                                                                                                                                                                           |
-| Created    | Full timestamp                                                                                                                                                                                                                                         |
-| Started    | Full timestamp (if started)                                                                                                                                                                                                                            |
-| Duration   | Live elapsed time (running) or total time (completed)                                                                                                                                                                                                  |
-| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions.                                                                                                                                                            |
-| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                                                                                                                                                                                    |
+### Status bar
 
-### Prompt
+A compact strip under the title always shows the key run fields. Full metadata lives on the **Details** tab.
 
-The initial prompt is displayed in a highlighted, read-only block below the header. The full prompt text is shown — not truncated. For long prompts, the bounded block is scrollable and keyboard-focusable so keyboard users can inspect all of its content.
+| Field    | Display                                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Status   | Badge with status color; queued sessions note that assignment is attempted immediately and a one-minute repair sweep retries missed work; terminal `usage_limit` and `queue_expired` errors include distinct “Usage limit” and “Queue expired” reasons |
+| Provider | Primary `targetDisplayNames` entry (`"<provider> — <command>"` for a provider-backed command)                                                                                                                                                          |
+| Duration | Live elapsed time (running) or total time (completed), once the session has started                                                                                                                                                                    |
+| Exit     | Shown on completion — `0` (green) or non-zero (red)                                                                                                                                                                                                    |
+| Source   | Origin badge                                                                                                                                                                                                                                           |
+| Queue    | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline                                                                                                                   |
 
-```
-┌─ Prompt ─────────────────────────────────────────────────────┐
-│                                                              │
-│  Fix the failing test in src/utils.test.ts. The test         │
-│  "should parse dates correctly" is failing because the       │
-│  date parser doesn't handle timezone offsets. Update the     │
-│  parser to support ISO 8601 timezone formats.                │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+Execution errors, resume-fallback notices, and a disconnected-host warning stay above the tabs so they remain visible on Logs.
+
+### Tabs
+
+In-page tabs (not a full navigation) default to **Logs**. Switching tabs does not remount the live log viewer.
+
+| Tab         | Contents                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Logs**    | The terminal log viewer (below)                                                                                                                                                                                                                                                                                                                                                        |
+| **Details** | Repository, ref, host, worktree ("Main checkout" for scheduled sessions), target/fallback chain and resolved route, priority, concurrency id, created/started/completed timestamps, timeout (humanized, with a remaining-time bar while running), and session usage                                                                                                                    |
+| **Prompts** | The operator/schedule **prompt** (boxed, full text, copyable) and **resolved argv** (tokenized spawned command). When the Command has `appendPrompt`, the prompt is the last argv element — the UI shows that last token as `‹prompt›` instead of repeating the body. They are not the same field: prompt is the session text; resolved argv is the catalog command that actually ran. |
+
+`?tab=details` and `?tab=prompts` are optional shareable URLs. The default Logs tab uses the bare session URL. Tab changes update the query with `history.replaceState` so the live log WebSocket is not torn down.
 
 ### Live Log Viewer
 
-Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
+The Logs tab is a terminal-like viewer for session output. This is the core feature of the session detail view.
 
-**Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer (`SessionTerminalViewer`,
-shared from `modules/ui`) renders the assigned CLI's merged PTY-backed log chunks, including ANSI
-colors and cursor control sequences, and live-tails over the viewer WebSocket. Search, selectable
-text, scrollback, font sizing, fullscreen, and `.txt` download controls are available. The viewer
-remains deliberately non-interactive: it does not send browser input to the running process. Git,
-setup, and hook output remains pipe-based.
+**Current implementation:** `SessionTerminalViewer` (shared from `modules/ui`) live-tails the assigned
+CLI's merged PTY-backed log chunks over the viewer WebSocket. The default **readable** view is a
+full-width wrapping document: JSONL lines can be pretty-printed with 2-space `JSON.stringify`, each
+record is numbered and linkable (`#L12`), and events are labeled by type (message, thinking, tool,
+event, error, system, output). **Raw terminal** switches to a read-only [xterm.js](https://xtermjs.org/)
+replay pinned to the daemon PTY's 120×40 grid so ANSI cursor addressing and `\r` progress bars stay
+faithful. The viewer does not send browser input to the running process. Git, setup, and hook output
+remains pipe-based. Pretty JSON and the raw/readable choice persist in `localStorage`; download still
+emits the raw transcript, not the pretty-printed view.
 
-The host pane's session detail view (`:7422`) uses the same viewer for the same reason — a plain-text
-log dump can't render ANSI colors or cursor-addressed output (progress bars, TUI redraws), so
-assigned CLI output there used to print as literal escape bytes. Host pane fetches logs once at page
+The host pane's session detail view (`:7422`) uses the same viewer. Host pane fetches logs once at page
 load rather than live-tailing (it has no WebSocket viewer infrastructure), so its controls work
-against a static snapshot — search, font sizing, fullscreen, and download all function identically,
-there's just no live update after the initial fetch.
+against a static snapshot — search, font sizing, fullscreen, pretty JSON, type filters, line links,
+raw terminal, and download all function identically, there's just no live update after the initial
+fetch.
 
 **Behavior:**
 
@@ -244,14 +241,18 @@ there's just no live update after the initial fetch.
 
 **Terminal controls:**
 
-| Control    | Function                                                                                                          |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| Search     | `Ctrl+F` to search within log output                                                                              |
-| Copy       | Select text and copy. Right-click context menu.                                                                   |
-| Scroll     | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up). |
-| Font size  | `Ctrl+`/`Ctrl-` to adjust                                                                                         |
-| Fullscreen | Expand the terminal to fill the viewport                                                                          |
-| Download   | Download the full log as a `.txt` file                                                                            |
+| Control      | Function                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.        |
+| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                    |
+| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable. |
+| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                            |
+| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                    |
+| Copy         | Select text and copy. Right-click context menu.                                                                   |
+| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up). |
+| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                         |
+| Fullscreen   | Expand the viewer to fill the viewport                                                                            |
+| Download     | Download the raw log as a `.txt` file                                                                             |
 
 **Status transitions** are displayed as system messages in the terminal:
 
@@ -293,7 +294,7 @@ Each action exposes its pending state with a descriptive label (`Resuming…`, `
 
 ## Create Session
 
-The "New Session" form can be opened from the dashboard or the sessions list page. Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
+The "New Session" form can be opened from the **New session** button on the header's secondary row — present on every non-login page for a principal who can author sessions (hidden otherwise). Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
 
 ### Form Fields
 

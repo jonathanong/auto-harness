@@ -4,6 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mount, reset } from "./action-form-test-helpers.ts";
+import { openRawTerminal } from "./session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 
@@ -50,14 +51,9 @@ function stubComputedTerminalTheme(values: Record<string, string>): void {
   );
 }
 
-async function settle(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
-
 afterEach(reset);
+
+const openRaw = openRawTerminal;
 
 describe("SessionTerminalViewer theme", () => {
   it("reads terminal colors from CSS variables and rebuilds them live on a theme change", async () => {
@@ -67,8 +63,8 @@ describe("SessionTerminalViewer theme", () => {
       "--terminal-cursor": "220 13% 91%",
     });
 
-    mount(<SessionTerminalViewer sessionId="theme" items={[]} />);
-    await settle();
+    const view = mount(<SessionTerminalViewer sessionId="theme" items={[]} />);
+    await openRaw(view.container);
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({
         theme: {
@@ -98,8 +94,8 @@ describe("SessionTerminalViewer theme", () => {
 
   it("falls back to the light-mode literal when a CSS variable is unset", async () => {
     stubComputedTerminalTheme({});
-    mount(<SessionTerminalViewer sessionId="theme-fallback" items={[]} />);
-    await settle();
+    const view = mount(<SessionTerminalViewer sessionId="theme-fallback" items={[]} />);
+    await openRaw(view.container);
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({
         theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },

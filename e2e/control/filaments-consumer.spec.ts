@@ -69,7 +69,9 @@ test("renders a durable Filaments webhook session created through the public API
   await page.getByTestId(`session-link-${created.id}`).click();
   await expect(page).toHaveURL(new RegExp(`/sessions/${created.id}$`));
   await expect(page.getByTestId("session-detail-source")).toHaveText("webhook");
+  await page.getByTestId("tab-details").click();
   await expect(page.getByTestId("session-detail-priority")).toHaveText("20");
   await expect(page.getByTestId("session-detail-concurrency-id")).toHaveText(concurrencyId);
+  await page.getByTestId("tab-prompts").click();
   await expect(page.getByTestId("session-detail-prompt-content")).toHaveText(prompt);
 });

@@ -1,18 +1,17 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
+"use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
+import type { ReactNode } from "react";
+import { useState } from "react";
+
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
-import { SessionStatusDetail } from "./session-status-cell.tsx";
-import { SessionRouteSummary } from "./session-route-summary.tsx";
+import { persistSessionDetailTab, resolveSessionDetailTab } from "./session-detail-tab.ts";
+import type { SessionSummary } from "./session-detail-types.ts";
+import { SessionDetailsCard } from "./session-details-card.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
-import { SessionQueueDeadline } from "./session-queue-deadline.tsx";
-import { SessionDetailTiming } from "./session-detail-timing.tsx";
-import { SessionSourceBadge } from "./session-source-badge.tsx";
-import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
-import type { SessionSummary } from "./session-detail-types.ts";
-import { SessionExitCode } from "./session-exit-code.tsx";
+import { SessionPromptPanel } from "./session-prompt-panel.tsx";
+import { SessionStatusBar } from "./session-status-bar.tsx";
+import { TabContent, TabList, TabPanels, TabTrigger } from "./tab-panels.tsx";
 
 export type { SessionSummary } from "./session-detail-types.ts";
 
@@ -21,8 +20,14 @@ export type SessionDetailProps = {
   breadcrumbs: Crumb[];
   /** Rendered in a row under the title (e.g. cancel/resume/archive buttons). */
   actions?: ReactNode;
-  /** Rendered below the details card (e.g. a logs section). */
+  /** Logs tab body. */
   children?: ReactNode;
+  /** Extra details-tab content (e.g. session usage). */
+  detailsExtra?: ReactNode;
+  /** Always-visible notices above the tabs (offline host, refresh paused). */
+  notices?: ReactNode;
+  /** Initial tab from `?tab=`; unknown values fall back to logs. */
+  defaultTab?: string | undefined;
   /** When set, the repository field links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
   repoHrefBase?: string;
   /** When set, the host field links to `${hostHrefBase}/${encodeURIComponent(hostId)}` (control plane only — the host pane has no per-host route). */
@@ -37,10 +42,14 @@ export function SessionDetail({
   breadcrumbs,
   actions,
   children,
+  detailsExtra,
+  notices,
+  defaultTab,
   repoHrefBase,
   hostHrefBase,
   worktreeHrefBase,
 }: SessionDetailProps) {
+  const [tab, setTab] = useState(() => resolveSessionDetailTab(defaultTab));
   return (
     <div className="space-y-6" data-pw="session-detail">
       <DetailHeader
@@ -56,144 +65,46 @@ export function SessionDetail({
         actions={actions}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Status</dt>
-              <dd>
-                <SessionStatusDetail status={s.status} errorCode={s.errorCode} />
-              </dd>
-            </div>
-            <SessionRouteSummary session={s} />
-            <SessionQueueDeadline status={s.status} queueExpiresAt={s.queueExpiresAt} />
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
-              <dd className="font-mono text-sm">
-                {s.repositoryId ? (
-                  repoHrefBase ? (
-                    <Link
-                      href={`${repoHrefBase}/${encodeURIComponent(s.repositoryId)}`}
-                      className="hover:underline"
-                    >
-                      {s.repositoryId}
-                    </Link>
-                  ) : (
-                    s.repositoryId
-                  )
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Ref</dt>
-              <dd className="font-mono text-sm">{s.ref ?? "—"}</dd>
-            </div>
-            {s.hostId ? (
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">Host</dt>
-                <dd className="font-mono text-sm">
-                  {hostHrefBase ? (
-                    <Link
-                      href={`${hostHrefBase}/${encodeURIComponent(s.hostId)}`}
-                      className="hover:underline"
-                    >
-                      {s.hostId}
-                    </Link>
-                  ) : (
-                    s.hostId
-                  )}
-                </dd>
-              </div>
-            ) : null}
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
-              <dd className="font-mono text-sm" data-pw="session-detail-worktree">
-                {s.worktreeId ? (
-                  worktreeHrefBase ? (
-                    <Link
-                      href={`${worktreeHrefBase}/${encodeURIComponent(s.worktreeId)}`}
-                      className="hover:underline"
-                    >
-                      {s.worktreeId}
-                    </Link>
-                  ) : (
-                    s.worktreeId
-                  )
-                ) : s.type === "scheduled" ? (
-                  "Main checkout"
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Source</dt>
-              <dd className="text-sm" data-pw="session-detail-source">
-                <SessionSourceBadge source={s.source} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Priority</dt>
-              <dd className="text-sm" data-pw="session-detail-priority">
-                {s.priority ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Concurrency ID</dt>
-              <dd className="font-mono text-sm" data-pw="session-detail-concurrency-id">
-                {s.concurrencyId ?? "—"}
-              </dd>
-            </div>
-            <SessionTimeoutDetail
-              status={s.status}
-              ackReceivedAt={s.ackReceivedAt}
-              timeout={s.timeout}
-            />
-            <SessionDetailTiming
-              createdAt={s.createdAt}
-              startedAt={s.startedAt}
-              completedAt={s.completedAt}
-              status={s.status}
-            />
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Exit code</dt>
-              <dd className="text-sm">
-                <SessionExitCode exitCode={s.exitCode} />
-              </dd>
-            </div>
-          </dl>
-          <section aria-labelledby="session-detail-prompt-heading" data-pw="session-detail-prompt">
-            <h3
-              id="session-detail-prompt-heading"
-              className="text-xs uppercase text-muted-foreground"
-            >
-              Prompt
-            </h3>
-            <pre
-              className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-4 font-sans text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              data-pw="session-detail-prompt-content"
-              tabIndex={0}
-            >
-              {s.prompt ?? "—"}
-            </pre>
-          </section>
-          <SessionExecutionSummary
-            status={s.status}
-            resolvedArgv={s.resolvedArgv}
-            errorCode={s.errorCode}
-            errorMessage={s.errorMessage}
-            resumeFallback={s.resumeFallback}
-            resumedFromSessionId={s.resumedFromSessionId}
-          />
-        </CardContent>
-      </Card>
+      <SessionStatusBar session={s} />
+      {notices}
+      <SessionExecutionSummary
+        status={s.status}
+        errorCode={s.errorCode}
+        errorMessage={s.errorMessage}
+        resumeFallback={s.resumeFallback}
+        resumedFromSessionId={s.resumedFromSessionId}
+      />
 
-      {children}
+      <TabPanels
+        value={tab}
+        onValueChange={(value) => {
+          const next = resolveSessionDetailTab(value);
+          setTab(next);
+          persistSessionDetailTab(next);
+        }}
+        data-pw="session-detail-tabs"
+      >
+        <TabList>
+          <TabTrigger value="logs">Logs</TabTrigger>
+          <TabTrigger value="details">Details</TabTrigger>
+          <TabTrigger value="prompts">Prompts</TabTrigger>
+        </TabList>
+        <TabContent value="logs" forceMount data-pw="session-tab-logs">
+          {children}
+        </TabContent>
+        <TabContent value="details" data-pw="session-tab-details">
+          <SessionDetailsCard
+            session={s}
+            detailsExtra={detailsExtra}
+            repoHrefBase={repoHrefBase}
+            hostHrefBase={hostHrefBase}
+            worktreeHrefBase={worktreeHrefBase}
+          />
+        </TabContent>
+        <TabContent value="prompts" data-pw="session-tab-prompts">
+          <SessionPromptPanel prompt={s.prompt} resolvedArgv={s.resolvedArgv} />
+        </TabContent>
+      </TabPanels>
     </div>
   );
 }

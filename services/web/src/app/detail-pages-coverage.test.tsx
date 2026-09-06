@@ -38,7 +38,12 @@ describe("control detail routes previously omitted from coverage include", () =>
       },
       "/api/v1/hosts": { items: [{ hostId: "host-1", online: true }] },
     });
-    const html = await renderPage(SessionDetailPage({ params: Promise.resolve({ id: "s-1" }) }));
+    const html = await renderPage(
+      SessionDetailPage({
+        params: Promise.resolve({ id: "s-1" }),
+        searchParams: Promise.resolve({ tab: "details" }),
+      }),
+    );
     expect(html).toContain('data-pw="page-session-detail"');
     expect(html).toContain('data-pw="session-usage-input"');
 
@@ -70,7 +75,10 @@ describe("control detail routes previously omitted from coverage include", () =>
       },
     });
     let html = await renderPage(
-      SessionDetailPage({ params: Promise.resolve({ id: "s-optional" }) }),
+      SessionDetailPage({
+        params: Promise.resolve({ id: "s-optional" }),
+        searchParams: Promise.resolve({ tab: "details" }),
+      }),
     );
     expect(html).toContain("No CLI usage reported.");
     expect(html).toContain('data-pw="session-cancel"');
@@ -90,7 +98,12 @@ describe("control detail routes previously omitted from coverage include", () =>
         kind: "user",
       },
     });
-    html = await renderPage(SessionDetailPage({ params: Promise.resolve({ id: "s-terminal" }) }));
+    html = await renderPage(
+      SessionDetailPage({
+        params: Promise.resolve({ id: "s-terminal" }),
+        searchParams: Promise.resolve({ tab: ["details"] }),
+      }),
+    );
     expect(html).toContain("No CLI usage reported.");
   });
 

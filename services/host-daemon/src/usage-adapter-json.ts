@@ -11,16 +11,17 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 /**
- * Parse the last complete top-level JSON object from a bounded PTY capture.
+ * Parse every complete top-level JSON object from a bounded PTY capture, in
+ * the order they appear.
  *
  * Provider wrappers may write terminal control sequences or diagnostics before
  * and after their JSON result. This scanner only extracts balanced objects,
  * respecting quoted braces and escapes; provider-specific callers still have
- * to validate the terminal envelope before any telemetry is accepted.
+ * to validate each candidate envelope before any telemetry is accepted.
  */
-export function jsonObject(output: string): JsonRecord | undefined {
-  if (!output || Buffer.byteLength(output, "utf8") > MAX_JSON_ENVELOPE_BYTES) return undefined;
-  let result: JsonRecord | undefined;
+export function jsonObjects(output: string): JsonRecord[] {
+  if (!output || Buffer.byteLength(output, "utf8") > MAX_JSON_ENVELOPE_BYTES) return [];
+  const results: JsonRecord[] = [];
   let candidates = 0;
   for (
     let start = 0;
@@ -33,14 +34,25 @@ export function jsonObject(output: string): JsonRecord | undefined {
     candidates += 1;
     try {
       const parsed = JSON.parse(output.slice(start, end + 1)) as unknown;
-      if (isRecord(parsed)) result = parsed;
+      if (isRecord(parsed)) results.push(parsed);
       start = end;
     } catch {
       // This may have been a brace in a diagnostic. Continue from the next
       // character so a later standalone provider envelope remains discoverable.
     }
   }
-  return result;
+  return results;
+}
+
+/**
+ * The last complete top-level JSON object from a bounded PTY capture — the
+ * common case where a single provider envelope is expected. Callers that must
+ * not let a trailing diagnostic re-print shadow an earlier real envelope (see
+ * grok's usage-limit handling in usage-adapter.ts) should use `jsonObjects`
+ * directly and validate each candidate instead.
+ */
+export function jsonObject(output: string): JsonRecord | undefined {
+  return jsonObjects(output).at(-1);
 }
 
 function objectEnd(value: string, start: number): number | undefined {

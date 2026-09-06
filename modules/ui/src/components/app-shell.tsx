@@ -13,7 +13,6 @@ export type { NavGroup, NavItem };
 export type AppShellProps = {
   title: string;
   subtitle?: string;
-  titleTip?: string;
   subtitleTip?: string;
   /** Rendered in a slim secondary row below title+nav (e.g. theme toggle, shortcuts, logout). */
   titleBadge?: React.ReactNode;
@@ -36,7 +35,6 @@ export type AppShellProps = {
 export function AppShell({
   title,
   subtitle,
-  titleTip,
   subtitleTip,
   titleBadge,
   nav,
@@ -48,13 +46,7 @@ export function AppShell({
 }: AppShellProps) {
   const groups = React.useMemo(() => navGroups(nav), [nav]);
   const activeHref = activeNavHref(pathname, groups, extraActiveHrefs);
-  const titleEl = titleTip ? (
-    <WithTooltip tip={titleTip}>
-      <h1 className="inline-block cursor-help text-lg font-semibold tracking-tight">{title}</h1>
-    </WithTooltip>
-  ) : (
-    <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-  );
+  const titleEl = <h1 className="text-lg font-semibold tracking-tight">{title}</h1>;
 
   return (
     <TooltipProvider>

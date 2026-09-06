@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { SectionError, SessionTerminalViewer, type SessionSummary } from "@auto-harness/ui";
+import {
+  resolveSessionDetailTab,
+  SectionError,
+  SessionTerminalViewer,
+  type SessionSummary,
+} from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
@@ -14,8 +19,15 @@ type LogEntry = {
   timestamp: string;
 };
 
-export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SessionDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const tab = resolveSessionDetailTab((await searchParams)?.tab);
 
   let session: SessionSummary | undefined;
   let sessionError: string | null = null;
@@ -63,15 +75,12 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div data-pw="page-session-detail">
-      <SessionLiveDetail initialSession={session}>
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Logs</h3>
-          {logsError ? (
-            <SectionError resource="session logs" message={logsError} selector="session-logs" />
-          ) : (
-            <SessionTerminalViewer sessionId={id} items={logs} />
-          )}
-        </div>
+      <SessionLiveDetail initialSession={session} defaultTab={tab}>
+        {logsError ? (
+          <SectionError resource="session logs" message={logsError} selector="session-logs" />
+        ) : (
+          <SessionTerminalViewer sessionId={id} items={logs} />
+        )}
       </SessionLiveDetail>
     </div>
   );

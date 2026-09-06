@@ -94,7 +94,10 @@ test.describe("live session logs", () => {
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "history from the real host socket",
       );
-      await expect(page.getByTestId("session-logs").locator(".xterm-screen")).toBeVisible();
+      await expect(page.getByTestId("session-log-line-1")).toContainText(
+        "history from the real host socket",
+      );
+      await expect(page.getByTestId("session-terminal")).toHaveAttribute("data-view", "readable");
 
       await page.evaluate(() => {
         (window as typeof window & { testViewerSocket?: WebSocket }).testViewerSocket?.close(4001);
@@ -147,11 +150,12 @@ test.describe("live session logs", () => {
       );
 
       await page.getByTestId("session-logs").click();
+      await page.getByTestId("session-logs").focus();
       await page.keyboard.press("Control+f");
       await expect(page.getByTestId("session-terminal-search")).toBeFocused();
       await page.getByTestId("session-terminal-search").fill("ANSI red output");
       await page.getByTestId("session-terminal-search-next").click();
-      await expect(page.getByTestId("session-terminal-search-result")).toHaveText("Match found");
+      await expect(page.getByTestId("session-terminal-search-result")).toHaveText("1 of 1");
       await page.getByTestId("session-terminal-search-previous").click();
 
       await expect(page.getByTestId("session-terminal-font-size")).toHaveText("13px");
@@ -167,9 +171,31 @@ test.describe("live session logs", () => {
         "false",
       );
 
+      host.socket.send(
+        logFrame(
+          session.id,
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "agent_message", text: "pretty json body" },
+          }),
+          6,
+          "stdout",
+          assignment.attemptId,
+        ),
+      );
+      await expect(page.getByTestId("session-log-line-6")).toContainText(
+        '"type": "item.completed"',
+      );
+      await page.getByTestId("session-log-line-link-6").click();
+      expect(new URL(page.url()).hash).toBe("#L6");
+
       const download = page.waitForEvent("download");
       await page.getByTestId("session-terminal-download").click();
       expect((await download).suggestedFilename()).toBe(`${session.id}.txt`);
+
+      await page.getByTestId("session-log-raw").click();
+      await expect(page.getByTestId("session-terminal")).toHaveAttribute("data-view", "raw");
+      await expect(page.getByTestId("session-logs").locator(".xterm-screen")).toBeVisible();
 
       host.socket.send(
         JSON.stringify({

@@ -69,4 +69,18 @@ describe("SessionQueueDeadline", () => {
     expect(container.textContent).toContain("Deadline reached");
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("renders a compact labeled strip and can omit its test id", () => {
+    const now = Date.parse("2026-08-14T12:00:00.000Z");
+    const container = render({
+      status: "queued",
+      queueExpiresAt: "2026-08-14T12:00:05.000Z",
+      initialNow: now,
+      compact: true,
+      pw: null,
+    });
+    expect(container.querySelector("[data-pw]")).toBeNull();
+    expect(container.textContent).toContain("Queue");
+    expect(container.textContent).toContain("5s remaining");
+  });
 });

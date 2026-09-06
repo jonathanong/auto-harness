@@ -39,6 +39,8 @@ export function SessionLiveDetail({
   initialSession,
   initialHosts,
   children,
+  detailsExtra,
+  defaultTab,
   canCancel = true,
   canResume = true,
   canClone = true,
@@ -47,6 +49,8 @@ export function SessionLiveDetail({
   initialSession: SessionSummary;
   initialHosts: Host[];
   children?: ReactNode;
+  detailsExtra?: ReactNode;
+  defaultTab?: string;
   canCancel?: boolean;
   canResume?: boolean;
   canClone?: boolean;
@@ -105,21 +109,27 @@ export function SessionLiveDetail({
       repoHrefBase="/repositories"
       hostHrefBase="/hosts"
       worktreeHrefBase="/worktrees"
+      detailsExtra={detailsExtra}
+      defaultTab={defaultTab}
+      notices={
+        <>
+          {offline ? (
+            <Alert variant="warning" className="p-4" data-pw="session-agent-offline" role="alert">
+              <p className="font-medium">Agent disconnected — session may be stale.</p>
+              <p className="mt-1">
+                Force-cancel updates the control-plane session, but cannot confirm that the remote
+                process stopped while the agent is offline.
+              </p>
+            </Alert>
+          ) : null}
+          {refreshFailed ? (
+            <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
+              Session and agent status refresh paused; retrying…
+            </p>
+          ) : null}
+        </>
+      }
     >
-      {offline ? (
-        <Alert variant="warning" className="p-4" data-pw="session-agent-offline" role="alert">
-          <p className="font-medium">Agent disconnected — session may be stale.</p>
-          <p className="mt-1">
-            Force-cancel updates the control-plane session, but cannot confirm that the remote
-            process stopped while the agent is offline.
-          </p>
-        </Alert>
-      ) : null}
-      {refreshFailed ? (
-        <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">
-          Session and agent status refresh paused; retrying…
-        </p>
-      ) : null}
       {children}
     </SessionDetail>
   );

@@ -153,7 +153,6 @@ export function ControlShell({
     <AppShell
       pw="control-shell"
       title="Control plane"
-      titleTip="Org-wide control plane: sessions, schedules, catalog, and host fleet"
       subtitle="Org-wide sessions, schedules, and host fleet"
       subtitleTip="Hosts self-register over the API/WebSocket; attach repositories on the Hosts page"
       titleBadge={

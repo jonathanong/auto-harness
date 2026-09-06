@@ -29,12 +29,20 @@ function formatRemaining(milliseconds: number): string {
   return `${seconds}s remaining`;
 }
 
+type SessionQueueDeadlineViewProps = SessionQueueDeadlineProps & {
+  compact?: boolean | undefined;
+  /** Pass `null` when a sibling already owns `session-detail-queue-deadline`. */
+  pw?: string | null | undefined;
+};
+
 /** Queued-session deadline with a hydration-safe, bounded live countdown. */
 export function SessionQueueDeadline({
   status,
   queueExpiresAt,
   initialNow,
-}: SessionQueueDeadlineProps) {
+  compact = false,
+  pw = "session-detail-queue-deadline",
+}: SessionQueueDeadlineViewProps) {
   const expiresAt = parseCanonicalDeadline(queueExpiresAt);
   const active = status === "queued" && Number.isFinite(expiresAt);
   const [now, setNow] = useState<number | null>(initialNow ?? null);
@@ -56,30 +64,42 @@ export function SessionQueueDeadline({
 
   if (!active || !queueExpiresAt) return null;
   const remaining = now === null ? null : expiresAt - now;
+  const remainingLabel =
+    remaining === null ? "" : remaining <= 0 ? "Deadline reached" : formatRemaining(remaining);
+  const stamp = (
+    <>
+      <time
+        dateTime={queueExpiresAt}
+        title={new Date(expiresAt).toISOString()}
+        aria-label={`Queue deadline ${new Date(expiresAt).toISOString()}`}
+      >
+        {new Date(expiresAt).toLocaleString("en-US", {
+          dateStyle: "medium",
+          timeStyle: "medium",
+          timeZone: "UTC",
+        })}
+      </time>{" "}
+      <span className="tabular-nums text-muted-foreground" suppressHydrationWarning>
+        {remainingLabel}
+      </span>
+    </>
+  );
+  if (compact) {
+    return (
+      <div
+        className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 border-border py-0.5 not-first:border-l not-first:pl-4"
+        data-pw={pw ?? undefined}
+      >
+        <dt className="text-xs uppercase text-muted-foreground">Queue</dt>
+        <dd className="text-sm">{stamp}</dd>
+      </div>
+    );
+  }
 
   return (
-    <div data-pw="session-detail-queue-deadline">
+    <div data-pw={pw ?? undefined}>
       <dt className="text-xs uppercase text-muted-foreground">Queue deadline</dt>
-      <dd className="text-sm">
-        <time
-          dateTime={queueExpiresAt}
-          title={new Date(expiresAt).toISOString()}
-          aria-label={`Queue deadline ${new Date(expiresAt).toISOString()}`}
-        >
-          {new Date(expiresAt).toLocaleString("en-US", {
-            dateStyle: "medium",
-            timeStyle: "medium",
-            timeZone: "UTC",
-          })}
-        </time>{" "}
-        <span className="tabular-nums text-muted-foreground" suppressHydrationWarning>
-          {remaining === null
-            ? ""
-            : remaining <= 0
-              ? "Deadline reached"
-              : formatRemaining(remaining)}
-        </span>
-      </dd>
+      <dd className="text-sm">{stamp}</dd>
     </div>
   );
 }
