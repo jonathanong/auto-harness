@@ -1,5 +1,5 @@
 import type { ConnectionRecord } from "./db/plane-storage-types.ts";
-import type { ControlPlaneState } from "./control-plane-state.ts";
+import { queueWrite, type ControlPlaneState } from "./control-plane-state.ts";
 
 export type UserSessionRecord = {
   id: string;
@@ -47,8 +47,24 @@ export function presentUserSessions(connections: Iterable<ConnectionRecord>): Us
     .toSorted((a, b) => a.username.localeCompare(b.username) || a.id.localeCompare(b.id));
 }
 
+function isFreshViewer(connection: ConnectionRecord, nowMs: number, staleMs: number): boolean {
+  if (connection.type !== "client") return false;
+  const at = Date.parse(connection.lastHeartbeatAt);
+  return Number.isFinite(at) && nowMs - at <= staleMs;
+}
+
+function liveViewerConnections(
+  connections: Iterable<ConnectionRecord>,
+  state: ControlPlaneState,
+): ConnectionRecord[] {
+  const nowMs = Date.parse(state.now());
+  return [...connections].filter((connection) =>
+    isFreshViewer(connection, nowMs, state.heartbeatStaleMs),
+  );
+}
+
 export function listUserSessions(state: ControlPlaneState): UserSessionRecord[] {
-  return presentUserSessions(state.connections.values());
+  return presentUserSessions(liveViewerConnections(state.connections.values(), state));
 }
 
 export async function listUserSessionsDurable(
@@ -56,7 +72,7 @@ export async function listUserSessionsDurable(
 ): Promise<UserSessionRecord[]> {
   const storage = state.storage;
   if (storage && typeof storage.listConnections === "function") {
-    return presentUserSessions(await storage.listConnections());
+    return presentUserSessions(liveViewerConnections(await storage.listConnections(), state));
   }
   return listUserSessions(state);
 }
@@ -79,16 +95,18 @@ export function filterUserSessionsForPrincipal(
 
 export function putViewerConnection(state: ControlPlaneState, connection: ConnectionRecord): void {
   state.connections.set(connection.connectionId, { ...connection });
-  const storage = state.storage;
-  if (storage && typeof storage.putConnection === "function") {
-    void storage.putConnection(connection);
-  }
+  queueWrite(state, async (storage) => {
+    if (storage && typeof storage.putConnection === "function") {
+      await storage.putConnection(connection);
+    }
+  });
 }
 
 export function deleteViewerConnection(state: ControlPlaneState, connectionId: string): void {
   state.connections.delete(connectionId);
-  const storage = state.storage;
-  if (storage && typeof storage.deleteConnection === "function") {
-    void storage.deleteConnection(connectionId);
-  }
+  queueWrite(state, async (storage) => {
+    if (storage && typeof storage.deleteConnection === "function") {
+      await storage.deleteConnection(connectionId);
+    }
+  });
 }

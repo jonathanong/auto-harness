@@ -6,6 +6,7 @@ import type { Duplex } from "node:stream";
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane, ConnectionRecord, LogRecord } from "./control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
 import { deleteViewerConnection, putViewerConnection } from "./control-plane-user-sessions.ts";
 import {
   authenticateViewer,
@@ -99,11 +100,13 @@ export function attachViewerWsHub(
     }
   };
 
+  const persistBySocket = new Map<WebSocket, () => void>();
   let polling = false;
   const poll = async (): Promise<void> => {
     if (polling) return;
     polling = true;
     try {
+      for (const persist of persistBySocket.values()) persist();
       for (const [socket, requested] of subscriptions) {
         for (const subscription of requested.values()) {
           try {
@@ -142,6 +145,7 @@ export function attachViewerWsHub(
     subscriptions.set(socket, requested);
     const connectionId = randomUUID();
     const persist = (): void => {
+      if (!subscriptions.has(socket)) return;
       const now = new Date().toISOString();
       const existing = plane.state.connections.get(connectionId);
       const viewerPrincipal = viewerConnectionPrincipal(principal);
@@ -163,6 +167,7 @@ export function attachViewerWsHub(
       });
     };
     persist();
+    persistBySocket.set(socket, persist);
     let messageTail: Promise<void> = Promise.resolve();
     socket.on("message", (raw) => {
       const message = parseViewerMessage(raw);
@@ -215,6 +220,7 @@ export function attachViewerWsHub(
         .catch(() => socket.close(1011, "viewer subscription failed"));
     });
     socket.on("close", () => {
+      persistBySocket.delete(socket);
       subscriptions.delete(socket);
       deleteViewerConnection(plane.state, connectionId);
     });
@@ -247,9 +253,11 @@ export function attachViewerWsHub(
         plane.state.onLogCommitted = previousOnLogCommitted;
       }
       clearInterval(pollTimer);
+      persistBySocket.clear();
       for (const socket of subscriptions.keys()) socket.close();
       subscriptions.clear();
       wss.close();
+      void settleStorage(plane.state);
     },
   };
 }

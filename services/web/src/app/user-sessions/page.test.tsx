@@ -36,6 +36,16 @@ describe("user sessions route", () => {
             lastHeartbeatAt: "2026-09-06T00:02:00.000Z",
             subscriptions: [],
           },
+          {
+            id: "viewer-3",
+            userId: "user:unknown",
+            username: "unknown-role",
+            role: "not-a-role",
+            kind: "user",
+            connectedAt: "2026-09-06T00:03:00.000Z",
+            lastHeartbeatAt: "2026-09-06T00:03:00.000Z",
+            subscriptions: [],
+          },
         ],
       },
     });
@@ -53,6 +63,8 @@ describe("user sessions route", () => {
     expect(html).toContain('data-pw="user-session-watch-viewer-1-sess/one"');
     expect(html).toContain('data-pw="user-session-row-viewer-2"');
     expect(html).toContain('data-pw="user-session-role-viewer-2">—');
+    expect(html).toContain('data-pw="user-session-row-viewer-3"');
+    expect(html).toContain('data-pw="user-session-role-viewer-3">—');
     expect(html).toContain('data-pw="user-session-watching-viewer-2"');
     expect(html).not.toContain('data-pw="user-sessions-empty"');
   });

@@ -46,7 +46,7 @@ const alice = {
 
 describe("user session listing", () => {
   it("lists browser viewer sockets and omits host daemons", () => {
-    const plane = new ControlPlane();
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:02.000Z" });
     plane.registerHost({ hostId: "mac-studio", worktrees: [] });
     plane.state.connections.set(alice.connectionId, alice);
     plane.state.connections.set(viewer.connectionId, viewer);
@@ -65,6 +65,7 @@ describe("user session listing", () => {
 
   it("reads durable viewer sockets from storage instead of the host connection cache", async () => {
     const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:01.000Z",
       storage: {
         listConnections: async () => [
           {
@@ -84,7 +85,7 @@ describe("user session listing", () => {
   });
 
   it("falls back to the in-memory map when storage cannot list sockets", async () => {
-    const state = createControlPlaneState();
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:00:01.000Z" });
     state.connections.set(alice.connectionId, alice);
     await expect(listUserSessionsDurable(state)).resolves.toEqual([
       expect.objectContaining({ id: "viewer-a" }),
@@ -145,7 +146,26 @@ describe("user session listing", () => {
     ).toEqual([]);
   });
 
-  it("persists and deletes viewer sockets when storage adapters exist", () => {
+  it("omits viewer sockets whose last heartbeat is stale", () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:02:00.000Z",
+      heartbeatStaleMs: 60_000,
+    });
+    plane.state.connections.set(alice.connectionId, alice);
+    plane.state.connections.set(viewer.connectionId, {
+      ...viewer,
+      lastHeartbeatAt: "2026-01-01T00:01:30.000Z",
+    });
+    expect(listUserSessions(plane.state).map((item) => item.id)).toEqual(["viewer-b"]);
+    plane.state.connections.set("stale-unparsed", {
+      ...alice,
+      connectionId: "stale-unparsed",
+      lastHeartbeatAt: "not-a-date",
+    });
+    expect(listUserSessions(plane.state).map((item) => item.id)).toEqual(["viewer-b"]);
+  });
+
+  it("persists and deletes viewer sockets when storage adapters exist", async () => {
     const put: ConnectionRecord[] = [];
     const removed: string[] = [];
     const state = createControlPlaneState({
@@ -160,9 +180,11 @@ describe("user session listing", () => {
     });
     putViewerConnection(state, alice);
     expect(state.connections.get("viewer-a")?.type).toBe("client");
+    await state.writeTail;
     expect(put).toEqual([alice]);
     deleteViewerConnection(state, "viewer-a");
     expect(state.connections.has("viewer-a")).toBe(false);
+    await state.writeTail;
     expect(removed).toEqual(["viewer-a"]);
   });
 });
