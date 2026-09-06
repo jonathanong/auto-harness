@@ -307,6 +307,11 @@ export function listHosts(state: ControlPlaneState): Array<{
     byHost.set(wt.hostId, cur);
   }
   for (const conn of state.connections.values()) {
+    // Defense in depth: a viewer WebSocket ("client") shares this same map keyed
+    // by hostId-shaped principal ids (e.g. "user:alice"). Callers populating
+    // `state.connections` already filter to host connections; this guards
+    // against a future writer reintroducing the same class of bug silently.
+    if (conn.type !== "host") continue;
     const cur = byHost.get(conn.hostId) ?? {
       hostId: conn.hostId,
       online: true,
@@ -914,8 +919,14 @@ export async function heartbeatDurable(
   if (!state.storage) {
     return heartbeat(state, hostId, at);
   }
-  const connectionId = state.hostConnection.get(hostId);
-  if (!connectionId || !state.connections.has(connectionId)) {
+  // A warm Lambda's local cache can lag the durable lease owner (a replacement
+  // registered through a different warm container, or this container just
+  // cold-started). The fenced write below is authoritative regardless, so fall
+  // back to the durable lock the same way `drainHostDurable` already does
+  // rather than failing a healthy heartbeat on a stale local cache miss.
+  const connectionId =
+    state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
+  if (!connectionId) {
     return false;
   }
   const nextAt = at ?? state.now();
@@ -923,6 +934,14 @@ export async function heartbeatDurable(
   if (!updated) {
     return false;
   }
+  // Deliberately does not backfill `state.hostConnection`/`state.connections`
+  // when the durable lock resolved a connectionId this process's cache never
+  // had: several scheduling gates (e.g. `hostGitReady`, `hostHasAssignmentCapacity`
+  // in control-plane-provider-account-leases.ts) key off `state.connections`
+  // for that connectionId, not merely `hostConnection` presence, and a
+  // half-populated cache entry could feed those inconsistently until the next
+  // full refresh. `heartbeatDurable`'s own fenced write is already the source
+  // of truth for this call's caller.
   const conn = state.connections.get(connectionId);
   if (conn) {
     state.connections.set(connectionId, { ...conn, lastHeartbeatAt: nextAt });

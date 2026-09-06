@@ -179,7 +179,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
   state.hostConnection.clear();
   state.drainingHosts.clear();
   for (const connection of connections) {
-    if (connection.registered === false) continue;
+    if (connection.registered === false || connection.type !== "host") continue;
     state.connections.set(connection.connectionId, { ...connection });
     state.hostConnection.set(connection.hostId, connection.connectionId);
   }

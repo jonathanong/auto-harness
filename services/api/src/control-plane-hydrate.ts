@@ -142,7 +142,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   }
   for (const worktree of worktrees) state.worktrees.set(worktree.id, worktree);
   for (const record of connections) {
-    if (record.registered === false) continue;
+    if (record.registered === false || record.type !== "host") continue;
     const connection = {
       ...record,
       capabilities: normalizeHostCapabilities(record.capabilities),

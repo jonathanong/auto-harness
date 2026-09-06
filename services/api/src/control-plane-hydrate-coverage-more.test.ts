@@ -30,6 +30,7 @@ describe("durable hydration boundary records", () => {
         listConnections: async () => [
           { connectionId: "ignored", type: "host", hostId: "ignored", registered: false },
           { connectionId: "legacy", type: "host", hostId: "host", capabilities: [] },
+          { connectionId: "viewer-conn", type: "client", hostId: "user:alice" },
         ],
         listSchedules: async () => [{ id: "schedule", concurrencyId: "   " }],
         listRepositories: async () => [],
@@ -51,6 +52,8 @@ describe("durable hydration boundary records", () => {
       daemonVersion: "legacy/unknown",
     });
     expect(state.hostConnection.has("ignored")).toBe(false);
+    expect(state.connections.has("viewer-conn")).toBe(false);
+    expect(state.hostConnection.has("user:alice")).toBe(false);
     expect(state.schedules.get("schedule")?.concurrencyId).toBe("schedule-schedule");
     expect(state.providerAccounts.get("account")?.maxConcurrentSessions).toBeGreaterThan(0);
   });

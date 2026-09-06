@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- REST, WebSocket, and cron Lambda lifecycles share one runtime. */
 import {
   ApiGatewayManagementApiClient,
+  DeleteConnectionCommand,
   GoneException,
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
@@ -205,6 +206,21 @@ async function postToHost(
     if (message.type === "session:assign") emitAssignmentFailure();
     throw error;
   }
+}
+
+/**
+ * A daemon whose lease was released (stale-heartbeat reclaim, disconnect, or a
+ * superseding registration) otherwise keeps its physical WebSocket open forever:
+ * `releaseHostConnection` only deletes DynamoDB rows, and a rejected `$default`
+ * frame's status code is never delivered back to the client over the socket. Force
+ * closing here is what actually notifies the daemon — it trips the daemon's own
+ * `onDisconnected`/reconnect path, which otherwise has no way to learn its lease
+ * is gone and keeps heartbeating into the void. Best-effort: a failure here just
+ * means this stale connection sits until API Gateway's own idle/max-duration limit
+ * reaps it, no worse than before this call existed.
+ */
+function forceCloseStaleConnection(management: ManagementClient, connectionId: string): void {
+  void management.send(new DeleteConnectionCommand({ ConnectionId: connectionId })).catch(() => {});
 }
 
 /** Create the AWS event adapters without performing any deployment. */
@@ -457,13 +473,25 @@ export async function createLambdaRuntime(
         }
         const viewerStatus = await viewerSockets.message(connectionId, event.body ?? "");
         if (viewerStatus !== undefined) return { statusCode: viewerStatus };
-        if (!authenticated) return { statusCode: 401 };
+        if (!authenticated) {
+          forceCloseStaleConnection(management, connectionId);
+          return { statusCode: 401 };
+        }
         if (authenticated.type !== "host") return { statusCode: 403 };
         const message = parseHostMessage(event.body ?? "", {
           protocolVersion: authenticated.protocolVersion ?? 0,
         });
-        if (!message || !validHostMessage(message, authenticated.hostId))
+        // A parse failure or a hostId that doesn't match this connection's own
+        // authenticated lease means the *sender* is misbehaving (or misconfigured
+        // with the wrong HARNESS_HOST_ID for its API key) — not that the lease
+        // itself is gone. Force-closing here would be actively harmful: the
+        // daemon's transport resends its last host:register verbatim on every
+        // reconnect (services/host-daemon/src/ws-transport.ts), so a persistent
+        // hostId mismatch would force-close, reconnect, and immediately resend
+        // the same mismatched register, forever. Leave this a plain rejection.
+        if (!message || !validHostMessage(message, authenticated.hostId)) {
           return { statusCode: 403 };
+        }
         const result =
           message.type === "host:register" && authenticated.registered === false
             ? await created.plane.handlePendingHostMessageDurable(message, connectionId)
