@@ -27,7 +27,9 @@ export default async function NewSessionPage({
   const [targetResult, repositoryResult, worktreeResult, sourceResult] = await Promise.allSettled([
     apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
     apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
-    apiGet<{ items: Array<{ online?: boolean; labels?: string[] }> }>("/api/v1/worktrees?limit=100"),
+    apiGet<{ items: Array<{ online?: boolean; labels?: string[] }> }>(
+      "/api/v1/worktrees?limit=100",
+    ),
     requestedCloneId
       ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
       : Promise.resolve(null),
