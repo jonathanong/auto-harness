@@ -41,6 +41,27 @@ describe("getHostDurable", () => {
     await expect(plane.getHostDurable("host-1")).resolves.toMatchObject({ hostId: "host-1" });
   });
 
+  it("skips connection hydration when the host lock is empty", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        getHostInventory: async () => ({
+          hostId: "host-3",
+          repositories: [],
+          providerAccounts: [],
+          updatedAt: "t",
+        }),
+        getHostLock: async () => null,
+        getConnection: async () => {
+          throw new Error("should not load a connection without a lock");
+        },
+      } as never,
+    });
+    await expect(plane.getHostDurable("host-3")).resolves.toMatchObject({
+      hostId: "host-3",
+      online: false,
+    });
+  });
+
   it("falls back to the in-memory fleet when storage has no keyed host reads", async () => {
     const plane = new ControlPlane({ storage: {} as never });
     plane.state.hostInventories.set("host-2", {
