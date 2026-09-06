@@ -23,7 +23,7 @@ overrides:
 
 patchedDependencies:
   node-pty@1.1.0:
-    hash: 25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1
+    hash: a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e
     path: patches/node-pty@1.1.0.patch
 
 importers:
@@ -208,7 +208,7 @@ importers:
         version: link:../../modules/shared
       node-pty:
         specifier: ^1.1.0
-        version: 1.1.0(patch_hash=25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1)
+        version: 1.1.0(patch_hash=a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e)
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -5371,7 +5371,7 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-pty@1.1.0(patch_hash=25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1):
+  node-pty@1.1.0(patch_hash=a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e):
     dependencies:
       node-addon-api: 7.1.1
 

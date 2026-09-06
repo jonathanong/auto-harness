@@ -118,7 +118,12 @@ EOF
   fi
 
   pnpm install --frozen-lockfile --ignore-scripts
-  pnpm rebuild node-pty
+  # node-pty's prebuild.js exits 0 (skipping the `|| node-gyp rebuild` fallback)
+  # whenever a prebuild for this platform/ABI already exists, so a bare rebuild
+  # silently keeps the bundled prebuilt binary and never applies our
+  # patches/node-pty@1.1.0.patch fd-leak fix to src/unix/pty.cc. Force a build
+  # from source so the patched .cc is what actually ends up on the host.
+  npm_config_build_from_source=true pnpm rebuild node-pty
 
   case "$platform" in
     Darwin)
