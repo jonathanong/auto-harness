@@ -59,11 +59,10 @@ describe("application navigation coverage", () => {
 describe("AppShell coverage", () => {
   const nav = [{ href: "/", label: "Home" }];
 
-  it("renders optional title and subtitle tooltips with a badge", () => {
+  it("renders a plain, tooltip-free title alongside a tipped subtitle and a badge", () => {
     const html = renderToStaticMarkup(
       <AppShell
         title="Harness"
-        titleTip="Control plane"
         subtitle="Operations"
         subtitleTip="Current workspace"
         titleBadge={<span>Ready</span>}
@@ -75,6 +74,10 @@ describe("AppShell coverage", () => {
         Content
       </AppShell>,
     );
+    expect(html).toContain('data-pw="app-title"');
+    expect(html).toContain('<h1 class="text-lg font-semibold tracking-tight">Harness</h1>');
+    // The subtitle keeps its own tooltip/cursor — only the title (a plain link) drops it.
+    expect(html).toContain("cursor-help");
     expect(html).toContain('data-state="closed"');
     expect(html).toContain("Ready");
     expect(html).toContain("custom");

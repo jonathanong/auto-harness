@@ -18,7 +18,8 @@ Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktree
 **Settings** — one dropdown per group. Header and main use the viewport width with horizontal
 padding (dialogs stay `max-w-lg`). **New session** is a button on the slim secondary row with
 the theme toggle, keyboard-shortcuts button, and logout (only when `HARNESS_AUTH_MODE=required`),
-next to the page subtitle, not inside Operate. The host pane's own shell reuses the same chrome
+next to the page subtitle, not inside Operate — it is not repeated in any page header. The host
+pane's own shell reuses the same chrome
 with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane
 is **debug-only** and has no login form — a visible badge and subtitle tell operators to use the
 control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or a 401 from
@@ -65,7 +66,6 @@ The dashboard is the landing page and shows a high-level overview:
 - **Queue depth** — number of sessions waiting for a worktree
 - **Connected agents** — agent count with status indicators (online/offline)
 - **Worktree utilization** — busy vs idle across all agents
-- **New Session** button — opens the session creation form
 
 The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five seconds. Agent,
 session, and utilization changes appear without a page reload; a paused banner retains the last
@@ -294,7 +294,7 @@ Each action exposes its pending state with a descriptive label (`Resuming…`, `
 
 ## Create Session
 
-The "New Session" form can be opened from the dashboard or the sessions list page. Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
+The "New Session" form can be opened from the **New session** button on the header's secondary row — present on every non-login page for a principal who can author sessions (hidden otherwise). Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
 
 ### Form Fields
 

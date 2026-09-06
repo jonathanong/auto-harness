@@ -18,6 +18,7 @@ describe("primary control-plane empty states", () => {
       "/api/v1/sessions?status=queued&limit=100": {},
     });
     let html = await renderPage(DashboardPage());
+    expect(html).not.toContain("New session");
     expect(html).toContain('data-pw="dashboard-empty-sessions"');
     expect(html).toContain('data-pw="dashboard-empty-add-repository"');
     expect(html).toContain('href="/repositories"');
@@ -28,6 +29,7 @@ describe("primary control-plane empty states", () => {
 
     stubApi({ "/api/v1/sessions?limit=50": {}, "/api/v1/repositories": {} });
     html = await renderPage(SessionsPage(emptySearchParams));
+    expect(html).not.toContain("New session");
     expect(html).toContain('data-pw="sessions-empty"');
     expect(html).toContain('data-pw="sessions-empty-create"');
     expect(html).toContain('href="/sessions/new"');
