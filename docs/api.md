@@ -1113,9 +1113,7 @@ principals see only their own connection plus viewers subscribed to an allowed r
       "kind": "user",
       "connectedAt": "2026-09-06T21:00:00.000Z",
       "lastHeartbeatAt": "2026-09-06T21:00:30.000Z",
-      "subscriptions": [
-        { "sessionId": "sess-1", "repositoryId": "repo-1", "status": "running" }
-      ]
+      "subscriptions": [{ "sessionId": "sess-1", "repositoryId": "repo-1", "status": "running" }]
     }
   ]
 }
