@@ -459,6 +459,17 @@ describe("printUsage / main / defaults", () => {
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
   });
 
+  it("default deps' logResult prints structured JSON verbatim, with no timestamp prefix", () => {
+    // status/status --config-only/run-session print documented, machine-readable
+    // JSON on stdout; a timestamp prefix ahead of the opening `{` would break
+    // every consumer that parses it. logResult is the one sink exempt from that.
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    d.logResult('{"status":"ok"}');
+    expect(log).toHaveBeenCalledWith('{"status":"ok"}');
+    log.mockRestore();
+  });
+
   it("default deps' log/error use the real clock when none is injected", () => {
     const d = createDefaultRunSessionDeps();
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);

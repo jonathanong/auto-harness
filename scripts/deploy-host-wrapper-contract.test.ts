@@ -66,6 +66,9 @@ describe("host deployment wrapper contracts", () => {
       "pnpm",
       `
 printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
+if [[ "$*" == "rebuild node-pty" ]]; then
+  printf "npm_config_build_from_source=%s\\n" "\${npm_config_build_from_source:-unset}" >> "$FAKE_LOG"
+fi
 if [[ "$*" == "local:daemon status" ]]; then
   count_file="$FAKE_DIRECTORY/status-count"
   count=0
@@ -97,6 +100,12 @@ fi`,
     expect(result.status, result.stderr).toBe(0);
     expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts\n");
     expect(calls).toContain("pnpm rebuild node-pty\n");
+    // node-pty's prebuild.js exits 0 (skipping its `|| node-gyp rebuild` fallback)
+    // whenever a matching prebuild is already bundled, so a bare rebuild can
+    // silently no-op and never apply patches/node-pty@1.1.0.patch on a real
+    // host. This asserts the wrapper actually forces the from-source build
+    // that makes the patch take effect, not just that it calls `pnpm rebuild`.
+    expect(calls).toContain("npm_config_build_from_source=true\n");
     expect(calls.match(/pnpm local:daemon status/g)).toHaveLength(3);
     expect(result.stdout).toContain('{"status":"ok"}');
   });

@@ -356,7 +356,15 @@ export function createWsTransport(options: Options): DaemonTransport & {
       // No live socket means a connect() is already scheduled (or imminent) via
       // retryLater's timer — there is nothing here to abandon.
       if (closed || !socket) return;
-      socket.close(4000, reason);
+      // terminate(), not close(reason): this exists specifically for a socket
+      // that looks open but is not responding. close() waits for a graceful
+      // closing handshake, and `ws` only emits `close` after its own 30s
+      // timeout destroys the connection if the peer never answers — pushing
+      // a stall deadline meant to bound recovery time well past the control
+      // plane's own heartbeat-staleness window instead of inside it.
+      // terminate() destroys the underlying socket immediately, with no
+      // handshake and so no reason to carry (the caller already logs one).
+      socket.terminate();
     },
     close() {
       closed = true;

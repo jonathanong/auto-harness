@@ -72,6 +72,16 @@ export type RunSessionDeps = {
   readFile: (path: string) => string;
   log: (msg: string) => void;
   error: (msg: string) => void;
+  /**
+   * The three structured JSON documents this CLI prints on stdout — `status`,
+   * `status --config-only`, and `run-session`'s terminal result — are
+   * documented, machine-readable output (AGENTS.md). `log` timestamps every
+   * line for daemon lifecycle/session-stream readability, which would
+   * otherwise corrupt these by prefixing text before the opening `{`. Kept
+   * separate rather than made conditional inside `log` so the distinction is
+   * visible at each call site.
+   */
+  logResult: (payload: string) => void;
   /** Passed straight through to onShutdownSignal; defaults to the real process there. */
   process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
   installService: (opts: HostServiceOpts) => number;
@@ -142,6 +152,9 @@ export function createDefaultRunSessionDeps(
     },
     error: (msg) => {
       console.error(timestamped(msg, now));
+    },
+    logResult: (payload) => {
+      console.log(payload);
     },
     ensureReady: (config) => ensureDaemonReady(config),
     runSession: (config, assign, onLog, childEnvSource) =>
@@ -309,7 +322,7 @@ export async function runCli(
         deps.error("Cannot load daemon configuration");
         return 1;
       }
-      deps.log(JSON.stringify(configuredInventory(config), null, 2));
+      deps.logResult(JSON.stringify(configuredInventory(config), null, 2));
       return 0;
     }
 
@@ -349,7 +362,7 @@ export async function runCli(
       };
     }
     const ready = statusIsReady(service, host);
-    deps.log(
+    deps.logResult(
       JSON.stringify(
         {
           status: ready ? "ok" : "failed",
@@ -378,7 +391,7 @@ export async function runCli(
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
     await deps.ensureReady(config);
     const result = await deps.runSession(config, assign, deps.log, resolvedEnv);
-    deps.log(
+    deps.logResult(
       JSON.stringify({
         status: result.status,
         exitCode: result.exitCode,

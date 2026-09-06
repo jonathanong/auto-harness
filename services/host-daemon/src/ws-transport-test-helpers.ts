@@ -28,6 +28,12 @@ export class FakeSocket extends EventEmitter {
     this.emit("close");
   }
 
+  /** Real `ws` skips the closing handshake and destroys the socket immediately. */
+  terminate(): void {
+    this.readyState = WebSocket.CLOSED;
+    this.emit("close");
+  }
+
   server(message: Record<string, unknown>): void {
     this.emit("message", Buffer.from(JSON.stringify(message)));
   }
