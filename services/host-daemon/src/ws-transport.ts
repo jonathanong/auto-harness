@@ -352,7 +352,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
     onDisconnected(handler) {
       disconnectedHandler = handler;
     },
-    forceReconnect(reason: string) {
+    forceReconnect(_reason: string) {
       // No live socket means a connect() is already scheduled (or imminent) via
       // retryLater's timer — there is nothing here to abandon.
       if (closed || !socket) return;
