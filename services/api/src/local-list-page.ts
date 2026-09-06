@@ -31,5 +31,5 @@ export function pageList<T>(
   compare?: (left: T, right: T) => number,
 ): ListPage<T> {
   const query = parseListPageQuery(url);
-  return pageByKey(items, { ...query, key, compare });
+  return pageByKey(items, { ...query, key, ...(compare ? { compare } : {}) });
 }

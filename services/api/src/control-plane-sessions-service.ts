@@ -103,7 +103,8 @@ export class ControlPlaneSessionsService {
         scheduleId: normalized.query.scheduleId,
         ...(normalized.position ? { position: normalized.position } : {}),
       });
-      return sessions.listSessionsPage(this.state, { ...requested, cursor: undefined }, records);
+      const { cursor: _ignoredCursor, ...firstPage } = requested;
+      return sessions.listSessionsPage(this.state, firstPage, records);
     }
     const repositoryIds = durableListRepositoryIds(requested);
     if (repositoryIds !== undefined) {

@@ -95,7 +95,7 @@ async function queryRepositoryWindow(
     keyValue: repositoryId,
     forward: query.sort !== "latest",
     limit,
-    createdAt: query.position?.createdAt,
+    ...(query.position?.createdAt ? { createdAt: query.position.createdAt } : {}),
     latest: query.sort === "latest",
   });
 }
@@ -114,7 +114,9 @@ async function queryStatusWindow(
     keyValue: statusShardAttr(status, shard),
     forward: queuedPriority ? query.sort !== "priority_desc" : query.sort !== "latest",
     limit,
-    createdAt: queuedPriority ? undefined : query.position?.createdAt,
+    ...(!queuedPriority && query.position?.createdAt
+      ? { createdAt: query.position.createdAt }
+      : {}),
     latest: query.sort === "latest",
   });
 }
