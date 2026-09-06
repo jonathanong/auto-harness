@@ -32,7 +32,7 @@ function roleLabel(role: string | null): string {
   return (USER_ROLE_LABELS as Record<string, string>)[role] ?? "—";
 }
 
-function WatchingCell({ item }: { item: UserSession }) {
+function WatchingCell({ item }: Readonly<{ item: UserSession }>) {
   if (item.subscriptions.length === 0) return "—";
   return item.subscriptions.map((subscription, index) => (
     <span key={subscription.sessionId}>
@@ -48,7 +48,10 @@ function WatchingCell({ item }: { item: UserSession }) {
   ));
 }
 
-function UserSessionsContent({ error, items }: { error: string | null; items: UserSession[] }) {
+function UserSessionsContent({
+  error,
+  items,
+}: Readonly<{ error: string | null; items: UserSession[] }>) {
   if (error) {
     return <ListApiError resource="user sessions" message={error} selector="user-sessions" />;
   }

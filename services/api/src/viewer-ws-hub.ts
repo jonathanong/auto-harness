@@ -5,9 +5,10 @@ import type { Duplex } from "node:stream";
 
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
-import type { ControlPlane, ConnectionRecord, LogRecord } from "./control-plane.ts";
+import type { ControlPlane, LogRecord } from "./control-plane.ts";
 import { settleStorage } from "./control-plane-state.ts";
 import { deleteViewerConnection, putViewerConnection } from "./control-plane-user-sessions.ts";
+import { viewerConnectionPrincipal } from "./viewer-principal.ts";
 import {
   authenticateViewer,
   isAllowedViewerOrigin,
@@ -259,21 +260,6 @@ export function attachViewerWsHub(
       wss.close();
       void settleStorage(plane.state);
     },
-  };
-}
-
-function viewerConnectionPrincipal(
-  principal: Principal | null,
-): ConnectionRecord["viewerPrincipal"] {
-  if (!principal || (principal.kind !== "admin" && principal.kind !== "user")) return undefined;
-  return {
-    id: principal.id,
-    username: principal.username,
-    role: principal.role,
-    kind: principal.kind,
-    ...(principal.allowedRepositoryIds
-      ? { allowedRepositoryIds: principal.allowedRepositoryIds }
-      : {}),
   };
 }
 
