@@ -1,5 +1,5 @@
-export const DEFAULT_ID_PAGE_LIMIT = 50;
-export const MAX_ID_PAGE_LIMIT = 100;
+const DEFAULT_ID_PAGE_LIMIT = 50;
+const MAX_ID_PAGE_LIMIT = 100;
 
 export class InvalidListPageQueryError extends Error {
   constructor(message: string) {

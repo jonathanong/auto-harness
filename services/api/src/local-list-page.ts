@@ -24,7 +24,7 @@ export function sendListPage<T>(
   }
 }
 
-export function pageList<T>(
+function pageList<T>(
   url: URL,
   items: readonly T[],
   key: (item: T) => string,
