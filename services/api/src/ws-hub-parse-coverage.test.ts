@@ -89,6 +89,22 @@ describe("parseHostMessage exhaustive wire validation", () => {
         at: "2026-08-11T00:00:00.000Z",
       }),
     ).toMatchObject({ type: "host:keepalive" });
+    expect(
+      parseHostMessage({
+        type: "host:keepalive",
+        hostId: "host-1",
+        at: "2026-08-11T00:00:00.000Z",
+        runningSessions: ["session-1", "session-2"],
+      }),
+    ).toMatchObject({ runningSessions: ["session-1", "session-2"] });
+    expect(
+      parseHostMessage({
+        type: "host:keepalive",
+        hostId: "host-1",
+        at: "2026-08-11T00:00:00.000Z",
+        runningSessions: [],
+      }),
+    ).toMatchObject({ runningSessions: [] });
   });
 
   it("rejects invalid envelopes and registration collections", () => {
@@ -231,6 +247,24 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { type: "host:keepalive", hostId: "", at: "2026-08-11T00:00:00.000Z" },
       { type: "host:keepalive", hostId: "h", at: "" },
       { type: "host:keepalive", hostId: "h", at: "not-a-time" },
+      {
+        type: "host:keepalive",
+        hostId: "h",
+        at: "2026-08-11T00:00:00.000Z",
+        runningSessions: "session-1",
+      },
+      {
+        type: "host:keepalive",
+        hostId: "h",
+        at: "2026-08-11T00:00:00.000Z",
+        runningSessions: Array.from({ length: 1_001 }, (_, index) => `session-${index}`),
+      },
+      {
+        type: "host:keepalive",
+        hostId: "h",
+        at: "2026-08-11T00:00:00.000Z",
+        runningSessions: [null],
+      },
       { type: "not-supported" },
     ];
     for (const candidate of invalid) expect(parseHostMessage(candidate)).toBe(null);

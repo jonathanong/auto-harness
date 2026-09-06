@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 type PendingMap = Map<
   string,
@@ -26,6 +26,10 @@ const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function flushMacrotask(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 describe("DaemonLoop terminal status retry", () => {
@@ -121,10 +125,66 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("logs a failed initial send, retries on keepalive, and clears on a sessionId-only ack", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      let statusAttempts = 0;
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:status") {
+            statusAttempts += 1;
+            if (statusAttempts <= 2) throw new Error(`send failed #${String(statusAttempts)}`);
+          }
+        },
+      });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => lines.push(line) });
+      await loop.start();
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "flaky-status",
+        repositoryId: "demo",
+        prompt: "hello",
+        resolvedArgv: ["printf", "%s", "hello"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        attemptId: "attempt-flaky-status",
+        assignedAt: new Date().toISOString(),
+      });
+      await loop.waitForIdle();
+
+      expect(statusAttempts).toBe(1);
+      expect(
+        lines.some((line) => line.includes("session:status send failed for flaky-status")),
+      ).toBe(true);
+      expect(pendingTerminalStatusOf(loop).size).toBe(1);
+
+      await loop.keepalive();
+      await flushMacrotask();
+      expect(statusAttempts).toBe(2);
+      expect(
+        lines.some((line) => line.includes("terminal status retry failed for flaky-status")),
+      ).toBe(true);
+
+      await loop.keepalive();
+      await flushMacrotask();
+      expect(statusAttempts).toBe(3);
+
+      transport.deliver({ type: "session:status-acknowledged", sessionId: "flaky-status" });
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
+
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("gives up on an unacknowledged terminal status after the configured max age", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const sent: HostToServerMessage[] = [];
+      const lines: string[] = [];
       const transport = createLoopbackTransport({
         sendToServer: (message) => void sent.push(message),
       });
@@ -133,6 +193,7 @@ describe("DaemonLoop terminal status retry", () => {
         transport,
         now: () => "now",
         pendingStatusMaxAgeMs: 1000,
+        onLog: (line) => lines.push(line),
       });
       await loop.start();
       sent.length = 0;
@@ -146,6 +207,11 @@ describe("DaemonLoop terminal status retry", () => {
       await loop.keepalive();
       expect(sent.filter((message) => message.type === "session:status")).toHaveLength(0);
       expect(pendingTerminalStatusOf(loop).size).toBe(0);
+      expect(
+        lines.some((line) =>
+          line.includes("giving up on unacknowledged terminal status for done-session"),
+        ),
+      ).toBe(true);
       expect(sent).toContainEqual(
         expect.objectContaining({ type: "host:keepalive", runningSessions: [] }),
       );
