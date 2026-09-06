@@ -165,8 +165,7 @@ never fall back to localhost. After writing the parameter, `deploy`/`update`
 recycle the runtime Lambdas (a no-op `update-function-configuration`) so
 already-warm containers re-read WebUrl instead of keeping the localhost session
 URL fallback. AWS CLI v2 pages that JSON through `less` on a TTY; the lifecycle
-passes `--no-cli-pager` and sets `AWS_PAGER=""` so the dump prints to stdout and
-deploy continues.
+sets `AWS_PAGER=""` so the dump prints to stdout and deploy continues.
 
 | Variable                     | Purpose                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

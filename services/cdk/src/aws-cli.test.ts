@@ -8,7 +8,6 @@ import { config } from "./deployment-test-helpers.ts";
 describe("aws CLI helpers", () => {
   it("disables the AWS CLI pager so deploy output is not trapped in less", () => {
     expect(awsArgs(config(), ["lambda", "update-function-configuration"])).toEqual([
-      "--no-cli-pager",
       "lambda",
       "update-function-configuration",
       "--region",

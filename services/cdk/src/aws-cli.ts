@@ -6,5 +6,5 @@ export function awsCliEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessE
 }
 
 export function awsArgs(config: DeploymentConfig, args: string[]): string[] {
-  return ["--no-cli-pager", ...args, "--region", config.region];
+  return [...args, "--region", config.region];
 }

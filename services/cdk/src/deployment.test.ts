@@ -34,7 +34,6 @@ describe("runDeployment", () => {
     // healthy — not passed as a CDK deploy parameter like the three bootstrap secrets.
     expect(deps.runs).toContainEqual([
       "aws",
-      "--no-cli-pager",
       "ssm",
       "put-parameter",
       "--type",
