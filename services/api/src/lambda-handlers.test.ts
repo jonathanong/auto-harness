@@ -611,6 +611,14 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 409 });
+    // A rejected frame is relayed back to the connection that sent it — not just
+    // reported as an HTTP status to API Gateway — so the daemon actually learns
+    // its message was rejected and reconnects, mirroring ws-hub.ts's behavior.
+    expect(JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data))).toEqual({
+      type: "error",
+      message: "stale host connection",
+    });
+    fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
         body: JSON.stringify({
@@ -621,6 +629,11 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 409 });
+    expect(JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data))).toEqual({
+      type: "error",
+      message: "stale host connection",
+    });
+    fixture.management.send.mockClear();
     await expect(
       runtime.websocket({
         body: JSON.stringify({
@@ -1023,6 +1036,13 @@ describe("Lambda runtime adapters", () => {
         "running:2",
         "running:3",
       ]);
+      // The reclaimed host's physical connection must be force-closed, not just
+      // dropped from durable state — otherwise its daemon keeps an open,
+      // unregistered socket forever with no signal telling it to reconnect.
+      const deleteCalls = fixture.management.send.mock.calls.filter(
+        (call) => call[0].input.ConnectionId === "stale-connection" && !("Data" in call[0].input),
+      );
+      expect(deleteCalls).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }

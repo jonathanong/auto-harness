@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable registration and heartbeat-fallback cases share one control-plane fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -98,6 +99,47 @@ describe("durable host registration", () => {
     expect(plane.state.connections.has("c")).toBe(false);
     plane.state.storage.heartbeatConnection = async () => false;
     expect(await heartbeatDurable(plane.state, "h", "later")).toBe(false);
+  });
+
+  it("falls back to the durable lease when a container never processed this host's register", async () => {
+    // A keepalive routed to a Lambda container other than the one that handled
+    // host:register (a scale-out sibling, or one recycled since) has nothing in
+    // state.hostConnection even though the connection is durably live. Without
+    // this fallback heartbeatDurable returns false unconditionally, DynamoDB's
+    // lastHeartbeatAt stops advancing, and the reclaim sweeper evicts a host
+    // that never actually disconnected.
+    const plane = new ControlPlane({ now: () => "now" });
+    // state.hostConnection and state.connections are both cold here — this
+    // container has no record of "h" at all.
+    const calls: string[] = [];
+    plane.state.storage = {
+      getHostLock: async (hostId: string) => (hostId === "h" ? "durable-connection" : null),
+      heartbeatConnection: async (hostId: string, connectionId: string, at: string) => (
+        calls.push(`beat:${hostId}:${connectionId}:${at}`),
+        true
+      ),
+    } as never;
+    expect(await heartbeatDurable(plane.state, "h", "now")).toBe(true);
+    expect(calls).toEqual(["beat:h:durable-connection:now"]);
+    // The successful heartbeat warms the local cache, so a later heartbeat in
+    // this same container does not need another durable lookup.
+    expect(plane.state.hostConnection.get("h")).toBe("durable-connection");
+  });
+
+  it("does not resurrect a host that was already reclaimed", async () => {
+    // The other half of the cold-container fallback: a host whose durable lock
+    // is genuinely gone (already reclaimed, or never registered) must still
+    // report false, even though the local map is empty for the same reason a
+    // live host's would be.
+    const plane = new ControlPlane({ now: () => "now" });
+    plane.state.storage = {
+      getHostLock: async () => null,
+      heartbeatConnection: async () => {
+        throw new Error("must not be called without a durable lock");
+      },
+    } as never;
+    expect(await heartbeatDurable(plane.state, "h")).toBe(false);
+    expect(plane.state.hostConnection.has("h")).toBe(false);
   });
 
   it("rejects invalid reported runs, losing leases, and skips a durably busy inventory row", async () => {

@@ -107,8 +107,11 @@ export class ControlPlaneHostsService {
     return lifecycle.reclaimStaleHosts(this.state, nowMs);
   }
 
-  reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
-    return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
+  reclaimStaleHostsDurable(
+    nowMs: number = Date.now(),
+    onReclaimed?: (hostId: string, connectionId: string) => void,
+  ): Promise<string[]> {
+    return lifecycle.reclaimStaleHostsDurable(this.state, nowMs, onReclaimed);
   }
 
   reclaimReconnectDeadlines(nowMs: number = Date.now()): Promise<string[]> {

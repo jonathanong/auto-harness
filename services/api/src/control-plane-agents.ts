@@ -914,9 +914,20 @@ export async function heartbeatDurable(
   if (!state.storage) {
     return heartbeat(state, hostId, at);
   }
-  const connectionId = state.hostConnection.get(hostId);
+  let connectionId = state.hostConnection.get(hostId);
   if (!connectionId || !state.connections.has(connectionId)) {
-    return false;
+    // A container that never processed this host's host:register (a scale-out
+    // sibling, or one recycled since) has nothing in its local map even
+    // though the connection is durably live. The durable lease is
+    // authoritative for heartbeat, just as it already is for drain
+    // (drainHostDurable) and assignment — without this fallback, a healthy
+    // host's heartbeat silently stops advancing on every container but the
+    // one that registered it, and the reclaim sweeper evicts it within
+    // heartbeatStaleMs even though it never disconnected.
+    connectionId = (await state.storage.getHostLock(hostId)) ?? undefined;
+    if (!connectionId) {
+      return false;
+    }
   }
   const nextAt = at ?? state.now();
   const updated = await state.storage.heartbeatConnection(hostId, connectionId, nextAt);
@@ -927,6 +938,7 @@ export async function heartbeatDurable(
   if (conn) {
     state.connections.set(connectionId, { ...conn, lastHeartbeatAt: nextAt });
   }
+  state.hostConnection.set(hostId, connectionId);
   return true;
 }
 

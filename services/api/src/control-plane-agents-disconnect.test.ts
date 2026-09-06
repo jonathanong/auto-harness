@@ -169,8 +169,18 @@ describe("durable host disconnect", () => {
     });
     state.hostConnection.set("offline", "connection-1");
 
-    await expect(reclaimStaleHostsDurable(state, Date.now())).resolves.toEqual([]);
+    // A successful release must call onReclaimed so the AWS transport can force-close
+    // the daemon's physical socket — without it, the reclaim only ever touches durable
+    // state, and a daemon on an open-but-unregistered connection has no way to learn it
+    // needs to reconnect.
+    const reclaimedConnections: Array<{ hostId: string; connectionId: string }> = [];
+    await expect(
+      reclaimStaleHostsDurable(state, Date.now(), (hostId, connectionId) =>
+        reclaimedConnections.push({ hostId, connectionId }),
+      ),
+    ).resolves.toEqual([]);
     expect(released).toEqual([{ hostId: "offline", connectionId: "connection-1" }]);
+    expect(reclaimedConnections).toEqual([{ hostId: "offline", connectionId: "connection-1" }]);
     expect(candidates.size).toBe(0);
     expect(state.disconnectedHosts.has("offline")).toBe(false);
   });
@@ -445,7 +455,16 @@ describe("durable host disconnect", () => {
       deleteConnection: async () => undefined,
     });
 
-    expect(await reclaimStaleHostsDurable(plane.state, Date.now())).toEqual(["s"]);
+    // A lost release race must not report a reclaim: another process already owns
+    // whatever happens next for this connection, so force-closing it here would
+    // race that owner's own transport state.
+    const reclaimedConnections: Array<{ hostId: string; connectionId: string }> = [];
+    expect(
+      await reclaimStaleHostsDurable(plane.state, Date.now(), (hostId, connectionId) =>
+        reclaimedConnections.push({ hostId, connectionId }),
+      ),
+    ).toEqual(["s"]);
+    expect(reclaimedConnections).toEqual([]);
     expect(plane.state.connections.has("c")).toBe(false);
     expect(plane.state.hostConnection.has("h")).toBe(false);
 

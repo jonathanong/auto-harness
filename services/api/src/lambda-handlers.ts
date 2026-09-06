@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- REST, WebSocket, and cron Lambda lifecycles share one runtime. */
 import {
   ApiGatewayManagementApiClient,
+  DeleteConnectionCommand,
   GoneException,
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
@@ -207,6 +208,80 @@ async function postToHost(
   }
 }
 
+/**
+ * Relay a rejected host message back over the connection that sent it.
+ *
+ * `ws-hub.ts`'s self-hosted transport already does this for every
+ * `!result.ok`: the daemon handles a received `{type:"error"}` frame by
+ * closing (1008) and reconnecting (`ws-transport.ts:253-254`), so a rejected
+ * message there is self-healing. On API Gateway the `$default` route only
+ * ever returned an HTTP status code (409/401) to API Gateway itself — never
+ * to the daemon — so the daemon had no way to learn its message was rejected
+ * and no reason to reconnect. This mirrors the ws-hub behavior for the
+ * Lambda transport.
+ */
+async function postErrorToConnection(
+  management: ManagementClient,
+  connectionId: string,
+  error: string | undefined,
+): Promise<void> {
+  try {
+    await management.send(
+      new PostToConnectionCommand({
+        ConnectionId: connectionId,
+        Data: Buffer.from(JSON.stringify({ type: "error", message: error })),
+      }),
+    );
+  } catch (err) {
+    // The connection is already gone; nothing to relay to.
+    if (err instanceof GoneException || (err as { name?: string }).name === "GoneException") {
+      return;
+    }
+    console.error(
+      JSON.stringify({
+        msg: "postErrorToConnection failure",
+        connectionId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+}
+
+/**
+ * Force-close a reclaimed host's physical API Gateway connection.
+ *
+ * The reclaim sweep only ever touches durable state — deleting the connection
+ * row is all a Lambda process can do to itself. Without also calling
+ * DeleteConnection here, the daemon's socket stays open and ESTABLISHED
+ * forever: every later frame from it hits `getConnection` returning null and
+ * gets a bare 401 that is never relayed over the wire, so the daemon has no
+ * signal telling it to reconnect. This is what makes a reclaim otherwise
+ * unrecoverable without a manual daemon restart.
+ */
+async function closeReclaimedConnection(
+  management: ManagementClient,
+  hostId: string,
+  connectionId: string,
+): Promise<void> {
+  try {
+    await management.send(new DeleteConnectionCommand({ ConnectionId: connectionId }));
+  } catch (error) {
+    // Already gone (daemon reconnected and the old socket was replaced, or API
+    // Gateway had already dropped it) — nothing left to close.
+    if (error instanceof GoneException || (error as { name?: string }).name === "GoneException") {
+      return;
+    }
+    console.error(
+      JSON.stringify({
+        msg: "closeReclaimedConnection failure",
+        hostId,
+        connectionId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
 /** Create the AWS event adapters without performing any deployment. */
 export async function createLambdaRuntime(
   dependencies: LambdaRuntimeDependencies = {},
@@ -343,7 +418,11 @@ export async function createLambdaRuntime(
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
         await created.plane.refreshSchedulerReadModelDurable();
-        const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
+        const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable(
+          Date.now(),
+          (hostId, connectionId) =>
+            track(closeReclaimedConnection(management, hostId, connectionId)),
+        );
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state, {
@@ -490,6 +569,8 @@ export async function createLambdaRuntime(
             type: "host:draining",
             hostId: result.hostDraining,
           });
+        } else if (!result.ok) {
+          track(postErrorToConnection(management, connectionId, result.error));
         }
         return { statusCode: result.ok ? 200 : 409 };
       });
