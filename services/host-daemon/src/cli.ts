@@ -138,7 +138,20 @@ async function settleWithin<T>(
  * inferring order from log line numbers and interleaved session output alone.
  */
 function timestamped(msg: string, now: () => string): string {
-  return `${now()} ${msg}`;
+  return `${now()} ${sanitizeForLog(msg)}`;
+}
+
+/**
+ * Log Forge (CWE-117): an embedded CR/LF in content this sink didn't
+ * originate itself — an upstream error message, or streamed session
+ * output — could fabricate what looks like an independent, later log line,
+ * letting whatever wrote it hide among real daemon events. Each real call
+ * site already passes one already-terminated line (see runtime.ts's onLog),
+ * so this is a no-op for every normal message and only ever touches
+ * malformed or adversarial input.
+ */
+function sanitizeForLog(msg: string): string {
+  return msg.replace(/[\r\n]/g, "_");
 }
 
 export function createDefaultRunSessionDeps(

@@ -459,6 +459,16 @@ describe("printUsage / main / defaults", () => {
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
   });
 
+  it("default deps' log/error strip embedded CR/LF so tainted content can't forge a fake log line", () => {
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    d.log("real line\n2026-01-01T00:00:00.000Z forged line");
+    expect(log).toHaveBeenCalledWith(
+      "2026-01-01T00:00:00.000Z real line_2026-01-01T00:00:00.000Z forged line",
+    );
+    log.mockRestore();
+  });
+
   it("default deps' logResult prints structured JSON verbatim, with no timestamp prefix", () => {
     // status/status --config-only/run-session print documented, machine-readable
     // JSON on stdout; a timestamp prefix ahead of the opening `{` would break
