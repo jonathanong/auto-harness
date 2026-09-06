@@ -135,7 +135,19 @@ export function createWsTransport(options: Options): DaemonTransport & {
     delay = Math.min(delay * 2, 30_000);
     retry = timers.setTimeout(() => {
       retry = undefined;
-      connect();
+      try {
+        connect();
+      } catch (error) {
+        // A synchronous socket-factory failure here (e.g. sustained EMFILE
+        // pressure) would otherwise be an uncaught exception inside a timer
+        // callback — fatal to the whole daemon process, not merely this
+        // connection. refreshSocket() already guards its own connect() call
+        // the same way; without this, only the *first* factory failure was
+        // ever survivable; every one after it (this same retryLater ladder)
+        // would crash the daemon instead of continuing to back off.
+        options.onError?.(error instanceof Error ? error : new Error(String(error)));
+        retryLater();
+      }
     }, wait);
   };
 

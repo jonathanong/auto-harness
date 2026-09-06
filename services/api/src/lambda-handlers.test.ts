@@ -1096,63 +1096,48 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
-  it("swallows a GoneException from closeReclaimedConnection silently", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime("2026-08-12T00:00:00.000Z");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      const fixture = runtimeFixture();
-      seedSchedulerSweep(fixture);
-      // The daemon already reconnected (or API Gateway already dropped the
-      // socket) by the time the sweep gets around to closing it — nothing
-      // left to close, and nothing worth logging either.
-      fixture.management.send.mockImplementation(
-        async (command: { input: { ConnectionId?: string; Data?: unknown } }) => {
-          if (command.input.ConnectionId === "stale-connection" && !("Data" in command.input)) {
-            throw { name: "GoneException" };
-          }
-          return {};
-        },
-      );
-      await expect((await fixture.runtime).cron()).resolves.toMatchObject({
-        staleHostsReclaimed: 1,
-      });
-      expect(consoleError).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-      consoleError.mockRestore();
-    }
-  });
-
-  it("logs a non-Gone closeReclaimedConnection failure without failing the sweep", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime("2026-08-12T00:00:00.000Z");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      const fixture = runtimeFixture();
-      seedSchedulerSweep(fixture);
-      fixture.management.send.mockImplementation(
-        async (command: { input: { ConnectionId?: string; Data?: unknown } }) => {
-          if (command.input.ConnectionId === "stale-connection" && !("Data" in command.input)) {
-            throw new Error("boom");
-          }
-          return {};
-        },
-      );
-      await expect((await fixture.runtime).cron()).resolves.toMatchObject({
-        staleHostsReclaimed: 1,
-      });
-      expect(consoleError).toHaveBeenCalledWith(
-        JSON.stringify({
-          msg: "closeReclaimedConnection failure",
-          hostId: "stale-host",
-          connectionId: "stale-connection",
-          error: "boom",
-        }),
-      );
-    } finally {
-      vi.useRealTimers();
-      consoleError.mockRestore();
+  it("handles both closeReclaimedConnection outcomes without failing the sweep", async () => {
+    // GoneException: the daemon already reconnected (or API Gateway already
+    // dropped the socket) by the time the sweep gets around to closing it —
+    // nothing left to close, and nothing worth logging either. Any other
+    // error: best-effort, so it's logged but the sweep still reports success.
+    for (const [thrown, expectLogged] of [
+      [{ name: "GoneException" }, false],
+      [new Error("boom"), true],
+    ] as const) {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-08-12T00:00:00.000Z");
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const fixture = runtimeFixture();
+        seedSchedulerSweep(fixture);
+        fixture.management.send.mockImplementation(
+          async (command: { input: { ConnectionId?: string; Data?: unknown } }) => {
+            if (command.input.ConnectionId === "stale-connection" && !("Data" in command.input)) {
+              throw thrown;
+            }
+            return {};
+          },
+        );
+        await expect((await fixture.runtime).cron()).resolves.toMatchObject({
+          staleHostsReclaimed: 1,
+        });
+        if (expectLogged) {
+          expect(consoleError).toHaveBeenCalledWith(
+            JSON.stringify({
+              msg: "closeReclaimedConnection failure",
+              hostId: "stale-host",
+              connectionId: "stale-connection",
+              error: "boom",
+            }),
+          );
+        } else {
+          expect(consoleError).not.toHaveBeenCalled();
+        }
+      } finally {
+        vi.useRealTimers();
+        consoleError.mockRestore();
+      }
     }
   });
 
