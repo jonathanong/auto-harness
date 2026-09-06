@@ -52,8 +52,6 @@ test.describe("control plane user sessions", () => {
     await expect(page.getByTestId(/^user-session-connected-/).first()).toBeVisible();
     await expect(page.getByTestId(/^user-session-watching-/).first()).toBeVisible();
     await expect(page.getByRole("link", { name: sessionId })).toBeVisible();
-    await expect(
-      page.getByTestId(new RegExp(`^user-session-watch-.+-${sessionId}$`)),
-    ).toBeVisible();
+    await expect(page.getByTestId(`user-session-watch-${sessionId}`)).toBeVisible();
   });
 });

@@ -40,7 +40,7 @@ function WatchingCell({ item }: { item: UserSession }) {
       <Link
         href={`/sessions/${encodeURIComponent(subscription.sessionId)}`}
         className="hover:underline"
-        data-pw={`user-session-watch-${item.id}-${subscription.sessionId}`}
+        data-pw={`user-session-watch-${subscription.sessionId}`}
       >
         {subscription.sessionId}
       </Link>

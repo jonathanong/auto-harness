@@ -60,7 +60,7 @@ describe("user sessions route", () => {
     expect(html).toContain("alice");
     expect(html).toContain("Operator");
     expect(html).toContain('href="/sessions/sess%2Fone"');
-    expect(html).toContain('data-pw="user-session-watch-viewer-1-sess/one"');
+    expect(html).toContain('data-pw="user-session-watch-sess/one"');
     expect(html).toContain('data-pw="user-session-row-viewer-2"');
     expect(html).toContain('data-pw="user-session-role-viewer-2">—');
     expect(html).toContain('data-pw="user-session-row-viewer-3"');
