@@ -8,7 +8,8 @@ import {
   type RunProcessOptions,
 } from "./executor.ts";
 import { createCodexUsageStream, parseCodexRecords } from "./usage-adapter-codex.ts";
-import { jsonLines, jsonObject } from "./usage-adapter-json.ts";
+import { parseGrokRecords } from "./usage-adapter-grok.ts";
+import { jsonLines, jsonObject, jsonObjects } from "./usage-adapter-json.ts";
 import {
   CLI_PROVIDERS,
   record,
@@ -51,11 +52,13 @@ export function parseCliUsage(input: {
   if (provider === "codex") {
     return parseCodexRecords(jsonLines(input.output), input.observedAt);
   }
+  if (provider === "grok") {
+    return parseGrokRecords(jsonObjects(input.output), input.observedAt);
+  }
   const envelope = jsonObject(input.output);
   if (!envelope) return {};
   if (provider === "claude") return parseClaudeRecord(envelope, input.observedAt);
-  if (provider === "gemini") return parseGeminiRecord(envelope, input.observedAt);
-  return parseGrokRecord(envelope, input.observedAt);
+  return parseGeminiRecord(envelope, input.observedAt);
 }
 
 export class UsageCapturingProcessRunner implements ProcessRunner {
@@ -199,13 +202,6 @@ function parseGeminiRecord(value: JsonRecord, observedAt: string): ParsedCliUsag
   return usage ? withUsage(usageFromRecord(usage, observedAt, "gemini")) : {};
 }
 
-function parseGrokRecord(value: JsonRecord, observedAt: string): ParsedCliUsage {
-  if (grokUsageLimit(value)) return { usageLimit: true };
-  if (typeof value.response !== "string" && typeof value.text !== "string") return {};
-  const usage = record(value.usage);
-  return usage ? withUsage(usageFromRecord(usage, observedAt, "grok")) : {};
-}
-
 function claudeUsageLimit(value: JsonRecord): boolean {
   const code = structuredErrorCode(value) ?? value.subtype;
   if (
@@ -229,14 +225,6 @@ const GEMINI_RESOURCE_EXHAUSTED = "RESOURCE_EXHAUSTED";
 // (Gaxios/ApiError) or formats `(Status: RESOURCE_EXHAUSTED)`.
 const GEMINI_RESOURCE_EXHAUSTED_IN_MESSAGE = /\bRESOURCE_EXHAUSTED\b/;
 
-// Grok CLI 1.0.13 `--output-format json` errors are `{type:"error", message}`
-// with no structured code. HTTP 429 is mapped to ACP -32003, then
-// `format_rate_limited_user_message` writes one of these three sentences
-// (unicode apostrophe). Curly apostrophe is what the binary emits; ASCII is
-// tolerated the same way as Codex. A generic "rate limit" phrase is not enough.
-const GROK_USAGE_LIMIT_SENTENCE =
-  /you['’]ve (?:hit (?:the rate limit for your plan|your team['’]s api rate limit)|reached your free grok build usage limit)/i;
-
 function geminiResourceExhausted(value: unknown): boolean {
   return value === GEMINI_RESOURCE_EXHAUSTED;
 }
@@ -254,11 +242,4 @@ function geminiUsageLimit(value: JsonRecord): boolean {
   return (
     typeof error.message === "string" && GEMINI_RESOURCE_EXHAUSTED_IN_MESSAGE.test(error.message)
   );
-}
-
-function grokUsageLimit(value: JsonRecord): boolean {
-  if (value.type !== "error" && value.status !== "error") return false;
-  const code = structuredErrorCode(value);
-  if (code === "rate_limit_error" || code === "usage_limit") return true;
-  return typeof value.message === "string" && GROK_USAGE_LIMIT_SENTENCE.test(value.message);
 }
