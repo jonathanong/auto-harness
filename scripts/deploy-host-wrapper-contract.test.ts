@@ -171,6 +171,20 @@ fi`,
     expect(result.stderr).toContain("within 1 seconds");
   });
 
+  it("forces a from-source node-pty rebuild only on Darwin, not Linux", () => {
+    // Two of the patch's three fixes live in src/unix/pty.cc's shared code
+    // path, but only the kqueue-fd leak is macOS-specific, and only macOS has
+    // been verified here (the incident host, and the empirical fd
+    // measurement). Forcing node-gyp on Linux too would require an
+    // undocumented Python/compiler/Xcode-equivalent toolchain this script
+    // does not provision, for a platform with no verified need yet.
+    expect(position(host, 'if [[ "$platform" == "Darwin" ]]; then')).toBeGreaterThan(
+      position(host, "pnpm install --frozen-lockfile --ignore-scripts"),
+    );
+    expect(host).toContain("npm_config_build_from_source=true pnpm rebuild node-pty");
+    expect(host).toContain("  else\n    pnpm rebuild node-pty\n  fi");
+  });
+
   it("binds Linux deployment to the writable staging checkout", () => {
     expect(host).toContain('service_root="$(cd "$service_checkout" && pwd -P)"');
     expect(host).toContain('if [[ "$checkout_root" != "$service_root" ]]');

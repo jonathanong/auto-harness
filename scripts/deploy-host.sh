@@ -123,7 +123,20 @@ EOF
   # silently keeps the bundled prebuilt binary and never applies our
   # patches/node-pty@1.1.0.patch fd-leak fix to src/unix/pty.cc. Force a build
   # from source so the patched .cc is what actually ends up on the host.
-  npm_config_build_from_source=true pnpm rebuild node-pty
+  #
+  # macOS only: the patch's three fixes live in src/unix/pty.cc, shared by
+  # both platforms, but only the kqueue-fd leak is macOS-specific (an
+  # `#ifdef __APPLE__` branch) and this repo has only verified the fix on
+  # macOS (the incident host, and the empirical before/after fd measurement
+  # in the PR). Forcing a source build on Linux too would require Python, a
+  # C++ compiler, and Xcode-equivalent build tooling this deploy script does
+  # not provision or document, for two of the three fixes with no verified
+  # need there yet.
+  if [[ "$platform" == "Darwin" ]]; then
+    npm_config_build_from_source=true pnpm rebuild node-pty
+  else
+    pnpm rebuild node-pty
+  fi
 
   case "$platform" in
     Darwin)

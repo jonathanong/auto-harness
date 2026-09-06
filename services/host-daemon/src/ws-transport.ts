@@ -203,7 +203,13 @@ export function createWsTransport(options: Options): DaemonTransport & {
       options.onError?.(
         new Error(`registration not acknowledged within ${registrationTimeoutMs}ms`),
       );
-      target.close(1011, "registration timeout");
+      // terminate(), not close(): the same reasoning as forceReconnect below —
+      // a peer that never acknowledged registration may be half-open, and
+      // close() would wait out ws's own ~30s close-handshake timeout before
+      // `close` fires, pushing this watchdog's real recovery time roughly
+      // double its nominal deadline and past the control plane's own
+      // heartbeat-staleness window.
+      target.terminate();
     }, registrationTimeoutMs);
     registrationWatchdog.unref?.();
   };

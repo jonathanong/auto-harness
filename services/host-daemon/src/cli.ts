@@ -136,22 +136,24 @@ async function settleWithin<T>(
  * failure — and every streamed session log chunk go through this one sink.
  * None of it carried a timestamp: reconstructing an outage's timeline meant
  * inferring order from log line numbers and interleaved session output alone.
+ *
+ * Prefixes every physical line rather than collapsing embedded CR/LF into one:
+ * this sink also carries genuinely multi-line trusted content (printUsage's
+ * static help text, coalesced multi-line session output), which a blanket
+ * newline replacement would squash into one unreadable line. Log Forge
+ * (CWE-117) is still defeated — an embedded CR/LF in content this function
+ * didn't originate itself (an upstream error message, streamed session
+ * output) becomes its own additional, but still real-timestamped, line: it
+ * cannot claim a false time or merge into looking like part of a different
+ * entry, since every resulting line carries the one `now()` this call
+ * actually ran at, not anything the input controls.
  */
 function timestamped(msg: string, now: () => string): string {
-  return `${now()} ${sanitizeForLog(msg)}`;
-}
-
-/**
- * Log Forge (CWE-117): an embedded CR/LF in content this sink didn't
- * originate itself — an upstream error message, or streamed session
- * output — could fabricate what looks like an independent, later log line,
- * letting whatever wrote it hide among real daemon events. Each real call
- * site already passes one already-terminated line (see runtime.ts's onLog),
- * so this is a no-op for every normal message and only ever touches
- * malformed or adversarial input.
- */
-function sanitizeForLog(msg: string): string {
-  return msg.replace(/[\r\n]/g, "_");
+  const at = now();
+  return msg
+    .split(/\r\n|\r|\n/)
+    .map((line) => `${at} ${line}`)
+    .join("\n");
 }
 
 export function createDefaultRunSessionDeps(
