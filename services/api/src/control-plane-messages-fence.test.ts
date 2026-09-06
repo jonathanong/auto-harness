@@ -164,6 +164,27 @@ describe("durable host-message fencing", () => {
     expect(
       await plane.handleHostMessageDurable({ type: "host:keepalive", hostId: "h", at: "later" }),
     ).toEqual({ ok: false, error: "agent not connected" });
+    // A frame carrying a sourceConnectionId already verified against the
+    // durable lock (this call's own fence check, just above) must reach
+    // heartbeatDurable as-is rather than falling back through the local
+    // hostConnection cache — see the comment on heartbeatDurable's
+    // sourceConnectionId parameter for why that matters.
+    let heartbeatConnectionCalledWith: [string, string, string] | undefined;
+    plane.state.storage!.heartbeatConnection = async (
+      hostId: string,
+      connectionId: string,
+      at: string,
+    ) => {
+      heartbeatConnectionCalledWith = [hostId, connectionId, at];
+      return true;
+    };
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:keepalive", hostId: "h", at: "fenced" },
+        "current",
+      ),
+    ).toEqual({ ok: true });
+    expect(heartbeatConnectionCalledWith).toEqual(["h", "current", "fenced"]);
     expect(
       await plane.handleHostMessageDurable({
         type: "session:status",

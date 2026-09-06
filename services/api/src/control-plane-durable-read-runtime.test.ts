@@ -918,6 +918,39 @@ describe("durable runtime read-through", () => {
     expect(state.connections.size).toBe(0);
   });
 
+  it("excludes a viewer's browser connection from the host connection map", async () => {
+    const state = createControlPlaneState({
+      storage: {
+        listConnections: async () => [
+          {
+            connectionId: "viewer-conn",
+            type: "client",
+            hostId: "user:alice",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+          },
+          {
+            connectionId: "host-conn",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+          },
+        ],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+      } as never,
+    });
+    await refreshSchedulerReadModel(state);
+    expect(state.connections.size).toBe(1);
+    expect(state.connections.has("viewer-conn")).toBe(false);
+    expect(state.hostConnection.has("user:alice")).toBe(false);
+    expect(state.hostConnection.get("host")).toBe("host-conn");
+  });
+
   it("handles repository-only page scopes and absent durable counts", async () => {
     const plane = new ControlPlane({
       storage: {

@@ -839,6 +839,14 @@ Recommended: `TimeoutStopSec=` long enough for typical session length (or unboun
 
 Force-killing the agent process (OOM, `kill -9`) is **not** the auto-update path and may orphan CLI children.
 
+A daemon frame for a `connectionId` the control plane no longer has an authenticated row for (its
+lease was already released — a stale-heartbeat reclaim, a plain disconnect, or a superseding
+registration) force-closes the physical WebSocket instead of only returning an ignored status code.
+API Gateway does not deliver a `$default`-route Lambda response back to the client, so without this
+the daemon would otherwise keep its socket open and keep sending `host:keepalive` into a dead lease
+indefinitely, with no local signal that anything is wrong. The force-close trips the daemon's
+existing reconnect path, so it registers fresh instead.
+
 On re-register, include:
 
 ```json
