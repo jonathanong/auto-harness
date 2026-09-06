@@ -223,4 +223,41 @@ describe("DaemonLoop coverage guards", () => {
       cleanup();
     }
   });
+
+  it("logs and forces a reconnect when the keepalive stall timer actually fires", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      let stall: (() => void) | undefined;
+      const forceReconnectCalls: string[] = [];
+      const lines: string[] = [];
+      const loopback = createLoopbackTransport({ sendToServer: () => undefined });
+      const transport = {
+        ...loopback,
+        forceReconnect: (reason: string) => forceReconnectCalls.push(reason),
+      };
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => lines.push(line),
+        keepaliveStallMs: 45_000,
+        timers: {
+          // start() arms the stall timer directly after the initial register(),
+          // with no other long-delay timer competing for this seam at that point.
+          setTimeout: (callback) => {
+            stall ??= callback as () => void;
+            return 1 as never;
+          },
+          clearTimeout: () => undefined,
+        },
+      });
+      await loop.start();
+      expect(stall).toBeDefined();
+      stall?.();
+      expect(lines).toContain("no successful keepalive in 45000ms; forcing reconnect");
+      expect(forceReconnectCalls).toEqual(["no successful keepalive in 45000ms"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
