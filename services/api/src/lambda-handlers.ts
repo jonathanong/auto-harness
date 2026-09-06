@@ -360,13 +360,11 @@ export async function createLambdaRuntime(
         }),
       );
     });
-  created.plane.setOnAssignmentRequested(() => {
-    track(
-      invokeAssignment().catch((error: unknown) => {
-        console.error("failed to enqueue assignment sweep", error);
-      }),
-    );
-  });
+  created.plane.setOnAssignmentRequested(() =>
+    invokeAssignment().catch((error: unknown) => {
+      console.error("failed to enqueue assignment sweep", error);
+    }),
+  );
   const previousOnLogCommitted = created.plane.state.onLogCommitted;
   created.plane.state.onLogCommitted = (record) => {
     previousOnLogCommitted?.(record);

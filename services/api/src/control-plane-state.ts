@@ -135,7 +135,7 @@ export type ControlPlaneState = {
    * Browser REST assignment enqueue. When set, skip the in-process sweep so the
    * HTTP invocation never waits on host delivery (Invariant 12).
    */
-  onAssignmentRequested: (() => void) | undefined;
+  onAssignmentRequested: (() => void | Promise<void>) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {

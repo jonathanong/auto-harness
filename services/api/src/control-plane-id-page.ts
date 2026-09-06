@@ -56,9 +56,6 @@ export function pageByKey<T>(
   const compare =
     options.compare ?? ((left: T, right: T) => options.key(left).localeCompare(options.key(right)));
   const rows = [...items].toSorted(compare);
-  if (options.cursor && !rows.some((item) => options.key(item) === options.cursor)) {
-    throw new InvalidListPageQueryError("invalid or mismatched list cursor");
-  }
   const remaining = options.cursor
     ? rows.filter((item) => options.key(item).localeCompare(options.cursor!) > 0)
     : rows;

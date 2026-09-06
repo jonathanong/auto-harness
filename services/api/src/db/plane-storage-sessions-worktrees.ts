@@ -74,7 +74,9 @@ export async function getWorktree(
   ctx: PlaneStorageCtx,
   id: string,
 ): Promise<WorktreeRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.worktrees, Key: { id } }));
+  const res = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.worktrees, Key: { id }, ConsistentRead: true }),
+  );
   return (res.Item as WorktreeRecord | undefined) ?? null;
 }
 

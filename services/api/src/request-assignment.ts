@@ -111,9 +111,9 @@ export async function requestAssignment(
  * hook is the only work — typically `Lambda.invoke` Event of the cron function.
  * Locally, the in-process sweep starts and is not awaited.
  */
-export function enqueueAssignment(state: ControlPlaneState): void {
+export async function enqueueAssignment(state: ControlPlaneState): Promise<void> {
   if (state.onAssignmentRequested) {
-    state.onAssignmentRequested();
+    await state.onAssignmentRequested();
     return;
   }
   void requestAssignment(state);

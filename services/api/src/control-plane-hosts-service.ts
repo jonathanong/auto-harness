@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host list, keyed host GET, and worktree pages share this service. */
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
@@ -113,7 +114,27 @@ export class ControlPlaneHostsService {
   async getHostDurable(
     hostId: string,
   ): Promise<ReturnType<typeof agents.listHosts>[number] | null> {
-    return (await this.listHostsDurable()).find((host) => host.hostId === hostId) ?? null;
+    const storage = this.state.storage;
+    if (storage) {
+      const [inventory, connectionId] = await Promise.all([
+        typeof storage.getHostInventory === "function"
+          ? storage.getHostInventory(hostId)
+          : Promise.resolve(this.state.hostInventories.get(hostId) ?? null),
+        typeof storage.getHostLock === "function"
+          ? storage.getHostLock(hostId)
+          : Promise.resolve(this.state.hostConnection.get(hostId) ?? null),
+      ]);
+      if (inventory) this.state.hostInventories.set(hostId, { ...inventory });
+      else this.state.hostInventories.delete(hostId);
+      if (connectionId && typeof storage.getConnection === "function") {
+        const connection = await storage.getConnection(connectionId);
+        if (connection?.type === "host") {
+          this.state.connections.set(connection.connectionId, { ...connection });
+          this.state.hostConnection.set(hostId, connection.connectionId);
+        }
+      }
+    }
+    return this.listHosts().find((host) => host.hostId === hostId) ?? null;
   }
 
   registerHost(

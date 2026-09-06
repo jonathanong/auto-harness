@@ -19,7 +19,11 @@ import { ControlPlaneRepositoriesService } from "./control-plane-repositories-se
 import { ControlPlaneSchedulingService } from "./control-plane-scheduling-service.ts";
 import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
 import { bindControlPlaneServices } from "./control-plane-service-bind.ts";
-import { requestAssignment, type AssignmentSweepOptions } from "./request-assignment.ts";
+import {
+  enqueueAssignment,
+  requestAssignment,
+  type AssignmentSweepOptions,
+} from "./request-assignment.ts";
 
 export type {
   ArchiveMetadata,
@@ -83,15 +87,11 @@ export class ControlPlane {
    * Enqueue assignment without awaiting host I/O. Browser REST must call this
    * rather than {@link requestAssignment} (Invariant 12).
    */
-  enqueueAssignment(): void {
-    if (this.state.onAssignmentRequested) {
-      this.state.onAssignmentRequested();
-      return;
-    }
-    void this.requestAssignment();
+  enqueueAssignment(): Promise<void> {
+    return enqueueAssignment(this.state);
   }
 
-  setOnAssignmentRequested(handler: (() => void) | undefined): void {
+  setOnAssignmentRequested(handler: (() => void | Promise<void>) | undefined): void {
     this.state.onAssignmentRequested = handler;
   }
 }

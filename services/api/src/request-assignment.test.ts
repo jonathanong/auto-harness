@@ -232,18 +232,18 @@ describe("enqueueAssignment", () => {
       online: true,
     });
     expect(plane.createSession(baseSessionBody()).ok).toBe(true);
-    plane.enqueueAssignment();
+    await plane.enqueueAssignment();
     await vi.waitFor(() => expect(plane.getSession("sess-1")?.status).toBe("running"));
   });
 
-  it("calls onAssignmentRequested instead of sweeping in-process", () => {
+  it("calls onAssignmentRequested instead of sweeping in-process", async () => {
     let hooked = 0;
     const state = createControlPlaneState({
       onAssignmentRequested: () => {
         hooked += 1;
       },
     });
-    enqueueAssignment(state);
+    await enqueueAssignment(state);
     expect(hooked).toBe(1);
   });
 });

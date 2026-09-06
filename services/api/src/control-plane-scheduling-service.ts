@@ -65,7 +65,7 @@ export class ControlPlaneSchedulingService {
     | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
   > {
     const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
-    if (result.ok) enqueueAssignment(this.state);
+    if (result.ok) await enqueueAssignment(this.state);
     return result;
   }
 

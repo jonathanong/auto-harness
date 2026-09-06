@@ -1,6 +1,14 @@
 /* eslint-disable max-lines -- list, empty state, and capability-gated write controls. */
 import Link from "next/link";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import {
+  CursorPagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
@@ -40,18 +48,22 @@ export default async function SchedulesPage({
 }) {
   const rawSearchParams = await searchParams;
   const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
+  const cursor = typeof rawSearchParams.cursor === "string" ? rawSearchParams.cursor : null;
   const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
   let items: Schedule[] = [];
+  let schedulesNextCursor: string | null = null;
   let targets: SessionTarget[] = [];
   let repositories: Array<{ id: string; name: string }> = [];
   let error: string | null = null;
+  const schedulesPath = `/api/v1/schedules?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   try {
     const [schedulesData, targetsData, repositoriesData] = await Promise.all([
-      apiGet<{ items: Schedule[]; nextCursor?: string | null }>("/api/v1/schedules?limit=50"),
+      apiGet<{ items: Schedule[]; nextCursor?: string | null }>(schedulesPath),
       apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
       apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
     ]);
     items = schedulesData.items ?? [];
+    schedulesNextCursor = schedulesData.nextCursor ?? null;
     targets = targetsData;
     repositories = repositoriesData.toSorted(
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
@@ -210,6 +222,16 @@ export default async function SchedulesPage({
               ) : null}
             </TableBody>
           </Table>
+          <CursorPagination
+            nextHref={
+              schedulesNextCursor
+                ? `/schedules?${new URLSearchParams({
+                    ...(editId ? { edit: editId } : {}),
+                    cursor: schedulesNextCursor,
+                  }).toString()}`
+                : null
+            }
+          />
           {canWriteSchedules ? (
             <div id="schedule-create">
               <h3 className="mb-2 text-lg font-medium">

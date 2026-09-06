@@ -37,7 +37,7 @@ export async function handleProviderAccountUsageRoute(ctx: RouteCtx): Promise<bo
     });
     return true;
   }
-  plane.enqueueAssignment();
+  await plane.enqueueAssignment();
   if (
     !(await writeRouteAudit(ctx, {
       action: "provider-account:clear-usage-limit",

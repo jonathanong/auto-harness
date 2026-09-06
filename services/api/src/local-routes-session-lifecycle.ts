@@ -60,7 +60,7 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
         }))
       )
         return true;
-      plane.enqueueAssignment();
+      await plane.enqueueAssignment();
       send(res, 200, result.session);
     } catch {
       if (

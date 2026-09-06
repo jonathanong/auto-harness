@@ -89,7 +89,7 @@ export type ControlPlaneOptions = {
    * When set, {@link ControlPlane.enqueueAssignment} calls this instead of running
    * the sweep in-process. AWS REST uses it to Event-invoke the cron function.
    */
-  onAssignmentRequested?: () => void;
+  onAssignmentRequested?: () => void | Promise<void>;
 };
 
 export type PublicSession = Omit<SessionRecord, "principalId" | "cancelledByDrainOperationId"> & {

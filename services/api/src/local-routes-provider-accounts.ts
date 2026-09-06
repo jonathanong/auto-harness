@@ -164,7 +164,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         )
           return true;
         if (result.result.released) {
-          plane.enqueueAssignment();
+          await plane.enqueueAssignment();
           const refreshed = await plane.listProviderAccountLeaseStatesDurable(id, (session) =>
             mayAccessRepository(ctx.principal, session?.repositoryId),
           );
@@ -250,7 +250,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         )
           return true;
         if (typeof body.maxConcurrentSessions === "number" || typeof body.providerId === "string")
-          plane.enqueueAssignment();
+          await plane.enqueueAssignment();
         send(res, 200, result.account);
         return true;
       } catch {

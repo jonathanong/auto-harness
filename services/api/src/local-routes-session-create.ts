@@ -132,7 +132,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
       }))
     )
       return true;
-    plane.enqueueAssignment();
+    await plane.enqueueAssignment();
     send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
   } catch {
     if (

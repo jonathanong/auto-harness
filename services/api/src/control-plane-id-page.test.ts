@@ -51,9 +51,10 @@ describe("pageByKey", () => {
     ).toEqual({ items: [{ id: "c" }], nextCursor: null });
   });
 
-  it("rejects a cursor that is not in the filtered set", () => {
-    expect(() => pageByKey(items, { limit: 2, cursor: "missing", key: (item) => item.id })).toThrow(
-      InvalidListPageQueryError,
-    );
+  it("continues after a cursor even when that key has been deleted", () => {
+    expect(pageByKey(items, { limit: 2, cursor: "a", key: (item) => item.id })).toEqual({
+      items: [{ id: "b" }, { id: "c" }],
+      nextCursor: null,
+    });
   });
 });
