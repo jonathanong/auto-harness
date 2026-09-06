@@ -5,10 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 describe("getHostDurable", () => {
   it("loads one host from keyed inventory and lock reads", async () => {
     const inventories = new Map([
-      [
-        "host-1",
-        { hostId: "host-1", repositories: [], providerAccounts: [], updatedAt: "t" },
-      ],
+      ["host-1", { hostId: "host-1", repositories: [], providerAccounts: [], updatedAt: "t" }],
     ]);
     const connections = new Map([
       [
