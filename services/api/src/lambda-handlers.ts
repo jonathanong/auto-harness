@@ -218,9 +218,21 @@ async function postToHost(
  * is gone and keeps heartbeating into the void. Best-effort: a failure here just
  * means this stale connection sits until API Gateway's own idle/max-duration limit
  * reaps it, no worse than before this call existed.
+ *
+ * Returns its promise rather than firing-and-forgetting internally: Lambda may
+ * freeze the execution environment as soon as the invocation's returned promise
+ * settles, so an untracked background send here is not guaranteed to ever run.
+ * Callers must route this through the same `track`/`deliveries` mechanism
+ * `trackDelivery` uses, so `runInvocation` awaits it before the response returns.
  */
-function forceCloseStaleConnection(management: ManagementClient, connectionId: string): void {
-  void management.send(new DeleteConnectionCommand({ ConnectionId: connectionId })).catch(() => {});
+function forceCloseStaleConnection(
+  management: ManagementClient,
+  connectionId: string,
+): Promise<void> {
+  return management.send(new DeleteConnectionCommand({ ConnectionId: connectionId })).then(
+    () => {},
+    () => {},
+  );
 }
 
 /** Create the AWS event adapters without performing any deployment. */
@@ -474,7 +486,7 @@ export async function createLambdaRuntime(
         const viewerStatus = await viewerSockets.message(connectionId, event.body ?? "");
         if (viewerStatus !== undefined) return { statusCode: viewerStatus };
         if (!authenticated) {
-          forceCloseStaleConnection(management, connectionId);
+          track(forceCloseStaleConnection(management, connectionId));
           return { statusCode: 401 };
         }
         if (authenticated.type !== "host") return { statusCode: 403 };

@@ -597,7 +597,7 @@ export async function handleHostMessageDurable(
     fence = { hostId, connectionId: sourceConnectionId };
   }
   if (msg.type === "host:keepalive") {
-    return (await heartbeatDurable(state, msg.hostId, msg.at))
+    return (await heartbeatDurable(state, msg.hostId, msg.at, fence?.connectionId))
       ? { ok: true }
       : { ok: false, error: "agent not connected" };
   }

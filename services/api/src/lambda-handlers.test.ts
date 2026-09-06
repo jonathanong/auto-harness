@@ -904,10 +904,9 @@ describe("Lambda runtime adapters", () => {
   });
 
   it("swallows a failed force-close instead of surfacing it to the caller", async () => {
-    // forceCloseStaleConnection is fire-and-forget: a connectionId with no
-    // authenticated row is already gone from this API's perspective, so a
-    // failure closing its (possibly already-dead) physical socket must never
-    // fail the frame's own rejection response.
+    // A connectionId with no authenticated row is already gone from this
+    // API's perspective, so a failure closing its (possibly already-dead)
+    // physical socket must never fail the frame's own rejection response.
     const fixture = runtimeFixture();
     const runtime = await fixture.runtime;
     fixture.management.send.mockRejectedValueOnce(new Error("management unavailable"));
@@ -916,6 +915,33 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "missing", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 401 });
+  });
+
+  it("awaits the force-close before completing the invocation", async () => {
+    // Lambda may freeze the execution environment as soon as the handler's
+    // returned promise settles, so the DeleteConnectionCommand must be
+    // tracked through the same deliveries mechanism as postToHost — an
+    // untracked background send is not guaranteed to ever run.
+    const fixture = runtimeFixture();
+    const runtime = await fixture.runtime;
+    let release: (() => void) | undefined;
+    fixture.management.send.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    let settled = false;
+    const rejection = runtime
+      .websocket({
+        requestContext: { connectionId: "missing", routeKey: "$default" },
+      })
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    release!();
+    await expect(rejection).resolves.toEqual({ statusCode: 401 });
+    expect(fixture.management.send.mock.calls[0]?.[0]).toBeInstanceOf(DeleteConnectionCommand);
   });
 
   it("lazily creates one shared runtime for all exported handler shapes", async () => {

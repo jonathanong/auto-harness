@@ -915,6 +915,17 @@ export async function heartbeatDurable(
   state: ControlPlaneState,
   hostId: string,
   at?: string,
+  /**
+   * The connectionId this exact frame arrived on, when the caller already
+   * fenced it against the durable lock (handleHostMessageDurable's `fence`
+   * check). That check is strictly stronger than anything derivable here, so
+   * prefer it outright instead of falling through a local cache that could
+   * still hold a different, superseded connectionId for this host even when
+   * non-empty — e.g. a replacement registered through another warm container.
+   * Callers with no per-connection fence (the legacy HTTP host-message relay)
+   * omit this and get the cache/durable-lock fallback below.
+   */
+  sourceConnectionId?: string,
 ): Promise<boolean> {
   if (!state.storage) {
     return heartbeat(state, hostId, at);
@@ -925,7 +936,9 @@ export async function heartbeatDurable(
   // back to the durable lock the same way `drainHostDurable` already does
   // rather than failing a healthy heartbeat on a stale local cache miss.
   const connectionId =
-    state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
+    sourceConnectionId ??
+    state.hostConnection.get(hostId) ??
+    (await state.storage.getHostLock(hostId));
   if (!connectionId) {
     return false;
   }

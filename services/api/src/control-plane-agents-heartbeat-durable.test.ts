@@ -32,4 +32,32 @@ describe("durable heartbeat lease resolution", () => {
     plane.state.storage = { getHostLock: async () => null } as never;
     expect(await heartbeatDurable(plane.state, "missing")).toBe(false);
   });
+
+  it("prefers an already-fenced sourceConnectionId over a stale non-empty local cache", async () => {
+    // handleHostMessageDurable already verifies the frame's own connectionId
+    // against the durable lock before calling heartbeatDurable (its `fence`
+    // check) — that is strictly stronger than this process's local cache,
+    // which can still hold a *different*, superseded connectionId for this
+    // host (not merely be empty) when another warm container registered a
+    // replacement more recently. Using the stale cache value here would fail
+    // the fenced write against the current lock for no reason.
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "stale-cached-conn");
+    let getHostLockCalls = 0;
+    let heartbeatConnectionCalledWith: [string, string] | undefined;
+    plane.state.storage = {
+      getHostLock: async () => {
+        getHostLockCalls += 1;
+        return "stale-cached-conn";
+      },
+      heartbeatConnection: async (hostId: string, connectionId: string) => {
+        heartbeatConnectionCalledWith = [hostId, connectionId];
+        return connectionId === "current-conn";
+      },
+    } as never;
+    expect(await heartbeatDurable(plane.state, "h", "beat", "current-conn")).toBe(true);
+    expect(heartbeatConnectionCalledWith).toEqual(["h", "current-conn"]);
+    // The already-fenced connectionId short-circuits both fallback lookups.
+    expect(getHostLockCalls).toBe(0);
+  });
 });
