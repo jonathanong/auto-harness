@@ -63,7 +63,7 @@ export default async function HostDetailPage({
   const canWriteProviderAccounts = can(principal, "providers:accounts");
   const inventory = inventoryResult.value;
   const inventoryError = inventoryResult.error;
-  const agent = agentsResult.value;
+  const agent = agentsResult.value ?? undefined;
   const agentsError = agentsResult.error;
 
   if (!inventory && !agent) {
