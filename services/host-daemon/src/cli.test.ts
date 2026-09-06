@@ -459,29 +459,29 @@ describe("printUsage / main / defaults", () => {
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
   });
 
-  it("default deps' log/error timestamp every physical line, including a fake one an embedded CR/LF tries to inject", () => {
+  it("default deps' log/error timestamp every physical line", () => {
+    // Each case shares one assertion shape: printUsage's static help text and
+    // coalesced multi-line session output both go through this same sink, and
+    // a blanket newline replacement would squash either into one unreadable
+    // line — while an injected fake "line" still gets stamped with the real
+    // current time, not a false one it tried to carry, so it can never
+    // actually claim a timestamp of its own.
+    const cases: Array<[string, string]> = [
+      [
+        "real line\r\n2099-01-01T00:00:00.000Z forged line",
+        "2026-01-01T00:00:00.000Z real line\n2026-01-01T00:00:00.000Z 2099-01-01T00:00:00.000Z forged line",
+      ],
+      [
+        "line one\nline two\nline three",
+        "2026-01-01T00:00:00.000Z line one\n2026-01-01T00:00:00.000Z line two\n2026-01-01T00:00:00.000Z line three",
+      ],
+    ];
     const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    d.log("real line\r\n2099-01-01T00:00:00.000Z forged line");
-    // The injected second "line" still gets stamped with the real current
-    // time, not the fake one it tried to carry — it can never actually claim
-    // a false timestamp of its own.
-    expect(log).toHaveBeenCalledWith(
-      "2026-01-01T00:00:00.000Z real line\n2026-01-01T00:00:00.000Z 2099-01-01T00:00:00.000Z forged line",
-    );
-    log.mockRestore();
-  });
-
-  it("default deps' log/error preserve genuinely multi-line trusted content", () => {
-    // printUsage's static help text and coalesced multi-line session output
-    // both go through this same sink — a blanket newline replacement would
-    // squash either into one unreadable line.
-    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    d.log("line one\nline two\nline three");
-    expect(log).toHaveBeenCalledWith(
-      "2026-01-01T00:00:00.000Z line one\n2026-01-01T00:00:00.000Z line two\n2026-01-01T00:00:00.000Z line three",
-    );
+    for (const [input, expected] of cases) {
+      d.log(input);
+      expect(log).toHaveBeenCalledWith(expected);
+    }
     log.mockRestore();
   });
 
