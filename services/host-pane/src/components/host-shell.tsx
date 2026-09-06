@@ -41,7 +41,6 @@ export function HostShell({
     <AppShell
       pw="host-shell"
       title="Host pane"
-      titleTip="Debug-only local UI for one host identity (HARNESS_HOST_ID). Operators should use the control plane."
       titleBadge={
         <div className="flex items-center gap-1">
           <WithTooltip tip="This UI is debug-only. Operators should use the control plane.">

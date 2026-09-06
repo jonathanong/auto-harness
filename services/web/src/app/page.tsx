@@ -1,4 +1,4 @@
-import { TipLink, TipText } from "@auto-harness/ui";
+import { TipText } from "@auto-harness/ui";
 
 import {
   DashboardLive,
@@ -47,26 +47,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6" data-pw="page-dashboard">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <TipText
-            as="h2"
-            className="cursor-help text-2xl font-semibold tracking-tight"
-            tip="Live counts from the control plane API"
-            pw="dashboard-heading"
-          >
-            Dashboard
-          </TipText>
-          <p className="text-sm text-muted-foreground">Control plane overview</p>
-        </div>
-        <TipLink
-          href="/sessions/new"
-          tip="Create a one-off session for a repository with a Provider or Command target"
-          pw="dashboard-new-session"
-          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+      <div>
+        <TipText
+          as="h2"
+          className="cursor-help text-2xl font-semibold tracking-tight"
+          tip="Live counts from the control plane API"
+          pw="dashboard-heading"
         >
-          New session
-        </TipLink>
+          Dashboard
+        </TipText>
+        <p className="text-sm text-muted-foreground">Control plane overview</p>
       </div>
       <DashboardLive initial={initial} initialError={error} />
     </div>

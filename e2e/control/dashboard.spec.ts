@@ -47,6 +47,7 @@ test.describe("control plane dashboard", () => {
     });
     await expect(page.getByTestId("session-row-live-list")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("sessions-live-active")).toBeVisible();
+    await expect(page.getByRole("link", { name: "New session" })).toHaveCount(1);
   });
 
   test("keeps the last snapshot visible when live updates pause", async ({ page }) => {
@@ -71,6 +72,7 @@ test.describe("control plane dashboard", () => {
   test("nav links are present", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("nav-session-new")).toBeVisible();
+    await expect(page.getByRole("link", { name: "New session" })).toHaveCount(1);
 
     await page.getByTestId("nav-group-operate").click();
     await expect(page.getByTestId("nav-dashboard")).toBeVisible();
