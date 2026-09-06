@@ -138,9 +138,9 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 - Sends `host:register` immediately after open, including `protocolVersion` and
   attempt-fenced `runningAttempts` (plus `runningSessions` for older control planes)
 - Routes inbound messages by protocol command (`session:assign`, `session:cancel`,
-  `session:acknowledged`, drain). In-flight state is keyed by `{sessionId, attemptId}`,
-  not session id alone, so a delayed cancel/ACK/log from an old attempt cannot touch
-  a newer assignment
+  `session:acknowledged`, `session:status-acknowledged`, drain). In-flight state is keyed by
+  `{sessionId, attemptId}`, not session id alone, so a delayed cancel/ACK/log from an old attempt
+  cannot touch a newer assignment
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
 - On reconnect: re-register full inventory + any **in-progress** attempts still running locally
 - Responds to server `ping` with `pong`
@@ -153,6 +153,17 @@ remains unchanged across socket reconnects and inventory refreshes. A control pl
 modern UUID records a restart only when a later registration reports a different UUID; first
 registration is a baseline, and legacy registrations without the pair remain accepted. Detection
 is durable local observability only: it neither restarts the host nor sends an external notification.
+
+A completed WebSocket write is not delivery: the frame reached the kernel send buffer, not
+necessarily the control plane. `session:status` is therefore treated as unacknowledged until an
+explicit `session:status-acknowledged { sessionId, attemptId }` reply arrives, and is resent on
+every 20-second `host:keepalive` tick until then (dropped after 24h). The same keepalive also
+carries `runningSessions`: every session id the daemon still owns, including one whose terminal
+status is still awaiting acknowledgement. The control plane requeues any session it believes is
+running on that host but which is missing from this list, bounding a lost/orphaned session to one
+keepalive interval instead of the absolute session timeout. A daemon that omits `runningSessions`
+(a pre-reconciliation version) opts out of this reconciliation rather than being treated as
+reporting nothing running.
 
 ### Config Loader
 

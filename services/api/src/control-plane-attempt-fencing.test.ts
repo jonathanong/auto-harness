@@ -177,7 +177,10 @@ describe("ControlPlane assignment-attempt fencing", () => {
         },
         "connection",
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "sess-1", attemptId: first.session.attemptId! },
+    });
     expect(logs).toBe(0);
     expect(finished).toBe(0);
     expect(plane.getSession("sess-1")?.attemptId).toBe(second.session.attemptId);

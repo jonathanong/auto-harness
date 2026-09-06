@@ -417,7 +417,17 @@ export function handleHostMessage(
       return { ok: true };
     }
     case "session:status": {
-      return applySessionStatus(state, msg);
+      // Captured before mutation: a terminal report can clear session.hostId.
+      const owner = state.sessions.get(msg.sessionId)?.hostId;
+      const result = applySessionStatus(state, msg);
+      if (result.ok && owner) {
+        state.onHostMessage?.(owner, {
+          type: "session:status-acknowledged",
+          sessionId: msg.sessionId,
+          attemptId: msg.attemptId,
+        });
+      }
+      return result;
     }
     case "session:usage": {
       return ingestUsage(state, msg);
@@ -474,6 +484,8 @@ export async function handleHostMessageDurable(
   connectionId?: string;
   /** Present only after the durable ack transaction committed. */
   sessionAcknowledged?: string;
+  /** Present only after a `session:status` report was durably applied. */
+  sessionStatusAcknowledged?: { sessionId: string; attemptId: string };
   /** Present only after the host's drain flag committed. */
   hostDraining?: string;
 }> {
@@ -597,7 +609,13 @@ export async function handleHostMessageDurable(
     fence = { hostId, connectionId: sourceConnectionId };
   }
   if (msg.type === "host:keepalive") {
-    return (await heartbeatDurable(state, msg.hostId, msg.at, fence?.connectionId))
+    return (await heartbeatDurable(
+      state,
+      msg.hostId,
+      msg.at,
+      fence?.connectionId,
+      msg.runningSessions,
+    ))
       ? { ok: true }
       : { ok: false, error: "agent not connected" };
   }
@@ -641,7 +659,16 @@ export async function handleHostMessageDurable(
     return { ok: true };
   }
   if (msg.type === "session:status") {
-    return applySessionStatusDurable(state, msg, storage, fence);
+    const result = await applySessionStatusDurable(state, msg, storage, fence);
+    // The daemon retries an unacknowledged terminal status on every keepalive; this
+    // is the signal it stops. Every ok branch (finish, ignore, and the already-timed-out
+    // lease release) represents a durably applied report, so all of them qualify.
+    return result.ok
+      ? {
+          ...result,
+          sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+        }
+      : result;
   }
   if (msg.type === "session:usage") {
     return ingestUsageDurable(state, msg, fence);

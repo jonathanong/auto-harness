@@ -118,6 +118,30 @@ describe("durable host-message fencing", () => {
     expect(deliveries).toHaveLength(1);
   });
 
+  it("confirms an in-memory terminal status transition and notifies the owning host", () => {
+    const deliveries: Array<{ hostId: string; message: unknown }> = [];
+    const plane = new ControlPlane({
+      now: () => "now",
+      onHostMessage: (hostId, message) => deliveries.push({ hostId, message }),
+    });
+    plane.state.sessions.set("s", running());
+
+    const frame = {
+      type: "session:status" as const,
+      sessionId: "s",
+      worktreeId: "w",
+      attemptId: "a",
+      status: "completed" as const,
+    };
+    expect(plane.handleHostMessage(frame)).toEqual({ ok: true });
+    expect(deliveries).toEqual([
+      {
+        hostId: "h",
+        message: { type: "session:status-acknowledged", sessionId: "s", attemptId: "a" },
+      },
+    ]);
+  });
+
   it("rejects stale sources and preserves unfenced compatibility paths", async () => {
     const plane = new ControlPlane({ now: () => "now" });
     plane.state.sessions.set("s", running());
@@ -193,7 +217,10 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         status: "running",
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
   });
 
   it("enforces the same source fence for an in-memory drain request", async () => {
@@ -273,7 +300,10 @@ describe("durable host-message fencing", () => {
         },
         "c",
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
     expect(logFence).toBe(false);
     expect(statusFence).toBe(true);
     expect(statusConcurrencyId).toBe("session-lock");
@@ -332,7 +362,10 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         status: "cancelled",
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
     expect(calls).toEqual(["log", "cancel-true", "session-lock"]);
 
     const local = new ControlPlane();

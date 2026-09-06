@@ -122,7 +122,10 @@ describe("scheduled final branch coverage", () => {
         attemptId: "attempt",
         status: "cancelled",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: run.id, attemptId: "attempt" },
+    });
     state.storage.releaseMainCheckoutSession = async () => true;
     state.mainCheckoutLeases.set("host\0repo", { sessionId: run.id, connectionId: "connection" });
     await expect(
@@ -137,7 +140,10 @@ describe("scheduled final branch coverage", () => {
         errorMessage: "stopped",
         cliResumeRef: "ref",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: run.id, attemptId: "attempt" },
+    });
     expect(state.sessions.get(run.id)).toMatchObject({ status: "cancelled", exitCode: 130 });
   });
 

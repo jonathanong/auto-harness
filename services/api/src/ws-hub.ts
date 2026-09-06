@@ -168,6 +168,20 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               }),
             );
           } else if (
+            msg.type === "session:status" &&
+            result.sessionStatusAcknowledged?.sessionId === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            // Same peer-confirmation contract as session:ack above: a durable
+            // application of the report, not the write, is the acknowledgement.
+            socket.send(
+              JSON.stringify({
+                type: "session:status-acknowledged",
+                sessionId: result.sessionStatusAcknowledged.sessionId,
+                attemptId: result.sessionStatusAcknowledged.attemptId,
+              }),
+            );
+          } else if (
             msg.type === "host:status" &&
             result.hostDraining === msg.hostId &&
             socket.readyState === socket.OPEN
@@ -518,7 +532,11 @@ export function parseHostMessage(
     return message.type === "host:keepalive" &&
       boundedText(message.hostId) &&
       boundedText(message.at, 128) &&
-      Number.isFinite(Date.parse(message.at))
+      Number.isFinite(Date.parse(message.at)) &&
+      (message.runningSessions === undefined ||
+        (Array.isArray(message.runningSessions) &&
+          message.runningSessions.length <= 1_000 &&
+          message.runningSessions.every((sessionId) => boundedText(sessionId))))
       ? (message as HostToServerMessage)
       : null;
   } catch {

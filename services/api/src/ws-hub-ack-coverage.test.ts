@@ -42,6 +42,23 @@ describe("WebSocket durable ACK replies", () => {
       await run.close();
     }
   });
+
+  it("replies with session:status-acknowledged once a terminal report durably applies", async () => {
+    const run = await startHarness(new StatusPlane());
+    try {
+      const socket = await registered(run.origin);
+      socket.send(JSON.stringify(status()));
+      await expect(waitForMessage(socket)).resolves.toEqual({
+        type: "session:status-acknowledged",
+        sessionId: "ack-session",
+        attemptId: "attempt-1",
+      });
+      socket.close();
+      await waitForClose(socket);
+    } finally {
+      await run.close();
+    }
+  });
 });
 
 class AckPlane extends ControlPlane {
@@ -82,6 +99,34 @@ function ack() {
     sessionId: "ack-session",
     worktreeId: null,
     attemptId: "attempt-1",
+  };
+}
+
+class StatusPlane extends ControlPlane {
+  override getSession(id: string): ReturnType<ControlPlane["getSession"]> {
+    return id === "ack-session"
+      ? ({ hostId: "ack-host" } as ReturnType<ControlPlane["getSession"]>)
+      : null;
+  }
+
+  override async handleHostMessageDurable(message: HostToServerMessage) {
+    if (message.type === "session:status") {
+      return {
+        ok: true,
+        sessionStatusAcknowledged: { sessionId: message.sessionId, attemptId: message.attemptId! },
+      };
+    }
+    return super.handleHostMessageDurable(message);
+  }
+}
+
+function status() {
+  return {
+    type: "session:status" as const,
+    sessionId: "ack-session",
+    worktreeId: null,
+    attemptId: "attempt-1",
+    status: "completed" as const,
   };
 }
 

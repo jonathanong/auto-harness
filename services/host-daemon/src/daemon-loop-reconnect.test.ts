@@ -190,7 +190,12 @@ describe("DaemonLoop reconnect", () => {
           daemonStartedAt: identity.startedAt,
         }),
       ]);
-      expect(sent.at(-1)).toEqual({ type: "host:keepalive", hostId: config.hostId, at: "now" });
+      expect(sent.at(-1)).toEqual({
+        type: "host:keepalive",
+        hostId: config.hostId,
+        at: "now",
+        runningSessions: [],
+      });
       expect(loop.isDraining()).toBe(false);
       const draining = loop.beginDrain();
       transport.deliver({ type: "host:draining", hostId: config.hostId });
@@ -609,6 +614,53 @@ describe("DaemonLoop reconnect", () => {
           runningAttempts: [{ sessionId: "sess", attemptId: "new" }],
         }),
       );
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps reporting an aborting-but-still-inflight session on keepalive, unlike register", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer(message) {
+          sent.push(message);
+        },
+      });
+      const loop = new DaemonLoop({ config, transport, now: () => "now" });
+      await loop.start();
+      const tearingDown = new AbortController();
+      tearingDown.abort();
+      (
+        loop as unknown as {
+          inflight: Map<
+            string,
+            {
+              sessionId: string;
+              attemptId: string;
+              controller: AbortController;
+              work: Promise<void>;
+              acknowledged: boolean;
+            }
+          >;
+        }
+      ).inflight.set("cancelling\0attempt", {
+        sessionId: "cancelling",
+        attemptId: "attempt",
+        controller: tearingDown,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+
+      await loop.keepalive();
+      // Still owned: runAssign has not returned yet, so the control plane must
+      // not requeue this session out from under the daemon's own teardown.
+      expect(sent.at(-1)).toEqual(
+        expect.objectContaining({ type: "host:keepalive", runningSessions: ["cancelling"] }),
+      );
+
       loop.stop();
     } finally {
       cleanup();

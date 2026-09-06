@@ -525,6 +525,12 @@ export async function createLambdaRuntime(
             sessionId: result.sessionAcknowledged,
             attemptId: message.attemptId,
           });
+        } else if (result.sessionStatusAcknowledged && message.type === "session:status") {
+          trackDelivery(authenticated.hostId, {
+            type: "session:status-acknowledged",
+            sessionId: result.sessionStatusAcknowledged.sessionId,
+            attemptId: result.sessionStatusAcknowledged.attemptId,
+          });
         } else if (result.hostDraining) {
           trackDelivery(authenticated.hostId, {
             type: "host:draining",
