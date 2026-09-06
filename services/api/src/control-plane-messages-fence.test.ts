@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { handleHostMessage } from "./control-plane-messages.ts";
+import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 
 function running(id = "s") {
   return {
@@ -116,6 +116,35 @@ describe("durable host-message fencing", () => {
       error: "session not found",
     });
     expect(deliveries).toHaveLength(1);
+  });
+
+  it("acknowledges a durable session:status retry whose own transition already cleared its host claim", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const requeued = {
+      ...running(),
+      status: "queued" as const,
+      hostId: null,
+      worktreeId: null,
+    };
+    state.sessions.set("s", requeued);
+    state.storage = { getSession: async () => requeued } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+        },
+        "stale-connection",
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
   });
 
   it("confirms an in-memory terminal status transition and notifies the owning host", () => {

@@ -49,6 +49,7 @@ export async function requeueOmittedScheduled(
   hostId: string,
   running: Set<string>,
   requeued: string[],
+  reason = "daemon did not report session after reconnect; requeued",
 ): Promise<void> {
   const storage = state.storage;
   const sessions =
@@ -72,7 +73,7 @@ export async function requeueOmittedScheduled(
           connectionId: session.assignmentConnectionId,
           status: "queued",
           queueShard: session.queueShard,
-          reason: "daemon did not report session after reconnect; requeued",
+          reason,
           ...providerAccountLeaseWriteOpts(session),
         })
       : releaseScheduledLeaseLocal(state, session);
@@ -81,7 +82,7 @@ export async function requeueOmittedScheduled(
       releaseProviderAccountLease(state, session);
       state.sessions.set(
         session.id,
-        queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
+        queueReconnectSession(session, reason),
       );
       state.pendingAcks.delete(session.id);
       requeued.push(session.id);

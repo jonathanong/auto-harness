@@ -86,6 +86,6 @@ export async function reconcileHostOwnedSessions(
 ): Promise<string[]> {
   const requeued: string[] = [];
   await requeueOmittedWorktreeSessions(state, hostId, connectionId, running, reason, requeued);
-  await requeueOmittedScheduled(state, hostId, new Set(running), requeued);
+  await requeueOmittedScheduled(state, hostId, new Set(running), requeued, reason);
   return requeued;
 }

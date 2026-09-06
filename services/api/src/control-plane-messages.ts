@@ -55,6 +55,7 @@ import {
 } from "./control-plane-scheduled-assign.ts";
 import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
@@ -541,6 +542,19 @@ export async function handleHostMessageDurable(
     ) {
       await requestAssignment(state);
     }
+    if (result.ok && msg.type === "host:keepalive" && msg.runningSessions !== undefined) {
+      // The synchronous local handler above only updates the heartbeat
+      // timestamp; run the same keepalive-time reconciliation the durable
+      // path gets via `heartbeatDurable`, so a non-durable control plane also
+      // bounds a lost/orphaned session to one keepalive interval.
+      await reconcileHostOwnedSessions(
+        state,
+        msg.hostId,
+        state.hostConnection.get(msg.hostId),
+        new Set(msg.runningSessions),
+        "daemon no longer reports session as running; requeued",
+      );
+    }
     return result;
   }
   const storage = state.storage;
@@ -602,6 +616,18 @@ export async function handleHostMessageDurable(
         const session = await loadDurableSession(state, storage, msg.sessionId);
         if (session?.attemptId && session.attemptId !== msg.attemptId) {
           return { ok: true };
+        }
+        if (msg.type === "session:status" && session?.attemptId === msg.attemptId) {
+          // The session's own transition (finish/requeue) already cleared its
+          // host claim for this exact attempt — the fence above trips only
+          // because there is no host left to match against, not because this
+          // report is stale. Acknowledge it so the daemon stops retrying a
+          // report the control plane already durably applied, rather than
+          // resending it every keepalive for up to 24h.
+          return {
+            ok: true,
+            sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+          };
         }
       }
       return { ok: false, error: "stale host connection" };

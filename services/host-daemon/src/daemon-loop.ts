@@ -63,6 +63,8 @@ export type DaemonLoopOptions = {
   runtime?: HostRuntimeReport;
   /** Stop retrying an unacknowledged terminal `session:status` after this long. */
   pendingStatusMaxAgeMs?: number;
+  /** Stop retaining new unacknowledged terminal statuses once this many are pending. */
+  pendingStatusMaxCount?: number;
 };
 type InflightSession = {
   sessionId: string;
@@ -92,6 +94,14 @@ type PendingTerminalStatus = {
 };
 
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Ceiling on retained terminal statuses, comfortably under the control
+ * plane's 1,000-entry `runningSessions` wire limit. Guards a daemon deployed
+ * against a not-yet-upgraded control plane (which never sends
+ * `session:status-acknowledged`) from growing this set without bound until a
+ * keepalive/registration is rejected as invalid and the connection drops.
+ */
+const DEFAULT_PENDING_STATUS_MAX_COUNT = 500;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -102,6 +112,7 @@ export class DaemonLoop {
   private readonly inflight = new Map<string, InflightSession>();
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
   private readonly pendingStatusMaxAgeMs: number;
+  private readonly pendingStatusMaxCount: number;
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
   /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
@@ -146,6 +157,8 @@ export class DaemonLoop {
     this.drainRetryMs = options.drainRetryMs ?? 1_000;
     this.drainDeadlineMs = options.drainDeadlineMs ?? 30_000;
     this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
+    this.pendingStatusMaxCount =
+      options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -458,18 +471,29 @@ export class DaemonLoop {
    * not have. A pending terminal status for a session the control plane has
    * already moved past `running` is safe to include: `ignoreStaleReconnectClaim`
    * drops it before the strict running/ack check runs.
+   *
+   * Deduplicated by `{sessionId, attemptId}`: `runAssign` records the pending
+   * terminal status before its send settles, so the same attempt can briefly
+   * appear in both `inflight` (not yet cleaned up by `handleAssign`'s
+   * `finally`) and `pendingTerminalStatus`. A duplicate entry here makes
+   * `parseHostMessage` reject the whole registration as invalid.
    */
   private confirmableOwnedAttempts(): { sessionId: string; attemptId: string }[] {
-    const attempts = [...this.inflight.values()]
-      .filter((session) => session.acknowledged && !session.controller.signal.aborted)
-      .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
+    const attempts = new Map<string, { sessionId: string; attemptId: string }>();
+    for (const session of this.inflight.values()) {
+      if (!session.acknowledged || session.controller.signal.aborted) continue;
+      attempts.set(inflightKey(session.sessionId, session.attemptId), {
+        sessionId: session.sessionId,
+        attemptId: session.attemptId,
+      });
+    }
     for (const pending of this.pendingTerminalStatus.values()) {
-      attempts.push({
+      attempts.set(inflightKey(pending.message.sessionId, pending.message.attemptId), {
         sessionId: pending.message.sessionId,
         attemptId: pending.message.attemptId,
       });
     }
-    return attempts;
+    return [...attempts.values()];
   }
 
   /**
@@ -686,11 +710,22 @@ export class DaemonLoop {
     // (see ws-transport.ts), so a send that "succeeds" here is not proof the
     // control plane ever saw it. Retried on every keepalive until acked.
     const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
-    this.pendingTerminalStatus.set(pendingKey, {
-      message: statusMessage,
-      firstAttemptedAtMs: Date.now(),
-      sending: true,
-    });
+    if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
+      // A control plane that never sends session:status-acknowledged (e.g. not yet
+      // upgraded to support it) would otherwise grow this set without bound until a
+      // keepalive/registration is rejected as invalid for exceeding the wire limit.
+      // Degrade to the old fire-once behavior instead of retaining this one.
+      this.onLog?.(
+        `terminal status retry buffer full (${String(this.pendingStatusMaxCount)}); ` +
+          `not retrying ${msg.sessionId} if this send is lost`,
+      );
+    } else {
+      this.pendingTerminalStatus.set(pendingKey, {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: true,
+      });
+    }
     await this.outbound
       .send(statusMessage)
       .catch((error: unknown) => {
