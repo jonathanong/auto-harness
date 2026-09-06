@@ -42,7 +42,13 @@ describe("viewer fanout index", () => {
     ]);
     await expect(viewerConnectionIds(storage, "session-1")).resolves.toEqual(["viewer-2"]);
 
+    await addViewerFanout(storage, "session-1", "viewer-2");
+    await addViewerFanout(storage, "session-1", "viewer-3");
     await removeViewerFanout(storage, "session-1", "viewer-2");
+    expect(connections.get(`${VIEWER_FANOUT_PREFIX}session-1`)?.viewerFanoutIds).toEqual([
+      "viewer-3",
+    ]);
+    await removeViewerFanout(storage, "session-1", "viewer-3");
     expect(connections.has(`${VIEWER_FANOUT_PREFIX}session-1`)).toBe(false);
     await removeViewerFanout(storage, "missing", "viewer-2");
   });

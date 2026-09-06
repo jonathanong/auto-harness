@@ -32,6 +32,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       invokeHandler(handler as never, method, path, body);
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/hosts?limit=foo")).status).toBe(400);
     expect((await invoke("GET", "/api/v1/hosts/a1")).json).toMatchObject({ hostId: "a1" });
     expect((await invoke("GET", "/api/v1/hosts/missing")).status).toBe(404);
     plane.state.connections.set("viewer", {
