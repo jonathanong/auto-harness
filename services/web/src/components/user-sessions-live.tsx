@@ -49,7 +49,7 @@ function WatchingCell({ item }: Readonly<{ item: UserSession }>) {
   ));
 }
 
-export function UserSessionsContent({
+function UserSessionsContent({
   error,
   items,
 }: Readonly<{ error: string | null; items: UserSession[] }>) {
