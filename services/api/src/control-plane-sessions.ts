@@ -18,6 +18,7 @@ export { resumeSession, type ResumeOptions } from "./control-plane-session-resum
 export {
   listSessions,
   listSessionsPage,
+  normalizeListSessionsPageQuery,
   type ListSessionsPageQuery,
   type ListSessionsPageResult,
 } from "./control-plane-sessions-page.ts";

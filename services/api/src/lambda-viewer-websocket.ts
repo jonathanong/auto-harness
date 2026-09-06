@@ -7,11 +7,15 @@ import {
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService } from "./auth.ts";
 import type { ConnectionRecord, LogRecord } from "./db/plane-storage-types.ts";
+import {
+  addViewerFanout,
+  removeViewerFanout,
+  viewerConnectionIds,
+} from "./lambda-viewer-fanout.ts";
 import { viewerConnectionPrincipal } from "./viewer-principal.ts";
 import { isAllowedViewerOrigin, parseViewerMessage } from "./viewer-ws-protocol.ts";
 
 const MAX_SUBSCRIPTIONS = 8;
-const REPLAY_LIMIT = 250;
 
 type ViewerStorage = {
   deleteConnection(connectionId: string): Promise<void>;
@@ -19,7 +23,7 @@ type ViewerStorage = {
   getSession(sessionId: string): Promise<{ repositoryId: string; status: string } | null>;
   listConnections(): Promise<ConnectionRecord[]>;
   putConnection(connection: ConnectionRecord): Promise<void>;
-  queryLogs(sessionId: string, query: { after?: string; limit: number }): Promise<LogRecord[]>;
+  queryLogs?(sessionId: string, query: { after?: string; limit: number }): Promise<LogRecord[]>;
 };
 
 type ManagementClient = Pick<ApiGatewayManagementApiClient, "send">;
@@ -99,6 +103,9 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
     async disconnect(connectionId: string): Promise<boolean> {
       const connection = await dependencies.storage.getConnection(connectionId);
       if (connection?.type !== "client") return false;
+      for (const subscription of connection.viewerSubscriptions ?? []) {
+        await removeViewerFanout(dependencies.storage, subscription.sessionId, connectionId);
+      }
       await dependencies.storage.deleteConnection(connectionId);
       return true;
     },
@@ -114,6 +121,7 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
           ({ sessionId }) => sessionId !== message.sessionId,
         );
         await save(connection);
+        await removeViewerFanout(dependencies.storage, message.sessionId, connectionId);
         return 200;
       }
       const session = await dependencies.storage.getSession(message.sessionId);
@@ -134,48 +142,42 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
         });
         return 200;
       }
-      const records = await dependencies.storage.queryLogs(message.sessionId, {
-        ...(message.after ? { after: message.after } : {}),
-        limit: REPLAY_LIMIT,
-      });
-      let after = message.after;
-      for (const record of records.toSorted((a, b) =>
-        a.timestampSeq.localeCompare(b.timestampSeq),
-      )) {
-        if (!(await post(connectionId, { type: "session:log", ...record }))) return 200;
-        after = record.timestampSeq;
-      }
       const subscription = {
         sessionId: message.sessionId,
         repositoryId: session.repositoryId,
         status: session.status,
-        ...(after ? { after } : {}),
+        ...(message.after ? { after: message.after } : {}),
       };
       connection.viewerSubscriptions = existing
         ? subscriptions.map((item) => (item.sessionId === message.sessionId ? subscription : item))
         : [...subscriptions, subscription];
       await save(connection);
-      await post(connectionId, {
-        type: "session:subscribed",
-        sessionId: message.sessionId,
-        cursor: after ?? null,
-        status: session.status,
-      });
+      await addViewerFanout(dependencies.storage, message.sessionId, connectionId);
+      if (
+        !(await post(connectionId, {
+          type: "session:subscribed",
+          sessionId: message.sessionId,
+          cursor: message.after ?? null,
+          status: session.status,
+        }))
+      ) {
+        await removeViewerFanout(dependencies.storage, message.sessionId, connectionId);
+      }
       return 200;
     },
 
     async publishLog(record: LogRecord): Promise<void> {
-      for (const connection of await dependencies.storage.listConnections()) {
-        if (connection.type !== "client") continue;
+      for (const viewerId of await viewerConnectionIds(dependencies.storage, record.sessionId)) {
+        const connection = await dependencies.storage.getConnection(viewerId);
+        if (connection?.type !== "client") continue;
         const subscription = connection.viewerSubscriptions?.find(
           ({ sessionId }) => sessionId === record.sessionId,
         );
         if (!subscription || (subscription.after && record.timestampSeq <= subscription.after)) {
           continue;
         }
-        if (await post(connection.connectionId, { type: "session:log", ...record })) {
-          subscription.after = record.timestampSeq;
-          await save(connection);
+        if (!(await post(viewerId, { type: "session:log", ...record }))) {
+          await removeViewerFanout(dependencies.storage, record.sessionId, viewerId);
         }
       }
     },

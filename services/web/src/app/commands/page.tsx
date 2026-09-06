@@ -15,8 +15,8 @@ export default async function CommandsPage() {
   let error: string | null = null;
   try {
     const [c, p] = await Promise.all([
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
+      apiGet<{ items: Command[] }>("/api/v1/commands?limit=100"),
+      apiGet<{ items: Provider[] }>("/api/v1/providers?limit=100"),
     ]);
     commands = c.items ?? [];
     providers = p.items ?? [];

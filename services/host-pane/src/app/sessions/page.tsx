@@ -45,7 +45,7 @@ export default async function SessionsPage({
       apiGet<{ items: Session[]; nextCursor: string | null }>(
         buildSessionsApiPath(filters, { hostId: id }),
       ),
-      apiGetAllPages<Repository>("/api/v1/repositories").catch(() => []),
+      apiGetAllPages<Repository>("/api/v1/repositories?limit=100").catch(() => []),
     ]);
     items = sessions.items ?? [];
     nextCursor = sessions.nextCursor ?? null;

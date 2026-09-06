@@ -28,10 +28,16 @@ export async function fetchSessionLiveState(sessionId: string): Promise<{
   const session = await getJson<SessionSummary>(
     `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
   );
-  const hosts =
-    session.status === "running" && session.hostId
-      ? ((await getJson<{ items?: Host[] }>("/api/v1/hosts")).items ?? [])
-      : [];
+  let hosts: Host[] = [];
+  if (session.status === "running" && session.hostId) {
+    const path = `/api/v1/hosts/${encodeURIComponent(session.hostId)}`;
+    const response = await apiFetch(path, { cache: "no-store" });
+    if (response.status !== 404) {
+      if (!response.ok) throw new Error(`GET ${path} failed`);
+      const host = (await response.json()) as Host;
+      if (host?.hostId === session.hostId) hosts = [host];
+    }
+  }
   return { session, hosts };
 }
 

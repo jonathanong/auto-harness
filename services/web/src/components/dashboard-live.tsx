@@ -50,9 +50,9 @@ export function DashboardLive({
     refreshing.current = true;
     try {
       const [sessions, hosts, worktrees, running, queued] = await Promise.all([
-        getItems<DashboardSession>("/api/v1/sessions"),
-        getItems<DashboardHost>("/api/v1/hosts"),
-        getItems<DashboardWorktree>("/api/v1/worktrees"),
+        getItems<DashboardSession>("/api/v1/sessions?limit=50"),
+        getItems<DashboardHost>("/api/v1/hosts?limit=100"),
+        getItems<DashboardWorktree>("/api/v1/worktrees?limit=100"),
         getSessionCount("running"),
         getSessionCount("queued"),
       ]);

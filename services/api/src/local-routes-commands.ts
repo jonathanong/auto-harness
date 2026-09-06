@@ -2,6 +2,7 @@ import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { commitMutationAudit, readJsonBody, sendRouteError } from "./local-audited-route.ts";
 import { commandPatchFromBody } from "./local-routes-command-patch.ts";
+import { sendListPage } from "./local-list-page.ts";
 
 /** Command CRUD routes. Returns true if handled. */
 export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -9,7 +10,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/commands") {
     try {
-      send(res, 200, { items: await plane.listCommandsDurable() });
+      sendListPage(ctx, await plane.listCommandsDurable(), (command) => command.id);
     } catch {
       sendInternalError(res);
     }

@@ -26,11 +26,11 @@ type UserAccountData =
   | { kind: "unauthorized" };
 
 export async function loadUserAccounts(): Promise<UserAccountData> {
-  const response = await apiFetch("/api/v1/auth/users", { cache: "no-store" });
+  const response = await apiFetch("/api/v1/auth/users?limit=100", { cache: "no-store" });
   if (response.status === 401) return { kind: "unauthorized" };
   if (response.status === 403) return { kind: "forbidden" };
   if (!response.ok) throw new Error(await apiErrorMessage(response));
-  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories", {
+  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories?limit=100", {
     cache: "no-store",
   });
   if (repositories.response.status === 401) return { kind: "unauthorized" };

@@ -7,7 +7,7 @@ export default async function UserSessionsPage() {
   let items: UserSession[] = [];
   let error: string | null = null;
   try {
-    const response = await apiGet<{ items: UserSession[] }>("/api/v1/user-sessions");
+    const response = await apiGet<{ items: UserSession[] }>("/api/v1/user-sessions?limit=100");
     items = response.items ?? [];
   } catch (reason) {
     error = reason instanceof Error ? reason.message : String(reason);

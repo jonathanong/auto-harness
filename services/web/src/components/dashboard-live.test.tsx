@@ -44,9 +44,9 @@ describe("DashboardLive", () => {
     );
     expect(view.container.querySelector('[data-pw="dashboard-no-online-hosts"]')).toBeNull();
     expect(request.requests.map(([input]) => String(input))).toEqual([
-      "/api/v1/sessions",
-      "/api/v1/hosts",
-      "/api/v1/worktrees",
+      "/api/v1/sessions?limit=50",
+      "/api/v1/hosts?limit=100",
+      "/api/v1/worktrees?limit=100",
       "/api/v1/sessions?status=running&limit=100",
       "/api/v1/sessions?status=queued&limit=100",
     ]);

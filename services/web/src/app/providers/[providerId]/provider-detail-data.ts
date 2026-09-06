@@ -11,9 +11,9 @@ export async function loadProviderDetailData(providerId: string, includeLeases: 
   const leasesByAccount = new Map<string, ProviderAccountLeaseState[] | null>();
   try {
     const [accountResponse, commandResponse, hostResponse] = await Promise.all([
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
-      apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories"),
+      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts?limit=100"),
+      apiGet<{ items: Command[] }>("/api/v1/commands?limit=100"),
+      apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories?limit=100"),
     ]);
     accounts = (accountResponse.items ?? []).filter((account) => account.providerId === providerId);
     commands = (commandResponse.items ?? []).filter((command) => command.providerId === providerId);

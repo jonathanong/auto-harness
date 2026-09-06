@@ -104,3 +104,17 @@ export async function requestAssignment(
     // Originating create/register/terminal/capacity paths must not fail closed.
   }
 }
+
+/**
+ * Start assignment without occupying the caller's request. Browser REST must
+ * use this (Invariant 12). When `onAssignmentRequested` is set (AWS REST), that
+ * hook is the only work — typically `Lambda.invoke` Event of the cron function.
+ * Locally, the in-process sweep starts and is not awaited.
+ */
+export function enqueueAssignment(state: ControlPlaneState): void {
+  if (state.onAssignmentRequested) {
+    state.onAssignmentRequested();
+    return;
+  }
+  void requestAssignment(state);
+}

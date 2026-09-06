@@ -21,10 +21,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let online: boolean | undefined;
   let unauthenticated = false;
   try {
-    const agents = await apiGet<{ items: Array<{ hostId: string; online: boolean }> }>(
-      "/api/v1/hosts",
+    const host = await apiGet<{ hostId: string; online: boolean }>(
+      `/api/v1/hosts/${encodeURIComponent(id)}`,
     );
-    online = agents.items?.find((a) => a.hostId === id)?.online;
+    online = host.online;
   } catch (err) {
     // Remote WebUrl 401s are not a missing online badge — this pane has no login.
     unauthenticated = isUnauthenticatedError(err);

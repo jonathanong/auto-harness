@@ -116,7 +116,7 @@ export function UserSessionsLive({
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const response = await apiFetch("/api/v1/user-sessions");
+        const response = await apiFetch("/api/v1/user-sessions?limit=100");
         if (!response.ok) throw new Error(`GET /api/v1/user-sessions → ${response.status}`);
         const body = (await response.json()) as { items?: UserSession[] };
         if (active) {

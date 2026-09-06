@@ -1,11 +1,14 @@
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import { mayAccessHost } from "./auth-policy.ts";
 import { filterUserSessionsForPrincipal } from "./control-plane-user-sessions.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
+import { handleHostReadRoutes } from "./local-routes-hosts.ts";
+import { handleWorktreeReadRoutes } from "./local-routes-worktrees.ts";
+import { sendListPage } from "./local-list-page.ts";
 
 /**
  * The only three variants carrying `hostId` instead of `sessionId` — kept as one predicate
@@ -27,48 +30,16 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (await handleSchedulerRoutes(ctx)) return true;
+  if (await handleWorktreeReadRoutes(ctx)) return true;
+  if (await handleHostReadRoutes(ctx)) return true;
 
   if (method === "GET" && url.pathname === "/api/v1/user-sessions") {
     try {
-      send(res, 200, {
-        items: filterUserSessionsForPrincipal(await plane.listUserSessionsDurable(), ctx.principal),
-      });
-    } catch {
-      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
-    }
-    return true;
-  }
-
-  if (method === "GET" && url.pathname === "/api/v1/hosts") {
-    try {
-      send(res, 200, {
-        items: (await plane.listHostsDurable()).filter(
-          (host) =>
-            mayAccessHost(ctx.principal, host.hostId) &&
-            (!ctx.principal?.allowedRepositoryIds ||
-              host.repositoryIds.some((id) => mayAccessRepository(ctx.principal, id)) ||
-              host.worktreeIds.some((id) =>
-                mayAccessRepository(ctx.principal, plane.getWorktree(id)?.repositoryId),
-              )),
-        ),
-      });
-    } catch {
-      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
-    }
-    return true;
-  }
-
-  if (method === "GET" && url.pathname === "/api/v1/worktrees") {
-    const hostId = url.searchParams.get("hostId");
-    try {
-      send(res, 200, {
-        items: (await plane.listWorktreesDurable()).filter(
-          (worktree) =>
-            (hostId === null || worktree.hostId === hostId) &&
-            mayAccessHost(ctx.principal, worktree.hostId) &&
-            (!ctx.principal || mayAccessRepository(ctx.principal, worktree.repositoryId)),
-        ),
-      });
+      sendListPage(
+        ctx,
+        filterUserSessionsForPrincipal(await plane.listUserSessionsDurable(), ctx.principal),
+        (session) => session.id,
+      );
     } catch {
       send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
     }
@@ -149,7 +120,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         }))
       )
         return true;
-      if (body.type === "host:register") await plane.requestAssignment();
+      if (body.type === "host:register") plane.enqueueAssignment();
       send(res, 200, { ok: true });
       return true;
     } catch {

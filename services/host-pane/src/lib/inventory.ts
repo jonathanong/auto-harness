@@ -10,7 +10,7 @@ export async function loadLiveWorktreesById(hostId: string): Promise<Record<stri
   try {
     const data = await apiGet<{
       items: Array<{ id: string; status?: string; online?: boolean }>;
-    }>(`/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}`);
+    }>(`/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`);
     const out: Record<string, LiveWorktree> = {};
     for (const w of data.items ?? []) {
       out[w.id] = { status: w.status, online: w.online };
@@ -24,8 +24,8 @@ export async function loadLiveWorktreesById(hostId: string): Promise<Record<stri
 /** Full catalog repository list, sorted by name — used for repo pickers. */
 export async function loadRepoCatalog(): Promise<RepoCatalogEntry[]> {
   try {
-    return (await apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories")).toSorted((a, b) =>
-      a.name.localeCompare(b.name),
+    return (await apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories?limit=100")).toSorted(
+      (a, b) => a.name.localeCompare(b.name),
     );
   } catch {
     return [];

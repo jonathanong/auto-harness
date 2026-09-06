@@ -526,7 +526,11 @@ export async function listConnections(ctx: PlaneStorageCtx): Promise<ConnectionR
         ConsistentRead: true,
       }),
     );
-    items.push(...connectionPageItems(res.Items as ConnectionRecord[] | undefined));
+    items.push(
+      ...connectionPageItems(res.Items as ConnectionRecord[] | undefined).filter(
+        (connection) => !connection.connectionId.startsWith("viewers#"),
+      ),
+    );
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return items;

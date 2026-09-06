@@ -47,12 +47,12 @@ export default async function SchedulesPage({
   let error: string | null = null;
   try {
     const [schedulesData, targetsData, repositoriesData] = await Promise.all([
-      apiGet<{ items: Schedule[] }>("/api/v1/schedules"),
-      apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
-      apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories"),
+      apiGet<{ items: Schedule[]; nextCursor?: string | null }>("/api/v1/schedules?limit=50"),
+      apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
+      apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
     ]);
     items = schedulesData.items ?? [];
-    targets = targetsData.items ?? [];
+    targets = targetsData;
     repositories = repositoriesData.toSorted(
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
     );

@@ -4,7 +4,7 @@ import type { Command, Provider } from "@auto-harness/shared";
 
 import { DeleteCommandButton } from "../../../components/delete-command-button.tsx";
 import { EditCommandForm } from "../../../components/edit-command-form.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +38,7 @@ export default async function CommandDetailPage({
 
   let providers: Provider[] = [];
   try {
-    const data = await apiGet<{ items: Provider[] }>("/api/v1/providers");
-    providers = data.items ?? [];
+    providers = await apiGetAllPages<Provider>("/api/v1/providers?limit=100");
   } catch {
     /* ignore — provider select stays empty */
   }

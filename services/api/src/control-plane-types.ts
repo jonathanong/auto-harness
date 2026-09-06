@@ -85,6 +85,11 @@ export type ControlPlaneOptions = {
   /** HMAC secret used to sign stable list cursors across API workers. */
   sessionCursorSecret?: string;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
+  /**
+   * When set, {@link ControlPlane.enqueueAssignment} calls this instead of running
+   * the sweep in-process. AWS REST uses it to Event-invoke the cron function.
+   */
+  onAssignmentRequested?: () => void;
 };
 
 export type PublicSession = Omit<SessionRecord, "principalId" | "cancelledByDrainOperationId"> & {

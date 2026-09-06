@@ -59,7 +59,10 @@ describe("createLocalApp authentication routes", () => {
       headers?: Record<string, string>,
     ) => invokeHandler(handler, method, path, body, headers);
 
-    expect((await invoke("GET", "/api/v1/auth/users")).json).toEqual({ items: [] });
+    expect((await invoke("GET", "/api/v1/auth/users")).json).toEqual({
+      items: [],
+      nextCursor: null,
+    });
     expect((await invoke("POST", "/api/v1/auth/users", {})).status).toBe(400);
     const user = await invoke("POST", "/api/v1/auth/users", {
       username: "alice",

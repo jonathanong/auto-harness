@@ -30,9 +30,9 @@ export default async function DashboardPage() {
   let error: string | null = null;
   try {
     const [sessions, hosts, worktrees, running, queued] = await Promise.all([
-      apiGet<{ items: DashboardSession[] }>("/api/v1/sessions"),
-      apiGet<{ items: DashboardHost[] }>("/api/v1/hosts"),
-      apiGet<{ items: DashboardWorktree[] }>("/api/v1/worktrees"),
+      apiGet<{ items: DashboardSession[] }>("/api/v1/sessions?limit=50"),
+      apiGet<{ items: DashboardHost[] }>("/api/v1/hosts?limit=100"),
+      apiGet<{ items: DashboardWorktree[] }>("/api/v1/worktrees?limit=100"),
       getSessionCount("running"),
       getSessionCount("queued"),
     ]);

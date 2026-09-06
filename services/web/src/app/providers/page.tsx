@@ -16,9 +16,9 @@ export default async function ProvidersPage() {
   let error: string | null = null;
   try {
     const [p, a, c] = await Promise.all([
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
+      apiGet<{ items: Provider[] }>("/api/v1/providers?limit=100"),
+      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts?limit=100"),
+      apiGet<{ items: Command[] }>("/api/v1/commands?limit=100"),
     ]);
     providers = p.items ?? [];
     accounts = a.items ?? [];

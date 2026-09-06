@@ -65,8 +65,8 @@ export default async function RepositoriesPage({
   try {
     const [repos, hosts, wts] = await Promise.all([
       apiGet<RepositoryPage<Repo>>(repositoryPath),
-      apiGet<{ items: Host[] }>("/api/v1/hosts"),
-      apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
+      apiGet<{ items: Host[] }>("/api/v1/hosts?limit=100"),
+      apiGet<{ items: Wt[] }>("/api/v1/worktrees?limit=100"),
     ]);
     items = sortRepositories(repos.items ?? []);
     reposNextCursor = repos.nextCursor ?? null;

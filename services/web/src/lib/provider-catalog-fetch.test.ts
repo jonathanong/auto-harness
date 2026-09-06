@@ -12,7 +12,7 @@ describe("fetchProviderCatalogLookups", () => {
     const original = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL) => {
       const url = String(input);
-      if (url.endsWith("/api/v1/providers")) {
+      if (url.includes("/api/v1/providers")) {
         return new Response(
           JSON.stringify({
             items: [
@@ -27,7 +27,7 @@ describe("fetchProviderCatalogLookups", () => {
           }),
         );
       }
-      if (url.endsWith("/api/v1/provider-accounts")) {
+      if (url.includes("/api/v1/provider-accounts")) {
         return new Response(
           JSON.stringify({
             items: [
@@ -42,7 +42,7 @@ describe("fetchProviderCatalogLookups", () => {
           }),
         );
       }
-      if (url.endsWith("/api/v1/commands")) {
+      if (url.includes("/api/v1/commands")) {
         return new Response(
           JSON.stringify({
             items: [

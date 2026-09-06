@@ -15,28 +15,19 @@ describe("fetchControlPlaneHostStatus", () => {
       request = { url, init };
       return new Response(
         JSON.stringify({
-          items: [
-            {
-              hostId: "other",
-              online: true,
-              gitReady: true,
-            },
-            {
-              hostId: "host-1",
-              online: true,
-              connectedAt: "2026-08-21T10:00:00.000Z",
-              draining: false,
-              daemonVersion: "1.2.3",
-              gitVersion: "2.45.0",
-              gitReady: true,
-              gitReadinessReason: "git executable available",
-            },
-          ],
+          hostId: "host-1",
+          online: true,
+          connectedAt: "2026-08-21T10:00:00.000Z",
+          draining: false,
+          daemonVersion: "1.2.3",
+          gitVersion: "2.45.0",
+          gitReady: true,
+          gitReadinessReason: "git executable available",
         }),
         { status: 200 },
       );
     });
-    expect(request?.url).toBe("https://control.example/api/v1/hosts");
+    expect(request?.url).toBe("https://control.example/api/v1/hosts/host-1");
     expect(request?.init?.headers).toEqual({
       accept: "application/json",
       authorization: "Bearer secret-token",
@@ -61,7 +52,7 @@ describe("fetchControlPlaneHostStatus", () => {
       identity,
       async (_url, init) => {
         signal = init?.signal;
-        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+        return new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 });
       },
       controller.signal,
     );
@@ -71,7 +62,7 @@ describe("fetchControlPlaneHostStatus", () => {
   it("fails closed for absent, offline, and legacy readiness", async () => {
     const absent = await fetchControlPlaneHostStatus(
       identity,
-      async () => new Response(JSON.stringify({ items: [] }), { status: 200 }),
+      async () => new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 }),
     );
     expect(absent).toMatchObject({
       reachable: true,
@@ -83,12 +74,9 @@ describe("fetchControlPlaneHostStatus", () => {
     const legacy = await fetchControlPlaneHostStatus(
       identity,
       async () =>
-        new Response(
-          JSON.stringify({ items: [{ hostId: "host-1", online: true, draining: false }] }),
-          {
-            status: 200,
-          },
-        ),
+        new Response(JSON.stringify({ hostId: "host-1", online: true, draining: false }), {
+          status: 200,
+        }),
     );
     expect(legacy.gitReady).toBeNull();
 
@@ -122,7 +110,7 @@ describe("fetchControlPlaneHostStatus", () => {
     );
     expect(invalid.reason).toBe("control plane returned invalid host status");
 
-    for (const body of [null, {}, { items: [null, "host-1", { hostId: "other" }] }]) {
+    for (const body of [null, {}, { hostId: "other" }, { items: [{ hostId: "host-1" }] }]) {
       const result = await fetchControlPlaneHostStatus(
         identity,
         async () => new Response(JSON.stringify(body), { status: 200 }),
@@ -135,18 +123,14 @@ describe("fetchControlPlaneHostStatus", () => {
       async () =>
         new Response(
           JSON.stringify({
-            items: [
-              {
-                hostId: "host-1",
-                online: "yes",
-                connectedAt: 1,
-                draining: "no",
-                gitReady: "yes",
-                daemonVersion: "",
-                gitVersion: 2,
-                gitReadinessReason: null,
-              },
-            ],
+            hostId: "host-1",
+            online: "yes",
+            connectedAt: 1,
+            draining: "no",
+            gitReady: "yes",
+            daemonVersion: "",
+            gitVersion: 2,
+            gitReadinessReason: null,
           }),
           { status: 200 },
         ),

@@ -52,7 +52,7 @@ describe("loadRepoCatalog", () => {
       { id: "a", name: "Alpha" },
       { id: "b", name: "Bravo" },
     ]);
-    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?cursor=next%2Fpage$/);
+    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?limit=100&cursor=next%2Fpage$/);
   });
 
   it("rejects a replayed continuation", async () => {

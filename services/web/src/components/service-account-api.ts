@@ -40,16 +40,16 @@ type ServiceAccountData =
   | { kind: "unauthorized" };
 
 export async function loadServiceAccountData(): Promise<ServiceAccountData> {
-  const accounts = await apiFetch("/api/v1/auth/service-accounts", { cache: "no-store" });
+  const accounts = await apiFetch("/api/v1/auth/service-accounts?limit=100", { cache: "no-store" });
   if (accounts.status === 401) return { kind: "unauthorized" };
   if (accounts.status === 403) return { kind: "forbidden" };
   if (!accounts.ok) throw new Error(await apiErrorMessage(accounts));
-  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories", {
+  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories?limit=100", {
     cache: "no-store",
   });
   if (repositories.response.status === 401) return { kind: "unauthorized" };
   if (!repositories.response.ok) throw new Error(await apiErrorMessage(repositories.response));
-  const hosts = await apiFetch("/api/v1/hosts", { cache: "no-store" });
+  const hosts = await apiFetch("/api/v1/hosts?limit=100", { cache: "no-store" });
   if (hosts.status === 401) return { kind: "unauthorized" };
   if (!hosts.ok) throw new Error(await apiErrorMessage(hosts));
   const accountBody = (await accounts.json()) as { items?: ServiceAccount[] };

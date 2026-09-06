@@ -2,6 +2,7 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { validateUsageRates } from "@auto-harness/shared";
+import { sendListPage } from "./local-list-page.ts";
 
 function providerUpdateError(error: string): { status: number; code: string } {
   if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
@@ -17,7 +18,7 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/providers") {
     try {
-      send(res, 200, { items: await plane.listProvidersDurable() });
+      sendListPage(ctx, await plane.listProvidersDurable(), (provider) => provider.id);
     } catch {
       sendInternalError(res);
     }

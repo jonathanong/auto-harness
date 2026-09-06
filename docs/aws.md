@@ -163,8 +163,8 @@ fronts both.
   - `$default` — parse JSON `{ type, … }`, dispatch by type
 - Two logical client kinds after connect:
   - **Agent** — first app message `host:register`
-  - **UI client** — sends `session:subscribe`; Lambda validates repository scope and replays a
-    bounded log page before delivering newly committed log records
+  - **UI client** — sends `session:subscribe`; Lambda validates repository scope and tails newly
+    committed log records. Historical pages stay on REST `GET /sessions/:id/logs`.
 
 Keepalive is agent-initiated because Lambda has no persistent process timer.
 Each daemon sends periodic `host:keepalive` activity before API Gateway's idle
@@ -172,8 +172,12 @@ timeout.
 
 **Outbound push:** Lambda uses API Gateway Management API (`postToConnection`) with the stored `connectionId` from DynamoDB, via a client bounded by a 3s connect / 5s request timeout (`ApiGatewayManagementApiClient` + `NodeHttpHandler`) so a half-open connection fails fast instead of hanging the invocation.
 
-REST responses do not wait on this push: every host-bound message is written to durable storage
-before the push fires, so the HTTP response reflects that committed state regardless of delivery.
+REST responses do not wait on this push **or on assignment**: browser mutations persist, enqueue
+a bounded assignment sweep on a separate invocation (`InvocationType: Event` of the cron
+function, or in-process `enqueueAssignment` locally), and return. Every host-bound message is
+written to durable storage before the push fires, so the HTTP response reflects that committed
+state regardless of delivery. Viewer log fan-out is indexed by session (Get of `viewers#<sessionId>`),
+never a Scan of Connections.
 Cron still drains its own pushes (nothing else is waiting on it, and it carries a remaining-time
 guard). Most message types already self-heal if a push is lost — `session:assign` and `host:drain`
 have dedicated cron reconcilers, and timeout-cancel is re-emitted by the cron tick that produces it.

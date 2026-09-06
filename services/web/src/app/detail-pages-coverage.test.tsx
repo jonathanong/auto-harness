@@ -22,7 +22,7 @@ describe("control detail routes previously omitted from coverage include", () =>
         repositoryId: "r-1",
         prompt: "do work",
       },
-      "/api/v1/sessions/s-1/logs?limit=10000": {
+      "/api/v1/sessions/s-1/logs?limit=1000&order=desc": {
         items: [{ timestampSeq: "a", seq: 1, stream: "stdout", content: "hi", timestamp: "t" }],
       },
       "/api/v1/sessions/s-1/usage": {
@@ -36,7 +36,7 @@ describe("control detail routes previously omitted from coverage include", () =>
           currency: "USD",
         },
       },
-      "/api/v1/hosts": { items: [{ hostId: "host-1", online: true }] },
+      "/api/v1/hosts/host-1": { hostId: "host-1", online: true },
     });
     const html = await renderPage(
       SessionDetailPage({
@@ -64,9 +64,9 @@ describe("control detail routes previously omitted from coverage include", () =>
         repositoryId: "r-1",
         metadata: { createdBy: "author-1" },
       },
-      "/api/v1/sessions/s-optional/logs?limit=10000": jsonResponse({}, 503),
+      "/api/v1/sessions/s-optional/logs?limit=1000&order=desc": jsonResponse({}, 503),
       "/api/v1/sessions/s-optional/usage": jsonResponse({}, 404),
-      "/api/v1/hosts": jsonResponse({}, 503),
+      "/api/v1/hosts/host-1": jsonResponse({}, 503),
       "/api/v1/auth/me": {
         id: "author-1",
         username: "author",
@@ -89,7 +89,7 @@ describe("control detail routes previously omitted from coverage include", () =>
         status: "completed",
         repositoryId: "r-1",
       },
-      "/api/v1/sessions/s-terminal/logs?limit=10000": {},
+      "/api/v1/sessions/s-terminal/logs?limit=1000&order=desc": {},
       "/api/v1/sessions/s-terminal/usage": { aggregate: null },
       "/api/v1/auth/me": {
         id: "reader-1",
@@ -142,19 +142,15 @@ describe("control detail routes previously omitted from coverage include", () =>
 
   it("renders worktree detail and not-found", async () => {
     stubApi({
-      "/api/v1/worktrees": {
-        items: [
-          {
-            id: "wt-1",
-            name: "feature",
-            repositoryId: "r-1",
-            path: "/tmp/feature",
-            hostId: "host-1",
-            status: "idle",
-            online: true,
-            labels: [],
-          },
-        ],
+      "/api/v1/worktrees/wt-1": {
+        id: "wt-1",
+        name: "feature",
+        repositoryId: "r-1",
+        path: "/tmp/feature",
+        hostId: "host-1",
+        status: "idle",
+        online: true,
+        labels: [],
       },
       "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo", url: "/src/repo" }] },
       "/api/v1/sessions?limit=100": { items: [] },
@@ -193,15 +189,11 @@ describe("control detail routes previously omitted from coverage include", () =>
 
   it("renders a hostless worktree with optional lookups unavailable", async () => {
     stubApi({
-      "/api/v1/worktrees": {
-        items: [
-          {
-            id: "wt-hostless",
-            name: "hostless",
-            repositoryId: "r-missing",
-            path: "/tmp/hostless",
-          },
-        ],
+      "/api/v1/worktrees/wt-hostless": {
+        id: "wt-hostless",
+        name: "hostless",
+        repositoryId: "r-missing",
+        path: "/tmp/hostless",
       },
       "/api/v1/repositories": jsonResponse({}, 503),
       "/api/v1/sessions?limit=100": jsonResponse({}, 503),
@@ -225,7 +217,7 @@ describe("control detail routes previously omitted from coverage include", () =>
     expect(html).toContain("Not associated with a host inventory.");
     expect(html).not.toContain('data-pw="remove-worktree-wt-hostless"');
 
-    stubApi({ "/api/v1/worktrees": "__throw_string__" });
+    stubApi({ "/api/v1/worktrees/wt-hostless": "__throw_string__" });
     const missing = await renderPage(
       WorktreeDetailPage({
         params: Promise.resolve({ worktreeId: "wt-hostless" }),
@@ -236,7 +228,7 @@ describe("control detail routes previously omitted from coverage include", () =>
   });
 
   it("defaults sparse worktree collections and hides actions after an inventory failure", async () => {
-    stubApi({ "/api/v1/worktrees": {} });
+    stubApi({ "/api/v1/worktrees/missing": {} });
     expect(
       await renderPage(
         WorktreeDetailPage({
@@ -247,16 +239,12 @@ describe("control detail routes previously omitted from coverage include", () =>
     ).toContain('data-pw="page-worktree-detail-not-found"');
 
     stubApi({
-      "/api/v1/worktrees": {
-        items: [
-          {
-            id: "wt-sparse",
-            name: "sparse",
-            repositoryId: "repo",
-            path: "/tmp/sparse",
-            hostId: "host",
-          },
-        ],
+      "/api/v1/worktrees/wt-sparse": {
+        id: "wt-sparse",
+        name: "sparse",
+        repositoryId: "repo",
+        path: "/tmp/sparse",
+        hostId: "host",
       },
       "/api/v1/repositories": {},
       "/api/v1/sessions?limit=100": {},

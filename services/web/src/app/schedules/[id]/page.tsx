@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@auto-harness/ui";
 
-import { ApiError, apiGet } from "../../../lib/api.ts";
+import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 
@@ -59,8 +59,7 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
   }
 
   try {
-    const data = await apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets");
-    targets = data.items ?? [];
+    targets = await apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100");
   } catch {
     targets = [];
   }

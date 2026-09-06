@@ -98,6 +98,48 @@ export async function listAllWorktrees(
   return items;
 }
 
+export async function listWorktreesPage(
+  ctx: PlaneStorageCtx,
+  query: {
+    limit: number;
+    startKey?: Record<string, unknown>;
+    hostId?: string | null;
+    repositoryId?: string | null;
+  },
+): Promise<{ items: WorktreeRecord[]; nextKey: Record<string, unknown> | null }> {
+  const hostFilter = query.hostId
+    ? {
+        FilterExpression: "hostId = :hostId",
+        ExpressionAttributeValues: { ":hostId": query.hostId },
+      }
+    : {};
+  const res = await ctx.doc.send(
+    query.repositoryId
+      ? new QueryCommand({
+          TableName: ctx.tables.worktrees,
+          IndexName: "repositoryId-id",
+          KeyConditionExpression: "repositoryId = :r",
+          ExpressionAttributeValues: {
+            ":r": query.repositoryId,
+            ...(query.hostId ? { ":hostId": query.hostId } : {}),
+          },
+          Limit: query.limit,
+          ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
+          ...(query.hostId ? { FilterExpression: "hostId = :hostId" } : {}),
+        })
+      : new ScanCommand({
+          TableName: ctx.tables.worktrees,
+          Limit: query.limit,
+          ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
+          ...hostFilter,
+        }),
+  );
+  return {
+    items: (res.Items ?? []) as WorktreeRecord[],
+    nextKey: nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined) ?? null,
+  };
+}
+
 export async function listWorktreesForRepo(
   ctx: PlaneStorageCtx,
   repositoryId: string,

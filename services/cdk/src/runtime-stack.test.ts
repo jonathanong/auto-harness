@@ -69,7 +69,10 @@ describe("AutoHarnessRuntimeStack", () => {
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
-        Variables: Match.objectLike({ WS_API_ENDPOINT: Match.anyValue() }),
+        Variables: Match.objectLike({
+          ASSIGNMENT_FUNCTION_NAME: Match.anyValue(),
+          WS_API_ENDPOINT: Match.anyValue(),
+        }),
       },
       Handler: "index.rest",
     });

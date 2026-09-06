@@ -103,4 +103,28 @@ describe("durable hydration boundary records", () => {
     expect(state.logs.size).toBe(0);
     expect(state.auditLogs.size).toBe(0);
   });
+
+  it("skips the Sessions table Scan when sessionHistory is disabled", async () => {
+    let listAllSessionsCalls = 0;
+    const state = createControlPlaneState({
+      storage: {
+        listAllSessions: async () => {
+          listAllSessionsCalls += 1;
+          return [{ id: "session" }];
+        },
+        listAllWorktrees: async () => [],
+        listConnections: async () => [],
+        listSchedules: async () => [],
+        listRepositories: async () => [],
+        listHostInventories: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listCommands: async () => [],
+        listArchives: async () => [],
+      } as never,
+    });
+    await hydrateFromStorage(state, { sessionHistory: false });
+    expect(listAllSessionsCalls).toBe(0);
+    expect(state.sessions.size).toBe(0);
+  });
 });

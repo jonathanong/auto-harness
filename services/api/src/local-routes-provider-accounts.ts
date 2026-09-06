@@ -4,6 +4,7 @@ import { writeRouteAudit } from "./local-audit.ts";
 import { handleProviderAccountUsageRoute } from "./local-routes-provider-account-usage.ts";
 import { MAX_CONCURRENT_SESSIONS_LIMIT } from "@auto-harness/shared";
 import { mayAccessRepository } from "./auth-policy.ts";
+import { sendListPage } from "./local-list-page.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
 export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -11,7 +12,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
 
   if (method === "GET" && url.pathname === "/api/v1/provider-accounts") {
     try {
-      send(res, 200, { items: await plane.listProviderAccountsDurable() });
+      sendListPage(ctx, await plane.listProviderAccountsDurable(), (account) => account.id);
     } catch {
       sendInternalError(res);
     }
@@ -90,7 +91,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           send(res, 404, { error: { code: "NOT_FOUND", message: "provider account not found" } });
           return true;
         }
-        send(res, 200, { items: result.items });
+        sendListPage(ctx, result.items, (item) => String(item.slot).padStart(3, "0"));
       } catch {
         sendInternalError(res);
       }
@@ -163,7 +164,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         )
           return true;
         if (result.result.released) {
-          await plane.requestAssignment();
+          plane.enqueueAssignment();
           const refreshed = await plane.listProviderAccountLeaseStatesDurable(id, (session) =>
             mayAccessRepository(ctx.principal, session?.repositoryId),
           );
@@ -249,7 +250,7 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         )
           return true;
         if (typeof body.maxConcurrentSessions === "number" || typeof body.providerId === "string")
-          await plane.requestAssignment();
+          plane.enqueueAssignment();
         send(res, 200, result.account);
         return true;
       } catch {

@@ -16,6 +16,7 @@ import {
 import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
+import { sendListPage } from "./local-list-page.ts";
 
 type AccountRouteCtx = {
   auth: AuthService;
@@ -108,7 +109,10 @@ async function sendDeleteConflict(
 export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean> {
   const { auth, plane, req, res, url, method } = ctx;
   if (url.pathname === "/api/v1/auth/users") {
-    if (method === "GET") return (send(res, 200, { items: auth.listUsers() }), true);
+    if (method === "GET") {
+      sendListPage(ctx, auth.listUsers(), (user) => user.id);
+      return true;
+    }
     if (method === "POST") {
       let body: Record<string, unknown>;
       let allowedRepositoryIds: string[] | undefined;
@@ -197,7 +201,10 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
     return true;
   }
   if (url.pathname === "/api/v1/auth/service-accounts") {
-    if (method === "GET") return (send(res, 200, { items: auth.listServiceAccounts() }), true);
+    if (method === "GET") {
+      sendListPage(ctx, auth.listServiceAccounts(), (account) => account.id);
+      return true;
+    }
     if (method === "POST") {
       let body: Record<string, unknown>;
       let rawRepositories: string[] | undefined;

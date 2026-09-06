@@ -14,6 +14,7 @@ import {
   InvalidRepositoryCursorError,
   InvalidRepositoryListQueryError,
 } from "./control-plane-repositories-page.ts";
+import { sendListPage } from "./local-list-page.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return repositoryInScope(ctx, repositoryId);
@@ -379,11 +380,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/schedules") {
     try {
-      send(res, 200, {
-        items: (await plane.listSchedulesDurable()).filter((schedule) =>
+      sendListPage(
+        ctx,
+        (await plane.listSchedulesDurable()).filter((schedule) =>
           scoped(ctx, schedule.repositoryId),
         ),
-      });
+        (schedule) => schedule.id,
+      );
     } catch {
       sendInternalError(res);
     }

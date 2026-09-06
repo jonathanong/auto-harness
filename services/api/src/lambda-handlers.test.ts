@@ -1089,6 +1089,17 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("runs a bounded assignment sweep for enqueue events without the repair cron", async () => {
+    const fixture = runtimeFixture();
+    seedSchedulerSweep(fixture);
+    await expect((await fixture.runtime).cron({ source: "enqueue" })).resolves.toMatchObject({
+      ackDeadlinesEnforced: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
+    });
+    expect(fixture.schedulerCalls).not.toContain("migration");
+  });
+
   it("drains Slack deliveries from cron and reports worker errors", async () => {
     const runOnce = vi.fn(async () => true);
     const spy = vi

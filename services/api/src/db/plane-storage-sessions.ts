@@ -15,6 +15,8 @@ export {
   listSessionsByRepository,
   countSessionsByRepository,
 } from "./plane-storage-sessions-query.ts";
+export { listSessionsPageFromStorage } from "./plane-storage-sessions-list-page.ts";
+export type { SessionListPageQuery } from "./plane-storage-sessions-list-page.ts";
 export { expireQueuedSession, listSessionsByStatus } from "./plane-storage-sessions-queue.ts";
 export { listSessionsByStatusPage } from "./plane-storage-sessions-status-page.ts";
 export {
@@ -23,6 +25,7 @@ export {
   putWorktreeFenced,
   getWorktree,
   listAllWorktrees,
+  listWorktreesPage,
   listWorktreesForRepo,
   tryClaimWorktree,
 } from "./plane-storage-sessions-worktrees.ts";

@@ -54,13 +54,26 @@ type HydratableState = {
   disconnectedHosts: Map<string, { lastHeartbeatAt: string }>;
 };
 
+export type HydrateFromStorageOptions = {
+  /**
+   * When false, skip the Sessions and usage table Scans. Lambda request paths
+   * read those through bounded durable queries (Invariant 13). Default true
+   * for local tests that still inspect the in-memory session map.
+   */
+  sessionHistory?: boolean;
+};
+
 /** Restore the complete durable snapshot before making it visible to callers. */
-export async function hydrateFromStorage(state: HydratableState): Promise<void> {
+export async function hydrateFromStorage(
+  state: HydratableState,
+  options: HydrateFromStorageOptions = {},
+): Promise<void> {
   if (!state.storage) return;
+  const sessionHistory = options.sessionHistory !== false;
   // Legacy storage fakes and adapters can still hydrate their pre-usage
   // snapshot. Production Dynamo storage always implements this additive read.
   const listUsageRecords =
-    typeof state.storage.listUsageRecords === "function"
+    sessionHistory && typeof state.storage.listUsageRecords === "function"
       ? state.storage.listUsageRecords()
       : Promise.resolve([] as UsageRecord[]);
   const [
@@ -77,7 +90,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     usageRecords,
     slackIntegration,
   ] = await Promise.all([
-    state.storage.listAllSessions(),
+    sessionHistory ? state.storage.listAllSessions() : Promise.resolve([] as SessionRecord[]),
     state.storage.listAllWorktrees(),
     state.storage.listConnections(),
     state.storage.listSchedules(),

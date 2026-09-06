@@ -81,7 +81,7 @@ describe("user-account API client", () => {
     });
     expect(fetch).toHaveBeenNthCalledWith(
       3,
-      "/api/v1/repositories?cursor=next",
+      "/api/v1/repositories?limit=100&cursor=next",
       expect.objectContaining({ credentials: "same-origin" }),
     );
   });

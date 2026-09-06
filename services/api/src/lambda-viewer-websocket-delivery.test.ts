@@ -84,7 +84,7 @@ describe("Lambda viewer WebSocket delivery", () => {
     await ctx.sockets.publishLog(log("2026-08-17T00:00:02.000Z#0000000002", 2));
     expect(ctx.sent).toHaveLength(1);
     expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]?.after).toContain(
-      "0000000002",
+      "0000000001",
     );
   });
 

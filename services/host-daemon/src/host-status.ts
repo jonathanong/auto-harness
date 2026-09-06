@@ -50,7 +50,7 @@ export async function fetchControlPlaneHostStatus(
   fetchFn: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<ControlPlaneHostStatus> {
-  const url = `${httpBaseFromApiUrl(identity.apiUrl)}/api/v1/hosts`;
+  const url = `${httpBaseFromApiUrl(identity.apiUrl)}/api/v1/hosts/${encodeURIComponent(identity.hostId)}`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (identity.apiKey) headers.authorization = `Bearer ${identity.apiKey}`;
   let response: Response;
@@ -59,6 +59,17 @@ export async function fetchControlPlaneHostStatus(
   } catch {
     return offlineStatus(identity, "control plane is unreachable");
   }
+  if (response.status === 404) {
+    return {
+      reachable: true,
+      hostId: identity.hostId,
+      online: null,
+      connectedAt: null,
+      draining: null,
+      gitReady: null,
+      reason: "exact host is absent from the control plane",
+    };
+  }
   if (!response.ok) return offlineStatus(identity, "control plane request failed");
   let body: unknown;
   try {
@@ -66,14 +77,10 @@ export async function fetchControlPlaneHostStatus(
   } catch {
     return offlineStatus(identity, "control plane returned invalid host status");
   }
-  const items =
-    typeof body === "object" && body !== null && Array.isArray((body as { items?: unknown }).items)
-      ? ((body as { items: unknown[] }).items as HostRecord[])
-      : [];
-  const host = items.find(
-    (item): item is HostRecord =>
-      typeof item === "object" && item !== null && item.hostId === identity.hostId,
-  );
+  const host =
+    typeof body === "object" && body !== null && (body as HostRecord).hostId === identity.hostId
+      ? (body as HostRecord)
+      : null;
   if (!host) {
     return {
       reachable: true,

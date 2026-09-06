@@ -1,4 +1,4 @@
-import { WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
+import { CursorPagination, WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
 import type { HostRepository } from "@auto-harness/shared";
 
 import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
@@ -20,9 +20,16 @@ type Wt = {
 };
 type Repo = { id: string; name: string };
 
-export default async function WorktreesPage() {
+export default async function WorktreesPage({
+  searchParams = Promise.resolve({}),
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const raw = await searchParams;
+  const cursor = typeof raw.cursor === "string" ? raw.cursor : null;
   const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
   let items: Wt[] = [];
+  let nextCursor: string | null = null;
   let namesById: Record<string, string> = {};
   let inventories: Array<{
     hostId: string;
@@ -32,11 +39,13 @@ export default async function WorktreesPage() {
   let error: string | null = null;
   let inventoryError: string | null = null;
   try {
+    const worktreesPath = `/api/v1/worktrees?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     const [wts, repos] = await Promise.all([
-      apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
-      apiGetAllPages<Repo>("/api/v1/repositories"),
+      apiGet<{ items: Wt[]; nextCursor?: string | null }>(worktreesPath),
+      apiGetAllPages<Repo>("/api/v1/repositories?limit=100"),
     ]);
     items = wts.items ?? [];
+    nextCursor = wts.nextCursor ?? null;
     namesById = Object.fromEntries(repos.map((r) => [r.id, r.name]));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -46,7 +55,7 @@ export default async function WorktreesPage() {
       (
         await apiGet<{
           items: Array<{ hostId: string; setupScript?: string; repositories?: HostRepository[] }>;
-        }>("/api/v1/host-inventories")
+        }>("/api/v1/host-inventories?limit=100")
       ).items ?? [];
   } catch (e) {
     inventoryError = e instanceof Error ? e.message : String(e);
@@ -98,6 +107,9 @@ export default async function WorktreesPage() {
             />
           )
         }
+      />
+      <CursorPagination
+        nextHref={nextCursor ? `/worktrees?cursor=${encodeURIComponent(nextCursor)}` : null}
       />
     </div>
   );

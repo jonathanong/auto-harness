@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Alert } from "@auto-harness/ui";
+import { Alert, CursorPagination } from "@auto-harness/ui";
 
 import { AddHostForm } from "../../components/add-host-form.tsx";
 import { HostFilters } from "../../components/host-filters.tsx";
@@ -28,26 +28,30 @@ export default async function HostsPage({
     }
   }
   const filters = parseHostListState(sp);
+  const cursor = typeof raw.cursor === "string" ? raw.cursor : null;
   const principal = await loadPrincipal();
   const canWriteInventory = can(principal, "fleet:inventory");
   const canDrain = can(principal, "fleet:drain");
 
   let hosts: FleetHost[] = [];
+  let hostsNextCursor: string | null = null;
   let inventories: HostInventorySummary[] = [];
   let worktrees: FleetWorktree[] = [];
   let error: string | null = null;
+  const hostsPath = `/api/v1/hosts?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   try {
     const [h, inv] = await Promise.all([
-      apiGet<{ items: FleetHost[] }>("/api/v1/hosts"),
-      apiGet<{ items: HostInventorySummary[] }>("/api/v1/host-inventories"),
+      apiGet<{ items: FleetHost[]; nextCursor?: string | null }>(hostsPath),
+      apiGet<{ items: HostInventorySummary[] }>("/api/v1/host-inventories?limit=100"),
     ]);
     hosts = h.items ?? [];
+    hostsNextCursor = h.nextCursor ?? null;
     inventories = inv.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
   try {
-    const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees");
+    const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees?limit=100");
     worktrees = response.items ?? [];
   } catch {
     // Worktree details are auxiliary; keep host management available if this read fails.
@@ -109,6 +113,16 @@ export default async function HostsPage({
           worktreesByHost={worktreesByHost}
           canAddHost={canWriteInventory}
           canDrain={canDrain}
+        />
+        <CursorPagination
+          nextHref={
+            hostsNextCursor
+              ? `/hosts?${new URLSearchParams({
+                  ...Object.fromEntries(sp.entries()),
+                  cursor: hostsNextCursor,
+                }).toString()}`
+              : null
+          }
         />
       </section>
     </div>

@@ -240,7 +240,6 @@ describe("browser session log websocket", () => {
         };
         received.push(message);
         if (
-          received.filter((item) => item.type === "session:log").length === 251 &&
           received.some((item) => item.type === "session:subscribed") &&
           received.some((item) => item.type === "session:status" && item.status === "completed")
         ) {
@@ -250,7 +249,7 @@ describe("browser session log websocket", () => {
       });
       ws.on("error", reject);
     });
-    expect(messages.filter((message) => message.type === "session:log")).toHaveLength(251);
+    expect(messages.filter((message) => message.type === "session:log")).toHaveLength(0);
     expect(messages.find((message) => message.type === "session:subscribed")?.status).toBe(
       "running",
     );
@@ -259,7 +258,7 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
-  it("delivers replay records before live commits that arrive during the durable query", async () => {
+  it("delivers live commits after subscribe without replaying REST history", async () => {
     const auth = authService();
     const principal = await auth.createUser({
       username: "viewer",
@@ -268,17 +267,9 @@ describe("browser session log websocket", () => {
     });
     const plane = planeWithSessions();
     const session = plane.state.sessions.get("session-a")!;
-    let releaseReplay!: () => void;
-    let markReplayStarted!: () => void;
-    const replayStarted = new Promise<void>((resolve) => (markReplayStarted = resolve));
-    const replayGate = new Promise<void>((resolve) => (releaseReplay = resolve));
     plane.state.storage = {
       getSession: async () => session,
-      queryLogs: async () => {
-        markReplayStarted();
-        await replayGate;
-        return [log(1)];
-      },
+      queryLogs: async () => [log(1)],
     } as never;
     const server = createServer();
     const hub = attachViewerWsHub(server, plane, auth, { pollMs: 60_000 });
@@ -297,17 +288,17 @@ describe("browser session log websocket", () => {
         const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
         if (message.type === "session:log") records.push(message.timestampSeq!);
         if (message.type === "session:subscribed") {
+          plane.state.onLogCommitted?.(log(2));
+        }
+        if (records.length === 1) {
           ws.once("close", () => resolve(records));
           ws.close();
         }
       });
       ws.on("error", reject);
     });
-    await replayStarted;
-    plane.state.onLogCommitted?.(log(2));
-    releaseReplay();
 
-    await expect(received).resolves.toEqual([log(1).timestampSeq, log(2).timestampSeq]);
+    await expect(received).resolves.toEqual([log(2).timestampSeq]);
     hub.close();
     await close(server);
   });

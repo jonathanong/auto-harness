@@ -99,6 +99,8 @@ export type ConnectionRecord = {
     status: string;
     after?: string;
   }>;
+  /** Reverse index of viewer connection ids for one session (`viewers#<sessionId>` rows). */
+  viewerFanoutIds?: string[];
 };
 
 export type ScheduleRecord = {

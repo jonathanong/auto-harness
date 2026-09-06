@@ -43,6 +43,24 @@ function matchesQuery(session: SessionRecord, query: ReturnType<typeof normalize
   );
 }
 
+export function normalizeListSessionsPageQuery(
+  state: ControlPlaneState,
+  query: ListSessionsPageQuery,
+) {
+  const limit = normalizeLimit(query.limit);
+  const sort = normalizeSort(query.sort);
+  const normalizedQuery = normalizeQuery(query);
+  const normalizedScope = normalizeScope(query.scope);
+  const cursorBase = { version: 1 as const, sort, query: normalizedQuery, scope: normalizedScope };
+  return {
+    limit,
+    sort,
+    query: normalizedQuery,
+    scope: normalizedScope,
+    position: query.cursor ? decodeSessionCursor(state, query.cursor, cursorBase) : undefined,
+  };
+}
+
 /** Cursor page of sessions. Scope and all filters are applied before slicing. */
 export function listSessionsPage(
   state: ControlPlaneState,
