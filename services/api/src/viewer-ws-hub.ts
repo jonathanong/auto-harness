@@ -145,16 +145,16 @@ export function attachViewerWsHub(
     const requested = new Map<string, Subscription>();
     subscriptions.set(socket, requested);
     const connectionId = randomUUID();
+    const connectedAt = new Date().toISOString();
     const persist = (): void => {
       if (!subscriptions.has(socket)) return;
       const now = new Date().toISOString();
-      const existing = plane.state.connections.get(connectionId);
       const viewerPrincipal = viewerConnectionPrincipal(principal);
       putViewerConnection(plane.state, {
         connectionId,
         type: "client",
         hostId: principal?.id ?? "anonymous",
-        connectedAt: existing?.connectedAt ?? now,
+        connectedAt,
         lastHeartbeatAt: now,
         ...(viewerPrincipal ? { viewerPrincipal } : {}),
         viewerSubscriptions: [...requested.values()].map(

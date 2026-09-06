@@ -146,25 +146,6 @@ describe("user session listing", () => {
     ).toEqual([]);
   });
 
-  it("omits viewer sockets whose last heartbeat is stale", () => {
-    const plane = new ControlPlane({
-      now: () => "2026-01-01T00:02:00.000Z",
-      heartbeatStaleMs: 60_000,
-    });
-    plane.state.connections.set(alice.connectionId, alice);
-    plane.state.connections.set(viewer.connectionId, {
-      ...viewer,
-      lastHeartbeatAt: "2026-01-01T00:01:30.000Z",
-    });
-    expect(listUserSessions(plane.state).map((item) => item.id)).toEqual(["viewer-b"]);
-    plane.state.connections.set("stale-unparsed", {
-      ...alice,
-      connectionId: "stale-unparsed",
-      lastHeartbeatAt: "not-a-date",
-    });
-    expect(listUserSessions(plane.state).map((item) => item.id)).toEqual(["viewer-b"]);
-  });
-
   it("persists and deletes viewer sockets when storage adapters exist", async () => {
     const put: ConnectionRecord[] = [];
     const removed: string[] = [];

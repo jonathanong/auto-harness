@@ -47,24 +47,8 @@ export function presentUserSessions(connections: Iterable<ConnectionRecord>): Us
     .toSorted((a, b) => a.username.localeCompare(b.username) || a.id.localeCompare(b.id));
 }
 
-function isFreshViewer(connection: ConnectionRecord, nowMs: number, staleMs: number): boolean {
-  if (connection.type !== "client") return false;
-  const at = Date.parse(connection.lastHeartbeatAt);
-  return Number.isFinite(at) && nowMs - at <= staleMs;
-}
-
-function liveViewerConnections(
-  connections: Iterable<ConnectionRecord>,
-  state: ControlPlaneState,
-): ConnectionRecord[] {
-  const nowMs = Date.parse(state.now());
-  return [...connections].filter((connection) =>
-    isFreshViewer(connection, nowMs, state.heartbeatStaleMs),
-  );
-}
-
 export function listUserSessions(state: ControlPlaneState): UserSessionRecord[] {
-  return presentUserSessions(liveViewerConnections(state.connections.values(), state));
+  return presentUserSessions(state.connections.values());
 }
 
 export async function listUserSessionsDurable(
@@ -72,7 +56,7 @@ export async function listUserSessionsDurable(
 ): Promise<UserSessionRecord[]> {
   const storage = state.storage;
   if (storage && typeof storage.listConnections === "function") {
-    return presentUserSessions(liveViewerConnections(await storage.listConnections(), state));
+    return presentUserSessions(await storage.listConnections());
   }
   return listUserSessions(state);
 }
