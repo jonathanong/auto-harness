@@ -80,10 +80,7 @@ export async function requeueOmittedScheduled(
     if (released) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(
-        session.id,
-        queueReconnectSession(session, reason),
-      );
+      state.sessions.set(session.id, queueReconnectSession(session, reason));
       state.pendingAcks.delete(session.id);
       requeued.push(session.id);
     }

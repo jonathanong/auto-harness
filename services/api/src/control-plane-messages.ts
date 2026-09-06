@@ -547,13 +547,14 @@ export async function handleHostMessageDurable(
       // timestamp; run the same keepalive-time reconciliation the durable
       // path gets via `heartbeatDurable`, so a non-durable control plane also
       // bounds a lost/orphaned session to one keepalive interval.
-      await reconcileHostOwnedSessions(
+      const requeued = await reconcileHostOwnedSessions(
         state,
         msg.hostId,
         state.hostConnection.get(msg.hostId),
         new Set(msg.runningSessions),
         "daemon no longer reports session as running; requeued",
       );
+      if (requeued.length > 0) await requestAssignment(state);
     }
     return result;
   }

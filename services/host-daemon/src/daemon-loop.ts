@@ -157,8 +157,7 @@ export class DaemonLoop {
     this.drainRetryMs = options.drainRetryMs ?? 1_000;
     this.drainDeadlineMs = options.drainDeadlineMs ?? 30_000;
     this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
-    this.pendingStatusMaxCount =
-      options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
+    this.pendingStatusMaxCount = options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();

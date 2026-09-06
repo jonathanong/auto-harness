@@ -17,6 +17,7 @@ import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
+import { requestAssignment } from "./request-assignment.ts";
 import { ignoreStaleReconnectClaim } from "./control-plane-reconnect-confirm.ts";
 import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
 import {
@@ -969,13 +970,16 @@ export async function heartbeatDurable(
     // absolute session timeout, a session this host silently stopped reporting is
     // requeued within one keepalive interval. The daemon keeps reporting a session
     // whose terminal status it is still retrying, so this never races that retry.
-    await reconcileHostOwnedSessions(
+    const requeued = await reconcileHostOwnedSessions(
       state,
       hostId,
       connectionId,
       new Set(reportedRunningSessions),
       "daemon no longer reports session as running; requeued",
     );
+    // Otherwise a recovered session sits queued until the next cron sweep or
+    // an unrelated scheduling event, defeating the point of a fast recovery.
+    if (requeued.length > 0) await requestAssignment(state);
   }
   return true;
 }
