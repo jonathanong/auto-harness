@@ -247,6 +247,7 @@ sessions, they do not Add host. See [auth.md](auth.md#roles).
 | Schedules                                | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger`                                                |
 | Sessions                                 | `GET /sessions`, `POST /sessions/:id/cancel`                                                                                         |
 | Hosts                                    | `GET /hosts`, `POST /hosts/drain`; `GET/PUT/DELETE /hosts/:hostId/inventory`                                                         |
+| User sessions                            | `GET /user-sessions` (live browser log viewers; not CLI sessions)                                                                    |
 | Providers / Provider Accounts / Commands | `GET/POST /providers`, `/provider-accounts`, `/commands` (+ `GET/PUT/DELETE .../:id`); `GET /session-targets` for the unified picker |
 
 Also available: worktrees, scheduler helpers, session logs/resume/archive — see [api.md](api.md) and [cli.md](cli.md) for the Phase 1 surface.

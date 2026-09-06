@@ -1,10 +1,12 @@
 /* eslint-disable max-lines -- viewer ownership, replay, and fan-out form one protocol boundary. */
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
-import type { ControlPlane, LogRecord } from "./control-plane.ts";
+import type { ControlPlane, ConnectionRecord, LogRecord } from "./control-plane.ts";
+import { deleteViewerConnection, putViewerConnection } from "./control-plane-user-sessions.ts";
 import {
   authenticateViewer,
   isAllowedViewerOrigin,
@@ -138,6 +140,29 @@ export function attachViewerWsHub(
   const handleConnection = (socket: WebSocket, principal: Principal | null): void => {
     const requested = new Map<string, Subscription>();
     subscriptions.set(socket, requested);
+    const connectionId = randomUUID();
+    const persist = (): void => {
+      const now = new Date().toISOString();
+      const existing = plane.state.connections.get(connectionId);
+      const viewerPrincipal = viewerConnectionPrincipal(principal);
+      putViewerConnection(plane.state, {
+        connectionId,
+        type: "client",
+        hostId: principal?.id ?? "anonymous",
+        connectedAt: existing?.connectedAt ?? now,
+        lastHeartbeatAt: now,
+        ...(viewerPrincipal ? { viewerPrincipal } : {}),
+        viewerSubscriptions: [...requested.values()].map(
+          ({ sessionId, repositoryId, status, after }) => ({
+            sessionId,
+            repositoryId,
+            status,
+            ...(after ? { after } : {}),
+          }),
+        ),
+      });
+    };
+    persist();
     let messageTail: Promise<void> = Promise.resolve();
     socket.on("message", (raw) => {
       const message = parseViewerMessage(raw);
@@ -147,6 +172,7 @@ export function attachViewerWsHub(
       }
       if (message.type === "session:unsubscribe") {
         requested.delete(message.sessionId);
+        persist();
         return;
       }
       messageTail = messageTail
@@ -177,6 +203,7 @@ export function attachViewerWsHub(
             ...(message.after ? { after: message.after } : {}),
           };
           requested.set(message.sessionId, subscription);
+          persist();
           await drain(socket, subscription);
           send(socket, {
             type: "session:subscribed",
@@ -187,7 +214,10 @@ export function attachViewerWsHub(
         })
         .catch(() => socket.close(1011, "viewer subscription failed"));
     });
-    socket.on("close", () => subscriptions.delete(socket));
+    socket.on("close", () => {
+      subscriptions.delete(socket);
+      deleteViewerConnection(plane.state, connectionId);
+    });
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
@@ -221,6 +251,21 @@ export function attachViewerWsHub(
       subscriptions.clear();
       wss.close();
     },
+  };
+}
+
+function viewerConnectionPrincipal(
+  principal: Principal | null,
+): ConnectionRecord["viewerPrincipal"] {
+  if (!principal || (principal.kind !== "admin" && principal.kind !== "user")) return undefined;
+  return {
+    id: principal.id,
+    username: principal.username,
+    role: principal.role,
+    kind: principal.kind,
+    ...(principal.allowedRepositoryIds
+      ? { allowedRepositoryIds: principal.allowedRepositoryIds }
+      : {}),
   };
 }
 

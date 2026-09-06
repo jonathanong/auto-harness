@@ -51,6 +51,9 @@ describe("ControlShell", () => {
     );
     openNavGroup(view.container, "nav-group-operate");
     expect(field<HTMLAnchorElement>(document, "nav-sessions").className).toContain("bg-muted");
+    expect(field<HTMLAnchorElement>(document, "nav-user-sessions").getAttribute("href")).toBe(
+      "/user-sessions",
+    );
     expect(field<HTMLAnchorElement>(document, "nav-dashboard").getAttribute("href")).toBe("/");
     openNavGroup(view.container, "nav-group-fleet");
     expect(field<HTMLAnchorElement>(document, "nav-hosts").getAttribute("href")).toBe("/hosts");

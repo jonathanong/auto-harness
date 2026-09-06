@@ -7,6 +7,7 @@ import SchedulesLoading from "./schedules/loading.tsx";
 import SchedulesPage from "./schedules/page.tsx";
 import SessionsLoading from "./sessions/loading.tsx";
 import SessionsPage from "./sessions/page.tsx";
+import UserSessionsPage from "./user-sessions/page.tsx";
 import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
 
 describe("primary list page states", () => {
@@ -71,5 +72,14 @@ describe("primary list page states", () => {
     expect(html).toContain('data-pw="schedules-api-retry"');
     expect(html).not.toContain("No schedules configured.");
     expect(html).not.toContain('data-pw="form-create-schedule"');
+  });
+
+  it("replaces user sessions with a retry alert after an API failure", async () => {
+    stubApi({ "/api/v1/user-sessions": jsonResponse({}, 503) });
+    const html = await renderPage(UserSessionsPage());
+    expect(html).toContain('data-pw="user-sessions-api-error"');
+    expect(html).toContain('data-pw="user-sessions-api-retry"');
+    expect(html).not.toContain('data-pw="user-sessions-table"');
+    expect(html).not.toContain('data-pw="user-sessions-empty"');
   });
 });

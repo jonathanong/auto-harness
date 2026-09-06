@@ -25,6 +25,7 @@ describe("global keyboard shortcuts", () => {
     expect(dialog?.getAttribute("aria-describedby")).toBeTruthy();
     expect(dialog?.textContent).toContain("Keyboard shortcuts");
     expect(dialog?.textContent).toContain("Go to Sessions");
+    expect(dialog?.textContent).toContain("Go to User Sessions");
     expect(field(document.body, "keyboard-shortcut-search").textContent).toContain(
       "Focus session search",
     );

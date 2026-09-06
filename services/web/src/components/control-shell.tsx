@@ -26,6 +26,12 @@ const NAV: NavGroup[] = [
         tip: "Browse and filter session history by status",
       },
       {
+        href: "/user-sessions",
+        label: "User Sessions",
+        pw: "nav-user-sessions",
+        tip: "Live browser log viewers connected to the control plane",
+      },
+      {
         href: "/schedules",
         label: "Schedules",
         pw: "nav-schedules",
