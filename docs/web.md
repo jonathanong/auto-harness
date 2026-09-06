@@ -294,7 +294,7 @@ Each action exposes its pending state with a descriptive label (`Resuming…`, `
 
 ## Create Session
 
-The "New Session" form can be opened from the **New session** button on the header's secondary row, present on every page. Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
+The "New Session" form can be opened from the **New session** button on the header's secondary row — present on every non-login page for a principal who can author sessions (hidden otherwise). Its required Repository picker is populated from the scoped repository catalog and selects the first repository alphabetically for a fresh form. The form cannot submit until at least one repository and one routing target are available. Clone & Edit retains its source repository selection, including a bounded source value when that repository is absent from the current catalog response. It submits via `POST /sessions` with `source: 'ui'`.
 
 ### Form Fields
 
