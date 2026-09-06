@@ -38,29 +38,47 @@ function grokUsageLimit(value: JsonRecord): boolean {
 }
 
 /**
- * Fold every top-level JSON object found in a grok capture, mirroring
- * `parseCodexRecords`' JSONL fold instead of trusting a single "last object"
- * pick. On its HTTP 402 (credit-exhausted) path grok's own CLI emits its
- * proper `{type:"error", message}` envelope once, then re-prints the same
- * failure as a plain-text `Error: Internal error: { ... }` line whose embedded
- * object also happens to parse as valid JSON but carries neither `type` nor
- * `status`. `jsonObject()`'s single "last complete object" pick would silently
- * prefer that trailing re-print over the real envelope and lose the
+ * A JSON object grok's CLI could plausibly have emitted as its own top-level
+ * result or error record — as opposed to an untyped diagnostic blob that
+ * merely happens to parse as JSON (grok's 402 path re-prints its failure as
+ * plain text whose embedded `{message, http_status}` object has neither
+ * `type`/`status` nor `response`/`text`). Only trusted candidates are ever
+ * considered, so a single unrelated diagnostic elsewhere in the capture can
+ * never manufacture or mask a usage-limit signal.
+ */
+function isGrokEnvelope(value: JsonRecord): boolean {
+  return (
+    value.type === "error" ||
+    value.status === "error" ||
+    typeof value.response === "string" ||
+    typeof value.text === "string"
+  );
+}
+
+/**
+ * Pick the last candidate that looks like grok's own top-level result/error
+ * envelope, exactly like `jsonObject()` does for a single unfiltered
+ * candidate — but filtered to recognized envelope shapes first. On its HTTP
+ * 402 (credit-exhausted) path grok's own CLI emits its proper
+ * `{type:"error", message}` envelope once, then re-prints the same failure as
+ * a plain-text `Error: Internal error: { ... }` line whose embedded object
+ * also happens to parse as valid JSON but carries neither `type` nor
+ * `status`. `jsonObject()`'s unfiltered "last complete object" pick would
+ * silently prefer that trailing re-print over the real envelope and lose the
  * usage-limit signal entirely — see the incident fixture in
- * usage-adapter.test.ts. Folding every candidate means a signal from any one
- * of them wins, regardless of which candidate happens to come last.
+ * usage-adapter.test.ts. Filtering to recognized envelopes before taking the
+ * last one fixes that specific loss while still preferring a later genuine
+ * result/error envelope over an earlier one, the same "trust the terminal
+ * envelope" semantics every other provider gets.
  */
 export function parseGrokRecords(
   candidates: readonly JsonRecord[],
   observedAt: string,
 ): ParsedCliUsage {
-  let parsed: ParsedCliUsage = {};
-  for (const value of candidates) {
-    if (grokUsageLimit(value)) parsed = { ...parsed, usageLimit: true };
-    if (typeof value.response === "string" || typeof value.text === "string") {
-      const usage = record(value.usage);
-      if (usage) parsed = { ...parsed, ...withUsage(usageFromRecord(usage, observedAt, "grok")) };
-    }
-  }
-  return parsed;
+  const envelope = candidates.filter(isGrokEnvelope).at(-1);
+  if (!envelope) return {};
+  if (grokUsageLimit(envelope)) return { usageLimit: true };
+  if (typeof envelope.response !== "string" && typeof envelope.text !== "string") return {};
+  const usage = record(envelope.usage);
+  return usage ? withUsage(usageFromRecord(usage, observedAt, "grok")) : {};
 }

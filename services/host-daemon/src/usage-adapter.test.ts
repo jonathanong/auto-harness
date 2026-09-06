@@ -476,6 +476,22 @@ describe("parseCliUsage", () => {
         observedAt,
       }),
     ).toEqual({});
+    // A recognized-shape candidate earlier in the capture must not outrank a later
+    // genuine one: a spurious `type:"error"` usage-limit-shaped blob followed by a
+    // real terminal success envelope reports the real (later) outcome, not the
+    // earlier one — the same "trust the terminal envelope" rule every other
+    // provider gets, and the reason folding every candidate unconditionally would
+    // be wrong (it would let stale/unrelated diagnostics manufacture a false
+    // usage-limit signal and needlessly cool the account down for 5h).
+    const laterSuccess = parseCliUsage({
+      argv: ["grok", "--always-approve", "--output-format", "json", "-p"],
+      output:
+        '{"type":"error","message":"You\'ve hit the rate limit for your plan. Upgrade your account or try again later."}\n' +
+        '{"response":"done","usage":{"input_tokens":3}}\n',
+      observedAt,
+    });
+    expect(laterSuccess.usageLimit).toBeUndefined();
+    expect(laterSuccess.usage).toMatchObject({ inputTokens: "3" });
   });
 
   it("maps every token field and handles alternate structured error codes", () => {

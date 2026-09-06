@@ -402,6 +402,14 @@ of three sentences onto `message` (`You've hit the rate limit for your plan…`,
 team's API rate limit…`, or `You've reached your free Grok Build usage limit…`). Those sentences are
 the same trust tier as Codex's usage-limit sentence. A generic “rate limit” phrase is not enough.
 
+Grok's separate HTTP 402 path (the account's Grok Build credit balance is exhausted, not a 429) uses
+the same envelope and writes `API error (status 402 Payment Required): Grok Build usage balance
+exhausted` onto `message` instead. Grok's CLI also re-prints that same failure a second time as
+plain text — `Error: Internal error: { "message": "…", "http_status": 402 }` — whose embedded object
+happens to parse as valid JSON but has neither `type` nor `status` and is never treated as an
+envelope; only a candidate carrying `type`/`status`/`response`/`text` is ever considered, so that
+re-print can neither manufacture nor mask a usage-limit signal.
+
 Gemini `--output-format json` failures are `{error:{type, message, code?}}`. `code` is an exit code
 or the original error's `code`/`status`, not Google's RPC status. The adapter still accepts
 `error.status` / `error.code` of `RESOURCE_EXHAUSTED` when present, and otherwise requires that
