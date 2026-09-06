@@ -152,7 +152,7 @@ function timestamped(msg: string, now: () => string): string {
   const at = now();
   return msg
     .split(/\r\n|\r|\n/)
-    .map((line) => `${at} ${line}`)
+    .map((line) => `${at} ${line.replace(/[\r\n]/g, "")}`)
     .join("\n");
 }
 

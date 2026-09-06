@@ -61,6 +61,20 @@ export class FakeSocket extends EventEmitter {
   }
 }
 
+/** Shared across ws-transport test files to avoid duplicating this fixture shape. */
+export function register(commandProfiles: string[] = []) {
+  return { type: "host:register" as const, hostId: "a1", worktrees: [], commandProfiles };
+}
+
+/** Shared across ws-transport test files to avoid duplicating this fixture shape. */
+export function registered(connectionId?: string) {
+  return {
+    type: "host:registered" as const,
+    hostId: "a1",
+    ...(connectionId !== undefined ? { connectionId } : {}),
+  };
+}
+
 export function transportFor(sockets: FakeSocket[]) {
   return createWsTransport({
     url: "ws://fake.test/ws",

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket, transportFor } from "./ws-transport-test-helpers.ts";
+import { FakeSocket, register, registered, transportFor } from "./ws-transport-test-helpers.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -183,14 +183,6 @@ function transportForWithErrors(
     onError: (error) => errors.push(error),
     random: () => 0.5,
   });
-}
-
-function register(commandProfiles: string[] = []) {
-  return { type: "host:register" as const, hostId: "a1", worktrees: [], commandProfiles };
-}
-
-function registered() {
-  return { type: "host:registered", hostId: "a1" };
 }
 
 async function settle(): Promise<void> {

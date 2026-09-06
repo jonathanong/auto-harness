@@ -2,15 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket } from "./ws-transport-test-helpers.ts";
-
-function register() {
-  return { type: "host:register" as const, hostId: "a1", worktrees: [], commandProfiles: [] };
-}
-
-function registered() {
-  return { type: "host:registered" as const, hostId: "a1", connectionId: "c1" };
-}
+import { FakeSocket, register, registered } from "./ws-transport-test-helpers.ts";
 
 describe("reconnect resilience to a failing socket factory", () => {
   it("keeps backing off instead of crashing when the socket factory keeps throwing synchronously", async () => {
@@ -44,7 +36,7 @@ describe("reconnect resilience to a failing socket factory", () => {
       const socket = sockets[0]!;
       socket.open();
       await transport.send(register());
-      socket.server(registered());
+      socket.server(registered("c1"));
       await transport.registered;
 
       errors.length = 0;
