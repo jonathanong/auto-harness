@@ -133,6 +133,7 @@ esac`,
 describe("deployment wrapper contracts", () => {
   it("keeps the AWS wrapper valid Bash", () => {
     expect(spawnSync("bash", ["-n", awsScript]).status).toBe(0);
+    expect(aws).toContain('export AWS_PAGER=""');
   });
 
   it("revalidates idleness after fencing and restores a disabled cron rule", () => {

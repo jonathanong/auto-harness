@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 
+import { awsCliEnv } from "../services/cdk/src/aws-cli.ts";
 import {
   deploymentConfig,
   type DeploymentOperation,
@@ -19,7 +20,11 @@ function operation(value: string | undefined): DeploymentOperation {
 
 const query = (command: string, args: string[]): Promise<DeploymentQueryResult> =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      env: awsCliEnv(),
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
@@ -30,7 +35,7 @@ const query = (command: string, args: string[]): Promise<DeploymentQueryResult> 
 
 const run = (command: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { shell: false, stdio: "inherit" });
+    const child = spawn(command, args, { env: awsCliEnv(), shell: false, stdio: "inherit" });
     child.on("error", reject);
     child.on("close", (status) => {
       if (status === 0) resolve();

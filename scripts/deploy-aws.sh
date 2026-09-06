@@ -36,6 +36,8 @@ esac
 
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
 export HARNESS_DEPLOY_ENVIRONMENT="${HARNESS_DEPLOY_ENVIRONMENT:-production}"
+# AWS CLI v2 pages long JSON through less on a TTY; deploy must print and continue.
+export AWS_PAGER=""
 
 if [[ "$(git branch --show-current)" != "main" ]]; then
   echo "deploy:aws requires the main branch" >&2

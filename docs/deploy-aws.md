@@ -164,7 +164,8 @@ fetched URL only and deny the connection until a later connect can read it; they
 never fall back to localhost. After writing the parameter, `deploy`/`update`
 recycle the runtime Lambdas (a no-op `update-function-configuration`) so
 already-warm containers re-read WebUrl instead of keeping the localhost session
-URL fallback.
+URL fallback. AWS CLI v2 pages that JSON through `less` on a TTY; the lifecycle
+sets `AWS_PAGER=""` so the dump prints to stdout and deploy continues.
 
 | Variable                     | Purpose                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

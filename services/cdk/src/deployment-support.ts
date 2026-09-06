@@ -1,3 +1,4 @@
+import { awsArgs } from "./aws-cli.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
 import { recycleRuntimeLambdas } from "./recycle-runtime-lambdas.ts";
 
@@ -9,10 +10,6 @@ export type DeploymentDependencies = {
   query: (command: string, args: string[]) => Promise<DeploymentQueryResult>;
   run: (command: string, args: string[]) => Promise<void>;
 };
-
-export function awsArgs(config: DeploymentConfig, args: string[]): string[] {
-  return [...args, "--region", config.region];
-}
 
 export async function queryOk(
   dependencies: DeploymentDependencies,
