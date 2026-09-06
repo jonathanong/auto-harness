@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- scan, query, and worktree page cases share one Dynamo send fake. */
 import { describe, expect, it, vi } from "vitest";
 
 import {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- enqueue vs await assignment coverage shares one plane fixture. */
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
