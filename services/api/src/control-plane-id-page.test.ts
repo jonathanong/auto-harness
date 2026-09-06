@@ -37,6 +37,10 @@ describe("storage cursors", () => {
     expect(decodeStorageCursor(encoded)).toEqual({ id: "wt-1" });
     expect(decodeStorageCursor(null)).toBeUndefined();
     expect(() => decodeStorageCursor("wt-1")).toThrow(InvalidListPageQueryError);
+    expect(() => decodeStorageCursor("s1.not-json")).toThrow(InvalidListPageQueryError);
+    expect(() =>
+      decodeStorageCursor(`s1.${Buffer.from("[]", "utf8").toString("base64url")}`),
+    ).toThrow(InvalidListPageQueryError);
   });
 });
 
@@ -56,5 +60,16 @@ describe("pageByKey", () => {
       items: [{ id: "b" }, { id: "c" }],
       nextCursor: null,
     });
+  });
+
+  it("uses a caller-supplied compare when ranking keys", () => {
+    expect(
+      pageByKey(items, {
+        limit: 2,
+        cursor: null,
+        key: (item) => item.id,
+        compare: (left, right) => right.id.localeCompare(left.id),
+      }),
+    ).toEqual({ items: [{ id: "c" }, { id: "b" }], nextCursor: "b" });
   });
 });
