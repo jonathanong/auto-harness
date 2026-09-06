@@ -194,10 +194,14 @@ describe("DaemonLoop coverage guards", () => {
           transport,
           onLog: (line) => lines.push(line),
           timers: {
-            // beginDrain schedules the retry first and the drain deadline second;
-            // this test drives the retry, so keep the first callback.
-            setTimeout: (callback) => {
-              retry ??= callback;
+            // Several timers now share this seam (drain retry, drain deadline,
+            // the keepalive-stall watchdog armed on every successful
+            // register()). Filter by delay to isolate the short drain-retry
+            // interval from the much longer deadline/watchdog ones — a bare
+            // "first call wins" would just as easily capture whichever of
+            // those fires during loop.start()'s initial registration.
+            setTimeout: (callback, ms) => {
+              if ((ms ?? 0) <= 5_000) retry ??= callback;
               return 1 as never;
             },
             clearTimeout: () => {

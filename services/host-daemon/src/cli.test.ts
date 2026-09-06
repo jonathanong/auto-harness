@@ -445,16 +445,26 @@ describe("printUsage / main / defaults", () => {
   });
 
   it("default deps' log/error/readFile close over the real console and filesystem", () => {
-    const d = createDefaultRunSessionDeps();
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     d.log("hello");
     d.error("oops");
-    expect(log).toHaveBeenCalledWith("hello");
-    expect(error).toHaveBeenCalledWith("oops");
+    // Every daemon-level line and every streamed session chunk share this one sink —
+    // prefixing here, once, is what makes the whole log timeline reconstructible.
+    expect(log).toHaveBeenCalledWith("2026-01-01T00:00:00.000Z hello");
+    expect(error).toHaveBeenCalledWith("2026-01-01T00:00:00.000Z oops");
     log.mockRestore();
     error.mockRestore();
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
+  });
+
+  it("default deps' log/error use the real clock when none is injected", () => {
+    const d = createDefaultRunSessionDeps();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    d.log("hello");
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z hello$/));
+    log.mockRestore();
   });
 
   it("default deps' host status closure forwards the fetch signal", async () => {

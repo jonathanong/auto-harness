@@ -121,15 +121,27 @@ async function settleWithin<T>(
   });
 }
 
-export function createDefaultRunSessionDeps(): RunSessionDeps {
+/**
+ * Every daemon lifecycle line — connect, reconnect, register, keepalive
+ * failure — and every streamed session log chunk go through this one sink.
+ * None of it carried a timestamp: reconstructing an outage's timeline meant
+ * inferring order from log line numbers and interleaved session output alone.
+ */
+function timestamped(msg: string, now: () => string): string {
+  return `${now()} ${msg}`;
+}
+
+export function createDefaultRunSessionDeps(
+  now: () => string = () => new Date().toISOString(),
+): RunSessionDeps {
   return {
     loadConfig: loadDaemonConfig,
     readFile: (path) => readFileSync(path, "utf8"),
     log: (msg) => {
-      console.log(msg);
+      console.log(timestamped(msg, now));
     },
     error: (msg) => {
-      console.error(msg);
+      console.error(timestamped(msg, now));
     },
     ensureReady: (config) => ensureDaemonReady(config),
     runSession: (config, assign, onLog, childEnvSource) =>
