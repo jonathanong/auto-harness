@@ -17,6 +17,7 @@ const navigationShortcuts = [
   ["d", "Dashboard", "/"],
   ["n", "New session", "/sessions/new"],
   ["s", "Sessions", "/sessions"],
+  ["u", "User Sessions", "/user-sessions"],
   ["r", "Repositories", "/repositories"],
   ["w", "Worktrees", "/worktrees"],
   ["p", "Providers", "/providers"],

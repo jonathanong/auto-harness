@@ -455,6 +455,42 @@ describe("browser session log websocket", () => {
     hub.close();
     await close(server);
   });
+
+  it("records a live user session for an authenticated viewer socket", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`${wsUrl(server)}?ticket=${encodeURIComponent(ticket)}`, {
+        headers: viewerOrigin(),
+      });
+      socket.on("open", () => resolve(socket));
+      socket.on("error", reject);
+    });
+    expect(plane.listUserSessions()).toEqual([
+      expect.objectContaining({
+        userId: principal.id,
+        username: "viewer",
+        role: "read-only",
+        subscriptions: [],
+      }),
+    ]);
+    await new Promise<void>((resolve) => {
+      ws.on("close", () => resolve());
+      ws.close();
+    });
+    await expect.poll(() => plane.listUserSessions()).toEqual([]);
+    hub.close();
+    await close(server);
+  });
 });
 
 describe("browser session log protocol", () => {

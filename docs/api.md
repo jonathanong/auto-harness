@@ -1094,6 +1094,31 @@ increments the durable count and stamps detection time using the control-plane c
 daemons remain compatible and report an unknown start time. These fields do not trigger a host
 restart or an external notification.
 
+#### `GET /api/v1/user-sessions`
+
+List live browser log-viewer connections. These are `/ws/viewer` sockets, not host daemons and
+not CLI sessions. Bound host-daemon credentials receive an empty list. Repository-scoped
+principals see only their own connection plus viewers subscribed to an allowed repository.
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": "dGVzdA",
+      "userId": "user:alice",
+      "username": "alice",
+      "role": "operator",
+      "kind": "user",
+      "connectedAt": "2026-09-06T21:00:00.000Z",
+      "lastHeartbeatAt": "2026-09-06T21:00:30.000Z",
+      "subscriptions": [{ "sessionId": "sess-1", "repositoryId": "repo-1", "status": "running" }]
+    }
+  ]
+}
+```
+
 ---
 
 ### Providers, Provider Accounts, and Commands

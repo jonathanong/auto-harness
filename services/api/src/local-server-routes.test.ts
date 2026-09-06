@@ -32,6 +32,29 @@ describe("createLocalApp agent and scheduler routes", () => {
       invokeHandler(handler as never, method, path, body);
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
+    plane.state.connections.set("viewer", {
+      connectionId: "viewer",
+      type: "client",
+      hostId: "user:alice",
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+      viewerPrincipal: {
+        id: "user:alice",
+        username: "alice",
+        role: "operator",
+        kind: "user",
+      },
+    });
+    const userSessions = await invoke("GET", "/api/v1/user-sessions");
+    expect(userSessions.status).toBe(200);
+    expect(userSessions.json).toMatchObject({
+      items: [{ id: "viewer", username: "alice", userId: "user:alice" }],
+    });
+    expect(
+      (
+        (await invoke("GET", "/api/v1/hosts")).json as { items: Array<{ hostId: string }> }
+      ).items.map((host) => host.hostId),
+    ).not.toContain("user:alice");
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/sessions?sort=priority_desc")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/sessions?sort=priority_asc")).status).toBe(200);

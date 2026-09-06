@@ -14,7 +14,7 @@ behavior without claiming that extra path is already shipped.
 ### Shell & Navigation
 
 The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, Sessions,
-Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts), and
+User Sessions, Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts), and
 **Settings** — one dropdown per group. Header and main use the viewport width with horizontal
 padding (dialogs stay `max-w-lg`). **New session** is a button on the slim secondary row with
 the theme toggle, keyboard-shortcuts button, and logout (only when `HARNESS_AUTH_MODE=required`),
@@ -86,6 +86,7 @@ First-time users or empty views show contextual guidance instead of blank pages:
 | Dashboard (no sessions) | "Get started: 1. Add a repository, 2. Connect a host, 3. Create your first session" with action links |
 | Dashboard (no hosts)    | "No hosts connected. Set up a VPS host →" with link to the Hosts setup view                           |
 | Session list            | "No sessions yet. Create your first session →" with button                                            |
+| User session list       | "No live user sessions" — browser log viewers only; host daemons stay on Hosts                        |
 | Repository list         | "No repositories configured. Add one →" with button                                                   |
 | Schedule list           | "No schedules configured. Create one →" with button                                                   |
 
@@ -98,6 +99,14 @@ First-time users or empty views show contextual guidance instead of blank pages:
 | **API/form error**            | Failed primary list requests replace empty-state content with a contextual alert and retry action. Detail pages apply the same pattern per section — a failed fetch feeding one section of a page (e.g. a host's provider accounts, or a session's logs) renders that section's own contextual alert and retry, rather than degrading to a silent empty state or, worse, being mistaken for the section genuinely having no data. Failed command, provider, and repository deletes show a persistent alert toast with the API message and an explicit retry action. Client form submit failures (parsed with `apiErrorMessage`, never raw JSON) show a destructive toast; HTML/field validation remains inline. |
 | **WebSocket disconnected**    | Yellow banner at top: "⚠️ Real-time updates paused — reconnecting..." with manual reconnect link.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **Agent offline mid-session** | Session detail polls session/host state, shows an accessible "Agent disconnected — session may be stale" warning, and offers a confirmed Force-cancel. Force-cancel uses ordinary control-plane cancellation; it cannot confirm that the disconnected host process stopped, and its worktree stays reserved for safe reconciliation.                                                                                                                                                                                                                                                                                                                                                                            |
+
+---
+
+## User Sessions
+
+Operate → **User Sessions** (`/user-sessions`) lists live browser `/ws/viewer` connections: who
+is signed in, when they connected, and which CLI sessions they are tailing. It is not a second
+CLI session list and does not include host daemons.
 
 ---
 

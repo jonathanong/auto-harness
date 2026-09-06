@@ -5,8 +5,9 @@ import {
 } from "@aws-sdk/client-apigatewaymanagementapi";
 
 import { mayAccessRepository } from "./auth-policy.ts";
-import type { AuthService, Principal } from "./auth.ts";
+import type { AuthService } from "./auth.ts";
 import type { ConnectionRecord, LogRecord } from "./db/plane-storage-types.ts";
+import { viewerConnectionPrincipal } from "./viewer-principal.ts";
 import { isAllowedViewerOrigin, parseViewerMessage } from "./viewer-ws-protocol.ts";
 
 const MAX_SUBSCRIPTIONS = 8;
@@ -30,19 +31,6 @@ type ViewerDependencies = {
   /** Retry a missing origin after a transient cold-start SSM miss. */
   resolvePublicBaseUrl?: () => Promise<string | undefined>;
 };
-
-function viewerPrincipal(principal: Principal | null): ConnectionRecord["viewerPrincipal"] {
-  if (!principal || (principal.kind !== "admin" && principal.kind !== "user")) return undefined;
-  return {
-    id: principal.id,
-    username: principal.username,
-    role: principal.role,
-    kind: principal.kind,
-    ...(principal.allowedRepositoryIds
-      ? { allowedRepositoryIds: principal.allowedRepositoryIds }
-      : {}),
-  };
-}
 
 /** API Gateway WebSocket adapter for read-only browser log subscriptions. */
 export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
@@ -91,7 +79,9 @@ export function createLambdaViewerSockets(dependencies: ViewerDependencies) {
   return {
     async connect(connectionId: string, ticket: string, origin?: string): Promise<number> {
       if (!isAllowedViewerOrigin(origin, await viewerOrigin())) return 403;
-      const principal = viewerPrincipal(await dependencies.auth.authenticateViewerTicket(ticket));
+      const principal = viewerConnectionPrincipal(
+        await dependencies.auth.authenticateViewerTicket(ticket),
+      );
       if (!principal) return 403;
       const now = new Date().toISOString();
       await save({

@@ -2,6 +2,7 @@ import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import { filterUserSessionsForPrincipal } from "./control-plane-user-sessions.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
@@ -26,6 +27,17 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (await handleSchedulerRoutes(ctx)) return true;
+
+  if (method === "GET" && url.pathname === "/api/v1/user-sessions") {
+    try {
+      send(res, 200, {
+        items: filterUserSessionsForPrincipal(await plane.listUserSessionsDurable(), ctx.principal),
+      });
+    } catch {
+      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    }
+    return true;
+  }
 
   if (method === "GET" && url.pathname === "/api/v1/hosts") {
     try {

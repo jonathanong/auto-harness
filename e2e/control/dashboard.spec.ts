@@ -77,6 +77,7 @@ test.describe("control plane dashboard", () => {
     await page.getByTestId("nav-group-operate").click();
     await expect(page.getByTestId("nav-dashboard")).toBeVisible();
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
+    await expect(page.getByTestId("nav-user-sessions")).toBeVisible();
     await expect(page.getByTestId("nav-schedules")).toBeVisible();
     await page.keyboard.press("Escape");
 

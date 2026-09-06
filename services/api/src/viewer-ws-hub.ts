@@ -1,10 +1,14 @@
 /* eslint-disable max-lines -- viewer ownership, replay, and fan-out form one protocol boundary. */
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane, LogRecord } from "./control-plane.ts";
+import { settleStorage } from "./control-plane-state.ts";
+import { deleteViewerConnection, putViewerConnection } from "./control-plane-user-sessions.ts";
+import { viewerConnectionPrincipal } from "./viewer-principal.ts";
 import {
   authenticateViewer,
   isAllowedViewerOrigin,
@@ -97,11 +101,13 @@ export function attachViewerWsHub(
     }
   };
 
+  const persistBySocket = new Map<WebSocket, () => void>();
   let polling = false;
   const poll = async (): Promise<void> => {
     if (polling) return;
     polling = true;
     try {
+      for (const persist of persistBySocket.values()) persist();
       for (const [socket, requested] of subscriptions) {
         for (const subscription of requested.values()) {
           try {
@@ -138,6 +144,31 @@ export function attachViewerWsHub(
   const handleConnection = (socket: WebSocket, principal: Principal | null): void => {
     const requested = new Map<string, Subscription>();
     subscriptions.set(socket, requested);
+    const connectionId = randomUUID();
+    const connectedAt = new Date().toISOString();
+    const persist = (): void => {
+      if (!subscriptions.has(socket)) return;
+      const now = new Date().toISOString();
+      const viewerPrincipal = viewerConnectionPrincipal(principal);
+      putViewerConnection(plane.state, {
+        connectionId,
+        type: "client",
+        hostId: principal?.id ?? "anonymous",
+        connectedAt,
+        lastHeartbeatAt: now,
+        ...(viewerPrincipal ? { viewerPrincipal } : {}),
+        viewerSubscriptions: [...requested.values()].map(
+          ({ sessionId, repositoryId, status, after }) => ({
+            sessionId,
+            repositoryId,
+            status,
+            ...(after ? { after } : {}),
+          }),
+        ),
+      });
+    };
+    persist();
+    persistBySocket.set(socket, persist);
     let messageTail: Promise<void> = Promise.resolve();
     socket.on("message", (raw) => {
       const message = parseViewerMessage(raw);
@@ -147,6 +178,7 @@ export function attachViewerWsHub(
       }
       if (message.type === "session:unsubscribe") {
         requested.delete(message.sessionId);
+        persist();
         return;
       }
       messageTail = messageTail
@@ -177,6 +209,7 @@ export function attachViewerWsHub(
             ...(message.after ? { after: message.after } : {}),
           };
           requested.set(message.sessionId, subscription);
+          persist();
           await drain(socket, subscription);
           send(socket, {
             type: "session:subscribed",
@@ -187,7 +220,11 @@ export function attachViewerWsHub(
         })
         .catch(() => socket.close(1011, "viewer subscription failed"));
     });
-    socket.on("close", () => subscriptions.delete(socket));
+    socket.on("close", () => {
+      persistBySocket.delete(socket);
+      subscriptions.delete(socket);
+      deleteViewerConnection(plane.state, connectionId);
+    });
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
@@ -217,9 +254,11 @@ export function attachViewerWsHub(
         plane.state.onLogCommitted = previousOnLogCommitted;
       }
       clearInterval(pollTimer);
+      persistBySocket.clear();
       for (const socket of subscriptions.keys()) socket.close();
       subscriptions.clear();
       wss.close();
+      void settleStorage(plane.state);
     },
   };
 }

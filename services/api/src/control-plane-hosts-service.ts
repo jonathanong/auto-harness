@@ -10,6 +10,7 @@ import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
+import * as userSessions from "./control-plane-user-sessions.ts";
 import { ensureSeededTestHost, testHostRuntime } from "./control-plane-test-host.ts";
 
 /** Host registration, inventory, worktrees, and drain/reclaim. */
@@ -57,6 +58,14 @@ export class ControlPlaneHostsService {
     await durableRuntime.refreshSchedulerReadModel(this.state);
     await durableRuntime.listWorktreesDurable(this.state);
     return agents.listHosts(this.state);
+  }
+
+  listUserSessions(): ReturnType<typeof userSessions.listUserSessions> {
+    return userSessions.listUserSessions(this.state);
+  }
+
+  listUserSessionsDurable(): Promise<ReturnType<typeof userSessions.listUserSessions>> {
+    return userSessions.listUserSessionsDurable(this.state);
   }
 
   registerHost(

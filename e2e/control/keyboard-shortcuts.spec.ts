@@ -19,6 +19,7 @@ test.describe("control-plane keyboard shortcuts", () => {
     await expect(page.getByTestId("keyboard-shortcut-go-d")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-n")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-s")).toBeVisible();
+    await expect(page.getByTestId("keyboard-shortcut-go-u")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-r")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-w")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-p")).toBeVisible();
