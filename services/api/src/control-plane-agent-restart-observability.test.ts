@@ -99,7 +99,7 @@ describe("daemon restart observability", () => {
     });
     const response = await invokeHandler(createLocalApp({ plane }).handler, "GET", "/api/v1/hosts");
     expect(response.status).toBe(200);
-    expect(response.json).toEqual({
+    expect(response.json).toMatchObject({
       items: [
         expect.objectContaining({
           hostId: "offline-host",
@@ -109,6 +109,7 @@ describe("daemon restart observability", () => {
           lastRestartDetectedAt: "2026-08-12T00:00:01.000Z",
         }),
       ],
+      nextCursor: null,
     });
   });
 

@@ -41,9 +41,9 @@ describe("host-pane settings route", () => {
           providerAccounts: [{ providerAccountId: "account-a" }],
         });
       }
-      if (url.endsWith("/providers"))
+      if (url.includes("/api/v1/providers"))
         return Response.json({ items: [{ id: "provider-a", name: "Provider A" }] });
-      if (url.endsWith("/provider-accounts"))
+      if (url.includes("/api/v1/provider-accounts"))
         return Response.json({
           items: [{ id: "account-a", providerId: "provider-a", label: "Account A" }],
         });
