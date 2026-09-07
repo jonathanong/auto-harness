@@ -147,6 +147,32 @@ describe("durable host-message fencing", () => {
     });
   });
 
+  it("rejects a session:status retry from a superseded connection while the session is still genuinely running", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const stillRunning = running();
+    state.sessions.set("s", stillRunning);
+    state.storage = {
+      getSession: async () => stillRunning,
+      // The host reconnected on a new connection; the lock no longer matches
+      // the stale connection this retry is arriving on.
+      getHostLock: async () => "current-connection",
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+        },
+        "stale-connection",
+      ),
+    ).resolves.toEqual({ ok: false, error: "stale host connection" });
+  });
+
   it("confirms an in-memory terminal status transition and notifies the owning host", () => {
     const deliveries: Array<{ hostId: string; message: unknown }> = [];
     const plane = new ControlPlane({

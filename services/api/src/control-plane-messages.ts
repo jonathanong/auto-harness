@@ -607,7 +607,10 @@ export async function handleHostMessageDurable(
         ? msg.hostId
         : (state.sessions.get(msg.sessionId)?.hostId ??
           (await storage.getSession(msg.sessionId))?.hostId);
-    if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
+    // Distinct from a lock mismatch below: this session has no host claim at
+    // all, which only happens once some transition has already cleared it.
+    const noHostClaim = !hostId;
+    if (noHostClaim || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
       if (
         (msg.type === "session:ack" ||
           msg.type === "session:status" ||
@@ -618,13 +621,18 @@ export async function handleHostMessageDurable(
         if (session?.attemptId && session.attemptId !== msg.attemptId) {
           return { ok: true };
         }
-        if (msg.type === "session:status" && session?.attemptId === msg.attemptId) {
+        if (msg.type === "session:status" && noHostClaim && session?.attemptId === msg.attemptId) {
           // The session's own transition (finish/requeue) already cleared its
           // host claim for this exact attempt — the fence above trips only
           // because there is no host left to match against, not because this
           // report is stale. Acknowledge it so the daemon stops retrying a
           // report the control plane already durably applied, rather than
-          // resending it every keepalive for up to 24h.
+          // resending it every keepalive for up to 24h. Requiring noHostClaim
+          // (not just a matching attemptId) matters: a session that is still
+          // genuinely running, just now claimed by a different/newer
+          // connection after a reconnect, must NOT be acknowledged here — the
+          // report was never applied, and a false ack would make the daemon
+          // stop retrying a status the control plane never durably recorded.
           return {
             ok: true,
             sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
