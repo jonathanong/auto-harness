@@ -31,6 +31,7 @@ describe("schedule pages", () => {
     stubApi({
       "/api/v1/auth/me": writablePrincipal,
       "/api/v1/schedules": {
+        nextCursor: "page/two",
         items: [
           {
             id: "schedule/one",
@@ -71,6 +72,9 @@ describe("schedule pages", () => {
     expect(html).toContain('href="/sessions/session%2Factive"');
     expect(html).toContain("Edit Nightly");
     expect(html).toContain("removed-repo");
+    expect(html).toContain('data-pw="pagination-next"');
+    expect(html).toContain("edit=schedule%2Fone");
+    expect(html).toContain("cursor=page%2Ftwo");
     expect(html.indexOf("Harness")).toBeLessThan(html.indexOf("Zebra"));
   });
 

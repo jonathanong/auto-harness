@@ -115,6 +115,39 @@ describe("getHostDurable", () => {
     });
   });
 
+  it("hydrates a worktree from storage and pages with a continuation key", async () => {
+    const record = {
+      id: "wt-1",
+      name: "wt-1",
+      hostId: "host-a",
+      repositoryId: "repo-1",
+      path: "/wt-1",
+      labels: [],
+      status: "idle" as const,
+      online: true,
+    };
+    const plane = new ControlPlane({
+      storage: {
+        getWorktree: async (id: string) => (id === "wt-1" ? record : null),
+        listWorktreesPage: async () => ({ items: [record], nextKey: { id: "wt-1" } }),
+      } as never,
+    });
+    await expect(plane.getWorktreeDurable("wt-1")).resolves.toMatchObject({ id: "wt-1" });
+    expect(plane.getWorktree("wt-1")?.id).toBe("wt-1");
+    await expect(plane.getWorktreeDurable("missing")).resolves.toBeNull();
+    await expect(
+      plane.listWorktreesPageDurable({
+        limit: 1,
+        cursor: null,
+        hostId: null,
+        repositoryId: null,
+      }),
+    ).resolves.toMatchObject({
+      items: [{ id: "wt-1" }],
+      nextCursor: expect.stringMatching(/^s1\./),
+    });
+  });
+
   it("pages in-memory worktrees by host and repository", async () => {
     const plane = new ControlPlane();
     const seed = (id: string, hostId: string, repositoryId: string) =>

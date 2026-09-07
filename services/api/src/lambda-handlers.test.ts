@@ -1252,6 +1252,32 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("logs when enqueueing an assignment sweep fails", async () => {
+    const fixture = runtimeFixture();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const previous = process.env.WS_API_ENDPOINT;
+    try {
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        invokeAssignment: async () => {
+          throw new Error("enqueue failed");
+        },
+      });
+      await fixture.plane.enqueueAssignment();
+      expect(consoleError).toHaveBeenCalledWith(
+        "failed to enqueue assignment sweep",
+        expect.any(Error),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previous;
+      consoleError.mockRestore();
+    }
+  });
+
   it("requires the management endpoint only when constructing its AWS client", async () => {
     const fixture = runtimeFixture();
     const previous = process.env.WS_API_ENDPOINT;

@@ -381,12 +381,12 @@ export async function createLambdaRuntime(
   const invokeAssignment =
     dependencies.invokeAssignment ??
     (async () => {
-      /* v8 ignore next 8 -- production Event invoke is an SDK boundary */
       const functionName = process.env.ASSIGNMENT_FUNCTION_NAME;
       if (!functionName) {
         await created.plane.requestAssignment();
         return;
       }
+      /* v8 ignore start -- production Event invoke is an SDK boundary */
       await new LambdaClient({}).send(
         new InvokeCommand({
           FunctionName: functionName,
@@ -394,6 +394,7 @@ export async function createLambdaRuntime(
           Payload: Buffer.from(JSON.stringify({ source: "enqueue" })),
         }),
       );
+      /* v8 ignore stop */
     });
   created.plane.setOnAssignmentRequested(() =>
     invokeAssignment().catch((error: unknown) => {
