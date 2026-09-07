@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { putHostInventory, putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
 import { ControlPlane } from "./control-plane.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 
 function planeWithAccounts() {
   const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
@@ -134,5 +135,23 @@ describe("agent host inventory providerAccounts", () => {
       ok: false,
       error: "unknown providerAccountId: garbage",
     });
+  });
+
+  it("putHostInventoryDurable accepts a stored account when the in-memory catalog is cold", async () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    setDurableReadStorage(plane.state, {
+      listProviderAccounts: async () => [{ id: "acct-1", providerId: "prov-1", label: "one" }],
+      putHostInventory: async () => undefined,
+      putWorktree: async () => undefined,
+      deleteWorktree: async () => undefined,
+    });
+    plane.state.providerAccounts.clear();
+    expect(
+      await putHostInventoryDurable(plane.state, "local-1", {
+        repositories: [],
+        providerAccounts: [{ providerAccountId: "acct-1" }],
+        commandProfiles: {},
+      }),
+    ).toMatchObject({ ok: true });
   });
 });

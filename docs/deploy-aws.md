@@ -177,6 +177,7 @@ sets `AWS_PAGER=""` so the dump prints to stdout and deploy continues.
 | `KMS_KEY_ID`                 | REST and Cron only — Slack / integration secrets. WebSocket does not receive the key or decrypt grants                                       |
 | `HARNESS_METRIC_ENVIRONMENT` | Table prefix used as the CloudWatch `Environment` dimension for operational EMF metrics                                                      |
 | Rate-limit variables         | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
+| `HARNESS_HYDRATE_CATALOGS`   | REST only — `false` so cold start does not Scan catalogs. Cron and WebSocket omit this and still hydrate catalogs (not session history)      |
 
 **Rotation:** replace the value in the Parameter Store UI; no redeploy is required.
 Existing warm Lambda containers keep the value they fetched at their own
@@ -334,7 +335,9 @@ deployment process itself performs the strongly-consistent backfill in durable,
 fenced 100-session pages and publishes the ledger readiness marker only after its
 final checkpoint. The driver is bounded at 100,000 page attempts and retains its
 durable checkpoint if it fails, so a rerun resumes instead of rescanning prior
-pages. REST and WebSocket cold starts never scan session history; drain admission
+pages. REST and WebSocket cold starts never scan session history. REST also skips
+catalog/worktree/connection/archive Scans (`HARNESS_HYDRATE_CATALOGS=false`) so a
+host-inventory GET is a `GetItem` and cannot 500 behind init hydrate; drain admission
 fails closed while the marker is absent. The wrapper verifies the `SessionDrains`
 table contains `scopeKey=__session-drain-ledger__` and
 `recordKey=ACTIVITY-V1`, restores the rule's original state, and only then permits

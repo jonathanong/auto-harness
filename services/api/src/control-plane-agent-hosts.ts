@@ -12,6 +12,7 @@ import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
 import {
   getHostInventoryDurable,
   listHostInventoriesDurable,
+  listProviderAccountsDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
@@ -173,7 +174,13 @@ export async function putHostInventoryDurable(
   } = {},
 ): Promise<InventoryWriteResult> {
   if (!state.storage) return putHostInventory(state, hostId, body, options);
-  await Promise.all([listHostInventoriesDurable(state), listWorktreesDurable(state)]);
+  await Promise.all([
+    listHostInventoriesDurable(state),
+    listWorktreesDurable(state),
+    typeof state.storage.listProviderAccounts === "function"
+      ? listProviderAccountsDurable(state)
+      : Promise.resolve(),
+  ]);
   const expectedVersion =
     expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
   const result = prepareHostInventory(state, hostId, body, options);

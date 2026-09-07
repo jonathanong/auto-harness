@@ -45,20 +45,25 @@ describe("Lambda HTTP adapter", () => {
     await expect(runtime.rest({})).resolves.toMatchObject({ statusCode: 404 });
   });
 
-  it("logs and rethrows when translating the Lambda event fails", async () => {
+  it("logs the adapter error and returns a generic REST 500", async () => {
     const runtime = await createLambdaRuntime({
       auth: {} as never,
       created: { plane: new ControlPlane(), storage: {} } as never,
       management: { send: async () => ({}) },
     });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(runtime.rest({ body: 123, rawPath: "/health" } as never)).rejects.toThrow(
-      "must be of type string",
-    );
+    await expect(runtime.rest({ body: 123, rawPath: "/health" } as never)).resolves.toEqual({
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: { code: "INTERNAL_ERROR", message: "internal server error" },
+      }),
+    });
     expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
       msg: "rest failure",
       method: "UNKNOWN",
       path: "/health",
+      error: expect.stringContaining("must be of type string"),
     });
     error.mockRestore();
   });

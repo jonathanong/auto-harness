@@ -112,9 +112,21 @@ describe("host management runtime coverage", () => {
   it("delivers the durable drain notification when a listener is configured", async () => {
     const messages: unknown[] = [];
     const plane = new ControlPlane({ onHostMessage: (_hostId, message) => messages.push(message) });
+    const idle = {
+      id: "wt-idle",
+      hostId: "host",
+      name: "idle",
+      repositoryId: "repo",
+      path: "/repo",
+      labels: [],
+      status: "idle" as const,
+      online: true,
+    };
     plane.state.storage = {
       getHostLock: async () => "owner",
       markHostDraining: async () => true,
+      listWorktreesByHost: async () => [idle],
+      setWorktreeOnlineFenced: async () => true,
     } as never;
 
     await expect(drainHostDurable(plane.state, "host")).resolves.toEqual({
@@ -122,6 +134,8 @@ describe("host management runtime coverage", () => {
       runningSessionIds: [],
     });
     expect(messages).toEqual([{ type: "host:drain" }]);
+    expect(plane.state.hostConnection.get("host")).toBe("owner");
+    expect(plane.state.worktrees.get("wt-idle")?.online).toBe(false);
   });
 
   it("requeues an unacknowledged busy worktree assignment", () => {

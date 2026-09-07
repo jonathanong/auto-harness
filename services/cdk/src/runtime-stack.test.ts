@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one synthesized runtime template covers REST, WebSocket, and cron. */
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
@@ -71,11 +72,17 @@ describe("AutoHarnessRuntimeStack", () => {
       Environment: {
         Variables: Match.objectLike({
           ASSIGNMENT_FUNCTION_NAME: Match.anyValue(),
+          HARNESS_HYDRATE_CATALOGS: "false",
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
       Handler: "index.rest",
     });
+    template.resourcePropertiesCountIs(
+      "AWS::Lambda::Function",
+      { Environment: { Variables: Match.objectLike({ HARNESS_HYDRATE_CATALOGS: "false" }) } },
+      1,
+    );
     template.resourcePropertiesCountIs(
       "AWS::ApiGatewayV2::Integration",
       {

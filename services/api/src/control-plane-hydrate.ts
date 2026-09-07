@@ -61,7 +61,16 @@ export type HydrateFromStorageOptions = {
    * for local tests that still inspect the in-memory session map.
    */
   sessionHistory?: boolean;
+  /**
+   * When false, skip catalog/worktree/connection/archive Scans. REST Lambda
+   * request paths read those through durable point queries (#455). Default true.
+   */
+  catalogs?: boolean;
 };
+
+function skipList<T>(): Promise<T[]> {
+  return Promise.resolve([]);
+}
 
 /** Restore the complete durable snapshot before making it visible to callers. */
 export async function hydrateFromStorage(
@@ -70,6 +79,10 @@ export async function hydrateFromStorage(
 ): Promise<void> {
   if (!state.storage) return;
   const sessionHistory = options.sessionHistory !== false;
+  const catalogs = options.catalogs !== false;
+  // REST cold start skips both Scans so GET /hosts/:id/inventory is a GetItem
+  // and cannot 500 behind a catalog hydrate (#455).
+  if (!sessionHistory && !catalogs) return;
   // Legacy storage fakes and adapters can still hydrate their pre-usage
   // snapshot. Production Dynamo storage always implements this additive read.
   const listUsageRecords =
@@ -90,18 +103,18 @@ export async function hydrateFromStorage(
     usageRecords,
     slackIntegration,
   ] = await Promise.all([
-    sessionHistory ? state.storage.listAllSessions() : Promise.resolve([] as SessionRecord[]),
-    state.storage.listAllWorktrees(),
-    state.storage.listConnections(),
-    state.storage.listSchedules(),
-    state.storage.listRepositories(),
-    state.storage.listHostInventories(),
-    state.storage.listProviders(),
-    state.storage.listProviderAccounts(),
-    state.storage.listCommands(),
-    state.storage.listArchives(),
+    sessionHistory ? state.storage.listAllSessions() : skipList<SessionRecord>(),
+    catalogs ? state.storage.listAllWorktrees() : skipList<WorktreeRecord>(),
+    catalogs ? state.storage.listConnections() : skipList<ConnectionRecord>(),
+    catalogs ? state.storage.listSchedules() : skipList<ScheduleRecord>(),
+    catalogs ? state.storage.listRepositories() : skipList<RepositoryRecord>(),
+    catalogs ? state.storage.listHostInventories() : skipList<HostInventoryRecord>(),
+    catalogs ? state.storage.listProviders() : skipList<ProviderRecord>(),
+    catalogs ? state.storage.listProviderAccounts() : skipList<ProviderAccountRecord>(),
+    catalogs ? state.storage.listCommands() : skipList<CommandRecord>(),
+    catalogs ? state.storage.listArchives() : skipList<ArchiveMetadata>(),
     listUsageRecords,
-    "getSlackIntegration" in state.storage
+    catalogs && "getSlackIntegration" in state.storage
       ? state.storage.getSlackIntegration()
       : Promise.resolve(null),
   ]);
