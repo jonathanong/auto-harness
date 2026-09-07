@@ -358,7 +358,9 @@ export class DaemonLoop {
       !this.hasPendingAcknowledgement()
     ) {
       await this.register();
-      this.armKeepaliveStallTimer();
+      // Protocol 2 waits for host:registered. A local register write is not
+      // peer evidence — the same invariant as keepalive send() below.
+      if (!this.requireKeepaliveAck) this.armKeepaliveStallTimer();
       return false;
     }
     this.retryPendingTerminalStatuses();

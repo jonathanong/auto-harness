@@ -939,10 +939,10 @@ daemon liveness: registered=true last keepalive sent=4213ms ago queued=0 open fd
 - `registered` — whether the current WebSocket connection has completed `host:register`.
   `false` for more than a reconnect cycle or two means the daemon is stuck disconnected.
 - `last keepalive sent` — ms since the daemon's own `host:keepalive` write last completed,
-  or `none yet`. This is **local send completion, not a control-plane acknowledgement** —
-  the wire protocol has no keepalive ack, so a socket that looks open but is actually wedged
-  can still advance this value. Treat it as "the daemon's own loop is still ticking," not
-  proof the control plane is reachable.
+  or `none yet`. This is **local send completion**, not proof the peer received the frame.
+  Protocol 2 re-arms the stall watchdog on `host:keepalive-ack` instead. A socket that
+  looks open but is actually wedged can still advance this value. Treat it as "the
+  daemon's own loop is still ticking," not proof the control plane is reachable.
 - `queued` — outbound frames buffered but not yet delivered. Sustained growth suggests a
   stalled or dead connection the daemon hasn't yet given up on.
 - `open fds` — best-effort open file descriptor count (`/proc/self/fd` on Linux, `/dev/fd`
