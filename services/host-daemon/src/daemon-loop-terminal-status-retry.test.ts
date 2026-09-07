@@ -28,6 +28,7 @@ describe("DaemonLoop terminal status retry", () => {
         message: statusMessage,
         firstAttemptedAtMs: Date.now(),
         sending: false,
+        controller: new AbortController(),
       });
 
       await loop.keepalive();
@@ -80,6 +81,7 @@ describe("DaemonLoop terminal status retry", () => {
         message: statusMessage,
         firstAttemptedAtMs: Date.now(),
         sending: false,
+        controller: new AbortController(),
       });
 
       await loop.keepalive();
@@ -178,10 +180,12 @@ describe("DaemonLoop terminal status retry", () => {
       await loop.start();
       sent.length = 0;
 
+      const controller = new AbortController();
       pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
         message: statusMessage,
         firstAttemptedAtMs: Date.now() - 2000,
         sending: false,
+        controller,
       });
 
       await loop.keepalive();
@@ -195,6 +199,9 @@ describe("DaemonLoop terminal status retry", () => {
       expect(sent).toContainEqual(
         expect.objectContaining({ type: "host:keepalive", runningSessions: [] }),
       );
+      // Giving up must cancel a still-buffered retained frame rather than
+      // leaving it queued to transmit whenever the connection recovers.
+      expect(controller.signal.aborted).toBe(true);
 
       loop.stop();
     } finally {

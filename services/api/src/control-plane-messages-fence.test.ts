@@ -29,6 +29,31 @@ function running(id = "s") {
   };
 }
 
+/** Common shape shared by the retry-fence tests below: a terminal report for
+ * session "s"/attempt "a", delivered from `sourceConnectionId`, expected to
+ * be durably acknowledged. */
+async function expectAcknowledgedStatusRetry(
+  state: ReturnType<typeof createControlPlaneState>,
+  sourceConnectionId: string,
+): Promise<void> {
+  await expect(
+    handleHostMessageDurable(
+      state,
+      {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
+        status: "completed",
+      },
+      sourceConnectionId,
+    ),
+  ).resolves.toEqual({
+    ok: true,
+    sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+  });
+}
+
 describe("durable host-message fencing", () => {
   it("normalizes object capability advertisements and explicit assignment caps", () => {
     const state = createControlPlaneState({
@@ -129,22 +154,7 @@ describe("durable host-message fencing", () => {
     state.sessions.set("s", requeued);
     state.storage = { getSession: async () => requeued } as never;
 
-    await expect(
-      handleHostMessageDurable(
-        state,
-        {
-          type: "session:status",
-          sessionId: "s",
-          worktreeId: "w",
-          attemptId: "a",
-          status: "completed",
-        },
-        "stale-connection",
-      ),
-    ).resolves.toEqual({
-      ok: true,
-      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
-    });
+    await expectAcknowledgedStatusRetry(state, "stale-connection");
   });
 
   it("rejects a session:status retry from a superseded connection while the session is still genuinely running", async () => {
@@ -185,22 +195,7 @@ describe("durable host-message fencing", () => {
       getHostLock: async () => "connection-for-h2",
     } as never;
 
-    await expect(
-      handleHostMessageDurable(
-        state,
-        {
-          type: "session:status",
-          sessionId: "s",
-          worktreeId: "w",
-          attemptId: "a",
-          status: "completed",
-        },
-        "connection-for-h1",
-      ),
-    ).resolves.toEqual({
-      ok: true,
-      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
-    });
+    await expectAcknowledgedStatusRetry(state, "connection-for-h1");
   });
 
   it("withholds the acknowledgement when a terminal status's conditional write loses a race", async () => {

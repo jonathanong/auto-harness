@@ -48,6 +48,7 @@ describe("DaemonLoop terminal status bookkeeping limits", () => {
         message: { ...statusMessage, sessionId: "dup-session", attemptId: "attempt-dup" },
         firstAttemptedAtMs: Date.now(),
         sending: false,
+        controller: new AbortController(),
       });
 
       sent.length = 0;

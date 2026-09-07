@@ -10,7 +10,12 @@ import { createLoopbackTransport } from "./loopback-transport.ts";
 
 export type PendingTerminalStatusMap = Map<
   string,
-  { message: HostToServerMessage; firstAttemptedAtMs: number; sending: boolean }
+  {
+    message: HostToServerMessage;
+    firstAttemptedAtMs: number;
+    sending: boolean;
+    controller: AbortController;
+  }
 >;
 
 /** Reaches into DaemonLoop's private retry bookkeeping for assertions/setup. */

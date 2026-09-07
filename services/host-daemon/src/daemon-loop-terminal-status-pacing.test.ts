@@ -37,6 +37,7 @@ describe("DaemonLoop terminal status retry pacing", () => {
           message: statusFor(sessionId),
           firstAttemptedAtMs: Date.now(),
           sending: false,
+          controller: new AbortController(),
         });
       }
 

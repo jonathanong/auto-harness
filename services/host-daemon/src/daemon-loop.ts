@@ -109,6 +109,14 @@ type PendingTerminalStatus = {
    * while the prior attempt is still sitting undelivered (e.g. a socket
    * that is down but has not yet rejected the queued write). */
   sending: boolean;
+  /**
+   * Shared across every send attempt for this entry so giving up on it can
+   * actually cancel a still-buffered write. Without this, a frame retained
+   * by `WsOutboundBuffer` during a prolonged outage stays queued and is
+   * eventually transmitted even after `pendingStatusMaxAgeMs` logged it as
+   * abandoned.
+   */
+  controller: AbortController;
 };
 
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -620,6 +628,9 @@ export class DaemonLoop {
           `giving up on unacknowledged terminal status for ${pending.message.sessionId} ` +
             `after ${String(this.pendingStatusMaxAgeMs)}ms`,
         );
+        // Cancels a still-buffered retained frame instead of leaving it
+        // queued to be transmitted whenever the connection recovers.
+        pending.controller.abort();
         this.pendingTerminalStatus.delete(key);
         continue;
       }
@@ -633,7 +644,7 @@ export class DaemonLoop {
       this.pendingTerminalStatus.set(key, pending);
       pending.sending = true;
       void this.outbound
-        .send(pending.message)
+        .send(pending.message, { signal: pending.controller.signal })
         .catch((error: unknown) => {
           this.onLog?.(
             `terminal status retry failed for ${pending.message.sessionId}: ` +
@@ -795,6 +806,7 @@ export class DaemonLoop {
     // (see ws-transport.ts), so a send that "succeeds" here is not proof the
     // control plane ever saw it. Retried on every keepalive until acked.
     const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
+    const controller = new AbortController();
     if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
       // A control plane that never sends session:status-acknowledged (e.g. not yet
       // upgraded to support it) would otherwise grow this set without bound until a
@@ -809,10 +821,11 @@ export class DaemonLoop {
         message: statusMessage,
         firstAttemptedAtMs: Date.now(),
         sending: true,
+        controller,
       });
     }
     await this.outbound
-      .send(statusMessage)
+      .send(statusMessage, { signal: controller.signal })
       .catch((error: unknown) => {
         this.onLog?.(
           `session:status send failed for ${msg.sessionId}, will retry via keepalive: ` +
