@@ -119,16 +119,27 @@ export class SessionRunner {
           : `Claimed main checkout ${claimed.repository.id}`,
       );
 
-      if (signal.aborted) {
-        return await finishClaimedSession(
+      const checkoutRef = assign.ref ?? claimed.repository.defaultBranch;
+      const finishCheckoutInterruption = () =>
+        finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
           assign,
           claimed,
-          { status: expired ? "timed_out" : "cancelled", exitCode: null },
+          {
+            status: expired ? "timed_out" : "cancelled",
+            exitCode: null,
+            ...(expired
+              ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
+              : {}),
+          },
           this.deps.childEnvSource ?? process.env,
         );
+      streamer.write("system", `Checking out ref ${checkoutRef}...`);
+
+      if (signal.aborted) {
+        return await finishCheckoutInterruption();
       }
 
       try {
@@ -146,15 +157,7 @@ export class SessionRunner {
         // requested terminal state instead of misreporting cancellation as a
         // checkout/setup failure.
         if (signal.aborted) {
-          return await finishClaimedSession(
-            this.deps.processRunner,
-            streamer,
-            logs,
-            assign,
-            claimed,
-            { status: expired ? "timed_out" : "cancelled", exitCode: null },
-            this.deps.childEnvSource ?? process.env,
-          );
+          return await finishCheckoutInterruption();
         }
         return await finishClaimedSession(
           this.deps.processRunner,
@@ -173,15 +176,7 @@ export class SessionRunner {
       }
 
       if (signal.aborted) {
-        return await finishClaimedSession(
-          this.deps.processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          { status: expired ? "timed_out" : "cancelled", exitCode: null },
-          this.deps.childEnvSource ?? process.env,
-        );
+        return await finishCheckoutInterruption();
       }
 
       try {

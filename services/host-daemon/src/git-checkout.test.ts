@@ -48,7 +48,7 @@ function lockProbe() {
 }
 
 function resetsPriorState() {
-  return [...lockProbe(), { match: ["ls-files", "-z"], exitCode: 0 }];
+  return [...lockProbe(), { match: ["ls-files", "-v", "-z"], exitCode: 0 }];
 }
 
 function hardReset(sha: string) {
@@ -435,7 +435,9 @@ describe("createGitClient checkout and revParse", () => {
         if (options.argv[1] === "symbolic-ref") {
           return { exitCode: 1, timedOut: false, signal: null };
         }
-        options.onChunk({ stream: "stdout", data: "abc\n" });
+        if (options.argv[1] !== "ls-files") {
+          options.onChunk({ stream: "stdout", data: "abc\n" });
+        }
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
@@ -446,8 +448,6 @@ describe("createGitClient checkout and revParse", () => {
       signal: controller.signal,
     });
     expect(seen).toEqual([
-      controller.signal,
-      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,
