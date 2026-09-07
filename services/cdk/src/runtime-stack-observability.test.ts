@@ -6,6 +6,36 @@ import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 import { HTTP_THROTTLE, WEBSOCKET_THROTTLE } from "./runtime-observability.ts";
 
+/** The alarm set both the default and accessLogsEnabled stacks provision identically. */
+function assertStandardAlarms(template: Template): void {
+  template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "QueueAgeSeconds",
+    Namespace: "AutoHarness",
+    Threshold: 1800,
+    TreatMissingData: "notBreaching",
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "LogDrops",
+    Namespace: "AutoHarness",
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "LogSeqGaps",
+    Namespace: "AutoHarness",
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "Errors",
+    Namespace: "AWS/Lambda",
+  });
+  template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+    MetricName: "5xx",
+    Namespace: "AWS/ApiGateway",
+  });
+  const rendered = JSON.stringify(template.toJSON());
+  expect(rendered).toContain("IntegrationError");
+  expect(rendered).toContain("ExecutionError");
+}
+
 describe("runtime observability", () => {
   it("adds throttles and operational alarms, with access logs off by default", () => {
     const app = new App();
@@ -51,32 +81,7 @@ describe("runtime observability", () => {
       StageName: "prod",
     });
 
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "QueueAgeSeconds",
-      Namespace: "AutoHarness",
-      Threshold: 1800,
-      TreatMissingData: "notBreaching",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "LogDrops",
-      Namespace: "AutoHarness",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "LogSeqGaps",
-      Namespace: "AutoHarness",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "Errors",
-      Namespace: "AWS/Lambda",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "5xx",
-      Namespace: "AWS/ApiGateway",
-    });
-    const rendered = JSON.stringify(template.toJSON());
-    expect(rendered).toContain("IntegrationError");
-    expect(rendered).toContain("ExecutionError");
+    assertStandardAlarms(template);
   });
 
   it("adds redacted access logs when accessLogsEnabled is set", () => {
@@ -133,31 +138,6 @@ describe("runtime observability", () => {
       expect(format).not.toContain("authorizer");
     }
 
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "QueueAgeSeconds",
-      Namespace: "AutoHarness",
-      Threshold: 1800,
-      TreatMissingData: "notBreaching",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "LogDrops",
-      Namespace: "AutoHarness",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "LogSeqGaps",
-      Namespace: "AutoHarness",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "Errors",
-      Namespace: "AWS/Lambda",
-    });
-    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "5xx",
-      Namespace: "AWS/ApiGateway",
-    });
-    const rendered = JSON.stringify(template.toJSON());
-    expect(rendered).toContain("IntegrationError");
-    expect(rendered).toContain("ExecutionError");
+    assertStandardAlarms(template);
   });
 });
