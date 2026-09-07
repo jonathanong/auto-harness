@@ -115,18 +115,14 @@ export class ControlPlaneHostsService {
     hostId: string,
   ): Promise<ReturnType<typeof agents.listHosts>[number] | null> {
     const storage = this.state.storage;
-    if (storage) {
+    if (storage?.getHostInventory && storage.getHostLock && storage.getConnection) {
       const [inventory, connectionId] = await Promise.all([
-        typeof storage.getHostInventory === "function"
-          ? storage.getHostInventory(hostId)
-          : Promise.resolve(this.state.hostInventories.get(hostId) ?? null),
-        typeof storage.getHostLock === "function"
-          ? storage.getHostLock(hostId)
-          : Promise.resolve(this.state.hostConnection.get(hostId) ?? null),
+        storage.getHostInventory(hostId),
+        storage.getHostLock(hostId),
       ]);
       if (inventory) this.state.hostInventories.set(hostId, { ...inventory });
       else this.state.hostInventories.delete(hostId);
-      if (connectionId && typeof storage.getConnection === "function") {
+      if (connectionId) {
         const connection = await storage.getConnection(connectionId);
         if (connection?.type === "host") {
           this.state.connections.set(connection.connectionId, { ...connection });
