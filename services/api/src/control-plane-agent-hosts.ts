@@ -177,7 +177,9 @@ export async function putHostInventoryDurable(
   await Promise.all([
     listHostInventoriesDurable(state),
     listWorktreesDurable(state),
-    listProviderAccountsDurable(state),
+    typeof state.storage.listProviderAccounts === "function"
+      ? listProviderAccountsDurable(state)
+      : Promise.resolve(),
   ]);
   const expectedVersion =
     expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
