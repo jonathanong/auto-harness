@@ -5,9 +5,12 @@
  */
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  ftruncateSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -77,6 +80,17 @@ async function indexLockPath(worktree: string): Promise<string> {
   return (
     await git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "index.lock"])
   ).trim();
+}
+
+function overwriteExistingFile(path: string, contents: string): void {
+  chmodSync(path, 0o600);
+  const file = openSync(path, "r+");
+  try {
+    ftruncateSync(file, 0);
+    writeFileSync(file, contents);
+  } finally {
+    closeSync(file);
+  }
 }
 
 describe("createGitClient real git", () => {
@@ -215,6 +229,7 @@ describe("createGitClient real git", () => {
     const targetSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
     await git(repo, ["worktree", "add", "--detach", worktree, targetSha]);
     await git(worktree, ["-c", "protocol.file.allow=always", "submodule", "update", "--init"]);
+    await git(join(worktree, "sub"), ["config", "core.autocrlf", "false"]);
     writeFileSync(join(worktree, "sub", "tracked.txt"), "session modification\n");
 
     await createGitClient(new SpawnProcessRunner()).checkoutRef({
@@ -236,8 +251,7 @@ describe("createGitClient real git", () => {
     writeFileSync(victimLock, "");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
     utimesSync(victimLock, old, old);
-    chmodSync(join(worktree, ".git"), 0o600);
-    writeFileSync(join(worktree, ".git"), readFileSync(join(victim, ".git"), "utf8"));
+    overwriteExistingFile(join(worktree, ".git"), readFileSync(join(victim, ".git"), "utf8"));
 
     await expect(
       createGitClient(new SpawnProcessRunner()).checkoutRef({
@@ -261,8 +275,7 @@ describe("createGitClient real git", () => {
     writeFileSync(foreignLock, "");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
     utimesSync(foreignLock, old, old);
-    chmodSync(join(worktree, ".git"), 0o600);
-    writeFileSync(join(worktree, ".git"), `gitdir: ${foreignGitDir}\n`);
+    overwriteExistingFile(join(worktree, ".git"), `gitdir: ${foreignGitDir}\n`);
     writeFileSync(join(foreignGitDir, "gitdir"), `${join(worktree, ".git")}\n`);
 
     await expect(
