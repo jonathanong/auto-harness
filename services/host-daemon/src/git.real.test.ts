@@ -1,8 +1,18 @@
+/* eslint-disable max-lines -- real Git checkout, recovery, and worktree identity cases share one fixture. */
 /**
  * Real-git integration: checkoutRef must support a branch that is already
  * checked out in the primary worktree (documented ref: "main").
  */
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -35,6 +45,36 @@ async function git(cwd: string, args: string[]): Promise<string> {
       resolve(stdout);
     });
   });
+}
+
+async function createTwoCommitWorktree(root: string): Promise<{
+  repo: string;
+  targetSha: string;
+  worktree: string;
+}> {
+  const repo = join(root, "repo");
+  const worktree = join(root, "wt-1");
+  mkdirSync(repo);
+  await git(repo, ["init"]);
+  await git(repo, ["config", "user.email", "t@example.com"]);
+  await git(repo, ["config", "user.name", "t"]);
+  writeFileSync(join(repo, "tracked.txt"), "first\n");
+  await git(repo, ["add", "tracked.txt"]);
+  await git(repo, ["commit", "-m", "first"]);
+  const firstSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+  await git(repo, ["worktree", "add", "--detach", worktree, firstSha]);
+  writeFileSync(join(repo, "tracked.txt"), "target\n");
+  writeFileSync(join(repo, "obstructed.txt"), "target-owned\n");
+  await git(repo, ["add", "obstructed.txt"]);
+  await git(repo, ["commit", "-am", "target"]);
+  const targetSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+  return { repo, targetSha, worktree };
+}
+
+async function indexLockPath(worktree: string): Promise<string> {
+  return (
+    await git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "index.lock"])
+  ).trim();
 }
 
 describe("createGitClient real git", () => {
@@ -73,6 +113,93 @@ describe("createGitClient real git", () => {
     await client.checkoutRef({ cwd: wt, ref: "main" });
     const head = await client.revParse(wt, "HEAD");
     expect(head).toBe(mainSha);
+  });
+
+  it("recycles tracked state while preserving unrelated untracked files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-recycle-"));
+    roots.push(root);
+    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    writeFileSync(join(worktree, "tracked.txt"), "session modification\n");
+    writeFileSync(join(worktree, "obstructed.txt"), "untracked obstruction\n");
+    writeFileSync(join(worktree, "untracked.txt"), "keep me\n");
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: worktree, ref: targetSha });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
+    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
+    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("target-owned\n");
+    expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
+  });
+
+  it("removes an old empty index lock and retries checkout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-stale-lock-"));
+    roots.push(root);
+    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const lockPath = await indexLockPath(worktree);
+    writeFileSync(lockPath, "");
+    const old = new Date(Date.now() - 60 * 60 * 1_000);
+    utimesSync(lockPath, old, old);
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: worktree, ref: targetSha });
+
+    expect(existsSync(lockPath)).toBe(false);
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
+  });
+
+  it("preserves a fresh empty index lock", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-fresh-lock-"));
+    roots.push(root);
+    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const lockPath = await indexLockPath(worktree);
+    writeFileSync(lockPath, "");
+
+    const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      ref: targetSha,
+    });
+
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
+  it("preserves a non-empty old index lock", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-nonempty-lock-"));
+    roots.push(root);
+    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const lockPath = await indexLockPath(worktree);
+    writeFileSync(lockPath, "owner");
+    const old = new Date(Date.now() - 60 * 60 * 1_000);
+    utimesSync(lockPath, old, old);
+
+    const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      ref: targetSha,
+    });
+
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    expect(readFileSync(lockPath, "utf8")).toBe("owner");
+  });
+
+  it("preserves an old index lock symlink", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-symlink-lock-"));
+    roots.push(root);
+    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const lockPath = await indexLockPath(worktree);
+    const target = join(root, "lock-target");
+    writeFileSync(target, "");
+    const old = new Date(Date.now() - 60 * 60 * 1_000);
+    utimesSync(target, old, old);
+    symlinkSync(target, lockPath);
+
+    const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      ref: targetSha,
+    });
+
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    expect(existsSync(lockPath)).toBe(true);
   });
 
   it("peels an annotated tag before detaching at its commit", async () => {

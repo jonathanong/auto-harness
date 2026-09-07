@@ -19,6 +19,7 @@ type Session = {
   startedAt?: string | null;
   completedAt?: string | null;
   errorCode?: string | null;
+  errorMessage?: string | null;
 };
 type Repository = { id: string; name: string };
 export default async function SessionsPage({

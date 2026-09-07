@@ -34,6 +34,7 @@ describe("session search projection", () => {
       startedAt: "Started Timestamp",
       completedAt: "Completed Timestamp",
       errorCode: "Queue Expired",
+      errorMessage: "Checkout Diagnostic",
     });
 
     for (const expected of [
@@ -67,6 +68,7 @@ describe("session search projection", () => {
       "started timestamp",
       "completed timestamp",
       "queue expired",
+      "checkout diagnostic",
     ]) {
       expect(text).toContain(expected);
     }

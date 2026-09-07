@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
 import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
+import { checkoutDetached, removeStaleIndexLock } from "./git-worktree-checkout.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -101,9 +102,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
       }
       const sha = resolved.stdout.trim();
-      let co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
-      if (co.exitCode !== 0) {
-        co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
+      let co = await checkoutDetached(runner, cwd, sha, signal);
+      if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
+        if (await removeStaleIndexLock(runner, cwd, signal)) {
+          co = await checkoutDetached(runner, cwd, sha, signal);
+        }
       }
       if (co.exitCode !== 0) {
         // A regular fetch can treat the locally-present commit as complete
@@ -119,17 +122,18 @@ export function createGitClient(runner: ProcessRunner): GitClient {
           if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
             throw new Error("Failed to fetch required checkout objects");
           }
-          co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
-          if (co.exitCode !== 0) {
-            co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
-          }
+          co = await checkoutDetached(runner, cwd, sha, signal);
         }
       }
       if (co.exitCode !== 0) {
-        throw new Error("Failed to checkout resolved ref");
+        throw gitFailure("Failed to checkout resolved ref", co.stderr);
       }
       const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
       if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+        throw new Error("Failed to verify detached checkout");
+      }
+      const detached = await runGit(runner, cwd, ["symbolic-ref", "--quiet", "HEAD"], signal);
+      if (detached.exitCode !== 1) {
         throw new Error("Failed to verify detached checkout");
       }
     },
