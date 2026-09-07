@@ -11,6 +11,7 @@ import {
   type ProcessRunner,
   type RunProcessOptions,
 } from "./executor.ts";
+import { killGroupOrPid } from "./kill-group-or-pid.ts";
 import { resolveAssignedExecutable } from "./resolve-executable.ts";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
@@ -18,11 +19,9 @@ const DEFAULT_COLUMNS = 120;
 const DEFAULT_ROWS = 40;
 
 /**
- * Exit outcome reported by a {@link PtyHandle}. `signaled` is true whenever
- * the pty backend cannot report a normal exit code -- on POSIX that means
- * "killed by some signal" without saying which one. PtyProcessRunner.run()
- * resolves the specific signal name itself, from the last signal it sent,
- * rather than trusting the pty layer to identify it.
+ * Exit outcome from a {@link PtyHandle}. `signaled: true` means "killed by
+ * some signal, unspecified" -- PtyProcessRunner.run() resolves the actual
+ * signal name itself, from the last one it sent, not from the pty layer.
  */
 type PtyExitEvent = { exitCode: number; signaled: boolean };
 
@@ -37,9 +36,10 @@ type PtyForkOptions = {
   cwd: string;
   encoding: "utf8";
   env: NodeJS.ProcessEnv;
-  /** Pty terminal type. Ignored by the ruspty backend -- ruspty has no
-   * equivalent of node-pty's `name`, and `$TERM` is already carried through
-   * `env` (see {@link createChildEnv}), which is what programs actually read. */
+  /** Pty terminal type. Ruspty has no `name` option; spawnRuspty injects
+   * this as `TERM` for a host with no controlling tty (systemd/launchd),
+   * since createChildEnv() only forwards an existing TERM. An explicit
+   * `env.TERM` still wins. */
   name: string;
   rows: number;
 };
@@ -48,6 +48,7 @@ export type PtySpawn = (
   file: string,
   args: string[],
   options: PtyForkOptions,
+  kill: typeof process.kill,
 ) => PtyHandle | Promise<PtyHandle>;
 
 export type PtyProcessRunnerDependencies = {
@@ -78,31 +79,29 @@ function emitPtyChunk(options: RunProcessOptions, value: string, emitUntruncated
 /**
  * Default {@link PtySpawn}, backed by `@replit/ruspty` (POSIX only -- see
  * {@link PtyProcessRunner.run}'s win32 guard). Imported dynamically so this
- * module stays loadable on win32, where no ruspty native binary exists and a
- * static import would throw at load time; `run()` never calls this on win32.
+ * module stays loadable on win32, where no ruspty native binary exists.
  *
- * ruspty exposes no `.kill()`; PtyProcessRunner signals the child itself via
- * the exposed `pid`. Its `onExit` is a single constructor-supplied callback
- * rather than a subscribable event, so this adapter buffers it behind
- * `onExit()` -- safe because `run()` always attaches its listener
- * synchronously, in the same tick `spawn()` resolves, before the real child
- * process can exit.
+ * ruspty exposes no `.kill()`, so PtyProcessRunner signals via the exposed
+ * `pid` instead. Its `onExit` is one constructor-supplied callback, not a
+ * subscribable event; this adapter buffers it behind `onExit()`, safe since
+ * `run()` always attaches its listener synchronously, before spawn()'s
+ * result can exit.
  */
 async function spawnRuspty(
   file: string,
   args: string[],
   options: PtyForkOptions,
+  kill: typeof process.kill,
 ): Promise<PtyHandle> {
   const { Pty } = await import("@replit/ruspty");
   let dataListener: ((data: string) => void) | undefined;
   let exitListener: ((event: PtyExitEvent) => void) | undefined;
   const decoder = new StringDecoder("utf8");
 
-  const envs = Object.fromEntries(
-    Object.entries(options.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  );
+  const envs: Record<string, string> = { TERM: options.name };
+  for (const [key, value] of Object.entries(options.env)) {
+    if (value !== undefined) envs[key] = value;
+  }
 
   const pty = new Pty({
     command: file,
@@ -115,25 +114,28 @@ async function spawnRuspty(
     },
   });
   pty.read.on("data", (chunk: Buffer) => dataListener?.(decoder.write(chunk)));
-  // `.pipe()` never auto-forwards 'error' from the upstream socket to this
-  // downstream SyntheticEOFDetector stage, so an error the pipe stage raises
-  // on its own would otherwise be an unhandled 'error' on a Readable --  an
-  // uncaught exception that takes down the whole daemon process, not just
-  // this session. Report it as an abnormal exit instead. `signaled: false`
-  // (not true): we don't know a signal killed it, only that it's no longer
-  // observable, and misattributing it to a signal the runner may be
-  // mid-escalation on would be actively misleading.
+  // `.pipe()` never forwards 'error' from the upstream socket to this
+  // downstream SyntheticEOFDetector stage; unhandled, that would be an
+  // unhandled 'error' on a Readable -- crashing the whole daemon, not just
+  // this session. Report it as an abnormal exit instead. `signaled: false`:
+  // we don't know a signal killed it, and guessing one mid-escalation would
+  // actively mislead.
   //
-  // This does NOT cover every failure mode on the upstream socket itself:
-  // the wrapper's own handleError already swallows EINTR/EAGAIN and turns
-  // EIO into a clean end-of-stream, but for any other errno it re-throws
-  // synchronously from inside its own listener -- registered before this
-  // adapter ever sees the pty object -- which aborts that emit() before a
-  // listener added here (on `pty.read` or even the aliased `pty.write`)
-  // would run. That crash class is structural to the ruspty wrapper and
-  // isn't interceptable from outside it; verified empirically, not just by
-  // reading the source.
-  pty.read.on("error", () => exitListener?.({ exitCode: 1, signaled: false }));
+  // Doesn't cover the upstream socket itself: the wrapper's own handleError
+  // swallows EINTR/EAGAIN/EIO but re-throws any other errno synchronously,
+  // before a listener added here (even on the aliased `pty.write`) can run.
+  // Structural to the wrapper, not interceptable from outside; verified
+  // empirically, not just by reading the source.
+  //
+  // This path also doesn't imply the child exited -- it's a pipe-stage
+  // error, not the real wait() ruspty's own onExit waits for (see
+  // wrapper.ts's handleClose). `.close()` only ends the JS-side stream, not
+  // the child, so signal it directly with SIGKILL -- no SIGTERM-then-grace
+  // ladder, since there's no stream left to observe a graceful shutdown on.
+  pty.read.on("error", () => {
+    killGroupOrPid(kill, pty.pid, "SIGKILL");
+    exitListener?.({ exitCode: 1, signaled: false });
+  });
 
   return {
     pid: pty.pid,
@@ -152,14 +154,13 @@ async function spawnRuspty(
  * Assigned-command runner backed by one pseudoterminal. Setup, git, and hook
  * processes intentionally remain on {@link SpawnProcessRunner}.
  *
- * POSIX only: ruspty (the underlying pty backend) ships no Windows build.
- * A session's interactive command cannot run in a PTY on a Windows host;
- * {@link SpawnProcessRunner} still handles git/setup/hooks there.
+ * POSIX only: ruspty ships no Windows build, so a session's command can't
+ * run in a PTY there; {@link SpawnProcessRunner} still handles
+ * git/setup/hooks on Windows.
  *
- * Truncates each read to `MAX_OUTPUT_CHUNK_BYTES` by default, exactly like
- * `SpawnProcessRunner`. `dependencies.emitUntruncated` lifts that cap for a
- * caller that re-applies it itself on the forwarding path — used only by
- * `UsageCapturingProcessRunner`, so its own capture step sees a complete read.
+ * Truncates each read to `MAX_OUTPUT_CHUNK_BYTES`, like `SpawnProcessRunner`.
+ * `dependencies.emitUntruncated` lifts that cap for a caller that re-applies
+ * it itself (only `UsageCapturingProcessRunner`).
  */
 export class PtyProcessRunner implements ProcessRunner {
   readonly outputStreams = "merged" as const;
@@ -207,17 +208,7 @@ export class PtyProcessRunner implements ProcessRunner {
       // after spawn resolves (below) retries whichever signal this dropped.
       if (!terminal) return;
       lastSignalSent = signal;
-      try {
-        this.kill(-terminal.pid, signal);
-        return;
-      } catch {
-        // Fall through to a direct signal — e.g. the group leader already reaped.
-      }
-      try {
-        this.kill(terminal.pid, signal);
-      } catch {
-        // A concurrent exit already reaped the terminal.
-      }
+      killGroupOrPid(this.kill, terminal.pid, signal);
     };
 
     const armKillTimer = (): void => {
@@ -247,14 +238,19 @@ export class PtyProcessRunner implements ProcessRunner {
     options.signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
-      terminal = await this.spawn(resolvedCommand, args, {
-        cols: DEFAULT_COLUMNS,
-        cwd: options.cwd,
-        encoding: "utf8",
-        env,
-        name: "xterm-256color",
-        rows: DEFAULT_ROWS,
-      });
+      terminal = await this.spawn(
+        resolvedCommand,
+        args,
+        {
+          cols: DEFAULT_COLUMNS,
+          cwd: options.cwd,
+          encoding: "utf8",
+          env,
+          name: "xterm-256color",
+          rows: DEFAULT_ROWS,
+        },
+        this.kill,
+      );
     } catch (error) {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);

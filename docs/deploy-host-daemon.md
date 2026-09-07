@@ -346,9 +346,12 @@ pnpm deploy:host
 ```
 
 It installs the lockfile (`pnpm install --frozen-lockfile`, lifecycle scripts included — the PTY
-backend, `@replit/ruspty`, ships prebuilt native binaries for macOS and Linux and needs no
-from-source build step or C++ toolchain on either platform). It loads the platform's persisted
-service environment and polls for up to
+backend, `@replit/ruspty`, ships prebuilt native binaries for macOS (x64/arm64) and x64-glibc Linux
+and needs no from-source build step or C++ toolchain there. A session's assigned command cannot run
+in a PTY on any other host — Windows, non-x64 Linux, or musl-based Linux — since ruspty has no
+native binding for those; `pnpm install` still succeeds there, but the first PTY session on that
+host fails loudly instead). It loads the platform's persisted service environment and polls for up
+to
 two minutes until the exact host is online, non-draining, and Git-ready; the same end-to-end
 deadline terminates an in-flight status process group instead of waiting indefinitely. It also
 requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the

@@ -70,6 +70,7 @@ describe("PtyProcessRunner boundary", () => {
         name: "xterm-256color",
         rows: 40,
       },
+      expect.any(Function),
     ]);
     expect(chunks).toEqual(["stdout:ready\r\n"]);
   });
