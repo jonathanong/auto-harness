@@ -4,6 +4,7 @@
  * checked out in the primary worktree (documented ref: "main").
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -157,6 +158,7 @@ describe("createGitClient real git", () => {
     const worktree = join(root, "wt");
     mkdirSync(repo);
     await git(repo, ["init"]);
+    await git(repo, ["config", "core.autocrlf", "false"]);
     await git(repo, ["config", "user.email", "t@example.com"]);
     await git(repo, ["config", "user.name", "t"]);
     writeFileSync(join(repo, "f.txt"), "base\n");
@@ -196,6 +198,7 @@ describe("createGitClient real git", () => {
     const worktree = join(root, "wt");
     mkdirSync(submodule);
     await git(submodule, ["init"]);
+    await git(submodule, ["config", "core.autocrlf", "false"]);
     await git(submodule, ["config", "user.email", "t@example.com"]);
     await git(submodule, ["config", "user.name", "t"]);
     writeFileSync(join(submodule, "tracked.txt"), "recorded\n");
@@ -233,6 +236,7 @@ describe("createGitClient real git", () => {
     writeFileSync(victimLock, "");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
     utimesSync(victimLock, old, old);
+    chmodSync(join(worktree, ".git"), 0o600);
     writeFileSync(join(worktree, ".git"), readFileSync(join(victim, ".git"), "utf8"));
 
     await expect(
@@ -257,6 +261,7 @@ describe("createGitClient real git", () => {
     writeFileSync(foreignLock, "");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
     utimesSync(foreignLock, old, old);
+    chmodSync(join(worktree, ".git"), 0o600);
     writeFileSync(join(worktree, ".git"), `gitdir: ${foreignGitDir}\n`);
     writeFileSync(join(foreignGitDir, "gitdir"), `${join(worktree, ".git")}\n`);
 
