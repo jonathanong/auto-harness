@@ -20,6 +20,7 @@ export function sendListPage<T>(
       send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
       return;
     }
+    /* v8 ignore next -- pageByKey only throws InvalidListPageQueryError */
     throw error;
   }
 }

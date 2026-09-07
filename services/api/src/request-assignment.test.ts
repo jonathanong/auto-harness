@@ -245,5 +245,13 @@ describe("enqueueAssignment", () => {
     });
     await enqueueAssignment(state);
     expect(hooked).toBe(1);
+    hooked = 0;
+    const plane = new ControlPlane({
+      onAssignmentRequested: () => {
+        hooked += 1;
+      },
+    });
+    await plane.enqueueAssignment();
+    expect(hooked).toBe(1);
   });
 });

@@ -1,8 +1,8 @@
 import { QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { listSessionsPageFromStorage } from "./plane-storage-sessions-list-page.ts";
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { listSessionsPageFromStorage } from "./db/plane-storage-sessions-list-page.ts";
+import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
 
 describe("listSessionsPageFromStorage", () => {
   it("queries status shards instead of scanning the Sessions table", async () => {
@@ -83,5 +83,73 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands).toHaveLength(1);
     expect(commands[0]?.input.IndexName).toBe("repositoryId-createdAt");
     expect(commands[0]?.input.ScanIndexForward).toBe(true);
+  });
+
+  it("binds createdAt on follow-up pages and uses the queue-order index for priority sorts", async () => {
+    const commands: QueryCommand[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return {
+            Items: [],
+            LastEvaluatedKey: commands.length === 1 ? { id: "more" } : undefined,
+          };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "latest",
+      shardCount: 1,
+      status: "running",
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+      position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
+    });
+    expect(commands[0]?.input.KeyConditionExpression).toContain("createdAt <=");
+
+    commands.length = 0;
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "priority_desc",
+      shardCount: 1,
+      status: "queued",
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    });
+    expect(commands[0]?.input.IndexName).toBe("statusShard-queueOrder");
+    expect(commands[0]?.input.ExpressionAttributeNames).toEqual({ "#key": "statusShard" });
+  });
+
+  it("returns no rows when a repository filter contradicts the scoped ids", async () => {
+    const ctx = {
+      doc: { send: async () => ({ Items: [] }) },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 10,
+        sort: "latest",
+        shardCount: 1,
+        status: null,
+        repositoryId: "repo-1",
+        repositoryIds: ["repo-2"],
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+      }),
+    ).resolves.toEqual([]);
   });
 });
