@@ -3,7 +3,9 @@ import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
+import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { startLivenessLog } from "./liveness-log.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import {
   confirmDaemonUpdateBoot,
@@ -216,6 +218,7 @@ type DaemonUpdateContext = {
 type ConnectedDaemon = {
   loop: DaemonLoop;
   wsUrl: string;
+  transport: DaemonTransport;
 };
 
 async function prepareDaemonUpdater(
@@ -280,7 +283,7 @@ async function connectDaemon(
     loop.stop();
     throw reason;
   }
-  return { loop, wsUrl };
+  return { loop, wsUrl, transport };
 }
 
 async function acknowledgeDaemonUpdateBoot(
@@ -335,11 +338,16 @@ function startOptionalInventoryPoll(
 function startDaemonKeepalive(
   loop: DaemonLoop,
   error: (line: string) => void,
+  onAck: (atMs: number) => void,
+  nowMs: () => number = Date.now,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
-    void loop.keepalive().catch((err: unknown) => {
-      error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
+    void loop
+      .keepalive()
+      .then(() => onAck(nowMs()))
+      .catch((err: unknown) => {
+        error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
   }, 20_000);
 }
 
@@ -375,6 +383,7 @@ function daemonStop(
   keepalive: ReturnType<typeof setInterval>,
   stopInventoryPoll: () => Promise<void>,
   stopUpdatePoll: () => Promise<void>,
+  stopLivenessLog: () => void,
 ): () => Promise<void> {
   return async () => {
     // Keep this channel alive until the fenced drain commits. If it fails,
@@ -383,6 +392,7 @@ function daemonStop(
     await loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);
+    stopLivenessLog();
     await loop.waitForIdle();
     loop.stop();
   };
@@ -399,7 +409,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
   const update = await prepareDaemonUpdater(options, log, error);
-  const { loop, wsUrl } = await connectDaemon(options, log, error);
+  const { loop, wsUrl, transport } = await connectDaemon(options, log, error);
   await acknowledgeDaemonUpdateBoot(update, loop, log, error);
   log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
@@ -410,10 +420,19 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
         : ` (${repoCount} repo(s))`),
   );
 
+  let lastKeepaliveAckAtMs: number | undefined;
   const stopInventoryPoll = startOptionalInventoryPoll(options, loop, log, error);
-  const keepalive = startDaemonKeepalive(loop, error);
+  const keepalive = startDaemonKeepalive(loop, error, (atMs) => {
+    lastKeepaliveAckAtMs = atMs;
+  });
   const stopUpdatePoll = startOptionalUpdatePoll(update, loop, log, error);
-  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll);
+  const stopLivenessLog = startLivenessLog({
+    isRegistered: () => transport.isRegistered?.() ?? false,
+    lastKeepaliveAckAtMs: () => lastKeepaliveAckAtMs,
+    queuedCount: () => transport.queuedCount?.() ?? 0,
+    log,
+  });
+  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll, stopLivenessLog);
 
   if (options.runUntil) {
     await options.runUntil;

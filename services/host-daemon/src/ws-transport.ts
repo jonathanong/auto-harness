@@ -345,6 +345,8 @@ export function createWsTransport(options: Options): DaemonTransport & {
   return {
     ready,
     registered: registeredReady,
+    isRegistered: () => registered,
+    queuedCount: () => buffer.length,
     async send(message: HostToServerMessage, sendOptions?: SendOptions) {
       if (closed) throw new Error("WebSocket transport closed");
       if (message.type === "host:register") {

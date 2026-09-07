@@ -13,6 +13,10 @@ export type DaemonTransport = {
   onConnected?(handler: () => void): void;
   onRegistered?(handler: () => void): void;
   onDisconnected?(handler: () => void): void;
+  /** Current registration state, for an external liveness log -- not an event. */
+  isRegistered?(): boolean;
+  /** Outbound frames buffered but not yet delivered, for an external liveness log. */
+  queuedCount?(): number;
   close(): void;
   /**
    * Abandon the current connection and let the transport's normal reconnect

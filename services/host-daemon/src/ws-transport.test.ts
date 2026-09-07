@@ -47,6 +47,63 @@ describe("createWsTransport", () => {
     }
   });
 
+  it("exposes isRegistered() and queuedCount() for an external liveness log", async () => {
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    let releaseAck: (() => void) | undefined;
+    const ackHeld = new Promise<void>((resolve) => {
+      releaseAck = resolve;
+    });
+    wss.on("connection", (sock) => {
+      sock.on("message", () => {
+        void ackHeld.then(() => {
+          sock.send(JSON.stringify({ type: "host:registered", hostId: "a1" }));
+        });
+      });
+    });
+    let transport: ReturnType<typeof createWsTransport> | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.listen(0, "127.0.0.1", resolve);
+        server.on("error", reject);
+      });
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        throw new Error("no port");
+      }
+
+      transport = createWsTransport({ url: `ws://127.0.0.1:${addr.port}/ws`, hostId: "a1" });
+      await transport.ready;
+      expect(transport.isRegistered?.()).toBe(false);
+      await transport.send({
+        type: "host:register",
+        hostId: "a1",
+        worktrees: [],
+        commandProfiles: [],
+      });
+      // Registration is still pending server-side (ack held back).
+      expect(transport.isRegistered?.()).toBe(false);
+      releaseAck?.();
+      await transport.registered;
+      expect(transport.isRegistered?.()).toBe(true);
+
+      const before = transport.queuedCount?.();
+      const delivered = transport.send({ type: "host:keepalive" });
+      // enqueue() is synchronous, so the frame is already counted before it flies.
+      expect(transport.queuedCount?.()).toBeGreaterThan(before ?? -1);
+      await delivered;
+      expect(transport.queuedCount?.()).toBe(0);
+    } finally {
+      transport?.close();
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
+  });
+
   it("connects, sends, and receives assign", async () => {
     const server = createServer();
     const wss = new WebSocketServer({ server, path: "/ws" });
