@@ -240,6 +240,7 @@ export class SpawnProcessRunner implements ProcessRunner {
       child.on("close", (code, signal) => {
         closed = true;
         clearTimeout(timer);
+        if (escalation) clearTimeout(escalation);
         options.signal?.removeEventListener("abort", onAbort);
         resolve({
           exitCode: code,
