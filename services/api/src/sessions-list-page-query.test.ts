@@ -260,4 +260,53 @@ describe("listSessionsPageFromStorage", () => {
       }),
     ).resolves.toEqual([]);
   });
+
+  it("keeps extra-filter matches and drops a session at the cursor", async () => {
+    const session = {
+      id: "sess-1",
+      repositoryId: "repo-1",
+      prompt: "work",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 1,
+      queueExpiresAt: "2026-01-02T00:00:00.000Z",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-02T00:00:00.000Z",
+      source: "ui",
+      type: "prompt",
+      hostId: "host-1",
+      concurrencyId: "c1",
+      scheduleId: "s1",
+    };
+    const ctx = {
+      doc: { send: async () => ({ Items: [session] }) },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const filters = {
+      limit: 1,
+      sort: "latest" as const,
+      shardCount: 1,
+      status: "queued" as const,
+      repositoryId: null,
+      repositoryIds: ["repo-1"],
+      hostId: "host-1",
+      source: "ui",
+      concurrencyId: "c1",
+      scheduleId: "s1",
+    };
+    await expect(listSessionsPageFromStorage(ctx, filters)).resolves.toMatchObject([
+      { id: "sess-1" },
+    ]);
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        ...filters,
+        position: { createdAt: session.createdAt, id: session.id, priority: 0 },
+      }),
+    ).resolves.toEqual([]);
+  });
 });
