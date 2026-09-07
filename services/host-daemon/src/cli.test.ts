@@ -14,6 +14,7 @@ import {
   runCli,
   setExitCode,
   shutdownLoggerFor,
+  shutdownTimeoutMs,
 } from "./cli.ts";
 import { deps, sampleConfig } from "./cli-test-helpers.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -356,6 +357,15 @@ describe("runCli", () => {
     expect(a.errors).toEqual(["stable rollback failed"]);
   });
 
+  it("reports a stable-launcher boot Error's own message", async () => {
+    vi.mocked(prepareStableDaemonUpdateBoot).mockRejectedValueOnce(
+      new Error("stable rollback errored"),
+    );
+    const a = deps();
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["stable rollback errored"]);
+  });
+
   it("start reports daemon errors", async () => {
     const a = deps({
       ensureReady: async () => {
@@ -375,6 +385,17 @@ describe("runCli", () => {
     });
     expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
     expect(a.errors).toEqual(["update rollback failed"]);
+  });
+
+  it("reports a primitive update-boot preflight failure before loading daemon config", async () => {
+    vi.mocked(prepareDaemonUpdateBoot).mockRejectedValueOnce("update rollback primitive");
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["update rollback primitive"]);
   });
 
   it("passes through a missing runtime report after start preflight", async () => {
@@ -407,6 +428,20 @@ describe("isDirectInvocation / setExitCode", () => {
     } finally {
       process.exitCode = original;
     }
+  });
+});
+
+describe("shutdownTimeoutMs", () => {
+  it("falls back to the 10-minute default when unset, non-numeric, or non-positive", () => {
+    expect(shutdownTimeoutMs({})).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "not-a-number" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "0" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "-5" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "1.5" })).toBe(10 * 60_000);
+  });
+
+  it("uses a configured positive integer", () => {
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "5000" })).toBe(5000);
   });
 });
 

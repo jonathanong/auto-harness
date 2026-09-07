@@ -33,7 +33,7 @@ export { printUsage } from "./cli-usage.ts";
  * Upper bound on graceful shutdown. In-flight CLIs are drained, not killed, so this is
  * generous — but finite, so a wedged daemon can still be restarted.
  */
-function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
+export function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.HARNESS_SHUTDOWN_TIMEOUT_MS;
   const parsed = raw === undefined ? Number.NaN : Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 60_000;
@@ -108,6 +108,7 @@ async function settleWithin<T>(
   return new Promise((finish) => {
     let settled = false;
     const timer = setTimeout(() => {
+      /* v8 ignore next -- clearTimeout below always runs strictly before this callback could fire once settled */
       if (settled) return;
       settled = true;
       finish({ state: "timed_out" });
@@ -461,6 +462,12 @@ export async function runCli(
           },
           {
             timeoutMs: shutdownTimeoutMs(resolvedEnv),
+            // Genuinely exercised by cli-start-signal.test.ts's "registers real
+            // signal handlers" case (deps.process is injected and reached here —
+            // the test only passes because it is), but that branch still reports
+            // 0 hits under v8 coverage; a `v8 ignore` comment here does not
+            // suppress it either. Left as-is rather than restructuring further
+            // to chase what looks like a coverage-tool measurement artifact.
             ...(deps.process ? { process: deps.process } : {}),
             logger: shutdownLoggerFor(deps.error),
           },
@@ -494,6 +501,7 @@ export function setExitCode(code: number): void {
   process.exitCode = code;
 }
 
+/* v8 ignore next 4 -- only true under a real `node cli.ts` process entrypoint, never on import */
 if (isDirectInvocation(process.argv[1])) {
   installCrashLogging();
   void main().then(setExitCode);
