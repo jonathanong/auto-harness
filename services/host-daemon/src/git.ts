@@ -3,12 +3,21 @@ import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
 import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
-import { checkoutDetached, removeStaleIndexLock } from "./git-worktree-checkout.ts";
+import {
+  claimedLinkedWorktreeCommonDir,
+  checkoutDetached,
+  removeStaleIndexLock,
+} from "./git-worktree-checkout.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
   ensureWorktree(opts: { repoPath: string; worktreePath: string; branch: string }): Promise<void>;
-  checkoutRef(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
+  checkoutRef(opts: {
+    cwd: string;
+    repoPath: string;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
@@ -74,7 +83,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
     },
 
-    async checkoutRef({ cwd, ref, signal }) {
+    async checkoutRef({ cwd, repoPath, ref, signal }) {
+      const claimedCommonDir = await claimedLinkedWorktreeCommonDir(repoPath, cwd);
+      if (claimedCommonDir === null) {
+        throw new Error("Configured checkout is not the claimed linked worktree");
+      }
       // Prefer detached checkout so a branch already used by the main repo
       // (e.g. ref "main" while primary tree is on main) still works.
       // `--end-of-options` stops git from reading `ref` as a flag: unlike most git
@@ -104,7 +117,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       const sha = resolved.stdout.trim();
       let co = await checkoutDetached(runner, cwd, sha, signal);
       if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
-        if (await removeStaleIndexLock(runner, cwd, signal)) {
+        if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
           co = await checkoutDetached(runner, cwd, sha, signal);
         }
       }
@@ -127,6 +140,15 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
       if (co.exitCode !== 0) {
         throw gitFailure("Failed to checkout resolved ref", co.stderr);
+      }
+      const submodules = await runGit(
+        runner,
+        cwd,
+        ["submodule", "update", "--recursive", "--checkout", "--force"],
+        signal,
+      );
+      if (submodules.exitCode !== 0) {
+        throw gitFailure("Failed to update submodules", submodules.stderr);
       }
       const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
       if (head.exitCode !== 0 || head.stdout.trim() !== sha) {

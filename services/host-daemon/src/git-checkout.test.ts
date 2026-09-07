@@ -1,5 +1,8 @@
 /* eslint-disable max-lines -- checkout resolution, recovery, and diagnostics share one scripted Git fixture. */
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
 import { scripted } from "./git-test-helpers.ts";
@@ -12,17 +15,42 @@ function resolvesCommit(ref: string, sha = "abc") {
   };
 }
 
+function updatesSubmodules(exitCode = 0, stderr = "") {
+  return {
+    match: ["submodule", "update", "--recursive", "--checkout", "--force"],
+    exitCode,
+    stderr,
+  };
+}
+
+const checkoutRoot = mkdtempSync(join(tmpdir(), "ah-git-checkout-unit-"));
+const checkoutRepo = join(checkoutRoot, "repo");
+const checkoutCwd = join(checkoutRoot, "wt");
+const checkoutGitDir = join(checkoutRepo, ".git", "worktrees", "one");
+
+beforeAll(() => {
+  mkdirSync(checkoutCwd, { recursive: true });
+  mkdirSync(checkoutGitDir, { recursive: true });
+  writeFileSync(join(checkoutCwd, ".git"), `gitdir: ${checkoutGitDir}\n`);
+  writeFileSync(join(checkoutGitDir, "gitdir"), `${join(checkoutCwd, ".git")}\n`);
+});
+
+afterAll(() => {
+  rmSync(checkoutRoot, { recursive: true, force: true });
+});
+
 describe("createGitClient checkout and revParse", () => {
   it("checkoutRef detaches at resolved sha", async () => {
     const git = createGitClient(
       scripted([
         resolvesCommit("main", "abc123"),
         { match: ["switch", "--discard-changes", "--detach", "abc123"], exitCode: 0 },
+        updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       ]),
     );
-    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
+    await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
   });
 
   it("checkoutRef fetches then falls back to checkout --detach", async () => {
@@ -41,11 +69,12 @@ describe("createGitClient checkout and revParse", () => {
           stderr: "old git",
         },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 0 },
+        updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       ]),
     );
-    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
+    await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
   });
 
   it("checkoutRef fails when ref cannot be resolved", async () => {
@@ -64,7 +93,7 @@ describe("createGitClient checkout and revParse", () => {
             stderr: "e2",
           },
         ]),
-      ).checkoutRef({ cwd: "/repo", ref: "bad" }),
+      ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "bad" }),
     ).rejects.toThrow(/Failed to resolve ref/);
   });
 
@@ -76,12 +105,15 @@ describe("createGitClient checkout and revParse", () => {
           match: ["switch", "--discard-changes", "--detach", "commit-sha"],
           exitCode: 0,
         },
+        updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "commit-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       ]),
     );
 
-    await expect(git.checkoutRef({ cwd: "/repo", ref: "v1.2.3" })).resolves.toBeUndefined();
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "v1.2.3" }),
+    ).resolves.toBeUndefined();
   });
 
   it("checkoutRef retries once after a target graph connectivity failure", async () => {
@@ -106,11 +138,14 @@ describe("createGitClient checkout and revParse", () => {
         },
         { match: ["fetch", "--tags", "--refetch", "upstream"], exitCode: 0 },
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       ]),
     );
-    await expect(git.checkoutRef({ cwd: "/repo", ref: "main" })).resolves.toBeUndefined();
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).resolves.toBeUndefined();
   });
 
   it("checkoutRef does not refetch after an unrelated checkout failure", async () => {
@@ -129,7 +164,7 @@ describe("createGitClient checkout and revParse", () => {
         },
         { match: ["fsck", "--connectivity-only", "abc"], exitCode: 0 },
       ]),
-    ).checkoutRef({ cwd: "/repo", ref: "main" });
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
 
     await expect(checkout).rejects.toThrow("Failed to checkout resolved ref");
   });
@@ -148,7 +183,7 @@ describe("createGitClient checkout and revParse", () => {
           stderr: "fatal: https://oauth:secret-token@example.com/repo.git",
         },
       ]),
-    ).checkoutRef({ cwd: "/repo", ref: "main" });
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
     const error = await checkout.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe("Failed to fetch required checkout objects");
@@ -184,7 +219,7 @@ describe("createGitClient checkout and revParse", () => {
             "fatal: unable to checkout https://oauth:secret-token@example.com/repo.git: credential rejected",
         },
       ]),
-    ).checkoutRef({ cwd: "/repo", ref: "main" });
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
     const error = await checkout.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("Failed to checkout resolved ref");
@@ -197,13 +232,14 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        updatesSubmodules(),
         {
           match: ["rev-parse", "HEAD"],
           exitCode: 0,
           stdout: "different-sha\n",
         },
       ]),
-    ).checkoutRef({ cwd: "/repo", ref: "main" });
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
     const error = await checkout.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe("Failed to verify detached checkout");
@@ -215,12 +251,26 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 0, stdout: "refs/heads/main\n" },
       ]),
-    ).checkoutRef({ cwd: "/repo", ref: "main" });
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
 
     await expect(checkout).rejects.toThrow("Failed to verify detached checkout");
+  });
+
+  it("checkoutRef reports a sanitized initialized-submodule reset failure", async () => {
+    const checkout = createGitClient(
+      scripted([
+        resolvesCommit("main"),
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        updatesSubmodules(1, "fatal: ?X-Amz-Signature=SIGNEDSECRET"),
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
+
+    await expect(checkout).rejects.toThrow("Failed to update submodules");
+    await expect(checkout).rejects.not.toThrow("SIGNEDSECRET");
   });
 
   it("revParse returns hash", async () => {
@@ -243,8 +293,14 @@ describe("createGitClient checkout and revParse", () => {
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
-    await git.checkoutRef({ cwd: "/repo/wt", ref: "main", signal: controller.signal });
+    await git.checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref: "main",
+      signal: controller.signal,
+    });
     expect(seen).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,

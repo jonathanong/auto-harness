@@ -1,5 +1,7 @@
-import { basename } from "node:path";
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -16,15 +18,32 @@ function isGit(argv0: string | undefined): boolean {
   return argv0 !== undefined && basename(argv0).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
 }
 
+const runtimeRoot = mkdtempSync(join(tmpdir(), "ah-runtime-unit-"));
+const runtimeRepo = join(runtimeRoot, "repo");
+const runtimeWorktree = join(runtimeRoot, "wt-1");
+const runtimeGitDir = join(runtimeRepo, ".git", "worktrees", "one");
+
+beforeAll(() => {
+  mkdirSync(runtimeRepo);
+  mkdirSync(runtimeWorktree);
+  mkdirSync(runtimeGitDir, { recursive: true });
+  writeFileSync(join(runtimeWorktree, ".git"), `gitdir: ${runtimeGitDir}\n`);
+  writeFileSync(join(runtimeGitDir, "gitdir"), `${join(runtimeWorktree, ".git")}\n`);
+});
+
+afterAll(() => {
+  rmSync(runtimeRoot, { recursive: true, force: true });
+});
+
 const config = parseDaemonConfig({
   hostId: "a1",
   commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },
   repositories: [
     {
       id: "repo-1",
-      path: "/repo",
+      path: runtimeRepo,
       defaultBranch: "main",
-      worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", path: runtimeWorktree, labels: [] }],
     },
   ],
 });
@@ -45,7 +64,7 @@ describe("runtime helpers", () => {
         if (opts.argv.includes("list")) {
           opts.onChunk({
             stream: "stdout",
-            data: "worktree /repo/wt-1\n",
+            data: `worktree ${runtimeWorktree}\n`,
           });
           return { exitCode: 0, timedOut: false, signal: null };
         }

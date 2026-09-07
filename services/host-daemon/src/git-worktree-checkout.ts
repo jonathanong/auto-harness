@@ -1,4 +1,4 @@
-import { lstat, realpath, unlink } from "node:fs/promises";
+import { lstat, readFile, realpath, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
@@ -56,9 +56,63 @@ function isLinkedWorktreeGitDir(commonDir: string, gitDir: string): boolean {
   );
 }
 
+async function configuredCommonDir(repoPath: string): Promise<string | null> {
+  try {
+    const gitPath = resolve(await canonicalPath(repoPath), ".git");
+    const metadata = await lstat(gitPath);
+    if (metadata.isDirectory()) return await canonicalPath(gitPath);
+    if (!metadata.isFile()) return null;
+    const pointerMatch = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(await readFile(gitPath, "utf8"));
+    if (!pointerMatch?.[1]) return null;
+    const gitDir = await canonicalPath(
+      isAbsolute(pointerMatch[1]) ? pointerMatch[1] : resolve(dirname(gitPath), pointerMatch[1]),
+    );
+    return basename(dirname(gitDir)) === "worktrees" ? dirname(dirname(gitDir)) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function claimedLinkedWorktreeGitDir(cwd: string, commonDir: string): Promise<string | null> {
+  try {
+    const worktreePath = await canonicalPath(cwd);
+    const gitFile = resolve(worktreePath, ".git");
+    if (!(await lstat(gitFile)).isFile()) return null;
+    const pointerMatch = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(await readFile(gitFile, "utf8"));
+    if (!pointerMatch?.[1]) return null;
+    const reportedGitDir = pointerMatch[1];
+    const gitDir = await canonicalPath(
+      isAbsolute(reportedGitDir) ? reportedGitDir : resolve(worktreePath, reportedGitDir),
+    );
+    const backlinkFile = resolve(gitDir, "gitdir");
+    if (!isLinkedWorktreeGitDir(commonDir, gitDir) || !(await lstat(backlinkFile)).isFile()) {
+      return null;
+    }
+    const backlinkMatch = /^([^\r\n]+)\r?\n?$/.exec(await readFile(backlinkFile, "utf8"));
+    if (!backlinkMatch?.[1]) return null;
+    const reportedGitFile = backlinkMatch[1];
+    const backlinkPath = await canonicalPath(
+      isAbsolute(reportedGitFile) ? reportedGitFile : resolve(gitDir, reportedGitFile),
+    );
+    return backlinkPath === (await canonicalPath(gitFile)) ? gitDir : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function claimedLinkedWorktreeCommonDir(
+  repoPath: string,
+  cwd: string,
+): Promise<string | null> {
+  const commonDir = await configuredCommonDir(repoPath);
+  if (commonDir === null) return null;
+  return (await claimedLinkedWorktreeGitDir(cwd, commonDir)) === null ? null : commonDir;
+}
+
 export async function removeStaleIndexLock(
   runner: ProcessRunner,
   cwd: string,
+  expectedCommonDir: string,
   signal?: AbortSignal,
 ): Promise<boolean> {
   const commonDirResult = await runGit(
@@ -99,13 +153,16 @@ export async function removeStaleIndexLock(
   }
 
   const commonDir = await canonicalPath(reportedCommonDir);
+  const canonicalExpectedCommonDir = await canonicalPath(expectedCommonDir);
   const gitDir = await canonicalPath(reportedGitDir);
   const lockPath = resolve(
     await canonicalPath(dirname(reportedLockPath)),
     basename(reportedLockPath),
   );
   if (
+    commonDir !== canonicalExpectedCommonDir ||
     !isLinkedWorktreeGitDir(commonDir, gitDir) ||
+    (await claimedLinkedWorktreeGitDir(cwd, commonDir)) !== gitDir ||
     basename(lockPath) !== "index.lock" ||
     dirname(lockPath) !== gitDir ||
     lockPath !== resolve(gitDir, "index.lock")

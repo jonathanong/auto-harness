@@ -26,16 +26,8 @@ function completeCapturedLines(value: string, truncated: boolean): string {
   return truncated ? discardTrailingLine(value) : value;
 }
 
-const CREDENTIAL_QUERY_KEYS = new Set([
-  "token",
-  "access_token",
-  "private_token",
-  "password",
-  "passwd",
-  "secret",
-  "credential",
-  "api_key",
-]);
+const CREDENTIAL_QUERY_KEY =
+  /(?:^|_)(?:access_key(?:_id)?|api_key|credential|password|passwd|secret|sig|signature|token)$|^(?:accesstoken|apikey|auth|authorization|awsaccesskeyid|clientsecret|idtoken|jwt|oauthsignature|oauthtoken|refreshtoken|secretaccesskey|sessiontoken)$/;
 
 function redactQueryCredentials(value: string): string {
   return value.replace(/([?&])([^=\s&#]+)=([^&#\s]*)/g, (match, separator, encodedKey) => {
@@ -45,7 +37,7 @@ function redactQueryCredentials(value: string): string {
     } catch {
       return match;
     }
-    return CREDENTIAL_QUERY_KEYS.has(key) ? `${separator}${encodedKey}=[redacted]` : match;
+    return CREDENTIAL_QUERY_KEY.test(key) ? `${separator}${encodedKey}=[redacted]` : match;
   });
 }
 
@@ -124,7 +116,7 @@ export function sanitizeGitDiagnostic(stderr: string): string {
   const withoutCredentials = redactQueryCredentials(withoutTerminalControls)
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
     .replace(
-      /(^|[^A-Za-z0-9])(["']?)(authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)[^\r\n]+/gi,
+      /(^|[^A-Za-z0-9_?&-]|--)(["']?)(_*(?:authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key))\2(\s*[:=]\s*)[^\r\n]+/gi,
       "$1$2$3$2$4[redacted]",
     )
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")

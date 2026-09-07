@@ -235,7 +235,8 @@ Concurrent sessions: one runner instance per claimed worktree (and at most one m
 Git checkout/setup failures retain a stable operation category (for example, switch, fetch,
 resolve, or verification) and may include a short diagnostic excerpt. Git diagnostics are
 single-line and UTF-8 bounded before they are placed in exceptions, logs, or `session:status`;
-remote URL userinfo and token-shaped credential values are redacted.
+remote URL userinfo, token-shaped credential values, and signed-URL credential/signature query
+parameters are redacted.
 
 ### Session resume
 
@@ -500,7 +501,12 @@ For a worktree session, the daemon resolves its `ref` to a commit before
 forcefully detaching `HEAD`, so branch names, SHAs, lightweight tags, and
 annotated tags all land on the exact target commit even when a prior session
 modified tracked files. The force checkout does not broadly clean untracked
-paths. If checkout reports an `index.lock`, the daemon retries only after
+paths. It also force-checks out already initialized submodules recursively, so
+tracked submodule changes cannot leak into the next session without implicitly
+initializing new submodules. Before any destructive checkout, the daemon verifies
+that the linked-worktree administrative directory belongs to the configured repository and
+points back to the claimed path.
+If checkout reports an `index.lock`, the daemon retries only after
 removing the Git-resolved lock when it belongs to the currently claimed linked
 worktree, is a regular empty file, and is at least five minutes old. Fresh,
 non-empty, symlinked, primary-checkout, or otherwise unsafe lock paths are

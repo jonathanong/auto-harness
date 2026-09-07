@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -111,7 +111,7 @@ describe("createGitClient real git", () => {
       branch: "main",
     });
     // This is the documented failure mode before the fix:
-    await client.checkoutRef({ cwd: wt, ref: "main" });
+    await client.checkoutRef({ cwd: wt, repoPath: repo, ref: "main" });
     const head = await client.revParse(wt, "HEAD");
     expect(head).toBe(mainSha);
   });
@@ -119,13 +119,13 @@ describe("createGitClient real git", () => {
   it("recycles tracked state while preserving unrelated untracked files", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-recycle-"));
     roots.push(root);
-    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     writeFileSync(join(worktree, "tracked.txt"), "session modification\n");
     writeFileSync(join(worktree, "obstructed.txt"), "untracked obstruction\n");
     writeFileSync(join(worktree, "untracked.txt"), "keep me\n");
 
     const client = createGitClient(new SpawnProcessRunner());
-    await client.checkoutRef({ cwd: worktree, ref: targetSha });
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
 
     await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
     expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
@@ -133,17 +133,99 @@ describe("createGitClient real git", () => {
     expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
   });
 
+  it("recycles tracked changes in initialized submodules", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-submodule-"));
+    roots.push(root);
+    const submodule = join(root, "submodule");
+    const repo = join(root, "repo");
+    const worktree = join(root, "wt");
+    mkdirSync(submodule);
+    await git(submodule, ["init"]);
+    await git(submodule, ["config", "user.email", "t@example.com"]);
+    await git(submodule, ["config", "user.name", "t"]);
+    writeFileSync(join(submodule, "tracked.txt"), "recorded\n");
+    await git(submodule, ["add", "tracked.txt"]);
+    await git(submodule, ["commit", "-m", "initial"]);
+
+    mkdirSync(repo);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "core.autocrlf", "false"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    await git(repo, ["-c", "protocol.file.allow=always", "submodule", "add", submodule, "sub"]);
+    await git(repo, ["commit", "-am", "add submodule"]);
+    const targetSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await git(repo, ["worktree", "add", "--detach", worktree, targetSha]);
+    await git(worktree, ["-c", "protocol.file.allow=always", "submodule", "update", "--init"]);
+    writeFileSync(join(worktree, "sub", "tracked.txt"), "session modification\n");
+
+    await createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      repoPath: repo,
+      ref: targetSha,
+    });
+
+    expect(readFileSync(join(worktree, "sub", "tracked.txt"), "utf8")).toBe("recorded\n");
+  });
+
+  it("rejects a linked-worktree pointer whose backlink belongs to another worktree", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-identity-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const victim = join(root, "victim");
+    await git(repo, ["worktree", "add", "--detach", victim, targetSha]);
+    const victimLock = await indexLockPath(victim);
+    writeFileSync(victimLock, "");
+    const old = new Date(Date.now() - 60 * 60 * 1_000);
+    utimesSync(victimLock, old, old);
+    writeFileSync(join(worktree, ".git"), readFileSync(join(victim, ".git"), "utf8"));
+
+    await expect(
+      createGitClient(new SpawnProcessRunner()).checkoutRef({
+        cwd: worktree,
+        repoPath: repo,
+        ref: targetSha,
+      }),
+    ).rejects.toThrow("Configured checkout is not the claimed linked worktree");
+    expect(existsSync(victimLock)).toBe(true);
+  });
+
+  it("rejects a self-consistent linked-worktree pointer from another repository", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-foreign-identity-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const foreignRoot = join(root, "foreign");
+    mkdirSync(foreignRoot);
+    const { worktree: foreignWorktree } = await createTwoCommitWorktree(foreignRoot);
+    const foreignLock = await indexLockPath(foreignWorktree);
+    const foreignGitDir = dirname(foreignLock);
+    writeFileSync(foreignLock, "");
+    const old = new Date(Date.now() - 60 * 60 * 1_000);
+    utimesSync(foreignLock, old, old);
+    writeFileSync(join(worktree, ".git"), `gitdir: ${foreignGitDir}\n`);
+    writeFileSync(join(foreignGitDir, "gitdir"), `${join(worktree, ".git")}\n`);
+
+    await expect(
+      createGitClient(new SpawnProcessRunner()).checkoutRef({
+        cwd: worktree,
+        repoPath: repo,
+        ref: targetSha,
+      }),
+    ).rejects.toThrow("Configured checkout is not the claimed linked worktree");
+    expect(existsSync(foreignLock)).toBe(true);
+  });
+
   it("removes an old empty index lock and retries checkout", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-stale-lock-"));
     roots.push(root);
-    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     const lockPath = await indexLockPath(worktree);
     writeFileSync(lockPath, "");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
     utimesSync(lockPath, old, old);
 
     const client = createGitClient(new SpawnProcessRunner());
-    await client.checkoutRef({ cwd: worktree, ref: targetSha });
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
 
     expect(existsSync(lockPath)).toBe(false);
     await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
@@ -152,12 +234,13 @@ describe("createGitClient real git", () => {
   it("preserves a fresh empty index lock", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-fresh-lock-"));
     roots.push(root);
-    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     const lockPath = await indexLockPath(worktree);
     writeFileSync(lockPath, "");
 
     const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
       cwd: worktree,
+      repoPath: repo,
       ref: targetSha,
     });
 
@@ -168,7 +251,7 @@ describe("createGitClient real git", () => {
   it("preserves a non-empty old index lock", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-nonempty-lock-"));
     roots.push(root);
-    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     const lockPath = await indexLockPath(worktree);
     writeFileSync(lockPath, "owner");
     const old = new Date(Date.now() - 60 * 60 * 1_000);
@@ -176,6 +259,7 @@ describe("createGitClient real git", () => {
 
     const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
       cwd: worktree,
+      repoPath: repo,
       ref: targetSha,
     });
 
@@ -186,7 +270,7 @@ describe("createGitClient real git", () => {
   it("preserves an old index lock symlink", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-symlink-lock-"));
     roots.push(root);
-    const { targetSha, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     const lockPath = await indexLockPath(worktree);
     const target = join(root, "lock-target");
     writeFileSync(target, "");
@@ -196,6 +280,7 @@ describe("createGitClient real git", () => {
 
     const checkout = createGitClient(new SpawnProcessRunner()).checkoutRef({
       cwd: worktree,
+      repoPath: repo,
       ref: targetSha,
     });
 
@@ -216,11 +301,13 @@ describe("createGitClient real git", () => {
     await git(repo, ["commit", "-m", "init"]);
     await git(repo, ["tag", "-a", "v1.2.3", "-m", "release"]);
     const tagCommit = (await git(repo, ["rev-parse", "v1.2.3^{commit}"])).trim();
+    const worktree = join(root, "wt");
+    await git(repo, ["worktree", "add", "--detach", worktree, tagCommit]);
 
     const client = createGitClient(new SpawnProcessRunner());
-    await client.checkoutRef({ cwd: repo, ref: "v1.2.3" });
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "v1.2.3" });
 
-    await expect(client.revParse(repo, "HEAD")).resolves.toBe(tagCommit);
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(tagCommit);
   });
 
   it("fetches missing tree objects after an exact-SHA checkout fails", async () => {
@@ -241,10 +328,13 @@ describe("createGitClient real git", () => {
     const targetSha = (await git(source, ["rev-parse", "HEAD"])).trim();
     await git(root, ["clone", "--bare", source, remote]);
     await git(root, ["clone", "--no-checkout", remote, clientPath]);
+    const worktree = join(root, "client-wt");
+    await git(clientPath, ["worktree", "add", "--detach", worktree, targetSha]);
 
     const targetCommit = await git(clientPath, ["cat-file", "commit", targetSha]);
     rmSync(join(clientPath, ".git", "objects"), { recursive: true, force: true });
     mkdirSync(join(clientPath, ".git", "objects"));
+    writeFileSync(join(worktree, "f.txt"), "dirty\n");
     writeFileSync(commitFile, targetCommit);
     expect((await git(clientPath, ["hash-object", "-t", "commit", "-w", commitFile])).trim()).toBe(
       targetSha,
@@ -252,8 +342,8 @@ describe("createGitClient real git", () => {
     await expect(git(clientPath, ["cat-file", "-e", `${targetSha}^{tree}`])).rejects.toThrow();
 
     const client = createGitClient(new SpawnProcessRunner());
-    await client.checkoutRef({ cwd: clientPath, ref: targetSha });
-    await expect(client.revParse(clientPath, "HEAD")).resolves.toBe(targetSha);
+    await client.checkoutRef({ cwd: worktree, repoPath: clientPath, ref: targetSha });
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
   });
 
   it("recognizes an absolute worktree when the repository path is a symlink", async () => {
