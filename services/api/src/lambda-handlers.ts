@@ -170,6 +170,25 @@ async function postToHost(
 ): Promise<void> {
   const connectionId = plane.getHostConnectionId(hostId);
   if (!connectionId) return;
+  return postToConnection(plane, management, hostId, connectionId, message);
+}
+
+/**
+ * Deliver to an already-known connectionId instead of resolving one from
+ * `plane.getHostConnectionId(hostId)` — that lookup is a per-container
+ * in-memory cache that a warm Lambda invocation handling this host for the
+ * first time (or after a cold start) may not have populated yet, even
+ * though the connection this message just arrived on is unquestionably
+ * live. Use this when responding to a message on a connection already
+ * known from the current invocation's own request context.
+ */
+async function postToConnection(
+  plane: PlaneBundle["plane"],
+  management: ManagementClient,
+  hostId: string,
+  connectionId: string,
+  message: HostWireMessage,
+): Promise<void> {
   const startedAt = Date.now();
   console.log(
     JSON.stringify({ msg: "postToHost start", hostId, messageType: message.type, connectionId }),
@@ -565,11 +584,21 @@ export async function createLambdaRuntime(
             attemptId: message.attemptId,
           });
         } else if (result.sessionStatusAcknowledged && message.type === "session:status") {
-          trackDelivery(authenticated.hostId, {
-            type: "session:status-acknowledged",
-            sessionId: result.sessionStatusAcknowledged.sessionId,
-            attemptId: result.sessionStatusAcknowledged.attemptId,
-          });
+          // Deliver on this exact connection rather than through
+          // trackDelivery's hostId->connectionId lookup: the daemon retries
+          // an unacked session:status on every keepalive for up to 24h, so a
+          // cache miss here (a warm container that never saw this host's
+          // host:register) silently drops the ack and the daemon burns its
+          // capped retry buffer resending an already-applied report.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:status-acknowledged",
+              sessionId: result.sessionStatusAcknowledged.sessionId,
+              attemptId: result.sessionStatusAcknowledged.attemptId,
+            }).catch((error: unknown) => {
+              console.error("failed to deliver API Gateway WebSocket message", error);
+            }),
+          );
         } else if (result.hostDraining) {
           trackDelivery(authenticated.hostId, {
             type: "host:draining",
