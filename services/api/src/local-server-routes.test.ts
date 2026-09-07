@@ -59,6 +59,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       ).items.map((host) => host.hostId),
     ).not.toContain("user:alice");
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/worktrees?limit=foo")).status).toBe(400);
     expect((await invoke("GET", "/api/v1/worktrees/wt-1")).json).toMatchObject({ id: "wt-1" });
     expect((await invoke("GET", "/api/v1/worktrees?repositoryId=r1")).json).toMatchObject({
       items: [expect.objectContaining({ id: "wt-1", repositoryId: "r1" })],
