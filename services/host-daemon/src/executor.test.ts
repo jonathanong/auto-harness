@@ -159,6 +159,21 @@ describe("SpawnProcessRunner cancellation", () => {
     ).toBe(true);
   });
 
+  it("preserves an oversized output event for a bounded structured-data consumer", async () => {
+    const chunks: string[] = [];
+    const runner = new SpawnProcessRunner();
+    await runner.run({
+      argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(40_000))"],
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+      preserveOutputChunks: true,
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+
+    expect(chunks.join("")).toBe("x".repeat(40_000));
+    expect(chunks).not.toContain("\n[output chunk truncated]\n");
+  });
+
   it("keeps output below the byte cap when a UTF-8 character is split at the boundary", async () => {
     const chunks: string[] = [];
     const runner = new SpawnProcessRunner();

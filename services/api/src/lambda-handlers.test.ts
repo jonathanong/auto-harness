@@ -677,50 +677,58 @@ describe("Lambda runtime adapters", () => {
   it("acks a successful host keepalive over postToConnection and skips a rejected one", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    fixture.management.send.mockClear();
-    await expect(
-      runtime.websocket({
-        body: JSON.stringify({
-          type: "host:keepalive",
-          hostId: "host-1",
-          at: "2026-08-12T00:00:20.000Z",
+    try {
+      fixture.management.send.mockClear();
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "host-1",
+            at: "2026-08-12T00:00:20.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
         }),
-        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
-      }),
-    ).resolves.toEqual({ statusCode: 200 });
-    const keepaliveAcks = fixture.management.send.mock.calls
-      .map((call) => call[0].input.Data)
-      .filter((data): data is Buffer | string => data !== undefined)
-      .map((data) => JSON.parse(String(data)))
-      .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack");
-    expect(keepaliveAcks).toEqual([
-      {
-        type: "host:keepalive-ack",
-        hostId: "host-1",
-        at: "2026-08-12T00:00:20.000Z",
-      },
-    ]);
-
-    fixture.management.send.mockClear();
-    fixture.hostLocks.set("host-1", "other-connection");
-    await expect(
-      runtime.websocket({
-        body: JSON.stringify({
-          type: "host:keepalive",
-          hostId: "host-1",
-          at: "2026-08-12T00:00:40.000Z",
-        }),
-        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
-      }),
-    ).resolves.toEqual({ statusCode: 409 });
-    expect(
-      fixture.management.send.mock.calls
+      ).resolves.toEqual({ statusCode: 200 });
+      const keepaliveAcks = fixture.management.send.mock.calls
         .map((call) => call[0].input.Data)
         .filter((data): data is Buffer | string => data !== undefined)
         .map((data) => JSON.parse(String(data)))
-        .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack"),
-    ).toEqual([]);
+        .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack");
+      expect(keepaliveAcks).toEqual([
+        {
+          type: "host:keepalive-ack",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        },
+      ]);
+      expect(consoleLog.mock.calls.some(([line]) => String(line).includes("postToHost"))).toBe(
+        false,
+      );
+
+      fixture.management.send.mockClear();
+      fixture.hostLocks.set("host-1", "other-connection");
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "host-1",
+            at: "2026-08-12T00:00:40.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 409 });
+      expect(
+        fixture.management.send.mock.calls
+          .map((call) => call[0].input.Data)
+          .filter((data): data is Buffer | string => data !== undefined)
+          .map((data) => JSON.parse(String(data)))
+          .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack"),
+      ).toEqual([]);
+    } finally {
+      consoleLog.mockRestore();
+    }
   });
 
   it("delivers host:keepalive-ack on the current connection even if this container's hostConnection cache missed it", async () => {
@@ -766,10 +774,11 @@ describe("Lambda runtime adapters", () => {
           requestContext: { connectionId: "gateway-1", routeKey: "$default" },
         }),
       ).resolves.toEqual({ statusCode: 200 });
+      expect(consoleError).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledWith(
-        "failed to deliver API Gateway WebSocket message",
-        error,
+        expect.stringContaining('"msg":"postToHost failure"'),
       );
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("management unavailable"));
     } finally {
       consoleError.mockRestore();
     }
@@ -1271,6 +1280,24 @@ describe("Lambda runtime adapters", () => {
     error.mockRestore();
   });
 
+  it("does not duplicate successful REST requests in function logs", async () => {
+    const fixture = runtimeFixture();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await expect(
+        (await fixture.runtime).rest({
+          rawPath: "/missing",
+          requestContext: { http: { method: "GET" } },
+        }),
+      ).resolves.toMatchObject({ statusCode: 404 });
+      expect(
+        consoleLog.mock.calls.some(([line]) => /"msg":"rest (?:start|success)"/.test(String(line))),
+      ).toBe(false);
+    } finally {
+      consoleLog.mockRestore();
+    }
+  });
+
   it("returns a structured REST 500 when request handling throws", async () => {
     const fixture = runtimeFixture();
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1504,12 +1531,11 @@ describe("Lambda runtime adapters", () => {
     fixture.management.send.mockRejectedValueOnce(error);
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     fixture.plane.drainHost("host-1");
-    await vi.waitFor(() =>
-      expect(consoleError).toHaveBeenCalledWith(
-        "failed to deliver API Gateway WebSocket message",
-        error,
-      ),
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledOnce());
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('"msg":"postToHost failure"'),
     );
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("management unavailable"));
     consoleError.mockRestore();
   });
 
@@ -1534,9 +1560,9 @@ describe("Lambda runtime adapters", () => {
     try {
       fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
       fixture.plane.state.onHostMessage?.("host-1", assignment);
-      // Each failed delivery now logs twice: postToHost's own structured failure log,
-      // plus trackDelivery's pre-existing catch-all — 2 messages x 2 logs each.
-      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(4));
+      // Each failed delivery emits one structured failure log; the best-effort
+      // delivery catch must not duplicate it with a generic second line.
+      await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(2));
       const assignmentMetrics = metricLog.mock.calls.filter(([line]) =>
         String(line).includes('"AssignmentFailures":1'),
       );

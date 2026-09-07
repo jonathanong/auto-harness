@@ -206,9 +206,6 @@ async function postToConnection(
   message: HostWireMessage,
 ): Promise<void> {
   const startedAt = Date.now();
-  console.log(
-    JSON.stringify({ msg: "postToHost start", hostId, messageType: message.type, connectionId }),
-  );
   try {
     await management.send(
       new PostToConnectionCommand({
@@ -216,14 +213,16 @@ async function postToConnection(
         Data: Buffer.from(JSON.stringify(message)),
       }),
     );
-    console.log(
-      JSON.stringify({
-        msg: "postToHost success",
-        hostId,
-        messageType: message.type,
-        durationMs: Date.now() - startedAt,
-      }),
-    );
+    if (message.type !== "host:keepalive-ack") {
+      console.log(
+        JSON.stringify({
+          msg: "postToHost success",
+          hostId,
+          messageType: message.type,
+          durationMs: Date.now() - startedAt,
+        }),
+      );
+    }
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -358,11 +357,10 @@ export async function createLambdaRuntime(
     }
   };
   const trackDelivery = (hostId: string, message: HostWireMessage): void => {
-    const delivery = postToHost(created.plane, management, hostId, message).catch(
-      (error: unknown) => {
-        console.error("failed to deliver API Gateway WebSocket message", error);
-      },
-    );
+    // postToHost owns the structured failure log and relevant metrics. The
+    // delivery is best-effort here, so consume its rejection without emitting
+    // a second generic line for the same failure.
+    const delivery = postToHost(created.plane, management, hostId, message).catch(() => undefined);
     track(delivery);
   };
   /* v8 ignore next 3 -- production origin is the fetched public base URL and fails closed when absent */
@@ -518,9 +516,6 @@ export async function createLambdaRuntime(
     async rest(event) {
       const startedAt = Date.now();
       try {
-        const method = event.requestContext?.http?.method ?? "UNKNOWN";
-        const path = event.rawPath ?? "";
-        console.log(JSON.stringify({ msg: "rest start", method, path }));
         const result = await runInvocation(
           async () => {
             const capture = createLambdaResponseCapture();
@@ -528,15 +523,6 @@ export async function createLambdaRuntime(
             return capture.result();
           },
           { drainDeliveries: false },
-        );
-        console.log(
-          JSON.stringify({
-            msg: "rest success",
-            method,
-            path,
-            statusCode: result.statusCode,
-            durationMs: Date.now() - startedAt,
-          }),
         );
         return result;
       } catch (error) {
@@ -635,9 +621,7 @@ export async function createLambdaRuntime(
               type: "host:keepalive-ack",
               hostId: message.hostId,
               at: message.at,
-            }).catch((error: unknown) => {
-              console.error("failed to deliver API Gateway WebSocket message", error);
-            }),
+            }).catch(() => undefined),
           );
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
@@ -657,9 +641,7 @@ export async function createLambdaRuntime(
               type: "session:status-acknowledged",
               sessionId: result.sessionStatusAcknowledged.sessionId,
               attemptId: result.sessionStatusAcknowledged.attemptId,
-            }).catch((error: unknown) => {
-              console.error("failed to deliver API Gateway WebSocket message", error);
-            }),
+            }).catch(() => undefined),
           );
         } else if (result.hostDraining) {
           trackDelivery(authenticated.hostId, {

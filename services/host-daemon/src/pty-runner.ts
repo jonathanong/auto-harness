@@ -65,7 +65,7 @@ export type PtyProcessRunnerDependencies = {
 };
 
 function emitPtyChunk(options: RunProcessOptions, value: string, emitUntruncated: boolean): void {
-  if (emitUntruncated) {
+  if (emitUntruncated || options.preserveOutputChunks) {
     options.onChunk({ stream: "stdout", data: value });
     return;
   }

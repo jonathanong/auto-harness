@@ -36,6 +36,12 @@ export type RunProcessOptions = {
   signal?: AbortSignal;
   /** Test-only/advanced override; production uses a five second grace period. */
   terminationGraceMs?: number;
+  /**
+   * Preserve complete stdout/stderr reads for an internal structured-data consumer.
+   * The consumer must enforce its own total capture bound. User-command log streams
+   * must leave this unset so one noisy read cannot bypass the transport limit.
+   */
+  preserveOutputChunks?: boolean;
   onChunk: (chunk: OutputChunk) => void;
 };
 
@@ -200,6 +206,10 @@ export class SpawnProcessRunner implements ProcessRunner {
       options.signal?.addEventListener("abort", onAbort, { once: true });
 
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
+        if (options.preserveOutputChunks) {
+          options.onChunk({ stream, data: buf.toString("utf8") });
+          return;
+        }
         // Keep a malicious/noisy process from allocating unbounded memory in
         // either the agent or the control-plane log transport.
         // Buffer#toString may turn a truncated multi-byte character into U+FFFD,

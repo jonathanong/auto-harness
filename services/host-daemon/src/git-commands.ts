@@ -7,6 +7,7 @@ type GitResult = { exitCode: number; stdout: string; stderr: string };
 
 /** Keep Git diagnostics useful without allowing them to become a durable secret sink. */
 export const MAX_GIT_DIAGNOSTIC_BYTES = 1_024;
+export const MAX_CAPTURED_GIT_STDOUT_BYTES = 16 * 1_024 * 1_024;
 const MAX_CAPTURED_GIT_STDERR_BYTES = 64 * 1_024;
 const DIAGNOSTIC_TRUNCATION_MARKER = " [diagnostic truncated]";
 const OUTPUT_CHUNK_TRUNCATION_MARKER = "[output chunk truncated]";
@@ -20,10 +21,6 @@ function appendBounded(current: string, next: string, maxBytes: number): string 
 function discardTrailingLine(value: string): string {
   const lastLineBreak = Math.max(value.lastIndexOf("\n"), value.lastIndexOf("\r"));
   return lastLineBreak < 0 ? "" : value.slice(0, lastLineBreak + 1);
-}
-
-function completeCapturedLines(value: string, truncated: boolean): string {
-  return truncated ? discardTrailingLine(value) : value;
 }
 
 const CREDENTIAL_QUERY_KEY =
@@ -160,6 +157,7 @@ export async function runGit(
   platform: NodeJS.Platform = process.platform,
 ): Promise<GitResult> {
   let stdout = "";
+  let stdoutCaptureTruncated = false;
   let stderr = "";
   let stderrCaptureTruncated = false;
   let discardStderrContinuation = false;
@@ -168,10 +166,20 @@ export async function runGit(
     cwd,
     env: environment,
     timeoutMs: 120_000,
+    // Git stdout is protocol data, not a user-visible log stream. Preserve each read and
+    // apply the total bound below so executor log truncation cannot inject a
+    // marker into an authoritative filename.
+    preserveOutputChunks: true,
     ...(signal ? { signal } : {}),
     onChunk: (c) => {
       if (c.stream === "stdout") {
-        stdout += c.data;
+        if (
+          Buffer.byteLength(c.data, "utf8") >
+          MAX_CAPTURED_GIT_STDOUT_BYTES - Buffer.byteLength(stdout, "utf8")
+        ) {
+          stdoutCaptureTruncated = true;
+        }
+        stdout = appendBounded(stdout, c.data, MAX_CAPTURED_GIT_STDOUT_BYTES);
       } else {
         if (c.data.includes(OUTPUT_CHUNK_TRUNCATION_MARKER)) {
           stderr = discardTrailingLine(stderr);
@@ -192,10 +200,13 @@ export async function runGit(
       }
     },
   });
+  if (stdoutCaptureTruncated) {
+    throw new Error(`Git stdout exceeded the ${MAX_CAPTURED_GIT_STDOUT_BYTES}-byte capture limit`);
+  }
   return {
     exitCode: result.exitCode ?? 1,
     stdout,
-    stderr: sanitizeGitDiagnostic(completeCapturedLines(stderr, stderrCaptureTruncated)),
+    stderr: sanitizeGitDiagnostic(stderrCaptureTruncated ? discardTrailingLine(stderr) : stderr),
   };
 }
 
