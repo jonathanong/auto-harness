@@ -77,10 +77,15 @@ export function estimateMonthlyCapacity(workload: CapacityWorkload): CapacityEst
   const keepalivesPerMonth =
     (workload.connectedHosts * CAPACITY_CONSTANTS.secondsPerMonth) /
     CAPACITY_CONSTANTS.websocketKeepaliveSeconds;
+  // Each successful keepalive is answered with `host:keepalive-ack` over
+  // postToConnection. That outbound frame is a WebSocket message but not a
+  // Lambda invocation (same as viewer fanout).
+  const keepaliveAcksPerMonth = keepalivesPerMonth;
   const viewerLogMessagesPerMonth = dynamoLogWritesPerMonth * workload.connectedViewers;
   const inboundWebsocketMessagesPerMonth =
     dynamoLogWritesPerMonth + keepalivesPerMonth + sessionsPerMonth * 4;
-  const websocketMessagesPerMonth = inboundWebsocketMessagesPerMonth + viewerLogMessagesPerMonth;
+  const websocketMessagesPerMonth =
+    inboundWebsocketMessagesPerMonth + keepaliveAcksPerMonth + viewerLogMessagesPerMonth;
   const schedulerInvocationsPerMonth =
     CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.schedulerIntervalSeconds;
   // One EventBridge/Lambda invocation runs per sweep, but it scans/evaluates

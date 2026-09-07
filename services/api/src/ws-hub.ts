@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
+  HOST_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostRunningAttempt,
@@ -167,6 +168,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 type: "host:registered",
                 hostId: msg.hostId,
                 connectionId: boundConnectionId,
+                protocolVersion: HOST_PROTOCOL_VERSION,
               }),
             );
             await plane.requestAssignment();
@@ -205,6 +207,17 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.readyState === socket.OPEN
           ) {
             socket.send(JSON.stringify({ type: "host:draining", hostId: msg.hostId }));
+          } else if (msg.type === "host:keepalive" && socket.readyState === socket.OPEN) {
+            // Same peer-confirmation contract as session:ack: heartbeatDurable
+            // has already committed. A successful daemon write is not evidence
+            // the control plane received the frame.
+            socket.send(
+              JSON.stringify({
+                type: "host:keepalive-ack",
+                hostId: msg.hostId,
+                at: msg.at,
+              }),
+            );
           }
         };
         type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;

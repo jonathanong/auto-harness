@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- registration rollback and reconnect barriers share one fixture. */
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
@@ -59,7 +60,7 @@ describe("daemon registration", () => {
         },
         providerAccountReadiness: [],
         repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
-        protocolVersion: 1,
+        protocolVersion: HOST_PROTOCOL_VERSION,
         runningSessions: ["a", "z"],
         runningAttempts: [
           { sessionId: "a", attemptId: "a" },

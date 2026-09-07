@@ -143,10 +143,14 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
   cannot touch a newer assignment
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
 - On reconnect: re-register full inventory + any **in-progress** attempts still running locally
-- Responds to server `ping` with `pong`
+- Sends `host:keepalive` on an interval. When `host:registered` carries
+  `protocolVersion` ≥ 2, the stall watchdog re-arms only on `host:keepalive-ack`
+  or a later `host:registered` — not when the local keepalive write resolves.
+  Older control planes omit `protocolVersion` on that reply; the daemon keeps
+  send-based re-arm so a daemon-first deploy does not reconnect-loop.
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
-Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
+Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `host:keepalive`.
 
 Each daemon process reports one opaque UUID and process start time on every registration. The UUID
 remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior
@@ -935,10 +939,10 @@ daemon liveness: registered=true last keepalive sent=4213ms ago queued=0 open fd
 - `registered` — whether the current WebSocket connection has completed `host:register`.
   `false` for more than a reconnect cycle or two means the daemon is stuck disconnected.
 - `last keepalive sent` — ms since the daemon's own `host:keepalive` write last completed,
-  or `none yet`. This is **local send completion, not a control-plane acknowledgement** —
-  the wire protocol has no keepalive ack, so a socket that looks open but is actually wedged
-  can still advance this value. Treat it as "the daemon's own loop is still ticking," not
-  proof the control plane is reachable.
+  or `none yet`. This is **local send completion**, not proof the peer received the frame.
+  Protocol 2 re-arms the stall watchdog on `host:keepalive-ack` instead. A socket that
+  looks open but is actually wedged can still advance this value. Treat it as "the
+  daemon's own loop is still ticking," not proof the control plane is reachable.
 - `queued` — outbound frames buffered but not yet delivered. Sustained growth suggests a
   stalled or dead connection the daemon hasn't yet given up on.
 - `open fds` — best-effort open file descriptor count (`/proc/self/fd` on Linux, `/dev/fd`

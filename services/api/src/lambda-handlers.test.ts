@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
 import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -307,6 +308,13 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       if (owner && owner !== connectionId) connections.delete(owner);
       connections.set(connectionId, connection);
       hostLocks.set(hostId, connectionId);
+      return true;
+    },
+    async heartbeatConnection(hostId: string, connectionId: string, at: string) {
+      if (hostLocks.get(hostId) !== connectionId) return false;
+      const connection = connections.get(connectionId);
+      if (!connection) return false;
+      connections.set(connectionId, { ...connection, lastHeartbeatAt: at });
       return true;
     },
   };
@@ -661,7 +669,109 @@ describe("Lambda runtime adapters", () => {
       type: "host:registered",
       hostId: "host-1",
       connectionId: "gateway-1",
+      protocolVersion: HOST_PROTOCOL_VERSION,
     });
+  });
+
+  it("acks a successful host keepalive over postToConnection and skips a rejected one", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    const keepaliveAcks = fixture.management.send.mock.calls
+      .map((call) => call[0].input.Data)
+      .filter((data): data is Buffer | string => data !== undefined)
+      .map((data) => JSON.parse(String(data)))
+      .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack");
+    expect(keepaliveAcks).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "host-1",
+        at: "2026-08-12T00:00:20.000Z",
+      },
+    ]);
+
+    fixture.management.send.mockClear();
+    fixture.hostLocks.set("host-1", "other-connection");
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:40.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 409 });
+    expect(
+      fixture.management.send.mock.calls
+        .map((call) => call[0].input.Data)
+        .filter((data): data is Buffer | string => data !== undefined)
+        .map((data) => JSON.parse(String(data)))
+        .filter((payload: { type?: string }) => payload.type === "host:keepalive-ack"),
+    ).toEqual([]);
+  });
+
+  it("delivers host:keepalive-ack on the current connection even if this container's hostConnection cache missed it", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "host:keepalive-ack",
+      hostId: "host-1",
+      at: "2026-08-12T00:00:20.000Z",
+    });
+  });
+
+  it("swallows a failed host:keepalive-ack delivery instead of failing the invocation", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    const error = new Error("management unavailable");
+    fixture.management.send.mockRejectedValueOnce(error);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "host-1",
+            at: "2026-08-12T00:00:20.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 200 });
+      expect(consoleError).toHaveBeenCalledWith(
+        "failed to deliver API Gateway WebSocket message",
+        error,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("refreshes durable authentication before accepting a new socket", async () => {

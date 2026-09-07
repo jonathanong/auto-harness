@@ -7,7 +7,12 @@ import {
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import { principalHas, type HostToServerMessage, type HostWireMessage } from "@auto-harness/shared";
+import {
+  HOST_PROTOCOL_VERSION,
+  principalHas,
+  type HostToServerMessage,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -624,8 +629,24 @@ export async function createLambdaRuntime(
             type: "host:registered",
             hostId: message.hostId,
             connectionId: result.connectionId,
+            protocolVersion: HOST_PROTOCOL_VERSION,
           });
           await created.plane.requestAssignment();
+        } else if (result.ok && message.type === "host:keepalive") {
+          // Same inbound-connection delivery as session:status-acknowledged:
+          // heartbeatDurable does not backfill state.hostConnection, so
+          // trackDelivery's getHostConnectionId lookup misses on a warm
+          // container that never saw this host's register and the protocol-2
+          // daemon would stall-reconnect after a successfully committed beat.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "host:keepalive-ack",
+              hostId: message.hostId,
+              at: message.at,
+            }).catch((error: unknown) => {
+              console.error("failed to deliver API Gateway WebSocket message", error);
+            }),
+          );
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",

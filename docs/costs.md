@@ -78,28 +78,29 @@ pages for the deployment region before approving a budget.
 
 ## Reference workload (modelled from measured rates)
 
-| Input                   | Reference value | Source                                                          |
-| ----------------------- | --------------- | --------------------------------------------------------------- |
-| Sessions / day          | 100             | planning default                                                |
-| Session duration        | 15 minutes      | long-running CLI, not a smoke `claude -p`                       |
-| Daemon log rate         | 10 messages/s   | `DEFAULT_LOG_MESSAGES_PER_SEC`                                  |
-| Log chunks / session    | 9,000           | duration × log rate; capped at 10,000 retained chunks/session   |
-| Retained log content    | at most 10 MiB  | session byte cap before ordinary CLI output is dropped          |
-| Local log fence batch   | 25 items        | reduces local fence checks, not deployed item writes            |
-| Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                  |
-| Keepalive               | 20 s            | daemon `startDaemon`                                            |
-| Scheduler               | 1 / minute      | EventBridge / local repair sweep                                |
-| Schedules               | 10              | every durable schedule is evaluated by each repair sweep        |
-| Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics |
-| SessionLogs TTL         | 7 days          | `ttl` on new writes                                             |
+| Input                   | Reference value | Source                                                                                      |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------------------- |
+| Sessions / day          | 100             | planning default                                                                            |
+| Session duration        | 15 minutes      | long-running CLI, not a smoke `claude -p`                                                   |
+| Daemon log rate         | 10 messages/s   | `DEFAULT_LOG_MESSAGES_PER_SEC`                                                              |
+| Log chunks / session    | 9,000           | duration × log rate; capped at 10,000 retained chunks/session                               |
+| Retained log content    | at most 10 MiB  | session byte cap before ordinary CLI output is dropped                                      |
+| Local log fence batch   | 25 items        | reduces local fence checks, not deployed item writes                                        |
+| Hosts + viewers         | 2 + 2           | keepalive + connection minutes                                                              |
+| Keepalive               | 20 s            | daemon `startDaemon`; each inbound frame is answered with one outbound `host:keepalive-ack` |
+| Scheduler               | 1 / minute      | EventBridge / local repair sweep                                                            |
+| Schedules               | 10              | every durable schedule is evaluated by each repair sweep                                    |
+| Archive bytes / session | 256 KiB         | JSONL model; 3 objects were purged in `qa` without size metrics                             |
+| SessionLogs TTL         | 7 days          | `ttl` on new writes                                                                         |
 
 At that workload the model reports ~27M DynamoDB log item writes/month and ~27M
-transactional write items/month, ~81M WebSocket messages/month (including each
-viewer copy), ~27.4M Lambda invocations/month (viewer fanout is outbound and does
-not invoke Lambda; the 43,200 scheduler sweeps do), 43,200 scheduler invocations and 432,000 schedule evaluations/month,
-and ~750 MiB archive PUT volume/month. Queue throughput is 100 assigns/day plus
-the one-minute repair sweep. Re-run `estimateMonthlyCapacity` when the session mix
-changes; do not scale by session count alone.
+transactional write items/month, ~81M WebSocket messages/month (including keepalive
+acks and each viewer copy), ~27.4M Lambda invocations/month (viewer fanout and keepalive
+acks are outbound and do not invoke Lambda; the 43,200 scheduler sweeps do), 43,200
+scheduler invocations and 432,000 schedule evaluations/month, and ~750 MiB archive PUT
+volume/month. Queue throughput is 100 assigns/day plus the one-minute repair sweep.
+Re-run `estimateMonthlyCapacity` when the session mix changes; do not scale by session
+count alone.
 
 ## Cost by Component
 

@@ -6,10 +6,10 @@ export type LivenessLogOptions = {
   isRegistered: () => boolean;
   /**
    * Epoch ms of the last locally-sent keepalive that completed, or undefined
-   * if none yet. This is send completion, not delivery: the wire protocol has
-   * no keepalive acknowledgement, so a wedged-but-open socket can still
-   * advance this value. It is a coarse "the daemon's own loop is still
-   * ticking" signal, not proof the control plane is reachable.
+   * if none yet. This is send completion, not delivery: a wedged-but-open
+   * socket can still advance this value. Protocol 2 re-arms the stall
+   * watchdog on `host:keepalive-ack` instead; this line stays a coarse
+   * "the daemon's own loop is still ticking" signal.
    */
   lastKeepaliveSentAtMs: () => number | undefined;
   queuedCount: () => number;

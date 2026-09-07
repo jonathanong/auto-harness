@@ -168,7 +168,9 @@ fronts both.
 
 Keepalive is agent-initiated because Lambda has no persistent process timer.
 Each daemon sends periodic `host:keepalive` activity before API Gateway's idle
-timeout.
+timeout. After the durable heartbeat commits, Lambda pushes `host:keepalive-ack`
+via `postToConnection` — the `$default` response body is not delivered to the
+client.
 
 **Outbound push:** Lambda uses API Gateway Management API (`postToConnection`) with the stored `connectionId` from DynamoDB, via a client bounded by a 3s connect / 5s request timeout (`ApiGatewayManagementApiClient` + `NodeHttpHandler`) so a half-open connection fails fast instead of hanging the invocation.
 
@@ -472,7 +474,7 @@ Server responsibilities only:
 - `$connect` / `$disconnect` — Connections table; mark worktrees offline
 - `$default` — dispatch by `type`; persist logs; fan-out to UI subscribers
 - Replay last ~100 lines on `session:subscribe`
-- `postToConnection` for `session:assign` / `session:cancel` / `ping`
+- `postToConnection` for `session:assign` / `session:cancel` / `host:registered` / `host:keepalive-ack`
 
 ## Agent draining
 
