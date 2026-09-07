@@ -4,6 +4,7 @@ import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { RepeatedLogSuppressor } from "./repeated-log-suppressor.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import {
   confirmDaemonUpdateBoot,
@@ -58,7 +59,11 @@ type InventoryPollOptions = {
   // `| undefined` (not just optional) so callers can pass through their own already-
   // optional fetchFn without a conditional spread at every call site.
   fetchFn?: typeof fetch | undefined;
+  /** Minimum time between logged repeats of the same poll failure. Default 5 minutes. */
+  errorLogIntervalMs?: number;
 };
+
+const DEFAULT_ERROR_LOG_INTERVAL_MS = 5 * 60_000;
 
 function noopInventoryPollStop(): Promise<void> {
   return Promise.resolve();
@@ -154,6 +159,9 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
   let stopped = false;
   let policyBlocked = false;
   let activePoll: Promise<void> | undefined;
+  const failureLog = new RepeatedLogSuppressor({
+    minIntervalMs: options.errorLogIntervalMs ?? DEFAULT_ERROR_LOG_INTERVAL_MS,
+  });
   const timer = setInterval(() => {
     if (stopped || inFlight) return;
     inFlight = true;
@@ -165,11 +173,16 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
         );
         const fp = inventoryFingerprint(next);
         if (fp === lastFp && !policyBlocked) {
+          // A successful poll, even one that finds nothing changed, ends whatever
+          // failure streak preceded it -- a later, identical-looking failure is a
+          // new incident and must log immediately, not fold into the old count.
+          failureLog.reset();
           return;
         }
         await options.applyInventory(next);
         lastFp = fp;
         policyBlocked = false;
+        failureLog.reset();
         options.log(
           `host inventory updated from control plane (${next.repositories.length} repo(s))`,
         );
@@ -189,7 +202,10 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
             );
           }
         }
-        options.error(`inventory poll failed: ${err instanceof Error ? err.message : String(err)}`);
+        const message = failureLog.next(
+          `inventory poll failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        if (message !== undefined) options.error(message);
       } finally {
         inFlight = false;
       }
