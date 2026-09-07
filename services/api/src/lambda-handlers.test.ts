@@ -7,6 +7,7 @@ import {
   createLambdaHandlers,
   createLambdaRuntime,
   fetchPublicBaseUrl,
+  lambdaHydrateCatalogsEnabled,
   loadBootstrapSecrets,
   type LambdaRuntime,
 } from "./lambda-handlers.ts";
@@ -1136,6 +1137,68 @@ describe("Lambda runtime adapters", () => {
     await expect(handlers.cron()).resolves.toMatchObject({ schedulesFired: 0 });
 
     expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a structured REST 500 when cold-start construction throws", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const handlers = createLambdaHandlers(async () => {
+      throw new Error("SSM parameter not found");
+    });
+
+    await expect(
+      handlers.rest({
+        rawPath: "/api/v1/hosts/host-1/inventory",
+        requestContext: { http: { method: "GET" } },
+      }),
+    ).resolves.toEqual({
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: { code: "INTERNAL_ERROR", message: "SSM parameter not found" },
+      }),
+    });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('"msg":"rest failure"'));
+    error.mockRestore();
+  });
+
+  it("returns a structured REST 500 when request handling throws", async () => {
+    const fixture = runtimeFixture();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(
+      (await fixture.runtime).rest({
+        get rawPath() {
+          throw new Error("adapter failed");
+        },
+      } as never),
+    ).resolves.toEqual({
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: { code: "INTERNAL_ERROR", message: "adapter failed" },
+      }),
+    });
+    error.mockRestore();
+  });
+
+  it("returns a generic REST 500 when construction throws a non-Error", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const handlers = createLambdaHandlers(async () => {
+      throw "bootstrap unavailable";
+    });
+    await expect(handlers.rest({})).resolves.toEqual({
+      statusCode: 500,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: { code: "INTERNAL_ERROR", message: "internal server error" },
+      }),
+    });
+    error.mockRestore();
+  });
+
+  it("hydrates catalogs unless HARNESS_HYDRATE_CATALOGS is false", () => {
+    expect(lambdaHydrateCatalogsEnabled(undefined)).toBe(true);
+    expect(lambdaHydrateCatalogsEnabled("true")).toBe(true);
+    expect(lambdaHydrateCatalogsEnabled("false")).toBe(false);
   });
 
   it("does not retry a second concurrent caller of the same failed attempt", async () => {

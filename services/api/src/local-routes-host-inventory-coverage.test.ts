@@ -148,6 +148,47 @@ describe("host inventory route outcomes", () => {
     });
   });
 
+  it("returns stored inventory when the in-memory host maps are cold", async () => {
+    const stored = {
+      hostId: "host-1",
+      version: 1,
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt", labels: ["daemon"] }],
+        },
+      ],
+      providerAccounts: [],
+    };
+    const plane = new ControlPlane({
+      storage: {
+        getHostInventory: async () => stored,
+        putAuditLog: async () => undefined,
+      } as never,
+    });
+    plane.state.hostConnection.clear();
+    plane.state.hostInventories.clear();
+
+    expect(await invoke(plane, "GET", "/api/v1/hosts/host-1/inventory")).toMatchObject({
+      status: 200,
+      json: expect.objectContaining({
+        hostId: "host-1",
+        repositories: [
+          expect.objectContaining({
+            id: "repo-1",
+            worktrees: [expect.objectContaining({ id: "wt-1", labels: ["daemon"] })],
+          }),
+        ],
+      }),
+    });
+    expect(
+      JSON.stringify(await invoke(plane, "GET", "/api/v1/hosts/host-1/inventory")),
+    ).not.toContain("daemonLabels");
+    expect(plane.state.hostConnection.size).toBe(0);
+  });
+
   it("maps each durable boundary failure to an internal error", async () => {
     const plane = {
       listHostInventoriesDurable: failure,

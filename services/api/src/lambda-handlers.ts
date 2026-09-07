@@ -313,7 +313,7 @@ export async function createLambdaRuntime(
   const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
-  /* v8 ignore next 8 -- production AWS client construction is an SDK boundary */
+  /* v8 ignore next 9 -- production AWS client construction is an SDK boundary */
   const created =
     dependencies.created ??
     (await createControlPlane({
@@ -321,6 +321,7 @@ export async function createLambdaRuntime(
       sessionCursorSecret: bootstrapSecrets!.cursorSecret,
       skipEnsureTables: true,
       hydrateSessionHistory: false,
+      hydrateCatalogs: lambdaHydrateCatalogsEnabled(),
       ...(fetchedPublicBaseUrl !== undefined ? { publicBaseUrl: fetchedPublicBaseUrl } : {}),
     }));
   /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
@@ -510,11 +511,11 @@ export async function createLambdaRuntime(
       });
     },
     async rest(event) {
-      const method = event.requestContext?.http?.method ?? "UNKNOWN";
-      const path = event.rawPath ?? "";
       const startedAt = Date.now();
-      console.log(JSON.stringify({ msg: "rest start", method, path }));
       try {
+        const method = event.requestContext?.http?.method ?? "UNKNOWN";
+        const path = event.rawPath ?? "";
+        console.log(JSON.stringify({ msg: "rest start", method, path }));
         const result = await runInvocation(
           async () => {
             const capture = createLambdaResponseCapture();
@@ -534,16 +535,7 @@ export async function createLambdaRuntime(
         );
         return result;
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "rest failure",
-            method,
-            path,
-            durationMs: Date.now() - startedAt,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
-        throw error;
+        return restUnhandledError(event, error, startedAt);
       }
     },
     async websocket(event) {
@@ -698,6 +690,47 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+/** REST skips catalog Scans on cold start; Cron and WebSocket still hydrate. */
+export function lambdaHydrateCatalogsEnabled(
+  value = process.env.HARNESS_HYDRATE_CATALOGS,
+): boolean {
+  return value !== "false";
+}
+
+function restUnhandledError(
+  event: HttpApiEvent,
+  error: unknown,
+  startedAt?: number,
+): HttpApiResponse {
+  let method = "UNKNOWN";
+  let path = "";
+  try {
+    method = event.requestContext?.http?.method ?? "UNKNOWN";
+    path = event.rawPath ?? "";
+  } catch {
+    // Keep a generic envelope if the event itself cannot be read.
+  }
+  console.error(
+    JSON.stringify({
+      msg: "rest failure",
+      method,
+      path,
+      ...(startedAt === undefined ? {} : { durationMs: Date.now() - startedAt }),
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return {
+    statusCode: 500,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: error instanceof Error ? error.message : "internal server error",
+      },
+    }),
+  };
+}
+
 export function createLambdaHandlers(
   createRuntime: () => Promise<LambdaRuntime> = createLambdaRuntime,
 ): LambdaRuntime {
@@ -720,7 +753,11 @@ export function createLambdaHandlers(
       return (await getRuntime()).cron(eventOrContext, lambdaContext);
     },
     async rest(event) {
-      return (await getRuntime()).rest(event);
+      try {
+        return await (await getRuntime()).rest(event);
+      } catch (error) {
+        return restUnhandledError(event, error);
+      }
     },
     async websocket(event) {
       return (await getRuntime()).websocket(event);

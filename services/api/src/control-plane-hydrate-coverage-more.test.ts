@@ -127,4 +127,62 @@ describe("durable hydration boundary records", () => {
     expect(listAllSessionsCalls).toBe(0);
     expect(state.sessions.size).toBe(0);
   });
+
+  it("skips catalog Scans when catalogs is disabled", async () => {
+    let listHostInventoriesCalls = 0;
+    let listAllWorktreesCalls = 0;
+    let listConnectionsCalls = 0;
+    const state = createControlPlaneState({
+      storage: {
+        listAllSessions: async () => [{ id: "session" }],
+        listAllWorktrees: async () => {
+          listAllWorktreesCalls += 1;
+          return [];
+        },
+        listConnections: async () => {
+          listConnectionsCalls += 1;
+          return [];
+        },
+        listSchedules: async () => [],
+        listRepositories: async () => [],
+        listHostInventories: async () => {
+          listHostInventoriesCalls += 1;
+          return [];
+        },
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listCommands: async () => [],
+        listArchives: async () => [],
+      } as never,
+    });
+    await hydrateFromStorage(state, { sessionHistory: false, catalogs: false });
+    expect(listHostInventoriesCalls).toBe(0);
+    expect(listAllWorktreesCalls).toBe(0);
+    expect(listConnectionsCalls).toBe(0);
+  });
+
+  it("loads session history without catalog Scans when only catalogs is disabled", async () => {
+    let listHostInventoriesCalls = 0;
+    const state = createControlPlaneState({
+      storage: {
+        listAllSessions: async () => [{ id: "session", status: "queued" }],
+        listAllWorktrees: async () => [{ id: "wt" }],
+        listConnections: async () => [],
+        listSchedules: async () => [],
+        listRepositories: async () => [],
+        listHostInventories: async () => {
+          listHostInventoriesCalls += 1;
+          return [];
+        },
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listCommands: async () => [],
+        listArchives: async () => [],
+      } as never,
+    });
+    await hydrateFromStorage(state, { catalogs: false });
+    expect(listHostInventoriesCalls).toBe(0);
+    expect(state.sessions.has("session")).toBe(true);
+    expect(state.worktrees.size).toBe(0);
+  });
 });

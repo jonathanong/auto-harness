@@ -66,7 +66,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
           return true;
         }
       } else if (ctx.principal?.boundHostId) {
-        const session = plane.getSession(body.sessionId);
+        const session = await plane.getSessionDurable(body.sessionId);
         if (!session || !mayAccessHost(ctx.principal, session.hostId ?? undefined)) {
           send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
           return true;

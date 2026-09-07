@@ -13,6 +13,11 @@ export type CreateControlPlaneOptions = ControlPlaneOptions &
     skipEnsureTables?: boolean;
     /** Skip Sessions/usage Scans on boot (Lambda). Default hydrates everything. */
     hydrateSessionHistory?: boolean;
+    /**
+     * Skip catalog/worktree/connection/archive Scans on boot. REST Lambda
+     * request paths use durable point reads (#455). Default hydrates catalogs.
+     */
+    hydrateCatalogs?: boolean;
     /** Use AWS's regional DynamoDB endpoint and credential provider chain. */
     aws?: boolean;
   };
@@ -77,7 +82,12 @@ export async function createControlPlane(
       : { secretEncryptor: configuredSecretEncryptor() }),
   });
   await plane.hydrateFromStorage(
-    options.hydrateSessionHistory === false ? { sessionHistory: false } : undefined,
+    options.hydrateSessionHistory === false || options.hydrateCatalogs === false
+      ? {
+          sessionHistory: options.hydrateSessionHistory !== false,
+          catalogs: options.hydrateCatalogs !== false,
+        }
+      : undefined,
   );
   return { plane, storage };
 }

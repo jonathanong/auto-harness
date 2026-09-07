@@ -100,7 +100,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
             }))
           )
             return true;
-          const status = plane.getCommand(id) ? 400 : 404;
+          const status = (await plane.getCommandDurable(id)) ? 400 : 404;
           send(res, status, {
             error: {
               code: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR",

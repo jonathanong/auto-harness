@@ -77,7 +77,13 @@ export class AutoHarnessRuntimeStack extends Stack {
     } satisfies Partial<nodejs.NodejsFunctionProps>;
     const restFunction = new nodejs.NodejsFunction(this, "RestFunction", {
       ...functionProps,
-      environment: { ...commonEnvironment, ...archiveAndKms },
+      environment: {
+        ...commonEnvironment,
+        ...archiveAndKms,
+        // GET /hosts/:id/inventory is a GetItem. Catalog Scans on REST cold start
+        // 500 the daemon poll behind API Gateway's opaque envelope (#455).
+        HARNESS_HYDRATE_CATALOGS: "false",
+      },
       handler: "rest",
       logGroup: functionLogGroup(this, "RestFunction"),
       // Just under the HTTP API's 30s integration timeout ceiling, matching the

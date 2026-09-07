@@ -233,8 +233,13 @@ Handlers share:
 
 Durable DynamoDB rows are authoritative across concurrent API workers and restarts. Process maps
 may cache a working set, but REST reads and scheduling decisions read through the relevant durable
-rows; startup hydration restores every durable catalog, session, worktree, connection, archive, and
-historical session-log record. This avoids periodic full-state rehydration during normal requests.
+rows. REST Lambda cold start does **not** Scan catalogs, worktrees, connections, or archives —
+`GET /hosts/:hostId/inventory` is a consistent `GetItem`. A prior REST outage came from
+session-log hydration exceeding the function timeout; catalog hydration on that same path
+produced the opaque API Gateway `{"message":"Internal Server Error"}` the daemon logged as
+`bootstrap failed (500)` (#455). Cron and WebSocket still hydrate catalogs (minus session
+history) so assignment and registration keep their working-set maps. List endpoints that
+need a catalog page still Scan or Query at request time, not at init.
 
 ### Environment variables (Lambda)
 
@@ -248,6 +253,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |
 | `KMS_KEY_ID`                       | REST/Cron | Encrypt/decrypt integration secrets. WebSocket omits this                                                                                                       |
 | `HARNESS_METRIC_ENVIRONMENT`       | ✓         | CloudWatch EMF `Environment` dimension (table prefix)                                                                                                           |
+| `HARNESS_HYDRATE_CATALOGS`         | REST only | Set to `false` on the REST function so cold start skips catalog Scans. Unset on Cron/WebSocket (hydrate catalogs, not session history)                          |
 | `AWS_REGION`                       | auto      | Region                                                                                                                                                          |
 
 ---
