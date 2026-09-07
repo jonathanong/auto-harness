@@ -33,6 +33,22 @@ describe("createLocalApp agent and scheduler routes", () => {
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/hosts?limit=foo")).status).toBe(400);
+    expect((await invoke("GET", "/api/v1/hosts?online=maybe")).status).toBe(400);
+    expect((await invoke("GET", "/api/v1/hosts?online=all")).status).toBe(200);
+    expect(
+      (
+        (await invoke("GET", "/api/v1/hosts?online=online")).json as {
+          items: Array<{ hostId: string }>;
+        }
+      ).items.map((host) => host.hostId),
+    ).toContain("a1");
+    expect(
+      (
+        (await invoke("GET", "/api/v1/hosts?online=offline")).json as {
+          items: Array<{ hostId: string }>;
+        }
+      ).items.map((host) => host.hostId),
+    ).not.toContain("a1");
     expect((await invoke("GET", "/api/v1/hosts/a1")).json).toMatchObject({ hostId: "a1" });
     expect((await invoke("GET", "/api/v1/hosts/missing")).status).toBe(404);
     plane.state.connections.set("viewer", {
