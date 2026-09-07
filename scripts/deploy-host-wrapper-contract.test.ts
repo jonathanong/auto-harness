@@ -57,7 +57,7 @@ describe("host deployment wrapper contracts", () => {
     expect(spawnSync("bash", ["-n", hostScript]).status).toBe(0);
   });
 
-  it("installs native dependencies and polls host readiness", () => {
+  it("installs dependencies and polls host readiness", () => {
     const fixture = fakeEnvironment();
     baseFakes(fixture.bin);
     executable(fixture.bin, "uname", "echo Darwin");
@@ -66,9 +66,6 @@ describe("host deployment wrapper contracts", () => {
       "pnpm",
       `
 printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
-if [[ "$*" == "rebuild node-pty" ]]; then
-  printf "npm_config_build_from_source=%s\\n" "\${npm_config_build_from_source:-unset}" >> "$FAKE_LOG"
-fi
 if [[ "$*" == "local:daemon status" ]]; then
   count_file="$FAKE_DIRECTORY/status-count"
   count=0
@@ -98,14 +95,7 @@ fi`,
     const calls = readFileSync(fixture.log, "utf8");
 
     expect(result.status, result.stderr).toBe(0);
-    expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts\n");
-    expect(calls).toContain("pnpm rebuild node-pty\n");
-    // node-pty's prebuild.js exits 0 (skipping its `|| node-gyp rebuild` fallback)
-    // whenever a matching prebuild is already bundled, so a bare rebuild can
-    // silently no-op and never apply patches/node-pty@1.1.0.patch on a real
-    // host. This asserts the wrapper actually forces the from-source build
-    // that makes the patch take effect, not just that it calls `pnpm rebuild`.
-    expect(calls).toContain("npm_config_build_from_source=true\n");
+    expect(calls).toContain("pnpm install --frozen-lockfile\n");
     expect(calls.match(/pnpm local:daemon status/g)).toHaveLength(3);
     expect(result.stdout).toContain('{"status":"ok"}');
   });
@@ -169,20 +159,6 @@ fi`,
     expect(result.status).toBe(1);
     expect(Date.now() - startedAt).toBeLessThan(4_000);
     expect(result.stderr).toContain("within 1 seconds");
-  });
-
-  it("forces a from-source node-pty rebuild only on Darwin, not Linux", () => {
-    // Two of the patch's three fixes live in src/unix/pty.cc's shared code
-    // path, but only the kqueue-fd leak is macOS-specific, and only macOS has
-    // been verified here (the incident host, and the empirical fd
-    // measurement). Forcing node-gyp on Linux too would require an
-    // undocumented Python/compiler/Xcode-equivalent toolchain this script
-    // does not provision, for a platform with no verified need yet.
-    expect(position(host, 'if [[ "$platform" == "Darwin" ]]; then')).toBeGreaterThan(
-      position(host, "pnpm install --frozen-lockfile --ignore-scripts"),
-    );
-    expect(host).toContain("npm_config_build_from_source=true pnpm rebuild node-pty");
-    expect(host).toContain("  else\n    pnpm rebuild node-pty\n  fi");
   });
 
   it("binds Linux deployment to the writable staging checkout", () => {

@@ -6,8 +6,9 @@ import { FakeSocket, register, registered } from "./ws-transport-test-helpers.ts
 
 describe("reconnect resilience to a failing socket factory", () => {
   it("keeps backing off instead of crashing when the socket factory keeps throwing synchronously", async () => {
-    // Sustained EMFILE pressure (the exact scenario this repo's node-pty fd-leak
-    // fix targets) can make `new WebSocket(...)` throw synchronously, repeatedly.
+    // Sustained EMFILE pressure (the exact scenario this repo's pty fd-leak
+    // fixes target, see pty-runner.ts) can make `new WebSocket(...)` throw
+    // synchronously, repeatedly.
     // refreshSocket() already survives the *first* such failure by catching it
     // and calling retryLater() — but retryLater()'s own scheduled connect() call
     // used to have no try/catch of its own, so every failure after the first

@@ -27,7 +27,6 @@ const dispatchAction = readFileSync(
   "utf8",
 );
 const compose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
-const workspace = readFileSync(new URL("../pnpm-workspace.yaml", import.meta.url), "utf8");
 
 const PINNED_ACTION = /uses: ([^\s@]+)@([0-9a-f]{40}) # /g;
 const DISPATCH_ACTION = /jonathanong\/auto-harness\/actions\/dispatch@([^\s`]+)/g;
@@ -65,15 +64,6 @@ describe("Dependabot version updates", () => {
     expect(ecosystemBlock("npm")).toContain("open-pull-requests-limit: 10");
     expect(ecosystemBlock("npm")).toContain("dependency-type: production");
     expect(ecosystemBlock("npm")).toContain("dependency-type: development");
-  });
-
-  it("ignores node-pty version bumps while leaving security updates enabled", () => {
-    expect(workspace).toContain("node-pty@1.1.0:");
-    const npm = ecosystemBlock("npm");
-    expect(npm).toContain("dependency-name: node-pty");
-    expect(npm).toContain("- version-update:semver-major");
-    expect(npm).toContain("- version-update:semver-minor");
-    expect(npm).toContain("- version-update:semver-patch");
   });
 });
 

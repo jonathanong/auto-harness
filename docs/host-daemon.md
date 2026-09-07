@@ -32,15 +32,15 @@ instead of discarding it and giving up on the rest of the run.
 
 The agent owns:
 
-| Concern                   | Implementation                                                       |
-| ------------------------- | -------------------------------------------------------------------- |
-| Outbound control channel  | Persistent WebSocket client to the control plane                     |
-| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)             |
-| Process execution         | `node-pty` for assigned AI CLIs; `child_process` for git/setup/hooks |
-| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions                  |
-| Live output               | Buffered stdout/stderr/system log streaming                          |
-| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS)    |
-| Inventory reporting       | Worktree list + status on register and on change                     |
+| Concern                   | Implementation                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| Outbound control channel  | Persistent WebSocket client to the control plane                                        |
+| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)                                |
+| Process execution         | `@replit/ruspty` (POSIX only) for assigned AI CLIs; `child_process` for git/setup/hooks |
+| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions                                     |
+| Live output               | Buffered stdout/stderr/system log streaming                                             |
+| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS)                       |
+| Inventory reporting       | Worktree list + status on register and on change                                        |
 
 The agent **does not** implement the global queue, multi-agent round-robin, or durable session storage. Those live in the [AWS layer](aws.md).
 
@@ -301,10 +301,10 @@ The resumed session's prompt already carries a fixed pointer sentence naming `.a
 
 | Piece             | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`. On Windows only, a trusted resolved `.cmd`/`.bat` target is launched through an absolute PATH-resolved `cmd.exe`; each fixed argv element is encoded separately for the two CMD parsing passes rather than accepting a caller-authored shell string. Batch arguments containing CR/LF are rejected because CMD cannot preserve them without command-separator ambiguity.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Spawn             | **argv array** / PTY spawn **without** `shell: true`. The assigned AI CLI runs in a PTY on POSIX hosts only (see below); a caller-authored shell string is never accepted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `resolvedArgv`    | From `session:assign` — the target/fallback and complete argv are already resolved control-plane-side (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The daemon does not select a provider/account/Command, but it does resolve `argv[0]` deterministically: a bare name through trusted `PATH`, or a relative path against the assigned checkout. An empty `resolvedArgv` is a defensive error (`unknown_command_profile`).                                                                                                                                                                                                                                                                                                                                                              |
 | Route metadata    | Optional non-secret `targetIndex`, `commandId`, and `providerAccountId` breadcrumbs for logs and UI diagnostics. They are never used to select a command. A `providerAccountId` **does** select the daemon-local execution profile (CLI `HOME` / extra env) for the assigned AI CLI. Git, setup scripts, and terminal hooks keep the daemon's own child environment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — never accepted as a free-form shell string. The Windows batch adapter encodes it as one argv value and rejects CR/LF; direct executables receive it unchanged. A literal `--` is inserted first when the Command opts in via `appendPromptSeparator`, or implicitly whenever the Command has a `providerId` and does not opt out (`appendPromptSeparator: false`) — safe only for getopt-style executables; e.g. `printf "%s"` reads `--` as data, not a terminator. See [api.md](api.md#post-commands).                                                                                                                                                                                                                                          |
+| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — never accepted as a free-form shell string; executables receive it unchanged. A literal `--` is inserted first when the Command opts in via `appendPromptSeparator`, or implicitly whenever the Command has a `providerId` and does not opt out (`appendPromptSeparator: false`) — safe only for getopt-style executables; e.g. `printf "%s"` reads `--` as data, not a terminator. See [api.md](api.md#post-commands).                                                                                                                                                                                                                                                                                                                           |
 | Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts. **This includes CLI credential env vars** — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CURSOR_API_KEY`, and similar are silently dropped unless explicitly added to `HARNESS_CHILD_ENV_ALLOWLIST`. A CLI configured for API-key auth (rather than a logged-in subscription CLI, which reads its own credential file under `$HOME`) will fail with what looks like a CLI-side auth error, not an obviously harness-side config problem — check the allowlist first. Per-account execution profiles override `HOME`/`USERPROFILE` for the assigned CLI only so two accounts can use different local CLI homes. |
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. On POSIX, running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`. On Windows, `SpawnProcessRunner` (git, setup scripts, terminal hooks) kills the full descendant process tree via a single forceful `taskkill /PID <pid> /T /F` instead — Windows has no signal-ignoring equivalent to escalate past, and a delayed second `taskkill` against the same numeric pid risks hitting a process Windows has since recycled that pid to.                                                                                                                                                                                                                                                                                           |
@@ -316,22 +316,17 @@ status and releases the worktree or main-checkout lock. A late acknowledgement, 
 terminal report is accepted only for that fenced attempt and cannot revive it or disturb a newer
 assignment. The daemon does not list sessions or decide drain scope.
 
-The assigned command runs in a single `node-pty` terminal (`xterm-256color`,
-120 columns by 40 rows). Its merged terminal stream is reported as `stdout`,
-including ANSI control sequences exactly as the CLI emits them. Resume-reference
-capture treats configured stdout/stderr policies as matching this merged stream,
-so opaque references remain captured and redacted. Git operations, trusted setup
-scripts, and terminal hooks retain separate pipe-based execution;
-this keeps PTY behavior confined to the CLI that needs a terminal. On POSIX,
-cancel and timeout signal the PTY process group so helper descendants receive
-the same SIGTERM → SIGKILL lifecycle.
-
-On Windows, a resolved `.cmd`/`.bat` batch shim cannot be launched directly by
-ConPTY's `CreateProcessW` boundary. `PtyProcessRunner` therefore resolves
-`cmd.exe` through the same trusted `PATH`, then passes node-pty one pre-escaped
-`/d /s /c` command line. This is a constrained platform adapter, not a general
-shell execution mode: every batch path and argument is encoded independently,
-and multiline arguments fail before spawn.
+The assigned command runs in a single `@replit/ruspty` terminal (`xterm-256color`,
+120 columns by 40 rows), on POSIX hosts only — `PtyProcessRunner.run()` throws
+immediately on Windows, since ruspty ships no Windows build. A Windows host
+still runs git operations, trusted setup scripts, and terminal hooks through
+`SpawnProcessRunner`'s separate pipe-based execution, but cannot run the
+assigned AI CLI itself. The PTY's merged terminal stream is reported as
+`stdout`, including ANSI control sequences exactly as the CLI emits them.
+Resume-reference capture treats configured stdout/stderr policies as matching
+this merged stream, so opaque references remain captured and redacted. Cancel
+and timeout signal the PTY process group so helper descendants receive the
+same SIGTERM → SIGKILL lifecycle.
 
 Example (illustrative):
 
@@ -629,10 +624,6 @@ executables and any complete `..` path segment. Relative resolution is deliberat
 does not call `realpath`, inspect symlink targets, apply `allowedRoots`, or require the executable
 to exist before spawn. A relative executable explicitly opts into running checkout-controlled
 content, and a symlink in that checkout may point elsewhere.
-
-When the assigned CLI resolves to a Windows batch shim, the PTY runner also
-resolves `cmd.exe` through that trusted `PATH`; it never falls back to a bare
-interpreter name or `ComSpec` lookup that could reintroduce cwd-first resolution.
 
 ### Disk layout (example)
 

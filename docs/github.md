@@ -24,10 +24,6 @@ Workspace packages reference them as `catalog:` so a grouped npm bump cannot lea
 `@auto-harness/ui` on a different Next than the apps. `scripts/ui-runtime-catalog.test.ts`
 rejects a split lockfile snapshot.
 
-`node-pty` is listed in `pnpm-workspace.yaml` `patchedDependencies`. Dependabot will not open
-ordinary version PRs for it; a security advisory still can. Refresh `patches/node-pty@*.patch`
-before landing any `node-pty` bump.
-
 ## Pull request labels
 
 [`.github/labeler.yml`](../.github/labeler.yml) maps changed paths to `area/*` labels plus

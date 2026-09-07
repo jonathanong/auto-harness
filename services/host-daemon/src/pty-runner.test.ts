@@ -1,36 +1,31 @@
 /* eslint-disable max-lines, unicorn/consistent-function-scoping -- PTY resolution cases use local scenario helpers, matching git-commands.test.ts's precedent for the sibling call site. */
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix, win32 } from "node:path";
-import type { IPty } from "node-pty";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PtyProcessRunner, type PtySpawn } from "./pty-runner.ts";
+import { PtyProcessRunner, type PtyHandle, type PtySpawn } from "./pty-runner.ts";
 
-type ExitEvent = { exitCode: number; signal?: number };
+type ExitEvent = { exitCode: number; signaled?: boolean };
 
 function fakePty() {
   let onData: ((data: string) => void) | undefined;
   let onExit: ((event: ExitEvent) => void) | undefined;
-  const killed: Array<string | undefined> = [];
-  const terminal = {
+  const terminal: PtyHandle = {
     pid: 321,
-    kill(signal?: string) {
-      killed.push(signal);
-    },
     onData(listener: (data: string) => void) {
       onData = listener;
       return { dispose() {} };
     },
-    onExit(listener: (event: ExitEvent) => void) {
+    onExit(listener: (event: { exitCode: number; signaled: boolean }) => void) {
       onExit = listener;
       return { dispose() {} };
     },
-  } as IPty;
+  };
   return {
     emitData: (data: string) => onData?.(data),
-    emitExit: (event: ExitEvent) => onExit?.(event),
-    killed,
+    emitExit: (event: ExitEvent) =>
+      onExit?.({ exitCode: event.exitCode, signaled: event.signaled ?? false }),
     terminal,
   };
 }
@@ -42,10 +37,14 @@ describe("PtyProcessRunner boundary", () => {
     const runner = new PtyProcessRunner({
       spawn: (...args) => {
         spawned = args;
-        queueMicrotask(() => {
+        // A macrotask, not queueMicrotask: spawn() is now awaited (real
+        // ruspty is async), so its own resumption already consumes a
+        // microtask turn -- a microtask scheduled here, before that resumes,
+        // would run first and find no listener attached yet.
+        setTimeout(() => {
           pty.emitData("ready\r\n");
           pty.emitExit({ exitCode: 0 });
-        });
+        }, 0);
         return pty.terminal;
       },
     });
@@ -108,13 +107,34 @@ describe("PtyProcessRunner boundary", () => {
     expect(calls).toBe(0);
   });
 
+  it("throws immediately on Windows, before resolving or spawning anything", async () => {
+    let calls = 0;
+    const runner = new PtyProcessRunner({
+      platform: "win32",
+      spawn: () => {
+        calls += 1;
+        return fakePty().terminal;
+      },
+    });
+    await expect(
+      runner.run({
+        argv: ["tool"],
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).rejects.toThrow("PTY sessions are not supported on Windows");
+    expect(calls).toBe(0);
+  });
+
   it("signals the process group and escalates an ignored timeout", async () => {
     const pty = fakePty();
     const signals: Array<[number, NodeJS.Signals]> = [];
     const runner = new PtyProcessRunner({
       kill(pid, signal) {
         signals.push([pid, signal as NodeJS.Signals]);
-        if (signal === "SIGKILL") queueMicrotask(() => pty.emitExit({ exitCode: 0, signal: 9 }));
+        if (signal === "SIGKILL")
+          queueMicrotask(() => pty.emitExit({ exitCode: 0, signaled: true }));
         return true;
       },
       platform: "linux",
@@ -143,7 +163,8 @@ describe("PtyProcessRunner boundary", () => {
     const runner = new PtyProcessRunner({
       kill(_pid, signal) {
         signals.push(signal as NodeJS.Signals);
-        if (signal === "SIGTERM") queueMicrotask(() => pty.emitExit({ exitCode: 0, signal: 15 }));
+        if (signal === "SIGTERM")
+          queueMicrotask(() => pty.emitExit({ exitCode: 0, signaled: true }));
         return true;
       },
       platform: "darwin",
@@ -163,11 +184,46 @@ describe("PtyProcessRunner boundary", () => {
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
-  it("falls back to node-pty kill and bounds merged output", async () => {
+  it("re-arms the SIGKILL timer when it elapses as a no-op before a slow spawn resolves", async () => {
+    // spawn() is async (real ruspty is) -- stop() can run before it resolves,
+    // finding no terminal to signal yet. If its SIGKILL grace timer also
+    // elapses before spawn resolves, that timer fires as a no-op too, and
+    // must be re-armed once a terminal actually exists, or the child is
+    // never killed at all.
     const pty = fakePty();
+    const signals: NodeJS.Signals[] = [];
     const controller = new AbortController();
     const runner = new PtyProcessRunner({
-      kill() {
+      kill(_pid, signal) {
+        signals.push(signal as NodeJS.Signals);
+        if (signal === "SIGTERM")
+          setTimeout(() => pty.emitExit({ exitCode: 0, signaled: true }), 0);
+        return true;
+      },
+      platform: "linux",
+      spawn: () => new Promise((resolve) => setTimeout(() => resolve(pty.terminal), 50)),
+    });
+    const run = runner.run({
+      argv: ["./tool"],
+      cwd: process.cwd(),
+      signal: controller.signal,
+      timeoutMs: 1_000,
+      terminationGraceMs: 5,
+      onChunk: () => undefined,
+    });
+    controller.abort();
+    await expect(run).resolves.toMatchObject({ cancelled: true, signal: "SIGTERM" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+
+  it("falls back to a direct-pid signal when the process group is unavailable, and bounds merged output", async () => {
+    const pty = fakePty();
+    const controller = new AbortController();
+    const killed: Array<[number, NodeJS.Signals]> = [];
+    const runner = new PtyProcessRunner({
+      kill(pid, signal) {
+        killed.push([pid, signal as NodeJS.Signals]);
         throw new Error("group unavailable");
       },
       platform: "linux",
@@ -181,10 +237,17 @@ describe("PtyProcessRunner boundary", () => {
       timeoutMs: 1_000,
       onChunk: (chunk) => chunks.push(chunk.data),
     });
+    // Let run()'s await this.spawn(...) resolve and attach its listeners
+    // before driving the fake pty -- spawn is async now (real ruspty is),
+    // so nothing is attached yet in this same synchronous turn.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     pty.emitData("x".repeat(40_000));
     controller.abort();
-    expect(pty.killed).toEqual(["SIGTERM"]);
-    pty.emitExit({ exitCode: 0, signal: 15 });
+    expect(killed).toEqual([
+      [-321, "SIGTERM"],
+      [321, "SIGTERM"],
+    ]);
+    pty.emitExit({ exitCode: 0, signaled: true });
     await expect(run).resolves.toMatchObject({ cancelled: true });
     expect(chunks).toHaveLength(2);
     expect(Buffer.byteLength(chunks[0]!, "utf8")).toBeLessThanOrEqual(32 * 1024);
@@ -205,6 +268,9 @@ describe("PtyProcessRunner boundary", () => {
       timeoutMs: 1_000,
       onChunk: (chunk) => chunks.push(chunk.data),
     });
+    // Let run()'s await this.spawn(...) resolve and attach its listeners
+    // before driving the fake pty -- spawn is async now (real ruspty is).
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const oversized = "x".repeat(40_000);
     pty.emitData(oversized);
     pty.emitExit({ exitCode: 0 });
@@ -249,7 +315,8 @@ describe("PtyProcessRunner executable resolution", () => {
       spawn: (...args) => {
         spawned = args;
         const pty = fakePty();
-        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+        // Macrotask: see the comment on the first spawn fake in this file.
+        setTimeout(() => pty.emitExit({ exitCode: 0 }), 0);
         return pty.terminal;
       },
     });
@@ -265,178 +332,11 @@ describe("PtyProcessRunner executable resolution", () => {
     expect(spawned?.[0]).toBe(join(binDir, "claude"));
   });
 
-  it("resolves from PATH, not from a malicious same-named binary planted in the untrusted checkout cwd", async () => {
-    // Regression guard for #365: PtyProcessRunner spawns operator-authored
-    // resolvedArgv with options.cwd set to the untrusted session worktree.
-    // Windows' child_process.spawn (libuv search_path()) checks cwd before
-    // PATH for a bare command name, so a same-named binary committed to the
-    // checked-out ref must never be resolved, only a real PATH match.
-    const untrustedCheckout = mkdtempSync(join(tmpdir(), "auto-harness-pty-untrusted-"));
-    stubBinary(untrustedCheckout, "claude.exe");
-    const trustedBinDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-trusted-"));
-    stubBinary(trustedBinDir, "claude.exe");
-
-    let spawned: Parameters<PtySpawn> | undefined;
-    const runner = new PtyProcessRunner({
-      platform: "win32",
-      spawn: (...args) => {
-        spawned = args;
-        const pty = fakePty();
-        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
-        return pty.terminal;
-      },
-    });
-
-    await runner.run({
-      argv: ["claude"],
-      cwd: untrustedCheckout,
-      env: { PATH: trustedBinDir, PATHEXT: ".EXE" },
-      timeoutMs: 1_000,
-      onChunk: () => undefined,
-    });
-
-    expect(spawned?.[0]).toBe(join(trustedBinDir, "claude.exe"));
-    expect(spawned?.[0]).not.toBe(join(untrustedCheckout, "claude.exe"));
-  });
-
-  it("wraps a resolved Windows batch shim through a trusted cmd.exe command line", async () => {
-    const root = mkdtempSync(join(tmpdir(), "auto-harness-pty-batch-"));
-    const binDir = join(root, "trusted bin");
-    mkdirSync(binDir);
-    stubBinary(binDir, "cmd.exe");
-    stubBinary(binDir, "tool.cmd");
-    let spawned: Parameters<PtySpawn> | undefined;
-    const runner = new PtyProcessRunner({
-      platform: "win32",
-      spawn: (...spawnArgs) => {
-        spawned = spawnArgs;
-        const pty = fakePty();
-        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
-        return pty.terminal;
-      },
-    });
-
-    await runner.run({
-      argv: [
-        "tool",
-        "",
-        "plain",
-        "two words",
-        'say "hi"',
-        "space slash\\",
-        'slash\\"quote',
-        "trailing\\",
-        "a&b",
-        "%PATH%",
-        "!bang!",
-        "(group)",
-        "x|y",
-        "in<out",
-        "caret^",
-      ],
-      cwd: process.cwd(),
-      env: { PATH: binDir, PATHEXT: ".CMD;.EXE" },
-      timeoutMs: 1_000,
-      onChunk: () => undefined,
-    });
-
-    const batchPath = join(binDir, "tool.cmd");
-    const escapedBatchPath = batchPath.replaceAll(" ", "^ ");
-    expect(spawned?.[0]).toBe(join(binDir, "cmd.exe"));
-    expect(spawned?.[1]).toBe(
-      `/d /s /c "${escapedBatchPath} "" plain ^^^"two^^^ words^^^" ` +
-        '^^^"say^^^ \\^^^"hi\\^^^"^^^" ^^^"space^^^ slash\\\\^^^" ' +
-        '^^^"slash\\\\\\^^^"quote^^^" trailing\\ a^^^&b ^^^%PATH^^^% ' +
-        '^^^!bang^^^! ^^^(group^^^) x^^^|y in^^^<out caret^^^^"',
-    );
-  });
-
-  it("detects .bat batch shims case-insensitively", async () => {
-    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-bat-"));
-    stubBinary(binDir, "cmd.exe");
-    stubBinary(binDir, "tool.BAT");
-    let spawned: Parameters<PtySpawn> | undefined;
-    const runner = new PtyProcessRunner({
-      platform: "win32",
-      spawn: (...spawnArgs) => {
-        spawned = spawnArgs;
-        const pty = fakePty();
-        queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
-        return pty.terminal;
-      },
-    });
-
-    await runner.run({
-      argv: [".\\tool.BAT", "run"],
-      cwd: binDir,
-      env: { PATH: binDir },
-      timeoutMs: 1_000,
-      onChunk: () => undefined,
-    });
-
-    expect(spawned?.[0]).toBe(join(binDir, "cmd.exe"));
-    expect(spawned?.[1]).toContain("/d /s /c");
-  });
-
-  it.each(["line one\nline two", "line one\rline two", "line one\r\nline two"])(
-    "rejects a Windows batch argument containing CR/LF before spawning",
-    async (argument) => {
-      const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-batch-newline-"));
-      stubBinary(binDir, "tool.cmd");
-      let spawnCalls = 0;
-      const runner = new PtyProcessRunner({
-        platform: "win32",
-        spawn: () => {
-          spawnCalls += 1;
-          return fakePty().terminal;
-        },
-      });
-
-      await expect(
-        runner.run({
-          argv: [".\\tool.cmd", argument],
-          cwd: binDir,
-          env: { PATH: binDir },
-          timeoutMs: 1_000,
-          onChunk: () => undefined,
-        }),
-      ).rejects.toThrow(
-        "Cannot launch Windows batch command: CR/LF characters are not supported in arguments",
-      );
-      expect(spawnCalls).toBe(0);
-    },
-  );
-
-  it("does not fall back to a bare cmd.exe when the trusted PATH has no interpreter", async () => {
-    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-pty-no-cmdexe-"));
-    stubBinary(binDir, "tool.cmd");
-    let spawnCalls = 0;
-    const runner = new PtyProcessRunner({
-      platform: "win32",
-      spawn: () => {
-        spawnCalls += 1;
-        return fakePty().terminal;
-      },
-    });
-
-    await expect(
-      runner.run({
-        argv: [".\\tool.cmd"],
-        cwd: binDir,
-        env: { PATH: binDir },
-        timeoutMs: 1_000,
-        onChunk: () => undefined,
-      }),
-    ).rejects.toThrow('Cannot resolve trusted executable "cmd.exe": not found on PATH');
-    expect(spawnCalls).toBe(0);
-  });
-
-  it("keeps non-batch Windows and POSIX commands on the direct argv path", async () => {
+  it("keeps a resolved command's argv on the direct spawn path regardless of extension", async () => {
     const scenarios: Array<{ command: string; platform: NodeJS.Platform }> = [
-      { command: ".\\tool.exe", platform: "win32" },
-      { command: ".\\tool.com", platform: "win32" },
       { command: "./tool.cmd", platform: "linux" },
       { command: "./tool.bat", platform: "darwin" },
+      { command: "./tool.sh", platform: "linux" },
     ];
 
     for (const scenario of scenarios) {
@@ -446,7 +346,8 @@ describe("PtyProcessRunner executable resolution", () => {
         spawn: (...spawnArgs) => {
           spawned = spawnArgs;
           const pty = fakePty();
-          queueMicrotask(() => pty.emitExit({ exitCode: 0 }));
+          // Macrotask: see the comment on the first spawn fake in this file.
+          setTimeout(() => pty.emitExit({ exitCode: 0 }), 0);
           return pty.terminal;
         },
       });
@@ -458,11 +359,10 @@ describe("PtyProcessRunner executable resolution", () => {
         onChunk: () => undefined,
       });
 
-      const expectedCommand =
-        scenario.platform === "win32"
-          ? win32.resolve(process.cwd(), scenario.command)
-          : posix.resolve(process.cwd(), scenario.command);
-      expect(spawned?.slice(0, 2)).toEqual([expectedCommand, ["literal&argument"]]);
+      expect(spawned?.slice(0, 2)).toEqual([
+        join(process.cwd(), scenario.command.slice(2)),
+        ["literal&argument"],
+      ]);
     }
   });
 
@@ -471,6 +371,7 @@ describe("PtyProcessRunner executable resolution", () => {
     async (command) => {
       let spawnCalls = 0;
       const runner = new PtyProcessRunner({
+        platform: "linux",
         spawn: () => {
           spawnCalls += 1;
           return fakePty().terminal;

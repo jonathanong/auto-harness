@@ -1,22 +1,26 @@
-import type { IPty } from "node-pty";
 import { describe, expect, it } from "vitest";
 
-import { PtyProcessRunner } from "./pty-runner.ts";
+import { PtyProcessRunner, type PtyHandle } from "./pty-runner.ts";
 
 describe("PtyProcessRunner defensive boundary", () => {
-  it("reports an unknown native signal as null", async () => {
-    let exit: ((event: { exitCode: number; signal?: number }) => void) | undefined;
-    const terminal = {
+  it("reports a signal death the runner never requested as an unattributed exit code, not a guessed signal", async () => {
+    // Documents the fidelity gap on PtyExitEvent: the pty backend can only
+    // say "died by some signal" (signaled: true), never which one. The
+    // runner attributes a signal death to the last signal *it* sent -- when
+    // it never sent one (no timeout, no cancellation), there's nothing to
+    // attribute it to, so `signal` is null and `exitCode` falls back to
+    // ruspty's raw (meaningless, always -1) code rather than being nulled out.
+    let exit: ((event: { exitCode: number; signaled: boolean }) => void) | undefined;
+    const terminal: PtyHandle = {
       pid: 321,
-      kill() {},
       onData() {
         return { dispose() {} };
       },
-      onExit(listener: (event: { exitCode: number; signal?: number }) => void) {
+      onExit(listener) {
         exit = listener;
         return { dispose() {} };
       },
-    } as IPty;
+    };
     const runner = new PtyProcessRunner({ spawn: () => terminal });
     const run = runner.run({
       argv: ["./tool"],
@@ -24,8 +28,9 @@ describe("PtyProcessRunner defensive boundary", () => {
       timeoutMs: 1_000,
       onChunk: () => undefined,
     });
-    exit?.({ exitCode: 1, signal: 999 });
-    await expect(run).resolves.toEqual({ exitCode: 1, signal: null, timedOut: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    exit?.({ exitCode: -1, signaled: true });
+    await expect(run).resolves.toEqual({ exitCode: -1, signal: null, timedOut: false });
   });
 
   it("preserves unexpected spawn failures", async () => {
@@ -44,41 +49,5 @@ describe("PtyProcessRunner defensive boundary", () => {
         onChunk: () => undefined,
       }),
     ).rejects.toBe(failure);
-  });
-
-  it("tolerates a direct-child signal racing with PTY exit on Windows", async () => {
-    let emitExit: (() => void) | undefined;
-    const terminal = {
-      pid: 321,
-      kill() {
-        queueMicrotask(() => emitExit?.());
-        throw new Error("already exited");
-      },
-      onData() {
-        return { dispose() {} };
-      },
-      onExit(listener: (event: { exitCode: number }) => void) {
-        emitExit = () => listener({ exitCode: 0 });
-        return { dispose() {} };
-      },
-    } as IPty;
-    const controller = new AbortController();
-    const runner = new PtyProcessRunner({ platform: "win32", spawn: () => terminal });
-    const run = runner.run({
-      argv: ["./tool"],
-      cwd: process.cwd(),
-      signal: controller.signal,
-      timeoutMs: 1_000,
-      terminationGraceMs: 5,
-      onChunk: () => undefined,
-    });
-
-    controller.abort();
-    await expect(run).resolves.toEqual({
-      cancelled: true,
-      exitCode: 0,
-      signal: null,
-      timedOut: false,
-    });
   });
 });

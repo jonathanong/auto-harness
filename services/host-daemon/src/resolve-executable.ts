@@ -127,8 +127,8 @@ export function resolveTrustedExecutable(
  * Bare names retain the trusted PATH-only lookup used to close Windows'
  * cwd-before-PATH hijack. A relative path is deliberately different: it names
  * a file in the assigned checkout and is resolved lexically against that
- * checkout before node-pty sees it. There is intentionally no realpath,
- * symlink, existence, or containment check here.
+ * checkout before the process runner spawns it. There is intentionally no
+ * realpath, symlink, existence, or containment check here.
  */
 export function resolveAssignedExecutable(
   command: string,
