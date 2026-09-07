@@ -1,5 +1,10 @@
 /* eslint-disable max-lines -- catalog CRUD and provider-account lease operations share one facade. */
-import { decodeStorageCursor, encodeStorageCursor, pageByKey } from "./control-plane-id-page.ts";
+import {
+  decodeStorageCursor,
+  encodeStorageCursor,
+  InvalidListPageQueryError,
+  pageByKey,
+} from "./control-plane-id-page.ts";
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -15,6 +20,15 @@ import {
   forceReleaseProviderAccountLease,
   listProviderAccountLeaseStates,
 } from "./control-plane-provider-account-leases.ts";
+
+function catalogPageStartKey(cursor: string | null): Record<string, unknown> | undefined {
+  const startKey = decodeStorageCursor(cursor);
+  if (!startKey) return undefined;
+  if (typeof startKey.id !== "string" || startKey.id === "") {
+    throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+  }
+  return startKey;
+}
 
 /** Provider/ProviderAccount/Command catalog delegators. */
 export class ControlPlaneCatalogService {
@@ -64,7 +78,7 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: ProviderRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listProvidersPage === "function") {
-      const startKey = decodeStorageCursor(query.cursor);
+      const startKey = catalogPageStartKey(query.cursor);
       const page = await storage.listProvidersPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
@@ -226,7 +240,7 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: CommandRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listCommandsPage === "function") {
-      const startKey = decodeStorageCursor(query.cursor);
+      const startKey = catalogPageStartKey(query.cursor);
       const page = await storage.listCommandsPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),

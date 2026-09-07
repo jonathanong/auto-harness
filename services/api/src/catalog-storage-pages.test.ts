@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { InvalidListPageQueryError } from "./control-plane-id-page.ts";
 import { listCommandsPage, listProvidersPage } from "./db/plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
+
+function opaqueCursor(body: unknown): string {
+  return `s1.${Buffer.from(JSON.stringify(body), "utf8").toString("base64url")}`;
+}
 
 describe("catalog storage pages", () => {
   it("pages commands and providers from a bounded Scan", async () => {
@@ -76,5 +81,31 @@ describe("catalog storage pages", () => {
     await expect(
       invokeHandler(app.handler as never, "GET", "/api/v1/providers"),
     ).resolves.toMatchObject({ status: 200, json: { items: [{ id: "p-1" }], nextCursor: null } });
+  });
+
+  it("rejects a storage cursor that is not a catalog id key", async () => {
+    const listCommandsFromStorage = vi.fn(async () => ({ items: [], nextKey: null }));
+    const plane = new ControlPlane({
+      storage: {
+        listCommandsPage: listCommandsFromStorage,
+        listProvidersPage: listCommandsFromStorage,
+      } as never,
+    });
+    await expect(
+      plane.listCommandsPageDurable({ limit: 1, cursor: opaqueCursor({}) }),
+    ).rejects.toThrow(InvalidListPageQueryError);
+    await expect(
+      plane.listProvidersPageDurable({ limit: 1, cursor: opaqueCursor({ id: 1 }) }),
+    ).rejects.toThrow(InvalidListPageQueryError);
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane }).handler as never,
+          "GET",
+          `/api/v1/commands?cursor=${opaqueCursor({ id: "" })}`,
+        )
+      ).status,
+    ).toBe(400);
+    expect(listCommandsFromStorage).not.toHaveBeenCalled();
   });
 });
