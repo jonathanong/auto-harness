@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const DEFAULT_ID_PAGE_LIMIT = 50;
 const MAX_ID_PAGE_LIMIT = 100;
@@ -74,29 +74,48 @@ const STORAGE_CURSOR_PREFIX = "s1.";
 export type StorageCursorScope = { hostId: string | null; repositoryId: string | null };
 
 const emptyStorageScope: StorageCursorScope = { hostId: null, repositoryId: null };
+const STORAGE_CURSOR_IV_LENGTH = 12;
+const STORAGE_CURSOR_TAG_LENGTH = 16;
 
-function storageCursorSignature(secret: string, payload: string): string {
-  return createHmac("sha256", secret).update(`storage\0${payload}`).digest("base64url");
+function storageCursorKey(secret: string): Buffer {
+  return createHash("sha256").update(secret).digest();
 }
 
-function signaturesMatch(actual: string, expected: string): boolean {
-  const left = Buffer.from(actual, "base64url");
-  const right = Buffer.from(expected, "base64url");
-  return left.length === right.length && timingSafeEqual(left, right);
+function encryptStorageCursor(plaintext: string, secret: string): string {
+  const iv = randomBytes(STORAGE_CURSOR_IV_LENGTH);
+  const cipher = createCipheriv("aes-256-gcm", storageCursorKey(secret), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const packed = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  return `${STORAGE_CURSOR_PREFIX}${packed.toString("base64url")}`;
 }
 
-/** HMAC-opaque ExclusiveStartKey cursor. The client cannot decode the Dynamo key. */
+function decryptStorageCursor(cursor: string, secret: string): string {
+  const packed = Buffer.from(cursor.slice(STORAGE_CURSOR_PREFIX.length), "base64url");
+  if (packed.length <= STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH) {
+    throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+  }
+  const iv = packed.subarray(0, STORAGE_CURSOR_IV_LENGTH);
+  const tag = packed.subarray(
+    STORAGE_CURSOR_IV_LENGTH,
+    STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH,
+  );
+  const ciphertext = packed.subarray(STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH);
+  const decipher = createDecipheriv("aes-256-gcm", storageCursorKey(secret), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
+
+/** Authenticated-encrypted ExclusiveStartKey cursor. The client cannot read the Dynamo key. */
 export function encodeStorageCursor(
   key: Record<string, unknown> | null,
   secret: string,
   scope: StorageCursorScope = emptyStorageScope,
 ): string | null {
   if (!key) return null;
-  const payload = Buffer.from(
+  return encryptStorageCursor(
     JSON.stringify({ key, hostId: scope.hostId, repositoryId: scope.repositoryId }),
-    "utf8",
-  ).toString("base64url");
-  return `${STORAGE_CURSOR_PREFIX}${payload}.${storageCursorSignature(secret, payload)}`;
+    secret,
+  );
 }
 
 export function decodeStorageCursor(
@@ -108,16 +127,8 @@ export function decodeStorageCursor(
   if (!cursor.startsWith(STORAGE_CURSOR_PREFIX)) {
     throw new InvalidListPageQueryError("invalid or mismatched list cursor");
   }
-  const rest = cursor.slice(STORAGE_CURSOR_PREFIX.length);
-  const dot = rest.lastIndexOf(".");
-  if (dot <= 0) throw new InvalidListPageQueryError("invalid or mismatched list cursor");
-  const payload = rest.slice(0, dot);
-  const signature = rest.slice(dot + 1);
-  if (!signaturesMatch(signature, storageCursorSignature(secret, payload))) {
-    throw new InvalidListPageQueryError("invalid or mismatched list cursor");
-  }
   try {
-    const decoded: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const decoded: unknown = JSON.parse(decryptStorageCursor(cursor, secret));
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
       throw new InvalidListPageQueryError("invalid or mismatched list cursor");
     }
