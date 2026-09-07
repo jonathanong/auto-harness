@@ -65,6 +65,8 @@ export type DaemonLoopOptions = {
   pendingStatusMaxAgeMs?: number;
   /** Stop retaining new unacknowledged terminal statuses once this many are pending. */
   pendingStatusMaxCount?: number;
+  /** Retry at most this many pending terminal statuses per keepalive tick. */
+  statusRetriesPerTick?: number;
 };
 type InflightSession = {
   sessionId: string;
@@ -102,6 +104,16 @@ const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  * keepalive/registration is rejected as invalid and the connection drops.
  */
 const DEFAULT_PENDING_STATUS_MAX_COUNT = 500;
+/**
+ * Ceiling on how many retries `retryPendingTerminalStatuses` issues in a
+ * single keepalive tick. Retained statuses can build up close to
+ * `pendingStatusMaxCount`, and the control plane closes the socket once a
+ * connection exceeds 100 messages in a one-second window (`ws-hub.ts`); a
+ * large backlog resent in one burst — plus whatever other traffic (logs,
+ * acks) shares that same window — could trip that limit. Spreading a large
+ * backlog across multiple 20s ticks instead keeps every tick well under it.
+ */
+const DEFAULT_STATUS_RETRIES_PER_TICK = 20;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -113,6 +125,7 @@ export class DaemonLoop {
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
   private readonly pendingStatusMaxAgeMs: number;
   private readonly pendingStatusMaxCount: number;
+  private readonly statusRetriesPerTick: number;
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
   /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
@@ -158,6 +171,7 @@ export class DaemonLoop {
     this.drainDeadlineMs = options.drainDeadlineMs ?? 30_000;
     this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
     this.pendingStatusMaxCount = options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
+    this.statusRetriesPerTick = options.statusRetriesPerTick ?? DEFAULT_STATUS_RETRIES_PER_TICK;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -535,7 +549,11 @@ export class DaemonLoop {
    */
   private retryPendingTerminalStatuses(): void {
     const nowMs = Date.now();
-    for (const [key, pending] of this.pendingTerminalStatus) {
+    let issuedThisTick = 0;
+    // Snapshot first: entries retried below are moved to the back of the
+    // live map for fairness (see comment below), which must not affect this
+    // single pass over what was pending at the start of this call.
+    for (const [key, pending] of Array.from(this.pendingTerminalStatus)) {
       if (nowMs - pending.firstAttemptedAtMs > this.pendingStatusMaxAgeMs) {
         this.onLog?.(
           `giving up on unacknowledged terminal status for ${pending.message.sessionId} ` +
@@ -545,6 +563,13 @@ export class DaemonLoop {
         continue;
       }
       if (pending.sending) continue;
+      if (issuedThisTick >= this.statusRetriesPerTick) continue;
+      issuedThisTick += 1;
+      // Rotate to the back of iteration order so a backlog larger than
+      // statusRetriesPerTick is retried fairly across ticks instead of
+      // always favoring the same entries and starving the rest.
+      this.pendingTerminalStatus.delete(key);
+      this.pendingTerminalStatus.set(key, pending);
       pending.sending = true;
       void this.outbound
         .send(pending.message)

@@ -27,11 +27,15 @@ async function requeueOmittedWorktreeSessions(
     : [...state.worktrees.values()].filter((worktree) => worktree.hostId === hostId);
   for (const worktree of worktrees) {
     if (worktree.status !== "busy" || !worktree.currentSessionId) continue;
+    // Cheap membership check before a per-worktree durable read: on a healthy
+    // host with many concurrent sessions, this is the common case on every
+    // 20s keepalive and would otherwise cost one storage read per worktree
+    // for sessions that need no reconciliation at all.
+    if (running.has(worktree.currentSessionId)) continue;
     const session = state.storage
       ? await state.storage.getSession(worktree.currentSessionId)
       : state.sessions.get(worktree.currentSessionId);
     if (!session || session.status !== "running" || session.hostId !== hostId) continue;
-    if (running.has(session.id)) continue;
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueReconnectSession(session, reason));

@@ -80,11 +80,15 @@ describe("keepalive-driven session reconciliation", () => {
     const session = runningSessionFixture();
     const worktree = busyWorktreeFixture();
     let requeued = false;
+    let sessionReads = 0;
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
       listWorktreesByHost: async () => [worktree],
-      getSession: async () => session,
+      getSession: async () => {
+        sessionReads += 1;
+        return session;
+      },
       tryRequeueSession: async () => {
         requeued = true;
         return true;
@@ -100,5 +104,9 @@ describe("keepalive-driven session reconciliation", () => {
     ).resolves.toEqual({ ok: true });
 
     expect(requeued).toBe(false);
+    // A session the daemon already reports as running must not cost a
+    // storage read at all: on a healthy host with many concurrent sessions,
+    // this is the common case on every 20s keepalive.
+    expect(sessionReads).toBe(0);
   });
 });
