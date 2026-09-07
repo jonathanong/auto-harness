@@ -2,7 +2,7 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { validateUsageRates } from "@auto-harness/shared";
-import { sendListPage } from "./local-list-page.ts";
+import { InvalidListPageQueryError, parseListPageQuery } from "./control-plane-id-page.ts";
 
 function providerUpdateError(error: string): { status: number; code: string } {
   if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
@@ -18,9 +18,13 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/providers") {
     try {
-      sendListPage(ctx, await plane.listProvidersDurable(), (provider) => provider.id);
-    } catch {
-      sendInternalError(res);
+      send(res, 200, await plane.listProvidersPageDurable(parseListPageQuery(url)));
+    } catch (error) {
+      if (error instanceof InvalidListPageQueryError) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+      } else {
+        sendInternalError(res);
+      }
     }
     return true;
   }

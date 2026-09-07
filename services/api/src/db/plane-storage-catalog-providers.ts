@@ -84,6 +84,47 @@ export async function getProvider(
   return (res.Item as ProviderRecord | undefined) ?? null;
 }
 
+export type CatalogPage<T> = { items: T[]; nextKey: Record<string, unknown> | null };
+
+async function listCatalogTablePage<T extends { id: string }>(
+  ctx: PlaneStorageCtx,
+  tableName: string,
+  query: { limit: number; startKey?: Record<string, unknown> },
+): Promise<CatalogPage<T>> {
+  const result = await ctx.doc.send(
+    new ScanCommand({
+      TableName: tableName,
+      ConsistentRead: true,
+      Limit: query.limit + 1,
+      ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
+    }),
+  );
+  const items = pageItems(result.Items as T[] | undefined);
+  const page = items.slice(0, query.limit);
+  const last = page.at(-1);
+  return {
+    items: page,
+    nextKey:
+      items.length > query.limit && last
+        ? { id: last.id }
+        : (nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined) ?? null),
+  };
+}
+
+export function listProvidersPage(
+  ctx: PlaneStorageCtx,
+  query: { limit: number; startKey?: Record<string, unknown> },
+): Promise<CatalogPage<ProviderRecord>> {
+  return listCatalogTablePage(ctx, ctx.tables.providers, query);
+}
+
+export function listCommandsPage(
+  ctx: PlaneStorageCtx,
+  query: { limit: number; startKey?: Record<string, unknown> },
+): Promise<CatalogPage<CommandRecord>> {
+  return listCatalogTablePage(ctx, ctx.tables.commands, query);
+}
+
 export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecord[]> {
   const records: ProviderRecord[] = [];
   let startKey: Record<string, unknown> | undefined;

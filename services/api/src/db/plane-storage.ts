@@ -201,6 +201,10 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listProviders(this.ctx);
   }
 
+  listProvidersPage(query: { limit: number; startKey?: Record<string, unknown> }) {
+    return catalog.listProvidersPage(this.ctx, query);
+  }
+
   deleteProvider(
     id: string,
     markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
@@ -269,6 +273,10 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   listCommands(): Promise<CommandRecord[]> {
     return catalog.listCommands(this.ctx);
+  }
+
+  listCommandsPage(query: { limit: number; startKey?: Record<string, unknown> }) {
+    return catalog.listCommandsPage(this.ctx, query);
   }
 
   deleteCommand(

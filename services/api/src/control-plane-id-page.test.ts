@@ -67,6 +67,25 @@ describe("storage cursors", () => {
     expect(() =>
       decodeStorageCursor(encoded, secret, { hostId: "host-a", repositoryId: null }),
     ).toThrow(InvalidListPageQueryError);
+    const catalog = encodeStorageCursor({ id: "c-1" }, secret, {
+      hostId: null,
+      repositoryId: null,
+      kind: "commands",
+    });
+    expect(
+      decodeStorageCursor(catalog, secret, {
+        hostId: null,
+        repositoryId: null,
+        kind: "commands",
+      }),
+    ).toEqual({ id: "c-1" });
+    expect(() =>
+      decodeStorageCursor(catalog, secret, {
+        hostId: null,
+        repositoryId: null,
+        kind: "providers",
+      }),
+    ).toThrow(InvalidListPageQueryError);
     expect(() => decodeStorageCursor(encryptBody(null), secret)).toThrow(InvalidListPageQueryError);
     expect(() => decodeStorageCursor(encryptBody("not-json"), secret)).toThrow(
       InvalidListPageQueryError,
