@@ -122,7 +122,7 @@ describe("required CI check contract", () => {
     expect(platform).toContain("fail-fast: false");
     expect(platform).toContain("name: macos\n            runner: macos-latest");
     expect(platform).toContain("name: windows\n            runner: windows-latest");
-    expect(platform).toContain("run: pnpm install --frozen-lockfile");
+    expect(platform).toMatch(/^[ \t]*run: pnpm install --frozen-lockfile[ \t]*$/m);
     expect(platform).toContain("run: pnpm test:platform");
     expect(platform).not.toContain("run: pnpm test\n");
     expect(platform).not.toContain("run: pnpm local:dynamodb:ready");
