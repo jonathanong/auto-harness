@@ -923,7 +923,8 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
 #### `GET /worktrees`
 
 List a bounded page of worktrees. `limit` is 1–100 (default 50). `cursor` continues from the
-previous `nextCursor`. Optional `?hostId=<id>` and `?repositoryId=<id>` filter server-side —
+previous `nextCursor` and is AES-GCM opaque (the Dynamo ExclusiveStartKey is not readable
+from the token). Optional `?hostId=<id>` and `?repositoryId=<id>` filter server-side —
 callers that only need one host's or one repository's worktrees should filter here rather than
 fetching the whole fleet and filtering in JS. A `repositoryId` filter Queries the repository GSI
 with `Limit`. Other list reads are a DynamoDB Scan with `Limit`; they do not load the full
@@ -1070,6 +1071,8 @@ Each host also reports `daemonVersion`, `gitVersion`, `gitReady`, and a bounded
 whose Git preflight fails remain visible as online but have `gitReady: false` and receive no work.
 
 `limit` is 1–100 (default 50). `nextCursor` continues the hostId-ordered page.
+`online=online` or `online=offline` filters before that page is sliced, so a filtered view cannot
+hide matching hosts on later unfiltered pages.
 
 **Response:** `200 OK`
 
