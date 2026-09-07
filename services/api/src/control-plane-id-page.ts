@@ -1,3 +1,5 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
 const DEFAULT_ID_PAGE_LIMIT = 50;
 const MAX_ID_PAGE_LIMIT = 100;
 
@@ -69,25 +71,79 @@ export function pageByKey<T>(
 
 const STORAGE_CURSOR_PREFIX = "s1.";
 
-/** Opaque ExclusiveStartKey cursor for storage-paged lists. */
-export function encodeStorageCursor(key: Record<string, unknown> | null): string | null {
-  if (!key) return null;
-  return `${STORAGE_CURSOR_PREFIX}${Buffer.from(JSON.stringify(key), "utf8").toString("base64url")}`;
+export type StorageCursorScope = { hostId: string | null; repositoryId: string | null };
+
+const emptyStorageScope: StorageCursorScope = { hostId: null, repositoryId: null };
+const STORAGE_CURSOR_IV_LENGTH = 12;
+const STORAGE_CURSOR_TAG_LENGTH = 16;
+
+function storageCursorKey(secret: string): Buffer {
+  return createHash("sha256").update(secret).digest();
 }
 
-export function decodeStorageCursor(cursor: string | null): Record<string, unknown> | undefined {
+function encryptStorageCursor(plaintext: string, secret: string): string {
+  const iv = randomBytes(STORAGE_CURSOR_IV_LENGTH);
+  const cipher = createCipheriv("aes-256-gcm", storageCursorKey(secret), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const packed = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  return `${STORAGE_CURSOR_PREFIX}${packed.toString("base64url")}`;
+}
+
+function decryptStorageCursor(cursor: string, secret: string): string {
+  const packed = Buffer.from(cursor.slice(STORAGE_CURSOR_PREFIX.length), "base64url");
+  if (packed.length <= STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH) {
+    throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+  }
+  const iv = packed.subarray(0, STORAGE_CURSOR_IV_LENGTH);
+  const tag = packed.subarray(
+    STORAGE_CURSOR_IV_LENGTH,
+    STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH,
+  );
+  const ciphertext = packed.subarray(STORAGE_CURSOR_IV_LENGTH + STORAGE_CURSOR_TAG_LENGTH);
+  const decipher = createDecipheriv("aes-256-gcm", storageCursorKey(secret), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
+
+/** Authenticated-encrypted ExclusiveStartKey cursor. The client cannot read the Dynamo key. */
+export function encodeStorageCursor(
+  key: Record<string, unknown> | null,
+  secret: string,
+  scope: StorageCursorScope = emptyStorageScope,
+): string | null {
+  if (!key) return null;
+  return encryptStorageCursor(
+    JSON.stringify({ key, hostId: scope.hostId, repositoryId: scope.repositoryId }),
+    secret,
+  );
+}
+
+export function decodeStorageCursor(
+  cursor: string | null,
+  secret: string,
+  scope: StorageCursorScope = emptyStorageScope,
+): Record<string, unknown> | undefined {
   if (!cursor) return undefined;
   if (!cursor.startsWith(STORAGE_CURSOR_PREFIX)) {
     throw new InvalidListPageQueryError("invalid or mismatched list cursor");
   }
   try {
-    const decoded: unknown = JSON.parse(
-      Buffer.from(cursor.slice(STORAGE_CURSOR_PREFIX.length), "base64url").toString("utf8"),
-    );
+    const decoded: unknown = JSON.parse(decryptStorageCursor(cursor, secret));
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
       throw new InvalidListPageQueryError("invalid or mismatched list cursor");
     }
-    return decoded as Record<string, unknown>;
+    const body = decoded as {
+      key?: unknown;
+      hostId?: string | null;
+      repositoryId?: string | null;
+    };
+    if (!body.key || typeof body.key !== "object" || Array.isArray(body.key)) {
+      throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+    }
+    if (body.hostId !== scope.hostId || body.repositoryId !== scope.repositoryId) {
+      throw new InvalidListPageQueryError("invalid or mismatched list cursor");
+    }
+    return body.key as Record<string, unknown>;
   } catch (error) {
     if (error instanceof InvalidListPageQueryError) throw error;
     throw new InvalidListPageQueryError("invalid or mismatched list cursor");

@@ -578,7 +578,8 @@ separate capabilities and are not enabled by this UI.
 
 ## Hosts
 
-The fleet list shows each host slot's online/offline status. When any host is offline, a notice
+The fleet list shows each host slot's online/offline status. The online/offline selector is sent
+to `GET /api/v1/hosts` so pagination walks the filtered fleet, not the unfiltered id order. When any host is offline, a notice
 explains that host slots persist in Foundation tables across `teardown` (not `purge`), so a restore
 can show leftover offline slots. Delete unused hosts, or purge the environment to wipe them.
 

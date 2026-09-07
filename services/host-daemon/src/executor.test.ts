@@ -114,8 +114,13 @@ describe("SpawnProcessRunner cancellation", () => {
           "-e",
           [
             "const { spawn } = require('node:child_process');",
-            "const helper = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)\"], { stdio: 'ignore' });",
-            "console.log(helper.pid);",
+            // The helper only prints its pid once it has registered a SIGTERM
+            // handler and confirmed it over IPC -- printing on spawn alone
+            // races the helper's own Node startup, letting the initial group
+            // SIGTERM kill it before the handler exists and defeating the
+            // whole point of this test (see #457).
+            "const helper = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); process.send('ready'); setInterval(() => {}, 1_000)\"], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });",
+            "helper.on('message', (msg) => { if (msg === 'ready') console.log(helper.pid); });",
             "setInterval(() => {}, 1_000);",
           ].join(" "),
         ],

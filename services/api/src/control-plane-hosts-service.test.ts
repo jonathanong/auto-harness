@@ -135,17 +135,22 @@ describe("getHostDurable", () => {
     await expect(plane.getWorktreeDurable("wt-1")).resolves.toMatchObject({ id: "wt-1" });
     expect(plane.getWorktree("wt-1")?.id).toBe("wt-1");
     await expect(plane.getWorktreeDurable("missing")).resolves.toBeNull();
+    const page = await plane.listWorktreesPageDurable({
+      limit: 1,
+      cursor: null,
+      hostId: "host-a",
+      repositoryId: "repo-1",
+    });
+    expect(page.nextCursor).toMatch(/^s1\./);
+    expect(page.nextCursor).toContain(".");
     await expect(
       plane.listWorktreesPageDurable({
         limit: 1,
-        cursor: null,
-        hostId: null,
-        repositoryId: null,
+        cursor: page.nextCursor,
+        hostId: "host-b",
+        repositoryId: "repo-1",
       }),
-    ).resolves.toMatchObject({
-      items: [{ id: "wt-1" }],
-      nextCursor: expect.stringMatching(/^s1\./),
-    });
+    ).rejects.toThrow("invalid or mismatched list cursor");
   });
 
   it("pages in-memory worktrees by host and repository", async () => {
