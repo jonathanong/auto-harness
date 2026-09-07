@@ -504,7 +504,7 @@ modified tracked files. The force checkout does not broadly clean untracked
 paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
 and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
 flags; the resolved commit is then hard-reset so hidden tracked changes cannot survive.
-It also force-checks out already initialized submodules recursively, so
+It syncs their configured URLs and force-checks out already initialized submodules recursively, so
 tracked submodule changes cannot leak into the next session without implicitly
 initializing new submodules. Before any destructive checkout, the daemon verifies
 that the linked-worktree administrative directory belongs to the configured repository and

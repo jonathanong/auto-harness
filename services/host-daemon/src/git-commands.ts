@@ -116,7 +116,7 @@ export function sanitizeGitDiagnostic(stderr: string): string {
   const withoutCredentials = redactQueryCredentials(withoutTerminalControls)
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
     .replace(
-      /(^|[^A-Za-z0-9_?&-]|--)(["']?)(_*(?:authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key))\2(\s*[:=]\s*)[^\r\n]+/gi,
+      /(^|[^A-Za-z0-9_?&-]|--)(["']?)([A-Za-z0-9_-]*(?:access[_-]?key(?:[_-]?id)?|api[_-]?key|authorization|credential|password|passwd|secret|sig|signature|token))\2(\s*[:=]\s*)[^\r\n]+/gi,
       "$1$2$3$2$4[redacted]",
     )
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")

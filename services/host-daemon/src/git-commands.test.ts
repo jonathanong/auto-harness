@@ -127,6 +127,18 @@ describe("sanitizeGitDiagnostic", () => {
     );
   });
 
+  it("redacts prefixed credential keys without matching ordinary words", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "client_secret=CLIENTSECRET\nAWS_SECRET_ACCESS_KEY=AWSSECRET\n" +
+        "x-access-token=ACCESSTOKEN\nsecretary=visible",
+    );
+    expect(diagnostic).toContain("client_secret=[redacted]");
+    expect(diagnostic).toContain("AWS_SECRET_ACCESS_KEY=[redacted]");
+    expect(diagnostic).toContain("x-access-token=[redacted]");
+    expect(diagnostic).toContain("secretary=visible");
+    expect(diagnostic).not.toMatch(/CLIENTSECRET|AWSSECRET|ACCESSTOKEN/);
+  });
+
   it("preserves query parameters whose percent-encoded key is malformed", () => {
     expect(sanitizeGitDiagnostic("https://example.com/object?bad%=visible")).toContain(
       "bad%=visible",

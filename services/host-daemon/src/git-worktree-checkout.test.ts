@@ -232,12 +232,33 @@ describe("stale worktree index lock safety", () => {
     await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBeNull();
     const wrongAdmin = join(root, "other", "configured");
     mkdirSync(wrongAdmin, { recursive: true });
+    writeFileSync(join(wrongAdmin, "gitdir"), `${join(repoPath, ".git")}\n`);
     writeFileSync(join(repoPath, ".git"), `gitdir: ${wrongAdmin}\n`);
+    await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBeNull();
+    const notDirectory = join(root, "not-directory");
+    writeFileSync(notDirectory, "not a Git directory");
+    writeFileSync(join(repoPath, ".git"), `gitdir: ${notDirectory}\n`);
     await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBeNull();
     rmSync(join(repoPath, ".git"));
     symlinkSync(join(repoGitDir, "gitdir"), join(repoPath, ".git"));
     await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBeNull();
     await expect(claimedLinkedWorktreeCommonDir(join(root, "missing"), cwd)).resolves.toBeNull();
+  });
+
+  it("accepts a configured repository with a separate Git directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-separate-git-dir-"));
+    roots.push(root);
+    const repoPath = join(root, "repo");
+    const commonDir = join(root, "separate-git-dir");
+    const cwd = join(root, "cwd");
+    const gitDir = join(commonDir, "worktrees", "one");
+    mkdirSync(repoPath);
+    writeWorktreeIdentity(cwd, gitDir);
+    writeFileSync(join(repoPath, ".git"), `gitdir: ${commonDir}\n`);
+
+    await expect(claimedLinkedWorktreeCommonDir(repoPath, cwd)).resolves.toBe(
+      realpathSync(commonDir),
+    );
   });
 
   it("fails closed when lock metadata cannot be read", async () => {

@@ -63,15 +63,22 @@ function isLinkedWorktreeGitDir(commonDir: string, gitDir: string): boolean {
 async function configuredCommonDir(repoPath: string): Promise<string | null> {
   try {
     const gitPath = resolve(await canonicalPath(repoPath), ".git");
-    const metadata = await lstat(gitPath);
-    if (metadata.isDirectory()) return await canonicalPath(gitPath);
-    if (!metadata.isFile()) return null;
+    if ((await lstat(gitPath)).isDirectory()) return await canonicalPath(gitPath);
+    if (!(await lstat(gitPath)).isFile()) return null;
     const pointerMatch = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(await readFile(gitPath, "utf8"));
     if (!pointerMatch?.[1]) return null;
     const gitDir = await canonicalPath(
       isAbsolute(pointerMatch[1]) ? pointerMatch[1] : resolve(dirname(gitPath), pointerMatch[1]),
     );
-    return basename(dirname(gitDir)) === "worktrees" ? dirname(dirname(gitDir)) : null;
+    if (!(await lstat(gitDir)).isDirectory()) return null;
+    try {
+      if ((await lstat(resolve(gitDir, "gitdir"))).isFile()) {
+        return basename(dirname(gitDir)) === "worktrees" ? dirname(dirname(gitDir)) : null;
+      }
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+    return gitDir;
   } catch {
     return null;
   }
@@ -169,14 +176,13 @@ export async function removeStaleIndexLock(
   }
 
   const commonDir = await canonicalPath(reportedCommonDir);
-  const canonicalExpectedCommonDir = await canonicalPath(expectedCommonDir);
   const gitDir = await canonicalPath(reportedGitDir);
   const lockPath = resolve(
     await canonicalPath(dirname(reportedLockPath)),
     basename(reportedLockPath),
   );
   if (
-    commonDir !== canonicalExpectedCommonDir ||
+    commonDir !== (await canonicalPath(expectedCommonDir)) ||
     !isLinkedWorktreeGitDir(commonDir, gitDir) ||
     (await claimedLinkedWorktreeGitDir(cwd, commonDir)) !== gitDir ||
     basename(lockPath) !== "index.lock" ||

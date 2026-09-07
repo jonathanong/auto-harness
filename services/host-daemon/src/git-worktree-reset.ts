@@ -126,3 +126,19 @@ export async function resetPriorWorktreeState(
   await clearInterruptedOperations(runner, cwd, gitDir, signal);
   await clearTrackedPathFlags(runner, cwd, signal);
 }
+
+export async function resetInitializedSubmodules(
+  runner: ProcessRunner,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const synced = await runGit(runner, cwd, ["submodule", "sync", "--recursive"], signal);
+  if (synced.exitCode !== 0) throw gitFailure("Failed to sync submodules", synced.stderr);
+  const updated = await runGit(
+    runner,
+    cwd,
+    ["submodule", "update", "--recursive", "--checkout", "--force"],
+    signal,
+  );
+  if (updated.exitCode !== 0) throw gitFailure("Failed to update submodules", updated.stderr);
+}

@@ -23,6 +23,10 @@ function updatesSubmodules(exitCode = 0, stderr = "") {
   };
 }
 
+function syncsSubmodules(exitCode = 0, stderr = "") {
+  return { match: ["submodule", "sync", "--recursive"], exitCode, stderr };
+}
+
 function lockProbe() {
   return [
     {
@@ -75,6 +79,7 @@ describe("createGitClient checkout and revParse", () => {
         resolvesCommit("main", "abc123"),
         { match: ["switch", "--discard-changes", "--detach", "abc123"], exitCode: 0 },
         hardReset("abc123"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -101,6 +106,7 @@ describe("createGitClient checkout and revParse", () => {
         },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -127,6 +133,7 @@ describe("createGitClient checkout and revParse", () => {
         ...lockProbe(),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -213,6 +220,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 0,
         },
         hardReset("commit-sha"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "commit-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -248,6 +256,7 @@ describe("createGitClient checkout and revParse", () => {
         { match: ["fetch", "--tags", "--refetch", "upstream"], exitCode: 0 },
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -347,6 +356,7 @@ describe("createGitClient checkout and revParse", () => {
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(),
         {
           match: ["rev-parse", "HEAD"],
@@ -368,6 +378,7 @@ describe("createGitClient checkout and revParse", () => {
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 0, stdout: "refs/heads/main\n" },
@@ -384,12 +395,28 @@ describe("createGitClient checkout and revParse", () => {
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
         hardReset("abc"),
+        syncsSubmodules(),
         updatesSubmodules(1, "fatal: ?X-Amz-Signature=SIGNEDSECRET"),
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
 
     await expect(checkout).rejects.toThrow("Failed to update submodules");
     await expect(checkout).rejects.not.toThrow("SIGNEDSECRET");
+  });
+
+  it("checkoutRef reports a sanitized submodule URL sync failure", async () => {
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        resolvesCommit("main"),
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
+        syncsSubmodules(1, "fatal: client_secret=SYNCSECRET"),
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
+
+    await expect(checkout).rejects.toThrow("Failed to sync submodules");
+    await expect(checkout).rejects.not.toThrow("SYNCSECRET");
   });
 
   it("revParse returns hash", async () => {
@@ -419,6 +446,7 @@ describe("createGitClient checkout and revParse", () => {
       signal: controller.signal,
     });
     expect(seen).toEqual([
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,

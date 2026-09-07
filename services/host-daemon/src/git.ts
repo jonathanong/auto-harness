@@ -9,6 +9,7 @@ import {
   removeStaleIndexLock,
   resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
+import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -146,15 +147,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       if (co.exitCode !== 0) {
         throw gitFailure("Failed to checkout resolved ref", co.stderr);
       }
-      const submodules = await runGit(
-        runner,
-        cwd,
-        ["submodule", "update", "--recursive", "--checkout", "--force"],
-        signal,
-      );
-      if (submodules.exitCode !== 0) {
-        throw gitFailure("Failed to update submodules", submodules.stderr);
-      }
+      await resetInitializedSubmodules(runner, cwd, signal);
       const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
       if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
         throw new Error("Failed to verify detached checkout");
