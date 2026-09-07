@@ -8,11 +8,11 @@ type LiveWorktree = { status?: string; online?: boolean };
 /** Control-plane worktree status/online for this agent, keyed by worktree id. */
 export async function loadLiveWorktreesById(hostId: string): Promise<Record<string, LiveWorktree>> {
   try {
-    const data = await apiGet<{
-      items: Array<{ id: string; status?: string; online?: boolean }>;
-    }>(`/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`);
+    const worktrees = await apiGetAllPages<{ id: string; status?: string; online?: boolean }>(
+      `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`,
+    );
     const out: Record<string, LiveWorktree> = {};
-    for (const w of data.items ?? []) {
+    for (const w of worktrees) {
       out[w.id] = { status: w.status, online: w.online };
     }
     return out;

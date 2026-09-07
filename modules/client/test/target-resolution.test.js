@@ -19,7 +19,7 @@ test("resolves a providerName target to providerId before sending", async () => 
     timeout: 60,
   });
   assert.deepEqual(calls, [
-    "https://harness.test/api/v1/providers",
+    "https://harness.test/api/v1/providers?limit=100",
     "https://harness.test/api/v1/sessions",
   ]);
 });

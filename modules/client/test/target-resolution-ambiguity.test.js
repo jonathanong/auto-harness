@@ -89,3 +89,19 @@ test("lists commands by unwrapping the items envelope", async () => {
   });
   assert.deepEqual(await client.listCommands(), [{ id: "cmd-1", name: "claude-print" }]);
 });
+
+test("follows provider cursors until the catalog is complete", async () => {
+  const { client, calls } = makeClient({
+    "/api/v1/providers": () =>
+      Response.json(
+        calls.length === 1
+          ? { items: [{ id: "prov-1", name: "codex" }], nextCursor: "page/two" }
+          : { items: [{ id: "prov-2", name: "claude" }], nextCursor: null },
+      ),
+  });
+  assert.deepEqual(await client.listProviders(), [
+    { id: "prov-1", name: "codex" },
+    { id: "prov-2", name: "claude" },
+  ]);
+  assert.match(calls[1], /cursor=page%2Ftwo/);
+});
