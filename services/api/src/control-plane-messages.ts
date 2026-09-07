@@ -619,6 +619,19 @@ export async function handleHostMessageDurable(
       ) {
         const session = await loadDurableSession(state, storage, msg.sessionId);
         if (session?.attemptId && session.attemptId !== msg.attemptId) {
+          if (msg.type === "session:status") {
+            // The row has already moved past this exact attempt entirely —
+            // reassigned, or requeued to run again under a fresh attemptId —
+            // and this report can never affect it again on any host, current
+            // claim notwithstanding. Acknowledge so the daemon that sent it
+            // (which may since have lost its host claim, or never had one for
+            // this attempt at all) stops retrying a report that is moot
+            // rather than resending it every keepalive for up to 24h.
+            return {
+              ok: true,
+              sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+            };
+          }
           return { ok: true };
         }
         if (msg.type === "session:status" && noHostClaim && session?.attemptId === msg.attemptId) {

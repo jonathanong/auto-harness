@@ -173,6 +173,36 @@ describe("durable host-message fencing", () => {
     ).resolves.toEqual({ ok: false, error: "stale host connection" });
   });
 
+  it("acknowledges a session:status retry for an attempt the row has already moved past", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    // The session was requeued off attempt "a" and reassigned to a different
+    // host/connection under a fresh attempt "b" before the original daemon's
+    // retry for "a" was delivered.
+    const reassigned = { ...running(), hostId: "h2", attemptId: "b" };
+    state.sessions.set("s", reassigned);
+    state.storage = {
+      getSession: async () => reassigned,
+      getHostLock: async () => "connection-for-h2",
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+        },
+        "connection-for-h1",
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
+  });
+
   it("withholds the acknowledgement when a terminal status's conditional write loses a race", async () => {
     const state = createControlPlaneState({ now: () => "now" });
     const stillRunning = running();

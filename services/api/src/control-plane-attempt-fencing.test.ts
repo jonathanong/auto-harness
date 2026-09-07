@@ -501,6 +501,9 @@ describe("ControlPlane assignment-attempt fencing", () => {
         "old-connection",
       ),
     ).toEqual({ ok: true });
+    // The row has already moved past attempt-1 entirely (reassigned to
+    // host-2 under attempt-2), so this report is acknowledged as moot
+    // rather than left to retry for up to 24h.
     expect(
       await plane.handleHostMessageDurable(
         {
@@ -512,7 +515,10 @@ describe("ControlPlane assignment-attempt fencing", () => {
         },
         "old-connection",
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "sess-1", attemptId: first.session.attemptId! },
+    });
     expect(
       await plane.handleHostMessageDurable(
         {
