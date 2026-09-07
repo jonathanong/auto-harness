@@ -71,14 +71,18 @@ export class ControlPlaneHostsService {
   }): Promise<{ items: WorktreeRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listWorktreesPage === "function") {
-      const startKey = decodeStorageCursor(query.cursor);
+      const scope = { hostId: query.hostId, repositoryId: query.repositoryId };
+      const startKey = decodeStorageCursor(query.cursor, this.state.sessionCursorSecret, scope);
       const page = await storage.listWorktreesPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
         hostId: query.hostId,
         repositoryId: query.repositoryId,
       });
-      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+      return {
+        items: page.items,
+        nextCursor: encodeStorageCursor(page.nextKey, this.state.sessionCursorSecret, scope),
+      };
     }
     const records = worktrees
       .listWorktrees(this.state)

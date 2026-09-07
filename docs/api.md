@@ -923,7 +923,7 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
 #### `GET /worktrees`
 
 List a bounded page of worktrees. `limit` is 1–100 (default 50). `cursor` continues from the
-previous `nextCursor`. Optional `?hostId=<id>` and `?repositoryId=<id>` filter server-side —
+previous `nextCursor` and is HMAC-opaque (it is not decodable ExclusiveStartKey JSON). Optional `?hostId=<id>` and `?repositoryId=<id>` filter server-side —
 callers that only need one host's or one repository's worktrees should filter here rather than
 fetching the whole fleet and filtering in JS. A `repositoryId` filter Queries the repository GSI
 with `Limit`. Other list reads are a DynamoDB Scan with `Limit`; they do not load the full

@@ -37,16 +37,22 @@ describe("parseListPageQuery", () => {
 });
 
 describe("storage cursors", () => {
+  const secret = "test-storage-cursor-secret";
+
   it("round-trips an ExclusiveStartKey and rejects a tampered value", () => {
-    const encoded = encodeStorageCursor({ id: "wt-1" });
+    const encoded = encodeStorageCursor({ id: "wt-1" }, secret);
     expect(encoded).toMatch(/^s1\./);
-    expect(decodeStorageCursor(encoded)).toEqual({ id: "wt-1" });
-    expect(encodeStorageCursor(null)).toBeNull();
-    expect(decodeStorageCursor(null)).toBeUndefined();
-    expect(() => decodeStorageCursor("wt-1")).toThrow(InvalidListPageQueryError);
-    expect(() => decodeStorageCursor("s1.not-json")).toThrow(InvalidListPageQueryError);
+    expect(encoded).toContain(".");
+    expect(decodeStorageCursor(encoded, secret)).toEqual({ id: "wt-1" });
+    expect(encodeStorageCursor(null, secret)).toBeNull();
+    expect(decodeStorageCursor(null, secret)).toBeUndefined();
+    expect(() => decodeStorageCursor("wt-1", secret)).toThrow(InvalidListPageQueryError);
+    expect(() => decodeStorageCursor("s1.not-json", secret)).toThrow(InvalidListPageQueryError);
+    expect(() => decodeStorageCursor(`s1.${encoded!.slice(3)}`, "other-secret")).toThrow(
+      InvalidListPageQueryError,
+    );
     expect(() =>
-      decodeStorageCursor(`s1.${Buffer.from("[]", "utf8").toString("base64url")}`),
+      decodeStorageCursor(encoded, secret, { hostId: "host-a", repositoryId: null }),
     ).toThrow(InvalidListPageQueryError);
   });
 });
