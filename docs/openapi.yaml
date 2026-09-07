@@ -167,7 +167,7 @@ paths:
       summary: List the global provider catalog, for resolving a session target by provider name
       responses:
         "200":
-          description: Every provider visible to the caller
+          description: One bounded page of providers visible to the caller
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProviderList" }
@@ -178,7 +178,7 @@ paths:
       summary: List the global command catalog, for resolving a session target by command name
       responses:
         "200":
-          description: Every command visible to the caller
+          description: One bounded page of commands visible to the caller
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CommandList" }
@@ -529,11 +529,15 @@ components:
         failureCode: { type: string }
     ProviderList:
       type: object
-      required: [items]
+      required: [items, nextCursor]
       properties:
         items:
           type: array
+          maxItems: 100
           items: { $ref: "#/components/schemas/Provider" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
     Provider:
       type: object
       required: [id, name, defaultCommandId, createdAt, updatedAt]
@@ -555,11 +559,15 @@ components:
             currency: { type: string, pattern: "^[A-Z]{3}$" }
     CommandList:
       type: object
-      required: [items]
+      required: [items, nextCursor]
       properties:
         items:
           type: array
+          maxItems: 100
           items: { $ref: "#/components/schemas/Command" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
     Command:
       type: object
       required: [id, name, argv, appendPrompt, providerId, createdAt, updatedAt]

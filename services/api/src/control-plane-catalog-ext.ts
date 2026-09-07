@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- catalog CRUD and provider-account lease operations share one facade. */
+import { decodeStorageCursor, encodeStorageCursor, pageByKey } from "./control-plane-id-page.ts";
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -55,6 +56,27 @@ export class ControlPlaneCatalogService {
   async listProvidersDurable(): Promise<ProviderRecord[]> {
     await durableCatalog.listProvidersDurable(this.state);
     return providers.listProviders(this.state);
+  }
+
+  async listProvidersPageDurable(query: {
+    limit: number;
+    cursor: string | null;
+  }): Promise<{ items: ProviderRecord[]; nextCursor: string | null }> {
+    const storage = this.state.storage;
+    if (storage && typeof storage.listProvidersPage === "function") {
+      const startKey = decodeStorageCursor(query.cursor);
+      const page = await storage.listProvidersPage({
+        limit: query.limit,
+        ...(startKey ? { startKey } : {}),
+      });
+      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+    }
+    if (storage) await durableCatalog.listProvidersDurable(this.state);
+    return pageByKey(providers.listProviders(this.state), {
+      limit: query.limit,
+      cursor: query.cursor,
+      key: (provider) => provider.id,
+    });
   }
 
   updateProvider(
@@ -196,6 +218,27 @@ export class ControlPlaneCatalogService {
   async listCommandsDurable(): Promise<CommandRecord[]> {
     await durableCatalog.listCommandsDurable(this.state);
     return commands.listCommands(this.state);
+  }
+
+  async listCommandsPageDurable(query: {
+    limit: number;
+    cursor: string | null;
+  }): Promise<{ items: CommandRecord[]; nextCursor: string | null }> {
+    const storage = this.state.storage;
+    if (storage && typeof storage.listCommandsPage === "function") {
+      const startKey = decodeStorageCursor(query.cursor);
+      const page = await storage.listCommandsPage({
+        limit: query.limit,
+        ...(startKey ? { startKey } : {}),
+      });
+      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+    }
+    if (storage) await durableCatalog.listCommandsDurable(this.state);
+    return pageByKey(commands.listCommands(this.state), {
+      limit: query.limit,
+      cursor: query.cursor,
+      key: (command) => command.id,
+    });
   }
 
   updateCommand(
