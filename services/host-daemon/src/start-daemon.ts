@@ -358,13 +358,17 @@ function startDaemonKeepalive(
   nowMs: () => number = Date.now,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
-    // loop.keepalive() resolving means the local ws.send() completed, not that
-    // the control plane processed or acknowledged the frame -- the wire
-    // protocol has no keepalive ack. A wedged-but-open socket still resolves
-    // this, so callers must not read it as proof of a live connection.
+    // loop.keepalive() resolving true means the local ws.send() completed for
+    // an actual host:keepalive frame, not that the control plane processed or
+    // acknowledged it -- the wire protocol has no keepalive ack. A wedged-but-
+    // open socket still resolves this, so callers must not read it as proof
+    // of a live connection. It resolves false on the provider-readiness-changed
+    // branch, which only re-registers and sends no keepalive frame at all.
     void loop
       .keepalive()
-      .then(() => onSent(nowMs()))
+      .then((sent) => {
+        if (sent) onSent(nowMs());
+      })
       .catch((err: unknown) => {
         error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
       });

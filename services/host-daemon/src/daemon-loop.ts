@@ -340,7 +340,8 @@ export class DaemonLoop {
     if (inventoryPolicyBlocked) this.inventoryPolicyDrainPublished = true;
     this.advertisedProviderAccountReadiness = JSON.stringify(readiness);
   }
-  async keepalive(): Promise<void> {
+  /** Resolves true only when an actual host:keepalive frame was sent this tick. */
+  async keepalive(): Promise<boolean> {
     if (
       JSON.stringify(providerAccountReadiness(this.executionProfiles)) !==
         this.advertisedProviderAccountReadiness &&
@@ -348,7 +349,7 @@ export class DaemonLoop {
     ) {
       await this.register();
       this.armKeepaliveStallTimer();
-      return;
+      return false;
     }
     this.retryPendingTerminalStatuses();
     // Bounded: an outbound write stalled on a connection the transport still
@@ -368,6 +369,7 @@ export class DaemonLoop {
       this.timers,
     );
     this.armKeepaliveStallTimer();
+    return true;
   }
   /**
    * (Re)start the deadline for "a keepalive must land within this window."

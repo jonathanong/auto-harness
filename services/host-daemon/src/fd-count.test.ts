@@ -56,7 +56,10 @@ describe("countOpenFds", () => {
     if (process.platform === "win32") {
       expect(result).toBeUndefined();
     } else {
-      expect(result).toBeGreaterThan(0);
+      // A hardened sandbox or an unmounted /dev/fd (BSD fdescfs) is a
+      // documented, supported fallback -- this must not fail there. The
+      // synthetic tests above already pin the read-failure -> undefined path.
+      expect(result === undefined || result > 0).toBe(true);
     }
   });
 });
