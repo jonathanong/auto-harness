@@ -47,11 +47,13 @@ describe("catalog storage pages", () => {
   });
 
   it("returns a storage page and rejects an invalid limit on GET /commands", async () => {
-    const listCommandsPage = vi.fn(async () => ({
+    const listCommandsFromStorage = vi.fn(async () => ({
       items: [{ id: "c-1" }],
       nextKey: { id: "c-1" },
     }));
-    const plane = new ControlPlane({ storage: { listCommandsPage } as never });
+    const plane = new ControlPlane({
+      storage: { listCommandsPage: listCommandsFromStorage } as never,
+    });
     const { handler } = createLocalApp({ plane });
     const ok = await invokeHandler(handler as never, "GET", "/api/v1/commands?limit=1");
     expect(ok.status).toBe(200);
@@ -63,8 +65,10 @@ describe("catalog storage pages", () => {
       (await invokeHandler(handler as never, "GET", "/api/v1/commands?limit=foo")).status,
     ).toBe(400);
 
-    const listProvidersPage = vi.fn(async () => ({ items: [{ id: "p-1" }], nextKey: null }));
-    const providers = new ControlPlane({ storage: { listProvidersPage } as never });
+    const listProvidersFromStorage = vi.fn(async () => ({ items: [{ id: "p-1" }], nextKey: null }));
+    const providers = new ControlPlane({
+      storage: { listProvidersPage: listProvidersFromStorage } as never,
+    });
     const app = createLocalApp({ plane: providers });
     expect(
       (await invokeHandler(app.handler as never, "GET", "/api/v1/providers?limit=foo")).status,
