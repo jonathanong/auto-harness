@@ -3,34 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
-
-type PendingMap = Map<
-  string,
-  { message: HostToServerMessage; firstAttemptedAtMs: number; sending: boolean }
->;
-
-function pendingTerminalStatusOf(loop: DaemonLoop): PendingMap {
-  return (loop as unknown as { pendingTerminalStatus: PendingMap }).pendingTerminalStatus;
-}
-
-const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = {
-  type: "session:status",
-  sessionId: "done-session",
-  worktreeId: null,
-  attemptId: "attempt-1",
-  status: "completed",
-  exitCode: 0,
-};
-
-async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
-async function flushMacrotask(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve));
-}
+import {
+  createAcknowledgingLoopbackTransport,
+  flushMacrotask,
+  flushMicrotasks,
+  makeRepo,
+  pendingTerminalStatusOf,
+  terminalStatusFixture as statusMessage,
+} from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop terminal status retry", () => {
   it("reports a session with an unacknowledged terminal status as still owned, resends it on keepalive, and stops once acked", async () => {

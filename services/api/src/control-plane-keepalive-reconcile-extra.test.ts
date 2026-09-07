@@ -2,26 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-
-const NOW = "2026-01-01T00:00:00.000Z";
-
-function connectionRecord() {
-  return {
-    connectionId: "c",
-    type: "host" as const,
-    hostId: "h",
-    connectedAt: NOW,
-    lastHeartbeatAt: NOW,
-    commandProfiles: [],
-    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
-  };
-}
-
-function seedConnectedHost(state: ReturnType<typeof createControlPlaneState>): void {
-  state.hostConnection.set("h", "c");
-  state.connections.set("c", connectionRecord());
-}
+import {
+  NOW,
+  connectionRecord,
+  seedConnectedHost,
+} from "./control-plane-keepalive-reconcile-test-helpers.ts";
 
 describe("keepalive-driven session reconciliation (local mode and scheduled sessions)", () => {
   it("reconciles a keepalive-omitted session in local (non-durable) mode too", async () => {

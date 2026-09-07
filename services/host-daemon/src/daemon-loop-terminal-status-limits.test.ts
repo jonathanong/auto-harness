@@ -3,25 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
-
-type PendingMap = Map<
-  string,
-  { message: HostToServerMessage; firstAttemptedAtMs: number; sending: boolean }
->;
-
-function pendingTerminalStatusOf(loop: DaemonLoop): PendingMap {
-  return (loop as unknown as { pendingTerminalStatus: PendingMap }).pendingTerminalStatus;
-}
-
-const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = {
-  type: "session:status",
-  sessionId: "done-session",
-  worktreeId: null,
-  attemptId: "attempt-1",
-  status: "completed",
-  exitCode: 0,
-};
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+  pendingTerminalStatusOf,
+  terminalStatusFixture as statusMessage,
+} from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop terminal status bookkeeping limits", () => {
   it("does not double-report an attempt present in both inflight and pendingTerminalStatus", async () => {

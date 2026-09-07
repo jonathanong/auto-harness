@@ -2,38 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-
-const NOW = "2026-01-01T00:00:00.000Z";
-
-function connectionRecord() {
-  return {
-    connectionId: "c",
-    type: "host" as const,
-    hostId: "h",
-    connectedAt: NOW,
-    lastHeartbeatAt: NOW,
-    commandProfiles: [],
-    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
-    protocolVersion: 1,
-  };
-}
-
-function seedConnectedHost(state: ReturnType<typeof createControlPlaneState>): void {
-  state.hostConnection.set("h", "c");
-  state.connections.set("c", connectionRecord());
-}
+import {
+  NOW,
+  busyWorktreeFixture,
+  runningSessionFixture,
+  seedConnectedHost,
+} from "./control-plane-keepalive-reconcile-test-helpers.ts";
 
 describe("keepalive-driven session reconciliation", () => {
   it("requeues a session the daemon no longer reports as running", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     seedConnectedHost(state);
-    const session = { id: "s", hostId: "h", worktreeId: "w", status: "running", attemptId: "a" };
-    const worktree = {
-      id: "w",
-      hostId: "h",
-      status: "busy",
-      currentSessionId: "s",
-    };
+    const session = runningSessionFixture();
+    const worktree = busyWorktreeFixture();
     let requeueOptions: Record<string, unknown> | undefined;
     state.storage = {
       getHostLock: async () => "c",
@@ -63,13 +44,8 @@ describe("keepalive-driven session reconciliation", () => {
   it("requests reassignment immediately after a keepalive-driven requeue", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     seedConnectedHost(state);
-    const session = { id: "s", hostId: "h", worktreeId: "w", status: "running", attemptId: "a" };
-    const worktree = {
-      id: "w",
-      hostId: "h",
-      status: "busy",
-      currentSessionId: "s",
-    };
+    const session = runningSessionFixture();
+    const worktree = busyWorktreeFixture();
     let sweptQueue = 0;
     state.storage = {
       getHostLock: async () => "c",
@@ -101,13 +77,8 @@ describe("keepalive-driven session reconciliation", () => {
   it("leaves a session alone when the keepalive still reports it as running", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     seedConnectedHost(state);
-    const session = { id: "s", hostId: "h", worktreeId: "w", status: "running", attemptId: "a" };
-    const worktree = {
-      id: "w",
-      hostId: "h",
-      status: "busy",
-      currentSessionId: "s",
-    };
+    const session = runningSessionFixture();
+    const worktree = busyWorktreeFixture();
     let requeued = false;
     state.storage = {
       getHostLock: async () => "c",
