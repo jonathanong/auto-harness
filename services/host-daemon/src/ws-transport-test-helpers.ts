@@ -28,6 +28,12 @@ export class FakeSocket extends EventEmitter {
     this.emit("close");
   }
 
+  /** Real `ws` skips the closing handshake and destroys the socket immediately. */
+  terminate(): void {
+    this.readyState = WebSocket.CLOSED;
+    this.emit("close");
+  }
+
   server(message: Record<string, unknown>): void {
     this.emit("message", Buffer.from(JSON.stringify(message)));
   }
@@ -53,6 +59,20 @@ export class FakeSocket extends EventEmitter {
     this.delayed?.();
     this.delayed = undefined;
   }
+}
+
+/** Shared across ws-transport test files to avoid duplicating this fixture shape. */
+export function register(commandProfiles: string[] = []) {
+  return { type: "host:register" as const, hostId: "a1", worktrees: [], commandProfiles };
+}
+
+/** Shared across ws-transport test files to avoid duplicating this fixture shape. */
+export function registered(connectionId?: string) {
+  return {
+    type: "host:registered" as const,
+    hostId: "a1",
+    ...(connectionId !== undefined ? { connectionId } : {}),
+  };
 }
 
 export function transportFor(sockets: FakeSocket[]) {

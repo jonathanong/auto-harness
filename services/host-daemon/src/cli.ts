@@ -33,7 +33,7 @@ export { printUsage } from "./cli-usage.ts";
  * Upper bound on graceful shutdown. In-flight CLIs are drained, not killed, so this is
  * generous — but finite, so a wedged daemon can still be restarted.
  */
-function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
+export function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.HARNESS_SHUTDOWN_TIMEOUT_MS;
   const parsed = raw === undefined ? Number.NaN : Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 60_000;
@@ -72,6 +72,16 @@ export type RunSessionDeps = {
   readFile: (path: string) => string;
   log: (msg: string) => void;
   error: (msg: string) => void;
+  /**
+   * The three structured JSON documents this CLI prints on stdout — `status`,
+   * `status --config-only`, and `run-session`'s terminal result — are
+   * documented, machine-readable output (AGENTS.md). `log` timestamps every
+   * line for daemon lifecycle/session-stream readability, which would
+   * otherwise corrupt these by prefixing text before the opening `{`. Kept
+   * separate rather than made conditional inside `log` so the distinction is
+   * visible at each call site.
+   */
+  logResult: (payload: string) => void;
   /** Passed straight through to onShutdownSignal; defaults to the real process there. */
   process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
   installService: (opts: HostServiceOpts) => number;
@@ -98,6 +108,7 @@ async function settleWithin<T>(
   return new Promise((finish) => {
     let settled = false;
     const timer = setTimeout(() => {
+      /* v8 ignore next -- clearTimeout below always runs strictly before this callback could fire once settled */
       if (settled) return;
       settled = true;
       finish({ state: "timed_out" });
@@ -121,15 +132,45 @@ async function settleWithin<T>(
   });
 }
 
-export function createDefaultRunSessionDeps(): RunSessionDeps {
+/**
+ * Every daemon lifecycle line — connect, reconnect, register, keepalive
+ * failure — and every streamed session log chunk go through this one sink.
+ * None of it carried a timestamp: reconstructing an outage's timeline meant
+ * inferring order from log line numbers and interleaved session output alone.
+ *
+ * Prefixes every physical line rather than collapsing embedded CR/LF into one:
+ * this sink also carries genuinely multi-line trusted content (printUsage's
+ * static help text, coalesced multi-line session output), which a blanket
+ * newline replacement would squash into one unreadable line. Log Forge
+ * (CWE-117) is still defeated — an embedded CR/LF in content this function
+ * didn't originate itself (an upstream error message, streamed session
+ * output) becomes its own additional, but still real-timestamped, line: it
+ * cannot claim a false time or merge into looking like part of a different
+ * entry, since every resulting line carries the one `now()` this call
+ * actually ran at, not anything the input controls.
+ */
+function timestamped(msg: string, now: () => string): string {
+  const at = now();
+  return msg
+    .split(/\r\n|\r|\n/)
+    .map((line) => `${at} ${line.replace(/[\r\n]/g, "")}`)
+    .join("\n");
+}
+
+export function createDefaultRunSessionDeps(
+  now: () => string = () => new Date().toISOString(),
+): RunSessionDeps {
   return {
     loadConfig: loadDaemonConfig,
     readFile: (path) => readFileSync(path, "utf8"),
     log: (msg) => {
-      console.log(msg);
+      console.log(timestamped(msg, now));
     },
     error: (msg) => {
-      console.error(msg);
+      console.error(timestamped(msg, now));
+    },
+    logResult: (payload) => {
+      console.log(payload);
     },
     ensureReady: (config) => ensureDaemonReady(config),
     runSession: (config, assign, onLog, childEnvSource) =>
@@ -297,7 +338,7 @@ export async function runCli(
         deps.error("Cannot load daemon configuration");
         return 1;
       }
-      deps.log(JSON.stringify(configuredInventory(config), null, 2));
+      deps.logResult(JSON.stringify(configuredInventory(config), null, 2));
       return 0;
     }
 
@@ -337,7 +378,7 @@ export async function runCli(
       };
     }
     const ready = statusIsReady(service, host);
-    deps.log(
+    deps.logResult(
       JSON.stringify(
         {
           status: ready ? "ok" : "failed",
@@ -366,7 +407,7 @@ export async function runCli(
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
     await deps.ensureReady(config);
     const result = await deps.runSession(config, assign, deps.log, resolvedEnv);
-    deps.log(
+    deps.logResult(
       JSON.stringify({
         status: result.status,
         exitCode: result.exitCode,
@@ -421,6 +462,12 @@ export async function runCli(
           },
           {
             timeoutMs: shutdownTimeoutMs(resolvedEnv),
+            // Genuinely exercised by cli-start-signal.test.ts's "registers real
+            // signal handlers" case (deps.process is injected and reached here —
+            // the test only passes because it is), but that branch still reports
+            // 0 hits under v8 coverage; a `v8 ignore` comment here does not
+            // suppress it either. Left as-is rather than restructuring further
+            // to chase what looks like a coverage-tool measurement artifact.
             ...(deps.process ? { process: deps.process } : {}),
             logger: shutdownLoggerFor(deps.error),
           },
@@ -454,6 +501,7 @@ export function setExitCode(code: number): void {
   process.exitCode = code;
 }
 
+/* v8 ignore next 4 -- only true under a real `node cli.ts` process entrypoint, never on import */
 if (isDirectInvocation(process.argv[1])) {
   installCrashLogging();
   void main().then(setExitCode);
