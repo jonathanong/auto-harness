@@ -71,9 +71,17 @@ export function pageByKey<T>(
 
 const STORAGE_CURSOR_PREFIX = "s1.";
 
-export type StorageCursorScope = { hostId: string | null; repositoryId: string | null };
+export type StorageCursorScope = {
+  hostId: string | null;
+  repositoryId: string | null;
+  kind?: string | null;
+};
 
 const emptyStorageScope: StorageCursorScope = { hostId: null, repositoryId: null };
+
+function storageCursorKind(scope: StorageCursorScope): string | null {
+  return scope.kind ?? null;
+}
 const STORAGE_CURSOR_IV_LENGTH = 12;
 const STORAGE_CURSOR_TAG_LENGTH = 16;
 
@@ -113,7 +121,12 @@ export function encodeStorageCursor(
 ): string | null {
   if (!key) return null;
   return encryptStorageCursor(
-    JSON.stringify({ key, hostId: scope.hostId, repositoryId: scope.repositoryId }),
+    JSON.stringify({
+      key,
+      hostId: scope.hostId,
+      repositoryId: scope.repositoryId,
+      kind: storageCursorKind(scope),
+    }),
     secret,
   );
 }
@@ -136,11 +149,16 @@ export function decodeStorageCursor(
       key?: unknown;
       hostId?: string | null;
       repositoryId?: string | null;
+      kind?: string | null;
     };
     if (!body.key || typeof body.key !== "object" || Array.isArray(body.key)) {
       throw new InvalidListPageQueryError("invalid or mismatched list cursor");
     }
-    if (body.hostId !== scope.hostId || body.repositoryId !== scope.repositoryId) {
+    if (
+      body.hostId !== scope.hostId ||
+      body.repositoryId !== scope.repositoryId ||
+      (body.kind ?? null) !== storageCursorKind(scope)
+    ) {
       throw new InvalidListPageQueryError("invalid or mismatched list cursor");
     }
     return body.key as Record<string, unknown>;

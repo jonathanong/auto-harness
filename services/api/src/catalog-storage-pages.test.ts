@@ -48,12 +48,16 @@ describe("catalog storage pages", () => {
   });
 
   it("returns a storage page and rejects an invalid limit on GET /commands", async () => {
-    const listCommandsFromStorage = vi.fn(async () => ({
-      items: [{ id: "c-1" }],
-      nextKey: { id: "c-1" },
-    }));
+    const listCommandsFromStorage = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [{ id: "c-1" }], nextKey: { id: "c-1" } })
+      .mockResolvedValueOnce({ items: [{ id: "c-2" }], nextKey: null });
+    const listProvidersFromStorage = vi.fn(async () => ({ items: [{ id: "p-1" }], nextKey: null }));
     const plane = new ControlPlane({
-      storage: { listCommandsPage: listCommandsFromStorage } as never,
+      storage: {
+        listCommandsPage: listCommandsFromStorage,
+        listProvidersPage: listProvidersFromStorage,
+      } as never,
     });
     const { handler } = createLocalApp({ plane });
     const ok = await invokeHandler(handler as never, "GET", "/api/v1/commands?limit=1");
@@ -62,21 +66,25 @@ describe("catalog storage pages", () => {
       items: [{ id: "c-1" }],
       nextCursor: expect.stringMatching(/^s1\./),
     });
+    const next = await invokeHandler(
+      handler as never,
+      "GET",
+      `/api/v1/commands?limit=1&cursor=${ok.json.nextCursor}`,
+    );
+    expect(next.status).toBe(200);
+    expect(next.json).toMatchObject({ items: [{ id: "c-2" }], nextCursor: null });
     expect(
       (await invokeHandler(handler as never, "GET", "/api/v1/commands?limit=foo")).status,
     ).toBe(400);
-
-    const listProvidersFromStorage = vi.fn(async () => ({ items: [{ id: "p-1" }], nextKey: null }));
-    const providers = new ControlPlane({
-      storage: { listProvidersPage: listProvidersFromStorage } as never,
-    });
-    const app = createLocalApp({ plane: providers });
     expect(
-      (await invokeHandler(app.handler as never, "GET", "/api/v1/providers?limit=foo")).status,
+      (await invokeHandler(handler as never, "GET", "/api/v1/providers?limit=foo")).status,
     ).toBe(400);
     await expect(
-      invokeHandler(app.handler as never, "GET", "/api/v1/providers"),
-    ).resolves.toMatchObject({ status: 200, json: { items: [{ id: "p-1" }], nextCursor: null } });
+      invokeHandler(handler as never, "GET", "/api/v1/providers"),
+    ).resolves.toMatchObject({
+      status: 200,
+      json: { items: [{ id: "p-1" }], nextCursor: null },
+    });
   });
 
   it("rejects a storage cursor that is not a catalog id key", async () => {
@@ -88,16 +96,18 @@ describe("catalog storage pages", () => {
       } as never,
     });
     const secret = plane.state.sessionCursorSecret;
+    const commandsScope = { hostId: null, repositoryId: null, kind: "commands" as const };
+    const providersScope = { hostId: null, repositoryId: null, kind: "providers" as const };
     await expect(
       plane.listCommandsPageDurable({
         limit: 1,
-        cursor: encodeStorageCursor({}, secret),
+        cursor: encodeStorageCursor({}, secret, commandsScope),
       }),
     ).rejects.toThrow(InvalidListPageQueryError);
     await expect(
       plane.listProvidersPageDurable({
         limit: 1,
-        cursor: encodeStorageCursor({ id: 1 }, secret),
+        cursor: encodeStorageCursor({ id: 1 }, secret, providersScope),
       }),
     ).rejects.toThrow(InvalidListPageQueryError);
     expect(
@@ -105,10 +115,14 @@ describe("catalog storage pages", () => {
         await invokeHandler(
           createLocalApp({ plane }).handler as never,
           "GET",
-          `/api/v1/commands?cursor=${encodeStorageCursor({ id: "" }, secret)}`,
+          `/api/v1/commands?cursor=${encodeStorageCursor({ id: "" }, secret, commandsScope)}`,
         )
       ).status,
     ).toBe(400);
+    const commandsCursor = encodeStorageCursor({ id: "c-1" }, secret, commandsScope);
+    await expect(
+      plane.listProvidersPageDurable({ limit: 1, cursor: commandsCursor }),
+    ).rejects.toThrow(InvalidListPageQueryError);
     expect(listCommandsFromStorage).not.toHaveBeenCalled();
   });
 });

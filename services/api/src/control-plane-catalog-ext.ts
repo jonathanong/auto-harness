@@ -4,6 +4,7 @@ import {
   encodeStorageCursor,
   InvalidListPageQueryError,
   pageByKey,
+  type StorageCursorScope,
 } from "./control-plane-id-page.ts";
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
@@ -21,11 +22,16 @@ import {
   listProviderAccountLeaseStates,
 } from "./control-plane-provider-account-leases.ts";
 
+function catalogCursorScope(kind: "commands" | "providers"): StorageCursorScope {
+  return { hostId: null, repositoryId: null, kind };
+}
+
 function catalogPageStartKey(
   cursor: string | null,
   secret: string,
+  kind: "commands" | "providers",
 ): Record<string, unknown> | undefined {
-  const startKey = decodeStorageCursor(cursor, secret);
+  const startKey = decodeStorageCursor(cursor, secret, catalogCursorScope(kind));
   if (!startKey) return undefined;
   if (typeof startKey.id !== "string" || startKey.id === "") {
     throw new InvalidListPageQueryError("invalid or mismatched list cursor");
@@ -81,14 +87,22 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: ProviderRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listProvidersPage === "function") {
-      const startKey = catalogPageStartKey(query.cursor, this.state.sessionCursorSecret);
+      const startKey = catalogPageStartKey(
+        query.cursor,
+        this.state.sessionCursorSecret,
+        "providers",
+      );
       const page = await storage.listProvidersPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
       });
       return {
         items: page.items,
-        nextCursor: encodeStorageCursor(page.nextKey, this.state.sessionCursorSecret),
+        nextCursor: encodeStorageCursor(
+          page.nextKey,
+          this.state.sessionCursorSecret,
+          catalogCursorScope("providers"),
+        ),
       };
     }
     if (storage) await durableCatalog.listProvidersDurable(this.state);
@@ -246,14 +260,22 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: CommandRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listCommandsPage === "function") {
-      const startKey = catalogPageStartKey(query.cursor, this.state.sessionCursorSecret);
+      const startKey = catalogPageStartKey(
+        query.cursor,
+        this.state.sessionCursorSecret,
+        "commands",
+      );
       const page = await storage.listCommandsPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
       });
       return {
         items: page.items,
-        nextCursor: encodeStorageCursor(page.nextKey, this.state.sessionCursorSecret),
+        nextCursor: encodeStorageCursor(
+          page.nextKey,
+          this.state.sessionCursorSecret,
+          catalogCursorScope("commands"),
+        ),
       };
     }
     if (storage) await durableCatalog.listCommandsDurable(this.state);
