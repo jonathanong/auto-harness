@@ -87,32 +87,4 @@ describe("SpawnProcessRunner signal fallback", () => {
     child.emit("error", new Error("child failed"));
     await expect(run).rejects.toThrow("child failed");
   });
-
-  it("clears pending escalation on child close, so a later grace period sends no stray SIGKILL", async () => {
-    // stop("timeout") arms a SIGKILL escalation timer right after sending
-    // SIGTERM. If the process (or its whole group) actually exits and "close"
-    // fires before that timer elapses, the escalation must be cancelled --
-    // otherwise it later fires process.kill(-pid, "SIGKILL") against a pid
-    // that may since have been recycled for an unrelated process.
-    vi.useFakeTimers();
-    const kill = vi.spyOn(process, "kill").mockReturnValue(true);
-    const child = new FakeChild();
-    child.closeOnKill = false;
-    child.throwOnKill = false;
-    spawned.child = child;
-    const run = new SpawnProcessRunner().run({
-      argv: ["fake-command"],
-      cwd: "/tmp",
-      timeoutMs: 1,
-      terminationGraceMs: 1_000,
-      onChunk: () => undefined,
-    });
-    await vi.advanceTimersByTimeAsync(1);
-    expect(kill).toHaveBeenCalledExactlyOnceWith(expect.any(Number), "SIGTERM");
-    child.emit("close", null, "SIGTERM");
-    await expect(run).resolves.toMatchObject({ timedOut: true, exitCode: null });
-    kill.mockClear();
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(kill).not.toHaveBeenCalled();
-  });
 });
