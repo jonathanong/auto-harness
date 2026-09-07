@@ -122,6 +122,27 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
+  it("emits a periodic liveness log line reflecting live transport state", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-liveness",
+      apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+    });
+    const daemon = await startDaemon({ config, log: (line) => lines.push(line) });
+    try {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      const liveness = lines.filter((line) => line.startsWith("daemon liveness:"));
+      expect(liveness).toHaveLength(1);
+      expect(liveness[0]).toContain("registered=true");
+      expect(liveness[0]).toContain("queued=0");
+    } finally {
+      daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
   it("keeps the legacy install root when host update config moves its staging root", async () => {
     const harness = await acceptingServer();
     const { config, cleanup } = await makeRepo();

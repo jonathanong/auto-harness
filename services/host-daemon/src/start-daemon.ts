@@ -3,7 +3,9 @@ import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, HostInventoryPolicyError, inventoryFingerprint } from "./bootstrap.ts";
+import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
+import { startLivenessLog } from "./liveness-log.ts";
 import { RepeatedLogSuppressor } from "./repeated-log-suppressor.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import {
@@ -232,6 +234,7 @@ type DaemonUpdateContext = {
 type ConnectedDaemon = {
   loop: DaemonLoop;
   wsUrl: string;
+  transport: DaemonTransport;
 };
 
 async function prepareDaemonUpdater(
@@ -296,7 +299,7 @@ async function connectDaemon(
     loop.stop();
     throw reason;
   }
-  return { loop, wsUrl };
+  return { loop, wsUrl, transport };
 }
 
 async function acknowledgeDaemonUpdateBoot(
@@ -351,11 +354,24 @@ function startOptionalInventoryPoll(
 function startDaemonKeepalive(
   loop: DaemonLoop,
   error: (line: string) => void,
+  onSent: (atMs: number) => void,
+  nowMs: () => number = Date.now,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
-    void loop.keepalive().catch((err: unknown) => {
-      error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
+    // loop.keepalive() resolving true means the local ws.send() completed for
+    // an actual host:keepalive frame, not that the control plane processed or
+    // acknowledged it -- the wire protocol has no keepalive ack. A wedged-but-
+    // open socket still resolves this, so callers must not read it as proof
+    // of a live connection. It resolves false on the provider-readiness-changed
+    // branch, which only re-registers and sends no keepalive frame at all.
+    void loop
+      .keepalive()
+      .then((sent) => {
+        if (sent) onSent(nowMs());
+      })
+      .catch((err: unknown) => {
+        error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
   }, 20_000);
 }
 
@@ -391,6 +407,7 @@ function daemonStop(
   keepalive: ReturnType<typeof setInterval>,
   stopInventoryPoll: () => Promise<void>,
   stopUpdatePoll: () => Promise<void>,
+  stopLivenessLog: () => void,
 ): () => Promise<void> {
   return async () => {
     // Keep this channel alive until the fenced drain commits. If it fails,
@@ -399,6 +416,7 @@ function daemonStop(
     await loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);
+    stopLivenessLog();
     await loop.waitForIdle();
     loop.stop();
   };
@@ -415,7 +433,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
   const update = await prepareDaemonUpdater(options, log, error);
-  const { loop, wsUrl } = await connectDaemon(options, log, error);
+  const { loop, wsUrl, transport } = await connectDaemon(options, log, error);
   await acknowledgeDaemonUpdateBoot(update, loop, log, error);
   log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
@@ -426,10 +444,19 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
         : ` (${repoCount} repo(s))`),
   );
 
+  let lastKeepaliveSentAtMs: number | undefined;
   const stopInventoryPoll = startOptionalInventoryPoll(options, loop, log, error);
-  const keepalive = startDaemonKeepalive(loop, error);
+  const keepalive = startDaemonKeepalive(loop, error, (atMs) => {
+    lastKeepaliveSentAtMs = atMs;
+  });
   const stopUpdatePoll = startOptionalUpdatePoll(update, loop, log, error);
-  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll);
+  const stopLivenessLog = startLivenessLog({
+    isRegistered: () => transport.isRegistered?.() ?? false,
+    lastKeepaliveSentAtMs: () => lastKeepaliveSentAtMs,
+    queuedCount: () => transport.queuedCount?.() ?? 0,
+    log,
+  });
+  const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll, stopLivenessLog);
 
   if (options.runUntil) {
     await options.runUntil;

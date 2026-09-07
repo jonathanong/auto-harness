@@ -932,6 +932,28 @@ ERROR: Failed to connect to wss://...
 - Validate API key and `boundHostId` match `hostId`
 - Outbound TCP 443 / corporate proxy
 
+### Liveness log line
+
+Every 5 minutes the daemon logs one summary line so a wedged-but-not-crashed process
+stays visible without cross-referencing other signals:
+
+```text
+daemon liveness: registered=true last keepalive sent=4213ms ago queued=0 open fds=57
+```
+
+- `registered` — whether the current WebSocket connection has completed `host:register`.
+  `false` for more than a reconnect cycle or two means the daemon is stuck disconnected.
+- `last keepalive sent` — ms since the daemon's own `host:keepalive` write last completed,
+  or `none yet`. This is **local send completion, not a control-plane acknowledgement** —
+  the wire protocol has no keepalive ack, so a socket that looks open but is actually wedged
+  can still advance this value. Treat it as "the daemon's own loop is still ticking," not
+  proof the control plane is reachable.
+- `queued` — outbound frames buffered but not yet delivered. Sustained growth suggests a
+  stalled or dead connection the daemon hasn't yet given up on.
+- `open fds` — best-effort open file descriptor count (`/proc/self/fd` on Linux, `/dev/fd`
+  on macOS/BSD), or `n/a` on Windows or if the read fails. Steady growth across sessions with
+  no corresponding drop in queued sessions points at a leak, not load.
+
 ### Git worktree errors
 
 ```text
