@@ -747,6 +747,33 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("swallows a failed host:keepalive-ack delivery instead of failing the invocation", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    const error = new Error("management unavailable");
+    fixture.management.send.mockRejectedValueOnce(error);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(
+        runtime.websocket({
+          body: JSON.stringify({
+            type: "host:keepalive",
+            hostId: "host-1",
+            at: "2026-08-12T00:00:20.000Z",
+          }),
+          requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 200 });
+      expect(consoleError).toHaveBeenCalledWith(
+        "failed to deliver API Gateway WebSocket message",
+        error,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("refreshes durable authentication before accepting a new socket", async () => {
     const fixture = runtimeFixture();
     const refreshAuth = vi.fn(async () => undefined);
