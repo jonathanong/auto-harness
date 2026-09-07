@@ -60,6 +60,23 @@ describe("control catalog list routes", () => {
     expect(html).toContain("GET /api/v1/commands");
   });
 
+  it("links to the next command page when the API returns a cursor", async () => {
+    stubApi({
+      "/api/v1/commands": {
+        items: [
+          { id: "cmd-1", name: "run", argv: ["tool"], providerId: null, appendPrompt: false },
+        ],
+        nextCursor: "page/two",
+      },
+      "/api/v1/providers": { items: [] },
+    });
+    const html = await renderPage(
+      CommandsPage({ searchParams: Promise.resolve({ cursor: "page/one" }) }),
+    );
+    expect(html).toContain('data-pw="pagination-next"');
+    expect(html).toContain("cursor=page%2Ftwo");
+  });
+
   it("renders providers with account, cooldown, and command counts", async () => {
     stubApi({
       "/api/v1/providers": {

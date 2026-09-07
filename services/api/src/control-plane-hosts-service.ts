@@ -119,12 +119,21 @@ export class ControlPlaneHostsService {
       const inventory = await storage.getHostInventory(hostId);
       if (inventory) this.state.hostInventories.set(hostId, { ...inventory });
       else this.state.hostInventories.delete(hostId);
-      const connectionId = storage.getHostLock ? await storage.getHostLock(hostId) : null;
-      if (connectionId && storage.getConnection) {
-        const connection = await storage.getConnection(connectionId);
-        if (connection?.type === "host") {
-          this.state.connections.set(connection.connectionId, { ...connection });
-          this.state.hostConnection.set(hostId, connection.connectionId);
+      if (storage.getHostLock) {
+        const previousConnectionId = this.state.hostConnection.get(hostId);
+        const connectionId = await storage.getHostLock(hostId);
+        let nextConnectionId: string | undefined;
+        if (connectionId && storage.getConnection) {
+          const connection = await storage.getConnection(connectionId);
+          if (connection?.type === "host") {
+            this.state.connections.set(connection.connectionId, { ...connection });
+            this.state.hostConnection.set(hostId, connection.connectionId);
+            nextConnectionId = connection.connectionId;
+          }
+        }
+        if (!nextConnectionId) this.state.hostConnection.delete(hostId);
+        if (previousConnectionId && previousConnectionId !== nextConnectionId) {
+          this.state.connections.delete(previousConnectionId);
         }
       }
     }

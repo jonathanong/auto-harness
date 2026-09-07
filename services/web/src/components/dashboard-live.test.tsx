@@ -12,6 +12,8 @@ const emptySnapshot: DashboardSnapshot = {
   sessions: [],
   hosts: [],
   worktrees: [],
+  hostsAtLimit: false,
+  worktreesAtLimit: false,
   running: { count: 0, atLimit: false },
   queued: { count: 0, atLimit: false },
 };
@@ -71,6 +73,34 @@ describe("DashboardLive", () => {
     expect(field(view.container, "stat-queued-value").textContent).toBe("0");
   });
 
+  it("marks host and worktree totals as lower bounds when a nextCursor is present", async () => {
+    vi.useFakeTimers();
+    const request = createRequestFake(
+      json({ items: [] }),
+      json({
+        items: Array.from({ length: 100 }, (_, i) => ({ hostId: `h-${i}`, online: true })),
+        nextCursor: "more-hosts",
+      }),
+      json({
+        items: Array.from({ length: 100 }, (_, i) => ({
+          id: `wt-${i}`,
+          online: true,
+          status: "idle",
+        })),
+        nextCursor: "more-worktrees",
+      }),
+      json({ items: [], nextCursor: null }),
+      json({ items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<DashboardLive initial={emptySnapshot} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(field(view.container, "stat-hosts-online-value").textContent).toBe("100/100+");
+    expect(field(view.container, "stat-worktree-utilization-value").textContent).toBe(
+      "0/100+ busy",
+    );
+  });
+
   it("keeps the last snapshot on failure and retries manually", async () => {
     vi.useFakeTimers();
     const request = createRequestFake(
@@ -92,6 +122,8 @@ describe("DashboardLive", () => {
           sessions: [{ id: "old", status: "running" }],
           hosts: [],
           worktrees: [],
+          hostsAtLimit: false,
+          worktreesAtLimit: false,
           running: { count: 1, atLimit: false },
           queued: { count: 0, atLimit: false },
         }}

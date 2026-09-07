@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatSessionCount, getItems, getSessionCount } from "./dashboard-metrics.ts";
+import { formatSessionCount, getItemPage, getItems, getSessionCount } from "./dashboard-metrics.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -27,6 +27,16 @@ describe("getItems", () => {
   it("throws when the response is not ok", async () => {
     vi.stubGlobal("fetch", async () => jsonResponse({}, 500));
     await expect(getItems("/api/v1/sessions")).rejects.toThrow("request failed (500)");
+  });
+});
+
+describe("getItemPage", () => {
+  it("reports atLimit from nextCursor", async () => {
+    vi.stubGlobal("fetch", async () => jsonResponse({ items: [{ id: "a" }], nextCursor: "next" }));
+    await expect(getItemPage("/api/v1/hosts")).resolves.toEqual({
+      items: [{ id: "a" }],
+      atLimit: true,
+    });
   });
 });
 

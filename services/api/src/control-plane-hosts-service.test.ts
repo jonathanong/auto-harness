@@ -41,6 +41,37 @@ describe("getHostDurable", () => {
     await expect(plane.getHostDurable("host-1")).resolves.toMatchObject({ hostId: "host-1" });
   });
 
+  it("clears a cached host connection when the durable lock is gone", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        getHostInventory: async () => ({
+          hostId: "host-1",
+          repositories: [],
+          providerAccounts: [],
+          updatedAt: "t",
+        }),
+        getHostLock: async () => null,
+        getConnection: async () => {
+          throw new Error("should not load a connection without a lock");
+        },
+      } as never,
+    });
+    plane.state.connections.set("stale", {
+      connectionId: "stale",
+      type: "host",
+      hostId: "host-1",
+      connectedAt: "t",
+      lastHeartbeatAt: "t",
+    });
+    plane.state.hostConnection.set("host-1", "stale");
+    await expect(plane.getHostDurable("host-1")).resolves.toMatchObject({
+      hostId: "host-1",
+      online: false,
+    });
+    expect(plane.state.hostConnection.has("host-1")).toBe(false);
+    expect(plane.state.connections.has("stale")).toBe(false);
+  });
+
   it("skips connection hydration when the host lock is empty", async () => {
     const plane = new ControlPlane({
       storage: {

@@ -31,8 +31,26 @@ export async function handleWorktreeReadRoutes(ctx: RouteCtx): Promise<boolean> 
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
     try {
       const query = parseListPageQuery(url);
-      const hostId = readSingleQueryParam(url, "hostId") ?? null;
-      const repositoryId = readSingleQueryParam(url, "repositoryId") ?? null;
+      const requestedHostId = readSingleQueryParam(url, "hostId") ?? null;
+      const requestedRepositoryId = readSingleQueryParam(url, "repositoryId") ?? null;
+      const boundHostId = ctx.principal?.boundHostId;
+      if (boundHostId && requestedHostId && requestedHostId !== boundHostId) {
+        send(res, 200, { items: [], nextCursor: null });
+        return true;
+      }
+      const allowedRepositoryIds = ctx.principal?.allowedRepositoryIds;
+      if (
+        allowedRepositoryIds &&
+        requestedRepositoryId &&
+        !allowedRepositoryIds.includes(requestedRepositoryId)
+      ) {
+        send(res, 200, { items: [], nextCursor: null });
+        return true;
+      }
+      const hostId = boundHostId ?? requestedHostId;
+      const repositoryId =
+        requestedRepositoryId ??
+        (allowedRepositoryIds?.length === 1 ? allowedRepositoryIds[0]! : null);
       const page = await plane.listWorktreesPageDurable({ ...query, hostId, repositoryId });
       send(res, 200, {
         items: page.items.filter(

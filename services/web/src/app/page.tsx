@@ -24,6 +24,8 @@ export default async function DashboardPage() {
     hosts: [],
     sessions: [],
     worktrees: [],
+    hostsAtLimit: false,
+    worktreesAtLimit: false,
     running: { count: 0, atLimit: false },
     queued: { count: 0, atLimit: false },
   };
@@ -31,14 +33,18 @@ export default async function DashboardPage() {
   try {
     const [sessions, hosts, worktrees, running, queued] = await Promise.all([
       apiGet<{ items: DashboardSession[] }>("/api/v1/sessions?limit=50"),
-      apiGet<{ items: DashboardHost[] }>("/api/v1/hosts?limit=100"),
-      apiGet<{ items: DashboardWorktree[] }>("/api/v1/worktrees?limit=100"),
+      apiGet<{ items: DashboardHost[]; nextCursor?: string | null }>("/api/v1/hosts?limit=100"),
+      apiGet<{ items: DashboardWorktree[]; nextCursor?: string | null }>(
+        "/api/v1/worktrees?limit=100",
+      ),
       getSessionCount("running"),
       getSessionCount("queued"),
     ]);
     initial.sessions = sessions.items ?? [];
     initial.hosts = hosts.items ?? [];
     initial.worktrees = worktrees.items ?? [];
+    initial.hostsAtLimit = (hosts.nextCursor ?? null) !== null;
+    initial.worktreesAtLimit = (worktrees.nextCursor ?? null) !== null;
     initial.running = running;
     initial.queued = queued;
   } catch (reason) {
