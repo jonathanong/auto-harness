@@ -47,6 +47,33 @@ describe("inventory poll boundary coverage", () => {
     await stop();
   });
 
+  it("rate-limits repeated identical poll failures instead of logging every tick", async () => {
+    vi.useFakeTimers();
+    const errors: string[] = [];
+    const stop = startInventoryPoll({
+      config: emptyDaemonConfig(identity),
+      identity,
+      applyInventory: async () => undefined,
+      pollMs: 10,
+      errorLogIntervalMs: 100,
+      fetchFn: async () => {
+        throw new Error("bootstrap failed (500)");
+      },
+      log: () => undefined,
+      error: (line) => errors.push(line),
+    });
+    // 10 ticks at pollMs=10 span 100ms -- the same window the incident this
+    // guards against saw hundreds of identical lines at a 15s cadence.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errors).toEqual(["inventory poll failed: bootstrap failed (500)"]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errors).toEqual([
+      "inventory poll failed: bootstrap failed (500)",
+      "inventory poll failed: bootstrap failed (500) (repeated 9 time(s) since last log)",
+    ]);
+    await stop();
+  });
+
   it("reports a failed policy drain while retaining the blocked poll state", async () => {
     vi.useFakeTimers();
     const errors: string[] = [];
