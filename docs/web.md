@@ -23,7 +23,7 @@ pane's own shell reuses the same chrome
 with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane
 is **debug-only** and has no login form — a visible badge and subtitle tell operators to use the
 control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or a 401 from
-`/api/v1/hosts` (typical when opening a remote `WebUrl` whose cookies live on the CloudFront
+`/api/v1/hosts/:hostId` (typical when opening a remote `WebUrl` whose cookies live on the CloudFront
 control-plane domain) renders a short HTML explanation instead of a raw `authentication required`
 body or a half-empty shell.
 
@@ -66,6 +66,9 @@ The dashboard is the landing page and shows a high-level overview:
 - **Queue depth** — number of sessions waiting for a worktree
 - **Connected agents** — agent count with status indicators (online/offline)
 - **Worktree utilization** — busy vs idle across all agents
+
+Session detail loads the newest bounded log page (`order=desc`) over REST, then tails new chunks
+on the viewer WebSocket. The socket does not replay REST history.
 
 The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five seconds. Agent,
 session, and utilization changes appear without a page reload; a paused banner retains the last
@@ -385,6 +388,10 @@ Expandable hierarchy of configured repositories and their worktrees. Each reposi
 | Sessions       | Count of total sessions       |
 | Worktrees      | Count of associated worktrees |
 | Schedules      | Count of associated schedules |
+
+Every list API is a bounded cursor page (default 50, max 100). Collectors that need a complete
+picker catalog follow at most 20 pages (2,000 rows at `limit=100`) and fail rather than walking
+an unbounded table.
 
 The list loads the first bounded repository page and appends later pages with **Load more** without
 changing the browser URL. Repository selectors, filters, scope editors, and name lookups follow all

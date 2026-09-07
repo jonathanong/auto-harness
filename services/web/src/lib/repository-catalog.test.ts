@@ -1,3 +1,4 @@
+import { MAX_CURSOR_PAGES } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,6 +23,17 @@ describe("repository catalog pagination", () => {
   it("rejects a repeated cursor instead of looping forever", async () => {
     const fetchPage = vi.fn().mockResolvedValue({ items: [], nextCursor: "same" });
     await expect(loadAllRepositoryPages(fetchPage)).rejects.toThrow("cursor repeated");
+  });
+
+  it("stops after MAX_CURSOR_PAGES instead of walking the catalog unbounded", async () => {
+    let page = 0;
+    const fetchPage = vi.fn(async () => {
+      page += 1;
+      return { items: [{ id: String(page) }], nextCursor: String(page) };
+    });
+    await expect(loadAllRepositoryPages(fetchPage)).rejects.toThrow(
+      `pagination exceeded ${MAX_CURSOR_PAGES} pages`,
+    );
   });
 
   it("treats a page without items as empty", async () => {

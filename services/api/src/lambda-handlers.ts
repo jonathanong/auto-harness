@@ -5,6 +5,7 @@ import {
   GoneException,
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { principalHas, type HostToServerMessage, type HostWireMessage } from "@auto-harness/shared";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
@@ -74,6 +75,8 @@ export type LambdaRuntimeDependencies = {
   management?: ManagementClient;
   refreshAuth?: () => Promise<void>;
   ssmClient?: SsmClient;
+  /** AWS REST uses Event-invoke of the cron function; tests inject a spy. */
+  invokeAssignment?: () => Promise<void>;
 };
 
 export type { HttpApiEvent, HttpApiResponse } from "./lambda-http-adapter.ts";
@@ -309,6 +312,7 @@ export async function createLambdaRuntime(
       aws: true,
       sessionCursorSecret: bootstrapSecrets!.cursorSecret,
       skipEnsureTables: true,
+      hydrateSessionHistory: false,
       ...(fetchedPublicBaseUrl !== undefined ? { publicBaseUrl: fetchedPublicBaseUrl } : {}),
     }));
   /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
@@ -393,6 +397,29 @@ export async function createLambdaRuntime(
   created.plane.setOnHostMessage((hostId, message) => {
     trackDelivery(hostId, message);
   });
+  const invokeAssignment =
+    dependencies.invokeAssignment ??
+    (async () => {
+      const functionName = process.env.ASSIGNMENT_FUNCTION_NAME;
+      if (!functionName) {
+        await created.plane.requestAssignment();
+        return;
+      }
+      /* v8 ignore start -- production Event invoke is an SDK boundary */
+      await new LambdaClient({}).send(
+        new InvokeCommand({
+          FunctionName: functionName,
+          InvocationType: "Event",
+          Payload: Buffer.from(JSON.stringify({ source: "enqueue" })),
+        }),
+      );
+      /* v8 ignore stop */
+    });
+  created.plane.setOnAssignmentRequested(() =>
+    invokeAssignment().catch((error: unknown) => {
+      console.error("failed to enqueue assignment sweep", error);
+    }),
+  );
   const previousOnLogCommitted = created.plane.state.onLogCommitted;
   created.plane.state.onLogCommitted = (record) => {
     previousOnLogCommitted?.(record);
@@ -415,6 +442,15 @@ export async function createLambdaRuntime(
 
   return {
     async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      if (isAssignmentEnqueue(eventOrContext)) {
+        return runInvocation(async () => {
+          const assignments = await assignQueuedAndScheduledDurable(created.plane.state);
+          return emptyCronResult({
+            queuedAssigned: assignments.queuedAssigned.length,
+            scheduledAssigned: assignments.scheduledAssigned.length,
+          });
+        });
+      }
       const context =
         lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
@@ -608,6 +644,30 @@ export async function createLambdaRuntime(
         return { statusCode: result.ok ? 200 : 409 };
       });
     },
+  };
+}
+
+function isAssignmentEnqueue(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { source?: unknown }).source === "enqueue"
+  );
+}
+
+function emptyCronResult(overrides: Partial<CronResult> = {}): CronResult {
+  return {
+    ackDeadlinesEnforced: 0,
+    archivesRetried: 0,
+    cancelsRedelivered: 0,
+    runningTimeoutsEnforced: 0,
+    repositoriesReconciled: 0,
+    sessionDrainsReconciled: 0,
+    queuedAssigned: 0,
+    scheduledAssigned: 0,
+    schedulesFired: 0,
+    staleHostsReclaimed: 0,
+    ...overrides,
   };
 }
 

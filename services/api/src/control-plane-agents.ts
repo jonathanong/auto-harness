@@ -359,6 +359,9 @@ export function listHosts(state: ControlPlaneState): Array<{
     } else {
       current.repositories = host.repositories.map(({ id, path }) => ({ id, path }));
       current.repositoryIds = host.repositories.map(({ id }) => id);
+      current.worktreeIds = host.repositories.flatMap((repository) =>
+        repository.worktrees.map((worktree) => worktree.id),
+      );
       current.daemonStartedAt = host.daemonStartedAt ?? null;
       current.restartCount = host.restartCount ?? 0;
       current.lastRestartDetectedAt = host.lastRestartDetectedAt ?? null;

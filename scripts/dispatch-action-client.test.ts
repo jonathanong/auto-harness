@@ -12,10 +12,11 @@ afterEach(closeDispatchActionServers);
 describe("dispatch action bundled client", () => {
   it("resolves provider and fallback command names before dispatch", async () => {
     const server = await serve((request) => {
-      if (request.url === "/api/v1/providers") {
+      const path = request.url?.split("?")[0];
+      if (path === "/api/v1/providers") {
         return { body: { items: [{ id: "provider-1", name: "codex" }] } };
       }
-      if (request.url === "/api/v1/commands") {
+      if (path === "/api/v1/commands") {
         return { body: { items: [{ id: "command-1", name: "review" }] } };
       }
       return {
@@ -34,8 +35,8 @@ describe("dispatch action bundled client", () => {
 
     expect(result.code).toBe(0);
     expect(server.requests.map(({ method, url }) => ({ method, url }))).toEqual([
-      { method: "GET", url: "/api/v1/providers" },
-      { method: "GET", url: "/api/v1/commands" },
+      { method: "GET", url: "/api/v1/providers?limit=100" },
+      { method: "GET", url: "/api/v1/commands?limit=100" },
       { method: "POST", url: "/api/v1/sessions" },
     ]);
     expect(JSON.parse(server.requests[2]!.body)).toMatchObject({

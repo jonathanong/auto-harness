@@ -15,15 +15,23 @@ export type DashboardSnapshot = {
   sessions: DashboardSession[];
   hosts: DashboardHost[];
   worktrees: DashboardWorktree[];
+  hostsAtLimit: boolean;
+  worktreesAtLimit: boolean;
   running: SessionCount;
   queued: SessionCount;
 };
 
+export type ItemPage<T> = { items: T[]; atLimit: boolean };
+
 export async function getItems<T>(path: string): Promise<T[]> {
+  return (await getItemPage<T>(path)).items;
+}
+
+export async function getItemPage<T>(path: string): Promise<ItemPage<T>> {
   const response = await apiFetch(path);
   if (!response.ok) throw new Error(`request failed (${response.status})`);
-  const data = (await response.json()) as { items?: T[] };
-  return data.items ?? [];
+  const data = (await response.json()) as { items?: T[]; nextCursor?: string | null };
+  return { items: data.items ?? [], atLimit: (data.nextCursor ?? null) !== null };
 }
 
 /**

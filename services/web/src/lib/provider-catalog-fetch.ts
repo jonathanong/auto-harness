@@ -1,6 +1,6 @@
 import type { Command, Provider, ProviderAccount, ProviderCatalog } from "@auto-harness/shared";
 
-import { apiGet } from "./api.ts";
+import { apiGetAllPages } from "./api.ts";
 
 type ProviderCatalogLookups = {
   providersById: Record<string, Provider>;
@@ -16,13 +16,13 @@ export async function fetchProviderCatalogLookups(): Promise<ProviderCatalogLook
   let commands: Command[] = [];
   try {
     const [p, a, c] = await Promise.all([
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
+      apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
+      apiGetAllPages<ProviderAccount>("/api/v1/provider-accounts?limit=100"),
+      apiGetAllPages<Command>("/api/v1/commands?limit=100"),
     ]);
-    providers = p.items ?? [];
-    providerAccounts = a.items ?? [];
-    commands = c.items ?? [];
+    providers = p;
+    providerAccounts = a;
+    commands = c;
   } catch {
     /* ignore — callers render empty provider-scope tables */
   }

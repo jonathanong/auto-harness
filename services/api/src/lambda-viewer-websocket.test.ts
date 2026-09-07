@@ -194,14 +194,13 @@ describe("Lambda viewer WebSocket adapter", () => {
         JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
       ),
     ).resolves.toBe(200);
-    expect(ctx.sent.slice(-3).map(({ message }) => message.type)).toEqual([
-      "session:log",
-      "session:log",
-      "session:subscribed",
-    ]);
-    expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]?.after).toContain(
-      "0000000002",
-    );
+    expect(ctx.sent.at(-1)?.message).toMatchObject({
+      type: "session:subscribed",
+      sessionId: "session-1",
+      cursor: null,
+      status: "running",
+    });
+    expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]).not.toHaveProperty("after");
     await ctx.sockets.message(
       "viewer-1",
       JSON.stringify({
@@ -242,7 +241,7 @@ describe("Lambda viewer WebSocket adapter", () => {
     expect(ctx.sent.at(-1)?.message).toMatchObject({ code: "SUBSCRIPTION_LIMIT" });
   });
 
-  it("handles sparse subscriptions and prunes a gone viewer during replay", async () => {
+  it("handles sparse subscriptions and prunes a gone viewer during subscribe ack", async () => {
     const ctx = fixture();
     await ctx.sockets.connect("viewer-1", "ticket", origin);
     const connection = ctx.connections.get("viewer-1")!;

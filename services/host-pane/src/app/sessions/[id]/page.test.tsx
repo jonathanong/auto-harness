@@ -24,7 +24,7 @@ describe("session detail route", () => {
         repositoryId: "repo/one",
         worktreeId: "wt/one",
       },
-      "/api/v1/sessions/session%2Fone/logs?limit=10000": {
+      "/api/v1/sessions/session%2Fone/logs?limit=1000&order=desc": {
         items: [
           { timestampSeq: "b", seq: 2, stream: "stderr", content: "later", timestamp: "two" },
           { timestampSeq: "a", seq: 1, stream: "stdout", content: "first", timestamp: "one" },
@@ -38,7 +38,7 @@ describe("session detail route", () => {
     expect(running).toContain("first");
     setApiReplies({
       "/api/v1/sessions/done": { id: "done", status: "completed" },
-      "/api/v1/sessions/done/logs?limit=10000": 500,
+      "/api/v1/sessions/done/logs?limit=1000&order=desc": 500,
       "/api/v1/sessions/missing": 404,
     });
     const done = await renderRoute(SessionDetailPage({ params: Promise.resolve({ id: "done" }) }));
@@ -48,7 +48,7 @@ describe("session detail route", () => {
     expect(done).not.toContain("No logs yet.");
     setApiReplies({
       "/api/v1/sessions/empty": { id: "empty", status: "completed" },
-      "/api/v1/sessions/empty/logs?limit=10000": {},
+      "/api/v1/sessions/empty/logs?limit=1000&order=desc": {},
       "/api/v1/sessions/missing": 404,
     });
     expect(
@@ -80,7 +80,7 @@ describe("session detail route", () => {
     expect(lookupFailure).toContain("not an Error instance");
 
     setApiTransportForTests(async (input) => {
-      if (String(input).endsWith("/logs?limit=10000")) throw "logs backend exploded";
+      if (String(input).endsWith("/logs?limit=1000&order=desc")) throw "logs backend exploded";
       return Response.json({ id: "ok", status: "completed" });
     });
     const logsFailure = await renderRoute(

@@ -68,7 +68,7 @@ describe("session live detail", () => {
       cache: "no-store",
       credentials: "same-origin",
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/hosts", {
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/hosts/host-one", {
       cache: "no-store",
       credentials: "same-origin",
     });
@@ -89,7 +89,7 @@ describe("session live detail", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(response(true, running))
-      .mockResolvedValueOnce(response(true, { items: [{ hostId: "host-one", online: true }] }));
+      .mockResolvedValueOnce(response(true, { hostId: "host-one", online: true }));
     vi.stubGlobal("fetch", fetchMock);
     const view = mount(
       <SessionLiveDetail

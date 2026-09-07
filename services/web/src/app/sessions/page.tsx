@@ -50,8 +50,8 @@ export default async function SessionsPage({
   let hosts: Array<{ id: string; label: string }> = [];
   const [sessionsResult, repositoriesResult, hostsResult] = await Promise.allSettled([
     apiGet<{ items: Session[]; nextCursor: string | null }>(path),
-    apiGetAllPages<Repository>("/api/v1/repositories"),
-    apiGet<{ items: Array<{ hostId: string }> }>("/api/v1/hosts"),
+    apiGetAllPages<Repository>("/api/v1/repositories?limit=100"),
+    apiGet<{ items: Array<{ hostId: string }> }>("/api/v1/hosts?limit=100"),
   ]);
   if (sessionsResult.status === "fulfilled") {
     items = sessionsResult.value.items ?? [];

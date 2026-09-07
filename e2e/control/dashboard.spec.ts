@@ -21,13 +21,13 @@ test.describe("control plane dashboard", () => {
 
   test("refreshes dashboard and session list from bounded production polling", async ({ page }) => {
     await page.goto("/");
-    await page.route("**/api/v1/sessions", async (route) => {
+    await page.route("**/api/v1/sessions**", async (route) => {
       await route.fulfill({ json: { items: [{ id: "live-dashboard", status: "running" }] } });
     });
-    await page.route("**/api/v1/hosts", async (route) => {
+    await page.route("**/api/v1/hosts**", async (route) => {
       await route.fulfill({ json: { items: [{ hostId: "live-host", online: true }] } });
     });
-    await page.route("**/api/v1/worktrees", async (route) => {
+    await page.route("**/api/v1/worktrees**", async (route) => {
       await route.fulfill({ json: { items: [{ id: "busy", status: "busy", online: true }] } });
     });
     await page.route("**/api/v1/sessions?status=running&limit=100", async (route) => {
@@ -54,10 +54,10 @@ test.describe("control plane dashboard", () => {
     await page.route("**/api/v1/sessions**", async (route) => {
       await route.fulfill({ status: 503, json: { error: "offline" } });
     });
-    await page.route("**/api/v1/hosts", async (route) => {
+    await page.route("**/api/v1/hosts**", async (route) => {
       await route.fulfill({ status: 503, json: { error: "offline" } });
     });
-    await page.route("**/api/v1/worktrees", async (route) => {
+    await page.route("**/api/v1/worktrees**", async (route) => {
       await route.fulfill({ status: 503, json: { error: "offline" } });
     });
 

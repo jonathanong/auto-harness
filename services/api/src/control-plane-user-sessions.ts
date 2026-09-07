@@ -42,7 +42,10 @@ function toUserSession(connection: ConnectionRecord): UserSessionRecord {
 
 export function presentUserSessions(connections: Iterable<ConnectionRecord>): UserSessionRecord[] {
   return [...connections]
-    .filter((connection) => connection.type === "client")
+    .filter(
+      (connection) =>
+        connection.type === "client" && !connection.connectionId.startsWith("viewers#"),
+    )
     .map(toUserSession)
     .toSorted((a, b) => a.username.localeCompare(b.username) || a.id.localeCompare(b.id));
 }

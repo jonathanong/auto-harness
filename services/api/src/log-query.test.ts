@@ -39,6 +39,10 @@ describe("historical log query contract", () => {
       ok: true,
       query: { stream: "stdout", since: "2026-01-01T00:00:00.000Z", limit: 2 },
     });
+    expect(parseLogQuery(new URLSearchParams("order=desc&limit=2"))).toEqual({
+      ok: true,
+      query: { order: "desc", limit: 2 },
+    });
   });
 
   it.each([
@@ -53,6 +57,7 @@ describe("historical log query contract", () => {
     "limit=1.5",
     "limit=1e3",
     "limit=10001",
+    "order=newest",
   ])("rejects invalid query %s", (query) => {
     expect(parseLogQuery(new URLSearchParams(query))).toMatchObject({ ok: false });
   });

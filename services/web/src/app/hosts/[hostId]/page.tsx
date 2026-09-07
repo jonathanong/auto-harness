@@ -38,33 +38,33 @@ export default async function HostDetailPage({
 }) {
   const hostId = decodeRouteParam((await params).hostId);
   const { tab } = await searchParams;
-  const principal = await loadPrincipal();
+  const [principal, inventoryResult, agentsResult] = await Promise.all([
+    loadPrincipal(),
+    apiGet<HostInventory & { version?: number }>(
+      `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+    ).then(
+      (value) => ({ value, error: null as string | null }),
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 404
+          ? { value: null, error: null }
+          : { value: null, error: errorMessage(error) },
+    ),
+    apiGet<Agent>(`/api/v1/hosts/${encodeURIComponent(hostId)}`).then(
+      (value) => ({ value, error: null as string | null }),
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 404
+          ? { value: null, error: null }
+          : { value: null, error: errorMessage(error) },
+    ),
+  ]);
   const canDrain = can(principal, "fleet:drain");
   const canWriteInventory = can(principal, "fleet:inventory");
   const canWriteExecConfig = can(principal, "fleet:exec-config");
   const canWriteProviderAccounts = can(principal, "providers:accounts");
-  let inventory: (HostInventory & { version?: number }) | null = null;
-  let inventoryError: string | null = null;
-  try {
-    inventory = await apiGet<HostInventory & { version?: number }>(
-      `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
-    );
-  } catch (error) {
-    // A 404 genuinely means "no config yet" — may still be a live/known agent below.
-    // Anything else is a real failure, not evidence the host doesn't exist.
-    if (!(error instanceof ApiError && error.status === 404)) {
-      inventoryError = errorMessage(error);
-    }
-  }
-  let agents: Agent[] = [];
-  let agentsError: string | null = null;
-  try {
-    const data = await apiGet<{ items: Agent[] }>("/api/v1/hosts");
-    agents = data.items ?? [];
-  } catch (error) {
-    agentsError = errorMessage(error);
-  }
-  const agent = agents.find((a) => a.hostId === hostId);
+  const inventory = inventoryResult.value;
+  const inventoryError = inventoryResult.error;
+  const agent = agentsResult.value ?? undefined;
+  const agentsError = agentsResult.error;
 
   if (!inventory && !agent) {
     return <HostNotFound hostId={hostId} message={inventoryError ?? agentsError} />;
@@ -94,47 +94,51 @@ export default async function HostDetailPage({
   };
   const inventoryJson = JSON.stringify(inv, null, 2);
 
-  let catalog: RepoCatalogEntry[] = [];
-  let catalogError: string | null = null;
-  try {
-    catalog = (await apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories")).toSorted((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  } catch (error) {
-    catalogError = errorMessage(error);
-  }
+  const [catalogResult, worktreesResult, providerCatalogResult] = await Promise.all([
+    apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories?limit=100").then(
+      (items) => ({
+        catalog: items.toSorted((a, b) => a.name.localeCompare(b.name)),
+        error: null as string | null,
+      }),
+      (error: unknown) => ({ catalog: [] as RepoCatalogEntry[], error: errorMessage(error) }),
+    ),
+    apiGetAllPages<LiveWorktree>(
+      `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`,
+    ).then(
+      (items) => ({ items, error: null as string | null }),
+      (error: unknown) => ({ items: [] as LiveWorktree[], error: errorMessage(error) }),
+    ),
+    Promise.all([
+      apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
+      apiGetAllPages<ProviderAccount>("/api/v1/provider-accounts?limit=100"),
+      apiGetAllPages<Command>("/api/v1/commands?limit=100"),
+    ]).then(
+      ([p, a, c]) => ({
+        providers: p,
+        providerAccounts: a,
+        commands: c,
+        error: null as string | null,
+      }),
+      (error: unknown) => ({
+        providers: [] as Provider[],
+        providerAccounts: [] as ProviderAccount[],
+        commands: [] as Command[],
+        error: errorMessage(error),
+      }),
+    ),
+  ]);
+  const catalog = catalogResult.catalog;
+  const catalogError = catalogResult.error;
   const namesById = Object.fromEntries(catalog.map((r) => [r.id, r.name]));
   const attachedIds = new Set(inv.repositories.map((r) => r.id));
   const unattachedCatalog = catalog.filter((r) => !attachedIds.has(r.id));
-
-  let liveWorktrees: LiveWorktree[] = [];
-  let worktreesError: string | null = null;
-  try {
-    const data = await apiGet<{ items: LiveWorktree[] }>(
-      `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}`,
-    );
-    liveWorktrees = data.items ?? [];
-  } catch (error) {
-    worktreesError = errorMessage(error);
-  }
+  const liveWorktrees = worktreesResult.items;
+  const worktreesError = worktreesResult.error;
   const liveById = Object.fromEntries(liveWorktrees.map((w) => [w.id, w]));
-
-  let providers: Provider[] = [];
-  let providerAccounts: ProviderAccount[] = [];
-  let commands: Command[] = [];
-  let providerCatalogError: string | null = null;
-  try {
-    const [p, a, c] = await Promise.all([
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
-    ]);
-    providers = p.items ?? [];
-    providerAccounts = a.items ?? [];
-    commands = c.items ?? [];
-  } catch (error) {
-    providerCatalogError = errorMessage(error);
-  }
+  const providers = providerCatalogResult.providers;
+  const providerAccounts = providerCatalogResult.providerAccounts;
+  const commands = providerCatalogResult.commands;
+  const providerCatalogError = providerCatalogResult.error;
   const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
   const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
   const commandsById = Object.fromEntries(commands.map((c) => [c.id, c]));

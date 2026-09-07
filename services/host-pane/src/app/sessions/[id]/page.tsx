@@ -66,7 +66,7 @@ export default async function SessionDetailPage({
   let logsError: string | null = null;
   try {
     const data = await apiGet<{ items: LogEntry[] }>(
-      `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=10000`,
+      `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=1000&order=desc`,
     );
     logs = data.items ?? [];
   } catch (error) {

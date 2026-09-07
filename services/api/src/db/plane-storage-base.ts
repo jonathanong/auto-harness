@@ -100,6 +100,12 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByRepository(this.ctx, repositoryId);
   }
 
+  listSessionsPage(
+    query: import("./plane-storage-sessions-list-page.ts").SessionListPageQuery,
+  ): Promise<SessionRecord[]> {
+    return sessions.listSessionsPageFromStorage(this.ctx, query);
+  }
+
   async listSessionsForDrain(
     repositoryId: string,
     principalId: string,
@@ -262,6 +268,15 @@ export class DynamoPlaneStorageBase {
 
   listAllWorktrees(consistentRead = false): Promise<WorktreeRecord[]> {
     return sessions.listAllWorktrees(this.ctx, consistentRead);
+  }
+
+  listWorktreesPage(query: {
+    limit: number;
+    startKey?: Record<string, unknown>;
+    hostId?: string | null;
+    repositoryId?: string | null;
+  }): Promise<{ items: WorktreeRecord[]; nextKey: Record<string, unknown> | null }> {
+    return sessions.listWorktreesPage(this.ctx, query);
   }
 
   async listWorktreesByHost(hostId: string): Promise<WorktreeRecord[]> {

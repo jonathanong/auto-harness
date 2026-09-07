@@ -14,6 +14,7 @@ import {
 
 import {
   formatSessionCount,
+  getItemPage,
   getItems,
   getSessionCount,
   type DashboardHost,
@@ -22,6 +23,7 @@ import {
   type DashboardWorktree,
 } from "../lib/dashboard-metrics.ts";
 import { DashboardEmptyStates } from "./dashboard-empty-states.tsx";
+import { DashboardMetricCard } from "./dashboard-metric-card.tsx";
 
 export type {
   DashboardHost,
@@ -50,13 +52,21 @@ export function DashboardLive({
     refreshing.current = true;
     try {
       const [sessions, hosts, worktrees, running, queued] = await Promise.all([
-        getItems<DashboardSession>("/api/v1/sessions"),
-        getItems<DashboardHost>("/api/v1/hosts"),
-        getItems<DashboardWorktree>("/api/v1/worktrees"),
+        getItems<DashboardSession>("/api/v1/sessions?limit=50"),
+        getItemPage<DashboardHost>("/api/v1/hosts?limit=100"),
+        getItemPage<DashboardWorktree>("/api/v1/worktrees?limit=100"),
         getSessionCount("running"),
         getSessionCount("queued"),
       ]);
-      setSnapshot({ sessions, hosts, worktrees, running, queued });
+      setSnapshot({
+        sessions,
+        running,
+        queued,
+        hosts: hosts.items,
+        worktrees: worktrees.items,
+        hostsAtLimit: hosts.atLimit,
+        worktreesAtLimit: worktrees.atLimit,
+      });
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -119,27 +129,27 @@ export function DashboardLive({
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-pw="dashboard-stats">
-        <MetricCard
+        <DashboardMetricCard
           label="Running"
           value={formatSessionCount(snapshot.running)}
           tip="Sessions currently executing on a host"
           pw="stat-running"
         />
-        <MetricCard
+        <DashboardMetricCard
           label="Queued"
           value={formatSessionCount(snapshot.queued)}
           tip="Sessions waiting for an available host worktree"
           pw="stat-queued"
         />
-        <MetricCard
+        <DashboardMetricCard
           label="Hosts online"
-          value={`${metrics.onlineHosts}/${snapshot.hosts.length}`}
-          tip="Hosts with a live connection / total known hosts"
+          value={`${metrics.onlineHosts}/${snapshot.hosts.length}${snapshot.hostsAtLimit ? "+" : ""}`}
+          tip="Hosts with a live connection / known hosts; 100+ means more pages exist"
           pw="stat-hosts-online"
         />
-        <MetricCard
+        <DashboardMetricCard
           label="Worktree utilization"
-          value={`${metrics.busy}/${metrics.busy + metrics.idle} busy`}
+          value={`${metrics.busy}/${metrics.busy + metrics.idle}${snapshot.worktreesAtLimit ? "+" : ""} busy`}
           detail={`${metrics.unavailable} offline or unavailable`}
           tip="Busy / available online worktrees; offline and error worktrees are excluded"
           pw="stat-worktree-utilization"
@@ -170,40 +180,5 @@ export function DashboardLive({
         </CardContent>
       </Card>
     </>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-  tip,
-  pw,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tip: string;
-  pw: string;
-}) {
-  return (
-    <Card data-pw={pw}>
-      <CardHeader>
-        <CardTitle className="text-base">
-          <TipText tip={tip}>{label}</TipText>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="text-3xl font-semibold">
-        <span data-pw={`${pw}-value`}>{value}</span>
-        {detail ? (
-          <span
-            className="mt-1 block text-xs font-normal text-muted-foreground"
-            data-pw={`${pw}-detail`}
-          >
-            {detail}
-          </span>
-        ) : null}
-      </CardContent>
-    </Card>
   );
 }

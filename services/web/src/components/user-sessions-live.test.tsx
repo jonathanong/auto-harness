@@ -33,6 +33,8 @@ describe("UserSessionsLive", () => {
     await act(async () => vi.advanceTimersByTimeAsync(10));
     expect(field(view.container, "user-sessions-table")).toBeTruthy();
     expect(field(view.container, "user-session-user-viewer-live").textContent).toBe("alice");
-    expect(request.requests.map(([input]) => String(input))).toEqual(["/api/v1/user-sessions"]);
+    expect(request.requests.map(([input]) => String(input))).toEqual([
+      "/api/v1/user-sessions?limit=100",
+    ]);
   });
 });

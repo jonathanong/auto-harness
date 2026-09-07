@@ -201,7 +201,7 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
       }))
     )
       return true;
-    await plane.requestAssignment();
+    await plane.enqueueAssignment();
     send(res, 201, { ...result.session, created: true });
     return true;
   } catch {

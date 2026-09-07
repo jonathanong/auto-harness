@@ -51,13 +51,12 @@ export default async function WorktreeDetailPage({
 
   let worktree: Wt | undefined;
   try {
-    const data = await apiGet<{ items: Wt[] }>("/api/v1/worktrees");
-    worktree = (data.items ?? []).find((w) => w.id === worktreeId);
+    worktree = await apiGet<Wt>(`/api/v1/worktrees/${encodeURIComponent(worktreeId)}`);
   } catch {
     /* ignore — treated as not found below */
   }
 
-  if (!worktree) {
+  if (!worktree?.id) {
     return (
       <div className="space-y-4" data-pw="page-worktree-detail-not-found">
         <Link href="/worktrees" className="text-sm text-muted-foreground hover:underline">
@@ -75,7 +74,7 @@ export default async function WorktreeDetailPage({
   let repoName: string | undefined;
   let sessions: Session[] = [];
   try {
-    const repos = await apiGetAllPages<Repo>("/api/v1/repositories");
+    const repos = await apiGetAllPages<Repo>("/api/v1/repositories?limit=100");
     const repo = repos.find((r) => r.id === worktree!.repositoryId);
     repoPath = repo?.url;
     repoName = repo?.name;

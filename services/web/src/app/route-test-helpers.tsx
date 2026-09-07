@@ -16,7 +16,8 @@ export function jsonResponse(body: unknown, status = 200): Response {
 export function stubApi(routes: Record<string, unknown | Response>) {
   const fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://control.test");
-    const route = routes[`${url.pathname}${url.search}`];
+    const full = `${url.pathname}${url.search}`;
+    const route = routes[full] ?? routes[url.pathname];
     if (route === "__throw_string__") throw "offline";
     if (route instanceof Error) throw route;
     if (route instanceof Response) return route;

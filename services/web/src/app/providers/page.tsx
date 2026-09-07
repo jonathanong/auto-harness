@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
 
 import { AddProviderDialog } from "../../components/add-provider-dialog.tsx";
-import { apiGet } from "../../lib/api.ts";
+import { apiGetAllPages } from "../../lib/api.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +16,13 @@ export default async function ProvidersPage() {
   let error: string | null = null;
   try {
     const [p, a, c] = await Promise.all([
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
+      apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
+      apiGetAllPages<ProviderAccount>("/api/v1/provider-accounts?limit=100"),
+      apiGetAllPages<Command>("/api/v1/commands?limit=100"),
     ]);
-    providers = p.items ?? [];
-    accounts = a.items ?? [];
-    commands = c.items ?? [];
+    providers = p;
+    accounts = a;
+    commands = c;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }

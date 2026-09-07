@@ -10,7 +10,6 @@ import * as durableProviderAccounts from "./control-plane-provider-accounts-dura
 import * as providers from "./control-plane-providers.ts";
 import { listSessionTargets, type SessionTarget } from "./control-plane-session-targets.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
-import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import {
   forceReleaseProviderAccountLease,
   listProviderAccountLeaseStates,
@@ -242,8 +241,7 @@ export class ControlPlaneCatalogService {
   }
 
   async listSessionTargetsDurable(): Promise<SessionTarget[]> {
-    await durableRuntime.refreshSchedulerReadModel(this.state);
-    await durableRuntime.listWorktreesDurable(this.state);
+    await durableCatalog.refreshTargetCatalogDurable(this.state);
     return listSessionTargets(this.state);
   }
 }

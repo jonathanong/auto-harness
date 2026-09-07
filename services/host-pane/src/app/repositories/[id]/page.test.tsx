@@ -22,10 +22,10 @@ describe("repository detail route", () => {
     process.env.HARNESS_HOST_ID = "host/one";
     setApiReplies({
       "/api/v1/hosts/host%2Fone/inventory": inventory,
-      "/api/v1/worktrees?hostId=host%2Fone": {
+      "/api/v1/worktrees?hostId=host%2Fone&limit=100": {
         items: [{ id: "wt/one", status: "busy", online: true }],
       },
-      "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
+      "/api/v1/repositories?limit=100": { items: [{ id: "repo/one", name: "One" }] },
       "/api/v1/sessions?hostId=host%2Fone&limit=100": {
         items: [
           { id: "included", status: "running", repositoryId: "repo/one" },
@@ -57,8 +57,8 @@ describe("repository detail route", () => {
   it("keeps repository sessions empty after fetch errors and handles a missing repository", async () => {
     setApiReplies({
       "/api/v1/hosts/local-1/inventory": inventory,
-      "/api/v1/worktrees?hostId=local-1": {},
-      "/api/v1/repositories": {},
+      "/api/v1/worktrees?hostId=local-1&limit=100": {},
+      "/api/v1/repositories?limit=100": {},
       "/api/v1/sessions?hostId=local-1&limit=100": 500,
     });
     expect(
@@ -71,8 +71,8 @@ describe("repository detail route", () => {
     ).toContain("No recent sessions for this repository.");
     setApiReplies({
       "/api/v1/hosts/local-1/inventory": inventory,
-      "/api/v1/worktrees?hostId=local-1": {},
-      "/api/v1/repositories": {},
+      "/api/v1/worktrees?hostId=local-1&limit=100": {},
+      "/api/v1/repositories?limit=100": {},
       "/api/v1/sessions?hostId=local-1&limit=100": {},
     });
     expect(
@@ -103,8 +103,8 @@ describe("repository detail route", () => {
         capabilities: [],
       },
       "/api/v1/hosts/local-1/inventory": inventory,
-      "/api/v1/worktrees?hostId=local-1": { items: [{ id: "wt/one" }] },
-      "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
+      "/api/v1/worktrees?hostId=local-1&limit=100": { items: [{ id: "wt/one" }] },
+      "/api/v1/repositories?limit=100": { items: [{ id: "repo/one", name: "One" }] },
       "/api/v1/sessions?hostId=local-1&limit=100": { items: [] },
     });
     const sessions = await renderRoute(
@@ -143,8 +143,8 @@ describe("repository detail route", () => {
         capabilities: [],
       },
       "/api/v1/hosts/local-1/inventory": protectedInventory,
-      "/api/v1/worktrees?hostId=local-1": { items: [{ id: "wt/one" }] },
-      "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
+      "/api/v1/worktrees?hostId=local-1&limit=100": { items: [{ id: "wt/one" }] },
+      "/api/v1/repositories?limit=100": { items: [{ id: "repo/one", name: "One" }] },
       "/api/v1/sessions?hostId=local-1&limit=100": { items: [] },
     });
     const worktrees = await renderRoute(

@@ -1,11 +1,12 @@
+/* eslint-disable max-lines -- enqueue vs await assignment coverage shares one plane fixture. */
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { seedBaseCommand, baseSessionBody } from "./control-plane-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
-import { requestAssignment } from "./request-assignment.ts";
+import { enqueueAssignment, requestAssignment } from "./request-assignment.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -213,5 +214,44 @@ describe("requestAssignment", () => {
     expect(
       [...plane.state.sessions.values()].filter((row) => row.status === "running"),
     ).toHaveLength(2);
+  });
+});
+
+describe("enqueueAssignment", () => {
+  it("starts the in-process sweep without awaiting it when no hook is set", async () => {
+    const plane = new ControlPlane({ now: () => NOW, idFactory: () => "sess-1", shardCount: 1 });
+    seedBaseCommand(plane);
+    plane.seedWorktree({
+      id: "wt-1",
+      name: "wt-1",
+      hostId: "host-1",
+      repositoryId: "repo-1",
+      path: "/wt-1",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    expect(plane.createSession(baseSessionBody()).ok).toBe(true);
+    await plane.enqueueAssignment();
+    await vi.waitFor(() => expect(plane.getSession("sess-1")?.status).toBe("running"));
+  });
+
+  it("calls onAssignmentRequested instead of sweeping in-process", async () => {
+    let hooked = 0;
+    const state = createControlPlaneState({
+      onAssignmentRequested: () => {
+        hooked += 1;
+      },
+    });
+    await enqueueAssignment(state);
+    expect(hooked).toBe(1);
+    hooked = 0;
+    const plane = new ControlPlane({
+      onAssignmentRequested: () => {
+        hooked += 1;
+      },
+    });
+    await plane.enqueueAssignment();
+    expect(hooked).toBe(1);
   });
 });

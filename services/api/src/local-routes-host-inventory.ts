@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- scoped PUT merge shares the inventory route module. */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { sendListPage } from "./local-list-page.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import type { Principal } from "./auth.ts";
 import { writeRouteAudit } from "./local-audit.ts";
@@ -36,8 +37,9 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
 
   if (method === "GET" && url.pathname === "/api/v1/host-inventories") {
     try {
-      send(res, 200, {
-        items: (await plane.listHostInventoriesDurable())
+      sendListPage(
+        ctx,
+        (await plane.listHostInventoriesDurable())
           .filter((inventory) => mayAccessHost(ctx.principal, inventory.hostId))
           .map((inventory) => ({
             ...inventory,
@@ -49,7 +51,8 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
             (inventory) =>
               inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
           ),
-      });
+        (inventory) => inventory.hostId,
+      );
     } catch {
       sendInternalError(res);
     }

@@ -80,6 +80,32 @@ export class ControlPlaneSessionsService {
     query?: sessions.ListSessionsPageQuery,
   ): Promise<sessions.ListSessionsPageResult> {
     const requested = query ?? {};
+    const storage = this.state.storage;
+    if (storage && typeof storage.listSessionsPage === "function") {
+      const normalized = sessions.normalizeListSessionsPageQuery(this.state, requested);
+      if (
+        normalized.query.hostId &&
+        normalized.scope.hostId &&
+        normalized.query.hostId !== normalized.scope.hostId
+      ) {
+        return { items: [], nextCursor: null };
+      }
+      const records = await storage.listSessionsPage({
+        limit: normalized.limit,
+        sort: normalized.sort,
+        shardCount: this.state.shardCount,
+        status: normalized.query.status,
+        repositoryId: normalized.query.repositoryId,
+        repositoryIds: normalized.scope.repositoryIds,
+        hostId: normalized.query.hostId ?? normalized.scope.hostId,
+        source: normalized.query.source,
+        concurrencyId: normalized.query.concurrencyId,
+        scheduleId: normalized.query.scheduleId,
+        ...(normalized.position ? { position: normalized.position } : {}),
+      });
+      const { cursor: _ignoredCursor, ...firstPage } = requested;
+      return sessions.listSessionsPage(this.state, firstPage, records);
+    }
     const repositoryIds = durableListRepositoryIds(requested);
     if (repositoryIds !== undefined) {
       const records = await durableRuntime.listSessionsForRepositoriesDurable(

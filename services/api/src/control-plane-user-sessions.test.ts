@@ -92,6 +92,22 @@ describe("user session listing", () => {
     ]);
   });
 
+  it("omits viewer fanout index rows from the live user-session list", () => {
+    expect(
+      presentUserSessions([
+        alice,
+        {
+          connectionId: "viewers#session-1",
+          type: "client",
+          hostId: "fanout",
+          connectedAt: "t",
+          lastHeartbeatAt: "t",
+          viewerFanoutIds: ["viewer-a"],
+        },
+      ]).map((item) => item.id),
+    ).toEqual(["viewer-a"]);
+  });
+
   it("presents an anonymous viewer when no principal was recorded", () => {
     expect(
       presentUserSessions([

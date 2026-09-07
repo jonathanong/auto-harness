@@ -239,14 +239,18 @@ never sent over the wire.
 
 1. `POST /auth/viewer-ticket` through the web origin with the authenticated browser session. The body is `{ ticket }` and the response is `Cache-Control: no-store`. Service-account credentials cannot mint a ticket.
 2. Connect to API `/ws/viewer?ticket=…` from that same web origin (the server requires a matching `Origin` and consumes the ticket once), then `session:subscribe` for one session id (the server checks repository scope).
-3. Server replays a bounded cursor page, then tails new `session:log` records.
-4. Reconnect with a **fresh** ticket and the last received `timestampSeq` as optional `after`; duplicate log replay is safe, ticket replay is not.
+3. Server acknowledges with `session:subscribed` `{ sessionId, cursor, status }` and then tails
+   **new** `session:log` records only. Historical replay is REST
+   [`GET /sessions/:id/logs`](api.md) (newest page, `order=desc`). The viewer socket must not
+   `PostToConnection` a history page on subscribe.
+4. Reconnect with a **fresh** ticket and the last received `timestampSeq` as optional `after`;
+   duplicate log frames are safe (client merge), ticket replay is not.
 5. `session:status` reports lifecycle changes; `session:unsubscribe` is sent on leave (or auto on disconnect).
 
 Notes:
 
 - Many clients may subscribe to one session
-- Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail
+- Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail. Subscribe does not replay that history over WebSocket.
 - Streams may interleave; order is preserved per stream
 - The daemon already coalesces source-side to ~10 messages/sec/session (see above). Independently,
   the local WebSocket server coalesces up to 25 adjacent log frames over a short bounded window,

@@ -13,7 +13,7 @@ test.describe("human user-account administration", () => {
     let created = false;
     try {
       let releaseLoad: (() => void) | undefined;
-      await page.route("**/api/v1/auth/users", async (route) => {
+      await page.route("**/api/v1/auth/users**", async (route) => {
         if (route.request().method() === "GET" && !releaseLoad) {
           await new Promise<void>((resolve) => {
             releaseLoad = resolve;
@@ -46,7 +46,7 @@ test.describe("human user-account administration", () => {
       await page.getByTestId("user-account-password").fill("initial-password");
       await page.getByTestId("user-account-role").selectOption("admin");
       let rejectCreate = true;
-      await page.route("**/api/v1/auth/users", async (route) => {
+      await page.route("**/api/v1/auth/users**", async (route) => {
         if (route.request().method() === "POST" && rejectCreate) {
           rejectCreate = false;
           await route.fulfill({
@@ -103,7 +103,7 @@ test.describe("human user-account administration", () => {
   });
 
   test("admin sees an accessible user-account load error", async ({ page }) => {
-    await page.route("**/api/v1/auth/users", async (route) => {
+    await page.route("**/api/v1/auth/users**", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
           status: 503,

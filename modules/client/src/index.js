@@ -236,12 +236,26 @@ export class AutoHarnessClient {
   }
 
   async listProviders() {
-    const { items } = await this.request("/providers");
-    return items;
+    return this.listCatalog("/providers");
   }
 
   async listCommands() {
-    const { items } = await this.request("/commands");
-    return items;
+    return this.listCatalog("/commands");
+  }
+
+  async listCatalog(path) {
+    const items = [];
+    const seen = new Set();
+    let suffix = "?limit=100";
+    for (let page = 0; page < 20; page += 1) {
+      const body = await this.request(`${path}${suffix}`);
+      items.push(...(body.items ?? []));
+      const cursor = body.nextCursor ?? null;
+      if (!cursor) return items;
+      if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
+      seen.add(cursor);
+      suffix = `?limit=100&cursor=${encodeURIComponent(cursor)}`;
+    }
+    throw new Error(`pagination exceeded 20 pages for ${path}`);
   }
 }

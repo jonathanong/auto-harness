@@ -14,7 +14,7 @@ test("resolves a commandName override to commandId before sending a resume", asy
   });
   await client.resumeSession("sess-1", { target: { commandName: "claude-print-auto" } });
   assert.deepEqual(calls, [
-    "https://harness.test/api/v1/commands",
+    "https://harness.test/api/v1/commands?limit=100",
     "https://harness.test/api/v1/sessions/sess-1/resume",
   ]);
 });

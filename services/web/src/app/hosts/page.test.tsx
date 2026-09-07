@@ -222,6 +222,23 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="form-add-host"');
   });
 
+  it("links to the next host page while preserving filters", async () => {
+    stubApi({
+      "/api/v1/hosts": {
+        items: [{ hostId: "paged", online: true }],
+        nextCursor: "page/two",
+      },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(
+      HostsPage({ searchParams: Promise.resolve({ cursor: "page/one", online: "online" }) }),
+    );
+    expect(html).toContain('data-pw="pagination-next"');
+    expect(html).toContain("cursor=page%2Ftwo");
+    expect(html).toContain("online=online");
+  });
+
   it("hides Add host for a host-bound admin (daemon identity)", async () => {
     process.env.HARNESS_AUTH_MODE = "required";
     stubApi({

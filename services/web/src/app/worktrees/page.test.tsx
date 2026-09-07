@@ -53,11 +53,11 @@ describe("worktrees page", () => {
     expect(html).not.toContain("add-worktree-need-host-r-1");
     expect(html).not.toContain("add-worktree-open-r-1");
     stubApi({
-      "/api/v1/worktrees": "__throw_string__",
+      "/api/v1/worktrees": jsonResponse({}, 503),
       "/api/v1/repositories": { items: [] },
     });
     html = await renderPage(WorktreesPage());
-    expect(html).toContain("offline");
+    expect(html).toContain("GET /api/v1/worktrees");
   });
 
   it("uses empty API defaults, repository ids, and primitive inventory errors", async () => {
@@ -86,5 +86,29 @@ describe("worktrees page", () => {
     });
     html = await renderPage(WorktreesPage());
     expect(html).toContain("No worktrees registered yet.");
+  });
+
+  it("links to the next worktree page when the API returns a cursor", async () => {
+    stubApi({
+      "/api/v1/worktrees": {
+        items: [
+          {
+            id: "wt-1",
+            name: "feature",
+            repositoryId: "r-1",
+            path: "/tmp/feature",
+            hostId: "host-1",
+          },
+        ],
+        nextCursor: "page/two",
+      },
+      "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo" }] },
+      "/api/v1/host-inventories": { items: [] },
+    });
+    const html = await renderPage(
+      WorktreesPage({ searchParams: Promise.resolve({ cursor: "page/one" }) }),
+    );
+    expect(html).toContain('data-pw="pagination-next"');
+    expect(html).toContain("cursor=page%2Ftwo");
   });
 });

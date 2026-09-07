@@ -11,6 +11,8 @@ export type CreateControlPlaneOptions = ControlPlaneOptions &
     tablePrefix?: string;
     /** Skip CreateTable (tables already ensured). */
     skipEnsureTables?: boolean;
+    /** Skip Sessions/usage Scans on boot (Lambda). Default hydrates everything. */
+    hydrateSessionHistory?: boolean;
     /** Use AWS's regional DynamoDB endpoint and credential provider chain. */
     aws?: boolean;
   };
@@ -74,6 +76,8 @@ export async function createControlPlane(
       ? { secretEncryptor: options.secretEncryptor }
       : { secretEncryptor: configuredSecretEncryptor() }),
   });
-  await plane.hydrateFromStorage();
+  await plane.hydrateFromStorage(
+    options.hydrateSessionHistory === false ? { sessionHistory: false } : undefined,
+  );
   return { plane, storage };
 }

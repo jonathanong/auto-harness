@@ -86,4 +86,15 @@ describe("user sessions route", () => {
     expect(html).not.toContain('data-pw="user-sessions-table"');
     expect(html).not.toContain('data-pw="user-sessions-empty"');
   });
+
+  it("treats a missing items array as empty and stringifies primitive failures", async () => {
+    stubApi({ "/api/v1/user-sessions": {} });
+    let html = await renderPage(UserSessionsPage());
+    expect(html).toContain('data-pw="user-sessions-empty"');
+
+    stubApi({ "/api/v1/user-sessions": "__throw_string__" });
+    html = await renderPage(UserSessionsPage());
+    expect(html).toContain("offline");
+    expect(html).toContain('data-pw="user-sessions-api-error"');
+  });
 });

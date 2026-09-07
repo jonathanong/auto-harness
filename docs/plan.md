@@ -329,6 +329,17 @@ reference these by number; a phase is not done until its invariants have a passi
     out its assigned ref, runs only explicitly configured trusted setup scripts, then launches the
     resolved command. Dependency installation and toolchain preparation belong to those setup
     scripts; native resumes continue to skip setup.
+12. **Browser and host never share a request lifetime.** A browser REST or viewer-WebSocket
+    invocation may read/write DynamoDB and return. A host-WebSocket invocation may read/write
+    DynamoDB and return. `postToHost` and viewer `PostToConnection` run in a different invocation
+    (async Lambda, cron, or an indexed fan-out). Do not await assignment, ack, log replay, or host
+    filesystem/git inside a browser request. Do not Scan all connections to talk to one host or one
+    session's viewers.
+13. **List and history APIs page or stream at storage, not after a full load.** `limit`/`nextCursor`
+    (or a log cursor / WS tail) must bound the DynamoDB read. Scanning a table and slicing in memory
+    is not pagination. UIs show one page and Load more; they must not collect every cursor page
+    except for small catalogs that are explicitly documented as complete (and even those need a
+    cap). Live logs: REST history is a bounded newest page; viewer WS is tail-only.
 
 ---
 

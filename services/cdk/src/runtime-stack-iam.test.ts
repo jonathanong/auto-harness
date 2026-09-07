@@ -94,4 +94,10 @@ describe("runtime Lambda IAM split", () => {
     expect(policyActions(template, "index.cron")).toContain("execute-api:ManageConnections");
     expect(policyActions(template, "index.websocket")).toContain("execute-api:ManageConnections");
   });
+
+  it("lets REST Event-invoke the cron assignment sweep", () => {
+    const template = runtimeTemplate();
+    expect(policyActions(template, "index.rest")).toContain("lambda:InvokeFunction");
+    expect(policyActions(template, "index.websocket")).not.toContain("lambda:InvokeFunction");
+  });
 });

@@ -51,6 +51,11 @@ export function parseLogQuery(searchParams: URLSearchParams): LogQueryParseResul
     return { ok: false, error: "since must be an ISO 8601 timestamp with an explicit timezone" };
   }
 
+  const orderValue = searchParams.get("order");
+  if (orderValue !== null && orderValue !== "asc" && orderValue !== "desc") {
+    return { ok: false, error: "order must be asc or desc" };
+  }
+
   const limitValue = searchParams.get("limit");
   const limit = limitValue === null ? DEFAULT_LOG_QUERY_LIMIT : Number(limitValue);
   if (
@@ -73,6 +78,7 @@ export function parseLogQuery(searchParams: URLSearchParams): LogQueryParseResul
       // above already rejected an invalid, non-null sinceValue) — `!== undefined` alone
       // never excludes the null case, so it was a no-op check.
       ...(since !== null && since !== undefined ? { since } : {}),
+      ...(orderValue === "desc" ? { order: "desc" as const } : {}),
       limit,
     },
   };

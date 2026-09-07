@@ -105,6 +105,9 @@ export class AutoHarnessRuntimeStack extends Stack {
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
       grantPublicBaseUrlAccess(fn, publicBaseUrl);
     }
+    // Browser REST enqueues assignment on a separate invocation (Invariant 12).
+    cronFunction.grantInvoke(restFunction);
+    restFunction.addEnvironment("ASSIGNMENT_FUNCTION_NAME", cronFunction.functionName);
 
     const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {
       name: `${this.stackName}-http`,

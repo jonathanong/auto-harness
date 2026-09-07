@@ -40,27 +40,32 @@ type ServiceAccountData =
   | { kind: "unauthorized" };
 
 export async function loadServiceAccountData(): Promise<ServiceAccountData> {
-  const accounts = await apiFetch("/api/v1/auth/service-accounts", { cache: "no-store" });
-  if (accounts.status === 401) return { kind: "unauthorized" };
-  if (accounts.status === 403) return { kind: "forbidden" };
-  if (!accounts.ok) throw new Error(await apiErrorMessage(accounts));
-  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories", {
+  const accounts = await apiFetchAllPages<ServiceAccount>(
+    "/api/v1/auth/service-accounts?limit=100",
+    {
+      cache: "no-store",
+    },
+  );
+  if (accounts.response.status === 401) return { kind: "unauthorized" };
+  if (accounts.response.status === 403) return { kind: "forbidden" };
+  if (!accounts.response.ok) throw new Error(await apiErrorMessage(accounts.response));
+  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories?limit=100", {
     cache: "no-store",
   });
   if (repositories.response.status === 401) return { kind: "unauthorized" };
   if (!repositories.response.ok) throw new Error(await apiErrorMessage(repositories.response));
-  const hosts = await apiFetch("/api/v1/hosts", { cache: "no-store" });
-  if (hosts.status === 401) return { kind: "unauthorized" };
-  if (!hosts.ok) throw new Error(await apiErrorMessage(hosts));
-  const accountBody = (await accounts.json()) as { items?: ServiceAccount[] };
-  const hostBody = (await hosts.json()) as { items?: Array<{ hostId?: string }> };
+  const hosts = await apiFetchAllPages<{ hostId?: string }>("/api/v1/hosts?limit=100", {
+    cache: "no-store",
+  });
+  if (hosts.response.status === 401) return { kind: "unauthorized" };
+  if (!hosts.response.ok) throw new Error(await apiErrorMessage(hosts.response));
   return {
     kind: "ready",
-    accounts: accountBody.items ?? [],
+    accounts: accounts.items,
     repositories: repositories.items.toSorted(
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
     ),
-    hostIds: (hostBody.items ?? []).flatMap((item) => {
+    hostIds: hosts.items.flatMap((item) => {
       const hostId = item.hostId?.trim();
       return hostId ? [hostId] : [];
     }),

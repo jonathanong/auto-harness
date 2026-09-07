@@ -124,7 +124,7 @@ export function attachViewerWsHub(
                 status: session.status,
               });
             }
-            await drain(socket, subscription);
+            if (subscription.after) await drain(socket, subscription);
           } catch {
             send(socket, {
               type: "session:error",
@@ -210,7 +210,6 @@ export function attachViewerWsHub(
           };
           requested.set(message.sessionId, subscription);
           persist();
-          await drain(socket, subscription);
           send(socket, {
             type: "session:subscribed",
             sessionId: message.sessionId,

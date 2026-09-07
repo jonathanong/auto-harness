@@ -15,7 +15,7 @@ import { RepositoryWorktreesTab } from "../../../components/repository-worktrees
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
 import { RepositoryAdmissionControls } from "../../../components/repository-admission-controls.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -67,8 +67,10 @@ export default async function RepositoryDetailPage({
 
   let worktrees: Wt[] = [];
   try {
-    const data = await apiGet<{ items: Wt[] }>("/api/v1/worktrees");
-    worktrees = (data.items ?? []).filter((w) => w.repositoryId === repositoryId);
+    const data = await apiGet<{ items: Wt[] }>(
+      `/api/v1/worktrees?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
+    );
+    worktrees = data.items ?? [];
   } catch {
     /* ignore — worktrees section stays empty */
   }
@@ -88,9 +90,8 @@ export default async function RepositoryDetailPage({
 
   let attachedHosts: AgentHost[] = [];
   try {
-    const data = await apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories");
-    attachedHosts = (data.items ?? []).filter((h) =>
-      h.repositories.some((r) => r.id === repositoryId),
+    attachedHosts = (await apiGetAllPages<AgentHost>("/api/v1/host-inventories?limit=100")).filter(
+      (h) => h.repositories.some((r) => r.id === repositoryId),
     );
   } catch {
     /* ignore — attached-hosts list stays empty */

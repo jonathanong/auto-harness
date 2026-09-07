@@ -32,6 +32,9 @@ describe("createLocalApp agent and scheduler routes", () => {
       invokeHandler(handler as never, method, path, body);
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/hosts?limit=foo")).status).toBe(400);
+    expect((await invoke("GET", "/api/v1/hosts/a1")).json).toMatchObject({ hostId: "a1" });
+    expect((await invoke("GET", "/api/v1/hosts/missing")).status).toBe(404);
     plane.state.connections.set("viewer", {
       connectionId: "viewer",
       type: "client",
@@ -56,6 +59,14 @@ describe("createLocalApp agent and scheduler routes", () => {
       ).items.map((host) => host.hostId),
     ).not.toContain("user:alice");
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/worktrees?limit=foo")).status).toBe(400);
+    expect((await invoke("GET", "/api/v1/worktrees/wt-1")).json).toMatchObject({ id: "wt-1" });
+    expect((await invoke("GET", "/api/v1/worktrees?repositoryId=r1")).json).toMatchObject({
+      items: [expect.objectContaining({ id: "wt-1", repositoryId: "r1" })],
+    });
+    expect((await invoke("GET", "/api/v1/worktrees?repositoryId=missing")).json).toMatchObject({
+      items: [],
+    });
     expect((await invoke("GET", "/api/v1/sessions?sort=priority_desc")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/sessions?sort=priority_asc")).status).toBe(200);
 
@@ -332,5 +343,19 @@ describe("createLocalApp agent and scheduler routes", () => {
 
     const none = await invoke("/api/v1/worktrees?hostId=host-missing");
     expect((none.json as { items: unknown[] }).items).toHaveLength(0);
+    expect((await invoke("/api/v1/worktrees/wt-a")).json).toMatchObject({ id: "wt-a" });
+    expect((await invoke("/api/v1/worktrees/missing")).status).toBe(404);
+
+    const paged = await invoke("/api/v1/worktrees?limit=1");
+    expect(paged.status).toBe(200);
+    expect((paged.json as { items: unknown[]; nextCursor: string | null }).items).toHaveLength(1);
+    expect((paged.json as { nextCursor: string | null }).nextCursor).toEqual(expect.any(String));
+    const next = await invoke(
+      `/api/v1/worktrees?limit=1&cursor=${encodeURIComponent(
+        (paged.json as { nextCursor: string }).nextCursor,
+      )}`,
+    );
+    expect((next.json as { items: unknown[]; nextCursor: string | null }).items).toHaveLength(1);
+    expect((next.json as { nextCursor: string | null }).nextCursor).toBeNull();
   });
 });

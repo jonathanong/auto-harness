@@ -1205,6 +1205,17 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("runs a bounded assignment sweep for enqueue events without the repair cron", async () => {
+    const fixture = runtimeFixture();
+    seedSchedulerSweep(fixture);
+    await expect((await fixture.runtime).cron({ source: "enqueue" })).resolves.toMatchObject({
+      ackDeadlinesEnforced: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
+    });
+    expect(fixture.schedulerCalls).not.toContain("migration");
+  });
+
   it("handles both closeReclaimedConnection outcomes without failing the sweep", async () => {
     // GoneException: the daemon already reconnected (or API Gateway already
     // dropped the socket) by the time the sweep gets around to closing it —
@@ -1346,6 +1357,32 @@ describe("Lambda runtime adapters", () => {
     } finally {
       delete process.env.HARNESS_METRIC_ENVIRONMENT;
       metricLog.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+
+  it("logs when enqueueing an assignment sweep fails", async () => {
+    const fixture = runtimeFixture();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const previous = process.env.WS_API_ENDPOINT;
+    try {
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        invokeAssignment: async () => {
+          throw new Error("enqueue failed");
+        },
+      });
+      await fixture.plane.enqueueAssignment();
+      expect(consoleError).toHaveBeenCalledWith(
+        "failed to enqueue assignment sweep",
+        expect.any(Error),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previous;
       consoleError.mockRestore();
     }
   });

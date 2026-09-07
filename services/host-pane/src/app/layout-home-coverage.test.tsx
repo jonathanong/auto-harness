@@ -18,10 +18,8 @@ describe("host-pane root routes", () => {
     process.env.HARNESS_HOST_ID = "host-a";
     setApiTransportForTests(async () =>
       Response.json({
-        items: [
-          { hostId: "other", online: false },
-          { hostId: "host-a", online: true },
-        ],
+        hostId: "host-a",
+        online: true,
       }),
     );
 

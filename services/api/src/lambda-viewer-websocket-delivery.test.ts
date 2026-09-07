@@ -84,7 +84,7 @@ describe("Lambda viewer WebSocket delivery", () => {
     await ctx.sockets.publishLog(log("2026-08-17T00:00:02.000Z#0000000002", 2));
     expect(ctx.sent).toHaveLength(1);
     expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]?.after).toContain(
-      "0000000002",
+      "0000000001",
     );
   });
 
@@ -107,5 +107,17 @@ describe("Lambda viewer WebSocket delivery", () => {
         JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
       ),
     ).rejects.toThrow("network");
+  });
+
+  it("drops a gone viewer from the fanout index while publishing logs", async () => {
+    const ctx = fixture();
+    await ctx.sockets.connect("viewer-1", "ticket", "https://app.example.test");
+    await ctx.sockets.message(
+      "viewer-1",
+      JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+    );
+    ctx.management.send.mockRejectedValueOnce({ name: "GoneException" });
+    await ctx.sockets.publishLog(log("2026-08-17T00:00:03.000Z#0000000003", 3));
+    expect(ctx.storage.deleteConnection).toHaveBeenCalledWith("viewer-1");
   });
 });

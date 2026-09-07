@@ -50,7 +50,7 @@ export default async function SessionDetailPage({
   let logs: LogEntry[] = [];
   try {
     const data = await apiGet<{ items: LogEntry[] }>(
-      `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=${MAX_LIVE_LOG_ENTRIES}`,
+      `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=${MAX_LIVE_LOG_ENTRIES}&order=desc`,
     );
     logs = data.items ?? [];
   } catch {
@@ -69,9 +69,11 @@ export default async function SessionDetailPage({
   let hosts: Array<{ hostId: string; online: boolean }> = [];
   if (session.status === "running" && session.hostId) {
     try {
-      hosts =
-        (await apiGet<{ items: Array<{ hostId: string; online: boolean }> }>("/api/v1/hosts"))
-          .items ?? [];
+      hosts = [
+        await apiGet<{ hostId: string; online: boolean }>(
+          `/api/v1/hosts/${encodeURIComponent(session.hostId)}`,
+        ),
+      ];
     } catch {
       /* live client refresh retries host state */
     }

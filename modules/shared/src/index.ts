@@ -289,4 +289,4 @@ export {
 
 export { contentSecurityPolicy, securityHeaders, wsOrigin } from "./security-headers.ts";
 export { SESSION_COOKIE, hasValidSession, sessionCookieValue } from "./session-cookie.ts";
-export { collectCursorPages, type CursorPage } from "./cursor-pages.ts";
+export { collectCursorPages, MAX_CURSOR_PAGES, type CursorPage } from "./cursor-pages.ts";

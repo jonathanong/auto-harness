@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- scan, query, and worktree page cases share one Dynamo send fake. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +11,11 @@ import {
 } from "./plane-storage-catalog.ts";
 import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
-import { listSessionsByStatus, listWorktreesForRepo } from "./plane-storage-sessions.ts";
+import {
+  listSessionsByStatus,
+  listWorktreesForRepo,
+  listWorktreesPage,
+} from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 describe("DynamoDB storage pagination", () => {
   it("exhausts every internal scan and query page", async () => {
@@ -196,5 +201,62 @@ describe("DynamoDB storage pagination", () => {
       expect.objectContaining({ input: expect.objectContaining({ ConsistentRead: true }) }),
     );
     expect(send.mock.calls[0]?.[0].input.IndexName).toBeUndefined();
+  });
+
+  it("pages worktrees with a bounded Scan or repository Query", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ id: "wt-1" }],
+      LastEvaluatedKey: { id: "wt-1" },
+    });
+    const ctx = {
+      doc: { send },
+      tables: { worktrees: "Worktrees" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(listWorktreesPage(ctx, { limit: 2, hostId: "host-1" })).resolves.toEqual({
+      items: [{ id: "wt-1" }],
+      nextKey: { id: "wt-1" },
+    });
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      TableName: "Worktrees",
+      Limit: 2,
+      FilterExpression: "hostId = :hostId",
+      ExpressionAttributeValues: { ":hostId": "host-1" },
+    });
+    expect(send.mock.calls[0]?.[0].input.IndexName).toBeUndefined();
+
+    send.mockClear();
+    send.mockResolvedValue({ Items: [{ id: "wt-2" }] });
+    await expect(listWorktreesPage(ctx, { limit: 5, startKey: { id: "wt-0" } })).resolves.toEqual({
+      items: [{ id: "wt-2" }],
+      nextKey: null,
+    });
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      Limit: 5,
+      ExclusiveStartKey: { id: "wt-0" },
+    });
+    expect(send.mock.calls[0]?.[0].input.FilterExpression).toBeUndefined();
+
+    send.mockClear();
+    send.mockResolvedValue({ Items: [{ id: "wt-3" }] });
+    await expect(listWorktreesPage(ctx, { limit: 10, repositoryId: "repo-1" })).resolves.toEqual({
+      items: [{ id: "wt-3" }],
+      nextKey: null,
+    });
+    expect(send.mock.calls[0]?.[0].input.FilterExpression).toBeUndefined();
+    expect(send.mock.calls[0]?.[0].input.ExpressionAttributeValues).toEqual({ ":r": "repo-1" });
+
+    send.mockClear();
+    send.mockResolvedValue({ Items: [{ id: "wt-4" }] });
+    await expect(
+      listWorktreesPage(ctx, { limit: 10, repositoryId: "repo-1", hostId: "host-1" }),
+    ).resolves.toEqual({ items: [{ id: "wt-4" }], nextKey: null });
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      IndexName: "repositoryId-id",
+      KeyConditionExpression: "repositoryId = :r",
+      FilterExpression: "hostId = :hostId",
+      Limit: 10,
+      ExpressionAttributeValues: { ":r": "repo-1", ":hostId": "host-1" },
+    });
   });
 });

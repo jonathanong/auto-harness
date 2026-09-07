@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host list, keyed host GET, and worktree pages share this service. */
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
@@ -11,6 +12,7 @@ import * as reconnect from "./control-plane-reconnect.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as userSessions from "./control-plane-user-sessions.ts";
+import { decodeStorageCursor, encodeStorageCursor, pageByKey } from "./control-plane-id-page.ts";
 import { ensureSeededTestHost, testHostRuntime } from "./control-plane-test-host.ts";
 
 /** Host registration, inventory, worktrees, and drain/reclaim. */
@@ -46,8 +48,50 @@ export class ControlPlaneHostsService {
     return worktrees.getWorktree(this.state, id);
   }
 
+  async getWorktreeDurable(id: string): Promise<WorktreeRecord | null> {
+    const storage = this.state.storage;
+    if (storage && typeof storage.getWorktree === "function") {
+      const record = await storage.getWorktree(id);
+      if (record) this.state.worktrees.set(id, { ...record });
+      else this.state.worktrees.delete(id);
+      return record;
+    }
+    return worktrees.getWorktree(this.state, id);
+  }
+
   listWorktreesDurable(): Promise<WorktreeRecord[]> {
     return durableRuntime.listWorktreesDurable(this.state);
+  }
+
+  async listWorktreesPageDurable(query: {
+    limit: number;
+    cursor: string | null;
+    hostId: string | null;
+    repositoryId: string | null;
+  }): Promise<{ items: WorktreeRecord[]; nextCursor: string | null }> {
+    const storage = this.state.storage;
+    if (storage && typeof storage.listWorktreesPage === "function") {
+      const startKey = decodeStorageCursor(query.cursor);
+      const page = await storage.listWorktreesPage({
+        limit: query.limit,
+        ...(startKey ? { startKey } : {}),
+        hostId: query.hostId,
+        repositoryId: query.repositoryId,
+      });
+      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+    }
+    const records = worktrees
+      .listWorktrees(this.state)
+      .filter(
+        (worktree) =>
+          (query.hostId === null || worktree.hostId === query.hostId) &&
+          (query.repositoryId === null || worktree.repositoryId === query.repositoryId),
+      );
+    return pageByKey(records, {
+      limit: query.limit,
+      cursor: query.cursor,
+      key: (worktree) => worktree.id,
+    });
   }
 
   listHosts(): ReturnType<typeof agents.listHosts> {
@@ -56,7 +100,6 @@ export class ControlPlaneHostsService {
 
   async listHostsDurable(): Promise<ReturnType<typeof agents.listHosts>> {
     await durableRuntime.refreshSchedulerReadModel(this.state);
-    await durableRuntime.listWorktreesDurable(this.state);
     return agents.listHosts(this.state);
   }
 
@@ -66,6 +109,35 @@ export class ControlPlaneHostsService {
 
   listUserSessionsDurable(): Promise<ReturnType<typeof userSessions.listUserSessions>> {
     return userSessions.listUserSessionsDurable(this.state);
+  }
+
+  async getHostDurable(
+    hostId: string,
+  ): Promise<ReturnType<typeof agents.listHosts>[number] | null> {
+    const storage = this.state.storage;
+    if (storage?.getHostInventory) {
+      const inventory = await storage.getHostInventory(hostId);
+      if (inventory) this.state.hostInventories.set(hostId, { ...inventory });
+      else this.state.hostInventories.delete(hostId);
+      if (storage.getHostLock) {
+        const previousConnectionId = this.state.hostConnection.get(hostId);
+        const connectionId = await storage.getHostLock(hostId);
+        let nextConnectionId: string | undefined;
+        if (connectionId && storage.getConnection) {
+          const connection = await storage.getConnection(connectionId);
+          if (connection?.type === "host") {
+            this.state.connections.set(connection.connectionId, { ...connection });
+            this.state.hostConnection.set(hostId, connection.connectionId);
+            nextConnectionId = connection.connectionId;
+          }
+        }
+        if (!nextConnectionId) this.state.hostConnection.delete(hostId);
+        if (previousConnectionId && previousConnectionId !== nextConnectionId) {
+          this.state.connections.delete(previousConnectionId);
+        }
+      }
+    }
+    return this.listHosts().find((host) => host.hostId === hostId) ?? null;
   }
 
   registerHost(

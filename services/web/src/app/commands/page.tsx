@@ -1,25 +1,42 @@
 import Link from "next/link";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import {
+  CursorPagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 import type { Command, Provider } from "@auto-harness/shared";
 
 import { AddCommandDialog } from "../../components/add-command-dialog.tsx";
-import { apiGet } from "../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
-export default async function CommandsPage() {
+export default async function CommandsPage({
+  searchParams = Promise.resolve({}),
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const raw = await searchParams;
+  const cursor = typeof raw.cursor === "string" ? raw.cursor : null;
   const canWriteCatalog = can(await loadPrincipal(), "catalog:write");
   let commands: Command[] = [];
+  let nextCursor: string | null = null;
   let providers: Provider[] = [];
   let error: string | null = null;
+  const commandsPath = `/api/v1/commands?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   try {
     const [c, p] = await Promise.all([
-      apiGet<{ items: Command[] }>("/api/v1/commands"),
-      apiGet<{ items: Provider[] }>("/api/v1/providers"),
+      apiGet<{ items: Command[]; nextCursor?: string | null }>(commandsPath),
+      apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
     ]);
     commands = c.items ?? [];
-    providers = p.items ?? [];
+    nextCursor = c.nextCursor ?? null;
+    providers = p;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -78,6 +95,9 @@ export default async function CommandsPage() {
           ) : null}
         </TableBody>
       </Table>
+      <CursorPagination
+        nextHref={nextCursor ? `/commands?cursor=${encodeURIComponent(nextCursor)}` : null}
+      />
     </div>
   );
 }

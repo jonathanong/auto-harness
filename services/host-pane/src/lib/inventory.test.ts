@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { apiGetAllPages, setApiTransportForTests } from "./api.ts";
-import { loadHostInventoryWithVersion, loadRepoCatalog } from "./inventory.ts";
+import {
+  loadHostInventoryWithVersion,
+  loadLiveWorktreesById,
+  loadRepoCatalog,
+} from "./inventory.ts";
 
 afterEach(() => setApiTransportForTests(undefined));
 
@@ -38,6 +42,24 @@ describe("loadHostInventoryWithVersion", () => {
   });
 });
 
+describe("loadLiveWorktreesById", () => {
+  it("follows worktree cursors for the requested host", async () => {
+    const requests: string[] = [];
+    setApiTransportForTests(async (input) => {
+      requests.push(String(input));
+      return requests.length === 1
+        ? Response.json({ items: [{ id: "wt-1", status: "busy" }], nextCursor: "next/page" })
+        : Response.json({ items: [{ id: "wt-2", online: true }], nextCursor: null });
+    });
+    await expect(loadLiveWorktreesById("host-a")).resolves.toEqual({
+      "wt-1": { status: "busy", online: undefined },
+      "wt-2": { status: undefined, online: true },
+    });
+    expect(requests[0]).toMatch(/hostId=host-a/);
+    expect(requests[1]).toMatch(/cursor=next%2Fpage/);
+  });
+});
+
 describe("loadRepoCatalog", () => {
   it("loads every repository page", async () => {
     const requests: string[] = [];
@@ -52,7 +74,7 @@ describe("loadRepoCatalog", () => {
       { id: "a", name: "Alpha" },
       { id: "b", name: "Bravo" },
     ]);
-    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?cursor=next%2Fpage$/);
+    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?limit=100&cursor=next%2Fpage$/);
   });
 
   it("rejects a replayed continuation", async () => {

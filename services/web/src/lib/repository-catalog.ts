@@ -1,3 +1,5 @@
+import { MAX_CURSOR_PAGES } from "@auto-harness/shared";
+
 export type RepositoryPage<T = { id: string }> = {
   items?: T[];
   nextCursor?: string | null;
@@ -31,7 +33,7 @@ export async function loadAllRepositoryPages<T extends { id: string }>(
   let page = initialPage ?? (await fetchPage(initialPath));
   const items: T[] = [];
   const seenCursors = new Set<string>();
-  for (;;) {
+  for (let pageCount = 0; pageCount < MAX_CURSOR_PAGES; pageCount += 1) {
     items.push(...(page.items ?? []));
     const cursor = page.nextCursor ?? null;
     if (!cursor) return dedupeRepositories(items);
@@ -39,6 +41,7 @@ export async function loadAllRepositoryPages<T extends { id: string }>(
     seenCursors.add(cursor);
     page = await fetchPage(repositoryPagePath(cursor, initialPath));
   }
+  throw new Error(`pagination exceeded ${MAX_CURSOR_PAGES} pages`);
 }
 
 export function dedupeRepositories<T extends { id: string }>(items: T[]): T[] {

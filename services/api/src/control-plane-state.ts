@@ -131,6 +131,11 @@ export type ControlPlaneState = {
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
   /** Called only after a log is durable (or committed in the in-memory plane). */
   onLogCommitted: ((record: LogRecord) => void) | undefined;
+  /**
+   * Browser REST assignment enqueue. When set, skip the in-process sweep so the
+   * HTTP invocation never waits on host delivery (Invariant 12).
+   */
+  onAssignmentRequested: (() => void | Promise<void>) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -205,6 +210,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       process.env.HARNESS_SESSION_SECRET ??
       randomBytes(32).toString("base64url"),
     onHostMessage: options.onHostMessage,
+    onAssignmentRequested: options.onAssignmentRequested,
     onLogCommitted: undefined,
   };
 }

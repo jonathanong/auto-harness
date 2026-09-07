@@ -10,7 +10,7 @@ const catalogOk = {
     repositories: [{ id: "repo-a", path: "/repos/a", worktrees: [] }],
     providerAccounts: [],
   },
-  "/api/v1/hosts": { items: [{ hostId: "host-a", online: true }] },
+  "/api/v1/hosts/host-a": { hostId: "host-a", online: true },
   "/api/v1/repositories": {
     items: [
       { id: "repo-c", name: "Zulu" },
@@ -18,7 +18,7 @@ const catalogOk = {
       { id: "repo-a", name: "Repo A" },
     ],
   },
-  "/api/v1/worktrees?hostId=host-a": { items: [] },
+  "/api/v1/worktrees": { items: [] },
   "/api/v1/providers": { items: [] },
   "/api/v1/provider-accounts": { items: [] },
   "/api/v1/commands": { items: [] },
@@ -47,17 +47,13 @@ describe("host detail route", () => {
   it("shows repository environment readiness and missing variable names", async () => {
     stubApi({
       ...catalogOk,
-      "/api/v1/hosts": {
-        items: [
-          {
-            hostId: "host-a",
-            online: true,
-            environmentReadiness: {
-              "repo-a": { required: ["TOKEN"], missing: ["TOKEN"], ready: false },
-              "repo-unknown": { required: ["TOKEN"], missing: [], ready: true },
-            },
-          },
-        ],
+      "/api/v1/hosts/host-a": {
+        hostId: "host-a",
+        online: true,
+        environmentReadiness: {
+          "repo-a": { required: ["TOKEN"], missing: ["TOKEN"], ready: false },
+          "repo-unknown": { required: ["TOKEN"], missing: [], ready: true },
+        },
       },
     });
     const html = await renderPage(
@@ -76,7 +72,7 @@ describe("host detail route", () => {
   it("shows a genuine not-found for a host with no inventory and no agent record", async () => {
     stubApi({
       "/api/v1/hosts/missing/inventory": jsonResponse({}, 404),
-      "/api/v1/hosts": { items: [] },
+      "/api/v1/hosts/missing": jsonResponse({}, 404),
     });
     const html = await renderPage(
       HostDetailPage({
@@ -92,7 +88,7 @@ describe("host detail route", () => {
   it("distinguishes a real lookup failure from a genuine 404", async () => {
     stubApi({
       "/api/v1/hosts/broken/inventory": jsonResponse({}, 500),
-      "/api/v1/hosts": jsonResponse({}, 503),
+      "/api/v1/hosts/broken": jsonResponse({}, 503),
     });
     const html = await renderPage(
       HostDetailPage({
@@ -119,7 +115,7 @@ describe("host detail route", () => {
   });
 
   it("surfaces a live-worktree-status failure alongside the attached hierarchy", async () => {
-    stubApi({ ...catalogOk, "/api/v1/worktrees?hostId=host-a": jsonResponse({}, 500) });
+    stubApi({ ...catalogOk, "/api/v1/worktrees": jsonResponse({}, 500) });
     const html = await renderPage(
       HostDetailPage({
         params: Promise.resolve({ hostId: "host-a" }),
@@ -146,7 +142,7 @@ describe("host detail route", () => {
     // A fabricated empty inventory could be submitted on the next save and wipe real config.
     stubApi({
       "/api/v1/hosts/host-a/inventory": jsonResponse({}, 500),
-      "/api/v1/hosts": { items: [{ hostId: "host-a", online: true }] },
+      "/api/v1/hosts/host-a": { hostId: "host-a", online: true },
     });
     const html = await renderPage(
       HostDetailPage({
@@ -199,13 +195,13 @@ describe("host detail route", () => {
 
   it("decodes a percent-encoded host id before lookup and display", async () => {
     stubApi({
-      "/api/v1/hosts/admin:admin/inventory": {
+      "/api/v1/hosts/admin%3Aadmin/inventory": {
         repositories: [],
         providerAccounts: [],
       },
-      "/api/v1/hosts": { items: [{ hostId: "admin:admin", online: true }] },
+      "/api/v1/hosts/admin%3Aadmin": { hostId: "admin:admin", online: true },
       "/api/v1/repositories": { items: [] },
-      "/api/v1/worktrees?hostId=admin%3Aadmin": { items: [] },
+      "/api/v1/worktrees": { items: [] },
       "/api/v1/providers": { items: [] },
       "/api/v1/provider-accounts": { items: [] },
       "/api/v1/commands": { items: [] },
@@ -224,8 +220,8 @@ describe("host detail route", () => {
 
   it("shows a decoded host id in the not-found empty state", async () => {
     stubApi({
-      "/api/v1/hosts/admin:admin/inventory": jsonResponse({}, 404),
-      "/api/v1/hosts": { items: [] },
+      "/api/v1/hosts/admin%3Aadmin/inventory": jsonResponse({}, 404),
+      "/api/v1/hosts/admin%3Aadmin": jsonResponse({}, 404),
     });
     const html = await renderPage(
       HostDetailPage({
@@ -240,7 +236,7 @@ describe("host detail route", () => {
   });
 
   it("surfaces an agent-status failure on the Overview tab without hiding the page", async () => {
-    stubApi({ ...catalogOk, "/api/v1/hosts": jsonResponse({}, 503) });
+    stubApi({ ...catalogOk, "/api/v1/hosts/host-a": jsonResponse({}, 503) });
     const html = await renderPage(
       HostDetailPage({
         params: Promise.resolve({ hostId: "host-a" }),
@@ -254,9 +250,9 @@ describe("host detail route", () => {
   it("tolerates legacy collection responses and inventories without provider accounts", async () => {
     stubApi({
       "/api/v1/hosts/legacy/inventory": { repositories: [] },
-      "/api/v1/hosts": {},
+      "/api/v1/hosts/legacy": {},
       "/api/v1/repositories": {},
-      "/api/v1/worktrees?hostId=legacy": {},
+      "/api/v1/worktrees": {},
       "/api/v1/providers": {},
       "/api/v1/provider-accounts": {},
       "/api/v1/commands": {},

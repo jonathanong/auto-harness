@@ -64,8 +64,10 @@ export class ControlPlane {
     this.state.onHostMessage = handler;
   }
 
-  async hydrateFromStorage(): Promise<void> {
-    await hydrateFromStorage(this.state);
+  async hydrateFromStorage(
+    options?: import("./control-plane-hydrate.ts").HydrateFromStorageOptions,
+  ): Promise<void> {
+    await hydrateFromStorage(this.state, options);
   }
 
   async settleStorage(): Promise<void> {
@@ -75,6 +77,22 @@ export class ControlPlane {
   /** Best-effort prompt + scheduled assignment; failures leave work for the repair sweep. */
   async requestAssignment(options: AssignmentSweepOptions = {}): Promise<void> {
     return requestAssignment(this.state, options);
+  }
+
+  /**
+   * Enqueue assignment without awaiting host I/O. Browser REST must call this
+   * rather than {@link requestAssignment} (Invariant 12).
+   */
+  async enqueueAssignment(): Promise<void> {
+    if (this.state.onAssignmentRequested) {
+      await this.state.onAssignmentRequested();
+      return;
+    }
+    void this.requestAssignment();
+  }
+
+  setOnAssignmentRequested(handler: (() => void | Promise<void>) | undefined): void {
+    this.state.onAssignmentRequested = handler;
   }
 }
 

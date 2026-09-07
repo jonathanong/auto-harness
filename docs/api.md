@@ -884,11 +884,12 @@ Get bounded **historical** session logs. For live streaming, use the authenticat
 
 **Query parameters:**
 
-| Param    | Type    | Description                                                                          |
-| -------- | ------- | ------------------------------------------------------------------------------------ |
-| `stream` | string  | Optional enum: `stdout`, `stderr`, or `system`                                       |
-| `since`  | string  | Optional ISO 8601 timestamp with an explicit timezone; return logs strictly after it |
-| `limit`  | integer | Optional result cap: default `1000`, minimum `1`, safe maximum `10000`               |
+| Param    | Type    | Description                                                                                             |
+| -------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `stream` | string  | Optional enum: `stdout`, `stderr`, or `system`                                                          |
+| `since`  | string  | Optional ISO 8601 timestamp with an explicit timezone; return logs strictly after it                    |
+| `limit`  | integer | Optional result cap: default `1000`, minimum `1`, safe maximum `10000`                                  |
+| `order`  | string  | Optional `asc` (default, oldest first) or `desc` (newest `limit` rows, still returned oldest-to-newest) |
 
 Results are always ascending by the durable `timestampSeq` key (timestamp then
 agent sequence). Filters apply before `limit`. Invalid query parameters return
@@ -921,9 +922,12 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
 
 #### `GET /worktrees`
 
-List all worktrees across all connected agents. Optional `?hostId=<id>` filters server-side to a
-single host — callers that only need one host's worktrees (a host detail page, a host pane) should
-filter here rather than fetching the whole fleet and filtering in JS.
+List a bounded page of worktrees. `limit` is 1–100 (default 50). `cursor` continues from the
+previous `nextCursor`. Optional `?hostId=<id>` and `?repositoryId=<id>` filter server-side —
+callers that only need one host's or one repository's worktrees should filter here rather than
+fetching the whole fleet and filtering in JS. A `repositoryId` filter Queries the repository GSI
+with `Limit`. Other list reads are a DynamoDB Scan with `Limit`; they do not load the full
+worktrees table.
 
 **Response:** `200 OK`
 
@@ -941,7 +945,8 @@ filter here rather than fetching the whole fleet and filtering in JS.
       "currentSessionId": null,
       "lastAssignedAt": "2026-08-01T11:00:00Z"
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
 
@@ -1064,6 +1069,8 @@ Each host also reports `daemonVersion`, `gitVersion`, `gitReady`, and a bounded
 `gitReadinessReason`. `online` is connection liveness, not schedulability: legacy daemons or hosts
 whose Git preflight fails remain visible as online but have `gitReady: false` and receive no work.
 
+`limit` is 1–100 (default 50). `nextCursor` continues the hostId-ordered page.
+
 **Response:** `200 OK`
 
 ```json
@@ -1084,7 +1091,8 @@ whose Git preflight fails remain visible as online but have `gitReady: false` an
       "worktreeIds": ["docs"],
       "repositoryIds": ["auto-harness"]
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
 
@@ -1094,11 +1102,19 @@ increments the durable count and stamps detection time using the control-plane c
 daemons remain compatible and report an unknown start time. These fields do not trigger a host
 restart or an external notification.
 
+#### `GET /api/v1/hosts/:hostId`
+
+One host's connection health and restart observability — the same record as a list item. Callers
+that already know the host id (host detail, host pane shell, daemon `status`, a running session's
+assigned host) must use this instead of paging `GET /hosts` until a match appears. `404` when the
+host is unknown or outside the caller's scope.
+
 #### `GET /api/v1/user-sessions`
 
 List live browser log-viewer connections. These are `/ws/viewer` sockets, not host daemons and
 not CLI sessions. Bound host-daemon credentials receive an empty list. Repository-scoped
 principals see only their own connection plus viewers subscribed to an allowed repository.
+`limit` is 1–100 (default 50). `nextCursor` continues the id-ordered page.
 
 **Response:** `200 OK`
 
@@ -1115,7 +1131,8 @@ principals see only their own connection plus viewers subscribed to an allowed r
       "lastHeartbeatAt": "2026-09-06T21:00:30.000Z",
       "subscriptions": [{ "sessionId": "sess-1", "repositoryId": "repo-1", "status": "running" }]
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
 
@@ -1140,6 +1157,11 @@ Create a provider. **Does not** create its default command — the control-plane
 **Response:** `201 Created` — `{ "id", "name", "defaultCommandId": null, "createdAt", "updatedAt" }`
 
 #### `GET /providers`, `GET /providers/:id`, `PATCH /providers/:id`, `DELETE /providers/:id`
+
+`GET /providers`, `GET /commands`, `GET /provider-accounts`, `GET /schedules`, `GET /session-targets`,
+`GET /host-inventories`, `GET /auth/users`, and `GET /auth/service-accounts` return a bounded page:
+`limit` 1–100 (default 50) and `nextCursor` when more rows exist. Clients must not assume the first
+page is the complete catalog.
 
 Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"?, "usageRates"? }` (`defaultCommandId: null` and `usageRates: null` clear those fields). `usageRates` is optional operator-configured integer micros plus an ISO currency; Auto Harness never fetches vendor prices. The Provider Settings tab is the structured editor.
 `DELETE` fails `409` while an account, command, schedule, or queued/running session references the
