@@ -513,7 +513,9 @@ archive writer. The local store is DynamoDB Local via `pnpm local:dynamodb` (off
   service, triggered by a short-lived timer or a re-check on next scheduling pass.
 - Live log streaming over WS. The local WebSocket ingress coalesces at most 25 adjacent log
   frames and commits them with one connection-fenced DynamoDB transaction; a plain
-  `BatchWriteItem` cannot preserve the host-connection fence.
+  `BatchWriteItem` cannot preserve the host-connection fence. A fenced write retries a bounded
+  number of times when DynamoDB reports a transient `TransactionConflict`; failed host or session
+  conditions remain terminal fence losses and are never retried.
 - Session status lifecycle: `queued → running → completed | failed | cancelled | timed_out`.
 - Session timeout enforcement (agent-side kill + report).
 - Queue management with priority; **durable `concurrencyId` lock resolution** (Invariant 9) at
