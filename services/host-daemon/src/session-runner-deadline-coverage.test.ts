@@ -43,9 +43,12 @@ describe("SessionRunner deadline branch coverage", () => {
       throw new Error("checkout stopped");
     });
     const runner = new SessionRunner({ worktrees, processRunner });
-    await expect(runner.run(baseAssign({ timeout: 0.001 }))).resolves.toMatchObject({
+    const result = await runner.run(baseAssign({ timeout: 0.001 }));
+    expect(result).toMatchObject({
       status: "timed_out",
+      errorMessage: "Session timed out while checking out ref main",
     });
+    expect(result.logs.map((log) => log.content)).toContain("Checking out ref main...");
   });
 
   it("preserves external cancellation when checkout completes after abort", async () => {

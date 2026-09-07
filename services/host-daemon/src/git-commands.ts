@@ -155,6 +155,7 @@ export async function runGit(
   signal?: AbortSignal,
   environment: NodeJS.ProcessEnv = createChildEnv(),
   platform: NodeJS.Platform = process.platform,
+  stdoutLimitBytes = MAX_CAPTURED_GIT_STDOUT_BYTES,
 ): Promise<GitResult> {
   let stdout = "";
   let stdoutCaptureTruncated = false;
@@ -175,11 +176,11 @@ export async function runGit(
       if (c.stream === "stdout") {
         if (
           Buffer.byteLength(c.data, "utf8") >
-          MAX_CAPTURED_GIT_STDOUT_BYTES - Buffer.byteLength(stdout, "utf8")
+          stdoutLimitBytes - Buffer.byteLength(stdout, "utf8")
         ) {
           stdoutCaptureTruncated = true;
         }
-        stdout = appendBounded(stdout, c.data, MAX_CAPTURED_GIT_STDOUT_BYTES);
+        stdout = appendBounded(stdout, c.data, stdoutLimitBytes);
       } else {
         if (c.data.includes(OUTPUT_CHUNK_TRUNCATION_MARKER)) {
           stderr = discardTrailingLine(stderr);
@@ -201,7 +202,7 @@ export async function runGit(
     },
   });
   if (stdoutCaptureTruncated) {
-    throw new Error(`Git stdout exceeded the ${MAX_CAPTURED_GIT_STDOUT_BYTES}-byte capture limit`);
+    throw new Error(`Git stdout exceeded the ${stdoutLimitBytes}-byte capture limit`);
   }
   return {
     exitCode: result.exitCode ?? 1,

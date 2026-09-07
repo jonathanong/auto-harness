@@ -2,7 +2,7 @@ import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
-import { gitFailure, runGit } from "./git-commands.ts";
+import { gitFailure, MAX_CAPTURED_GIT_STDOUT_BYTES, runGit } from "./git-commands.ts";
 
 const MAX_UPDATE_INDEX_PATHS = 128;
 const MAX_UPDATE_INDEX_PATH_CHARACTERS = 8_000;
@@ -98,17 +98,50 @@ function trackedPathChunks(paths: string[]): string[][] {
   return chunks;
 }
 
+function flaggedTrackedPaths(output: string): {
+  assumeUnchanged: string[];
+  skipWorktree: string[];
+} {
+  const assumeUnchanged: string[] = [];
+  const skipWorktree: string[] = [];
+  const records = output.split("\0");
+  if (records.at(-1) === "") records.pop();
+  for (const record of records) {
+    if (record.length < 3 || record[1] !== " ") {
+      throw new Error("Failed to parse tracked-file index flags");
+    }
+    const tag = record[0]!;
+    const path = record.slice(2);
+    if (tag >= "a" && tag <= "z") assumeUnchanged.push(path);
+    if (tag === "S" || tag === "s") skipWorktree.push(path);
+  }
+  return { assumeUnchanged, skipWorktree };
+}
+
 async function clearTrackedPathFlags(
   runner: ProcessRunner,
   cwd: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  const listed = await runGit(runner, cwd, ["ls-files", "-z"], signal);
+  // `-v` adds a two-byte tag to each record. Doubling the ordinary capture bound preserves the
+  // largest path-only listing accepted before flag inspection was added (a path is at least one
+  // byte plus its NUL separator).
+  const listed = await runGit(
+    runner,
+    cwd,
+    ["ls-files", "-v", "-z"],
+    signal,
+    undefined,
+    undefined,
+    MAX_CAPTURED_GIT_STDOUT_BYTES * 2,
+  );
   if (listed.exitCode !== 0) throw gitFailure("Failed to inspect tracked files", listed.stderr);
-  const paths = listed.stdout.split("\0");
-  if (paths.at(-1) === "") paths.pop();
-  for (const chunk of trackedPathChunks(paths)) {
-    for (const flag of ["--no-assume-unchanged", "--no-skip-worktree"]) {
+  const paths = flaggedTrackedPaths(listed.stdout);
+  for (const [flag, flagged] of [
+    ["--no-assume-unchanged", paths.assumeUnchanged],
+    ["--no-skip-worktree", paths.skipWorktree],
+  ] as const) {
+    for (const chunk of trackedPathChunks(flagged)) {
       const updated = await runGit(runner, cwd, ["update-index", flag, "--", ...chunk], signal);
       if (updated.exitCode !== 0) {
         throw gitFailure("Failed to clear tracked-file index flags", updated.stderr);

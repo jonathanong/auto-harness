@@ -503,7 +503,11 @@ annotated tags all land on the exact target commit even when a prior session
 modified tracked files. The force checkout does not broadly clean untracked
 paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
 and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
-flags; the resolved commit is then hard-reset so hidden tracked changes cannot survive.
+flags. It first inspects index flags with `git ls-files -v` and rewrites only paths that are
+actually flagged, avoiding index updates proportional to every tracked file. The resolved commit
+is then hard-reset so hidden tracked changes cannot survive. The session transcript reports the
+ref-checkout phase before this work begins; if the session deadline expires there, the terminal
+failure identifies checkout and the requested ref as the timeout cause.
 It syncs their configured URLs and force-checks out already initialized submodules recursively, so
 tracked submodule changes cannot leak into the next session without implicitly
 initializing new submodules. Before any destructive checkout, the daemon verifies

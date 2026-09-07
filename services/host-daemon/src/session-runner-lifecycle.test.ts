@@ -26,6 +26,7 @@ describe("SessionRunner lifecycle transcript", () => {
     expect(system).toEqual([
       "Session started at 2026-08-01T00:00:00.000Z",
       "Claimed worktree wt-1",
+      "Checking out ref main...",
       "Checked out ref main",
       "Running setup script...",
       "Setup complete.",

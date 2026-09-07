@@ -47,7 +47,7 @@ describe("resetPriorWorktreeState", () => {
     ]) {
       createMarker(gitDir, marker);
     }
-    const paths = Array.from({ length: 129 }, (_, index) => `path-${index}`);
+    const paths = Array.from({ length: 129 }, (_, index) => `s path-${index}`);
     const calls: string[][] = [];
     const runner: ProcessRunner = {
       async run(options) {
@@ -75,6 +75,39 @@ describe("resetPriorWorktreeState", () => {
 
     expect(calls.filter((call) => call[0] === "update-index")).toHaveLength(4);
     expect(calls.some((call) => call.join(" ") === "cherry-pick --abort")).toBe(true);
+  });
+
+  it("does not update the index when no tracked paths have hidden flags", async () => {
+    const { cwd, gitDir } = fixture();
+    const calls: string[][] = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        const argv = options.argv.slice(1);
+        calls.push(argv);
+        if (argv[0] === "ls-files") {
+          options.onChunk({ stream: "stdout", data: "H ordinary\0H nested/path\0" });
+        }
+        return processResult();
+      },
+    };
+
+    await resetPriorWorktreeState(runner, cwd, gitDir);
+
+    expect(calls).toEqual([["ls-files", "-v", "-z"]]);
+  });
+
+  it("rejects malformed verbose tracked-file records", async () => {
+    const { cwd, gitDir } = fixture();
+    const runner: ProcessRunner = {
+      async run(options) {
+        options.onChunk({ stream: "stdout", data: "missing-tag-prefix\0" });
+        return processResult();
+      },
+    };
+
+    await expect(resetPriorWorktreeState(runner, cwd, gitDir)).rejects.toThrow(
+      "Failed to parse tracked-file index flags",
+    );
   });
 
   it("falls back to am --abort for a rebase-apply marker", async () => {
@@ -127,7 +160,7 @@ describe("resetPriorWorktreeState", () => {
     const failingUpdate: ProcessRunner = {
       async run(options: RunProcessOptions) {
         if (options.argv[1] === "ls-files") {
-          options.onChunk({ stream: "stdout", data: "tracked\0" });
+          options.onChunk({ stream: "stdout", data: "h tracked\0" });
           return processResult();
         }
         options.onChunk({ stream: "stderr", data: "token=UPDATESECRET" });
@@ -145,7 +178,10 @@ describe("resetPriorWorktreeState", () => {
     const runner: ProcessRunner = {
       async run(options) {
         if (options.argv[1] === "ls-files") {
-          options.onChunk({ stream: "stdout", data: `${"x".repeat(8_001)}\0short` });
+          options.onChunk({
+            stream: "stdout",
+            data: `s ${"x".repeat(8_001)}\0S short`,
+          });
         } else updates.push(options.argv);
         return processResult();
       },
@@ -153,6 +189,6 @@ describe("resetPriorWorktreeState", () => {
 
     await resetPriorWorktreeState(runner, cwd, gitDir);
 
-    expect(updates).toHaveLength(4);
+    expect(updates).toHaveLength(3);
   });
 });

@@ -317,7 +317,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
     expect(existsSync(lockPath)).toBe(true);
   });
 
@@ -336,7 +336,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
     expect(readFileSync(lockPath, "utf8")).toBe("owner");
   });
 
@@ -357,7 +357,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
     expect(existsSync(lockPath)).toBe(true);
   });
 
