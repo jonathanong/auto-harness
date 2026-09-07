@@ -19,7 +19,9 @@ export class RepeatedLogSuppressor {
 
   constructor(options: RepeatedLogSuppressorOptions) {
     this.minIntervalMs = options.minIntervalMs;
-    this.nowMs = options.nowMs ?? Date.now;
+    // Monotonic by default: a wall-clock (Date.now) correction would otherwise
+    // stretch or shrink the suppression window by the correction amount.
+    this.nowMs = options.nowMs ?? (() => performance.now());
   }
 
   /** Returns the line to log, or undefined if this occurrence should stay suppressed. */
@@ -39,5 +41,12 @@ export class RepeatedLogSuppressor {
     this.lastEmittedAt = now;
     this.suppressedSinceEmit = 0;
     return suppressed > 0 ? `${message} (repeated ${suppressed} time(s) since last log)` : message;
+  }
+
+  /** Clears tracked state so the next message logs fresh, with no stale repeat count. */
+  reset(): void {
+    this.lastMessage = undefined;
+    this.lastEmittedAt = -Infinity;
+    this.suppressedSinceEmit = 0;
   }
 }

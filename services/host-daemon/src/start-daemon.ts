@@ -173,11 +173,16 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
         );
         const fp = inventoryFingerprint(next);
         if (fp === lastFp && !policyBlocked) {
+          // A successful poll, even one that finds nothing changed, ends whatever
+          // failure streak preceded it -- a later, identical-looking failure is a
+          // new incident and must log immediately, not fold into the old count.
+          failureLog.reset();
           return;
         }
         await options.applyInventory(next);
         lastFp = fp;
         policyBlocked = false;
+        failureLog.reset();
         options.log(
           `host inventory updated from control plane (${next.repositories.length} repo(s))`,
         );

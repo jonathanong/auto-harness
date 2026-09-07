@@ -74,6 +74,36 @@ describe("inventory poll boundary coverage", () => {
     await stop();
   });
 
+  it("logs a failure fresh (no stale repeat count) after a poll recovers in between", async () => {
+    vi.useFakeTimers();
+    const errors: string[] = [];
+    let calls = 0;
+    const stop = startInventoryPoll({
+      config: emptyDaemonConfig(identity),
+      identity,
+      applyInventory: async () => undefined,
+      pollMs: 10,
+      errorLogIntervalMs: 100_000,
+      fetchFn: async () => {
+        calls += 1;
+        // Fail, then recover (unchanged inventory -- the early-return success
+        // path), then fail again with the exact same message.
+        if (calls === 2) return Response.json({ repositories: [], commandProfiles: {} });
+        throw new Error("bootstrap failed (500)");
+      },
+      log: () => undefined,
+      error: (line) => errors.push(line),
+    });
+    await vi.advanceTimersByTimeAsync(30);
+    // Without a reset on recovery, the third failure would be suppressed (still
+    // "identical" and well inside errorLogIntervalMs) instead of logging fresh.
+    expect(errors).toEqual([
+      "inventory poll failed: bootstrap failed (500)",
+      "inventory poll failed: bootstrap failed (500)",
+    ]);
+    await stop();
+  });
+
   it("reports a failed policy drain while retaining the blocked poll state", async () => {
     vi.useFakeTimers();
     const errors: string[] = [];

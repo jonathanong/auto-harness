@@ -64,4 +64,23 @@ describe("RepeatedLogSuppressor", () => {
     now += 10;
     expect(suppressor.next("boom")).toBe("boom");
   });
+
+  it("defaults to a monotonic clock (does not throw and reports non-decreasing elapsed time)", () => {
+    const suppressor = new RepeatedLogSuppressor({ minIntervalMs: 1_000 });
+    expect(suppressor.next("boom")).toBe("boom");
+    expect(suppressor.next("boom")).toBeUndefined();
+  });
+
+  it("reset() clears state so a repeat right after logs fresh with no suffix", () => {
+    let now = 0;
+    const suppressor = new RepeatedLogSuppressor({ minIntervalMs: 1_000, nowMs: () => now });
+    suppressor.next("boom");
+    now += 10;
+    suppressor.next("boom"); // suppressed
+    now += 10;
+    suppressor.reset();
+    // A fail -> recover -> fail sequence must not fold the new failure into
+    // the old count, and must not wait out the old window either.
+    expect(suppressor.next("boom")).toBe("boom");
+  });
 });
