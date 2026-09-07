@@ -633,11 +633,20 @@ export async function createLambdaRuntime(
           });
           await created.plane.requestAssignment();
         } else if (result.ok && message.type === "host:keepalive") {
-          trackDelivery(authenticated.hostId, {
-            type: "host:keepalive-ack",
-            hostId: message.hostId,
-            at: message.at,
-          });
+          // Same inbound-connection delivery as session:status-acknowledged:
+          // heartbeatDurable does not backfill state.hostConnection, so
+          // trackDelivery's getHostConnectionId lookup misses on a warm
+          // container that never saw this host's register and the protocol-2
+          // daemon would stall-reconnect after a successfully committed beat.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "host:keepalive-ack",
+              hostId: message.hostId,
+              at: message.at,
+            }).catch((error: unknown) => {
+              console.error("failed to deliver API Gateway WebSocket message", error);
+            }),
+          );
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",

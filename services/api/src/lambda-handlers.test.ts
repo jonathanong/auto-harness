@@ -722,6 +722,31 @@ describe("Lambda runtime adapters", () => {
     ).toEqual([]);
   });
 
+  it("delivers host:keepalive-ack on the current connection even if this container's hostConnection cache missed it", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "host:keepalive-ack",
+      hostId: "host-1",
+      at: "2026-08-12T00:00:20.000Z",
+    });
+  });
+
   it("refreshes durable authentication before accepting a new socket", async () => {
     const fixture = runtimeFixture();
     const refreshAuth = vi.fn(async () => undefined);
