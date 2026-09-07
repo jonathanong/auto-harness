@@ -102,21 +102,21 @@ export default async function HostDetailPage({
       }),
       (error: unknown) => ({ catalog: [] as RepoCatalogEntry[], error: errorMessage(error) }),
     ),
-    apiGet<{ items: LiveWorktree[] }>(
+    apiGetAllPages<LiveWorktree>(
       `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}&limit=100`,
     ).then(
-      (data) => ({ items: data.items ?? [], error: null as string | null }),
+      (items) => ({ items, error: null as string | null }),
       (error: unknown) => ({ items: [] as LiveWorktree[], error: errorMessage(error) }),
     ),
     Promise.all([
-      apiGet<{ items: Provider[] }>("/api/v1/providers?limit=100"),
-      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts?limit=100"),
-      apiGet<{ items: Command[] }>("/api/v1/commands?limit=100"),
+      apiGetAllPages<Provider>("/api/v1/providers?limit=100"),
+      apiGetAllPages<ProviderAccount>("/api/v1/provider-accounts?limit=100"),
+      apiGetAllPages<Command>("/api/v1/commands?limit=100"),
     ]).then(
       ([p, a, c]) => ({
-        providers: p.items ?? [],
-        providerAccounts: a.items ?? [],
-        commands: c.items ?? [],
+        providers: p,
+        providerAccounts: a,
+        commands: c,
         error: null as string | null,
       }),
       (error: unknown) => ({

@@ -54,17 +54,18 @@ export async function loadServiceAccountData(): Promise<ServiceAccountData> {
   });
   if (repositories.response.status === 401) return { kind: "unauthorized" };
   if (!repositories.response.ok) throw new Error(await apiErrorMessage(repositories.response));
-  const hosts = await apiFetch("/api/v1/hosts?limit=100", { cache: "no-store" });
-  if (hosts.status === 401) return { kind: "unauthorized" };
-  if (!hosts.ok) throw new Error(await apiErrorMessage(hosts));
-  const hostBody = (await hosts.json()) as { items?: Array<{ hostId?: string }> };
+  const hosts = await apiFetchAllPages<{ hostId?: string }>("/api/v1/hosts?limit=100", {
+    cache: "no-store",
+  });
+  if (hosts.response.status === 401) return { kind: "unauthorized" };
+  if (!hosts.response.ok) throw new Error(await apiErrorMessage(hosts.response));
   return {
     kind: "ready",
     accounts: accounts.items,
     repositories: repositories.items.toSorted(
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
     ),
-    hostIds: (hostBody.items ?? []).flatMap((item) => {
+    hostIds: hosts.items.flatMap((item) => {
       const hostId = item.hostId?.trim();
       return hostId ? [hostId] : [];
     }),
