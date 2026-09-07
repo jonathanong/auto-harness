@@ -133,6 +133,61 @@ describe("createGitClient real git", () => {
     expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
   });
 
+  it("clears hidden tracked-file index flags before recycling", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-index-flags-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
+    await git(worktree, ["update-index", "--skip-worktree", "tracked.txt"]);
+    await git(worktree, ["update-index", "--assume-unchanged", "obstructed.txt"]);
+    writeFileSync(join(worktree, "tracked.txt"), "hidden session modification\n");
+    writeFileSync(join(worktree, "obstructed.txt"), "assumed session modification\n");
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: targetSha });
+
+    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
+    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("target-owned\n");
+  });
+
+  it("aborts an interrupted cherry-pick before recycling", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-cherry-pick-"));
+    roots.push(root);
+    const repo = join(root, "repo");
+    const worktree = join(root, "wt");
+    mkdirSync(repo);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "f.txt"), "base\n");
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "base"]);
+    const baseSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await git(repo, ["switch", "-c", "feature"]);
+    writeFileSync(join(repo, "f.txt"), "feature\n");
+    await git(repo, ["commit", "-am", "feature"]);
+    const featureSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await git(repo, ["switch", "-c", "main", baseSha]);
+    writeFileSync(join(repo, "f.txt"), "main\n");
+    await git(repo, ["commit", "-am", "main"]);
+    const mainSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await git(repo, ["worktree", "add", "--detach", worktree, mainSha]);
+    await expect(git(worktree, ["cherry-pick", featureSha])).rejects.toThrow();
+    const cherryPickHead = (
+      await git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "CHERRY_PICK_HEAD"])
+    ).trim();
+    expect(existsSync(cherryPickHead)).toBe(true);
+
+    await createGitClient(new SpawnProcessRunner()).checkoutRef({
+      cwd: worktree,
+      repoPath: repo,
+      ref: mainSha,
+    });
+
+    expect(existsSync(cherryPickHead)).toBe(false);
+    expect(readFileSync(join(worktree, "f.txt"), "utf8")).toBe("main\n");
+  });
+
   it("recycles tracked changes in initialized submodules", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-submodule-"));
     roots.push(root);
@@ -244,7 +299,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
     expect(existsSync(lockPath)).toBe(true);
   });
 
@@ -263,7 +318,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
     expect(readFileSync(lockPath, "utf8")).toBe("owner");
   });
 
@@ -284,7 +339,7 @@ describe("createGitClient real git", () => {
       ref: targetSha,
     });
 
-    await expect(checkout).rejects.toThrow(/Failed to checkout resolved ref.*index\.lock/);
+    await expect(checkout).rejects.toThrow(/Failed to clear tracked-file index flags.*index\.lock/);
     expect(existsSync(lockPath)).toBe(true);
   });
 

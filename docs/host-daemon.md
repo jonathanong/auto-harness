@@ -501,7 +501,10 @@ For a worktree session, the daemon resolves its `ref` to a commit before
 forcefully detaching `HEAD`, so branch names, SHAs, lightweight tags, and
 annotated tags all land on the exact target commit even when a prior session
 modified tracked files. The force checkout does not broadly clean untracked
-paths. It also force-checks out already initialized submodules recursively, so
+paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
+and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
+flags; the resolved commit is then hard-reset so hidden tracked changes cannot survive.
+It also force-checks out already initialized submodules recursively, so
 tracked submodule changes cannot leak into the next session without implicitly
 initializing new submodules. Before any destructive checkout, the daemon verifies
 that the linked-worktree administrative directory belongs to the configured repository and

@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 
 import type { ProcessRunner } from "./executor.ts";
 import { runGit } from "./git-commands.ts";
+import { resetPriorWorktreeState } from "./git-worktree-reset.ts";
 
 const STALE_INDEX_LOCK_AGE_MS = 5 * 60 * 1_000;
 
@@ -31,6 +32,9 @@ export async function checkoutDetached(
   );
   if (checkout.exitCode !== 0) {
     checkout = await runGit(runner, cwd, ["checkout", "--force", "--detach", sha], signal);
+  }
+  if (checkout.exitCode === 0) {
+    checkout = await runGit(runner, cwd, ["reset", "--hard", sha], signal);
   }
   return checkout;
 }
@@ -107,6 +111,18 @@ export async function claimedLinkedWorktreeCommonDir(
   const commonDir = await configuredCommonDir(repoPath);
   if (commonDir === null) return null;
   return (await claimedLinkedWorktreeGitDir(cwd, commonDir)) === null ? null : commonDir;
+}
+
+export async function resetClaimedWorktree(
+  runner: ProcessRunner,
+  cwd: string,
+  commonDir: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const gitDir = await claimedLinkedWorktreeGitDir(cwd, commonDir);
+  if (gitDir === null) return false;
+  await resetPriorWorktreeState(runner, cwd, gitDir, signal);
+  return true;
 }
 
 export async function removeStaleIndexLock(

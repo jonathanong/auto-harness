@@ -7,6 +7,7 @@ import {
   claimedLinkedWorktreeCommonDir,
   checkoutDetached,
   removeStaleIndexLock,
+  resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
 
 export type GitClient = {
@@ -86,6 +87,10 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     async checkoutRef({ cwd, repoPath, ref, signal }) {
       const claimedCommonDir = await claimedLinkedWorktreeCommonDir(repoPath, cwd);
       if (claimedCommonDir === null) {
+        throw new Error("Configured checkout is not the claimed linked worktree");
+      }
+      await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal);
+      if (!(await resetClaimedWorktree(runner, cwd, claimedCommonDir, signal))) {
         throw new Error("Configured checkout is not the claimed linked worktree");
       }
       // Prefer detached checkout so a branch already used by the main repo

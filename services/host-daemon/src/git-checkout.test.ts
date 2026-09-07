@@ -23,6 +23,34 @@ function updatesSubmodules(exitCode = 0, stderr = "") {
   };
 }
 
+function lockProbe() {
+  return [
+    {
+      match: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      exitCode: 0,
+      stdout: `${join(checkoutRepo, ".git")}\n`,
+    },
+    {
+      match: ["rev-parse", "--path-format=absolute", "--git-dir"],
+      exitCode: 0,
+      stdout: `${checkoutGitDir}\n`,
+    },
+    {
+      match: ["rev-parse", "--path-format=absolute", "--git-path", "index.lock"],
+      exitCode: 0,
+      stdout: `${join(checkoutGitDir, "index.lock")}\n`,
+    },
+  ];
+}
+
+function resetsPriorState() {
+  return [...lockProbe(), { match: ["ls-files", "-z"], exitCode: 0 }];
+}
+
+function hardReset(sha: string) {
+  return { match: ["reset", "--hard", sha], exitCode: 0 };
+}
+
 const checkoutRoot = mkdtempSync(join(tmpdir(), "ah-git-checkout-unit-"));
 const checkoutRepo = join(checkoutRoot, "repo");
 const checkoutCwd = join(checkoutRoot, "wt");
@@ -43,8 +71,10 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef detaches at resolved sha", async () => {
     const git = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main", "abc123"),
         { match: ["switch", "--discard-changes", "--detach", "abc123"], exitCode: 0 },
+        hardReset("abc123"),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -56,6 +86,7 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fetches then falls back to checkout --detach", async () => {
     const git = createGitClient(
       scripted([
+        ...resetsPriorState(),
         {
           match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
           exitCode: 1,
@@ -69,6 +100,7 @@ describe("createGitClient checkout and revParse", () => {
           stderr: "old git",
         },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -77,10 +109,84 @@ describe("createGitClient checkout and revParse", () => {
     await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
   });
 
+  it("checkoutRef retries when an index lock appears after preparation", async () => {
+    const git = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        resolvesCommit("main"),
+        {
+          match: ["switch", "--discard-changes", "--detach", "abc"],
+          exitCode: 1,
+          stderr: "index.lock exists",
+        },
+        {
+          match: ["checkout", "--force", "--detach", "abc"],
+          exitCode: 1,
+          stderr: "index.lock exists",
+        },
+        ...lockProbe(),
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      ]),
+    );
+
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("checkoutRef fails when the hard reset cannot restore tracked files", async () => {
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        resolvesCommit("main"),
+        { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        { match: ["reset", "--hard", "abc"], exitCode: 1, stderr: "reset failed" },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 0 },
+      ]),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
+
+    await expect(checkout).rejects.toThrow("Failed to checkout resolved ref: reset failed");
+  });
+
+  it("checkoutRef rejects an identity changed after the initial preflight", async () => {
+    let call = 0;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        call += 1;
+        if (call === 1) writeFileSync(join(checkoutGitDir, "gitdir"), "/different/.git\n");
+        if (options.argv.includes("--git-common-dir")) {
+          options.onChunk({ stream: "stdout", data: `${join(checkoutRepo, ".git")}\n` });
+        } else if (options.argv.includes("--git-dir")) {
+          options.onChunk({ stream: "stdout", data: `${checkoutGitDir}\n` });
+        } else if (options.argv.includes("index.lock")) {
+          options.onChunk({ stream: "stdout", data: `${join(checkoutGitDir, "index.lock")}\n` });
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    try {
+      await expect(
+        createGitClient(runner).checkoutRef({
+          cwd: checkoutCwd,
+          repoPath: checkoutRepo,
+          ref: "main",
+        }),
+      ).rejects.toThrow("Configured checkout is not the claimed linked worktree");
+    } finally {
+      writeFileSync(join(checkoutGitDir, "gitdir"), `${join(checkoutCwd, ".git")}\n`);
+    }
+  });
+
   it("checkoutRef fails when ref cannot be resolved", async () => {
     await expect(
       createGitClient(
         scripted([
+          ...resetsPriorState(),
           {
             match: ["rev-parse", "--verify", "--end-of-options", "bad^{commit}"],
             exitCode: 1,
@@ -100,11 +206,13 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef peels an annotated tag to its commit", async () => {
     const git = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("v1.2.3", "commit-sha"),
         {
           match: ["switch", "--discard-changes", "--detach", "commit-sha"],
           exitCode: 0,
         },
+        hardReset("commit-sha"),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "commit-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -119,6 +227,7 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef retries once after a target graph connectivity failure", async () => {
     const git = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
@@ -138,6 +247,7 @@ describe("createGitClient checkout and revParse", () => {
         },
         { match: ["fetch", "--tags", "--refetch", "upstream"], exitCode: 0 },
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
@@ -151,6 +261,7 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef does not refetch after an unrelated checkout failure", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
@@ -172,6 +283,7 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fails closed when a remote refetch fails", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 1, stderr: "s" },
         { match: ["checkout", "--force", "--detach", "abc"], exitCode: 1, stderr: "c" },
@@ -193,6 +305,7 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fails after one missing-object recovery attempt", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         {
           match: ["switch", "--discard-changes", "--detach", "abc"],
@@ -230,8 +343,10 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fails closed when detached HEAD resolves to a different SHA", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
         updatesSubmodules(),
         {
           match: ["rev-parse", "HEAD"],
@@ -249,8 +364,10 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fails closed when HEAD remains attached at the resolved SHA", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 0, stdout: "refs/heads/main\n" },
@@ -263,8 +380,10 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef reports a sanitized initialized-submodule reset failure", async () => {
     const checkout = createGitClient(
       scripted([
+        ...resetsPriorState(),
         resolvesCommit("main"),
         { match: ["switch", "--discard-changes", "--detach", "abc"], exitCode: 0 },
+        hardReset("abc"),
         updatesSubmodules(1, "fatal: ?X-Amz-Signature=SIGNEDSECRET"),
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" });
@@ -300,6 +419,13 @@ describe("createGitClient checkout and revParse", () => {
       signal: controller.signal,
     });
     expect(seen).toEqual([
+      controller.signal,
+      controller.signal,
+      controller.signal,
+      controller.signal,
+      controller.signal,
+      controller.signal,
+      controller.signal,
       controller.signal,
       controller.signal,
       controller.signal,
