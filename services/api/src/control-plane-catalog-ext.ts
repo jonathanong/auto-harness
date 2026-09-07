@@ -21,8 +21,11 @@ import {
   listProviderAccountLeaseStates,
 } from "./control-plane-provider-account-leases.ts";
 
-function catalogPageStartKey(cursor: string | null): Record<string, unknown> | undefined {
-  const startKey = decodeStorageCursor(cursor);
+function catalogPageStartKey(
+  cursor: string | null,
+  secret: string,
+): Record<string, unknown> | undefined {
+  const startKey = decodeStorageCursor(cursor, secret);
   if (!startKey) return undefined;
   if (typeof startKey.id !== "string" || startKey.id === "") {
     throw new InvalidListPageQueryError("invalid or mismatched list cursor");
@@ -78,12 +81,15 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: ProviderRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listProvidersPage === "function") {
-      const startKey = catalogPageStartKey(query.cursor);
+      const startKey = catalogPageStartKey(query.cursor, this.state.sessionCursorSecret);
       const page = await storage.listProvidersPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
       });
-      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+      return {
+        items: page.items,
+        nextCursor: encodeStorageCursor(page.nextKey, this.state.sessionCursorSecret),
+      };
     }
     if (storage) await durableCatalog.listProvidersDurable(this.state);
     return pageByKey(providers.listProviders(this.state), {
@@ -240,12 +246,15 @@ export class ControlPlaneCatalogService {
   }): Promise<{ items: CommandRecord[]; nextCursor: string | null }> {
     const storage = this.state.storage;
     if (storage && typeof storage.listCommandsPage === "function") {
-      const startKey = catalogPageStartKey(query.cursor);
+      const startKey = catalogPageStartKey(query.cursor, this.state.sessionCursorSecret);
       const page = await storage.listCommandsPage({
         limit: query.limit,
         ...(startKey ? { startKey } : {}),
       });
-      return { items: page.items, nextCursor: encodeStorageCursor(page.nextKey) };
+      return {
+        items: page.items,
+        nextCursor: encodeStorageCursor(page.nextKey, this.state.sessionCursorSecret),
+      };
     }
     if (storage) await durableCatalog.listCommandsDurable(this.state);
     return pageByKey(commands.listCommands(this.state), {

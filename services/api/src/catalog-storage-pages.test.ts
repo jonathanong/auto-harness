@@ -1,15 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { InvalidListPageQueryError } from "./control-plane-id-page.ts";
+import { encodeStorageCursor, InvalidListPageQueryError } from "./control-plane-id-page.ts";
 import { listCommandsPage, listProvidersPage } from "./db/plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
-
-function opaqueCursor(body: unknown): string {
-  return `s1.${Buffer.from(JSON.stringify(body), "utf8").toString("base64url")}`;
-}
 
 describe("catalog storage pages", () => {
   it("pages commands and providers from a bounded Scan", async () => {
@@ -91,18 +87,25 @@ describe("catalog storage pages", () => {
         listProvidersPage: listCommandsFromStorage,
       } as never,
     });
+    const secret = plane.state.sessionCursorSecret;
     await expect(
-      plane.listCommandsPageDurable({ limit: 1, cursor: opaqueCursor({}) }),
+      plane.listCommandsPageDurable({
+        limit: 1,
+        cursor: encodeStorageCursor({}, secret),
+      }),
     ).rejects.toThrow(InvalidListPageQueryError);
     await expect(
-      plane.listProvidersPageDurable({ limit: 1, cursor: opaqueCursor({ id: 1 }) }),
+      plane.listProvidersPageDurable({
+        limit: 1,
+        cursor: encodeStorageCursor({ id: 1 }, secret),
+      }),
     ).rejects.toThrow(InvalidListPageQueryError);
     expect(
       (
         await invokeHandler(
           createLocalApp({ plane }).handler as never,
           "GET",
-          `/api/v1/commands?cursor=${opaqueCursor({ id: "" })}`,
+          `/api/v1/commands?cursor=${encodeStorageCursor({ id: "" }, secret)}`,
         )
       ).status,
     ).toBe(400);
