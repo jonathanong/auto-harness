@@ -33,6 +33,7 @@ import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
+import { withTimeout } from "./with-timeout.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -67,6 +68,21 @@ export type DaemonLoopOptions = {
   pendingStatusMaxCount?: number;
   /** Retry at most this many pending terminal statuses per keepalive tick. */
   statusRetriesPerTick?: number;
+  /**
+   * Bound on one keepalive attempt. A stalled outbound write (the transport
+   * thinks it's connected but nothing is actually being delivered) otherwise
+   * leaves `outbound.send()`'s promise pending forever, so it never rejects
+   * and "keepalive failed" never logs even during a real outage.
+   */
+  keepaliveTimeoutMs?: number;
+  /**
+   * Force the transport to abandon its current connection and reconnect once
+   * this long has passed with no successfully delivered keepalive. Comfortably
+   * under the control plane's default 60s heartbeat staleness window, so the
+   * daemon gives up on a connection that looks open but isn't carrying
+   * traffic before the control plane gives up on the daemon.
+   */
+  keepaliveStallMs?: number;
 };
 type InflightSession = {
   sessionId: string;
@@ -148,6 +164,9 @@ export class DaemonLoop {
   private readonly drainRetryMs: number;
   private readonly drainDeadlineMs: number;
   private drainDeadline: ReturnType<typeof setTimeout> | undefined;
+  private readonly keepaliveTimeoutMs: number;
+  private readonly keepaliveStallMs: number;
+  private keepaliveStallTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
@@ -172,6 +191,12 @@ export class DaemonLoop {
     this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
     this.pendingStatusMaxCount = options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
     this.statusRetriesPerTick = options.statusRetriesPerTick ?? DEFAULT_STATUS_RETRIES_PER_TICK;
+    this.keepaliveTimeoutMs = options.keepaliveTimeoutMs ?? 10_000;
+    // Comfortably under the control plane's default 60s heartbeat staleness
+    // window (DEFAULT_HEARTBEAT_STALE_MS in modules/shared) — not imported
+    // directly, since a deployment can configure a different value and this
+    // daemon-side margin only needs to stay well clear of whatever it is.
+    this.keepaliveStallMs = options.keepaliveStallMs ?? 45_000;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -234,11 +259,15 @@ export class DaemonLoop {
         // terminal status still unacknowledged now instead of waiting for
         // the next keepalive tick.
         this.retryPendingTerminalStatuses();
+        // A fresh registration is itself proof this connection is live —
+        // reset the same deadline a successful keepalive would.
+        this.armKeepaliveStallTimer();
       },
       abortAfterMs: this.reconnectAbortMs,
       timers: this.timers,
     });
     await this.register();
+    this.armKeepaliveStallTimer();
   }
   async applyInventory(next: DaemonConfig): Promise<void> {
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
@@ -310,15 +339,45 @@ export class DaemonLoop {
       !this.hasPendingAcknowledgement()
     ) {
       await this.register();
+      this.armKeepaliveStallTimer();
       return;
     }
     this.retryPendingTerminalStatuses();
-    await this.outbound.send({
-      type: "host:keepalive",
-      hostId: this.config.hostId,
-      at: this.now(),
-      runningSessions: this.ownedSessionIds(),
-    });
+    // Bounded: an outbound write stalled on a connection the transport still
+    // considers open (registration wedged, dead epoch fencing) otherwise
+    // leaves this promise pending forever — it never resolves *or* rejects,
+    // so the caller's own failure handling never runs and "keepalive failed"
+    // never logs, even during a real outage.
+    await withTimeout(
+      this.outbound.send({
+        type: "host:keepalive",
+        hostId: this.config.hostId,
+        at: this.now(),
+        runningSessions: this.ownedSessionIds(),
+      }),
+      this.keepaliveTimeoutMs,
+      `keepalive timed out after ${this.keepaliveTimeoutMs}ms`,
+      this.timers,
+    );
+    this.armKeepaliveStallTimer();
+  }
+  /**
+   * (Re)start the deadline for "a keepalive must land within this window."
+   * Left un-reset by a failed or timed-out attempt on purpose: only a
+   * genuinely successful delivery (or a fresh registration, itself proof of
+   * a live connection) counts as evidence the connection still works. Firing
+   * abandons the current connection via forceReconnect and lets the
+   * transport's own reconnect ladder take over — the same mechanism the
+   * registration watchdog in ws-transport.ts uses for the same reason.
+   */
+  private armKeepaliveStallTimer(): void {
+    if (this.keepaliveStallTimer) this.timers.clearTimeout(this.keepaliveStallTimer);
+    this.keepaliveStallTimer = this.timers.setTimeout(() => {
+      this.keepaliveStallTimer = undefined;
+      this.onLog?.(`no successful keepalive in ${this.keepaliveStallMs}ms; forcing reconnect`);
+      this.transport.forceReconnect?.(`no successful keepalive in ${this.keepaliveStallMs}ms`);
+    }, this.keepaliveStallMs);
+    this.keepaliveStallTimer.unref?.();
   }
   async beginDrain(): Promise<void> {
     if (this.draining) return;
@@ -387,6 +446,8 @@ export class DaemonLoop {
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
     this.drainDeadline = undefined;
+    if (this.keepaliveStallTimer) this.timers.clearTimeout(this.keepaliveStallTimer);
+    this.keepaliveStallTimer = undefined;
     this.connectionEvents?.stop();
     this.transport.close();
   }

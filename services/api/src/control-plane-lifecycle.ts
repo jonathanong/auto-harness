@@ -166,10 +166,21 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
 
 /** Durable stale recovery. Each host lease is released conditionally and each
  * running session is requeued with a transaction, so two API processes can
- * safely run the sweeper at the same time. */
+ * safely run the sweeper at the same time.
+ *
+ * `onReclaimed` fires once per host this call actually released, after the
+ * durable connection row is gone. The reclaim itself never touches the
+ * daemon's physical socket — deleting the durable row is all a Lambda
+ * process can do to its own state — so on the API Gateway transport the
+ * caller must use this hook to force-close the underlying connection.
+ * Without it, a reclaimed host keeps an open, unregistered socket forever:
+ * every subsequent frame from that daemon gets a 401 from `getConnection`
+ * returning null, which is never relayed over the wire, so the daemon has no
+ * way to learn it is offline and never reconnects on its own. */
 export async function reclaimStaleHostsDurable(
   state: ControlPlaneState,
   nowMs: number = Date.now(),
+  onReclaimed?: (hostId: string, connectionId: string) => void,
 ): Promise<string[]> {
   if (!state.storage) {
     return reclaimStaleHosts(state, nowMs);
@@ -235,6 +246,7 @@ export async function reclaimStaleHostsDurable(
     // The candidate was written in the exact lease-release transaction, so a
     // failed Slack lookup/enqueue remains visible to a cold cron Lambda.
     await enqueueOfflineAlertCandidate(state, candidate, alertStore);
+    onReclaimed?.(hostId, meta.connectionId);
   }
   return reclaimed;
 }

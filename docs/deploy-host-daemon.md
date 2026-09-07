@@ -346,9 +346,15 @@ pnpm deploy:host
 ```
 
 It installs the lockfile with package lifecycle scripts disabled, then explicitly rebuilds only the
-locked `node-pty` package. That package-owned rebuild uses a prebuilt binary when available and its
-trusted `node-gyp` source-build fallback on Linux before the platform installer (which gracefully
-drains during restart). It loads the platform's persisted service environment and polls for up to
+locked `node-pty` package. On Linux that package-owned rebuild uses a prebuilt binary when available
+and its trusted `node-gyp` source-build fallback otherwise. **On macOS it always forces a
+from-source `node-gyp` build**, bypassing the bundled prebuild: `node-pty`'s repo-local
+`patches/node-pty@1.1.0.patch` fixes a native fd leak (`src/unix/pty.cc`), and node-pty's own
+prebuild step silently keeps the unpatched prebuilt binary whenever one matches the host's
+platform/ABI. A macOS host therefore needs Python 3 and the Xcode Command Line Tools
+(`xcode-select --install`) in addition to Node and Git — without either, `node-gyp` fails the
+rebuild and `pnpm deploy:host` exits before the platform installer (which gracefully drains during
+restart). It loads the platform's persisted service environment and polls for up to
 two minutes until the exact host is online, non-draining, and Git-ready; the same end-to-end
 deadline terminates an in-flight status process group instead of waiting indefinitely. It also
 requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the

@@ -23,6 +23,15 @@ type Options = {
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Injectable for deterministic reconnect-jitter tests. */
   random?: () => number;
+  /**
+   * Re-armed on every connect, not just the first: a `host:register` that
+   * never gets a `host:registered` ack back must not leave the socket sitting
+   * open and unregistered forever. `waitForRegistration` in start-daemon.ts
+   * only ever guarded the very first connect — its promise resolves once and
+   * is never replaced, so none of the reconnects after it had any timeout at
+   * all. Default 30s, matching that first-connect guard.
+   */
+  registrationTimeoutMs?: number;
 };
 
 type InflightWrite = { item: WsBufferItem; target: WebSocket; epoch: number };
@@ -47,6 +56,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
     : undefined;
   const timers = options.timers ?? globalThis;
   const random = options.random ?? Math.random;
+  const registrationTimeoutMs = options.registrationTimeoutMs ?? 30_000;
   const factory = options.socketFactory ?? ((target, opts) => new WebSocket(target, opts));
   const lossMarkers = new Map<string, LossMarker>();
   const buffer = new WsOutboundBuffer(
@@ -63,6 +73,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
   let registerSentEpoch: number | undefined;
   let delay = 1_000;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let registrationWatchdog: ReturnType<typeof setTimeout> | undefined;
   let inflight: InflightWrite | undefined;
   let messageHandler: ((message: HostWireMessage) => void) | undefined;
   let connectedHandler: (() => void) | undefined;
@@ -124,7 +135,19 @@ export function createWsTransport(options: Options): DaemonTransport & {
     delay = Math.min(delay * 2, 30_000);
     retry = timers.setTimeout(() => {
       retry = undefined;
-      connect();
+      try {
+        connect();
+      } catch (error) {
+        // A synchronous socket-factory failure here (e.g. sustained EMFILE
+        // pressure) would otherwise be an uncaught exception inside a timer
+        // callback — fatal to the whole daemon process, not merely this
+        // connection. refreshSocket() already guards its own connect() call
+        // the same way; without this, only the *first* factory failure was
+        // ever survivable; every one after it (this same retryLater ladder)
+        // would crash the daemon instead of continuing to back off.
+        options.onError?.(error instanceof Error ? error : new Error(String(error)));
+        retryLater();
+      }
     }, wait);
   };
 
@@ -177,6 +200,32 @@ export function createWsTransport(options: Options): DaemonTransport & {
       });
   };
 
+  const clearRegistrationWatchdog = (): void => {
+    if (registrationWatchdog) {
+      timers.clearTimeout(registrationWatchdog);
+      registrationWatchdog = undefined;
+    }
+  };
+
+  const armRegistrationWatchdog = (target: WebSocket, mine: number): void => {
+    clearRegistrationWatchdog();
+    registrationWatchdog = timers.setTimeout(() => {
+      registrationWatchdog = undefined;
+      if (closed || mine !== epoch || socket !== target) return;
+      options.onError?.(
+        new Error(`registration not acknowledged within ${registrationTimeoutMs}ms`),
+      );
+      // terminate(), not close(): the same reasoning as forceReconnect below —
+      // a peer that never acknowledged registration may be half-open, and
+      // close() would wait out ws's own ~30s close-handshake timeout before
+      // `close` fires, pushing this watchdog's real recovery time roughly
+      // double its nominal deadline and past the control plane's own
+      // heartbeat-staleness window.
+      target.terminate();
+    }, registrationTimeoutMs);
+    registrationWatchdog.unref?.();
+  };
+
   const sendRegister = (): void => {
     if (
       !pendingRegister ||
@@ -190,6 +239,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
     const snapshot = pendingRegister;
     registerSentEpoch = mine;
     registered = false;
+    armRegistrationWatchdog(target, mine);
     void writeWs(target, JSON.stringify(snapshot)).catch((error: Error) => {
       if (!closed && mine === epoch && socket === target) {
         options.onError?.(error);
@@ -200,6 +250,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
 
   const disconnected = (target: WebSocket, mine: number, retryAfterClose: boolean): void => {
     if (socket !== target || mine !== epoch) return;
+    clearRegistrationWatchdog();
     socket = null;
     registered = false;
     registerSentEpoch = undefined;
@@ -216,7 +267,20 @@ export function createWsTransport(options: Options): DaemonTransport & {
     const mine = epoch;
     disconnected(target, mine, false);
     target.close(1012, "inventory refresh");
-    if (!closed) connect();
+    if (closed) return;
+    try {
+      connect();
+    } catch (error) {
+      // disconnected(..., false) above deliberately armed no retry: this is a
+      // self-initiated recycle, not an external disconnect, so the immediate
+      // connect() call right here was supposed to be the replacement. If that
+      // call itself cannot even construct a socket, nothing else will ever
+      // reconnect — the transport would sit with socket === null and no retry
+      // timer, forever, while the daemon process keeps running. Fall back to
+      // the normal backoff ladder instead of leaving it wedged.
+      options.onError?.(error instanceof Error ? error : new Error(String(error)));
+      retryLater();
+    }
   };
 
   const connect = (): void => {
@@ -244,6 +308,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
         const message = JSON.parse(String(raw)) as HostWireMessage | { type?: string };
         if (message.type === "host:registered") {
           if (registerSentEpoch !== mine) return;
+          clearRegistrationWatchdog();
           registered = true;
           delay = 1_000;
           registeredResolve?.();
@@ -307,8 +372,23 @@ export function createWsTransport(options: Options): DaemonTransport & {
     onDisconnected(handler) {
       disconnectedHandler = handler;
     },
+    forceReconnect(_reason: string) {
+      // No live socket means a connect() is already scheduled (or imminent) via
+      // retryLater's timer — there is nothing here to abandon.
+      if (closed || !socket) return;
+      // terminate(), not close(reason): this exists specifically for a socket
+      // that looks open but is not responding. close() waits for a graceful
+      // closing handshake, and `ws` only emits `close` after its own 30s
+      // timeout destroys the connection if the peer never answers — pushing
+      // a stall deadline meant to bound recovery time well past the control
+      // plane's own heartbeat-staleness window instead of inside it.
+      // terminate() destroys the underlying socket immediately, with no
+      // handshake and so no reason to carry (the caller already logs one).
+      socket.terminate();
+    },
     close() {
       closed = true;
+      clearRegistrationWatchdog();
       const closeError = new Error("WebSocket transport closed");
       if (retry) timers.clearTimeout(retry);
       if (socket) {
