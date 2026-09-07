@@ -137,6 +137,10 @@ export type HostWireMessage =
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
   | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
+  /** Sent only after the control plane durably applies a `session:status`
+   * report. A successful WebSocket write is not delivery: the daemon retains
+   * and retries an unacknowledged terminal status until this arrives. */
+  | { type: "session:status-acknowledged"; sessionId: string; attemptId?: string | undefined }
   | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
@@ -215,4 +219,11 @@ export type HostToServerMessage =
     }
   /** One-way, connection-fenced request to remove this host from scheduling. */
   | { type: "host:status"; hostId: string; draining: true }
-  | { type: "host:keepalive"; hostId: string; at: string };
+  | {
+      type: "host:keepalive";
+      hostId: string;
+      at: string;
+      /** Sessions this daemon currently owns: still running, or a terminal status
+       * awaiting acknowledgement. Missing means a pre-reconciliation daemon. */
+      runningSessions?: string[];
+    };

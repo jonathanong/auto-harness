@@ -114,6 +114,8 @@ describe("scheduled final branch coverage", () => {
     const run = scheduled({ status: "cancelled", completedAt: NOW });
     state.sessions.set(run.id, run);
     state.storage = { releaseMainCheckoutSession: async () => false } as never;
+    // A lost conditional write must not be acknowledged: nothing was actually
+    // released, so the daemon needs to keep retrying this terminal report.
     await expect(
       handleHostMessageDurable(state, {
         type: "session:status",
@@ -137,7 +139,10 @@ describe("scheduled final branch coverage", () => {
         errorMessage: "stopped",
         cliResumeRef: "ref",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: run.id, attemptId: "attempt" },
+    });
     expect(state.sessions.get(run.id)).toMatchObject({ status: "cancelled", exitCode: 130 });
   });
 

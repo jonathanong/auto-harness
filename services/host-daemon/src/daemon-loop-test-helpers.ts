@@ -5,7 +5,42 @@ import { spawn } from "node:child_process";
 
 import type { DaemonConfig } from "./config.ts";
 import type { HostToServerMessage } from "@auto-harness/shared";
+import type { DaemonLoop } from "./daemon-loop.ts";
 import { createLoopbackTransport } from "./loopback-transport.ts";
+
+export type PendingTerminalStatusMap = Map<
+  string,
+  {
+    message: HostToServerMessage;
+    firstAttemptedAtMs: number;
+    sending: boolean;
+    controller: AbortController;
+  }
+>;
+
+/** Reaches into DaemonLoop's private retry bookkeeping for assertions/setup. */
+export function pendingTerminalStatusOf(loop: DaemonLoop): PendingTerminalStatusMap {
+  return (loop as unknown as { pendingTerminalStatus: PendingTerminalStatusMap })
+    .pendingTerminalStatus;
+}
+
+export const terminalStatusFixture: Extract<HostToServerMessage, { type: "session:status" }> = {
+  type: "session:status",
+  sessionId: "done-session",
+  worktreeId: null,
+  attemptId: "attempt-1",
+  status: "completed",
+  exitCode: 0,
+};
+
+export async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+export async function flushMacrotask(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
 
 /** Test-only in-process peer that confirms an ACK only after its mock server
  * handler completes. Tests that need an ambiguous write must use the raw

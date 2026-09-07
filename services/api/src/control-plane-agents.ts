@@ -16,6 +16,8 @@ import { persistSession, persistWorktree, queueWrite } from "./control-plane-sta
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
+import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
+import { requestAssignment } from "./request-assignment.ts";
 import { ignoreStaleReconnectClaim } from "./control-plane-reconnect-confirm.ts";
 import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
 import {
@@ -926,6 +928,10 @@ export async function heartbeatDurable(
    * omit this and get the cache/durable-lock fallback below.
    */
   sourceConnectionId?: string,
+  /** Sessions the daemon currently owns (still running or awaiting a status
+   * ack). Undefined means a pre-reconciliation daemon; omit reconciliation
+   * rather than requeue every session on this host on legacy silence. */
+  reportedRunningSessions?: readonly string[],
 ): Promise<boolean> {
   if (!state.storage) {
     return heartbeat(state, hostId, at);
@@ -958,6 +964,22 @@ export async function heartbeatDurable(
   const conn = state.connections.get(connectionId);
   if (conn) {
     state.connections.set(connectionId, { ...conn, lastHeartbeatAt: nextAt });
+  }
+  if (reportedRunningSessions !== undefined) {
+    // Bounds the blast radius of a lost terminal status: instead of waiting up to the
+    // absolute session timeout, a session this host silently stopped reporting is
+    // requeued within one keepalive interval. The daemon keeps reporting a session
+    // whose terminal status it is still retrying, so this never races that retry.
+    const requeued = await reconcileHostOwnedSessions(
+      state,
+      hostId,
+      connectionId,
+      new Set(reportedRunningSessions),
+      "daemon no longer reports session as running; requeued",
+    );
+    // Otherwise a recovered session sits queued until the next cron sweep or
+    // an unrelated scheduling event, defeating the point of a fast recovery.
+    if (requeued.length > 0) await requestAssignment(state);
   }
   return true;
 }

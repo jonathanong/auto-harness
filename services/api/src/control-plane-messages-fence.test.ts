@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { handleHostMessage } from "./control-plane-messages.ts";
+import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 
 function running(id = "s") {
   return {
@@ -27,6 +27,31 @@ function running(id = "s") {
     worktreeId: "w",
     attemptId: "a",
   };
+}
+
+/** Common shape shared by the retry-fence tests below: a terminal report for
+ * session "s"/attempt "a", delivered from `sourceConnectionId`, expected to
+ * be durably acknowledged. */
+async function expectAcknowledgedStatusRetry(
+  state: ReturnType<typeof createControlPlaneState>,
+  sourceConnectionId: string,
+): Promise<void> {
+  await expect(
+    handleHostMessageDurable(
+      state,
+      {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
+        status: "completed",
+      },
+      sourceConnectionId,
+    ),
+  ).resolves.toEqual({
+    ok: true,
+    sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+  });
 }
 
 describe("durable host-message fencing", () => {
@@ -118,6 +143,109 @@ describe("durable host-message fencing", () => {
     expect(deliveries).toHaveLength(1);
   });
 
+  it("acknowledges a durable session:status retry whose own transition already cleared its host claim", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const requeued = {
+      ...running(),
+      status: "queued" as const,
+      hostId: null,
+      worktreeId: null,
+    };
+    state.sessions.set("s", requeued);
+    state.storage = { getSession: async () => requeued } as never;
+
+    await expectAcknowledgedStatusRetry(state, "stale-connection");
+  });
+
+  it("rejects a session:status retry from a superseded connection while the session is still genuinely running", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const stillRunning = running();
+    state.sessions.set("s", stillRunning);
+    state.storage = {
+      getSession: async () => stillRunning,
+      // The host reconnected on a new connection; the lock no longer matches
+      // the stale connection this retry is arriving on.
+      getHostLock: async () => "current-connection",
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+        },
+        "stale-connection",
+      ),
+    ).resolves.toEqual({ ok: false, error: "stale host connection" });
+  });
+
+  it("acknowledges a session:status retry for an attempt the row has already moved past", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    // The session was requeued off attempt "a" and reassigned to a different
+    // host/connection under a fresh attempt "b" before the original daemon's
+    // retry for "a" was delivered.
+    const reassigned = { ...running(), hostId: "h2", attemptId: "b" };
+    state.sessions.set("s", reassigned);
+    state.storage = {
+      getSession: async () => reassigned,
+      getHostLock: async () => "connection-for-h2",
+    } as never;
+
+    await expectAcknowledgedStatusRetry(state, "connection-for-h1");
+  });
+
+  it("withholds the acknowledgement when a terminal status's conditional write loses a race", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const stillRunning = running();
+    state.sessions.set("s", stillRunning);
+    state.storage = {
+      getSession: async () => stillRunning,
+      // Simulates losing the conditional write to a concurrent transition
+      // (e.g. the running-timeout sweep marking the row timed_out first).
+      // Nothing was actually committed, so the daemon must keep retrying — a
+      // sessionStatusAcknowledged here would let it drop the report forever.
+      finishSession: async () => false,
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
+        status: "completed",
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("confirms an in-memory terminal status transition and notifies the owning host", () => {
+    const deliveries: Array<{ hostId: string; message: unknown }> = [];
+    const plane = new ControlPlane({
+      now: () => "now",
+      onHostMessage: (hostId, message) => deliveries.push({ hostId, message }),
+    });
+    plane.state.sessions.set("s", running());
+
+    const frame = {
+      type: "session:status" as const,
+      sessionId: "s",
+      worktreeId: "w",
+      attemptId: "a",
+      status: "completed" as const,
+    };
+    expect(plane.handleHostMessage(frame)).toEqual({ ok: true });
+    expect(deliveries).toEqual([
+      {
+        hostId: "h",
+        message: { type: "session:status-acknowledged", sessionId: "s", attemptId: "a" },
+      },
+    ]);
+  });
+
   it("rejects stale sources and preserves unfenced compatibility paths", async () => {
     const plane = new ControlPlane({ now: () => "now" });
     plane.state.sessions.set("s", running());
@@ -193,7 +321,10 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         status: "running",
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
   });
 
   it("enforces the same source fence for an in-memory drain request", async () => {
@@ -273,7 +404,10 @@ describe("durable host-message fencing", () => {
         },
         "c",
       ),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
     expect(logFence).toBe(false);
     expect(statusFence).toBe(true);
     expect(statusConcurrencyId).toBe("session-lock");
@@ -332,7 +466,10 @@ describe("durable host-message fencing", () => {
         attemptId: "a",
         status: "cancelled",
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "a" },
+    });
     expect(calls).toEqual(["log", "cancel-true", "session-lock"]);
 
     const local = new ControlPlane();

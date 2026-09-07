@@ -1,6 +1,11 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import { randomUUID } from "node:crypto";
-import type { HostRuntimeReport, HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
+import type {
+  HostRuntimeReport,
+  HostToServerMessage,
+  HostWireMessage,
+  SessionLogChunk,
+} from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -57,6 +62,12 @@ export type DaemonLoopOptions = {
   daemonIdentity?: DaemonRuntimeIdentity;
   /** Startup preflight from the CLI; direct loop users probe during start(). */
   runtime?: HostRuntimeReport;
+  /** Stop retrying an unacknowledged terminal `session:status` after this long. */
+  pendingStatusMaxAgeMs?: number;
+  /** Stop retaining new unacknowledged terminal statuses once this many are pending. */
+  pendingStatusMaxCount?: number;
+  /** Retry at most this many pending terminal statuses per keepalive tick. */
+  statusRetriesPerTick?: number;
   /**
    * Bound on one keepalive attempt. A stalled outbound write (the transport
    * thinks it's connected but nothing is actually being delivered) otherwise
@@ -85,6 +96,49 @@ type InflightSession = {
   resolveAcknowledgement?: (() => void) | undefined;
 };
 
+/**
+ * A sent `session:status` this daemon has not yet seen `session:status-acknowledged`
+ * for. A completed WebSocket write is not delivery (see ws-transport.ts): the message
+ * is retried on every keepalive until acked, or dropped after `pendingStatusMaxAgeMs`.
+ */
+type PendingTerminalStatus = {
+  message: Extract<HostToServerMessage, { type: "session:status" }>;
+  firstAttemptedAtMs: number;
+  /** True while a resend for this entry is queued or in flight. Guards
+   * against re-enqueuing a duplicate retained frame every keepalive tick
+   * while the prior attempt is still sitting undelivered (e.g. a socket
+   * that is down but has not yet rejected the queued write). */
+  sending: boolean;
+  /**
+   * Shared across every send attempt for this entry so giving up on it can
+   * actually cancel a still-buffered write. Without this, a frame retained
+   * by `WsOutboundBuffer` during a prolonged outage stays queued and is
+   * eventually transmitted even after `pendingStatusMaxAgeMs` logged it as
+   * abandoned.
+   */
+  controller: AbortController;
+};
+
+const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Ceiling on retained terminal statuses, comfortably under the control
+ * plane's 1,000-entry `runningSessions` wire limit. Guards a daemon deployed
+ * against a not-yet-upgraded control plane (which never sends
+ * `session:status-acknowledged`) from growing this set without bound until a
+ * keepalive/registration is rejected as invalid and the connection drops.
+ */
+const DEFAULT_PENDING_STATUS_MAX_COUNT = 500;
+/**
+ * Ceiling on how many retries `retryPendingTerminalStatuses` issues in a
+ * single keepalive tick. Retained statuses can build up close to
+ * `pendingStatusMaxCount`, and the control plane closes the socket once a
+ * connection exceeds 100 messages in a one-second window (`ws-hub.ts`); a
+ * large backlog resent in one burst — plus whatever other traffic (logs,
+ * acks) shares that same window — could trip that limit. Spreading a large
+ * backlog across multiple 20s ticks instead keeps every tick well under it.
+ */
+const DEFAULT_STATUS_RETRIES_PER_TICK = 20;
+
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
 }
@@ -92,6 +146,10 @@ export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
   private readonly inflight = new Map<string, InflightSession>();
+  private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
+  private readonly pendingStatusMaxAgeMs: number;
+  private readonly pendingStatusMaxCount: number;
+  private readonly statusRetriesPerTick: number;
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
   /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
@@ -138,6 +196,9 @@ export class DaemonLoop {
     this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
     this.drainRetryMs = options.drainRetryMs ?? 1_000;
     this.drainDeadlineMs = options.drainDeadlineMs ?? 30_000;
+    this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
+    this.pendingStatusMaxCount = options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
+    this.statusRetriesPerTick = options.statusRetriesPerTick ?? DEFAULT_STATUS_RETRIES_PER_TICK;
     this.keepaliveTimeoutMs = options.keepaliveTimeoutMs ?? 10_000;
     // Comfortably under the control plane's default 60s heartbeat staleness
     // window (DEFAULT_HEARTBEAT_STALE_MS in modules/shared) — not imported
@@ -202,6 +263,10 @@ export class DaemonLoop {
         // A reconnect registration carrying `draining: true` is itself a
         // durable acknowledgement. This covers a lost drain reply.
         if (this.drainRequested) this.confirmDrain();
+        // A fresh registration means a new/recovered socket: retry any
+        // terminal status still unacknowledged now instead of waiting for
+        // the next keepalive tick.
+        this.retryPendingTerminalStatuses();
         // A fresh registration is itself proof this connection is live —
         // reset the same deadline a successful keepalive would.
         this.armKeepaliveStallTimer();
@@ -261,9 +326,7 @@ export class DaemonLoop {
     config = this.config,
   }: { inventoryPolicyBlocked?: boolean; config?: DaemonConfig } = {}): Promise<void> {
     const readiness = providerAccountReadiness(this.executionProfiles);
-    const runningAttempts = [...this.inflight.values()]
-      .filter((session) => session.acknowledged && !session.controller.signal.aborted)
-      .map((session) => ({ sessionId: session.sessionId, attemptId: session.attemptId }));
+    const runningAttempts = this.confirmableOwnedAttempts();
     await registerDaemon(
       config,
       this.transport,
@@ -287,6 +350,7 @@ export class DaemonLoop {
       this.armKeepaliveStallTimer();
       return;
     }
+    this.retryPendingTerminalStatuses();
     // Bounded: an outbound write stalled on a connection the transport still
     // considers open (registration wedged, dead epoch fencing) otherwise
     // leaves this promise pending forever — it never resolves *or* rejects,
@@ -297,6 +361,7 @@ export class DaemonLoop {
         type: "host:keepalive",
         hostId: this.config.hostId,
         at: this.now(),
+        runningSessions: this.ownedSessionIds(),
       }),
       this.keepaliveTimeoutMs,
       `keepalive timed out after ${this.keepaliveTimeoutMs}ms`,
@@ -409,6 +474,9 @@ export class DaemonLoop {
       case "session:acknowledged":
         this.handleAcknowledged(msg);
         return;
+      case "session:status-acknowledged":
+        this.handleStatusAcknowledged(msg);
+        return;
       case "session:assign":
         await this.handleAssign(msg);
         return;
@@ -473,6 +541,119 @@ export class DaemonLoop {
       const resolve = current.resolveAcknowledgement;
       current.resolveAcknowledgement = undefined;
       resolve?.();
+    }
+  }
+
+  /**
+   * Attempts eligible for the control plane's reconnect-confirmation
+   * handshake: acknowledged, unaborted in-flight assignments plus any
+   * terminal status still awaiting acknowledgement. `register()`-only —
+   * its consumer (`reconcileHostRunningSessions`) requires `ackReceivedAt`
+   * to already be set server-side, which an unacknowledged assignment does
+   * not have. A pending terminal status for a session the control plane has
+   * already moved past `running` is safe to include: `ignoreStaleReconnectClaim`
+   * drops it before the strict running/ack check runs.
+   *
+   * Deduplicated by `{sessionId, attemptId}`: `runAssign` records the pending
+   * terminal status before its send settles, so the same attempt can briefly
+   * appear in both `inflight` (not yet cleaned up by `handleAssign`'s
+   * `finally`) and `pendingTerminalStatus`. A duplicate entry here makes
+   * `parseHostMessage` reject the whole registration as invalid.
+   */
+  private confirmableOwnedAttempts(): { sessionId: string; attemptId: string }[] {
+    const attempts = new Map<string, { sessionId: string; attemptId: string }>();
+    for (const session of this.inflight.values()) {
+      if (!session.acknowledged || session.controller.signal.aborted) continue;
+      attempts.set(inflightKey(session.sessionId, session.attemptId), {
+        sessionId: session.sessionId,
+        attemptId: session.attemptId,
+      });
+    }
+    for (const pending of this.pendingTerminalStatus.values()) {
+      attempts.set(inflightKey(pending.message.sessionId, pending.message.attemptId), {
+        sessionId: pending.message.sessionId,
+        attemptId: pending.message.attemptId,
+      });
+    }
+    return [...attempts.values()];
+  }
+
+  /**
+   * Every session id this daemon currently claims, for keepalive-time
+   * exclusion reconciliation: the control plane requeues anything running
+   * on this host that is missing from this list, so it must never
+   * under-report relative to `confirmableOwnedAttempts()`. Unlike that
+   * method, this includes attempts still awaiting their assignment ack and
+   * attempts mid-abort — an assignment is still owned until `runAssign`
+   * actually returns, not once acknowledged.
+   */
+  private ownedSessionIds(): string[] {
+    const ids = new Set<string>();
+    for (const session of this.inflight.values()) ids.add(session.sessionId);
+    for (const pending of this.pendingTerminalStatus.values()) ids.add(pending.message.sessionId);
+    return [...ids];
+  }
+
+  private handleStatusAcknowledged(
+    msg: Extract<HostWireMessage, { type: "session:status-acknowledged" }>,
+  ): void {
+    if (msg.attemptId) {
+      this.pendingTerminalStatus.delete(inflightKey(msg.sessionId, msg.attemptId));
+      return;
+    }
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      if (pending.message.sessionId === msg.sessionId) this.pendingTerminalStatus.delete(key);
+    }
+  }
+
+  /**
+   * Re-send every terminal status not yet acknowledged. A completed WebSocket
+   * write is not delivery (see ws-transport.ts), so success here does not
+   * remove the entry — only `session:status-acknowledged` does. Fire-and-forget
+   * on purpose: a retained send can sit undelivered for the whole length of an
+   * outage (see ws-outbound-buffer.ts), and this runs on every keepalive tick,
+   * so it must never block that tick's own `host:keepalive` write. The `sending`
+   * guard stops a still-undelivered attempt from being re-enqueued as a second,
+   * duplicate retained frame on the next tick. Dropped after `pendingStatusMaxAgeMs`.
+   */
+  private retryPendingTerminalStatuses(): void {
+    const nowMs = Date.now();
+    let issuedThisTick = 0;
+    // Snapshot first: entries retried below are moved to the back of the
+    // live map for fairness (see comment below), which must not affect this
+    // single pass over what was pending at the start of this call.
+    for (const [key, pending] of Array.from(this.pendingTerminalStatus)) {
+      if (nowMs - pending.firstAttemptedAtMs > this.pendingStatusMaxAgeMs) {
+        this.onLog?.(
+          `giving up on unacknowledged terminal status for ${pending.message.sessionId} ` +
+            `after ${String(this.pendingStatusMaxAgeMs)}ms`,
+        );
+        // Cancels a still-buffered retained frame instead of leaving it
+        // queued to be transmitted whenever the connection recovers.
+        pending.controller.abort();
+        this.pendingTerminalStatus.delete(key);
+        continue;
+      }
+      if (pending.sending) continue;
+      if (issuedThisTick >= this.statusRetriesPerTick) continue;
+      issuedThisTick += 1;
+      // Rotate to the back of iteration order so a backlog larger than
+      // statusRetriesPerTick is retried fairly across ticks instead of
+      // always favoring the same entries and starving the rest.
+      this.pendingTerminalStatus.delete(key);
+      this.pendingTerminalStatus.set(key, pending);
+      pending.sending = true;
+      void this.outbound
+        .send(pending.message, { signal: pending.controller.signal })
+        .catch((error: unknown) => {
+          this.onLog?.(
+            `terminal status retry failed for ${pending.message.sessionId}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => {
+          pending.sending = false;
+        });
     }
   }
 
@@ -608,7 +789,7 @@ export class DaemonLoop {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
     }
     await this.outbound.flush();
-    await this.outbound.send({
+    const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = {
       type: "session:status",
       sessionId: msg.sessionId,
       worktreeId: msg.worktreeId,
@@ -619,7 +800,42 @@ export class DaemonLoop {
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-    });
+    };
+    // Recorded before the send attempt, and removed only by an explicit
+    // session:status-acknowledged: a completed WebSocket write is not delivery
+    // (see ws-transport.ts), so a send that "succeeds" here is not proof the
+    // control plane ever saw it. Retried on every keepalive until acked.
+    const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
+    const controller = new AbortController();
+    if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
+      // A control plane that never sends session:status-acknowledged (e.g. not yet
+      // upgraded to support it) would otherwise grow this set without bound until a
+      // keepalive/registration is rejected as invalid for exceeding the wire limit.
+      // Degrade to the old fire-once behavior instead of retaining this one.
+      this.onLog?.(
+        `terminal status retry buffer full (${String(this.pendingStatusMaxCount)}); ` +
+          `not retrying ${msg.sessionId} if this send is lost`,
+      );
+    } else {
+      this.pendingTerminalStatus.set(pendingKey, {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: true,
+        controller,
+      });
+    }
+    await this.outbound
+      .send(statusMessage, { signal: controller.signal })
+      .catch((error: unknown) => {
+        this.onLog?.(
+          `session:status send failed for ${msg.sessionId}, will retry via keepalive: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      })
+      .finally(() => {
+        const pending = this.pendingTerminalStatus.get(pendingKey);
+        if (pending) pending.sending = false;
+      });
   }
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {

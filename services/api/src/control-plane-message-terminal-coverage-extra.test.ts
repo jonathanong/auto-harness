@@ -284,7 +284,10 @@ describe("durable terminal message residual coverage", () => {
       },
       releaseMainCheckoutSession: async () => true,
     });
-    await expect(handleHostMessageDurable(state, message())).resolves.toEqual({ ok: true });
+    await expect(handleHostMessageDurable(state, message())).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "attempt" },
+    });
     expect(loaded).toBe(0);
   });
 
@@ -316,7 +319,10 @@ describe("durable terminal message residual coverage", () => {
         status: "failed",
         errorCode: "usage_limit",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "attempt" },
+    });
     expect(state.sessions.get("s")?.status).toBe("running");
   });
 });

@@ -862,6 +862,115 @@ describe("Lambda runtime adapters", () => {
     ).toContainEqual({ type: "host:draining", hostId: "host-1" });
   });
 
+  it("replies with session:status-acknowledged after a durable terminal report commits", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    fixture.mainCheckoutLeases.set("host-1#repository-1", "session-2");
+    fixture.sessions.set("session-2", {
+      id: "session-2",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-08-13T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      type: "scheduled",
+      source: "schedule",
+      principalId: "system",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-2",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "gateway-1",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:status",
+          sessionId: "session-2",
+          worktreeId: null,
+          attemptId: "attempt-2",
+          status: "completed",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:status-acknowledged",
+      sessionId: "session-2",
+      attemptId: "attempt-2",
+    });
+  });
+
+  it("delivers session:status-acknowledged on the current connection even if this container's hostConnection cache missed it", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    // Simulates a warm Lambda container that never processed this host's
+    // host:register (e.g. a different container handled it, or this one
+    // just cold-started): the connection is durably authenticated, but the
+    // in-process hostId->connectionId cache postToHost relies on is empty.
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+    fixture.mainCheckoutLeases.set("host-1#repository-1", "session-2");
+    fixture.sessions.set("session-2", {
+      id: "session-2",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-08-13T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      type: "scheduled",
+      source: "schedule",
+      principalId: "system",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-2",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "gateway-1",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:status",
+          sessionId: "session-2",
+          worktreeId: null,
+          attemptId: "attempt-2",
+          status: "completed",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:status-acknowledged",
+      sessionId: "session-2",
+      attemptId: "attempt-2",
+    });
+  });
+
   it("rejects unauthenticated sockets and cleans pending or registered disconnects", async () => {
     const denied = runtimeFixture(null);
     await expect(

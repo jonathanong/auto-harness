@@ -3,10 +3,10 @@ import type { HostRunningAttempt } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import {
   confirmScheduledReconnect,
   reclaimScheduledReconnect,
-  requeueOmittedScheduled,
   restoreScheduledReconnects,
   type ScheduledReconnectConfirmation,
 } from "./control-plane-reconnect-scheduled.ts";
@@ -84,59 +84,15 @@ export async function reconcileHostRunningSessions(
       }
       confirmed.push({ session, worktree });
     }
-    const worktrees = state.storage
-      ? await state.storage.listWorktreesByHost(hostId)
-      : [...state.worktrees.values()].filter((worktree) => worktree.hostId === hostId);
-    for (const worktree of worktrees) {
-      if (worktree.status !== "busy" || !worktree.currentSessionId) continue;
-      const session = state.storage
-        ? await state.storage.getSession(worktree.currentSessionId)
-        : state.sessions.get(worktree.currentSessionId);
-      if (!session || session.status !== "running" || session.hostId !== hostId) continue;
-      if (running.has(session.id)) continue;
-      if (!state.storage) {
-        releaseProviderAccountLease(state, session);
-        state.sessions.set(
-          session.id,
-          queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
-        );
-        releaseWorktree(state, worktree.id);
-        state.pendingAcks.delete(session.id);
-        requeued.push(session.id);
-      } else if (
-        await state.storage.tryRequeueSession({
-          sessionId: session.id,
-          worktreeId: worktree.id,
-          attemptId: session.attemptId!,
-          queueShard: session.queueShard,
-          reason: "daemon did not report session after reconnect; requeued",
-          forceOffline: false,
-          expectedHostId: hostId,
-          nextConnectionId: connectionId!,
-          ...(session.assignmentConnectionId
-            ? { expectedConnectionId: session.assignmentConnectionId }
-            : {}),
-          fence: { hostId, connectionId: connectionId! },
-          ...providerAccountLeaseWriteOpts(session),
-        })
-      ) {
-        await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
-        releaseProviderAccountLease(state, session);
-        state.sessions.set(
-          session.id,
-          queueReconnectSession(session, "daemon did not report session after reconnect; requeued"),
-        );
-        state.worktrees.set(worktree.id, {
-          ...worktree,
-          status: "idle",
-          currentSessionId: null,
-          online: true,
-        });
-        state.pendingAcks.delete(session.id);
-        requeued.push(session.id);
-      }
-    }
-    await requeueOmittedScheduled(state, hostId, running, requeued);
+    requeued.push(
+      ...(await reconcileHostOwnedSessions(
+        state,
+        hostId,
+        connectionId,
+        running,
+        "daemon did not report session after reconnect; requeued",
+      )),
+    );
     return requeued;
   } catch (err) {
     await restoreConfirmedSessions(state, hostId, connectionId, confirmed);

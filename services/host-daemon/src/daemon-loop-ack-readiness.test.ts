@@ -60,6 +60,10 @@ describe("DaemonLoop readiness registration", () => {
         type: "host:keepalive",
         hostId: config.hostId,
         at: "now",
+        // Still owned even though its assignment ack hasn't landed yet —
+        // reporting it as not-running here would let the control plane
+        // requeue a session the daemon is about to run.
+        runningSessions: ["pending-ack"],
       });
       expect(serverMsgs.filter((message) => message.type === "host:register")).toHaveLength(1);
 
