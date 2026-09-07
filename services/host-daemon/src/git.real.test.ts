@@ -127,8 +127,8 @@ describe("createGitClient real git", () => {
     await client.checkoutRef({ cwd: worktree, ref: targetSha });
 
     await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
-    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
-    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("target-owned\n");
+    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toMatch(/^target\r?\n$/);
+    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toMatch(/^target-owned\r?\n$/);
     expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
   });
 

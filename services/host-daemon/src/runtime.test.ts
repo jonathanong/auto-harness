@@ -79,6 +79,9 @@ describe("runtime helpers", () => {
           if (opts.argv.includes("--version")) {
             opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
           }
+          if (opts.argv[1] === "symbolic-ref") {
+            return { exitCode: 1, timedOut: false, signal: null };
+          }
           return { exitCode: 0, timedOut: false, signal: null };
         }
         opts.onChunk({ stream: "stdout", data: "hi\n" });
@@ -136,6 +139,9 @@ describe("runtime helpers", () => {
         systemCalls.push(options.argv);
         if (options.argv.includes("--version")) {
           options.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+        }
+        if (options.argv[1] === "symbolic-ref") {
+          return { exitCode: 1, timedOut: false, signal: null };
         }
         return { exitCode: 0, timedOut: false, signal: null };
       },
