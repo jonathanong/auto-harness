@@ -279,6 +279,26 @@ describe("PtyProcessRunner boundary", () => {
     expect(chunks).toEqual([oversized]);
   });
 
+  it("preserves a complete read when the structured-data consumer owns the total bound", async () => {
+    const pty = fakePty();
+    const runner = new PtyProcessRunner({ platform: "linux", spawn: () => pty.terminal });
+    const chunks: string[] = [];
+    const run = runner.run({
+      argv: ["./tool"],
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      preserveOutputChunks: true,
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const oversized = "x".repeat(40_000);
+    pty.emitData(oversized);
+    pty.emitExit({ exitCode: 0 });
+    await run;
+
+    expect(chunks).toEqual([oversized]);
+  });
+
   it("normalizes missing-command errors from the native boundary", async () => {
     const runner = new PtyProcessRunner({
       spawn() {

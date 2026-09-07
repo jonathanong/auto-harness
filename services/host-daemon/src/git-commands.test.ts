@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   gitFailure,
+  MAX_CAPTURED_GIT_STDOUT_BYTES,
   MAX_GIT_DIAGNOSTIC_BYTES,
   refetchConfiguredRemotes,
   runGit,
@@ -344,6 +345,45 @@ describe("runGit executable resolution", () => {
 
     expect(capturedArgv0).toBe(join(trustedBinDir, "git.exe"));
     expect(capturedArgv0).not.toBe(join(untrustedCheckout, "git.exe"));
+  });
+
+  it("requests complete chunks for structured Git output", async () => {
+    let preserveOutputChunks: boolean | undefined;
+    const output = "path/" + "x".repeat(40_000) + "\0";
+    const result = await runGit(
+      {
+        async run(options) {
+          preserveOutputChunks = options.preserveOutputChunks;
+          options.onChunk({ stream: "stdout", data: output });
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["ls-files", "-z"],
+    );
+
+    expect(preserveOutputChunks).toBe(true);
+    expect(result.stdout).toBe(output);
+  });
+
+  it("fails closed when structured Git stdout exceeds its total capture bound", async () => {
+    await expect(
+      runGit(
+        {
+          async run(options) {
+            options.onChunk({
+              stream: "stdout",
+              data: "x".repeat(MAX_CAPTURED_GIT_STDOUT_BYTES + 1),
+            });
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        "/repo",
+        ["ls-files", "-z"],
+      ),
+    ).rejects.toThrow(
+      `Git stdout exceeded the ${MAX_CAPTURED_GIT_STDOUT_BYTES}-byte capture limit`,
+    );
   });
 });
 

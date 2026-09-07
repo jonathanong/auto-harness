@@ -1076,4 +1076,24 @@ describe("UsageCapturingProcessRunner", () => {
       { stream: "stdout", data: OUTPUT_CHUNK_TRUNCATION_MARKER },
     ]);
   });
+
+  it("does not truncate forwarding for a structured-data consumer with its own total bound", async () => {
+    const oversized = "x".repeat(MAX_OUTPUT_CHUNK_BYTES + 1);
+    const inner: ProcessRunner = {
+      async run(options: RunProcessOptions): Promise<ProcessResult> {
+        options.onChunk({ stream: "stdout", data: oversized });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const forwarded: OutputChunk[] = [];
+    await new UsageCapturingProcessRunner(inner).run({
+      argv: ["echo"],
+      cwd: "/",
+      timeoutMs: 1_000,
+      preserveOutputChunks: true,
+      onChunk: (chunk) => forwarded.push(chunk),
+    });
+
+    expect(forwarded).toEqual([{ stream: "stdout", data: oversized }]);
+  });
 });

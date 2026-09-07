@@ -101,7 +101,8 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
             capturedBytes = Buffer.byteLength(captured, "utf8");
           }
         }
-        forwardTruncated(chunk, options.onChunk);
+        if (options.preserveOutputChunks) options.onChunk(chunk);
+        else forwardTruncated(chunk, options.onChunk);
       },
     });
     const parsed = codexStream

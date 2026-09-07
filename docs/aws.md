@@ -592,6 +592,11 @@ one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` 
 | WS messages discarded   | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |
 | Function logs           | CloudWatch Logs per Lambda; retention 14 days                                                                                                                                                                             |
 
+Successful REST requests use API Gateway metrics and, when enabled, redacted access logs rather
+than duplicate application lifecycle lines. Successful `host:keepalive-ack` deliveries are also
+silent because they occur every 20 seconds; delivery failures remain structured function logs,
+and lower-frequency session/host control deliveries retain one structured success line.
+
 Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
 missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
 ACK timeouts, stale hosts, cooldowns, log drops, and log seq gaps. Stale-attempt log drops and
