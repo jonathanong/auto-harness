@@ -7,26 +7,26 @@ afterEach(() => {
 });
 
 describe("formatLivenessLine", () => {
-  it("reports no heartbeat yet and an n/a fd count", () => {
+  it("reports no keepalive sent yet and an n/a fd count", () => {
     expect(
       formatLivenessLine({
         registered: false,
-        msSinceLastKeepaliveAck: undefined,
+        msSinceLastKeepaliveSent: undefined,
         queuedCount: 0,
         openFds: undefined,
       }),
-    ).toBe("daemon liveness: registered=false last keepalive ack=none yet queued=0 open fds=n/a");
+    ).toBe("daemon liveness: registered=false last keepalive sent=none yet queued=0 open fds=n/a");
   });
 
-  it("reports elapsed heartbeat time, queue depth, and fd count", () => {
+  it("reports elapsed time since the last keepalive send, queue depth, and fd count", () => {
     expect(
       formatLivenessLine({
         registered: true,
-        msSinceLastKeepaliveAck: 12_345,
+        msSinceLastKeepaliveSent: 12_345,
         queuedCount: 3,
         openFds: 57,
       }),
-    ).toBe("daemon liveness: registered=true last keepalive ack=12345ms ago queued=3 open fds=57");
+    ).toBe("daemon liveness: registered=true last keepalive sent=12345ms ago queued=3 open fds=57");
   });
 });
 
@@ -35,12 +35,12 @@ describe("startLivenessLog", () => {
     vi.useFakeTimers();
     const lines: string[] = [];
     let registered = false;
-    let lastAck: number | undefined;
+    let lastSent: number | undefined;
     let now = 0;
     const stop = startLivenessLog({
       intervalMs: 1_000,
       isRegistered: () => registered,
-      lastKeepaliveAckAtMs: () => lastAck,
+      lastKeepaliveSentAtMs: () => lastSent,
       queuedCount: () => 2,
       log: (line) => lines.push(line),
       nowMs: () => now,
@@ -49,15 +49,15 @@ describe("startLivenessLog", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(lines).toEqual([
-      "daemon liveness: registered=false last keepalive ack=none yet queued=2 open fds=10",
+      "daemon liveness: registered=false last keepalive sent=none yet queued=2 open fds=10",
     ]);
 
     registered = true;
-    lastAck = 500;
+    lastSent = 500;
     now = 1_500;
     await vi.advanceTimersByTimeAsync(1_000);
     expect(lines[1]).toBe(
-      "daemon liveness: registered=true last keepalive ack=1000ms ago queued=2 open fds=10",
+      "daemon liveness: registered=true last keepalive sent=1000ms ago queued=2 open fds=10",
     );
 
     stop();
@@ -75,7 +75,7 @@ describe("startLivenessLog", () => {
     try {
       const stop = startLivenessLog({
         isRegistered: () => false,
-        lastKeepaliveAckAtMs: () => undefined,
+        lastKeepaliveSentAtMs: () => undefined,
         queuedCount: () => 0,
         log: () => undefined,
       });

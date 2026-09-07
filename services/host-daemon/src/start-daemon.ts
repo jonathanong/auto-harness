@@ -354,13 +354,17 @@ function startOptionalInventoryPoll(
 function startDaemonKeepalive(
   loop: DaemonLoop,
   error: (line: string) => void,
-  onAck: (atMs: number) => void,
+  onSent: (atMs: number) => void,
   nowMs: () => number = Date.now,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
+    // loop.keepalive() resolving means the local ws.send() completed, not that
+    // the control plane processed or acknowledged the frame -- the wire
+    // protocol has no keepalive ack. A wedged-but-open socket still resolves
+    // this, so callers must not read it as proof of a live connection.
     void loop
       .keepalive()
-      .then(() => onAck(nowMs()))
+      .then(() => onSent(nowMs()))
       .catch((err: unknown) => {
         error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
       });
@@ -436,15 +440,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
         : ` (${repoCount} repo(s))`),
   );
 
-  let lastKeepaliveAckAtMs: number | undefined;
+  let lastKeepaliveSentAtMs: number | undefined;
   const stopInventoryPoll = startOptionalInventoryPoll(options, loop, log, error);
   const keepalive = startDaemonKeepalive(loop, error, (atMs) => {
-    lastKeepaliveAckAtMs = atMs;
+    lastKeepaliveSentAtMs = atMs;
   });
   const stopUpdatePoll = startOptionalUpdatePoll(update, loop, log, error);
   const stopLivenessLog = startLivenessLog({
     isRegistered: () => transport.isRegistered?.() ?? false,
-    lastKeepaliveAckAtMs: () => lastKeepaliveAckAtMs,
+    lastKeepaliveSentAtMs: () => lastKeepaliveSentAtMs,
     queuedCount: () => transport.queuedCount?.() ?? 0,
     log,
   });

@@ -4,8 +4,14 @@ export type LivenessLogOptions = {
   /** How often to emit the liveness line (ms). Default 5 minutes. */
   intervalMs?: number;
   isRegistered: () => boolean;
-  /** Epoch ms of the last successfully delivered keepalive, or undefined if none yet. */
-  lastKeepaliveAckAtMs: () => number | undefined;
+  /**
+   * Epoch ms of the last locally-sent keepalive that completed, or undefined
+   * if none yet. This is send completion, not delivery: the wire protocol has
+   * no keepalive acknowledgement, so a wedged-but-open socket can still
+   * advance this value. It is a coarse "the daemon's own loop is still
+   * ticking" signal, not proof the control plane is reachable.
+   */
+  lastKeepaliveSentAtMs: () => number | undefined;
   queuedCount: () => number;
   log: (line: string) => void;
   nowMs?: () => number;
@@ -16,18 +22,18 @@ const DEFAULT_LIVENESS_LOG_INTERVAL_MS = 5 * 60_000;
 
 export function formatLivenessLine(options: {
   registered: boolean;
-  msSinceLastKeepaliveAck: number | undefined;
+  msSinceLastKeepaliveSent: number | undefined;
   queuedCount: number;
   openFds: number | undefined;
 }): string {
-  const heartbeat =
-    options.msSinceLastKeepaliveAck === undefined
+  const keepalive =
+    options.msSinceLastKeepaliveSent === undefined
       ? "none yet"
-      : `${options.msSinceLastKeepaliveAck}ms ago`;
+      : `${options.msSinceLastKeepaliveSent}ms ago`;
   const fds = options.openFds === undefined ? "n/a" : String(options.openFds);
   return (
     `daemon liveness: registered=${options.registered} ` +
-    `last keepalive ack=${heartbeat} queued=${options.queuedCount} open fds=${fds}`
+    `last keepalive sent=${keepalive} queued=${options.queuedCount} open fds=${fds}`
   );
 }
 
@@ -37,11 +43,11 @@ export function startLivenessLog(options: LivenessLogOptions): () => void {
   const nowMs = options.nowMs ?? Date.now;
   const readFdCount = options.countOpenFds ?? countOpenFds;
   const timer = setInterval(() => {
-    const lastAck = options.lastKeepaliveAckAtMs();
+    const lastSent = options.lastKeepaliveSentAtMs();
     options.log(
       formatLivenessLine({
         registered: options.isRegistered(),
-        msSinceLastKeepaliveAck: lastAck === undefined ? undefined : nowMs() - lastAck,
+        msSinceLastKeepaliveSent: lastSent === undefined ? undefined : nowMs() - lastSent,
         queuedCount: options.queuedCount(),
         openFds: readFdCount(),
       }),
