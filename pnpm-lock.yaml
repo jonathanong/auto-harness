@@ -21,11 +21,6 @@ overrides:
   postcss: 8.5.26
   sharp: 0.35.3
 
-patchedDependencies:
-  node-pty@1.1.0:
-    hash: a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e
-    path: patches/node-pty@1.1.0.patch
-
 importers:
 
   .:
@@ -212,9 +207,9 @@ importers:
       '@auto-harness/shared':
         specifier: workspace:*
         version: link:../../modules/shared
-      node-pty:
-        specifier: ^1.1.0
-        version: 1.1.0(patch_hash=a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e)
+      '@replit/ruspty':
+        specifier: 3.7.0
+        version: 3.7.0
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -1812,6 +1807,28 @@ packages:
   '@radix-ui/rect@1.1.3':
     resolution: {integrity: sha512-JtyZR+mqgBibTo8xea3B6ZRmzZiM/YeVBtUkas6zMuXjAlfIFIW2FgqeM9eLyvEaYX66vr6DJMK+4U6LV0KhNw==}
 
+  '@replit/ruspty-darwin-arm64@3.7.0':
+    resolution: {integrity: sha512-ag+HRmL+nHPBwskwJ2Ut1XA4Ly8AftC3qUNtUaJTOteYJ61liB0CORVSwQa6qruZBCh+yy+MYcP+AakX1B+TUg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@replit/ruspty-darwin-x64@3.7.0':
+    resolution: {integrity: sha512-Sxx4Zuazv1AuB++e10YtQpvaz1CrlUYnoDn6xHi+ueWfDJgonzB+pflfV2u2JMHNaky9WB5GtABn87G6kQvfyg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@replit/ruspty-linux-x64-gnu@3.7.0':
+    resolution: {integrity: sha512-ln+725KcLW2UoksnvJN1H8m8FAEDW1keS7cnkgwo9+j3uQw6qMVbIPGeicLMCI0Q6VgmQ4/qK0RVIZe+YoONfg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@replit/ruspty@3.7.0':
+    resolution: {integrity: sha512-VwJtWWgTd+0MPl0RAdj8wyOYNfefSYHpg/Q2EpiUQqMsnRUK4efRXJpw0DdEPnnTvVr2eHKHnf6JEOUAjWWBQQ==}
+
   '@rollup/rollup-android-arm-eabi@4.62.4':
     resolution: {integrity: sha512-RrPokAb7dmbxFoeO3TloqHyOjgye8RkBhSqmp4aJMIex4c9r46ZstPnleDQOq1t46VOVjwIuwNogIqbodV1Vvg==}
     cpu: [arm]
@@ -2817,12 +2834,6 @@ packages:
   no-mistakes@0.51.4:
     resolution: {integrity: sha512-9Yppz0t3RH0LbTYbCD+dj1S0zfNAC4Gb7A29FAahhIEEgrozYy8fbJZn3XYtyAlDjSu5Da/Rl67HFevYCkk1Mg==}
     hasBin: true
-
-  node-addon-api@7.1.1:
-    resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
-
-  node-pty@1.1.0:
-    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   obliterator@1.6.1:
     resolution: {integrity: sha512-9WXswnqINnnhOG/5SLimUlzuU1hFJUc8zkwyD59Sd+dPOMf05PmnYG/d6Q7HZ+KmgkZJa1PxRso6QdM3sTNHig==}
@@ -4567,6 +4578,21 @@ snapshots:
 
   '@radix-ui/rect@1.1.3': {}
 
+  '@replit/ruspty-darwin-arm64@3.7.0':
+    optional: true
+
+  '@replit/ruspty-darwin-x64@3.7.0':
+    optional: true
+
+  '@replit/ruspty-linux-x64-gnu@3.7.0':
+    optional: true
+
+  '@replit/ruspty@3.7.0':
+    optionalDependencies:
+      '@replit/ruspty-darwin-arm64': 3.7.0
+      '@replit/ruspty-darwin-x64': 3.7.0
+      '@replit/ruspty-linux-x64-gnu': 3.7.0
+
   '@rollup/rollup-android-arm-eabi@4.62.4':
     optional: true
 
@@ -5436,12 +5462,6 @@ snapshots:
       - babel-plugin-macros
 
   no-mistakes@0.51.4: {}
-
-  node-addon-api@7.1.1: {}
-
-  node-pty@1.1.0(patch_hash=a716c7e61192feec65d6f18ec6bdb15324f45274146f97a42512b096b5c9063e):
-    dependencies:
-      node-addon-api: 7.1.1
 
   obliterator@1.6.1: {}
 

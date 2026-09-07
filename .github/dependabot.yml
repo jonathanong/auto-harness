@@ -14,14 +14,6 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    # pnpm patchedDependencies pins this exact version; any bump needs a patch refresh.
-    # Listing update-types ignores version PRs only — security PRs still open.
-    ignore:
-      - dependency-name: node-pty
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
-          - version-update:semver-patch
     groups:
       npm-production:
         applies-to: version-updates

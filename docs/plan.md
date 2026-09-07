@@ -362,13 +362,11 @@ migration marker. **No product-repo automation workflow may cut over before the 
     specific `ref` when the session specifies one** (D6), else the repo's default branch.
   - `command-profiles.ts` — maps a named profile (e.g. `codex-fix`) to a fixed argv template;
     rejects unknown profiles (D4).
-  - Process executor — assigned AI CLIs use `node-pty` at 120x40; git, setup scripts, and
-    terminal hooks use `child_process.spawn` with separate stdout/stderr pipes. Both paths use
-    fixed argv with **no `shell: true`**; prompt is passed as argv/stdin only (Invariant 8).
-    The Windows PTY path has one constrained compatibility adapter: a trusted resolved
-    `.cmd`/`.bat` target is invoked through a trusted resolved `cmd.exe` with every argv value
-    encoded independently, and CR/LF arguments are rejected rather than accepted as ambiguous
-    CMD command text.
+  - Process executor — assigned AI CLIs use `@replit/ruspty` at 120x40, POSIX hosts only; git,
+    setup scripts, and terminal hooks use `child_process.spawn` with separate stdout/stderr
+    pipes on every platform. Both paths use fixed argv with **no `shell: true`**; prompt is
+    passed as argv/stdin only (Invariant 8). A Windows host runs git/setup/hooks but cannot run
+    the assigned AI CLI, since ruspty ships no Windows build.
   - Session runner — claim worktree → run setup script (ref-aware) → resolve command profile →
     spawn → collect output → release.
   - Session timeout — kill after `timeout` seconds, report `timed_out`.
@@ -389,7 +387,7 @@ migration marker. **No product-repo automation workflow may cut over before the 
   — same code as production.
 - **Testing:** vitest across packages; unit tests for session runner, worktree manager, config
   loader, command-profiles, terminal-hook; mock the `child_process.spawn` host boundary (and the
-  `node-pty` boundary when the target PTY path is implemented);
+  PTY boundary when the target PTY path is implemented);
   `modules/shared` type-level assertions.
 
 **Acceptance criteria**
@@ -412,10 +410,10 @@ migration marker. **No product-repo automation workflow may cut over before the 
 `pnpm check`, `pnpm local:e2e`, `pnpm local:cli-e2e` (documented CLI + `ref: main` while primary
 tree is on `main`), and `pnpm local:api-smoke`.
 
-The current assigned-command executor uses a 120x40 `node-pty` terminal and preserves the
-SIGTERM → SIGKILL process-group lifecycle for timeout and cancellation. Setup scripts, terminal
-hooks, and git operations remain pipe-based. This provides TTY compatibility for non-interactive
-CLI modes; it does not add an interactive user-input channel.
+The current assigned-command executor uses a 120x40 `@replit/ruspty` terminal (POSIX hosts only)
+and preserves the SIGTERM → SIGKILL process-group lifecycle for timeout and cancellation. Setup
+scripts, terminal hooks, and git operations remain pipe-based on every platform. This provides TTY
+compatibility for non-interactive CLI modes; it does not add an interactive user-input channel.
 
 **Deviations (intentional, Phase 1 only):**
 

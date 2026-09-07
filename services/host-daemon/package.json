@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
-    "node-pty": "^1.1.0",
+    "@replit/ruspty": "3.7.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {
