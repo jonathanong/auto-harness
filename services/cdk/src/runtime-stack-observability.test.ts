@@ -51,7 +51,7 @@ describe("runtime observability", () => {
       StageName: "prod",
     });
 
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 11);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       MetricName: "QueueAgeSeconds",
       Namespace: "AutoHarness",
@@ -60,6 +60,10 @@ describe("runtime observability", () => {
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       MetricName: "LogDrops",
+      Namespace: "AutoHarness",
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      MetricName: "LogSeqGaps",
       Namespace: "AutoHarness",
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
@@ -129,7 +133,7 @@ describe("runtime observability", () => {
       expect(format).not.toContain("authorizer");
     }
 
-    template.resourceCountIs("AWS::CloudWatch::Alarm", 11);
+    template.resourceCountIs("AWS::CloudWatch::Alarm", 12);
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       MetricName: "QueueAgeSeconds",
       Namespace: "AutoHarness",
@@ -138,6 +142,10 @@ describe("runtime observability", () => {
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       MetricName: "LogDrops",
+      Namespace: "AutoHarness",
+    });
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      MetricName: "LogSeqGaps",
       Namespace: "AutoHarness",
     });
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {

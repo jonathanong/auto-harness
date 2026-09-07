@@ -1,9 +1,10 @@
 /* eslint-disable max-lines */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
+import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
 
 function running(id = "s") {
   return {
@@ -411,6 +412,35 @@ describe("durable host-message fencing", () => {
     expect(logFence).toBe(false);
     expect(statusFence).toBe(true);
     expect(statusConcurrencyId).toBe("session-lock");
+  });
+
+  it("counts a stale-attempt session:log discard on the durable single-message path", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const reassigned = { ...running(), attemptId: "b" };
+    state.sessions.set("s", reassigned);
+    state.storage = { getSession: async () => reassigned } as never;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR] = "test";
+    try {
+      await expect(
+        handleHostMessageDurable(state, {
+          type: "session:log",
+          sessionId: "s",
+          attemptId: "a",
+          stream: "stdout",
+          content: "stale",
+          timestamp: "t",
+          seq: 1,
+        }),
+      ).resolves.toEqual({ ok: true });
+      expect(state.logs.get("s")).toBeUndefined();
+      expect(log.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual(
+        expect.arrayContaining([expect.objectContaining({ StaleAttemptLogDrops: 1 })]),
+      );
+    } finally {
+      delete process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR];
+      log.mockRestore();
+    }
   });
 
   it("handles successful fenced logs plus terminal cancelled and local validation branches", async () => {

@@ -7,8 +7,17 @@ export const OPERATIONAL_METRICS = {
   assignmentFailures: "AssignmentFailures",
   cooldowns: "Cooldowns",
   logDrops: "LogDrops",
+  /** Log lines a session's stored transcript is missing, detected via a seq
+   * discontinuity rather than an explicit source-side drop notice. */
+  logSeqGaps: "LogSeqGaps",
+  /** A log message discarded because it belonged to an attempt the session
+   * has already moved past, while its batch-mates still committed. */
+  staleAttemptLogDrops: "StaleAttemptLogDrops",
   queueAgeSeconds: "QueueAgeSeconds",
   staleHosts: "StaleHosts",
+  /** A host WebSocket message dropped because the connection was being
+   * closed (rate limit, invalid frame, stale/unauthorized connection). */
+  wsMessagesDiscarded: "WsMessagesDiscarded",
 } as const;
 
 export function emitOperationalMetric(
@@ -56,6 +65,18 @@ export function emitLogDrops(dropped: number | undefined): void {
   if (dropped !== undefined && dropped > 0) {
     emitOperationalMetric(OPERATIONAL_METRICS.logDrops, dropped);
   }
+}
+
+export function emitLogSeqGap(missing: number): void {
+  if (missing > 0) emitOperationalMetric(OPERATIONAL_METRICS.logSeqGaps, missing);
+}
+
+export function emitStaleAttemptLogDrop(): void {
+  emitOperationalMetric(OPERATIONAL_METRICS.staleAttemptLogDrops, 1);
+}
+
+export function emitWsMessagesDiscarded(count: number): void {
+  if (count > 0) emitOperationalMetric(OPERATIONAL_METRICS.wsMessagesDiscarded, count);
 }
 
 export function emitCooldown(): void {

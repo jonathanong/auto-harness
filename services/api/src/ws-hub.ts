@@ -22,6 +22,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
+import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
 
@@ -96,6 +97,21 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         let pendingRegistration: { hostId: string; closed: boolean } | null = null;
         let drainForReplacement: () => Promise<void>;
 
+        // Each caller here knows *why* it's about to close the socket; log that
+        // reason at the point of decision rather than at the generic `!accepting`
+        // reads scattered below, which only know the connection is already dead.
+        const discardMessages = (count: number, reason: string): void => {
+          emitWsMessagesDiscarded(count);
+          console.warn(
+            JSON.stringify({
+              msg: "discarding host websocket message(s)",
+              reason,
+              count,
+              hostId: boundHostId,
+            }),
+          );
+        };
+
         const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
           if (!accepting) return;
           if (
@@ -104,11 +120,13 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             plane.state.hostConnection.get(boundHostId) !== boundConnectionId
           ) {
             accepting = false;
+            discardMessages(1, "stale host connection");
             socket.close(1008, "stale host connection");
             return;
           }
           if (!isAllowedMessage(plane, msg, boundHostId, principal, authRequired)) {
             accepting = false;
+            discardMessages(1, "message not authorized");
             socket.close(1008, "message not authorized");
             return;
           }
@@ -197,6 +215,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             plane.state.hostConnection.get(boundHostId) !== boundConnectionId
           ) {
             accepting = false;
+            discardMessages(batch.length, "stale host connection");
             socket.close(1008, "stale host connection");
             return;
           }
@@ -204,6 +223,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           for (const message of batch) {
             if (!isAllowedMessage(plane, message, boundHostId, principal, authRequired)) {
               accepting = false;
+              discardMessages(batch.length - allowed.length, "message not authorized");
               socket.close(1008, "message not authorized");
               break;
             }
@@ -267,6 +287,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             });
             flushLogBatch();
             accepting = false;
+            discardMessages(1, "message rate exceeded");
             socket.close(1008, "message rate exceeded");
             return;
           }
@@ -278,6 +299,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           if (!msg) {
             flushLogBatch();
             accepting = false;
+            discardMessages(1, "invalid message");
             socket.close(1008, "invalid message");
             return;
           }

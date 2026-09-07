@@ -8,7 +8,10 @@ import {
   emitCooldown,
   emitCronSweepMetrics,
   emitLogDrops,
+  emitLogSeqGap,
   emitOperationalMetric,
+  emitStaleAttemptLogDrop,
+  emitWsMessagesDiscarded,
   queuedSessionAgeSeconds,
 } from "./operational-metrics.ts";
 
@@ -56,6 +59,11 @@ describe("operational metrics", () => {
     emitCooldown();
     emitAssignmentFailure();
     emitCronSweepMetrics({ ackTimeouts: 2, staleHosts: 1, queueAgeSeconds: 45 });
+    emitLogSeqGap(0);
+    emitLogSeqGap(3);
+    emitStaleAttemptLogDrop();
+    emitWsMessagesDiscarded(0);
+    emitWsMessagesDiscarded(2);
     const payloads = log.mock.calls.map(([line]) => JSON.parse(String(line)));
     expect(payloads).toEqual(
       expect.arrayContaining([
@@ -73,7 +81,13 @@ describe("operational metrics", () => {
         expect.objectContaining({ AckTimeouts: 2 }),
         expect.objectContaining({ StaleHosts: 1 }),
         expect.objectContaining({ QueueAgeSeconds: 45 }),
+        expect.objectContaining({ LogSeqGaps: 3 }),
+        expect.objectContaining({ StaleAttemptLogDrops: 1 }),
+        expect.objectContaining({ WsMessagesDiscarded: 2 }),
       ]),
     );
+    // emitLogSeqGap(0) and emitWsMessagesDiscarded(0) must not emit at all.
+    expect(payloads.filter((p) => "LogSeqGaps" in p)).toHaveLength(1);
+    expect(payloads.filter((p) => "WsMessagesDiscarded" in p)).toHaveLength(1);
   });
 });

@@ -570,20 +570,25 @@ strings, headers, or bodies) to 14-day CloudWatch log groups are opt-in and off 
 [HARNESS_ACCESS_LOGS_ENABLED](deploy-aws.md#api-gateway-access-logs-opt-in). They require a
 one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` do not provision.
 
-| Signal            | Source                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| API latency / 5xx | API Gateway `5xx` + Lambda `Errors`                                                          |
-| Queue age         | Cron EMF `QueueAgeSeconds` (oldest `queued` session)                                         |
-| Assign failures   | EMF `AssignmentFailures` when `postToConnection` fails for a reason other than a gone socket |
-| ACK timeouts      | Cron EMF `AckTimeouts`                                                                       |
-| Stale hosts       | Cron EMF `StaleHosts`                                                                        |
-| Cooldowns         | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                               |
-| Log drops         | EMF `LogDrops` from persisted `session:log.dropped` telemetry                                |
-| Function logs     | CloudWatch Logs per Lambda; retention 14 days                                                |
+| Signal                    | Source                                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| API latency / 5xx         | API Gateway `5xx` + Lambda `Errors`                                                                                           |
+| Queue age                 | Cron EMF `QueueAgeSeconds` (oldest `queued` session)                                                                         |
+| Assign failures           | EMF `AssignmentFailures` when `postToConnection` fails for a reason other than a gone socket                                 |
+| ACK timeouts              | Cron EMF `AckTimeouts`                                                                                                        |
+| Stale hosts               | Cron EMF `StaleHosts`                                                                                                         |
+| Cooldowns                 | EMF `Cooldowns` when a `usage_limit` pauses a Provider Account                                                                |
+| Log drops                 | EMF `LogDrops` from persisted `session:log.dropped` telemetry (an explicit source-side drop the agent already knows about)    |
+| Log seq gaps (alarmed)    | EMF `LogSeqGaps`: lines missing from a session's stored transcript, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline itself caused, not one the agent reported |
+| Stale-attempt log drops   | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
+| WS messages discarded     | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason         |
+| Function logs             | CloudWatch Logs per Lambda; retention 14 days                                                                                |
 
 Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
 missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
-ACK timeouts, stale hosts, cooldowns, and log drops.
+ACK timeouts, stale hosts, cooldowns, log drops, and log seq gaps. Stale-attempt log drops and
+discarded WS messages are metrics/logs only (not alarmed) — expected to occur occasionally during
+ordinary reconnects, unlike the others.
 
 ---
 
