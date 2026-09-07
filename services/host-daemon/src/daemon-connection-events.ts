@@ -6,7 +6,7 @@ export function configureConnectionEvents(options: {
   onError: (error: unknown) => void;
   abortUnacknowledged: () => void;
   abortInflight: () => void;
-  onRegistered?: () => void;
+  onRegistered?: (protocolVersion?: number) => void;
   abortAfterMs: number;
   timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 }): { stop: () => void } {
@@ -24,10 +24,10 @@ export function configureConnectionEvents(options: {
     if (stopped) return;
     void options.register().catch(options.onError);
   });
-  options.transport.onRegistered?.(() => {
+  options.transport.onRegistered?.((protocolVersion) => {
     if (!stopped) {
       clear();
-      options.onRegistered?.();
+      options.onRegistered?.(protocolVersion);
     }
   });
   options.transport.onDisconnected?.(() => {

@@ -16,6 +16,7 @@ import {
   LOCAL_HOST_ID,
   LOCAL_API_HTTP,
   HOST_PROTOCOL_VERSION,
+  KEEPALIVE_ACK_PROTOCOL_VERSION,
   ATTEMPT_FENCED_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
   PACKAGE_SCOPE,
@@ -48,9 +49,11 @@ describe("constants", () => {
     expect(WORKTREE_STATUSES).toEqual(["idle", "busy", "error"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");
-    expect(HOST_PROTOCOL_VERSION).toBe(1);
+    expect(HOST_PROTOCOL_VERSION).toBe(2);
+    expect(KEEPALIVE_ACK_PROTOCOL_VERSION).toBe(2);
     expect(ATTEMPT_FENCED_PROTOCOL_VERSION).toBe(1);
     expect(HOST_PROTOCOL_VERSION).toBeGreaterThanOrEqual(ATTEMPT_FENCED_PROTOCOL_VERSION);
+    expect(HOST_PROTOCOL_VERSION).toBeGreaterThanOrEqual(KEEPALIVE_ACK_PROTOCOL_VERSION);
     expect(MAX_SESSION_LOG_DROPPED).toBe(1_000_000);
   });
 });

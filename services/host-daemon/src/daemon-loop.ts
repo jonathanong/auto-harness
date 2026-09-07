@@ -1,10 +1,11 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import { randomUUID } from "node:crypto";
-import type {
-  HostRuntimeReport,
-  HostToServerMessage,
-  HostWireMessage,
-  SessionLogChunk,
+import {
+  KEEPALIVE_ACK_PROTOCOL_VERSION,
+  type HostRuntimeReport,
+  type HostToServerMessage,
+  type HostWireMessage,
+  type SessionLogChunk,
 } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -77,10 +78,12 @@ export type DaemonLoopOptions = {
   keepaliveTimeoutMs?: number;
   /**
    * Force the transport to abandon its current connection and reconnect once
-   * this long has passed with no successfully delivered keepalive. Comfortably
-   * under the control plane's default 60s heartbeat staleness window, so the
-   * daemon gives up on a connection that looks open but isn't carrying
-   * traffic before the control plane gives up on the daemon.
+   * this long has passed without peer evidence the connection still works.
+   * At protocol 2 that evidence is `host:registered` / `host:keepalive-ack`;
+   * older peers still re-arm on a successful local send. Comfortably under
+   * the control plane's default 60s heartbeat staleness window, so the daemon
+   * gives up on a connection that looks open but isn't carrying traffic
+   * before the control plane gives up on the daemon.
    */
   keepaliveStallMs?: number;
 };
@@ -175,6 +178,12 @@ export class DaemonLoop {
   private readonly keepaliveTimeoutMs: number;
   private readonly keepaliveStallMs: number;
   private keepaliveStallTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Set from `host:registered.protocolVersion`. When true, a local keepalive
+   * write is not evidence the peer received it — only `host:keepalive-ack`
+   * (and a fresh `host:registered`) re-arm the stall timer.
+   */
+  private requireKeepaliveAck = false;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
@@ -259,7 +268,7 @@ export class DaemonLoop {
       abortInflight: () => {
         for (const session of this.inflight.values()) session.controller.abort();
       },
-      onRegistered: () => {
+      onRegistered: (protocolVersion) => {
         // A reconnect registration carrying `draining: true` is itself a
         // durable acknowledgement. This covers a lost drain reply.
         if (this.drainRequested) this.confirmDrain();
@@ -267,6 +276,7 @@ export class DaemonLoop {
         // terminal status still unacknowledged now instead of waiting for
         // the next keepalive tick.
         this.retryPendingTerminalStatuses();
+        this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
         // A fresh registration is itself proof this connection is live —
         // reset the same deadline a successful keepalive would.
         this.armKeepaliveStallTimer();
@@ -368,11 +378,13 @@ export class DaemonLoop {
       `keepalive timed out after ${this.keepaliveTimeoutMs}ms`,
       this.timers,
     );
-    this.armKeepaliveStallTimer();
+    // Protocol 2+ waits for host:keepalive-ack. A resolved local write only
+    // proves the bytes hit this process's socket buffer.
+    if (!this.requireKeepaliveAck) this.armKeepaliveStallTimer();
     return true;
   }
   /**
-   * (Re)start the deadline for "a keepalive must land within this window."
+   * (Re)start the deadline for "peer evidence must land within this window."
    * Left un-reset by a failed or timed-out attempt on purpose: only a
    * genuinely successful delivery (or a fresh registration, itself proof of
    * a live connection) counts as evidence the connection still works. Firing
@@ -469,6 +481,9 @@ export class DaemonLoop {
         return;
       case "host:draining":
         if (msg.hostId === this.config.hostId) this.confirmDrain();
+        return;
+      case "host:keepalive-ack":
+        if (msg.hostId === this.config.hostId) this.armKeepaliveStallTimer();
         return;
       case "session:cancel":
         this.handleCancel(msg);

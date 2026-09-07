@@ -58,15 +58,21 @@ describe("WebSocket transport residual runtime branches", () => {
       onClose: () => events.push("close"),
       onError: (error) => errors.push(error),
     });
+    let negotiated: number | undefined;
     transport.onConnected?.(() => events.push("connected"));
-    transport.onRegistered?.(() => events.push("registered"));
+    transport.onRegistered?.((protocolVersion) => {
+      events.push("registered");
+      negotiated = protocolVersion;
+    });
     transport.onDisconnected?.(() => events.push("disconnected"));
     transport.onMessage((message) => received.push(message.type));
     const socket = sockets[0]!;
     socket.open();
     await transport.send(register());
-    socket.server({ type: "host:registered", hostId: "host-1" });
+    socket.server({ type: "host:keepalive-ack", hostId: "host-1", at: "now" });
+    socket.server({ type: "host:registered", hostId: "host-1", protocolVersion: 2 });
     await transport.registered;
+    expect(negotiated).toBe(2);
     socket.emit("message", Buffer.from("{"));
     for (const message of [
       { type: "session:acknowledged", sessionId: "", attemptId: "a" },
@@ -77,6 +83,7 @@ describe("WebSocket transport residual runtime branches", () => {
       { type: "session:acknowledged", sessionId: "session-2" },
       { type: "session:cancel", sessionId: "session-2" },
       { type: "host:drain" },
+      { type: "host:keepalive-ack", hostId: "host-1", at: "now" },
     ])
       socket.server(message);
     await settle();
@@ -87,6 +94,7 @@ describe("WebSocket transport residual runtime branches", () => {
       "session:acknowledged",
       "session:cancel",
       "host:drain",
+      "host:keepalive-ack",
     ]);
     socket.emit("error", "primitive failure");
     expect(errors[0]).toEqual(new Error("primitive failure"));

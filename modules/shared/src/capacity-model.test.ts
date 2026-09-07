@@ -68,6 +68,33 @@ describe("capacity model", () => {
     );
   });
 
+  it("counts each keepalive twice: inbound frame plus outbound ack", () => {
+    const keepalivesPerHost =
+      CAPACITY_CONSTANTS.secondsPerMonth / CAPACITY_CONSTANTS.websocketKeepaliveSeconds;
+    const oneHost = estimateMonthlyCapacity({
+      sessionsPerDay: 0,
+      sessionDurationSeconds: 0,
+      connectedHosts: 1,
+      connectedViewers: 0,
+      schedules: 0,
+      archiveBytesPerSession: 0,
+    });
+    const twoHosts = estimateMonthlyCapacity({
+      sessionsPerDay: 0,
+      sessionDurationSeconds: 0,
+      connectedHosts: 2,
+      connectedViewers: 0,
+      schedules: 0,
+      archiveBytesPerSession: 0,
+    });
+    expect(oneHost.websocketMessagesPerMonth).toBe(keepalivesPerHost * 2);
+    expect(twoHosts.websocketMessagesPerMonth).toBe(keepalivesPerHost * 4);
+    // The ack is outbound postToConnection; it does not invoke the WS Lambda.
+    expect(oneHost.lambdaInvocationsPerMonth).toBe(
+      keepalivesPerHost + oneHost.schedulerInvocationsPerMonth,
+    );
+  });
+
   it("includes each scheduled repair sweep in Lambda requests", () => {
     const estimate = estimateMonthlyCapacity({
       sessionsPerDay: 0,

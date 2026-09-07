@@ -143,10 +143,14 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
   cannot touch a newer assignment
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
 - On reconnect: re-register full inventory + any **in-progress** attempts still running locally
-- Responds to server `ping` with `pong`
+- Sends `host:keepalive` on an interval. When `host:registered` carries
+  `protocolVersion` ≥ 2, the stall watchdog re-arms only on `host:keepalive-ack`
+  or a later `host:registered` — not when the local keepalive write resolves.
+  Older control planes omit `protocolVersion` on that reply; the daemon keeps
+  send-based re-arm so a daemon-first deploy does not reconnect-loop.
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
-Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
+Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `host:keepalive`.
 
 Each daemon process reports one opaque UUID and process start time on every registration. The UUID
 remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior

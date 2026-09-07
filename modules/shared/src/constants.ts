@@ -85,7 +85,14 @@ export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
 /** Current host control-channel protocol advertised by modern daemons. */
-export const HOST_PROTOCOL_VERSION = 1;
+export const HOST_PROTOCOL_VERSION = 2;
+
+/**
+ * Daemons that negotiate this version on `host:registered` re-arm the keepalive
+ * stall watchdog only on peer evidence (`host:registered` / `host:keepalive-ack`),
+ * not on a local `send()` resolving. Older peers keep the send-based re-arm.
+ */
+export const KEEPALIVE_ACK_PROTOCOL_VERSION = 2;
 
 /** Wire bound for `session:log.dropped` (docs/websocket.md). */
 export const MAX_SESSION_LOG_DROPPED = 1_000_000;

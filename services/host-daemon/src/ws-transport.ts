@@ -77,7 +77,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
   let inflight: InflightWrite | undefined;
   let messageHandler: ((message: HostWireMessage) => void) | undefined;
   let connectedHandler: (() => void) | undefined;
-  let registeredHandler: (() => void) | undefined;
+  let registeredHandler: ((protocolVersion?: number) => void) | undefined;
   let disconnectedHandler: (() => void) | undefined;
   let readyResolve: (() => void) | undefined;
   let readyReject: ((error: Error) => void) | undefined;
@@ -313,7 +313,13 @@ export function createWsTransport(options: Options): DaemonTransport & {
           delay = 1_000;
           registeredResolve?.();
           registeredResolve = undefined;
-          registeredHandler?.();
+          const protocolVersion =
+            "protocolVersion" in message &&
+            typeof message.protocolVersion === "number" &&
+            Number.isSafeInteger(message.protocolVersion)
+              ? message.protocolVersion
+              : undefined;
+          registeredHandler?.(protocolVersion);
           pump();
         } else if (message.type === "error") {
           target.close(1008, "registration rejected");
@@ -332,7 +338,8 @@ export function createWsTransport(options: Options): DaemonTransport & {
                 message.attemptId.length <= 512))) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
-            message.type === "host:drain")
+            message.type === "host:drain" ||
+            message.type === "host:keepalive-ack")
         ) {
           messageHandler?.(message as HostWireMessage);
         }

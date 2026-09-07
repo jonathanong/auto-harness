@@ -4,6 +4,8 @@ import { createServer } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
+
 import { ControlPlane } from "./control-plane.ts";
 import { AuthService } from "./auth.ts";
 import { createPlaneWsBridge, parseHostMessage } from "./ws-hub.ts";
@@ -305,6 +307,12 @@ describe("createPlaneWsBridge", () => {
       ws.on("error", reject);
       setTimeout(() => reject(new Error("timeout")), 3000);
     });
+    expect(received).toContainEqual({
+      type: "host:registered",
+      hostId: "a1",
+      connectionId: "connection-1",
+      protocolVersion: HOST_PROTOCOL_VERSION,
+    });
     expect(received).toContainEqual({ type: "host:draining", hostId: "a1" });
     expect(handled).toHaveBeenLastCalledWith(
       { type: "host:status", hostId: "a1", draining: true },
@@ -477,6 +485,29 @@ describe("createPlaneWsBridge", () => {
       }),
     );
     expect(await closeCode).toBe(1008);
+    await opened.close();
+  });
+
+  it("acks a successful host keepalive with the echoed at timestamp", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const opened = await openRegisteredHost({
+      bridge,
+      plane,
+      registration: hostRegistration("a1", 1),
+    });
+    const at = "2026-09-07T00:00:00.000Z";
+    const ack = await new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("keepalive-ack timeout")), 3000);
+      opened.ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type?: string };
+        if (message.type !== "host:keepalive-ack") return;
+        clearTimeout(timer);
+        resolve(message);
+      });
+      opened.ws.send(JSON.stringify({ type: "host:keepalive", hostId: "a1", at }));
+    });
+    expect(ack).toEqual({ type: "host:keepalive-ack", hostId: "a1", at });
     await opened.close();
   });
 

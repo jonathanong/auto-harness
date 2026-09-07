@@ -146,7 +146,16 @@ export type HostWireMessage =
   | { type: "host:draining"; hostId: string }
   | { type: "host:drain" }
   /** Confirms a `host:register` was accepted; opens the daemon's registration barrier. */
-  | { type: "host:registered"; hostId: string; connectionId?: string | undefined };
+  | {
+      type: "host:registered";
+      hostId: string;
+      connectionId?: string | undefined;
+      /** Control-plane protocol. Missing means a pre-keepalive-ack peer. */
+      protocolVersion?: number | undefined;
+    }
+  /** Sent only after the control plane durably applies `host:keepalive`.
+   * A successful daemon WebSocket write is not peer evidence. */
+  | { type: "host:keepalive-ack"; hostId: string; at: string };
 
 export type HostToServerMessage =
   | {

@@ -7,7 +7,12 @@ import {
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import { principalHas, type HostToServerMessage, type HostWireMessage } from "@auto-harness/shared";
+import {
+  HOST_PROTOCOL_VERSION,
+  principalHas,
+  type HostToServerMessage,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -624,8 +629,15 @@ export async function createLambdaRuntime(
             type: "host:registered",
             hostId: message.hostId,
             connectionId: result.connectionId,
+            protocolVersion: HOST_PROTOCOL_VERSION,
           });
           await created.plane.requestAssignment();
+        } else if (result.ok && message.type === "host:keepalive") {
+          trackDelivery(authenticated.hostId, {
+            type: "host:keepalive-ack",
+            hostId: message.hostId,
+            at: message.at,
+          });
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           trackDelivery(authenticated.hostId, {
             type: "session:acknowledged",
