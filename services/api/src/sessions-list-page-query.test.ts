@@ -132,6 +132,50 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands[0]?.input.ExpressionAttributeNames).toEqual({ "#key": "statusShard" });
   });
 
+  it("binds createdAt on oldest follow-up pages and queries each repository id", async () => {
+    const commands: QueryCommand[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return {};
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "oldest",
+      shardCount: 1,
+      status: "running",
+      repositoryId: "repo-1",
+      repositoryIds: ["repo-1"],
+      hostId: "host-1",
+      source: "ui",
+      concurrencyId: "c1",
+      scheduleId: "s1",
+      position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
+    });
+    expect(commands[0]?.input.KeyConditionExpression).toContain("createdAt >=");
+    expect(commands[0]?.input.IndexName).toBe("repositoryId-createdAt");
+
+    commands.length = 0;
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "oldest",
+      shardCount: 1,
+      status: "queued",
+      repositoryId: null,
+      repositoryIds: ["repo-a", "repo-b"],
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    });
+    expect(commands).toHaveLength(2);
+  });
+
   it("returns no rows when a repository filter contradicts the scoped ids", async () => {
     const ctx = {
       doc: { send: async () => ({ Items: [] }) },

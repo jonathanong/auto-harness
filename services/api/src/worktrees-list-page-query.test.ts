@@ -44,5 +44,12 @@ describe("listWorktreesPage", () => {
       listWorktreesPage(ctx, { limit: 10, repositoryId: "repo-1", hostId: "host-1" }),
     ).resolves.toEqual({ items: [{ id: "wt-4" }], nextKey: null });
     expect(send.mock.calls[0]?.[0].input.IndexName).toBe("repositoryId-id");
+
+    send.mockClear();
+    send.mockResolvedValue({});
+    await expect(
+      listWorktreesPage(ctx, { limit: 10, repositoryId: "repo-1", startKey: { id: "wt-0" } }),
+    ).resolves.toEqual({ items: [], nextKey: null });
+    expect(send.mock.calls[0]?.[0].input.ExclusiveStartKey).toEqual({ id: "wt-0" });
   });
 });
