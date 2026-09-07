@@ -2,6 +2,7 @@ import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from 
 import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
+import type { HydrateFromStorageOptions } from "./control-plane-hydrate.ts";
 import { configuredSecretEncryptor } from "./secret-crypto.ts";
 import { configuredArchiveWriter } from "./archive-writer.ts";
 
@@ -21,6 +22,18 @@ export type CreateControlPlaneOptions = ControlPlaneOptions &
     /** Use AWS's regional DynamoDB endpoint and credential provider chain. */
     aws?: boolean;
   };
+
+/** Options passed to hydrateFromStorage for Lambda vs local boot. */
+export function controlPlaneHydrateOptions(
+  options: Pick<CreateControlPlaneOptions, "hydrateSessionHistory" | "hydrateCatalogs">,
+): HydrateFromStorageOptions | undefined {
+  if (options.hydrateSessionHistory !== false && options.hydrateCatalogs !== false)
+    return undefined;
+  return {
+    sessionHistory: options.hydrateSessionHistory !== false,
+    catalogs: options.hydrateCatalogs !== false,
+  };
+}
 
 /**
  * Build a ControlPlane backed by DynamoDB Local (or AWS when endpoint/creds set).
@@ -81,13 +94,6 @@ export async function createControlPlane(
       ? { secretEncryptor: options.secretEncryptor }
       : { secretEncryptor: configuredSecretEncryptor() }),
   });
-  await plane.hydrateFromStorage(
-    options.hydrateSessionHistory === false || options.hydrateCatalogs === false
-      ? {
-          sessionHistory: options.hydrateSessionHistory !== false,
-          catalogs: options.hydrateCatalogs !== false,
-        }
-      : undefined,
-  );
+  await plane.hydrateFromStorage(controlPlaneHydrateOptions(options));
   return { plane, storage };
 }
