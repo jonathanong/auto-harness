@@ -23,7 +23,7 @@ export function SessionStatusCell({
   sessionId: string;
 }) {
   const reason =
-    status === "failed" ? errorMessage || sessionStatusReason(errorCode) || errorCode : null;
+    status === "failed" ? sessionStatusReason(errorCode) || errorMessage || errorCode : null;
   return (
     <div className="space-y-1" data-pw={`session-status-${sessionId}`}>
       <SessionStatusBadge status={status} />

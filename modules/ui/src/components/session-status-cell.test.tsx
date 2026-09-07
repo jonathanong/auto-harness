@@ -25,9 +25,15 @@ describe("SessionStatusCell", () => {
     expect(usage).toContain('data-pw="session-status-reason-usage"');
 
     const expired = renderToStaticMarkup(
-      <SessionStatusCell status="failed" errorCode="queue_expired" sessionId="expired" />,
+      <SessionStatusCell
+        status="failed"
+        errorCode="queue_expired"
+        errorMessage="queue TTL expired before capacity became available"
+        sessionId="expired"
+      />,
     );
     expect(expired).toContain("Queue expired");
+    expect(expired).not.toContain("queue TTL expired before capacity became available");
 
     const ordinary = renderToStaticMarkup(
       <SessionStatusCell

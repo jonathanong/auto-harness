@@ -56,6 +56,7 @@ async function createTwoCommitWorktree(root: string): Promise<{
   const worktree = join(root, "wt-1");
   mkdirSync(repo);
   await git(repo, ["init"]);
+  await git(repo, ["config", "core.autocrlf", "false"]);
   await git(repo, ["config", "user.email", "t@example.com"]);
   await git(repo, ["config", "user.name", "t"]);
   writeFileSync(join(repo, "tracked.txt"), "first\n");
@@ -127,8 +128,8 @@ describe("createGitClient real git", () => {
     await client.checkoutRef({ cwd: worktree, ref: targetSha });
 
     await expect(client.revParse(worktree, "HEAD")).resolves.toBe(targetSha);
-    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toMatch(/^target\r?\n$/);
-    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toMatch(/^target-owned\r?\n$/);
+    expect(readFileSync(join(worktree, "tracked.txt"), "utf8")).toBe("target\n");
+    expect(readFileSync(join(worktree, "obstructed.txt"), "utf8")).toBe("target-owned\n");
     expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep me\n");
   });
 
