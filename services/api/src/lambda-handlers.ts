@@ -212,6 +212,41 @@ async function postToHost(
 }
 
 /**
+ * Force-close a reclaimed host's physical API Gateway connection at the
+ * moment the stale-heartbeat sweep reclaims it.
+ *
+ * This is complementary to, not a replacement for, `forceCloseStaleConnection`
+ * below: that one closes reactively the next time a frame arrives on a
+ * connection with no authenticated row, which still requires the daemon to
+ * send another frame first (up to a full keepalive interval later). Closing
+ * here too, right when `reclaimStaleHostsDurable` releases the lease, cuts
+ * that window to zero for the specific case the sweep itself causes.
+ */
+async function closeReclaimedConnection(
+  management: ManagementClient,
+  hostId: string,
+  connectionId: string,
+): Promise<void> {
+  try {
+    await management.send(new DeleteConnectionCommand({ ConnectionId: connectionId }));
+  } catch (error) {
+    // Already gone (daemon reconnected and the old socket was replaced, or API
+    // Gateway had already dropped it) — nothing left to close.
+    if (error instanceof GoneException || (error as { name?: string }).name === "GoneException") {
+      return;
+    }
+    console.error(
+      JSON.stringify({
+        msg: "closeReclaimedConnection failure",
+        hostId,
+        connectionId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+/**
  * A daemon whose lease was released (stale-heartbeat reclaim, disconnect, or a
  * superseding registration) otherwise keeps its physical WebSocket open forever:
  * `releaseHostConnection` only deletes DynamoDB rows, and a rejected `$default`
@@ -406,7 +441,11 @@ export async function createLambdaRuntime(
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
         await created.plane.refreshSchedulerReadModelDurable();
-        const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
+        const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable(
+          Date.now(),
+          (hostId, connectionId) =>
+            track(closeReclaimedConnection(management, hostId, connectionId)),
+        );
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const assignments = await assignQueuedAndScheduledDurable(created.plane.state, {

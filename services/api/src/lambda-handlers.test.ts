@@ -1084,6 +1084,13 @@ describe("Lambda runtime adapters", () => {
         "running:2",
         "running:3",
       ]);
+      // The reclaimed host's physical connection must be force-closed, not just
+      // dropped from durable state — otherwise its daemon keeps an open,
+      // unregistered socket forever with no signal telling it to reconnect.
+      const deleteCalls = fixture.management.send.mock.calls.filter(
+        (call) => call[0].input.ConnectionId === "stale-connection" && !("Data" in call[0].input),
+      );
+      expect(deleteCalls).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
@@ -1098,6 +1105,51 @@ describe("Lambda runtime adapters", () => {
       staleHostsReclaimed: 0,
     });
     expect(fixture.schedulerCalls).not.toContain("migration");
+  });
+
+  it("handles both closeReclaimedConnection outcomes without failing the sweep", async () => {
+    // GoneException: the daemon already reconnected (or API Gateway already
+    // dropped the socket) by the time the sweep gets around to closing it —
+    // nothing left to close, and nothing worth logging either. Any other
+    // error: best-effort, so it's logged but the sweep still reports success.
+    for (const [thrown, expectLogged] of [
+      [{ name: "GoneException" }, false],
+      [new Error("boom"), true],
+    ] as const) {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-08-12T00:00:00.000Z");
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const fixture = runtimeFixture();
+        seedSchedulerSweep(fixture);
+        fixture.management.send.mockImplementation(
+          async (command: { input: { ConnectionId?: string; Data?: unknown } }) => {
+            if (command.input.ConnectionId === "stale-connection" && !("Data" in command.input)) {
+              throw thrown;
+            }
+            return {};
+          },
+        );
+        await expect((await fixture.runtime).cron()).resolves.toMatchObject({
+          staleHostsReclaimed: 1,
+        });
+        if (expectLogged) {
+          expect(consoleError).toHaveBeenCalledWith(
+            JSON.stringify({
+              msg: "closeReclaimedConnection failure",
+              hostId: "stale-host",
+              connectionId: "stale-connection",
+              error: "boom",
+            }),
+          );
+        } else {
+          expect(consoleError).not.toHaveBeenCalled();
+        }
+      } finally {
+        vi.useRealTimers();
+        consoleError.mockRestore();
+      }
+    }
   });
 
   it("drains Slack deliveries from cron and reports worker errors", async () => {

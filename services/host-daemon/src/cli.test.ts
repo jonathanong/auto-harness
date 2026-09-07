@@ -14,6 +14,7 @@ import {
   runCli,
   setExitCode,
   shutdownLoggerFor,
+  shutdownTimeoutMs,
 } from "./cli.ts";
 import { deps, sampleConfig } from "./cli-test-helpers.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -356,6 +357,15 @@ describe("runCli", () => {
     expect(a.errors).toEqual(["stable rollback failed"]);
   });
 
+  it("reports a stable-launcher boot Error's own message", async () => {
+    vi.mocked(prepareStableDaemonUpdateBoot).mockRejectedValueOnce(
+      new Error("stable rollback errored"),
+    );
+    const a = deps();
+    expect(await runCli(["node", "x", "prepare-update-boot"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["stable rollback errored"]);
+  });
+
   it("start reports daemon errors", async () => {
     const a = deps({
       ensureReady: async () => {
@@ -375,6 +385,17 @@ describe("runCli", () => {
     });
     expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
     expect(a.errors).toEqual(["update rollback failed"]);
+  });
+
+  it("reports a primitive update-boot preflight failure before loading daemon config", async () => {
+    vi.mocked(prepareDaemonUpdateBoot).mockRejectedValueOnce("update rollback primitive");
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("must not load config");
+      },
+    });
+    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["update rollback primitive"]);
   });
 
   it("passes through a missing runtime report after start preflight", async () => {
@@ -407,6 +428,20 @@ describe("isDirectInvocation / setExitCode", () => {
     } finally {
       process.exitCode = original;
     }
+  });
+});
+
+describe("shutdownTimeoutMs", () => {
+  it("falls back to the 10-minute default when unset, non-numeric, or non-positive", () => {
+    expect(shutdownTimeoutMs({})).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "not-a-number" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "0" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "-5" })).toBe(10 * 60_000);
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "1.5" })).toBe(10 * 60_000);
+  });
+
+  it("uses a configured positive integer", () => {
+    expect(shutdownTimeoutMs({ HARNESS_SHUTDOWN_TIMEOUT_MS: "5000" })).toBe(5000);
   });
 });
 
@@ -445,16 +480,63 @@ describe("printUsage / main / defaults", () => {
   });
 
   it("default deps' log/error/readFile close over the real console and filesystem", () => {
-    const d = createDefaultRunSessionDeps();
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     d.log("hello");
     d.error("oops");
-    expect(log).toHaveBeenCalledWith("hello");
-    expect(error).toHaveBeenCalledWith("oops");
+    // Every daemon-level line and every streamed session chunk share this one sink —
+    // prefixing here, once, is what makes the whole log timeline reconstructible.
+    expect(log).toHaveBeenCalledWith("2026-01-01T00:00:00.000Z hello");
+    expect(error).toHaveBeenCalledWith("2026-01-01T00:00:00.000Z oops");
     log.mockRestore();
     error.mockRestore();
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
+  });
+
+  it("default deps' log/error timestamp every physical line", () => {
+    // Each case shares one assertion shape: printUsage's static help text and
+    // coalesced multi-line session output both go through this same sink, and
+    // a blanket newline replacement would squash either into one unreadable
+    // line — while an injected fake "line" still gets stamped with the real
+    // current time, not a false one it tried to carry, so it can never
+    // actually claim a timestamp of its own.
+    const cases: Array<[string, string]> = [
+      [
+        "real line\r\n2099-01-01T00:00:00.000Z forged line",
+        "2026-01-01T00:00:00.000Z real line\n2026-01-01T00:00:00.000Z 2099-01-01T00:00:00.000Z forged line",
+      ],
+      [
+        "line one\nline two\nline three",
+        "2026-01-01T00:00:00.000Z line one\n2026-01-01T00:00:00.000Z line two\n2026-01-01T00:00:00.000Z line three",
+      ],
+    ];
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    for (const [input, expected] of cases) {
+      d.log(input);
+      expect(log).toHaveBeenCalledWith(expected);
+    }
+    log.mockRestore();
+  });
+
+  it("default deps' logResult prints structured JSON verbatim, with no timestamp prefix", () => {
+    // status/status --config-only/run-session print documented, machine-readable
+    // JSON on stdout; a timestamp prefix ahead of the opening `{` would break
+    // every consumer that parses it. logResult is the one sink exempt from that.
+    const d = createDefaultRunSessionDeps(() => "2026-01-01T00:00:00.000Z");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    d.logResult('{"status":"ok"}');
+    expect(log).toHaveBeenCalledWith('{"status":"ok"}');
+    log.mockRestore();
+  });
+
+  it("default deps' log/error use the real clock when none is injected", () => {
+    const d = createDefaultRunSessionDeps();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    d.log("hello");
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z hello$/));
+    log.mockRestore();
   });
 
   it("default deps' host status closure forwards the fetch signal", async () => {

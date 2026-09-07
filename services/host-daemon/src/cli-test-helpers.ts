@@ -26,6 +26,13 @@ export function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
     log: (m) => {
       logs.push(m);
     },
+    // Tests assert against the same `logs` array regardless of which sink a
+    // call site uses in production — only createDefaultRunSessionDeps (the
+    // real CLI entrypoint) needs `logResult` to actually skip the timestamp
+    // prefix that `log` applies.
+    logResult: (m) => {
+      logs.push(m);
+    },
     error: (m) => {
       errors.push(m);
     },

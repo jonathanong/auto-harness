@@ -20,6 +20,7 @@ import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import { requestWindowsTaskRestart } from "./windows-task-handoff.ts";
 import { createWsTransport } from "./ws-transport.ts";
 import { resolveWsUrl } from "./ws-url.ts";
+import { withTimeout } from "./with-timeout.ts";
 
 type StartDaemonOptions = {
   config: DaemonConfig;
@@ -252,12 +253,17 @@ async function connectDaemon(
   // directly (a deploy-day escape hatch); HARNESS_API_URL is not, since the deployed
   // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
   const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
+  const registrationTimeoutMs = options.registrationTimeoutMs ?? 30_000;
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
     apiKey: options.config.apiKey,
     onError: (err) => error(`ws error: ${err.message}`),
     onClose: () => log("ws closed"),
+    onOpen: () => log(`ws open ${wsUrl}`),
+    // Re-armed on every reconnect, not just this initial connect — see
+    // ws-transport.ts. Sharing the one option keeps both guards in sync.
+    registrationTimeoutMs,
   });
   const loop = new DaemonLoop({
     config: options.config,
@@ -422,17 +428,9 @@ async function waitForRegistration(
   timeoutMs: number,
   targetUrl: string,
 ): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      registered,
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error(`timed out waiting for WebSocket registration at ${targetUrl}`));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  await withTimeout(
+    registered,
+    timeoutMs,
+    `timed out waiting for WebSocket registration at ${targetUrl}`,
+  );
 }
