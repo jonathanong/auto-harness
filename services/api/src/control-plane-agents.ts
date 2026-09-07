@@ -1042,6 +1042,17 @@ export async function drainHostDurable(
     return { ok: false, runningSessionIds: [] };
   }
 
+  // REST cold start skips catalog hydrate, so this container may have neither
+  // the socket map nor this host's worktrees. Cache the durable owner so
+  // postToHost can deliver `host:drain`, then load this host's worktrees so
+  // idle rows still go offline.
+  state.hostConnection.set(hostId, ownerConnectionId);
+  if (typeof state.storage.listWorktreesByHost === "function") {
+    for (const worktree of await state.storage.listWorktreesByHost(hostId)) {
+      state.worktrees.set(worktree.id, { ...worktree });
+    }
+  }
+
   const running = [...state.sessions.values()]
     .filter((s) => s.hostId === hostId && s.status === "running")
     .map((s) => s.id);

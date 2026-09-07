@@ -1154,10 +1154,10 @@ describe("Lambda runtime adapters", () => {
       statusCode: 500,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        error: { code: "INTERNAL_ERROR", message: "SSM parameter not found" },
+        error: { code: "INTERNAL_ERROR", message: "internal server error" },
       }),
     });
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('"msg":"rest failure"'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("SSM parameter not found"));
     error.mockRestore();
   });
 
@@ -1174,9 +1174,10 @@ describe("Lambda runtime adapters", () => {
       statusCode: 500,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        error: { code: "INTERNAL_ERROR", message: "adapter failed" },
+        error: { code: "INTERNAL_ERROR", message: "internal server error" },
       }),
     });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("adapter failed"));
     error.mockRestore();
   });
 

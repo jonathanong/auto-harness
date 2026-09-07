@@ -723,10 +723,7 @@ function restUnhandledError(
     statusCode: 500,
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      error: {
-        code: "INTERNAL_ERROR",
-        message: error instanceof Error ? error.message : "internal server error",
-      },
+      error: { code: "INTERNAL_ERROR", message: "internal server error" },
     }),
   };
 }
