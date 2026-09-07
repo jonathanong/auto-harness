@@ -34,6 +34,24 @@ describe("AddHostForm", () => {
     view.unmount();
   });
 
+  it("reports a non-404 inventory read failure without creating a host", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "inventory unavailable" } }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<AddHostForm />);
+    setValue(field(view.container, "add-host-id"), "new-host");
+    submit(field(view.container, "form-add-host"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "add-host-error").textContent).toBe("inventory unavailable");
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(false);
+    view.unmount();
+  });
+
   it("re-enables the submit button and reports an error after a network failure", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unreachable")));
     const view = mountForm(<AddHostForm />);
