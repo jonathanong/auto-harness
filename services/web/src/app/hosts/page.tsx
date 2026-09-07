@@ -38,7 +38,9 @@ export default async function HostsPage({
   let inventories: HostInventorySummary[] = [];
   let worktrees: FleetWorktree[] = [];
   let error: string | null = null;
-  const hostsPath = `/api/v1/hosts?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+  const onlineQuery =
+    filters.online === "online" || filters.online === "offline" ? `&online=${filters.online}` : "";
+  const hostsPath = `/api/v1/hosts?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${onlineQuery}`;
   try {
     const [h, inv] = await Promise.all([
       apiGet<{ items: FleetHost[]; nextCursor?: string | null }>(hostsPath),
@@ -59,12 +61,6 @@ export default async function HostsPage({
 
   const inventoryById = new Map(inventories.map((inv) => [inv.hostId, inv]));
   const worktreesByHost = Map.groupBy(worktrees, (worktree) => worktree.hostId);
-  let rows = hosts;
-  if (filters.online === "online") {
-    rows = rows.filter((h) => h.online);
-  } else if (filters.online === "offline") {
-    rows = rows.filter((h) => !h.online);
-  }
 
   return (
     <div className="space-y-6" data-pw="page-hosts">
@@ -108,7 +104,7 @@ export default async function HostsPage({
           </Alert>
         ) : null}
         <HostsFleetTable
-          rows={rows}
+          rows={hosts}
           inventoryById={inventoryById}
           worktreesByHost={worktreesByHost}
           canAddHost={canWriteInventory}

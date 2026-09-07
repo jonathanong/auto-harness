@@ -1070,6 +1070,8 @@ Each host also reports `daemonVersion`, `gitVersion`, `gitReady`, and a bounded
 whose Git preflight fails remain visible as online but have `gitReady: false` and receive no work.
 
 `limit` is 1–100 (default 50). `nextCursor` continues the hostId-ordered page.
+`online=online` or `online=offline` filters before that page is sliced, so a filtered view cannot
+hide matching hosts on later unfiltered pages.
 
 **Response:** `200 OK`
 

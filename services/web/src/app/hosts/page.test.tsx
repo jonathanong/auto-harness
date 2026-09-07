@@ -93,7 +93,7 @@ describe("hosts fleet route", () => {
 
   it("keeps the filtered empty result when no hosts match", async () => {
     stubApi({
-      "/api/v1/hosts": { items: [{ hostId: "offline", online: false }] },
+      "/api/v1/hosts?limit=50&online=online": { items: [] },
       "/api/v1/host-inventories": { items: [] },
       "/api/v1/worktrees": { items: [] },
     });
@@ -102,16 +102,13 @@ describe("hosts fleet route", () => {
     );
     expect(html).toContain("No hosts match filters");
     expect(html).toContain('colSpan="8"');
-    expect(html).toContain('data-pw="hosts-retained-data-notice"');
+    expect(html).not.toContain('data-pw="hosts-retained-data-notice"');
   });
 
   it("filters offline hosts and tolerates legacy list responses without items", async () => {
     stubApi({
-      "/api/v1/hosts": {
-        items: [
-          { hostId: "online", online: true },
-          { hostId: "offline", online: false },
-        ],
+      "/api/v1/hosts?limit=50&online=offline": {
+        items: [{ hostId: "offline", online: false }],
       },
       "/api/v1/host-inventories": {},
       "/api/v1/worktrees": {},
