@@ -763,19 +763,17 @@ async function applySessionStatusDurable(
         session.timedOutHostId != null &&
         session.attemptId === msg.attemptId))
   ) {
-    if (state.storage) {
-      const released = await releaseTimedOutProviderAccountLease(state, session);
-      if (typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
-        persistSession(state, session);
-      }
-      // A `false` here means the conditional release lost a race (e.g. another
-      // report for the same attempt already released it); withhold applied so
-      // the daemon retries rather than treating this lease as durably freed.
-      return released ? { ok: true, applied: true } : { ok: true };
+    // storage is guaranteed non-null here (this function only runs on the
+    // durable dispatch path), so releaseTimedOutProviderAccountLease's own
+    // no-storage fallback is unreachable from this call site.
+    const released = await releaseTimedOutProviderAccountLease(state, session);
+    if (typeof storage.releaseTimedOutProviderAccountLease !== "function") {
+      persistSession(state, session);
     }
-    releaseProviderAccountLease(state, session);
-    persistSession(state, session);
-    return { ok: true, applied: true };
+    // A `false` here means the conditional release lost a race (e.g. another
+    // report for the same attempt already released it); withhold applied so
+    // the daemon retries rather than treating this lease as durably freed.
+    return released ? { ok: true, applied: true } : { ok: true };
   }
   let providerAccount: SessionTransitionContext["providerAccount"];
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
