@@ -694,11 +694,15 @@ export async function handleHostMessageDurable(
     return { ok: true };
   }
   if (msg.type === "session:status") {
-    const result = await applySessionStatusDurable(state, msg, storage, fence);
+    const { applied, ...result } = await applySessionStatusDurable(state, msg, storage, fence);
     // The daemon retries an unacknowledged terminal status on every keepalive; this
-    // is the signal it stops. Every ok branch (finish, ignore, and the already-timed-out
-    // lease release) represents a durably applied report, so all of them qualify.
-    return result.ok
+    // is the signal it stops. `ok: true` alone is not enough: several branches inside
+    // applySessionStatusDurable return it even when their own conditional write lost a
+    // race (e.g. against the running-timeout sweep) and nothing was actually committed.
+    // Only a branch that marks `applied` — either because its write genuinely committed,
+    // or because the session row was already durably resolved in a way this report can
+    // no longer affect — may tell the daemon to stop retrying.
+    return result.ok && applied
       ? {
           ...result,
           sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
@@ -716,7 +720,17 @@ async function applySessionStatusDurable(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   storage: NonNullable<ControlPlaneState["storage"]>,
   fence?: { hostId: string; connectionId: string },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  /**
+   * Set only when this report was durably applied — its own write committed,
+   * or the session row was already resolved in a way this report can no
+   * longer affect. Left unset on every "lost the conditional write" branch so
+   * the caller withholds sessionStatusAcknowledged and the daemon retries.
+   */
+  applied?: boolean;
+}> {
   if (msg.usage) {
     const usageResult = await ingestUsageDurable(
       state,
@@ -750,15 +764,18 @@ async function applySessionStatusDurable(
         session.attemptId === msg.attemptId))
   ) {
     if (state.storage) {
-      await releaseTimedOutProviderAccountLease(state, session);
+      const released = await releaseTimedOutProviderAccountLease(state, session);
       if (typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
         persistSession(state, session);
       }
-    } else {
-      releaseProviderAccountLease(state, session);
-      persistSession(state, session);
+      // A `false` here means the conditional release lost a race (e.g. another
+      // report for the same attempt already released it); withhold applied so
+      // the daemon retries rather than treating this lease as durably freed.
+      return released ? { ok: true, applied: true } : { ok: true };
     }
-    return { ok: true };
+    releaseProviderAccountLease(state, session);
+    persistSession(state, session);
+    return { ok: true, applied: true };
   }
   let providerAccount: SessionTransitionContext["providerAccount"];
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
@@ -787,7 +804,14 @@ async function applySessionStatusDurable(
   if (transitionEffect(plan, "retry_archive")) {
     await retrySessionArchiveIfNeeded(state, session.id);
   }
-  if (transitionEffect(plan, "ignore")) return { ok: true };
+  if (transitionEffect(plan, "ignore")) {
+    // Every ignore reason (stale attempt, already-resolved status, non-terminal
+    // report) means this attempt's report can never change the session row
+    // again — either it no longer owns the current attempt, or the durable
+    // path never retries non-terminal reports in the first place. Safe to stop
+    // the daemon's retry loop.
+    return { ok: true, applied: true };
+  }
   if (
     session.status === "cancelled" &&
     session.worktreeId &&
@@ -823,7 +847,10 @@ async function applySessionStatusDurable(
       });
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+      return { ok: true, applied: true };
     }
+    // released === false: the conditional write lost a race; withhold applied
+    // so the daemon retries instead of treating the worktree as freed.
     return { ok: true };
   }
   if (
@@ -869,11 +896,16 @@ async function applySessionStatusDurable(
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+      return { ok: true, applied: true };
     }
+    // released === false: the conditional write lost a race; withhold applied
+    // so the daemon retries instead of treating the lease as freed.
     return { ok: true };
   }
   if (session.status !== "running") {
-    return { ok: true };
+    // The session row is already durably resolved to a non-running status by
+    // some other transition; this report cannot change it further.
+    return { ok: true, applied: true };
   }
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
@@ -909,7 +941,7 @@ async function applySessionStatusDurable(
       });
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-      return { ok: true };
+      return { ok: true, applied: true };
     }
     if (requeue && cooldown && providerAccountId) {
       const now = state.now();
@@ -951,7 +983,7 @@ async function applySessionStatusDurable(
       }
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-      return { ok: true };
+      return { ok: true, applied: true };
     }
     if (suppress && requeue?.reason === "providerless") {
       const committed = await storage.releaseMainCheckoutSession({
@@ -991,7 +1023,7 @@ async function applySessionStatusDurable(
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-      return { ok: true };
+      return { ok: true, applied: true };
     }
     const completedAt = state.now();
     const committed = await storage.releaseMainCheckoutSession({
@@ -1032,7 +1064,7 @@ async function applySessionStatusDurable(
     state.pendingAcks.delete(session.id);
     await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true };
+    return { ok: true, applied: true };
   }
   if (cooldown && requeue && session.worktreeId) {
     const now = state.now();
@@ -1059,7 +1091,7 @@ async function applySessionStatusDurable(
     });
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true };
+    return { ok: true, applied: true };
   }
   const shouldSuppressTarget = suppress !== undefined;
   if (shouldSuppressTarget && session.worktreeId) {
@@ -1081,7 +1113,7 @@ async function applySessionStatusDurable(
     });
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true };
+    return { ok: true, applied: true };
   }
   const committed = await storage.finishSession(
     finishSessionOptsFromPlan(session, plan, {
@@ -1132,7 +1164,7 @@ async function applySessionStatusDurable(
     noteSlackSessionLifecycle(state, nextSession);
   }
   await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-  return { ok: true };
+  return { ok: true, applied: true };
 }
 
 function applySessionStatus(

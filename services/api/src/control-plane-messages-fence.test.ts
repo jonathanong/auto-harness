@@ -173,6 +173,30 @@ describe("durable host-message fencing", () => {
     ).resolves.toEqual({ ok: false, error: "stale host connection" });
   });
 
+  it("withholds the acknowledgement when a terminal status's conditional write loses a race", async () => {
+    const state = createControlPlaneState({ now: () => "now" });
+    const stillRunning = running();
+    state.sessions.set("s", stillRunning);
+    state.storage = {
+      getSession: async () => stillRunning,
+      // Simulates losing the conditional write to a concurrent transition
+      // (e.g. the running-timeout sweep marking the row timed_out first).
+      // Nothing was actually committed, so the daemon must keep retrying — a
+      // sessionStatusAcknowledged here would let it drop the report forever.
+      finishSession: async () => false,
+    } as never;
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
+        status: "completed",
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
   it("confirms an in-memory terminal status transition and notifies the owning host", () => {
     const deliveries: Array<{ hostId: string; message: unknown }> = [];
     const plane = new ControlPlane({
