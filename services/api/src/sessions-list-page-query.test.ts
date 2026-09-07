@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session page queries share one storage fixture. */
 import { QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
@@ -174,6 +175,69 @@ describe("listSessionsPageFromStorage", () => {
       scheduleId: null,
     });
     expect(commands).toHaveLength(2);
+  });
+
+  it("queries every status shard and drops extra-filter and cursor matches", async () => {
+    const commands: QueryCommand[] = [];
+    const session = {
+      id: "sess-0",
+      repositoryId: "repo-1",
+      prompt: "work",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 1,
+      queueExpiresAt: "2026-01-02T00:00:00.000Z",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      source: "api",
+      type: "prompt",
+      hostId: "host-other",
+    };
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return { Items: [session] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "latest",
+      shardCount: 1,
+      status: null,
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    });
+    expect(commands.length).toBeGreaterThan(1);
+
+    commands.length = 0;
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 1,
+        sort: "latest",
+        shardCount: 1,
+        status: "queued",
+        repositoryId: null,
+        repositoryIds: ["repo-other"],
+        hostId: "host-1",
+        source: "ui",
+        concurrencyId: "c1",
+        scheduleId: "s1",
+        position: { createdAt: session.createdAt, id: session.id, priority: 0 },
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("returns no rows when a repository filter contradicts the scoped ids", async () => {

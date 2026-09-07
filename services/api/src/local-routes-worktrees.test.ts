@@ -9,14 +9,20 @@ function routeCtx(
   let status = 0;
   let body = "";
   const listWorktreesPageDurable = vi.fn(async () => ({ items: [], nextCursor: "s1.next" }));
+  const getWorktreeDurable = vi.fn(async () => ({
+    id: "wt-1",
+    hostId: "host-a",
+    repositoryId: "repo-2",
+  }));
   return {
     listWorktreesPageDurable,
+    getWorktreeDurable,
     result: () => ({ status, body: body ? JSON.parse(body) : null }),
     ctx: {
       method: "GET",
       url: new URL(`http://x${path}`),
       principal,
-      plane: { listWorktreesPageDurable },
+      plane: { listWorktreesPageDurable, getWorktreeDurable },
       res: {
         setHeader() {},
         writeHead(code: number) {
@@ -57,5 +63,11 @@ describe("handleWorktreeReadRoutes", () => {
     await expect(handleWorktreeReadRoutes(mismatch.ctx as never)).resolves.toBe(true);
     expect(mismatch.listWorktreesPageDurable).not.toHaveBeenCalled();
     expect(mismatch.result()).toEqual({ status: 200, body: { items: [], nextCursor: null } });
+  });
+
+  it("hides a worktree outside the principal repository scope", async () => {
+    const scoped = routeCtx("/api/v1/worktrees/wt-1", { allowedRepositoryIds: ["repo-1"] });
+    await expect(handleWorktreeReadRoutes(scoped.ctx as never)).resolves.toBe(true);
+    expect(scoped.result().status).toBe(404);
   });
 });

@@ -53,11 +53,11 @@ describe("worktrees page", () => {
     expect(html).not.toContain("add-worktree-need-host-r-1");
     expect(html).not.toContain("add-worktree-open-r-1");
     stubApi({
-      "/api/v1/worktrees": "__throw_string__",
+      "/api/v1/worktrees": jsonResponse({}, 503),
       "/api/v1/repositories": { items: [] },
     });
     html = await renderPage(WorktreesPage());
-    expect(html).toContain("offline");
+    expect(html).toContain("GET /api/v1/worktrees");
   });
 
   it("uses empty API defaults, repository ids, and primitive inventory errors", async () => {

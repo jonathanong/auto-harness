@@ -39,6 +39,28 @@ describe("getHostDurable", () => {
       lastHeartbeatAt: "t",
     });
     await expect(plane.getHostDurable("host-1")).resolves.toMatchObject({ hostId: "host-1" });
+    connections.set("conn-2", {
+      connectionId: "conn-2",
+      type: "host",
+      hostId: "host-1",
+      connectedAt: "t2",
+      lastHeartbeatAt: "t2",
+    });
+    const rotated = new ControlPlane({
+      storage: {
+        getHostInventory: async () => inventories.get("host-1") ?? null,
+        getHostLock: async () => "conn-2",
+        getConnection: async (id: string) => connections.get(id) ?? null,
+      } as never,
+    });
+    rotated.state.hostConnection.set("host-1", "conn-1");
+    rotated.state.connections.set("conn-1", connections.get("conn-1")!);
+    await expect(rotated.getHostDurable("host-1")).resolves.toMatchObject({
+      hostId: "host-1",
+      online: true,
+    });
+    expect(rotated.state.hostConnection.get("host-1")).toBe("conn-2");
+    expect(rotated.state.connections.has("conn-1")).toBe(false);
   });
 
   it("clears a cached host connection when the durable lock is gone", async () => {
