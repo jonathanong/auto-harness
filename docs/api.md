@@ -24,7 +24,7 @@ Live streaming and agent control use the [WebSocket protocol](websocket.md). Cre
 
 **Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
-Queued assignment is globally ordered by priority (descending) then `createdAt`/`id` FIFO across all queue shards — a later shard's higher-priority session is never starved by draining shard 0 first. Prompt and scheduled assignment and UI `GET /session-targets` availability share one evaluator; DynamoDB conditional writes remain the final claim. Prompt and scheduled queued sessions both fail `queue_expired` at their original `queueExpiresAt` and release their `concurrencyId` lock. A providerless `usage_limit` suppresses the failed target, immediately tries the next fallback, and waits only until that original queue deadline.
+Queued assignment is globally ordered by priority (descending) then `createdAt`/`id` FIFO across all queue shards — a later shard's higher-priority session is never starved by draining shard 0 first. Prompt and scheduled assignment share one availability evaluator; fully hydrated in-process target hints use that evaluator too, while the bounded UI `GET /session-targets` catalog omits availability rather than scanning live fleet state. DynamoDB conditional writes remain the final claim. Prompt and scheduled queued sessions both fail `queue_expired` at their original `queueExpiresAt` and release their `concurrencyId` lock. A providerless `usage_limit` suppresses the failed target, immediately tries the next fallback, and waits only until that original queue deadline.
 
 `concurrencyId` is an exact, caller-chosen idempotency/concurrency identity shared by manual and scheduled creates. Its UTF-8 length is at most 2,048 bytes, including a schedule's derived `schedule-${scheduleId}` default; oversized session or schedule writes and exact-list filters return `400 VALIDATION_ERROR`. While its lock is held, a repeated create returns `200 OK` with the existing session and `created: false`; a new identity returns `201 Created` with `created: true`. A terminal session releases its lock, so a later request may retry with the same id. The lock is durable and atomic across API workers.
 
@@ -1276,6 +1276,11 @@ Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggest
 #### `GET /session-targets`
 
 Unified picker source for session/schedule creation: all Providers and Commands, including provider-owned Commands and providerless (`providerId: null`) Commands. Provider Accounts are capacity records, not direct session targets; the UI shows their health/cooldown on provider and host pages.
+
+The durable REST response omits the optional `available` hint because this bounded catalog read
+does not scan live fleet, connection, or worktree state. An omitted hint means availability is
+unknown, not unavailable; assignment remains authoritative and may proceed immediately. Fully
+hydrated in-process callers may include `available: true | false` as a best-effort hint.
 
 **Response:** `200 OK`
 

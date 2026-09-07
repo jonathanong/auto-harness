@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- authoritative cross-plane scenarios share one storage fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createAuthoritativeReadStorage } from "./control-plane-authoritative-read-test-helpers.ts";
@@ -219,6 +219,17 @@ describe("authoritative durable reads", () => {
     ]);
     expect(await reader.getScheduleDurable("schedule")).toMatchObject({ name: "schedule" });
     expect(reader.listSessionTargets()).toHaveLength(2);
+    const inventoryScan = vi.spyOn(storage, "listHostInventories");
+    expect(await reader.listSessionTargetsDurable()).toEqual([
+      {
+        kind: "command",
+        id: "command",
+        label: "command",
+        providerId: null,
+      },
+      { kind: "provider", id: "provider", label: "provider" },
+    ]);
+    expect(inventoryScan).not.toHaveBeenCalled();
 
     expect(
       (

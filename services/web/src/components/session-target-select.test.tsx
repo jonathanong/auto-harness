@@ -10,6 +10,7 @@ const targets = [
   { kind: "provider" as const, id: "p1", label: "Claude", available: false },
   { kind: "command" as const, id: "c1", label: "Review", available: true },
   { kind: "command" as const, id: "c2", label: "Deploy", available: false },
+  { kind: "command" as const, id: "c3", label: "Inspect" },
 ];
 
 describe("SessionTargetSelect", () => {
@@ -30,6 +31,8 @@ describe("SessionTargetSelect", () => {
       "Claude (unavailable)",
     );
     expect(select.querySelector("optgroup[label='Commands']")?.textContent).toContain("Review");
+    expect(select.querySelector("optgroup[label='Commands']")?.textContent).toContain("Inspect");
+    expect(select.querySelector("option[value='command:c3']")?.textContent).toBe("Inspect");
     expect(select.querySelector("optgroup[label='Commands']")?.textContent).toContain(
       "Deploy (unavailable)",
     );
