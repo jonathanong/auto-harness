@@ -3,8 +3,9 @@ import {
   appendPriorContextPointer,
   isActiveSessionStatus,
   isTerminalSessionStatus,
-  MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
+  sessionPriorityError,
+  sessionTimeoutError,
   validateTargetRouting,
   type TargetRef,
 } from "@auto-harness/shared";
@@ -42,21 +43,12 @@ function validatePromptOverride(opts: ResumeOptions): string | undefined {
 
 function validateTimeoutOverride(opts: ResumeOptions): string | undefined {
   if (opts.timeout === undefined) return undefined;
-  if (typeof opts.timeout !== "number" || !Number.isFinite(opts.timeout) || opts.timeout <= 0) {
-    return "timeout must be a positive number of seconds";
-  }
-  if (opts.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
-    return `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds`;
-  }
-  return undefined;
+  return sessionTimeoutError(opts.timeout) ?? undefined;
 }
 
 function validatePriorityOverride(opts: ResumeOptions): string | undefined {
   if (opts.priority === undefined) return undefined;
-  if (typeof opts.priority !== "number" || !Number.isFinite(opts.priority)) {
-    return "priority must be a number";
-  }
-  return Number.isInteger(opts.priority) ? undefined : "priority must be an integer";
+  return sessionPriorityError(opts.priority) ?? undefined;
 }
 
 function validateResumeOverrides(

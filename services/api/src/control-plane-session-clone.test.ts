@@ -1,3 +1,4 @@
+import { MAX_PROMPT_BYTES, MAX_SESSION_TIMEOUT_SECONDS } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -113,6 +114,10 @@ describe("session clone", () => {
       { priority: Number.POSITIVE_INFINITY },
       { priority: 0.5 },
       { priority: "high" },
+      { prompt: "é".repeat(MAX_PROMPT_BYTES / 2 + 1) },
+      { timeout: MAX_SESSION_TIMEOUT_SECONDS + 1 },
+      { priority: -10_001 },
+      { priority: 10_001 },
       { createdBy: 1 },
       { unexpected: true },
     ]) {

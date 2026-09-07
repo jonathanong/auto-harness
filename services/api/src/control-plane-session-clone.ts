@@ -1,3 +1,8 @@
+import {
+  promptByteLengthError,
+  sessionPriorityError,
+  sessionTimeoutError,
+} from "@auto-harness/shared";
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -23,20 +28,17 @@ function validateCloneOverrides(opts: CloneOptions): string | null {
   if (opts.prompt !== undefined && (typeof opts.prompt !== "string" || opts.prompt.length === 0)) {
     return "prompt must be a non-empty string";
   }
-  if (
-    opts.timeout !== undefined &&
-    (typeof opts.timeout !== "number" || !Number.isFinite(opts.timeout) || opts.timeout <= 0)
-  ) {
-    return "timeout must be a positive number of seconds";
+  if (opts.prompt !== undefined) {
+    const promptError = promptByteLengthError(opts.prompt);
+    if (promptError) return promptError;
   }
-  if (
-    opts.priority !== undefined &&
-    (typeof opts.priority !== "number" || !Number.isFinite(opts.priority))
-  ) {
-    return "priority must be a number";
+  if (opts.timeout !== undefined) {
+    const timeoutError = sessionTimeoutError(opts.timeout);
+    if (timeoutError) return timeoutError;
   }
-  if (opts.priority !== undefined && !Number.isInteger(opts.priority)) {
-    return "priority must be an integer";
+  if (opts.priority !== undefined) {
+    const priorityError = sessionPriorityError(opts.priority);
+    if (priorityError) return priorityError;
   }
   if (opts.createdBy !== undefined && typeof opts.createdBy !== "string") {
     return "createdBy must be a string";

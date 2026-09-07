@@ -594,6 +594,18 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "priority must be an integer",
       });
+      for (const priority of [-10_001, 10_001]) {
+        expect(overrides.resumeSession(source.session.id, { priority })).toEqual({
+          ok: false,
+          error: "priority must be between -10000 and 10000",
+        });
+      }
+      for (const priority of [-10_000, 10_000]) {
+        expect(overrides.resumeSession(source.session.id, { priority })).toMatchObject({
+          ok: true,
+          session: { priority },
+        });
+      }
       expect(overrides.resumeSession(source.session.id, { priority: 5 })).toMatchObject({
         ok: true,
         session: { priority: 5 },

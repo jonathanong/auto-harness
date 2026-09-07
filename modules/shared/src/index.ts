@@ -120,8 +120,11 @@ export {
   MAX_PROMPT_BYTES,
   MAX_CONCURRENCY_ID_BYTES,
   MAX_FALLBACKS,
+  MAX_SESSION_PRIORITY,
   MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
+  sessionPriorityError,
+  sessionTimeoutError,
   validateCreateSessionInput,
 } from "./validation.ts";
 
