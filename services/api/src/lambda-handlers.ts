@@ -18,6 +18,7 @@ import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
 import {
   emitAssignmentFailure,
   emitCronSweepMetrics,
+  emitWsMessagesDiscarded,
   queuedSessionAgeSeconds,
 } from "./operational-metrics.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
@@ -163,6 +164,13 @@ function authenticatedHost(
 
 function validHostMessage(message: HostToServerMessage, boundHostId: string): boolean {
   return "hostId" in message ? message.hostId === boundHostId : true;
+}
+
+/** Mirrors ws-hub.ts's discardMessages for the deployed API Gateway path,
+ * which does not run through createPlaneWsBridge (the local `ws` stand-in). */
+function discardMessage(reason: string): void {
+  emitWsMessagesDiscarded(1);
+  console.warn(JSON.stringify({ msg: "discarding host websocket message", reason }));
 }
 
 async function postToHost(
@@ -580,10 +588,14 @@ export async function createLambdaRuntime(
         const viewerStatus = await viewerSockets.message(connectionId, event.body ?? "");
         if (viewerStatus !== undefined) return { statusCode: viewerStatus };
         if (!authenticated) {
+          discardMessage("unauthenticated connection");
           track(forceCloseStaleConnection(management, connectionId));
           return { statusCode: 401 };
         }
-        if (authenticated.type !== "host") return { statusCode: 403 };
+        if (authenticated.type !== "host") {
+          discardMessage("not a host connection");
+          return { statusCode: 403 };
+        }
         const message = parseHostMessage(event.body ?? "", {
           protocolVersion: authenticated.protocolVersion ?? 0,
         });
@@ -596,6 +608,7 @@ export async function createLambdaRuntime(
         // hostId mismatch would force-close, reconnect, and immediately resend
         // the same mismatched register, forever. Leave this a plain rejection.
         if (!message || !validHostMessage(message, authenticated.hostId)) {
+          discardMessage(message ? "hostId mismatch" : "invalid message");
           return { statusCode: 403 };
         }
         const result =

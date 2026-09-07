@@ -25,6 +25,33 @@ const message = (sessionId: string, seq: number, content = "x") => ({
   seq,
 });
 
+/** A retained-cache entry for "session" at the given seq/timestamp. */
+function cachedLog(seq: number, timestamp: string): Record<string, unknown> {
+  return {
+    sessionId: "session",
+    timestampSeq: `${timestamp}#${String(seq).padStart(12, "0")}`,
+    stream: "stdout",
+    content: "x",
+    timestamp,
+    seq,
+  };
+}
+
+/** Shared fixture for the seq-gap-detection tests: a "session" owned by
+ * "host" on a fenced "connection", optionally pre-seeded with cached log
+ * records, plus a metrics spy. */
+function seqGapPlane(seedLogs?: Array<Record<string, unknown>>) {
+  const plane = new ControlPlane();
+  plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
+  if (seedLogs) plane.state.logs.set("session", seedLogs as never);
+  plane.state.storage = {
+    getSession: async () => ({ hostId: "host", attemptId: "a" }),
+    getHostLock: async () => "connection",
+    putLogsFenced: async () => true,
+  } as never;
+  return { plane, metrics: withMetrics() };
+}
+
 describe("durable host log batches", () => {
   afterEach(() => {
     delete process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR];
@@ -262,24 +289,7 @@ describe("durable host log batches", () => {
   });
 
   it("detects a seq gap against a known cache baseline and reports the missing count", async () => {
-    const plane = new ControlPlane();
-    plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
-    plane.state.logs.set("session", [
-      {
-        sessionId: "session",
-        timestampSeq: "2026-01-01T00:00:00.000Z#000000000005",
-        stream: "stdout",
-        content: "x",
-        timestamp: "2026-01-01T00:00:00.000Z",
-        seq: 5,
-      },
-    ]);
-    plane.state.storage = {
-      getSession: async () => ({ hostId: "host", attemptId: "a" }),
-      getHostLock: async () => "connection",
-      putLogsFenced: async () => true,
-    } as never;
-    const metrics = withMetrics();
+    const { plane, metrics } = seqGapPlane([cachedLog(5, "2026-01-01T00:00:00.000Z")]);
     // Skips 6 and 7: two missing lines between the cached seq 5 and this seq 8.
     await expect(
       handleHostLogBatchDurable(plane.state, [message("session", 8)], "connection"),
@@ -287,15 +297,25 @@ describe("durable host log batches", () => {
     expect(metrics.payloads()).toEqual([expect.objectContaining({ LogSeqGaps: 2 })]);
   });
 
+  it("finds the true highest seq even when a clock-skewed timestamp orders it before a lower one", async () => {
+    // retainLogs orders the cache by timestampSeq, not by seq: if the source
+    // clock ever moves backward, a higher-seq record can land earlier in the
+    // array than a lower-seq one with a later timestamp. The array's last
+    // element (seq 6) is not the true highest seq (seq 9, stored earlier).
+    const { plane, metrics } = seqGapPlane([
+      cachedLog(9, "2026-01-01T00:00:00.000Z"),
+      cachedLog(6, "2026-01-01T00:00:01.000Z"),
+    ]);
+    // Correctly compared against the true max (9), not the last array
+    // element (6): seq 10 is a plain contiguous next line, not a gap.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 10)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    expect(metrics.payloads()).toEqual([]);
+  });
+
   it("detects an intra-batch seq gap between two records in the same batch", async () => {
-    const plane = new ControlPlane();
-    plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
-    plane.state.storage = {
-      getSession: async () => ({ hostId: "host", attemptId: "a" }),
-      getHostLock: async () => "connection",
-      putLogsFenced: async () => true,
-    } as never;
-    const metrics = withMetrics();
+    const { plane, metrics } = seqGapPlane();
     // No cached baseline, so the first record (seq 1) reports nothing; the
     // second (seq 4) is checked against the first, now committed within
     // this same call, and reports the 2 lines missing between them (2, 3).
@@ -310,14 +330,7 @@ describe("durable host log batches", () => {
   });
 
   it("does not report a gap for a fresh attempt's first line, a replayed seq, or an unknown cache baseline", async () => {
-    const plane = new ControlPlane();
-    plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
-    plane.state.storage = {
-      getSession: async () => ({ hostId: "host", attemptId: "a" }),
-      getHostLock: async () => "connection",
-      putLogsFenced: async () => true,
-    } as never;
-    const metrics = withMetrics();
+    const { plane, metrics } = seqGapPlane();
     // seq 0: always a legitimate fresh-attempt start, never a gap, even
     // though the cache is empty (unknown) either way.
     await expect(

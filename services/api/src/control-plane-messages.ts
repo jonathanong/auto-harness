@@ -157,6 +157,25 @@ function retainLogs(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
 }
 
 /**
+ * The retained cache is ordered by `timestampSeq`, not by `seq` — a source
+ * clock that ever moves backward (NTP correction, VM stall) can insert a
+ * higher-seq record ahead of a still-later-arriving lower-seq one, so the
+ * highest seq known is not necessarily the array's last element. A full
+ * scan is the only way to get this right; it's cheap relative to the
+ * DynamoDB write already on this same path, and correctness matters more
+ * than the last few percent of speed for a detector whose only job is
+ * flagging real loss without false alarms.
+ */
+function maxKnownSeq(retained: readonly LogRecord[] | undefined): number | undefined {
+  if (!retained || retained.length === 0) return undefined;
+  let max = retained[0]!.seq;
+  for (let i = 1; i < retained.length; i++) {
+    if (retained[i]!.seq > max) max = retained[i]!.seq;
+  }
+  return max;
+}
+
+/**
  * `seq` is a per-session monotonic counter the *agent* assigns, contiguous
  * with no self-inflicted gaps (a source-side drop still consumes a seq for
  * its own "N chunk(s) dropped" notice — see LogStreamer.recordDrop). So any
@@ -172,7 +191,7 @@ function retainLogs(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
  */
 function detectLogSeqGap(state: ControlPlaneState, rec: LogRecord): void {
   if (rec.seq <= 0) return;
-  const lastSeq = state.logs.get(rec.sessionId)?.at(-1)?.seq;
+  const lastSeq = maxKnownSeq(state.logs.get(rec.sessionId));
   if (lastSeq === undefined || rec.seq <= lastSeq) return;
   emitLogSeqGap(rec.seq - lastSeq - 1);
 }
