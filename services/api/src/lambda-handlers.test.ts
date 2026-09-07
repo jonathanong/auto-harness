@@ -981,11 +981,24 @@ describe("Lambda runtime adapters", () => {
 
     const fixture = runtimeFixture();
     const runtime = await fixture.runtime;
-    await expect(
-      runtime.websocket({
-        requestContext: { connectionId: "missing", routeKey: "$default" },
-      }),
-    ).resolves.toEqual({ statusCode: 401 });
+    process.env.HARNESS_METRIC_ENVIRONMENT = "test";
+    const metricLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await expect(
+        runtime.websocket({
+          requestContext: { connectionId: "missing", routeKey: "$default" },
+        }),
+      ).resolves.toEqual({ statusCode: 401 });
+      // Every deployed-path discard reason is counted the same way the local
+      // ws-hub bridge counts its own — this is the one the Lambda ingress
+      // hits for a connectionId with no authenticated row.
+      expect(
+        metricLog.mock.calls.some(([line]) => String(line).includes('"WsMessagesDiscarded":1')),
+      ).toBe(true);
+    } finally {
+      delete process.env.HARNESS_METRIC_ENVIRONMENT;
+      metricLog.mockRestore();
+    }
     // A frame for a connectionId with no authenticated row (its lease was
     // released, e.g. by the stale-heartbeat sweeper) must force-close the
     // physical socket — otherwise a daemon whose lease is gone has no way to

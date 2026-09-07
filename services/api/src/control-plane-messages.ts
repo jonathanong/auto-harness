@@ -29,7 +29,12 @@ import {
   retrySessionArchiveIfNeeded,
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
-import { emitCooldown, emitLogDrops } from "./operational-metrics.ts";
+import {
+  emitCooldown,
+  emitLogDrops,
+  emitLogSeqGap,
+  emitStaleAttemptLogDrop,
+} from "./operational-metrics.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
   providerAccountLeaseWriteOpts,
@@ -151,6 +156,52 @@ function retainLogs(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
   return retained;
 }
 
+/**
+ * The retained cache is ordered by `timestampSeq`, not by `seq` — a source
+ * clock that ever moves backward (NTP correction, VM stall) can insert a
+ * higher-seq record ahead of a still-later-arriving lower-seq one, so the
+ * highest seq known is not necessarily the array's last element. A full
+ * scan is the only way to get this right; it's cheap relative to the
+ * DynamoDB write already on this same path, and correctness matters more
+ * than the last few percent of speed for a detector whose only job is
+ * flagging real loss without false alarms.
+ */
+function maxKnownSeq(retained: readonly LogRecord[] | undefined): number | undefined {
+  if (!retained || retained.length === 0) return undefined;
+  let max = retained[0]!.seq;
+  for (let i = 1; i < retained.length; i++) {
+    if (retained[i]!.seq > max) max = retained[i]!.seq;
+  }
+  return max;
+}
+
+/**
+ * `seq` is a per-session monotonic counter the *agent* assigns, contiguous
+ * with no self-inflicted gaps (a source-side drop still consumes a seq for
+ * its own "N chunk(s) dropped" notice — see LogStreamer.recordDrop). So any
+ * forward jump in what the control plane actually stores is genuine loss
+ * somewhere in the ingest pipeline, not an expected/legitimate gap. `seq`
+ * resets to 0 at the start of every attempt, which is not a gap either.
+ *
+ * Deliberately can't throw: this runs on the log ingest hot path, and a
+ * detector that took log ingest down with it would be worse than the bug
+ * it's meant to surface. `state.logs` may be missing or stale (a fresh
+ * container, a different container serving a prior batch) — treat that as
+ * "unknown, don't report" rather than guessing a gap that isn't real.
+ */
+function detectLogSeqGap(state: ControlPlaneState, rec: LogRecord): void {
+  if (rec.seq <= 0) return;
+  const lastSeq = maxKnownSeq(state.logs.get(rec.sessionId));
+  if (lastSeq === undefined || rec.seq <= lastSeq) return;
+  emitLogSeqGap(rec.seq - lastSeq - 1);
+}
+
+/** Every log-commit path funnels through here so seq-gap detection covers all of them. */
+function commitLogRecord(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
+  detectLogSeqGap(state, rec);
+  return retainLogs(state, rec);
+}
+
 function hostStatusEvent(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): Extract<SessionTransitionEvent, { type: "status" }> {
@@ -247,7 +298,7 @@ export function appendLog(
 ): LogRecord {
   const rec = logRecord(opts);
   emitLogDrops(opts.dropped);
-  state.logs.set(opts.sessionId, retainLogs(state, rec));
+  state.logs.set(opts.sessionId, commitLogRecord(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
       await storage!.putLog(rec);
@@ -275,7 +326,7 @@ export async function appendLogDurable(
   if (state.storage) {
     await state.storage.putLog(rec);
   }
-  state.logs.set(opts.sessionId, retainLogs(state, rec));
+  state.logs.set(opts.sessionId, commitLogRecord(state, rec));
   state.onLogCommitted?.(rec);
   return rec;
 }
@@ -321,6 +372,10 @@ export async function handleHostLogBatchDurable(
       attemptId !== undefined &&
       ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
     ) {
+      // The only discard site whose batch-mates still commit — worth its own
+      // counter, distinct from the general seq-gap detector below, since it
+      // names a specific known cause rather than just the resulting symptom.
+      emitStaleAttemptLogDrop();
       continue;
     }
     if (!session?.hostId || (hostId !== undefined && session.hostId !== hostId)) {
@@ -345,7 +400,7 @@ export async function handleHostLogBatchDurable(
     return { ok: false, error: "stale host connection" };
   }
   for (const record of records) {
-    state.logs.set(record.sessionId, retainLogs(state, record));
+    state.logs.set(record.sessionId, commitLogRecord(state, record));
     state.onLogCommitted?.(record);
   }
   return { ok: true };
@@ -443,6 +498,7 @@ export function handleHostMessage(
         attemptId !== undefined &&
         ignoreStaleAttempt(state, session, { type: "log", attemptId }, "local")
       ) {
+        emitStaleAttemptLogDrop();
         return { ok: true };
       }
       appendLog(state, {
@@ -569,6 +625,7 @@ export async function handleHostMessageDurable(
       attemptId !== undefined &&
       ignoreStaleAttempt(state, session, { type: "log", attemptId }, "durable")
     ) {
+      emitStaleAttemptLogDrop();
       return { ok: true };
     }
     const log = logRecord(msg);
@@ -592,7 +649,7 @@ export async function handleHostMessageDurable(
         return { ok: false, error: "stale host connection" };
       }
       emitLogDrops(msg.dropped);
-      const retained = retainLogs(state, log);
+      const retained = commitLogRecord(state, log);
       state.logs.set(log.sessionId, retained);
       state.onLogCommitted?.(log);
     } else {

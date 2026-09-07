@@ -198,6 +198,7 @@ export function addRuntimeObservability(input: {
     "StaleHosts",
     "Cooldowns",
     "LogDrops",
+    "LogSeqGaps",
   ] as const) {
     addErrorAlarm(input.scope, name, operationalMetric(name, env, "Sum", cloudwatch.Unit.COUNT), 1);
   }

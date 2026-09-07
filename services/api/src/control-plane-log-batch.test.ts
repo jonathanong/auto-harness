@@ -1,9 +1,19 @@
 /* eslint-disable max-lines -- omitted-attempt and mixed-host batch cases stay together. */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { handleHostLogBatchDurable } from "./control-plane-messages.ts";
 import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
+import { OPERATIONAL_METRIC_ENVIRONMENT_VAR } from "./operational-metrics.ts";
+
+function withMetrics(): { payloads: () => Record<string, unknown>[] } {
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR] = "test";
+  return {
+    payloads: () =>
+      log.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>),
+  };
+}
 
 const message = (sessionId: string, seq: number, content = "x") => ({
   type: "session:log" as const,
@@ -15,7 +25,39 @@ const message = (sessionId: string, seq: number, content = "x") => ({
   seq,
 });
 
+/** A retained-cache entry for "session" at the given seq/timestamp. */
+function cachedLog(seq: number, timestamp: string): Record<string, unknown> {
+  return {
+    sessionId: "session",
+    timestampSeq: `${timestamp}#${String(seq).padStart(12, "0")}`,
+    stream: "stdout",
+    content: "x",
+    timestamp,
+    seq,
+  };
+}
+
+/** Shared fixture for the seq-gap-detection tests: a "session" owned by
+ * "host" on a fenced "connection", optionally pre-seeded with cached log
+ * records, plus a metrics spy. */
+function seqGapPlane(seedLogs?: Array<Record<string, unknown>>) {
+  const plane = new ControlPlane();
+  plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
+  if (seedLogs) plane.state.logs.set("session", seedLogs as never);
+  plane.state.storage = {
+    getSession: async () => ({ hostId: "host", attemptId: "a" }),
+    getHostLock: async () => "connection",
+    putLogsFenced: async () => true,
+  } as never;
+  return { plane, metrics: withMetrics() };
+}
+
 describe("durable host log batches", () => {
+  afterEach(() => {
+    delete process.env[OPERATIONAL_METRIC_ENVIRONMENT_VAR];
+    vi.restoreAllMocks();
+  });
+
   it("rejects empty and oversized batches", async () => {
     const plane = new ControlPlane();
     await expect(handleHostLogBatchDurable(plane.state, [], "connection")).resolves.toEqual({
@@ -161,6 +203,7 @@ describe("durable host log batches", () => {
         true
       ),
     } as never;
+    const metrics = withMetrics();
     await expect(
       handleHostLogBatchDurable(
         plane.state,
@@ -169,6 +212,10 @@ describe("durable host log batches", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(written).toEqual(["current"]);
+    // The stale-attempt discard gets its own counter (a known, named cause);
+    // no LogSeqGaps fires alongside it since the cache had no prior seq for
+    // this session to compare against (an empty ControlPlane, fresh test).
+    expect(metrics.payloads()).toEqual([expect.objectContaining({ StaleAttemptLogDrops: 1 })]);
   });
 
   it("fences a batch by the resolved current attempt, including omitted ids", async () => {
@@ -239,5 +286,65 @@ describe("durable host log batches", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(fences).toEqual([{ hostId: "host", connectionId: "connection" }]);
+  });
+
+  it("detects a seq gap against a known cache baseline and reports the missing count", async () => {
+    const { plane, metrics } = seqGapPlane([cachedLog(5, "2026-01-01T00:00:00.000Z")]);
+    // Skips 6 and 7: two missing lines between the cached seq 5 and this seq 8.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 8)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    expect(metrics.payloads()).toEqual([expect.objectContaining({ LogSeqGaps: 2 })]);
+  });
+
+  it("finds the true highest seq even when a clock-skewed timestamp orders it before a lower one", async () => {
+    // retainLogs orders the cache by timestampSeq, not by seq: if the source
+    // clock ever moves backward, a higher-seq record can land earlier in the
+    // array than a lower-seq one with a later timestamp. The array's last
+    // element (seq 6) is not the true highest seq (seq 9, stored earlier).
+    const { plane, metrics } = seqGapPlane([
+      cachedLog(9, "2026-01-01T00:00:00.000Z"),
+      cachedLog(6, "2026-01-01T00:00:01.000Z"),
+    ]);
+    // Correctly compared against the true max (9), not the last array
+    // element (6): seq 10 is a plain contiguous next line, not a gap.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 10)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    expect(metrics.payloads()).toEqual([]);
+  });
+
+  it("detects an intra-batch seq gap between two records in the same batch", async () => {
+    const { plane, metrics } = seqGapPlane();
+    // No cached baseline, so the first record (seq 1) reports nothing; the
+    // second (seq 4) is checked against the first, now committed within
+    // this same call, and reports the 2 lines missing between them (2, 3).
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [message("session", 1), message("session", 4)],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(metrics.payloads()).toEqual([expect.objectContaining({ LogSeqGaps: 2 })]);
+  });
+
+  it("does not report a gap for a fresh attempt's first line, a replayed seq, or an unknown cache baseline", async () => {
+    const { plane, metrics } = seqGapPlane();
+    // seq 0: always a legitimate fresh-attempt start, never a gap, even
+    // though the cache is empty (unknown) either way.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 0)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    // seq 1: a normal contiguous line, establishing a real cache baseline.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 1)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    // seq 1 again: a reconnect replay/duplicate, not a forward jump past the
+    // now-known baseline of 1.
+    await expect(
+      handleHostLogBatchDurable(plane.state, [message("session", 1)], "connection"),
+    ).resolves.toEqual({ ok: true });
+    expect(metrics.payloads()).toEqual([]);
   });
 });
