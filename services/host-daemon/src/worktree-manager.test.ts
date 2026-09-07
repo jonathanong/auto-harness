@@ -244,7 +244,11 @@ describe("WorktreeManager", () => {
     await rm(worktreeLink);
     await symlink(outside, worktreeLink);
     await new WorktreeManager(jailed, git).prepareCheckout(claimed, "main");
-    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+    expect(git.checkoutRef).toHaveBeenCalledWith({
+      cwd: await realpath(worktree),
+      repoPath: await realpath(repository),
+      ref: "main",
+    });
   });
 
   it("fails closed for a pending hook while an invalid roots policy is retained", async () => {
@@ -378,7 +382,11 @@ describe("WorktreeManager", () => {
     manager.noteInventoryChange();
 
     await expect(manager.prepareCheckout(claimed, "main")).resolves.toBeUndefined();
-    expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+    expect(git.checkoutRef).toHaveBeenCalledWith({
+      cwd: await realpath(worktree),
+      repoPath: await realpath(repository),
+      ref: "main",
+    });
     await expect(manager.prepareMainCheckout(mainClaim, "main")).resolves.toBeUndefined();
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({
       cwd: await realpath(repository),

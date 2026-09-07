@@ -3,11 +3,23 @@ import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
 import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
+import {
+  claimedLinkedWorktreeCommonDir,
+  checkoutDetached,
+  removeStaleIndexLock,
+  resetClaimedWorktree,
+} from "./git-worktree-checkout.ts";
+import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
   ensureWorktree(opts: { repoPath: string; worktreePath: string; branch: string }): Promise<void>;
-  checkoutRef(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
+  checkoutRef(opts: {
+    cwd: string;
+    repoPath: string;
+    ref: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
@@ -73,7 +85,15 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
     },
 
-    async checkoutRef({ cwd, ref, signal }) {
+    async checkoutRef({ cwd, repoPath, ref, signal }) {
+      const claimedCommonDir = await claimedLinkedWorktreeCommonDir(repoPath, cwd);
+      if (claimedCommonDir === null) {
+        throw new Error("Configured checkout is not the claimed linked worktree");
+      }
+      await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal);
+      if (!(await resetClaimedWorktree(runner, cwd, claimedCommonDir, signal))) {
+        throw new Error("Configured checkout is not the claimed linked worktree");
+      }
       // Prefer detached checkout so a branch already used by the main repo
       // (e.g. ref "main" while primary tree is on main) still works.
       // `--end-of-options` stops git from reading `ref` as a flag: unlike most git
@@ -101,9 +121,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
       }
       const sha = resolved.stdout.trim();
-      let co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
-      if (co.exitCode !== 0) {
-        co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
+      let co = await checkoutDetached(runner, cwd, sha, signal);
+      if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
+        if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
+          co = await checkoutDetached(runner, cwd, sha, signal);
+        }
       }
       if (co.exitCode !== 0) {
         // A regular fetch can treat the locally-present commit as complete
@@ -119,17 +141,19 @@ export function createGitClient(runner: ProcessRunner): GitClient {
           if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
             throw new Error("Failed to fetch required checkout objects");
           }
-          co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
-          if (co.exitCode !== 0) {
-            co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
-          }
+          co = await checkoutDetached(runner, cwd, sha, signal);
         }
       }
       if (co.exitCode !== 0) {
-        throw new Error("Failed to checkout resolved ref");
+        throw gitFailure("Failed to checkout resolved ref", co.stderr);
       }
+      await resetInitializedSubmodules(runner, cwd, signal);
       const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
       if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+        throw new Error("Failed to verify detached checkout");
+      }
+      const detached = await runGit(runner, cwd, ["symbolic-ref", "--quiet", "HEAD"], signal);
+      if (detached.exitCode !== 1) {
         throw new Error("Failed to verify detached checkout");
       }
     },

@@ -383,7 +383,12 @@ export class WorktreeManager {
   ): Promise<void> {
     await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
-    await this.git.checkoutRef({ cwd: claimed.cwd, ref: target, ...(signal ? { signal } : {}) });
+    await this.git.checkoutRef({
+      cwd: claimed.cwd,
+      repoPath: claimed.repository.path,
+      ref: target,
+      ...(signal ? { signal } : {}),
+    });
   }
 
   async prepareMainCheckout(

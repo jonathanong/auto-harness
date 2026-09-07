@@ -16,7 +16,7 @@ describe("SessionStatusCell", () => {
     expect(sessionStatusReason(null)).toBeNull();
   });
 
-  it("preserves the badge and renders an accessible subtitle only when mapped", () => {
+  it("preserves the badge and renders a failure reason", () => {
     const usage = renderToStaticMarkup(
       <SessionStatusCell status="failed" errorCode="usage_limit" sessionId="usage" />,
     );
@@ -25,15 +25,32 @@ describe("SessionStatusCell", () => {
     expect(usage).toContain('data-pw="session-status-reason-usage"');
 
     const expired = renderToStaticMarkup(
-      <SessionStatusCell status="failed" errorCode="queue_expired" sessionId="expired" />,
+      <SessionStatusCell
+        status="failed"
+        errorCode="queue_expired"
+        errorMessage="queue TTL expired before capacity became available"
+        sessionId="expired"
+      />,
     );
     expect(expired).toContain("Queue expired");
+    expect(expired).not.toContain("queue TTL expired before capacity became available");
 
     const ordinary = renderToStaticMarkup(
-      <SessionStatusCell status="failed" errorCode="setup_failed" sessionId="ordinary" />,
+      <SessionStatusCell
+        status="failed"
+        errorCode="setup_failed"
+        errorMessage="Failed to checkout resolved ref: index.lock exists"
+        sessionId="ordinary"
+      />,
     );
     expect(ordinary).toContain("failed");
-    expect(ordinary).not.toContain("session-status-reason-ordinary");
+    expect(ordinary).toContain("Failed to checkout resolved ref: index.lock exists");
+    expect(ordinary).toContain('data-pw="session-status-reason-ordinary"');
+
+    const codeFallback = renderToStaticMarkup(
+      <SessionStatusCell status="failed" errorCode="setup_failed" sessionId="code-fallback" />,
+    );
+    expect(codeFallback).toContain("setup_failed");
 
     const reassigned = renderToStaticMarkup(
       <SessionStatusCell status="running" errorCode="usage_limit" sessionId="reassigned" />,

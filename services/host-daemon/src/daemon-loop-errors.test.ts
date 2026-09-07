@@ -104,6 +104,72 @@ describe("DaemonLoop errors", () => {
     }
   });
 
+  it("reports a useful sanitized worktree checkout failure", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const serverMsgs: HostToServerMessage[] = [];
+      const logs: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          serverMsgs.push(message);
+        },
+      });
+      const fallback = new SpawnProcessRunner();
+      const processRunner: ProcessRunner = {
+        async run(options) {
+          const isGit =
+            options.argv[0] !== undefined &&
+            basename(options.argv[0]).replace(/\.(exe|cmd|bat|com)$/i, "") === "git";
+          const isWorktreeCheckout =
+            isGit &&
+            ((options.argv[1] === "switch" && options.argv[2] === "--discard-changes") ||
+              (options.argv[1] === "checkout" && options.argv[2] === "--force"));
+          if (isWorktreeCheckout) {
+            options.onChunk({
+              stream: "stderr",
+              data: "fatal: https://oauth:checkout-secret@example.com/repo.git: dirty worktree",
+            });
+            return { exitCode: 1, timedOut: false, signal: null };
+          }
+          return fallback.run(options);
+        },
+      };
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        processRunner,
+        onLog: (line) => logs.push(line),
+      });
+      await loop.start();
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "sess-worktree-checkout",
+        attemptId: "attempt-worktree-checkout",
+        repositoryId: "demo",
+        prompt: "checkout main",
+        resolvedArgv: ["true"],
+        timeout: 10,
+        worktreeId: "wt-1",
+        ref: "main",
+        assignedAt: new Date().toISOString(),
+      });
+      await loop.waitForIdle();
+
+      const status = serverMsgs.find(
+        (message): message is Extract<HostToServerMessage, { type: "session:status" }> =>
+          message.type === "session:status" && message.sessionId === "sess-worktree-checkout",
+      );
+      expect(status?.errorMessage).toContain("Failed to checkout resolved ref");
+      expect(status?.errorMessage).toContain("dirty worktree");
+      const output = JSON.stringify(serverMsgs) + logs.join("\n");
+      expect(output).not.toContain("checkout-secret");
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("rejects a non-scheduled assignment without a worktree", async () => {
     const { config, cleanup } = await makeRepo();
     try {

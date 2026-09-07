@@ -14,20 +14,24 @@ export function sessionStatusReason(errorCode?: string | null): string | null {
 export function SessionStatusCell({
   status,
   errorCode,
+  errorMessage,
   sessionId,
 }: {
   status: string;
   errorCode?: string | null | undefined;
+  errorMessage?: string | null | undefined;
   sessionId: string;
 }) {
-  const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
+  const reason =
+    status === "failed" ? sessionStatusReason(errorCode) || errorMessage || errorCode : null;
   return (
     <div className="space-y-1" data-pw={`session-status-${sessionId}`}>
       <SessionStatusBadge status={status} />
       {reason ? (
         <div
-          className="text-xs text-muted-foreground"
+          className="max-w-64 truncate text-xs text-muted-foreground"
           data-pw={`session-status-reason-${sessionId}`}
+          title={reason}
         >
           {reason}
         </div>

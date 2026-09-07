@@ -235,7 +235,8 @@ Concurrent sessions: one runner instance per claimed worktree (and at most one m
 Git checkout/setup failures retain a stable operation category (for example, switch, fetch,
 resolve, or verification) and may include a short diagnostic excerpt. Git diagnostics are
 single-line and UTF-8 bounded before they are placed in exceptions, logs, or `session:status`;
-remote URL userinfo and token-shaped credential values are redacted.
+remote URL userinfo, token-shaped credential values, and signed-URL credential/signature query
+parameters are redacted.
 
 ### Session resume
 
@@ -485,8 +486,10 @@ For `type: scheduled` / `worktreeId: null`:
 2. Agent creates missing worktrees on startup
 3. Control plane learns inventory via `host:register`
 4. Scheduler assigns sessions to idle matching worktrees ([round-robin](aws.md#scheduler))
-5. Configured setup scripts prepare the worktree at **session start** ([below](#setup-scripts))
-6. Worktree is reused across sessions (not deleted after each run)
+5. The daemon checks out the assigned ref, discarding tracked changes left by the prior session;
+   unrelated untracked paths remain in place
+6. Configured setup scripts prepare the worktree at **session start** ([below](#setup-scripts))
+7. Worktree is reused across sessions (not deleted after each run)
 
 ### Ref checkout recovery
 
@@ -495,12 +498,29 @@ because repair uses `git fetch --refetch`; an incompatible daemon registers its 
 reason for operators but refuses assignments and is excluded by the scheduler.
 
 For a worktree session, the daemon resolves its `ref` to a commit before
-detaching `HEAD`, so branch names, SHAs, lightweight tags, and annotated tags
-all land on the exact target commit. If both detached-checkout forms fail, it
-checks that target commit's object connectivity. Only an incomplete graph gets
-one repair attempt: refetch every configured remote with `--refetch`, then
-retry the detached checkout. Ordinary checkout failures do not trigger a
-network retry.
+forcefully detaching `HEAD`, so branch names, SHAs, lightweight tags, and
+annotated tags all land on the exact target commit even when a prior session
+modified tracked files. The force checkout does not broadly clean untracked
+paths. Before checkout, it aborts interrupted merge, rebase, apply, cherry-pick,
+and revert operations and clears tracked-file `assume-unchanged` and `skip-worktree`
+flags; the resolved commit is then hard-reset so hidden tracked changes cannot survive.
+It syncs their configured URLs and force-checks out already initialized submodules recursively, so
+tracked submodule changes cannot leak into the next session without implicitly
+initializing new submodules. Before any destructive checkout, the daemon verifies
+that the linked-worktree administrative directory belongs to the configured repository and
+points back to the claimed path.
+If checkout reports an `index.lock`, the daemon retries only after
+removing the Git-resolved lock when it belongs to the currently claimed linked
+worktree, is a regular empty file, and is at least five minutes old. Fresh,
+non-empty, symlinked, primary-checkout, or otherwise unsafe lock paths are
+preserved. Configured worktrees are daemon-owned execution slots and must not
+be mutated concurrently by operator Git processes.
+
+If both detached-checkout forms still fail, the daemon checks that target
+commit's object connectivity. Only an incomplete graph gets one repair
+attempt: refetch every configured remote with `--refetch`, then retry the
+detached checkout. Ordinary checkout failures do not trigger a network retry.
+The terminal failure includes a bounded, credential-redacted Git diagnostic.
 
 ### Labels
 

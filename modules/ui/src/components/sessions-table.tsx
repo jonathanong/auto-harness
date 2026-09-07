@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the shared responsive session table keeps one row and keyboard contract. */
 "use client";
 
 import Link from "next/link";
@@ -106,7 +107,12 @@ export function SessionsTable({
               )}
             </TableCell>
             <TableCell>
-              <SessionStatusCell status={s.status} errorCode={s.errorCode} sessionId={s.id} />
+              <SessionStatusCell
+                status={s.status}
+                errorCode={s.errorCode}
+                errorMessage={s.errorMessage}
+                sessionId={s.id}
+              />
             </TableCell>
             <TableCell data-pw={`session-repository-${s.id}`}>
               {s.repositoryId ? (

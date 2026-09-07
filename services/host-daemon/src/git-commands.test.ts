@@ -89,6 +89,62 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).toContain("private%5Ftoken=[redacted]");
   });
 
+  it("redacts provider-prefixed signed URL credentials", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "https://example.com/object?X-Amz-Credential=AKIASECRET&X-Amz-Signature=SIGNEDSECRET" +
+        "&X-Amz-Security-Token=SESSIONSECRET&X-Goog-Credential=GOOGSECRET" +
+        "&X-Goog-Signature=GOOGSIGNATURE&AWSAccessKeyId=LEGACYSECRET" +
+        "&X-Amz-Date=20260907T000000Z&ref=main",
+    );
+
+    expect(diagnostic).not.toMatch(
+      /AKIASECRET|SIGNEDSECRET|SESSIONSECRET|GOOGSECRET|GOOGSIGNATURE|LEGACYSECRET/,
+    );
+    expect(diagnostic).toContain("X-Amz-Credential=[redacted]");
+    expect(diagnostic).toContain("X-Amz-Signature=[redacted]");
+    expect(diagnostic).toContain("X-Amz-Security-Token=[redacted]");
+    expect(diagnostic).toContain("X-Goog-Credential=[redacted]");
+    expect(diagnostic).toContain("X-Goog-Signature=[redacted]");
+    expect(diagnostic).toContain("AWSAccessKeyId=[redacted]");
+    expect(diagnostic).toContain("X-Amz-Date=20260907T000000Z");
+    expect(diagnostic).toContain("ref=main");
+  });
+
+  it("redacts CLI-style credential options and compact query aliases", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "git: --token=OPTIONSECRET\n" +
+        "https://example.com/?apiKey=APISECRET&clientSecret=CLIENTSECRET&auth=AUTHSECRET" +
+        "&oauthToken=OAUTHSECRET&oauthSignature=OAUTHSIGNATURE",
+    );
+    expect(diagnostic).toContain("--token=[redacted]");
+    expect(diagnostic).toContain("apiKey=[redacted]");
+    expect(diagnostic).toContain("clientSecret=[redacted]");
+    expect(diagnostic).toContain("auth=[redacted]");
+    expect(diagnostic).toContain("oauthToken=[redacted]");
+    expect(diagnostic).toContain("oauthSignature=[redacted]");
+    expect(diagnostic).not.toMatch(
+      /OPTIONSECRET|APISECRET|CLIENTSECRET|AUTHSECRET|OAUTHSECRET|OAUTHSIGNATURE/,
+    );
+  });
+
+  it("redacts prefixed credential keys without matching ordinary words", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "client_secret=CLIENTSECRET\nAWS_SECRET_ACCESS_KEY=AWSSECRET\n" +
+        "x-access-token=ACCESSTOKEN\nsecretary=visible",
+    );
+    expect(diagnostic).toContain("client_secret=[redacted]");
+    expect(diagnostic).toContain("AWS_SECRET_ACCESS_KEY=[redacted]");
+    expect(diagnostic).toContain("x-access-token=[redacted]");
+    expect(diagnostic).toContain("secretary=visible");
+    expect(diagnostic).not.toMatch(/CLIENTSECRET|AWSSECRET|ACCESSTOKEN/);
+  });
+
+  it("preserves query parameters whose percent-encoded key is malformed", () => {
+    expect(sanitizeGitDiagnostic("https://example.com/object?bad%=visible")).toContain(
+      "bad%=visible",
+    );
+  });
+
   it("redacts multi-part unquoted credential values through end-of-line", () => {
     const diagnostic = sanitizeGitDiagnostic(
       "fatal\npassword=correct horse, battery; staple\nretry failed",
