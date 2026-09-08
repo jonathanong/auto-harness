@@ -224,6 +224,7 @@ describe("durable host disconnect", () => {
         return true;
       },
       listHostOfflineAlertCandidates: async () => [...candidates.values()],
+      listActiveSessionsByHost: async () => [],
       getSlackIntegration: async () => ({
         id: "slack",
         type: "slack" as const,

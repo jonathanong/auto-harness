@@ -99,6 +99,7 @@ describe("host management runtime coverage", () => {
       putConnection: async () => undefined,
       putHostInventory: async () => undefined,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
     } as never;
 
     expect(plane.registerHost({ hostId: "host", worktrees: [], commandProfiles: [] })).toEqual({

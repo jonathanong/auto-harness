@@ -1,6 +1,8 @@
+/* eslint-disable max-lines -- assignment and active host-claim writes must remain atomic. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
+import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
   assignmentLeaseCollision,
   isConditionalTransactionFailed,
@@ -53,6 +55,8 @@ export async function tryAssignSession(
     "statusShard = :statusShard",
     "worktreeId = :wid",
     "hostId = :hid",
+    "activeHostId = :activeHostId",
+    "activeHostOrder = :activeHostOrder",
     "startedAt = :now",
     "assignmentSentAt = :now",
     "attemptId = :attemptId",
@@ -66,6 +70,8 @@ export async function tryAssignSession(
     ":queued": "queued",
     ":wid": opts.worktreeId,
     ":hid": opts.hostId,
+    ":activeHostId": opts.hostId,
+    ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
     ":now": opts.now,
     ":attemptId": opts.attemptId,
     ":argv": opts.resolvedArgv,

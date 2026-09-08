@@ -2,6 +2,7 @@
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
+import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import type { SessionRecord } from "./types.ts";
 import {
   assignmentLeaseCollision,
@@ -147,7 +148,7 @@ export async function tryAssignMainCheckoutSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression:
-          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
+          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
           (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
@@ -162,6 +163,8 @@ export async function tryAssignMainCheckoutSession(
           ":queued": "queued",
           ":null": null,
           ":hostId": opts.hostId,
+          ":activeHostId": opts.hostId,
+          ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
           ":now": opts.now,
           ":argv": opts.resolvedArgv,
           ":route": opts.resolvedRoute,

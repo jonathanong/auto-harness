@@ -21,21 +21,25 @@ async function requeueOmittedWorktreeSessions(
   running: ReadonlySet<string>,
   reason: string,
   requeued: string[],
+  activeSessions: readonly import("./db/types.ts").SessionRecord[],
 ): Promise<void> {
-  const worktrees = state.storage
-    ? await state.storage.listWorktreesByHost(hostId)
-    : [...state.worktrees.values()].filter((worktree) => worktree.hostId === hostId);
-  for (const worktree of worktrees) {
-    if (worktree.status !== "busy" || !worktree.currentSessionId) continue;
+  for (const session of activeSessions) {
+    if (session.status !== "running" || !session.worktreeId) continue;
     // Cheap membership check before a per-worktree durable read: on a healthy
     // host with many concurrent sessions, this is the common case on every
     // 20s keepalive and would otherwise cost one storage read per worktree
     // for sessions that need no reconciliation at all.
-    if (running.has(worktree.currentSessionId)) continue;
-    const session = state.storage
-      ? await state.storage.getSession(worktree.currentSessionId)
-      : state.sessions.get(worktree.currentSessionId);
-    if (!session || session.status !== "running" || session.hostId !== hostId) continue;
+    if (running.has(session.id)) continue;
+    const worktree = state.storage
+      ? await state.storage.getWorktree(session.worktreeId)
+      : state.worktrees.get(session.worktreeId);
+    if (
+      !worktree ||
+      worktree.status !== "busy" ||
+      worktree.currentSessionId !== session.id ||
+      worktree.hostId !== hostId
+    )
+      continue;
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, queueReconnectSession(session, reason));
@@ -89,7 +93,18 @@ export async function reconcileHostOwnedSessions(
   reason: string,
 ): Promise<string[]> {
   const requeued: string[] = [];
-  await requeueOmittedWorktreeSessions(state, hostId, connectionId, running, reason, requeued);
-  await requeueOmittedScheduled(state, hostId, new Set(running), requeued, reason);
+  const activeSessions = state.storage
+    ? await state.storage.listActiveSessionsByHost(hostId)
+    : [...state.sessions.values()].filter((session) => session.hostId === hostId);
+  await requeueOmittedWorktreeSessions(
+    state,
+    hostId,
+    connectionId,
+    running,
+    reason,
+    requeued,
+    activeSessions,
+  );
+  await requeueOmittedScheduled(state, hostId, new Set(running), requeued, reason, activeSessions);
   return requeued;
 }

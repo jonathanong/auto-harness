@@ -8,6 +8,7 @@ import {
   expireQueuedSession,
   finishSession,
   getWorktree,
+  listActiveSessionsByHost,
   putSession,
   putWorktree,
 } from "./plane-storage-sessions.ts";
@@ -111,6 +112,45 @@ describe("DynamoDB Local terminal session lifecycle", () => {
       }),
     ).toBe(true);
     await expect(getActivity("expire")).resolves.toBeUndefined();
+  });
+
+  it("keeps a timed-out session discoverable while its host lease is preserved", async () => {
+    await putSession(ctx, {
+      ...base,
+      id: "timed",
+      status: "running",
+      worktreeId: "timed-worktree",
+      hostId: "timed-host",
+      attemptId: "attempt",
+      activeHostId: "timed-host",
+      activeHostOrder: "2026-01-01T00:00:00.000Z#timed",
+    });
+    await putWorktree(ctx, {
+      id: "timed-worktree",
+      name: "timed-worktree",
+      hostId: "timed-host",
+      repositoryId: "repo",
+      path: "/repo/timed",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "timed",
+    });
+
+    expect(
+      await finishSession(ctx, {
+        sessionId: "timed",
+        worktreeId: "timed-worktree",
+        attemptId: "attempt",
+        status: "timed_out",
+        queueShard: 0,
+        preserveHostAssignmentLease: true,
+      }),
+    ).toBe(true);
+
+    await expect(listActiveSessionsByHost(ctx, "timed-host")).resolves.toMatchObject([
+      { id: "timed", status: "timed_out" },
+    ]);
   });
 });
 

@@ -19,8 +19,8 @@ describe("keepalive-driven session reconciliation", () => {
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
-      listWorktreesByHost: async () => [worktree],
-      getSession: async () => session,
+      listActiveSessionsByHost: async () => [session],
+      getWorktree: async () => worktree,
       tryRequeueSession: async (opts: Record<string, unknown>) => {
         requeueOptions = opts;
         return true;
@@ -50,8 +50,8 @@ describe("keepalive-driven session reconciliation", () => {
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
-      listWorktreesByHost: async () => [worktree],
-      getSession: async () => session,
+      listActiveSessionsByHost: async () => [session],
+      getWorktree: async () => worktree,
       tryRequeueSession: async () => true,
       listSessionsByStatusPage: async () => {
         sweptQueue += 1;
@@ -80,14 +80,14 @@ describe("keepalive-driven session reconciliation", () => {
     const session = runningSessionFixture();
     const worktree = busyWorktreeFixture();
     let requeued = false;
-    let sessionReads = 0;
+    let worktreeReads = 0;
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
-      listWorktreesByHost: async () => [worktree],
-      getSession: async () => {
-        sessionReads += 1;
-        return session;
+      listActiveSessionsByHost: async () => [session],
+      getWorktree: async () => {
+        worktreeReads += 1;
+        return worktree;
       },
       tryRequeueSession: async () => {
         requeued = true;
@@ -105,8 +105,8 @@ describe("keepalive-driven session reconciliation", () => {
 
     expect(requeued).toBe(false);
     // A session the daemon already reports as running must not cost a
-    // storage read at all: on a healthy host with many concurrent sessions,
-    // this is the common case on every 20s keepalive.
-    expect(sessionReads).toBe(0);
+    // per-worktree storage read: on a healthy host with many concurrent
+    // sessions, that is the common case on every 20s keepalive.
+    expect(worktreeReads).toBe(0);
   });
 });

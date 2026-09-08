@@ -11,10 +11,7 @@ export async function protectScheduledRunsForFailedRegistration(
   hostId: string,
 ): Promise<void> {
   const storage = state.storage!;
-  const sessions =
-    typeof (storage as { listSessionsByHost?: unknown }).listSessionsByHost === "function"
-      ? await storage.listSessionsByHost(hostId)
-      : [...state.sessions.values()].filter((session) => session.hostId === hostId);
+  const sessions = await storage.listActiveSessionsByHost(hostId);
   for (const session of sessions) {
     if (
       session.status !== "running" ||
