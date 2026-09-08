@@ -106,4 +106,24 @@ describe("listActiveSessionsByHost", () => {
     ]);
     expect(queries).toBe(2);
   });
+
+  it("pages an empty sparse index view without scanning history", async () => {
+    const queries: QueryCommand[] = [];
+    const ctx = {
+      tables: { sessions: "Sessions", hostLocks: "HostLocks" },
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof QueryCommand) {
+            queries.push(command);
+            return queries.length === 1 ? { LastEvaluatedKey: { id: "cursor" } } : { Items: [] };
+          }
+          return { Item: { hostId: "host-a", assignmentCount: 0 } };
+        },
+      },
+    } as never;
+
+    await expect(listActiveSessionsByHost(ctx, "host-a")).resolves.toEqual([]);
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.input.ExclusiveStartKey).toEqual({ id: "cursor" });
+  });
 });
