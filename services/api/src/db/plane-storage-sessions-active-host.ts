@@ -1,4 +1,4 @@
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import { nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import { getSession } from "./plane-storage-sessions-query.ts";
@@ -37,8 +37,32 @@ export async function listActiveSessionsByHost(
       }
     }
     const page = await Promise.all(ids.map((id) => getSession(ctx, id, true)));
-    records.push(...page.filter((session): session is SessionRecord => session !== null));
+    records.push(
+      ...page.filter(
+        (session): session is SessionRecord => session !== null && session.activeHostId === hostId,
+      ),
+    );
     startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
+  const hostLock = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.hostLocks,
+      Key: { hostId },
+      ConsistentRead: true,
+    }),
+  );
+  const assignmentCount = hostLock.Item?.assignmentCount;
+  // The base-table counter is updated transactionally with every fresh-environment
+  // assignment. Fail closed while the GSI is behind: disconnect/recovery callers then
+  // retain the durable host lease, and the scheduled stale-host pass retries this query.
+  if (
+    typeof assignmentCount === "number" &&
+    Number.isSafeInteger(assignmentCount) &&
+    assignmentCount > records.length
+  ) {
+    throw new Error(
+      `active host claim index has ${records.length} of ${assignmentCount} assignments for ${hostId}`,
+    );
+  }
   return records;
 }

@@ -60,6 +60,7 @@ export async function protectScheduledRunsForFailedRegistration(
     const current = await storage.getSession(session.id);
     if (
       current?.status === "running" &&
+      current.hostId === hostId &&
       current.mainCheckoutLease &&
       current.assignmentConnectionId === session.assignmentConnectionId &&
       !current.reconnectDeadlineAt

@@ -1,4 +1,4 @@
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
 import { listActiveSessionsByHost } from "./plane-storage-sessions-active-host.ts";
@@ -7,34 +7,36 @@ describe("listActiveSessionsByHost", () => {
   it("uses the sparse active-host index instead of scanning session history", async () => {
     const commands: QueryCommand[] = [];
     const ctx = {
-      tables: { sessions: "Sessions" },
+      tables: { sessions: "Sessions", hostLocks: "HostLocks" },
       doc: {
         send: async (command: unknown) => {
           if (command instanceof QueryCommand) {
             commands.push(command);
             return { Items: [{ id: "active" }] };
           }
-          return {
-            Item: {
-              id: "active",
-              repositoryId: "repo",
-              prompt: "prompt",
-              target: { kind: "command", commandId: "command" },
-              fallbacks: [],
-              targetDisplayNames: ["command"],
-              queueTtlSeconds: 60,
-              queueExpiresAt: "2026-01-01T00:01:00.000Z",
-              timeout: 60,
-              priority: 0,
-              requiredLabels: [],
-              status: "running",
-              queueShard: 0,
-              createdAt: "2026-01-01T00:00:00.000Z",
-              hostId: "host-a",
-              activeHostId: "host-a",
-              activeHostOrder: "2026-01-01T00:00:00.000Z#active",
-            },
-          };
+          if (command instanceof GetCommand && command.input.TableName === "Sessions")
+            return {
+              Item: {
+                id: "active",
+                repositoryId: "repo",
+                prompt: "prompt",
+                target: { kind: "command", commandId: "command" },
+                fallbacks: [],
+                targetDisplayNames: ["command"],
+                queueTtlSeconds: 60,
+                queueExpiresAt: "2026-01-01T00:01:00.000Z",
+                timeout: 60,
+                priority: 0,
+                requiredLabels: [],
+                status: "running",
+                queueShard: 0,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                hostId: "host-a",
+                activeHostId: "host-a",
+                activeHostOrder: "2026-01-01T00:00:00.000Z#active",
+              },
+            };
+          return { Item: { hostId: "host-a", assignmentCount: 1 } };
         },
       },
     } as never;
@@ -50,5 +52,34 @@ describe("listActiveSessionsByHost", () => {
       ExpressionAttributeValues: { ":hostId": "host-a" },
       Limit: 25,
     });
+  });
+
+  it("rejects an incomplete eventual index view and ignores stale ownership", async () => {
+    let assignmentCount = 1;
+    const ctx = {
+      tables: { sessions: "Sessions", hostLocks: "HostLocks" },
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof QueryCommand) return { Items: [{ id: "moved" }] };
+          if (command instanceof GetCommand && command.input.TableName === "Sessions") {
+            return {
+              Item: {
+                id: "moved",
+                status: "running",
+                activeHostId: "host-b",
+                activeHostOrder: "now#moved",
+              },
+            };
+          }
+          return { Item: { hostId: "host-a", assignmentCount } };
+        },
+      },
+    } as never;
+
+    await expect(listActiveSessionsByHost(ctx, "host-a")).rejects.toThrow(
+      "active host claim index has 0 of 1 assignments for host-a",
+    );
+    assignmentCount = 0;
+    await expect(listActiveSessionsByHost(ctx, "host-a")).resolves.toEqual([]);
   });
 });
