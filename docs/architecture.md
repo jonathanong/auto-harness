@@ -66,6 +66,36 @@ Deep dives live in the layer docs above; this page keeps cross-plane flows and d
 
 ---
 
+## Architecture principles
+
+These principles govern implementation choices across both planes. AWS service choices and vendor
+capabilities are constraints or implementation decisions; they may change without changing these
+rules.
+
+1. **Each fact has one authoritative owner.** The control plane owns admission, desired work, and
+   leases. Hosts report process and filesystem facts. Lambda memory is only a request-local cache
+   and never determines correctness.
+2. **An acknowledgement names one durable fact.** Accepted, assigned, running, finished, and
+   transcript archived are separate facts. A successful socket write proves none of them.
+3. **Commit intent before external effects.** Persist commands and notification jobs atomically
+   with the state change that created them. Delivery retries independently.
+4. **Assume duplicate delivery and uncertain execution.** Fence messages by attempt identity and
+   make processing idempotent. After ambiguous host loss, require an explicit retry; do not promise
+   exactly-once effects in GitHub or another external system.
+5. **Operational work scales with active work and new bytes.** Heartbeats, scheduling, recovery,
+   and log reads use bounded access paths. Retaining more terminal history must not increase their
+   routine cost.
+6. **Match storage to purpose.** DynamoDB owns compact coordination records and temporary packed-log
+   staging. S3 owns verified transcript history. Large prompts and frozen command snapshots stay
+   outside frequently updated lease records.
+7. **Observability cannot interfere with execution.** Browser and notification delivery may fall
+   behind without delaying host ingestion, assignment, cancellation, or terminal reports.
+8. **Retention and completeness are product contracts.** Archived means the expected bytes were
+   verified and an authorized reader can retrieve them. Truncated, incomplete, unavailable, and
+   expired are distinct visible states.
+
+---
+
 ## Layer Map
 
 | Topic                  | AWS layer                                                                                      | Agent layer                                                                                  |
