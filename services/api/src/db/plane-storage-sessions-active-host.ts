@@ -6,6 +6,8 @@ import type { SessionRecord } from "./types.ts";
 
 export const SESSIONS_ACTIVE_HOST_INDEX = "activeHostId-activeHostOrder";
 const ACTIVE_HOST_PAGE_SIZE = 25;
+const ACTIVE_HOST_QUERY_ATTEMPTS = 3;
+const ACTIVE_HOST_QUERY_RETRY_MS = 25;
 
 /** A host claim is indexed only while it still needs host-side reconciliation. */
 export function activeHostOrder(assignedAt: string, sessionId: string): string {
@@ -17,6 +19,20 @@ export async function listActiveSessionsByHost(
   ctx: PlaneStorageCtx,
   hostId: string,
 ): Promise<SessionRecord[]> {
+  for (let attempt = 1; attempt <= ACTIVE_HOST_QUERY_ATTEMPTS; attempt++) {
+    const result = await listActiveSessionsByHostOnce(ctx, hostId);
+    if (result.complete) return result.records;
+    if (attempt < ACTIVE_HOST_QUERY_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, ACTIVE_HOST_QUERY_RETRY_MS * attempt));
+    }
+  }
+  throw new Error(`active host claim index did not converge for ${hostId}`);
+}
+
+async function listActiveSessionsByHostOnce(
+  ctx: PlaneStorageCtx,
+  hostId: string,
+): Promise<{ complete: boolean; records: SessionRecord[] }> {
   const records: SessionRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -53,16 +69,12 @@ export async function listActiveSessionsByHost(
   );
   const assignmentCount = hostLock.Item?.assignmentCount;
   // The base-table counter is updated transactionally with every fresh-environment
-  // assignment. Fail closed while the GSI is behind: disconnect/recovery callers then
-  // retain the durable host lease, and the scheduled stale-host pass retries this query.
-  if (
+  // assignment. Retry a lagging GSI, then fail closed: disconnect/recovery callers retain
+  // the durable host lease and the scheduled stale-host pass retries this operation.
+  const complete = !(
     typeof assignmentCount === "number" &&
     Number.isSafeInteger(assignmentCount) &&
     assignmentCount > records.length
-  ) {
-    throw new Error(
-      `active host claim index has ${records.length} of ${assignmentCount} assignments for ${hostId}`,
-    );
-  }
-  return records;
+  );
+  return { complete, records };
 }

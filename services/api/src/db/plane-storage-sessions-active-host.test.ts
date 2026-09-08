@@ -77,9 +77,33 @@ describe("listActiveSessionsByHost", () => {
     } as never;
 
     await expect(listActiveSessionsByHost(ctx, "host-a")).rejects.toThrow(
-      "active host claim index has 0 of 1 assignments for host-a",
+      "active host claim index did not converge for host-a",
     );
     assignmentCount = 0;
     await expect(listActiveSessionsByHost(ctx, "host-a")).resolves.toEqual([]);
+  });
+
+  it("retries a lagging index and returns the propagated claim", async () => {
+    let queries = 0;
+    const ctx = {
+      tables: { sessions: "Sessions", hostLocks: "HostLocks" },
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof QueryCommand) {
+            queries++;
+            return { Items: queries === 1 ? [] : [{ id: "active" }] };
+          }
+          if (command instanceof GetCommand && command.input.TableName === "Sessions") {
+            return { Item: { id: "active", status: "running", activeHostId: "host-a" } };
+          }
+          return { Item: { hostId: "host-a", assignmentCount: 1 } };
+        },
+      },
+    } as never;
+
+    await expect(listActiveSessionsByHost(ctx, "host-a")).resolves.toMatchObject([
+      { id: "active" },
+    ]);
+    expect(queries).toBe(2);
   });
 });
