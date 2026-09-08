@@ -5,9 +5,13 @@ import {
   compareWorktreesForRoundRobin,
   mergeQueuedShardHeads,
   orderedQueuedSessions,
+  priorityOrderKey,
   queueOrderKey,
   queueOrderKeyForWrite,
   QUEUE_ORDER_PRIORITY_OFFSET,
+  repositoryPriorityOrderKey,
+  repositoryPriorityOrderPrefix,
+  repositoryPriorityOrderRange,
 } from "./control-plane-ordering.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -72,6 +76,20 @@ describe("compare helpers", () => {
     expect(queueOrderKeyForWrite({ id: "", priority: "x", createdAt: 1 }, "legacy")).toBe(
       queueOrderKey({ id: "legacy", priority: 0, createdAt: "" }),
     );
+  });
+
+  it("encodes durable list priority order and repository ranges", () => {
+    const early = { id: "a", priority: -10, createdAt: "t1" };
+    const late = { id: "b", priority: 10, createdAt: "t2" };
+    expect(priorityOrderKey(early) < priorityOrderKey(late)).toBe(true);
+    expect(priorityOrderKey({ id: "max", priority: 10_000, createdAt: "t" })).toBe("20000#t#max");
+    expect(priorityOrderKey({ id: "min", priority: -10_000, createdAt: "t" })).toBe("00000#t#min");
+
+    const prefix = repositoryPriorityOrderPrefix("repo");
+    const range = repositoryPriorityOrderRange("repo");
+    expect(prefix).toBe("071ca2227754705837aa3ef9748ed59e9f8a015fd765c42f391a4cbc271c6d5e");
+    expect(range).toEqual({ start: `${prefix}#`, end: `${prefix}#\uffff` });
+    expect(repositoryPriorityOrderKey("repo", early)).toBe(`${prefix}#${priorityOrderKey(early)}`);
   });
 
   it("merges already-sorted shard heads in global priority/FIFO order", () => {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one fake AWS harness exercises the deployment shell contract. */
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,6 +90,12 @@ fi`,
 printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
 if [[ "$*" == *"@auto-harness/cdk run update"* ]]; then
   touch "$FAKE_DIRECTORY/update-complete"
+fi
+if [[ "$*" == *"@auto-harness/cdk run priority-index-status"* ]]; then
+  touch "$FAKE_DIRECTORY/priority-status-active"
+fi
+if [[ "$*" == *"@auto-harness/cdk run priority-index-both"* ]]; then
+  touch "$FAKE_DIRECTORY/priority-repository-active"
 fi`,
   );
   executable(
@@ -98,6 +105,14 @@ fi`,
 printf "aws %s\\n" "$*" >> "$FAKE_LOG"
 case "$1 $2" in
   "dynamodb get-item")
+    if [[ "$*" == *"__session-priority-order__"* ]]; then
+      if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 && ! -f "$FAKE_DIRECTORY/update-complete" ]]; then
+        echo None
+      else
+        echo READY-V1
+      fi
+      exit 0
+    fi
     if [[ -f "$FAKE_DIRECTORY/update-complete" ]]; then
       [[ "\${FAKE_LEDGER_READ_FAILURE:-0}" == 1 ]] && { echo unavailable >&2; exit 1; }
       echo ACTIVITY-V1
@@ -105,6 +120,16 @@ case "$1 $2" in
       echo None
     fi ;;
   "dynamodb scan") echo "\${FAKE_ACTIVE_SESSION_ID:-None}" ;;
+  "dynamodb describe-table")
+    if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
+      if [[ "$*" == *"repositoryPriorityOrder"* ]]; then
+        [[ -f "$FAKE_DIRECTORY/priority-repository-active" ]] && echo ACTIVE || echo None
+      else
+        [[ -f "$FAKE_DIRECTORY/priority-status-active" ]] && echo ACTIVE || echo None
+      fi
+    else
+      echo ACTIVE
+    fi ;;
   "cloudformation describe-stacks") echo AutoHarness-production-Runtime ;;
   "cloudformation list-stack-resources")
     case "$*" in
@@ -204,6 +229,27 @@ describe("deployment wrapper contracts", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Active sessions remain after the scheduler fence");
     expect(calls).not.toContain("@auto-harness/cdk run update");
+  });
+
+  it("adds priority GSIs in separate fenced Foundation updates", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+
+    const result = run(awsScript, ["--yes-priority-order"], fixture, {
+      FAKE_PRIORITY_MISSING: "1",
+    });
+    const calls = readFileSync(fixture.log, "utf8");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(position(calls, "@auto-harness/cdk run priority-index-status")).toBeLessThan(
+      position(calls, "@auto-harness/cdk run priority-index-both"),
+    );
+    expect(position(calls, "@auto-harness/cdk run priority-index-both")).toBeLessThan(
+      position(calls, "@auto-harness/cdk run update"),
+    );
+    expect(calls).toContain("statusShard-priorityOrder");
+    expect(calls).toContain("statusShard-repositoryPriorityOrder");
+    expect(calls).toContain("node scripts/migrate-session-priority-order.mts");
   });
 
   it("keeps the source-level fail-closed restoration paths", () => {

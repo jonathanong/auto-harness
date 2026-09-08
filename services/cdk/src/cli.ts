@@ -3,7 +3,7 @@ import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { fileURLToPath } from "node:url";
 
-import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
+import { AutoHarnessFoundationStack, type SessionPriorityIndexStage } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 import { AutoHarnessWebStack } from "./web-stack.ts";
 
@@ -22,6 +22,12 @@ function removalPolicy(value: string | undefined): RemovalPolicy {
   throw new Error("removalPolicy context must be either retain or destroy");
 }
 
+function sessionPriorityIndexStage(value: string | undefined): SessionPriorityIndexStage {
+  if (value === undefined || value === "both") return "both";
+  if (value === "status") return "status";
+  throw new Error("sessionPriorityIndexStage context must be either status or both");
+}
+
 const app = new App();
 const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
 const dataRemovalPolicy = removalPolicy(contextString(app, "removalPolicy"));
@@ -32,6 +38,9 @@ const stack = new AutoHarnessFoundationStack(
   {
     ...(archiveBucketName !== undefined ? { archiveBucketName } : {}),
     dataRemovalPolicy,
+    sessionPriorityIndexStage: sessionPriorityIndexStage(
+      contextString(app, "sessionPriorityIndexStage"),
+    ),
     tablePrefix,
   },
 );
