@@ -1879,6 +1879,8 @@ describe("durable control-plane transitions", () => {
         queueShard: 0,
         createdAt: "2026-01-01T00:00:00.000Z",
         hostId,
+        activeHostId: hostId,
+        activeHostOrder: `2026-01-01T00:00:00.000Z#${sessionId}`,
         worktreeId: item.id,
         attemptId: `attempt-reconcile-${item.id.endsWith("one") ? "one" : "two"}`,
         ackReceivedAt: "2026-01-01T00:00:01.000Z",
