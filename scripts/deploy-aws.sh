@@ -10,29 +10,28 @@ fi
 
 usage() {
   cat <<'EOF'
-Usage: pnpm deploy:aws [--yes-first-ledger]
+Usage: pnpm deploy:aws [--yes-first-ledger] [--yes-priority-order]
 
 Fast-forwards a clean main checkout, installs the lockfile, and updates the AWS
-control plane. The first SessionDrains ledger rollout is detected and gated
-automatically; --yes-first-ledger is the non-interactive confirmation that
-external session admission is disabled. The command verifies zero active
-sessions itself after fencing the old scheduler.
+control plane. The first SessionDrains ledger and priority-order index rollouts
+are detected and gated automatically. Either --yes-first-ledger or
+--yes-priority-order is non-interactive confirmation that external session
+admission is disabled. The command verifies zero active sessions itself after
+fencing the old scheduler.
 EOF
 }
 
 confirm_first_ledger=0
-case "${1:-}" in
-  "") ;;
-  --yes-first-ledger) confirm_first_ledger=1 ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  *)
-    usage >&2
-    exit 2
-    ;;
-esac
+confirm_priority_order=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes-first-ledger) confirm_first_ledger=1 ;;
+    --yes-priority-order) confirm_priority_order=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
 
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
 export HARNESS_DEPLOY_ENVIRONMENT="${HARNESS_DEPLOY_ENVIRONMENT:-production}"
@@ -89,6 +88,52 @@ read_ledger_key() {
     return 0
   fi
   echo "Could not inspect the activity ledger: $output" >&2
+  return 1
+}
+
+read_priority_order_key() {
+  local output status
+  set +e
+  output="$(aws dynamodb get-item \
+    --region "$AWS_REGION" \
+    --table-name "$ledger_table" \
+    --consistent-read \
+    --key '{"scopeKey":{"S":"__session-priority-order__"},"recordKey":{"S":"READY-V1"}}' \
+    --query 'Item.recordKey.S' \
+    --output text 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$output"
+    return 0
+  fi
+  if [[ "$output" == *"ResourceNotFoundException"* ]]; then
+    return 0
+  fi
+  echo "Could not inspect the priority-order readiness marker: $output" >&2
+  return 1
+}
+
+session_priority_index_state() {
+  local index_name="$1"
+  aws dynamodb describe-table \
+    --region "$AWS_REGION" \
+    --table-name "$sessions_table" \
+    --query "Table.GlobalSecondaryIndexes[?IndexName=='${index_name}'].IndexStatus | [0]" \
+    --output text
+}
+
+wait_for_session_priority_index() {
+  local index_name="$1" status=""
+  for _ in $(seq 1 300); do
+    status="$(session_priority_index_state "$index_name")"
+    if [[ "$status" == "ACTIVE" ]]; then
+      echo "Verified ${index_name} is ACTIVE."
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Timed out waiting for ${index_name} to become ACTIVE (last status: ${status:-missing})." >&2
   return 1
 }
 
@@ -239,13 +284,18 @@ verify_no_active_sessions() {
 }
 
 ledger_record_key="$(read_ledger_key)"
-if [[ "$ledger_record_key" == "ACTIVITY-V1" ]]; then
+priority_order_record_key="$(read_priority_order_key)"
+needs_ledger=0
+needs_priority_order=0
+if [[ "$ledger_record_key" != "ACTIVITY-V1" ]]; then needs_ledger=1; fi
+if [[ "$priority_order_record_key" != "READY-V1" ]]; then needs_priority_order=1; fi
+if [[ "$needs_ledger" -eq 0 && "$needs_priority_order" -eq 0 ]]; then
   pnpm --filter @auto-harness/cdk run update
   exit 0
 fi
 
-if [[ "$confirm_first_ledger" -ne 1 && ! -t 0 ]]; then
-  echo "First ledger rollout requires confirmation; rerun with --yes-first-ledger after disabling external session admission and waiting for active sessions to finish." >&2
+if [[ "$confirm_first_ledger" -ne 1 && "$confirm_priority_order" -ne 1 && ! -t 0 ]]; then
+  echo "Maintenance-fenced rollout requires confirmation; rerun with --yes-first-ledger or --yes-priority-order after disabling external session admission and waiting for active sessions to finish." >&2
   exit 1
 fi
 
@@ -292,7 +342,7 @@ else
   echo "No runtime stack exists; there is no old scheduler to fence."
 fi
 
-if [[ "$confirm_first_ledger" -ne 1 ]]; then
+if [[ "$confirm_first_ledger" -ne 1 && "$confirm_priority_order" -ne 1 ]]; then
   read -r -p "Scheduler stopped. External admission is disabled? [y/N] " answer
   if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
     if [[ "$scheduler_fenced" -eq 1 ]]; then
@@ -308,6 +358,23 @@ if [[ -n "$cron_rule" ]]; then
   wait_for_external_admission_writers
 fi
 verify_no_active_sessions
+
+if [[ "$needs_priority_order" -eq 1 ]]; then
+  # CloudFormation/DynamoDB permits one GSI creation per existing table update.
+  # The status-only template is deliberately deployed and observed before the
+  # repository index is introduced in the next Foundation update.
+  repository_index_state="$(session_priority_index_state "statusShard-repositoryPriorityOrder")"
+  if [[ "$repository_index_state" == "None" || -z "$repository_index_state" ]]; then
+    status_index_state="$(session_priority_index_state "statusShard-priorityOrder")"
+    if [[ "$status_index_state" != "ACTIVE" ]]; then
+      pnpm --filter @auto-harness/cdk run priority-index-status
+      wait_for_session_priority_index "statusShard-priorityOrder"
+    fi
+    pnpm --filter @auto-harness/cdk run priority-index-both
+  fi
+  wait_for_session_priority_index "statusShard-priorityOrder"
+  wait_for_session_priority_index "statusShard-repositoryPriorityOrder"
+fi
 
 if ! pnpm --filter @auto-harness/cdk run update; then
   set +e
@@ -358,11 +425,21 @@ if [[ -n "$original_rule_state" ]]; then
   rule_restore_pending=1
   trap restore_original_rule_on_exit EXIT
 fi
-node scripts/migrate-session-drain-ledger.mts
+if [[ "$needs_ledger" -eq 1 ]]; then
+  node scripts/migrate-session-drain-ledger.mts
+fi
 record_key="$(read_ledger_key)"
 if [[ "$record_key" != "ACTIVITY-V1" ]]; then
   echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
   exit 1
 fi
+if [[ "$needs_priority_order" -eq 1 ]]; then
+  node scripts/migrate-session-priority-order.mts
+fi
+priority_order_record_key="$(read_priority_order_key)"
+if [[ "$priority_order_record_key" != "READY-V1" ]]; then
+  echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
+  exit 1
+fi
 finish_rule_restoration
-echo "AWS update complete; the session-drain activity ledger is ready."
+echo "AWS update complete; session-drain ledger and priority-order index are ready."

@@ -133,5 +133,42 @@ describe("session cursor primitives", () => {
     expect(() => decodeDurableSessionCursor(state, malformed, base)).toThrow(
       InvalidSessionCursorError,
     );
+
+    const invalidCursors: unknown[] = [
+      null,
+      [],
+      { ...cursor, version: 3 },
+      { ...cursor, sort: "oldest" },
+      { ...base, position: { ...cursor.position, priority: Number.NaN } },
+      { ...cursor, position: { ...cursor.position, id: 1 } },
+      { ...cursor, partitions: null },
+      { ...cursor, partitions: [null] },
+      { ...cursor, partitions: [{ id: "", checkpoint: null, exhausted: false }] },
+      {
+        ...cursor,
+        partitions: [
+          { id: "duplicate", checkpoint: null, exhausted: false },
+          { id: "duplicate", checkpoint: null, exhausted: false },
+        ],
+      },
+      { ...cursor, partitions: [{ id: "partition", checkpoint: null, exhausted: "no" }] },
+      { ...cursor, partitions: [{ id: "partition", checkpoint: [], exhausted: false }] },
+    ];
+    for (const invalidCursor of invalidCursors) {
+      expect(() =>
+        decodeDurableSessionCursor(state, encodeSessionCursor(state, invalidCursor as never), base),
+      ).toThrow(InvalidSessionCursorError);
+    }
+    expect(() => decodeDurableSessionCursor(state, "bad", base)).toThrow(InvalidSessionCursorError);
+    expect(() => decodeDurableSessionCursor(state, `${encoded}x`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
+    const invalidJson = Buffer.from("{", "utf8").toString("base64url");
+    const signature = createHmac("sha256", state.sessionCursorSecret)
+      .update(invalidJson)
+      .digest("base64url");
+    expect(() => decodeDurableSessionCursor(state, `${invalidJson}.${signature}`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
   });
 });

@@ -14,6 +14,20 @@ function foundationTemplate(
 }
 
 describe("AutoHarnessFoundationStack", () => {
+  it("stages only the first priority index for an existing Sessions table", () => {
+    const template = foundationTemplate({ sessionPriorityIndexStage: "status" });
+    const sessions = template.findResources("AWS::DynamoDB::Table", {
+      Properties: { TableName: "AutoHarness-Sessions" },
+    });
+    const indexes = Object.values(sessions)[0]?.Properties?.GlobalSecondaryIndexes as
+      | Array<{ IndexName?: string }>
+      | undefined;
+    expect(indexes?.map((index) => index.IndexName)).toContain("statusShard-priorityOrder");
+    expect(indexes?.map((index) => index.IndexName)).not.toContain(
+      "statusShard-repositoryPriorityOrder",
+    );
+  });
+
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
@@ -52,6 +66,22 @@ describe("AutoHarnessFoundationStack", () => {
           KeySchema: [
             { AttributeName: "statusShard", KeyType: "HASH" },
             { AttributeName: "queueOrder", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
+          IndexName: "statusShard-priorityOrder",
+          KeySchema: [
+            { AttributeName: "statusShard", KeyType: "HASH" },
+            { AttributeName: "priorityOrder", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
+          IndexName: "statusShard-repositoryPriorityOrder",
+          KeySchema: [
+            { AttributeName: "statusShard", KeyType: "HASH" },
+            { AttributeName: "repositoryPriorityOrder", KeyType: "RANGE" },
           ],
           Projection: { ProjectionType: "ALL" },
         },

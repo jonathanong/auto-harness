@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "deploy": "node ../../scripts/aws-deployment.mts deploy",
     "update": "node ../../scripts/aws-deployment.mts update",
+    "priority-index-status": "node ../../scripts/aws-deployment.mts priority-index-status",
+    "priority-index-both": "node ../../scripts/aws-deployment.mts priority-index-both",
     "teardown": "node ../../scripts/aws-deployment.mts teardown",
     "purge": "node ../../scripts/aws-deployment.mts purge",
     "synth": "cdk synth --app 'node src/cli.ts'",

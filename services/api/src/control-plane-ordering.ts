@@ -1,11 +1,56 @@
+import { createHash } from "node:crypto";
+
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
 /** GSI that stores `compareSessionsForQueue` as an ascending sort key. */
 export const SESSIONS_QUEUE_ORDER_INDEX = "statusShard-queueOrder";
 export const SESSIONS_STATUS_CREATED_INDEX = "statusShard-createdAt";
+/** GSI used by durable session list priority ordering (ascending key order). */
+export const SESSIONS_PRIORITY_ORDER_INDEX = "statusShard-priorityOrder";
+/** GSI used by durable repository-scoped priority listing. */
+export const SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX = "statusShard-repositoryPriorityOrder";
 
 /** Matches `validateCreateSessionInput` so inverted priorities stay non-negative. */
 export const QUEUE_ORDER_PRIORITY_OFFSET = 10_000;
+
+/**
+ * Encode the list comparator's ascending priority order for DynamoDB.
+ *
+ * Unlike `queueOrder`, this key is for the REST list comparator: priority,
+ * createdAt, and id all sort ascending.  A reverse Dynamo query therefore
+ * gives the exact `priority_desc` order as well.
+ */
+export function priorityOrderKey(
+  session: Pick<SessionRecord, "id" | "priority" | "createdAt">,
+): string {
+  const normalized = Math.min(
+    QUEUE_ORDER_PRIORITY_OFFSET * 2,
+    Math.max(0, Math.round(QUEUE_ORDER_PRIORITY_OFFSET + session.priority)),
+  );
+  return `${String(normalized).padStart(5, "0")}#${session.createdAt}#${session.id}`;
+}
+
+/** Fixed-width SHA-256 prefix used to keep repository priority ranges bounded. */
+export function repositoryPriorityOrderPrefix(repositoryId: string): string {
+  return createHash("sha256").update(repositoryId).digest("hex");
+}
+
+/** Composite sort key for the repository-priority GSI. */
+export function repositoryPriorityOrderKey(
+  repositoryId: string,
+  session: Pick<SessionRecord, "id" | "priority" | "createdAt">,
+): string {
+  return `${repositoryPriorityOrderPrefix(repositoryId)}#${priorityOrderKey(session)}`;
+}
+
+/** Inclusive sort-key bounds for one repository's priority range. */
+export function repositoryPriorityOrderRange(repositoryId: string): {
+  start: string;
+  end: string;
+} {
+  const prefix = repositoryPriorityOrderPrefix(repositoryId);
+  return { start: `${prefix}#`, end: `${prefix}#\uffff` };
+}
 
 export function compareSessionsForQueue(
   a: Pick<SessionRecord, "id" | "priority" | "createdAt">,

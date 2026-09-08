@@ -26,6 +26,7 @@ import {
   backfillQueuedSessionQueueOrder,
   ensureSessionsQueueOrderIndex,
 } from "./ensure-queue-order-index.ts";
+import { ensureSessionsPriorityIndexes } from "./ensure-session-priority-index.ts";
 import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsRepositoryIndex,
@@ -93,6 +94,8 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "statusShard", AttributeType: ScalarAttributeType.S },
       { AttributeName: "createdAt", AttributeType: ScalarAttributeType.S },
       { AttributeName: "queueOrder", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "priorityOrder", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "repositoryPriorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
@@ -114,6 +117,22 @@ export async function ensureControlPlaneTables(opts: {
         Projection: { ProjectionType: ProjectionType.ALL },
       },
       {
+        IndexName: "statusShard-priorityOrder",
+        KeySchema: [
+          { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "priorityOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "statusShard-repositoryPriorityOrder",
+        KeySchema: [
+          { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "repositoryPriorityOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
         IndexName: "repositoryId-createdAt",
         KeySchema: [
           { AttributeName: "repositoryId", KeyType: KeyType.HASH },
@@ -126,6 +145,7 @@ export async function ensureControlPlaneTables(opts: {
 
   await ensureSessionsRepositoryIndex(ddb, names.sessions);
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
+  await ensureSessionsPriorityIndexes(ddb, names.sessions);
   await backfillQueuedSessionQueueOrder(DynamoDBDocumentClient.from(ddb), names.sessions);
 
   await createIfMissing(ddb, {

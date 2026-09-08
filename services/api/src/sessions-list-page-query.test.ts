@@ -5,6 +5,11 @@ import { describe, expect, it } from "vitest";
 import { InvalidSessionCursorError } from "./control-plane-session-cursor.ts";
 import { listSessionsPageFromStorage } from "./db/plane-storage-sessions-list-page.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
+import {
+  priorityOrderKey,
+  repositoryPriorityOrderKey,
+  repositoryPriorityOrderRange,
+} from "./control-plane-ordering.ts";
 
 function row(id: string, createdAt: string, source = "ui", repositoryId = "repo-1") {
   return {
@@ -108,7 +113,7 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands[0]?.input.ScanIndexForward).toBe(true);
   });
 
-  it("binds createdAt on follow-up pages and uses the queue-order index for priority sorts", async () => {
+  it("binds createdAt on follow-up pages and uses the priority index for priority sorts", async () => {
     const commands: QueryCommand[] = [];
     const ctx = {
       doc: {
@@ -150,8 +155,9 @@ describe("listSessionsPageFromStorage", () => {
       concurrencyId: null,
       scheduleId: null,
     });
-    expect(commands[0]?.input.IndexName).toBe("statusShard-queueOrder");
-    expect(commands[0]?.input.ExpressionAttributeNames).toEqual({ "#key": "statusShard" });
+    expect(commands[0]?.input.IndexName).toBe("statusShard-priorityOrder");
+    expect(commands[0]?.input.KeyConditionExpression).toBe("statusShard = :key");
+    expect(commands[0]?.input.ScanIndexForward).toBe(false);
   });
 
   it("binds createdAt on oldest follow-up pages and queries each repository id", async () => {
@@ -274,6 +280,36 @@ describe("listSessionsPageFromStorage", () => {
         status: null,
         repositoryId: "repo-1",
         repositoryIds: ["repo-2"],
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+      }),
+    ).resolves.toEqual({ items: [], continuation: null });
+  });
+
+  it("rechecks repository identity after a scoped priority query", async () => {
+    const wrongRepository = {
+      id: "wrong-repository-row",
+      repositoryId: "repo-other",
+      status: "queued",
+      queueShard: 0,
+      priority: 10,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const ctx = {
+      doc: { send: async () => ({ Items: [wrongRepository] }) },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 1,
+        sort: "priority_desc",
+        shardCount: 1,
+        status: "queued",
+        repositoryId: "repo-expected",
+        repositoryIds: null,
         hostId: null,
         source: null,
         concurrencyId: null,
@@ -547,5 +583,141 @@ describe("listSessionsPageFromStorage", () => {
         },
       }),
     ).rejects.toThrow(InvalidSessionCursorError);
+  });
+
+  it("uses the priority index and binds unscoped priority cursors", async () => {
+    const commands: QueryCommand[] = [];
+    const cursor = { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 };
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return { Items: [] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "priority_asc",
+      shardCount: 1,
+      status: "queued",
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+      position: cursor,
+    });
+
+    expect(commands[0]?.input).toMatchObject({
+      IndexName: "statusShard-priorityOrder",
+      KeyConditionExpression: "statusShard = :key AND priorityOrder > :sortValue",
+      ExpressionAttributeValues: {
+        ":key": "queued#0",
+        ":sortValue": priorityOrderKey(cursor),
+      },
+      ScanIndexForward: true,
+      Limit: 2,
+    });
+  });
+
+  it("uses the repository priority range for scoped status pages", async () => {
+    const commands: QueryCommand[] = [];
+    const cursor = { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 };
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return { Items: [] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const range = repositoryPriorityOrderRange("repo-1");
+
+    await listSessionsPageFromStorage(ctx, {
+      limit: 1,
+      sort: "priority_desc",
+      shardCount: 1,
+      status: "running",
+      repositoryId: "repo-1",
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+      position: cursor,
+    });
+
+    expect(commands[0]?.input).toMatchObject({
+      IndexName: "statusShard-repositoryPriorityOrder",
+      KeyConditionExpression:
+        "statusShard = :key AND repositoryPriorityOrder BETWEEN :sortStart AND :sortEnd",
+      ExpressionAttributeValues: {
+        ":key": "running#0",
+        ":sortStart": range.start,
+        ":sortEnd": repositoryPriorityOrderKey("repo-1", cursor),
+      },
+      ScanIndexForward: false,
+      Limit: 2,
+    });
+  });
+
+  it("continues priority pages with the exact priority index key", async () => {
+    const commands: QueryCommand[] = [];
+    const session = { ...row("priority", "2026-01-02T00:00:00.000Z"), priority: 7 };
+    const checkpoint = {
+      id: session.id,
+      statusShard: "queued#0",
+      priorityOrder: priorityOrderKey(session),
+    };
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          return commands.length === 1
+            ? { Items: [{ ...session, ...checkpoint }], LastEvaluatedKey: checkpoint }
+            : { Items: [] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const query = {
+      limit: 1,
+      sort: "priority_asc" as const,
+      shardCount: 1,
+      status: "queued" as const,
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    };
+
+    const first = await listSessionsPageFromStorage(ctx, query);
+    expect(first).toMatchObject({ items: [{ id: "priority" }] });
+    expect(first.continuation?.[0]?.checkpoint).toEqual(checkpoint);
+    await listSessionsPageFromStorage(ctx, {
+      ...query,
+      continuation: {
+        version: 2,
+        sort: "priority_asc",
+        query: {
+          repositoryId: null,
+          status: "queued",
+          hostId: null,
+          concurrencyId: null,
+          scheduleId: null,
+          source: null,
+        },
+        scope: { repositoryIds: null, hostId: null },
+        partitions: first.continuation!,
+      },
+    });
+    expect(commands[1]?.input.ExclusiveStartKey).toEqual(checkpoint);
   });
 });

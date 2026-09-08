@@ -13,7 +13,11 @@ import type {
   UserRole,
 } from "@auto-harness/shared";
 
-import { queueOrderKey } from "../control-plane-ordering.ts";
+import {
+  priorityOrderKey,
+  queueOrderKey,
+  repositoryPriorityOrderKey,
+} from "../control-plane-ordering.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import type { SessionRecord } from "./types.ts";
@@ -290,6 +294,8 @@ export function sessionToItem(session: SessionRecord): Record<string, unknown> {
     ...session,
     statusShard: statusShardAttr(session.status, session.queueShard),
     queueOrder: queueOrderKey(session),
+    priorityOrder: priorityOrderKey(session),
+    repositoryPriorityOrder: repositoryPriorityOrderKey(session.repositoryId, session),
   };
 }
 
@@ -305,7 +311,13 @@ export function normalizeTargetDisplayNames(
 }
 
 export function itemToSession(item: Record<string, unknown>): SessionRecord {
-  const { statusShard: _ss, queueOrder: _qo, ...rest } = item;
+  const {
+    statusShard: _ss,
+    queueOrder: _qo,
+    priorityOrder: _po,
+    repositoryPriorityOrder: _rpo,
+    ...rest
+  } = item;
   return normalizeTargetDisplayNames(rest) as SessionRecord;
 }
 

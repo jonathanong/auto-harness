@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one catalog defines every durable table and index. */
 /**
  * DynamoDB table definitions for Auto Harness (docs/plan.md §4, aws.md).
  * The CDK foundation stack consumes this catalog, and local DynamoDB setup
@@ -52,6 +53,18 @@ export const DYNAMO_TABLES: TableDef[] = [
         name: "statusShard-queueOrder",
         partitionKey: { name: "statusShard", type: "S" },
         sortKey: { name: "queueOrder", type: "S" },
+      },
+      {
+        // Durable list priority: ascending priority, createdAt, id.
+        name: "statusShard-priorityOrder",
+        partitionKey: { name: "statusShard", type: "S" },
+        sortKey: { name: "priorityOrder", type: "S" },
+      },
+      {
+        // Repository-scoped durable list priority within a status shard.
+        name: "statusShard-repositoryPriorityOrder",
+        partitionKey: { name: "statusShard", type: "S" },
+        sortKey: { name: "repositoryPriorityOrder", type: "S" },
       },
       {
         name: "repositoryId-createdAt",
