@@ -15,7 +15,10 @@ export async function disconnectScheduledMainCheckouts(
   requeued: string[],
 ): Promise<void> {
   const storage = state.storage!;
-  const sessions = await storage.listActiveSessionsByHost(hostId);
+  const sessions =
+    typeof storage.listActiveSessionsByHost === "function"
+      ? await storage.listActiveSessionsByHost(hostId)
+      : [...state.sessions.values()].filter((session) => session.hostId === hostId);
   for (const session of sessions) {
     if (
       !session.mainCheckoutLease ||

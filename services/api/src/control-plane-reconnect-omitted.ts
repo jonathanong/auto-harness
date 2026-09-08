@@ -94,7 +94,9 @@ export async function reconcileHostOwnedSessions(
 ): Promise<string[]> {
   const requeued: string[] = [];
   const activeSessions = state.storage
-    ? await state.storage.listActiveSessionsByHost(hostId)
+    ? typeof state.storage.listActiveSessionsByHost === "function"
+      ? await state.storage.listActiveSessionsByHost(hostId)
+      : [...state.sessions.values()].filter((session) => session.hostId === hostId)
     : [...state.sessions.values()].filter((session) => session.hostId === hostId);
   await requeueOmittedWorktreeSessions(
     state,

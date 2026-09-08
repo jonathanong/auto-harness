@@ -648,7 +648,9 @@ export async function releaseTimedOutProviderAccountLeasesForHost(
 ): Promise<string[]> {
   const released: string[] = [];
   const candidates = state.storage
-    ? await state.storage.listActiveSessionsByHost(hostId)
+    ? typeof state.storage.listActiveSessionsByHost === "function"
+      ? await state.storage.listActiveSessionsByHost(hostId)
+      : [...state.sessions.values()]
     : [...state.sessions.values()];
   for (const session of candidates) {
     if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;

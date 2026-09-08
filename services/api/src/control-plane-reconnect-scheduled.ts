@@ -55,7 +55,7 @@ export async function requeueOmittedScheduled(
   const storage = state.storage;
   const sessions =
     activeSessions ??
-    (storage
+    (storage && typeof storage.listActiveSessionsByHost === "function"
       ? await storage.listActiveSessionsByHost(hostId)
       : [...state.sessions.values()].filter((session) => session.hostId === hostId));
   for (const session of sessions) {
