@@ -99,6 +99,7 @@ describe("CDK table catalog", () => {
       true,
     );
     expect(sessions?.gsis?.some((g) => g.name === "repositoryId-createdAt")).toBe(true);
+    expect(sessions?.gsis?.some((g) => g.name === "activeHostId-activeHostOrder")).toBe(true);
     expect(statusShardKey("queued", 2)).toBe("queued#2");
     expect(describeControlPlane().tables).toBe(DYNAMO_TABLES);
     expect(getServiceName()).toBe("@auto-harness/cdk");

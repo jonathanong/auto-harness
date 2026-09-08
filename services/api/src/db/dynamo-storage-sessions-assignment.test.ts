@@ -10,12 +10,14 @@ import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
 import {
   deleteWorktree,
   getWorktree,
+  listActiveSessionsByHost,
   listAllWorktrees,
   listWorktreesForRepo,
   putSession,
   putWorktree,
   putWorktreeFenced,
   tryAssignSession,
+  tryRequeueSession,
   tryClaimWorktree,
 } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -241,6 +243,26 @@ describe("DynamoDB Local session assignment", () => {
       }),
     ).toBe(false);
     expect((await getWorktree(ctx, "stale-inventory-worktree"))?.status).toBe("idle");
+    await expect(listActiveSessionsByHost(ctx, "host")).resolves.toMatchObject([
+      {
+        id: "assignment",
+        activeHostId: "host",
+        activeHostOrder: "2025-01-01T00:00:00.000Z#assignment",
+      },
+    ]);
+    expect(
+      await tryRequeueSession(ctx, {
+        sessionId: "assignment",
+        worktreeId: "assignment-worktree",
+        attemptId: "attempt",
+        queueShard: 0,
+        expectedHostId: "host",
+        expectedConnectionId: "one",
+        fence: { hostId: "host", connectionId: "one" },
+        hostAssignmentLease: { hostId: "host" },
+      }),
+    ).toBe(true);
+    expect(await listActiveSessionsByHost(ctx, "host")).toEqual([]);
   });
 
   it("rejects a scheduled main-checkout claim after queue expiry", async () => {
@@ -296,6 +318,13 @@ describe("DynamoDB Local session assignment", () => {
     expect(await tryAssignMainCheckoutSession(ctx, { ...claim, sessionId: "live-scheduled" })).toBe(
       true,
     );
+    await expect(listActiveSessionsByHost(ctx, hostId)).resolves.toMatchObject([
+      {
+        id: "live-scheduled",
+        activeHostId: hostId,
+        activeHostOrder: `${now}#live-scheduled`,
+      },
+    ]);
   });
 
   it("refuses a provider lease slot at or above the durable account cap", async () => {

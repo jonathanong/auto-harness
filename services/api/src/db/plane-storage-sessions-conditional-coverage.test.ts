@@ -213,7 +213,7 @@ describe("session storage conditional outcomes", () => {
     );
   });
 
-  it("omits the legacy count when claiming a host slot without a prior count", async () => {
+  it("counts an unbounded host assignment without a prior count", async () => {
     const send = vi.fn().mockResolvedValue({});
     await expect(
       tryAssignSession(ctx(send), {
@@ -233,8 +233,6 @@ describe("session storage conditional outcomes", () => {
           worktreeId: "worktree",
           attemptId: "attempt",
         },
-        hostAssignmentLease: { hostId: "host" },
-        hostAssignmentCap: 1,
         queueShard: 0,
       }),
     ).resolves.toBe(true);
@@ -244,6 +242,18 @@ describe("session storage conditional outcomes", () => {
         Update: expect.objectContaining({
           TableName: "HostLocks",
           UpdateExpression: expect.stringContaining("assignmentCount"),
+          ConditionExpression: expect.not.stringContaining(":cap"),
+          ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 0 }),
+        }),
+      }),
+    );
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "Sessions",
+          ExpressionAttributeValues: expect.objectContaining({
+            ":hostAssignmentLease": { hostId: "host" },
+          }),
         }),
       }),
     );
@@ -281,6 +291,51 @@ describe("session storage conditional outcomes", () => {
           TableName: "HostLocks",
           UpdateExpression: expect.stringContaining("assignmentCount"),
           ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 1, ":cap": 2 }),
+        }),
+      }),
+    );
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "Sessions",
+          ExpressionAttributeValues: expect.objectContaining({
+            ":hostAssignmentLease": { hostId: "host" },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("counts an unbounded main-checkout assignment", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryAssignMainCheckoutSession(ctx(send), {
+        sessionId: "session",
+        hostId: "host",
+        hostInventoryVersion: null,
+        repositoryId: "repo",
+        connectionId: "connection",
+        now: "now",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: null,
+          attemptId: "attempt",
+        },
+        queueShard: 0,
+        attemptId: "attempt",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "HostLocks",
+          UpdateExpression: expect.stringContaining("assignmentCount"),
+          ConditionExpression: expect.not.stringContaining(":cap"),
+          ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 0 }),
         }),
       }),
     );

@@ -39,14 +39,14 @@ function stateWithStorage(methods: Record<string, unknown> = {}) {
 
 describe("scheduled registration rollback branch coverage", () => {
   it("skips non-running, unleased, and unassigned sessions", async () => {
-    const state = stateWithStorage({ listSessionsByHost: async () => [] });
+    const state = stateWithStorage({ listActiveSessionsByHost: async () => [] });
     const rows = [
       session({ id: "queued", status: "queued" }),
       session({ id: "no-lease", mainCheckoutLease: undefined }),
       session({ id: "no-assignment", assignmentConnectionId: undefined }),
     ];
     state.storage = {
-      listSessionsByHost: async () => rows,
+      listActiveSessionsByHost: async () => rows,
       markMainCheckoutReconnectPending: async () => false,
       releaseMainCheckoutSession: async () => false,
       getSession: async () => null,
@@ -57,7 +57,7 @@ describe("scheduled registration rollback branch coverage", () => {
 
   it("protects a candidate-owned run during replacement rollback", async () => {
     const state = stateWithStorage({
-      listSessionsByHost: async () => [session({ assignmentConnectionId: "candidate" })],
+      listActiveSessionsByHost: async () => [session({ assignmentConnectionId: "candidate" })],
       markMainCheckoutReconnectPending: async () => true,
     });
     await protectScheduledRunsForFailedRegistration(state, "host");
@@ -66,10 +66,10 @@ describe("scheduled registration rollback branch coverage", () => {
     });
   });
 
-  it("falls back to the local session map and preserves an existing deadline", async () => {
+  it("preserves an existing deadline from the active-claim query", async () => {
     const state = createControlPlaneState({ now: () => NOW, reconnectGraceMs: 100 });
-    state.storage = {} as never;
     const row = session({ reconnectDeadlineAt: "later" });
+    state.storage = { listActiveSessionsByHost: async () => [row] } as never;
     state.sessions.set(row.id, row);
     await protectScheduledRunsForFailedRegistration(state, "host");
     expect(state.sessions.get(row.id)).toEqual(row);
@@ -78,7 +78,7 @@ describe("scheduled registration rollback branch coverage", () => {
   it("marks an acknowledged run for reconnect when no deadline exists", async () => {
     let marked: Record<string, unknown> | undefined;
     const state = stateWithStorage({
-      listSessionsByHost: async () => [session()],
+      listActiveSessionsByHost: async () => [session()],
       markMainCheckoutReconnectPending: async (input: Record<string, unknown>) => {
         marked = input;
         return true;
@@ -98,7 +98,7 @@ describe("scheduled registration rollback branch coverage", () => {
   it("falls back to release when marking fails, queues the run, and clears its ACK", async () => {
     const releaseLegacyHostAssignment = vi.fn(async () => false);
     const state = stateWithStorage({
-      listSessionsByHost: async () => [session()],
+      listActiveSessionsByHost: async () => [session()],
       markMainCheckoutReconnectPending: async () => false,
       releaseMainCheckoutSession: async () => true,
       getSession: async () => null,
@@ -118,7 +118,7 @@ describe("scheduled registration rollback branch coverage", () => {
 
   it("does nothing when release loses the lease, but throws if the lease is still current", async () => {
     const unchanged = stateWithStorage({
-      listSessionsByHost: async () => [session()],
+      listActiveSessionsByHost: async () => [session()],
       markMainCheckoutReconnectPending: async () => false,
       releaseMainCheckoutSession: async () => false,
       getSession: async () => null,
@@ -128,7 +128,7 @@ describe("scheduled registration rollback branch coverage", () => {
     ).resolves.toBeUndefined();
 
     const current = stateWithStorage({
-      listSessionsByHost: async () => [session()],
+      listActiveSessionsByHost: async () => [session()],
       markMainCheckoutReconnectPending: async () => false,
       releaseMainCheckoutSession: async () => false,
       getSession: async () => session(),

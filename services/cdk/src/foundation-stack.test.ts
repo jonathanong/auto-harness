@@ -93,6 +93,14 @@ describe("AutoHarnessFoundationStack", () => {
           ],
           Projection: { ProjectionType: "ALL" },
         },
+        {
+          IndexName: "activeHostId-activeHostOrder",
+          KeySchema: [
+            { AttributeName: "activeHostId", KeyType: "HASH" },
+            { AttributeName: "activeHostOrder", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "KEYS_ONLY" },
+        },
       ]),
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {

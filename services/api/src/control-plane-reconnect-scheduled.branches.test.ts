@@ -97,7 +97,7 @@ describe("scheduled reconnect branch coverage", () => {
     const calls: Record<string, unknown>[] = [];
     const releaseLegacyHostAssignment = vi.fn(async () => false);
     durable.storage = {
-      listSessionsByHost: async () => [
+      listActiveSessionsByHost: async () => [
         row,
         session({ id: "reported" }),
         session({ id: "no-lease", mainCheckoutLease: undefined }),

@@ -35,13 +35,17 @@ function state() {
 }
 
 describe("scheduled disconnect branch coverage", () => {
-  it("uses the local map and skips unrelated sessions", async () => {
+  it("uses the active-claim query and skips unrelated sessions", async () => {
     const current = state();
     current.sessions.set("s", session({ ackReceivedAt: undefined }));
     current.sessions.set("queued", session({ id: "queued", status: "queued" }));
     current.sessions.set("other-host", session({ id: "other-host", hostId: "other" }));
     const requeued: string[] = [];
-    current.storage = { releaseMainCheckoutSession: async () => true } as never;
+    current.storage = {
+      listActiveSessionsByHost: async (hostId: string) =>
+        [...current.sessions.values()].filter((candidate) => candidate.hostId === hostId),
+      releaseMainCheckoutSession: async () => true,
+    } as never;
     await disconnectScheduledMainCheckouts(current, "host", "old", "gone", requeued);
     expect(requeued).toEqual(["s"]);
     expect(current.sessions.get("s")).toMatchObject({ status: "queued", hostId: null });
@@ -52,7 +56,7 @@ describe("scheduled disconnect branch coverage", () => {
     const calls: Record<string, unknown>[] = [];
     const releaseLegacyHostAssignment = vi.fn(async () => false);
     current.storage = {
-      listSessionsByHost: async () => [session({ ackReceivedAt: undefined })],
+      listActiveSessionsByHost: async () => [session({ ackReceivedAt: undefined })],
       releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
         calls.push(input);
         return true;
@@ -79,7 +83,7 @@ describe("scheduled disconnect branch coverage", () => {
     const current = state();
     const row = session({ ackReceivedAt: undefined });
     current.storage = {
-      listSessionsByHost: async () => [row],
+      listActiveSessionsByHost: async () => [row],
       releaseMainCheckoutSession: async () => false,
     } as never;
     const requeued: string[] = [];
@@ -93,7 +97,7 @@ describe("scheduled disconnect branch coverage", () => {
     const row = session({ ackReceivedAt: NOW });
     let marks = 0;
     current.storage = {
-      listSessionsByHost: async () => [row],
+      listActiveSessionsByHost: async () => [row],
       markMainCheckoutReconnectPending: async (input: Record<string, unknown>) => {
         marks++;
         expect(input).toMatchObject({

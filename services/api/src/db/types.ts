@@ -39,6 +39,10 @@ export type SessionRecord = {
   ref?: string;
   worktreeId?: string | null;
   hostId?: string | null;
+  /** Sparse active host-claim index; absent once every host lease is released. */
+  activeHostId?: string;
+  /** Unique ordering key for the sparse active host-claim index. */
+  activeHostOrder?: string;
   concurrencyId?: string | undefined;
   /** Schedule provenance; distinct from the possibly shared concurrency identity. */
   scheduleId?: string;

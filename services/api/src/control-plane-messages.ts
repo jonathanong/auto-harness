@@ -1083,6 +1083,8 @@ async function applySessionStatusDurable(
         ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
         ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       };
+      delete next.activeHostId;
+      delete next.activeHostOrder;
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
       delete next.ackReceivedAt;
@@ -1179,6 +1181,9 @@ async function applySessionStatusDurable(
       hostId: null,
       suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
     });
+    const queued = state.sessions.get(session.id)!;
+    delete queued.activeHostId;
+    delete queued.activeHostOrder;
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };

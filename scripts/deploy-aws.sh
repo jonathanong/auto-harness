@@ -123,6 +123,28 @@ session_priority_index_state() {
     --output text
 }
 
+read_sessions_table_state() {
+  local output status
+  set +e
+  output="$(aws dynamodb describe-table \
+    --region "$AWS_REGION" \
+    --table-name "$sessions_table" \
+    --query 'Table.TableStatus' \
+    --output text 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$output"
+    return 0
+  fi
+  if [[ "$output" == *"ResourceNotFoundException"* ]]; then
+    printf '%s' MISSING
+    return 0
+  fi
+  echo "Could not inspect the Sessions table: $output" >&2
+  return 1
+}
+
 wait_for_session_priority_index() {
   local index_name="$1" status=""
   for _ in $(seq 1 300); do
@@ -285,6 +307,14 @@ verify_no_active_sessions() {
 
 ledger_record_key="$(read_ledger_key)"
 priority_order_record_key="$(read_priority_order_key)"
+sessions_table_state="$(read_sessions_table_state)"
+if [[ "$sessions_table_state" != "MISSING" ]]; then
+  active_host_index_state="$(session_priority_index_state "activeHostId-activeHostOrder")"
+  if [[ "$active_host_index_state" != "ACTIVE" ]]; then
+    echo "Existing Sessions table lacks an ACTIVE activeHostId-activeHostOrder index; deploy this breaking coordination schema to a fresh environment." >&2
+    exit 1
+  fi
+fi
 needs_ledger=0
 needs_priority_order=0
 if [[ "$ledger_record_key" != "ACTIVITY-V1" ]]; then needs_ledger=1; fi
@@ -297,6 +327,33 @@ fi
 if [[ "$confirm_first_ledger" -ne 1 && "$confirm_priority_order" -ne 1 && ! -t 0 ]]; then
   echo "Maintenance-fenced rollout requires confirmation; rerun with --yes-first-ledger or --yes-priority-order after disabling external session admission and waiting for active sessions to finish." >&2
   exit 1
+fi
+
+run_session_migrations() {
+  if [[ "$needs_ledger" -eq 1 ]]; then
+    node scripts/migrate-session-drain-ledger.mts
+  fi
+  local record_key
+  record_key="$(read_ledger_key)"
+  if [[ "$record_key" != "ACTIVITY-V1" ]]; then
+    echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
+    return 1
+  fi
+  if [[ "$needs_priority_order" -eq 1 ]]; then
+    node scripts/migrate-session-priority-order.mts
+  fi
+  priority_order_record_key="$(read_priority_order_key)"
+  if [[ "$priority_order_record_key" != "READY-V1" ]]; then
+    echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
+    return 1
+  fi
+}
+
+if [[ "$sessions_table_state" == "MISSING" ]]; then
+  pnpm --filter @auto-harness/cdk run update
+  run_session_migrations
+  echo "AWS update complete; fresh session storage and readiness markers are ready."
+  exit 0
 fi
 
 cron_rule="$(resolve_cron_rule_optional)"
@@ -425,21 +482,6 @@ if [[ -n "$original_rule_state" ]]; then
   rule_restore_pending=1
   trap restore_original_rule_on_exit EXIT
 fi
-if [[ "$needs_ledger" -eq 1 ]]; then
-  node scripts/migrate-session-drain-ledger.mts
-fi
-record_key="$(read_ledger_key)"
-if [[ "$record_key" != "ACTIVITY-V1" ]]; then
-  echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
-  exit 1
-fi
-if [[ "$needs_priority_order" -eq 1 ]]; then
-  node scripts/migrate-session-priority-order.mts
-fi
-priority_order_record_key="$(read_priority_order_key)"
-if [[ "$priority_order_record_key" != "READY-V1" ]]; then
-  echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
-  exit 1
-fi
+run_session_migrations
 finish_rule_restoration
 echo "AWS update complete; session-drain ledger and priority-order index are ready."

@@ -264,8 +264,25 @@ export function trackLogPersist(
   }, noop);
 }
 
-export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
+export function sessionForPersistence(session: SessionRecord): SessionRecord {
   const stored = { ...session };
+  const retainsActiveHostClaim =
+    stored.status === "running" ||
+    (stored.status === "cancelled" &&
+      (stored.worktreeId != null || stored.mainCheckoutLease === true)) ||
+    (stored.status === "timed_out" &&
+      (stored.providerAccountLease !== undefined ||
+        stored.hostAssignmentLease !== undefined ||
+        stored.timedOutHostId !== undefined));
+  if (!retainsActiveHostClaim) {
+    delete stored.activeHostId;
+    delete stored.activeHostOrder;
+  }
+  return stored;
+}
+
+export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
+  const stored = sessionForPersistence(session);
   state.sessions.set(session.id, stored);
   if (state.storage) {
     queueWrite(state, async (storage) => {
@@ -292,6 +309,8 @@ export function toPublic(state: ControlPlaneState, session: SessionRecord): Publ
   const {
     principalId: _principalId,
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
+    activeHostId: _activeHostId,
+    activeHostOrder: _activeHostOrder,
     ...publicSession
   } = session;
   return {

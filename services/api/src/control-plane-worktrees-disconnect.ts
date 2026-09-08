@@ -117,6 +117,8 @@ export async function offlineHostAndRequeueDurableImpl(
             assignmentConnectionId: __,
             reconnectDeadlineAt: ___,
             startedAt: ____,
+            activeHostId: _____,
+            activeHostOrder: ______,
             ...queuedSession
           } = latestSession;
           state.sessions.set(sessionId, {
@@ -163,13 +165,16 @@ export async function offlineHostAndRequeueDurableImpl(
     if (won) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(sessionId, {
+      const queued = {
         ...session,
-        status: "queued",
+        status: "queued" as const,
         worktreeId: null,
         hostId: null,
         errorMessage: reason,
-      });
+      };
+      delete queued.activeHostId;
+      delete queued.activeHostOrder;
+      state.sessions.set(sessionId, queued);
       state.pendingAcks.delete(sessionId);
       state.worktrees.set(wt.id, {
         ...wt,

@@ -157,7 +157,7 @@ describe("reconnect reconciliation", () => {
     };
     const calls: string[] = [];
     plane.state.storage = {
-      listWorktreesByHost: async () => [worktree],
+      listActiveSessionsByHost: async () => [session],
       listAllSessions: async () => [session],
       getSession: async () => session,
       getWorktree: async () => worktree,
@@ -181,7 +181,7 @@ describe("reconnect reconciliation", () => {
     const worktree = durableWorktree("wo", omitted.id);
     let requeueOptions: Record<string, unknown> | undefined;
     plane.state.storage = {
-      listWorktreesByHost: async () => [worktree],
+      listActiveSessionsByHost: async () => [omitted],
       getSession: async () => omitted,
       getWorktree: async () => worktree,
       tryRequeueSession: async (options: Record<string, unknown>) => {
@@ -210,7 +210,7 @@ describe("reconnect reconciliation", () => {
     ];
     const calls: Array<Record<string, unknown>> = [];
     plane.state.storage = {
-      listWorktreesByHost: async () => rows,
+      listActiveSessionsByHost: async () => [reported, omitted, failed],
       listAllSessions: async () => [
         reported,
         omitted,
@@ -298,6 +298,7 @@ describe("reconnect reconciliation", () => {
       },
       getWorktree: async () => (++worktreeReads === 1 ? busyBeforeSweep : idleInventory),
       listWorktreesByHost: async () => [busyBeforeSweep],
+      listActiveSessionsByHost: async () => [],
       tryRegisterHost: async () => (calls.push("lease"), true),
       getHostInventory: async () => null,
       putWorktreeFenced: async () => (calls.push("inventory"), true),
@@ -415,6 +416,7 @@ describe("reconnect reconciliation", () => {
       },
       getWorktree: async () => (++worktreeReads === 1 ? preSweepWorktree : inventory),
       listWorktreesByHost: async () => [preSweepWorktree],
+      listActiveSessionsByHost: async () => [],
       tryRegisterHost: async () => (calls.push("lease:A"), true),
       getHostInventory: async () => null,
       putWorktreeFenced: async () => (calls.push("inventory:A"), true),
@@ -461,7 +463,7 @@ describe("reconnect reconciliation", () => {
     const worktree = durableWorktree("w", "legacy");
     let confirmed = 0;
     durable.state.storage = {
-      listWorktreesByHost: async () => [worktree],
+      listActiveSessionsByHost: async () => [],
       getSession: async () => legacy,
       getWorktree: async () => worktree,
       confirmReconnect: async (opts: { deadlineAt?: string }) => {

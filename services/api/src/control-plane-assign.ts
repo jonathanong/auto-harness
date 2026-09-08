@@ -8,7 +8,7 @@ import {
 import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { toPublic } from "./control-plane-state.ts";
+import { sessionForPersistence, toPublic } from "./control-plane-state.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
@@ -264,11 +264,11 @@ export async function assignQueuedDurable(
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
           ...(route.providerId ? { providerId: route.providerId } : {}),
           ...(lease ? { providerAccountLease: lease } : {}),
+          hostAssignmentLease: { hostId: candidate.hostId },
+          legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
           ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
             ? {
-                hostAssignmentLease: { hostId: candidate.hostId },
                 hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments,
-                legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
               }
             : {}),
           queueShard: session.queueShard,
@@ -299,9 +299,7 @@ export async function assignQueuedDurable(
         },
         attemptId,
         ...(lease ? { providerAccountLease: lease } : {}),
-        ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
-          ? { hostAssignmentLease: { hostId: candidate.hostId } }
-          : {}),
+        hostAssignmentLease: { hostId: candidate.hostId },
       };
       clearAbandonedUsageLimitRetryFields(nextSession);
       const nextWorktree = {
@@ -442,8 +440,9 @@ function persistExpired(
     );
     return;
   }
-  state.sessions.set(session.id, { ...session });
-  if (state.storage) void state.storage.putSession({ ...session });
+  const stored = sessionForPersistence(session);
+  state.sessions.set(session.id, stored);
+  if (state.storage) void state.storage.putSession(stored);
 }
 
 /** Invariant 2: requeue sessions that never acked. */
@@ -579,6 +578,8 @@ export async function enforceAckDeadlinesDurable(
         }
       : queueReconnectSession(session, reason);
     delete queued.providerAccountLease;
+    delete queued.activeHostId;
+    delete queued.activeHostOrder;
     state.sessions.set(sessionId, queued);
     if (!pending.worktreeId) releaseScheduledLeaseLocal(state, session);
     state.pendingAcks.delete(sessionId);

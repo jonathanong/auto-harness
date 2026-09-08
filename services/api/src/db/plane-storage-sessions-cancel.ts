@@ -45,7 +45,7 @@ export async function cancelQueuedSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null${drainUpdate} REMOVE reconnectDeadlineAt, assignmentConnectionId`,
+        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null${drainUpdate} REMOVE reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder`,
         ConditionExpression: "#s = :queued",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {

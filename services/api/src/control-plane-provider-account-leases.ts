@@ -612,12 +612,16 @@ export async function releaseTimedOutProviderAccountLease(
     delete session.hostAssignmentLease;
     delete session.timedOutHostId;
     delete session.timedOutAssignmentConnectionId;
+    delete session.activeHostId;
+    delete session.activeHostOrder;
     return true;
   }
   if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
     releaseProviderAccountLease(state, session);
     delete session.timedOutHostId;
     delete session.timedOutAssignmentConnectionId;
+    delete session.activeHostId;
+    delete session.activeHostOrder;
     return true;
   }
   const released = await state.storage.releaseTimedOutProviderAccountLease({
@@ -633,6 +637,8 @@ export async function releaseTimedOutProviderAccountLease(
   delete session.hostAssignmentLease;
   delete session.timedOutHostId;
   delete session.timedOutAssignmentConnectionId;
+  delete session.activeHostId;
+  delete session.activeHostOrder;
   return true;
 }
 
@@ -641,9 +647,17 @@ export async function releaseTimedOutProviderAccountLeasesForHost(
   hostId: string,
 ): Promise<string[]> {
   const released: string[] = [];
-  for (const session of state.sessions.values()) {
+  const candidates = state.storage
+    ? typeof state.storage.listActiveSessionsByHost === "function"
+      ? await state.storage.listActiveSessionsByHost(hostId)
+      : [...state.sessions.values()]
+    : [...state.sessions.values()];
+  for (const session of candidates) {
     if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
-    if (await releaseTimedOutProviderAccountLease(state, session)) released.push(session.id);
+    if (await releaseTimedOutProviderAccountLease(state, session)) {
+      state.sessions.set(session.id, session);
+      released.push(session.id);
+    }
   }
   return released;
 }

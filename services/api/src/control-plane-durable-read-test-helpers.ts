@@ -35,6 +35,10 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
     list(state.sessions)
       .filter((session) => session.status === status && session.queueShard === shard)
       .slice(0, limit);
+  storage.listActiveSessionsByHost ??= async (hostId: string) =>
+    list(state.sessions).filter(
+      (session) => session.activeHostId === hostId && session.activeHostOrder !== undefined,
+    );
   storage.listLogs ??= async (id: string) => [...(state.logs.get(id) ?? [])].map(copy);
   storage.listAllWorktrees ??= async () => list(state.worktrees);
   storage.listWorktreesForRepo ??= async (id: string) =>
