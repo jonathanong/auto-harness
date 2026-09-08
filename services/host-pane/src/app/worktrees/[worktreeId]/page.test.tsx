@@ -20,6 +20,10 @@ describe("worktree detail route", () => {
       "/api/v1/worktrees?hostId=host%2Fone": { items: [{ id: "wt/one", status: "idle" }] },
       "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
       "/api/v1/sessions?hostId=host%2Fone&limit=100": {
+        items: [],
+        nextCursor: "worktree-next",
+      },
+      "/api/v1/sessions?hostId=host%2Fone&limit=100&cursor=worktree-next": {
         items: [
           { id: "included", status: "running", worktreeId: "wt/one" },
           { id: "excluded", status: "queued", worktreeId: "wt-two" },

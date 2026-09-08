@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@auto-harness/ui";
 
-import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { ApiError, apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 
@@ -65,8 +65,10 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
   }
   try {
     const query = new URLSearchParams({ scheduleId: schedule.id, limit: "100" });
-    const data = await apiGet<{ items: SessionHistory[] }>(`/api/v1/sessions?${query.toString()}`);
-    history = data.items ?? [];
+    const data = await apiGetFirstPageWithItems<SessionHistory>(
+      `/api/v1/sessions?${query.toString()}`,
+    );
+    history = data.items;
   } catch {
     history = [];
   }

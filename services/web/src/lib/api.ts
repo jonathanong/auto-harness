@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { apiBase, collectCursorPages } from "@auto-harness/shared";
+import { apiBase, collectCursorPages, MAX_CURSOR_PAGES } from "@auto-harness/shared";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -35,6 +35,31 @@ export async function apiGet<T>(
 /** Follow an opaque API cursor until the complete catalog has been loaded. */
 export async function apiGetAllPages<T>(path: string): Promise<T[]> {
   return collectCursorPages<T>(path, (requestPath) => apiGet(requestPath));
+}
+
+/**
+ * Load the first page containing items, preserving its continuation cursor.
+ *
+ * Session queries can return empty pages while a cursor is advancing through sparse
+ * partitions. Bounded displays (such as the dashboard) need to advance past those
+ * pages without fetching the entire history.
+ */
+export async function apiGetFirstPageWithItems<T>(
+  path: string,
+  hasMatchingItem: (item: T) => boolean = () => true,
+): Promise<{ items: T[]; nextCursor: string | null }> {
+  const seen = new Set<string>();
+  let requestPath = path;
+  for (let pageCount = 0; pageCount < MAX_CURSOR_PAGES; pageCount += 1) {
+    const page = await apiGet<{ items?: T[]; nextCursor?: string | null }>(requestPath);
+    const items = page.items ?? [];
+    const nextCursor = page.nextCursor ?? null;
+    if (items.some(hasMatchingItem) || nextCursor === null) return { items, nextCursor };
+    if (seen.has(nextCursor)) throw new Error(`repeated pagination cursor for ${path}`);
+    seen.add(nextCursor);
+    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(nextCursor)}`;
+  }
+  throw new Error(`pagination exceeded ${MAX_CURSOR_PAGES} pages for ${path}`);
 }
 
 async function incomingAuthHeaders(): Promise<Record<string, string> | undefined> {

@@ -31,7 +31,11 @@ describe("control repository detail route", () => {
           },
         ],
       },
-      "/api/v1/sessions?limit=100": {
+      "/api/v1/sessions?repositoryId=r-1&limit=100": {
+        items: [],
+        nextCursor: "sessions-next",
+      },
+      "/api/v1/sessions?repositoryId=r-1&limit=100&cursor=sessions-next": {
         items: [
           {
             id: "s-1",

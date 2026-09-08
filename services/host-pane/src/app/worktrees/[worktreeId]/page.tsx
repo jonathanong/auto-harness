@@ -9,7 +9,7 @@ import {
   type WorktreeRow,
 } from "@auto-harness/ui";
 
-import { hostId, apiGet } from "../../../lib/api.ts";
+import { apiGetFirstMatchingPage, hostId } from "../../../lib/api.ts";
 import {
   loadHostInventory,
   loadLiveWorktreesById,
@@ -70,11 +70,11 @@ export default async function WorktreeDetailPage({
 
   let sessions: Session[] = [];
   try {
-    // No server-side worktreeId filter yet — scan the most recent page and filter here.
-    const data = await apiGet<{ items: Session[] }>(
+    // No server-side worktreeId filter yet — skip pages without a matching session.
+    sessions = await apiGetFirstMatchingPage<Session>(
       `/api/v1/sessions?hostId=${encodeURIComponent(id)}&limit=100`,
+      (session) => session.worktreeId === worktreeId,
     );
-    sessions = (data.items ?? []).filter((s) => s.worktreeId === worktreeId);
   } catch {
     /* ignore — sessions section stays empty */
   }

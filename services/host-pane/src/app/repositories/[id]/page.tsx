@@ -12,7 +12,7 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 
-import { hostId, apiGet } from "../../../lib/api.ts";
+import { apiGetFirstNonEmptyPage, hostId } from "../../../lib/api.ts";
 import {
   loadHostInventory,
   loadLiveWorktreesById,
@@ -97,10 +97,10 @@ export default async function RepositoryDetailPage({
 
   let sessions: Session[] = [];
   try {
-    const data = await apiGet<{ items: Session[] }>(
-      `/api/v1/sessions?hostId=${encodeURIComponent(agent)}&limit=100`,
+    const items = await apiGetFirstNonEmptyPage<Session>(
+      `/api/v1/sessions?hostId=${encodeURIComponent(agent)}&repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
     );
-    sessions = (data.items ?? []).filter((s) => s.repositoryId === repositoryId);
+    sessions = items;
   } catch {
     /* ignore — sessions section stays empty */
   }

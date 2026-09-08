@@ -231,6 +231,10 @@ describe("schedule pages", () => {
       },
       "/api/v1/session-targets": {},
       "/api/v1/sessions?scheduleId=schedule%2Fone&limit=100": {
+        items: [],
+        nextCursor: "history-next",
+      },
+      "/api/v1/sessions?scheduleId=schedule%2Fone&limit=100&cursor=history-next": {
         items: [
           {
             id: "session/1",

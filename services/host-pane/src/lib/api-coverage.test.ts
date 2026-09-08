@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { apiGet, hostId, setApiTransportForTests } from "./api.ts";
+import {
+  apiGet,
+  apiGetFirstMatchingPage,
+  apiGetFirstNonEmptyPage,
+  hostId,
+  setApiTransportForTests,
+} from "./api.ts";
 
 const originalHostId = process.env.HARNESS_HOST_ID;
 const originalPublicHostId = process.env.NEXT_PUBLIC_HARNESS_HOST_ID;
@@ -34,5 +40,65 @@ describe("host pane API branch coverage", () => {
 
     process.env.NEXT_PUBLIC_HARNESS_HOST_ID = " ";
     expect(hostId()).toBe("local-1");
+  });
+
+  it("skips sparse pages until the first page with items", async () => {
+    const paths: string[] = [];
+    setApiTransportForTests(async (input) => {
+      paths.push(String(input));
+      return Response.json(
+        paths.length === 1
+          ? { items: [], nextCursor: "next page" }
+          : { items: [{ id: "found" }], nextCursor: "later" },
+      );
+    });
+
+    await expect(
+      apiGetFirstNonEmptyPage<{ id: string }>("/api/v1/sessions?limit=100"),
+    ).resolves.toEqual([{ id: "found" }]);
+    expect(
+      paths.map((path) => {
+        const url = new URL(path);
+        return `${url.pathname}${url.search}`;
+      }),
+    ).toEqual(["/api/v1/sessions?limit=100", "/api/v1/sessions?limit=100&cursor=next%20page"]);
+  });
+
+  it("returns an empty terminal page", async () => {
+    setApiTransportForTests(async () => Response.json({ items: [] }));
+    await expect(apiGetFirstNonEmptyPage("/api/v1/sessions")).resolves.toEqual([]);
+  });
+
+  it("skips pages without a matching item", async () => {
+    let page = 0;
+    setApiTransportForTests(async () => {
+      page += 1;
+      return Response.json(
+        page === 1
+          ? { items: [{ id: "other" }], nextCursor: "next" }
+          : { items: [{ id: "found" }, { id: "other" }], nextCursor: "later" },
+      );
+    });
+    await expect(
+      apiGetFirstMatchingPage<{ id: string }>("/api/v1/sessions", (item) => item.id === "found"),
+    ).resolves.toEqual([{ id: "found" }]);
+  });
+
+  it("rejects a repeated sparse cursor", async () => {
+    setApiTransportForTests(async () => Response.json({ items: [], nextCursor: "same" }));
+    await expect(apiGetFirstNonEmptyPage("/api/v1/sessions")).rejects.toThrow(
+      "repeated pagination cursor",
+    );
+  });
+
+  it("bounds a permanently sparse response", async () => {
+    let page = 0;
+    setApiTransportForTests(async () => {
+      page += 1;
+      return Response.json({ items: [], nextCursor: `next-${page}` });
+    });
+    await expect(apiGetFirstNonEmptyPage("/api/v1/sessions")).rejects.toThrow(
+      "pagination exceeded 20 pages",
+    );
   });
 });

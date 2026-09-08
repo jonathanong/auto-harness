@@ -23,7 +23,11 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
-import { encodeSessionCursor, type CursorPosition } from "./control-plane-session-cursor.ts";
+import {
+  encodeSessionCursor,
+  sessionCursorScopeHash,
+  type CursorPosition,
+} from "./control-plane-session-cursor.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 function durableListRepositoryIds(
@@ -115,7 +119,7 @@ export class ControlPlaneSessionsService {
                 version: 2,
                 sort: normalized.sort,
                 query: normalized.query,
-                scope: normalized.scope,
+                scopeHash: sessionCursorScopeHash(this.state, normalized.scope),
                 ...sessionCursorPosition(page.items.at(-1), normalized.position),
                 partitions: page.continuation,
               }),

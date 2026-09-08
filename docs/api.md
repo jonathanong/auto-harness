@@ -619,17 +619,18 @@ List sessions with optional filters.
 | `concurrencyId` | string | Exact concurrency identity, at most 2,048 UTF-8 bytes (may span schedules and manual sessions)             |
 | `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                                             |
 
-Results are scoped to the authenticated principal's allowed repositories and host binding
-before the `limit` is applied. `nextCursor` is an opaque, signed cursor bound to all filters,
-sort order, and principal scope; changing or tampering with those values returns `400`. Invalid
-limits, statuses, sources, empty filter values, and duplicate filter parameters return a structured `400`.
+Results are scoped to the authenticated principal's allowed repositories and host binding before
+the `limit` is applied. `nextCursor` is an opaque, authenticated-encrypted cursor bound to all
+filters, sort order, and principal scope; changing or tampering with those values returns `400`.
+Invalid limits, statuses, sources, empty filter values, and duplicate filter parameters return a
+structured `400`.
 
 For multi-worker deployments, set `HARNESS_CURSOR_SECRET` to the same stable secret on every API
-worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). The secret signs both
-session-list and repository-list cursors. If neither variable is set, a random process-local secret
-is used; cursors from that fallback are valid only in the same local-memory process and must not be
-used for a distributed deployment. Lambda mode always supplies a stable secret explicitly — every
-worker fetches the same value from the
+worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). The secret derives
+the session-list cursor encryption and scope-binding keys and signs repository-list cursors. If
+neither variable is set, a random process-local secret is used; cursors from that fallback are valid
+only in the same local-memory process and must not be used for a distributed deployment. Lambda
+mode always supplies a stable secret explicitly — every worker fetches the same value from the
 `HARNESS_CURSOR_SECRET_SSM_PARAM`-named SSM parameter at cold start
 ([deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)) — so the random fallback never
 applies there.

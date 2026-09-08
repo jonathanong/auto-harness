@@ -1,13 +1,12 @@
-import { apiFetch } from "./client-api.ts";
+import { apiFetchFirstPageWithItems } from "./client-api.ts";
 
 export type DashboardSession = { id: string; status: string; prompt?: string };
 export type DashboardHost = { hostId: string; online: boolean };
 export type DashboardWorktree = { id: string; status?: string; online?: boolean };
 
 /**
- * `count` is exact up to the 100-item server-side limit; `atLimit` means the real total may be
- * higher (the API's `nextCursor` came back non-null) — the UI shows "100+" rather than a number
- * that looks precise but isn't.
+ * `count` is the first non-empty bounded page; `atLimit` means the real total may be higher (the
+ * API's `nextCursor` came back non-null), so the UI adds "+" rather than implying precision.
  */
 export type SessionCount = { count: number; atLimit: boolean };
 
@@ -28,10 +27,9 @@ export async function getItems<T>(path: string): Promise<T[]> {
 }
 
 export async function getItemPage<T>(path: string): Promise<ItemPage<T>> {
-  const response = await apiFetch(path);
+  const { response, items, nextCursor } = await apiFetchFirstPageWithItems<T>(path);
   if (!response.ok) throw new Error(`request failed (${response.status})`);
-  const data = (await response.json()) as { items?: T[]; nextCursor?: string | null };
-  return { items: data.items ?? [], atLimit: (data.nextCursor ?? null) !== null };
+  return { items, atLimit: nextCursor !== null };
 }
 
 /**
@@ -40,10 +38,11 @@ export async function getItemPage<T>(path: string): Promise<ItemPage<T>> {
  * (and out of the count) the moment enough newer sessions arrive, even though it's still queued.
  */
 export async function getSessionCount(status: "running" | "queued"): Promise<SessionCount> {
-  const response = await apiFetch(`/api/v1/sessions?status=${status}&limit=100`);
+  const { response, items, nextCursor } = await apiFetchFirstPageWithItems<unknown>(
+    `/api/v1/sessions?status=${status}&limit=100`,
+  );
   if (!response.ok) throw new Error(`request failed (${response.status})`);
-  const data = (await response.json()) as { items?: unknown[]; nextCursor?: string | null };
-  return { count: data.items?.length ?? 0, atLimit: (data.nextCursor ?? null) !== null };
+  return { count: items.length, atLimit: nextCursor !== null };
 }
 
 export function formatSessionCount({ count, atLimit }: SessionCount): string {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch, apiFetchAllPages } from "./client-api.ts";
+import { apiFetch, apiFetchAllPages, apiFetchFirstPageWithItems } from "./client-api.ts";
 
 describe("browser API client", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -80,6 +80,57 @@ describe("browser API client", () => {
     );
     await expect(apiFetchAllPages("/api/v1/repositories")).rejects.toThrow(
       "repeated pagination cursor",
+    );
+  });
+
+  it("advances through empty nonterminal pages for bounded displays", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ items: [], nextCursor: "sparse/page" }))
+      .mockResolvedValueOnce(Response.json({ items: [{ id: "found" }], nextCursor: "more" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiFetchFirstPageWithItems<{ id: string }>("/api/v1/sessions?limit=50"),
+    ).resolves.toMatchObject({
+      items: [{ id: "found" }],
+      nextCursor: "more",
+      response: expect.objectContaining({ ok: true }),
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/sessions?limit=50&cursor=sparse%2Fpage");
+  });
+
+  it("returns an HTTP failure encountered while advancing sparse pages", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ items: [], nextCursor: "sparse" }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiFetchFirstPageWithItems("/api/v1/sessions")).resolves.toMatchObject({
+      items: [],
+      nextCursor: null,
+      response: expect.objectContaining({ status: 503 }),
+    });
+  });
+
+  it("rejects a repeated sparse continuation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ items: [], nextCursor: "repeated" })),
+    );
+    await expect(apiFetchFirstPageWithItems("/api/v1/sessions")).rejects.toThrow(
+      "repeated pagination cursor",
+    );
+  });
+
+  it("bounds sparse-page traversal", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ items: [], nextCursor: `sparse-${calls++}` }),
+    );
+    await expect(apiFetchFirstPageWithItems("/api/v1/sessions")).rejects.toThrow(
+      "pagination exceeded 20 pages",
     );
   });
 });

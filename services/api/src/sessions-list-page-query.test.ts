@@ -416,7 +416,7 @@ describe("listSessionsPageFromStorage", () => {
           scheduleId: null,
           source: "ui",
         },
-        scope: { repositoryIds: null, hostId: null },
+        scopeHash: "test-scope",
         partitions: first.continuation!,
       },
     });
@@ -475,7 +475,7 @@ describe("listSessionsPageFromStorage", () => {
           scheduleId: null,
           source: null,
         },
-        scope: { repositoryIds: null, hostId: null },
+        scopeHash: "test-scope",
         partitions: first.continuation!,
       },
     });
@@ -559,7 +559,7 @@ describe("listSessionsPageFromStorage", () => {
           scheduleId: null,
           source: null,
         },
-        scope: { repositoryIds: ["repo-a", "repo-b"], hostId: null },
+        scopeHash: "test-scope",
         partitions: first.continuation!,
       },
     });
@@ -578,7 +578,7 @@ describe("listSessionsPageFromStorage", () => {
             scheduleId: null,
             source: null,
           },
-          scope: { repositoryIds: ["repo-a", "repo-b"], hostId: null },
+          scopeHash: "test-scope",
           partitions: [{ id: "status:queued:0", checkpoint: null, exhausted: false }],
         },
       }),
@@ -623,7 +623,7 @@ describe("listSessionsPageFromStorage", () => {
           scheduleId: null,
           source: null,
         },
-        scope: { repositoryIds: null, hostId: null },
+        scopeHash: "test-scope",
         partitions: first.continuation!,
       },
     });
@@ -771,7 +771,7 @@ describe("listSessionsPageFromStorage", () => {
           scheduleId: null,
           source: null,
         },
-        scope: { repositoryIds: null, hostId: null },
+        scopeHash: "test-scope",
         partitions: first.continuation!,
       },
     });
