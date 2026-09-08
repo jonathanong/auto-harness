@@ -94,6 +94,10 @@ describe("CDK table catalog", () => {
     const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-queueOrder")).toBe(true);
+    expect(sessions?.gsis?.some((g) => g.name === "statusShard-priorityOrder")).toBe(true);
+    expect(sessions?.gsis?.some((g) => g.name === "statusShard-repositoryPriorityOrder")).toBe(
+      true,
+    );
     expect(sessions?.gsis?.some((g) => g.name === "repositoryId-createdAt")).toBe(true);
     expect(statusShardKey("queued", 2)).toBe("queued#2");
     expect(describeControlPlane().tables).toBe(DYNAMO_TABLES);

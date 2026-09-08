@@ -4,7 +4,9 @@ import {
   clearAbandonedUsageLimitRetryFields,
   itemToSession,
   normalizeTargetDisplayNames,
+  sessionToItem,
 } from "./plane-storage-types.ts";
+import { priorityOrderKey, repositoryPriorityOrderKey } from "../control-plane-ordering.ts";
 
 describe("target display-name hydration", () => {
   it("migrates the legacy targetLabels attribute and removes storage-only keys", () => {
@@ -29,6 +31,24 @@ describe("target display-name hydration", () => {
         targetDisplayNames: ["Current"],
       }),
     ).toEqual({ id: "mixed-session", targetDisplayNames: ["Current"] });
+  });
+});
+
+describe("session priority list keys", () => {
+  it("persists and strips durable list-only ordering attributes", () => {
+    const session = {
+      id: "s",
+      repositoryId: "repo",
+      status: "running" as const,
+      queueShard: 1,
+      priority: 4,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    } as never;
+    const item = sessionToItem(session);
+    expect(item.priorityOrder).toBe(priorityOrderKey(session));
+    expect(item.repositoryPriorityOrder).toBe(repositoryPriorityOrderKey("repo", session));
+    expect(itemToSession(item)).not.toHaveProperty("priorityOrder");
+    expect(itemToSession(item)).not.toHaveProperty("repositoryPriorityOrder");
   });
 });
 

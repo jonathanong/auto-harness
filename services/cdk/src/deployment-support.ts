@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- shared deployment sequencing keeps stack mutations consistent. */
 import { awsArgs } from "./aws-cli.ts";
 import type { DeploymentConfig } from "./deployment-config.ts";
 import { recycleRuntimeLambdas } from "./recycle-runtime-lambdas.ts";
@@ -37,7 +38,10 @@ async function stackExists(
   throw new Error(`unable to inspect stack ${stackName}: ${result.stderr || result.stdout}`);
 }
 
-export function cdkContext(config: DeploymentConfig): string[] {
+export function cdkContext(
+  config: DeploymentConfig,
+  sessionPriorityIndexStage: "status" | "both" = "both",
+): string[] {
   return [
     "--app",
     "node src/cli.ts",
@@ -53,7 +57,30 @@ export function cdkContext(config: DeploymentConfig): string[] {
     `removalPolicy=${config.removalPolicy}`,
     "-c",
     `accessLogsEnabled=${String(config.accessLogsEnabled)}`,
+    "-c",
+    `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
   ];
+}
+
+/**
+ * Existing DynamoDB tables accept just one GSI create in a stack update. The
+ * deploy wrapper calls this twice, waiting for the first index to be ACTIVE
+ * before allowing the template to contain the second one.
+ */
+export async function applySessionPriorityIndexStage(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+  stage: "status" | "both",
+): Promise<void> {
+  await dependencies.run("pnpm", [
+    "exec",
+    "cdk",
+    "deploy",
+    config.foundationStackName,
+    ...cdkContext(config, stage),
+    "--require-approval",
+    "never",
+  ]);
 }
 
 export async function verifySecretParameters(

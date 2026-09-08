@@ -8,6 +8,8 @@ import type { Construct } from "constructs";
 import { createFoundationDataAccess } from "./foundation-data-access.ts";
 import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 
+export type SessionPriorityIndexStage = "status" | "both";
+
 type FoundationStackProps = StackProps & {
   /** Physical table name prefix. Must match `HARNESS_DDB_PREFIX` at runtime. */
   tablePrefix?: string;
@@ -15,6 +17,8 @@ type FoundationStackProps = StackProps & {
   archiveBucketName?: string;
   /** Defaults to RETAIN. DESTROY is intended only for disposable environments. */
   dataRemovalPolicy?: RemovalPolicy;
+  /** Existing tables must add Dynamo GSIs in separate CloudFormation updates. */
+  sessionPriorityIndexStage?: SessionPriorityIndexStage;
 };
 
 export type FoundationResources = {
@@ -44,6 +48,17 @@ function assertTablePrefix(prefix: string): void {
 
 function tableName(prefix: string, definition: TableDef): string {
   return `${prefix}-${definition.name}`;
+}
+
+function stagedTables(stage: SessionPriorityIndexStage): readonly TableDef[] {
+  if (stage === "both") return DYNAMO_TABLES;
+  return DYNAMO_TABLES.map((definition) => {
+    if (definition.name !== "Sessions" || !definition.gsis) return definition;
+    return {
+      ...definition,
+      gsis: definition.gsis.filter((index) => index.name !== "statusShard-repositoryPriorityOrder"),
+    };
+  });
 }
 
 function addIndexes(table: dynamodb.Table, definition: TableDef): void {
@@ -81,9 +96,10 @@ export class AutoHarnessFoundationStack extends Stack {
     const tablePrefix = props.tablePrefix ?? defaultTablePrefix;
     assertTablePrefix(tablePrefix);
     const removalPolicy = props.dataRemovalPolicy ?? RemovalPolicy.RETAIN;
+    const definitions = stagedTables(props.sessionPriorityIndexStage ?? "both");
     const tables: Record<string, dynamodb.Table> = {};
 
-    for (const definition of DYNAMO_TABLES) {
+    for (const definition of definitions) {
       const table = new dynamodb.Table(this, definition.name, {
         tableName: tableName(tablePrefix, definition),
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,

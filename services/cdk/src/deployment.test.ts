@@ -1,9 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { config, dependencies } from "./deployment-test-helpers.ts";
+import { applySessionPriorityIndexStage } from "./deployment-support.ts";
 import { runDeployment } from "./deployment.ts";
 
 describe("runDeployment", () => {
+  it("deploys either staged priority index template to the foundation only", async () => {
+    for (const stage of ["status", "both"] as const) {
+      const deps = dependencies([]);
+      await applySessionPriorityIndexStage(config(), deps, stage);
+      expect(deps.runs).toEqual([
+        expect.arrayContaining([
+          "deploy",
+          "AutoHarness-review-Foundation",
+          `sessionPriorityIndexStage=${stage}`,
+          "--require-approval",
+          "never",
+        ]),
+      ]);
+    }
+  });
+
   it("bootstraps, deploys, verifies stacks, and health-checks a new environment", async () => {
     const deps = dependencies([false, false, false, true, true, true]);
     await runDeployment("deploy", config(), deps);

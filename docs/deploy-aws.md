@@ -349,6 +349,31 @@ the readiness marker was published. This gate is required only for the first
 ledger rollout; later revisions all participate in the same transactional member
 protocol.
 
+### First rollout of priority-ordered session listing
+
+The first priority-list revision also uses the same maintenance fence. It adds
+`statusShard-priorityOrder`, waits until DynamoDB reports it `ACTIVE`, then adds
+`statusShard-repositoryPriorityOrder` in a second Foundation update and waits
+again. DynamoDB permits only one GSI create per update of an existing table.
+Only after both indexes are queryable does the wrapper deploy the runtime and run
+the strongly-consistent, lease-fenced 100-session-page backfill. Its durable
+readiness marker is `SessionDrains` `scopeKey=__session-priority-order__`,
+`recordKey=READY-V1`; it is not published until the final checkpoint succeeds.
+
+For non-interactive deployment, keep external session admission disabled and
+provide the explicit maintenance acknowledgement:
+
+```bash
+pnpm deploy:aws -- --yes-priority-order
+```
+
+The wrapper refuses to restore scheduler admission if the marker is absent.
+This prevents an old warm writer (which can replace a Session item without the
+new GSI attributes) from racing the historical repair. The standalone driver
+`node scripts/migrate-session-priority-order.mts` is resumable and bounded to
+100,000 page attempts; use it only while that same writer fence remains in
+place.
+
 ## Teardown
 
 Drain connected hosts first. Then supply the exact environment confirmation:
