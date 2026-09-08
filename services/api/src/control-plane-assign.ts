@@ -264,11 +264,11 @@ export async function assignQueuedDurable(
           ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
           ...(route.providerId ? { providerId: route.providerId } : {}),
           ...(lease ? { providerAccountLease: lease } : {}),
+          hostAssignmentLease: { hostId: candidate.hostId },
+          legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
           ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
             ? {
-                hostAssignmentLease: { hostId: candidate.hostId },
                 hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments,
-                legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
               }
             : {}),
           queueShard: session.queueShard,
@@ -299,9 +299,7 @@ export async function assignQueuedDurable(
         },
         attemptId,
         ...(lease ? { providerAccountLease: lease } : {}),
-        ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
-          ? { hostAssignmentLease: { hostId: candidate.hostId } }
-          : {}),
+        hostAssignmentLease: { hostId: candidate.hostId },
       };
       clearAbandonedUsageLimitRetryFields(nextSession);
       const nextWorktree = {

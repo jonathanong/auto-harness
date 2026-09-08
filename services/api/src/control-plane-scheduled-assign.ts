@@ -196,11 +196,11 @@ export async function assignScheduledQueuedDurable(
               ...(target.providerAccountId ? { providerAccountId: target.providerAccountId } : {}),
               ...(target.providerId ? { providerId: target.providerId } : {}),
               ...(lease ? { providerAccountLease: lease } : {}),
+              hostAssignmentLease: { hostId },
+              legacyAssignmentCount: hostAssignmentOccupancyCount(state, hostId),
               ...(connection.maxConcurrentAssignments !== undefined
                 ? {
-                    hostAssignmentLease: { hostId },
                     hostAssignmentCap: connection.maxConcurrentAssignments,
-                    legacyAssignmentCount: hostAssignmentOccupancyCount(state, hostId),
                   }
                 : {}),
               queueShard: session.queueShard,
@@ -242,9 +242,7 @@ export async function assignScheduledQueuedDurable(
       mainCheckoutLease: true,
       attemptId,
       ...(lease ? { providerAccountLease: lease } : {}),
-      ...(state.connections.get(connectionId)?.maxConcurrentAssignments !== undefined
-        ? { hostAssignmentLease: { hostId } }
-        : {}),
+      hostAssignmentLease: { hostId },
     };
     delete next.completedAt;
     delete next.exitCode;
