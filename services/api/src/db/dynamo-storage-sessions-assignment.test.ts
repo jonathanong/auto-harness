@@ -259,6 +259,7 @@ describe("DynamoDB Local session assignment", () => {
         expectedHostId: "host",
         expectedConnectionId: "one",
         fence: { hostId: "host", connectionId: "one" },
+        hostAssignmentLease: { hostId: "host" },
       }),
     ).toBe(true);
     expect(await listActiveSessionsByHost(ctx, "host")).toEqual([]);
