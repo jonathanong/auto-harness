@@ -148,11 +148,9 @@ function partitionPlan(query: SessionListPageQuery): Partition[] {
       ? repositoryPriorityPartitions(query, [query.repositoryId])
       : statusPartitions;
   }
-  const repositories = query.repositoryIds?.toSorted();
-  if (repositories === undefined) return statusPartitions;
-  return query.sort.startsWith("priority_")
-    ? repositoryPriorityPartitions(query, repositories)
-    : statusPartitions;
+  // A large scope must not turn into one cursor checkpoint per repository.
+  // Scope filtering happens after the fixed status/shard index reads instead.
+  return statusPartitions;
 }
 
 function repositoryPriorityPartitions(
