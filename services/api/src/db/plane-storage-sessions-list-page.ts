@@ -34,7 +34,7 @@ export type SessionListPageQuery = {
   source: string | null;
   concurrencyId: string | null;
   scheduleId: string | null;
-  /** Legacy v1 logical position, used only while upgrading an old cursor. */
+  /** Logical emitted-item boundary carried by both legacy and partition cursors. */
   position?: CursorPosition;
   continuation?: SessionCursorV2;
 };
@@ -73,9 +73,21 @@ export async function listSessionsPageFromStorage(
   const partitions = partitionPlan(query);
   if (partitions.length === 0) return { items: [], continuation: null };
   const states = continuationForPlan(query.continuation, partitions);
+  // A status transition can move an un-emitted row into a partition that was
+  // exhausted on an earlier page. While another partition still carries the
+  // traversal forward, restart exhausted unfiltered partitions at the logical
+  // cursor bound; that bound suppresses emitted rows without losing the move.
+  const revisitExhausted =
+    query.status === null &&
+    query.position !== undefined &&
+    [...states.values()].some((state) => !state.exhausted);
   const windows = await Promise.all(
     partitions.map(async (partition) => {
-      const previous = states.get(partition.id)!;
+      const stored = states.get(partition.id)!;
+      const previous =
+        revisitExhausted && stored.exhausted
+          ? { id: stored.id, checkpoint: null, exhausted: false }
+          : stored;
       return previous.exhausted
         ? { partition, previous, rows: [], nextKey: undefined, exhaustedRead: true }
         : queryPartitionWindow(ctx, query, partition, previous);

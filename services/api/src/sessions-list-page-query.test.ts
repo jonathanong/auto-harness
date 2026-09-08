@@ -690,6 +690,114 @@ describe("listSessionsPageFromStorage", () => {
     });
   });
 
+  it("rechecks an exhausted running partition after an un-emitted queued session transitions", async () => {
+    const running = row("running", "2026-01-03T00:00:00.000Z");
+    const queued = row("queued", "2026-01-02T00:00:00.000Z");
+    const rawRunning = {
+      ...running,
+      status: "running",
+      statusShard: "running#0",
+      createdOrder: createdOrderKey(running),
+    };
+    const rawQueued = { ...queued, statusShard: "queued#0", createdOrder: createdOrderKey(queued) };
+    const commands: QueryCommand[] = [];
+    let firstPage = true;
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          const statusShard = command.input.ExpressionAttributeValues?.[":key"];
+          if (statusShard === "running#0") {
+            return firstPage
+              ? { Items: [rawRunning] }
+              : {
+                  Items: [
+                    rawRunning,
+                    { ...rawQueued, status: "running", statusShard: "running#0" },
+                  ],
+                };
+          }
+          if (statusShard === "queued#0") {
+            return firstPage
+              ? {
+                  Items: [rawQueued],
+                  LastEvaluatedKey: {
+                    id: queued.id,
+                    statusShard: "queued#0",
+                    createdOrder: rawQueued.createdOrder,
+                  },
+                }
+              : { Items: [] };
+          }
+          return { Items: [] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const query = {
+      limit: 1,
+      sort: "latest" as const,
+      shardCount: 1,
+      status: null,
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    };
+
+    const first = await listSessionsPageFromStorage(ctx, query);
+    expect(first.items.map((item) => item.id)).toEqual(["running"]);
+    expect(first.continuation).not.toBeNull();
+    expect(first.continuation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "status:running:0", exhausted: true }),
+        expect.objectContaining({ id: "status:queued:0", exhausted: false }),
+      ]),
+    );
+
+    // The queued row moved to the running partition after the first page.
+    firstPage = false;
+    const second = await listSessionsPageFromStorage(ctx, {
+      ...query,
+      position: { createdAt: running.createdAt, id: running.id, priority: running.priority },
+      continuation: {
+        version: 2,
+        sort: "latest",
+        query: {
+          repositoryId: null,
+          status: null,
+          hostId: null,
+          concurrencyId: null,
+          scheduleId: null,
+          source: null,
+        },
+        scopeHash: "test-scope",
+        partitions: first.continuation!.map((partition) =>
+          partition.id === "status:running:0"
+            ? {
+                ...partition,
+                checkpoint: {
+                  id: running.id,
+                  statusShard: "running#0",
+                  createdOrder: rawRunning.createdOrder,
+                },
+              }
+            : partition,
+        ),
+      },
+    });
+    expect(second.items.map((item) => item.id)).toEqual(["queued"]);
+    expect(
+      commands.some(
+        (command) =>
+          command.input.ExclusiveStartKey === undefined &&
+          command.input.ExpressionAttributeValues?.[":key"] === "running#0",
+      ),
+    ).toBe(true);
+  });
+
   it("uses the priority index and binds unscoped priority cursors", async () => {
     const commands: QueryCommand[] = [];
     const cursor = { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 };
