@@ -275,8 +275,11 @@ describe("deployment wrapper contracts", () => {
     const allowed = run(awsScript, ["--yes-first-ledger"], fresh, {
       FAKE_SESSIONS_TABLE_MISSING: "1",
     });
+    const freshCalls = readFileSync(fresh.log, "utf8");
     expect(allowed.status, allowed.stderr).toBe(0);
-    expect(readFileSync(fresh.log, "utf8")).toContain("@auto-harness/cdk run update");
+    expect(freshCalls).toContain("@auto-harness/cdk run update");
+    expect(freshCalls).not.toContain("aws dynamodb scan");
+    expect(freshCalls).not.toContain("statusShard-priorityOrder");
   });
 
   it("keeps the source-level fail-closed restoration paths", () => {

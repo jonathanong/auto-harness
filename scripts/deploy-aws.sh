@@ -329,6 +329,33 @@ if [[ "$confirm_first_ledger" -ne 1 && "$confirm_priority_order" -ne 1 && ! -t 0
   exit 1
 fi
 
+run_session_migrations() {
+  if [[ "$needs_ledger" -eq 1 ]]; then
+    node scripts/migrate-session-drain-ledger.mts
+  fi
+  local record_key
+  record_key="$(read_ledger_key)"
+  if [[ "$record_key" != "ACTIVITY-V1" ]]; then
+    echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
+    return 1
+  fi
+  if [[ "$needs_priority_order" -eq 1 ]]; then
+    node scripts/migrate-session-priority-order.mts
+  fi
+  priority_order_record_key="$(read_priority_order_key)"
+  if [[ "$priority_order_record_key" != "READY-V1" ]]; then
+    echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
+    return 1
+  fi
+}
+
+if [[ "$sessions_table_state" == "MISSING" ]]; then
+  pnpm --filter @auto-harness/cdk run update
+  run_session_migrations
+  echo "AWS update complete; fresh session storage and readiness markers are ready."
+  exit 0
+fi
+
 cron_rule="$(resolve_cron_rule_optional)"
 scheduler_fenced=0
 original_concurrency=""
@@ -455,21 +482,6 @@ if [[ -n "$original_rule_state" ]]; then
   rule_restore_pending=1
   trap restore_original_rule_on_exit EXIT
 fi
-if [[ "$needs_ledger" -eq 1 ]]; then
-  node scripts/migrate-session-drain-ledger.mts
-fi
-record_key="$(read_ledger_key)"
-if [[ "$record_key" != "ACTIVITY-V1" ]]; then
-  echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
-  exit 1
-fi
-if [[ "$needs_priority_order" -eq 1 ]]; then
-  node scripts/migrate-session-priority-order.mts
-fi
-priority_order_record_key="$(read_priority_order_key)"
-if [[ "$priority_order_record_key" != "READY-V1" ]]; then
-  echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
-  exit 1
-fi
+run_session_migrations
 finish_rule_restoration
 echo "AWS update complete; session-drain ledger and priority-order index are ready."
