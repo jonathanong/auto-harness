@@ -1,6 +1,8 @@
 # Claude
 
 Read and follow [AGENTS.md](./AGENTS.md). Product and contributor entry points: [README.md](./README.md), [docs/README.md](docs/README.md).
+Cross-plane design changes also follow the shared
+[architecture principles](docs/architecture.md#architecture-principles).
 
 ## Invariant: the control plane must do everything; the host pane is debug-only
 
