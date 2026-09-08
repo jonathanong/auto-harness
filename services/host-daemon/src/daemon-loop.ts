@@ -807,7 +807,6 @@ export class DaemonLoop {
     if (result.logs.length > 0) {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
     }
-    await this.outbound.flush();
     const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = {
       type: "session:status",
       sessionId: msg.sessionId,
@@ -820,10 +819,13 @@ export class DaemonLoop {
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
     };
-    // Recorded before the send attempt, and removed only by an explicit
-    // session:status-acknowledged: a completed WebSocket write is not delivery
-    // (see ws-transport.ts), so a send that "succeeds" here is not proof the
-    // control plane ever saw it. Retried on every keepalive until acked.
+    // Record the completed result before waiting for the output queue. A
+    // disconnected retained log can keep flush() pending beyond reconnect
+    // grace; registration must still claim this completed attempt so the
+    // control plane does not requeue it after the in-flight entry is aborted.
+    // The status is sent only after flush below, retaining log-before-terminal
+    // order. Keeping the pending send marked in progress prevents reconnect
+    // retries from duplicating the original send while flush is still pending.
     const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
     const controller = new AbortController();
     if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
@@ -843,6 +845,7 @@ export class DaemonLoop {
         controller,
       });
     }
+    await this.outbound.flush();
     await this.outbound
       .send(statusMessage, { signal: controller.signal })
       .catch((error: unknown) => {

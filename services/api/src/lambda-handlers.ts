@@ -624,11 +624,17 @@ export async function createLambdaRuntime(
             }).catch(() => undefined),
           );
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
-          trackDelivery(authenticated.hostId, {
-            type: "session:acknowledged",
-            sessionId: result.sessionAcknowledged,
-            attemptId: message.attemptId,
-          });
+          // An ACK confirmation permits execution, so it must reach the
+          // connection that submitted this exact ACK. A warm Lambda that did
+          // not process host:register has no hostConnection cache entry; a
+          // stale entry would target the daemon's replaced socket instead.
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:acknowledged",
+              sessionId: result.sessionAcknowledged,
+              attemptId: message.attemptId,
+            }).catch(() => undefined),
+          );
         } else if (result.sessionStatusAcknowledged && message.type === "session:status") {
           // Deliver on this exact connection rather than through
           // trackDelivery's hostId->connectionId lookup: the daemon retries
