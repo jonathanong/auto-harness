@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import { ControlPlane, ControlPlaneBase } from "./control-plane.ts";
+import { createControlPlaneState, sessionForPersistence, toPublic } from "./control-plane-state.ts";
 
 describe("composed control-plane services", () => {
   it("defaults host registration protocolVersion through the composed facade", () => {
@@ -32,5 +33,36 @@ describe("composed control-plane services", () => {
     await expect(plane.getSlackIntegration()).resolves.toBeNull();
     await expect(plane.integrations.getSlackIntegration()).resolves.toBeNull();
     expect(new ControlPlaneBase().listSessionsPage().items).toEqual([]);
+  });
+
+  it("does not expose sparse storage keys in public session responses", () => {
+    const state = createControlPlaneState();
+    const session = {
+      id: "session",
+      repositoryId: "repo",
+      prompt: "prompt",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2026-01-01T00:01:00.000Z",
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "running" as const,
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      activeHostId: "host",
+      activeHostOrder: "2026-01-01T00:00:00.000Z#session",
+    };
+
+    expect(toPublic(state, session)).not.toHaveProperty("activeHostId");
+    expect(toPublic(state, session)).not.toHaveProperty("activeHostOrder");
+    expect(
+      sessionForPersistence({ ...session, status: "completed", completedAt: session.createdAt }),
+    ).not.toHaveProperty("activeHostId");
+    expect(
+      sessionForPersistence({ ...session, status: "completed", completedAt: session.createdAt }),
+    ).not.toHaveProperty("activeHostOrder");
   });
 });

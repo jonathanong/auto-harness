@@ -80,7 +80,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
               Key: { id: opts.sessionId },
               UpdateExpression:
                 "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt, providerAccountLease, hostAssignmentLease",
+                ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, assignmentSentAt, assignmentConnectionId, mainCheckoutLease, ackReceivedAt, reconnectDeadlineAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease",
               ConditionExpression:
                 "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },

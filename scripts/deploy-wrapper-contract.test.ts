@@ -124,7 +124,15 @@ case "$1 $2" in
     fi ;;
   "dynamodb scan") echo "\${FAKE_ACTIVE_SESSION_ID:-None}" ;;
   "dynamodb describe-table")
-    if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
+    if [[ "$*" == *"Table.TableStatus"* ]]; then
+      if [[ "\${FAKE_SESSIONS_TABLE_MISSING:-0}" == 1 ]]; then
+        echo ResourceNotFoundException >&2
+        exit 1
+      fi
+      echo ACTIVE
+    elif [[ "$*" == *"activeHostId-activeHostOrder"* ]]; then
+      [[ "\${FAKE_ACTIVE_HOST_INDEX_MISSING:-0}" == 1 ]] && echo None || echo ACTIVE
+    elif [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
       if [[ "$*" == *"createdOrder"* ]]; then
         [[ -f "$FAKE_DIRECTORY/created-order-active" ]] && echo ACTIVE || echo None
       elif [[ "$*" == *"repositoryPriorityOrder"* ]]; then
@@ -259,6 +267,28 @@ describe("deployment wrapper contracts", () => {
     expect(calls).toContain("statusShard-repositoryPriorityOrder");
     expect(calls).toContain("statusShard-createdOrder");
     expect(calls).toContain("node scripts/migrate-session-priority-order.mts");
+  });
+
+  it("blocks an in-place active-host index rollout but allows a missing fresh table", () => {
+    const existing = fakeEnvironment();
+    awsDeploymentFakes(existing);
+    const blocked = run(awsScript, [], existing, { FAKE_ACTIVE_HOST_INDEX_MISSING: "1" });
+    expect(blocked.status).toBe(1);
+    expect(blocked.stderr).toContain(
+      "deploy this breaking coordination schema to a fresh environment",
+    );
+    expect(readFileSync(existing.log, "utf8")).not.toContain("@auto-harness/cdk run update");
+
+    const fresh = fakeEnvironment();
+    awsDeploymentFakes(fresh);
+    const allowed = run(awsScript, ["--yes-first-ledger"], fresh, {
+      FAKE_SESSIONS_TABLE_MISSING: "1",
+    });
+    const freshCalls = readFileSync(fresh.log, "utf8");
+    expect(allowed.status, allowed.stderr).toBe(0);
+    expect(freshCalls).toContain("@auto-harness/cdk run update");
+    expect(freshCalls).not.toContain("aws dynamodb scan");
+    expect(freshCalls).not.toContain("statusShard-priorityOrder");
   });
 
   it("keeps the source-level fail-closed restoration paths", () => {

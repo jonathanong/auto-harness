@@ -1,6 +1,8 @@
+/* eslint-disable max-lines -- assignment and active host-claim writes must remain atomic. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
+import { activeHostOrder } from "./plane-storage-sessions-active-host.ts";
 import {
   assignmentLeaseCollision,
   isConditionalTransactionFailed,
@@ -53,6 +55,8 @@ export async function tryAssignSession(
     "statusShard = :statusShard",
     "worktreeId = :wid",
     "hostId = :hid",
+    "activeHostId = :activeHostId",
+    "activeHostOrder = :activeHostOrder",
     "startedAt = :now",
     "assignmentSentAt = :now",
     "attemptId = :attemptId",
@@ -66,12 +70,15 @@ export async function tryAssignSession(
     ":queued": "queued",
     ":wid": opts.worktreeId,
     ":hid": opts.hostId,
+    ":activeHostId": opts.hostId,
+    ":activeHostOrder": activeHostOrder(opts.now, opts.sessionId),
     ":now": opts.now,
     ":attemptId": opts.attemptId,
     ":argv": opts.resolvedArgv,
     ":connectionId": opts.connectionId,
     ":route": opts.resolvedRoute,
   };
+  const hostAssignmentLease = opts.hostAssignmentLease ?? { hostId: opts.hostId };
   if (opts.resumeSpec !== undefined) {
     sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
     sessionValues[":resumeSpec"] = opts.resumeSpec;
@@ -80,10 +87,8 @@ export async function tryAssignSession(
     sessionSets.push("providerAccountLease = :providerAccountLease");
     sessionValues[":providerAccountLease"] = opts.providerAccountLease;
   }
-  if (opts.hostAssignmentLease) {
-    sessionSets.push("hostAssignmentLease = :hostAssignmentLease");
-    sessionValues[":hostAssignmentLease"] = opts.hostAssignmentLease;
-  }
+  sessionSets.push("hostAssignmentLease = :hostAssignmentLease");
+  sessionValues[":hostAssignmentLease"] = hostAssignmentLease;
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   const transactItems = [
     {
@@ -142,32 +147,14 @@ export async function tryAssignSession(
         ExpressionAttributeValues: sessionValues,
       },
     },
-    ...(opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
-      ? [
-          hostAssignmentAcquireItem(ctx, {
-            ...opts.hostAssignmentLease,
-            connectionId: opts.connectionId,
-            cap: opts.hostAssignmentCap,
-            ...(opts.legacyAssignmentCount !== undefined
-              ? { legacyAssignmentCount: opts.legacyAssignmentCount }
-              : {}),
-          }),
-        ]
-      : [
-          {
-            // A hydrated scheduler can retain an online worktree after a
-            // different process disconnects its host. The lease is the
-            // authority for reachability, so require the exact connection
-            // that was live when this candidate was selected.
-            ConditionCheck: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              ConditionExpression:
-                "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
-            },
-          },
-        ]),
+    hostAssignmentAcquireItem(ctx, {
+      ...hostAssignmentLease,
+      connectionId: opts.connectionId,
+      ...(opts.hostAssignmentCap !== undefined ? { cap: opts.hostAssignmentCap } : {}),
+      ...(opts.legacyAssignmentCount !== undefined
+        ? { legacyAssignmentCount: opts.legacyAssignmentCount }
+        : {}),
+    }),
     ...(opts.providerAccountId
       ? [
           providerAccountLastAssignedTransactItem(ctx, {

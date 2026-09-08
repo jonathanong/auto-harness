@@ -74,8 +74,7 @@ describe("keepalive-driven session reconciliation (local mode and scheduled sess
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
-      listWorktreesByHost: async () => [],
-      listSessionsByHost: async () => [session],
+      listActiveSessionsByHost: async () => [session],
       releaseMainCheckoutSession: async (opts: Record<string, unknown>) => {
         releaseReason = opts.reason;
         return true;
@@ -100,7 +99,7 @@ describe("keepalive-driven session reconciliation (local mode and scheduled sess
     state.storage = {
       getHostLock: async () => "c",
       heartbeatConnection: async () => true,
-      listWorktreesByHost: async () => {
+      listActiveSessionsByHost: async () => {
         listed = true;
         return [];
       },

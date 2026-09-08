@@ -13,6 +13,7 @@ export type TableDef = {
     name: string;
     partitionKey: { name: string; type: "S" | "N" };
     sortKey?: { name: string; type: "S" | "N" };
+    projectionType?: "ALL" | "KEYS_ONLY";
   }>;
   ttlAttribute?: string;
 };
@@ -76,6 +77,13 @@ export const DYNAMO_TABLES: TableDef[] = [
         name: "repositoryId-createdAt",
         partitionKey: { name: "repositoryId", type: "S" },
         sortKey: { name: "createdAt", type: "S" },
+      },
+      {
+        // Sparse: only assignments whose host-owned lease still needs reconciliation.
+        name: "activeHostId-activeHostOrder",
+        partitionKey: { name: "activeHostId", type: "S" },
+        sortKey: { name: "activeHostOrder", type: "S" },
+        projectionType: "KEYS_ONLY",
       },
     ],
   },

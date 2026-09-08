@@ -50,13 +50,14 @@ export async function requeueOmittedScheduled(
   running: Set<string>,
   requeued: string[],
   reason = "daemon did not report session after reconnect; requeued",
+  activeSessions?: readonly import("./db/types.ts").SessionRecord[],
 ): Promise<void> {
   const storage = state.storage;
   const sessions =
-    storage &&
-    typeof (storage as { listSessionsByHost?: unknown }).listSessionsByHost === "function"
-      ? await storage.listSessionsByHost(hostId)
-      : [...state.sessions.values()].filter((session) => session.hostId === hostId);
+    activeSessions ??
+    (storage && typeof storage.listActiveSessionsByHost === "function"
+      ? await storage.listActiveSessionsByHost(hostId)
+      : [...state.sessions.values()].filter((session) => session.hostId === hostId));
   for (const session of sessions) {
     if (
       !session.mainCheckoutLease ||
@@ -157,6 +158,8 @@ export async function reclaimScheduledReconnect(
       delete next.assignmentSentAt;
       delete next.ackReceivedAt;
       delete next.reconnectDeadlineAt;
+      delete next.activeHostId;
+      delete next.activeHostOrder;
       state.sessions.set(session.id, next);
     } else {
       state.sessions.set(

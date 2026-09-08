@@ -35,6 +35,7 @@ import {
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { migrateSessionPriorityOrderPage } from "./ensure-session-priority-order.ts";
 import { ensureArchivesRetryIndex } from "./ensure-archive-retry-index.ts";
+import { ensureSessionsActiveHostIndex } from "./ensure-active-host-index.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
 const LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS = 100_000;
@@ -56,7 +57,6 @@ export async function completeLocalSessionListMigration(
     `local session-list migration did not become ready after ${maxAttempts} bounded page attempts`,
   );
 }
-
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
     await client.send(new DescribeTableCommand({ TableName: name }));
@@ -120,6 +120,8 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "priorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryPriorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "activeHostId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "activeHostOrder", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
     GlobalSecondaryIndexes: [
@@ -171,12 +173,21 @@ export async function ensureControlPlaneTables(opts: {
         ],
         Projection: { ProjectionType: ProjectionType.ALL },
       },
+      {
+        IndexName: "activeHostId-activeHostOrder",
+        KeySchema: [
+          { AttributeName: "activeHostId", KeyType: KeyType.HASH },
+          { AttributeName: "activeHostOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.KEYS_ONLY },
+      },
     ],
   });
 
   await ensureSessionsRepositoryIndex(ddb, names.sessions);
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
   await ensureSessionsPriorityIndexes(ddb, names.sessions);
+  await ensureSessionsActiveHostIndex(ddb, names.sessions);
   await backfillQueuedSessionQueueOrder(DynamoDBDocumentClient.from(ddb), names.sessions);
 
   await createIfMissing(ddb, {

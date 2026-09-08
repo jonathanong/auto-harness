@@ -376,6 +376,26 @@ new GSI attributes) from racing the historical repair. The standalone driver
 100,000 page attempts; use it only while that same writer fence remains in
 place.
 
+### Fresh environment cutover for breaking coordination schemas
+
+The sparse active-host claim index and later attempt/transcript protocol changes are a fresh
+environment cutover, not an in-place runtime update. The active-host reader deliberately has no
+historical scan fallback, and local table startup rejects an absent or still-building index.
+
+1. Export the current environment's supported configuration and retained data.
+2. Pause external admission, drain every confirmed running assignment, and manually resolve any
+   execution whose outcome is ambiguous.
+3. Deploy a fresh foundation and its matching control-plane and host-daemon versions. Do not let
+   old and new writers share a Sessions table.
+4. Validate assignment, acknowledgement, reconnect recovery, terminal cleanup, and transcript
+   reads in the new environment before switching callers.
+5. Keep the previous environment intact and admission-paused until the new environment has passed
+   validation and the rollback window has closed.
+
+An in-place migration requires a separate bounded, resumable backfill plus a durable readiness
+marker before readers switch. This repository does not currently provide that migration, so adding
+the GSI to an old Sessions table is not sufficient.
+
 ## Teardown
 
 Drain connected hosts first. Then supply the exact environment confirmation:

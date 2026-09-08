@@ -12,8 +12,8 @@ export async function protectScheduledRunsForFailedRegistration(
 ): Promise<void> {
   const storage = state.storage!;
   const sessions =
-    typeof (storage as { listSessionsByHost?: unknown }).listSessionsByHost === "function"
-      ? await storage.listSessionsByHost(hostId)
+    typeof storage.listActiveSessionsByHost === "function"
+      ? await storage.listActiveSessionsByHost(hostId)
       : [...state.sessions.values()].filter((session) => session.hostId === hostId);
   for (const session of sessions) {
     if (
@@ -60,6 +60,7 @@ export async function protectScheduledRunsForFailedRegistration(
     const current = await storage.getSession(session.id);
     if (
       current?.status === "running" &&
+      current.hostId === hostId &&
       current.mainCheckoutLease &&
       current.assignmentConnectionId === session.assignmentConnectionId &&
       !current.reconnectDeadlineAt

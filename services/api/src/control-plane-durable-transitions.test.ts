@@ -1879,6 +1879,8 @@ describe("durable control-plane transitions", () => {
         queueShard: 0,
         createdAt: "2026-01-01T00:00:00.000Z",
         hostId,
+        activeHostId: hostId,
+        activeHostOrder: `2026-01-01T00:00:00.000Z#${sessionId}`,
         worktreeId: item.id,
         attemptId: `attempt-reconcile-${item.id.endsWith("one") ? "one" : "two"}`,
         ackReceivedAt: "2026-01-01T00:00:01.000Z",
@@ -2000,14 +2002,23 @@ describe("durable control-plane transitions", () => {
       });
     }
 
-    let sessionReads = 0;
+    const activeSessions = (
+      await Promise.all(
+        ["first", "second"].map((suffix) =>
+          ctx.storage!.getSession(`session-omitted-requeue-${suffix}`),
+        ),
+      )
+    ).filter((session) => session !== null);
+    expect(activeSessions).toHaveLength(2);
+    let requeueWrites = 0;
     const failingStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
-    failingStorage.getSession = async (sessionId: string) => {
-      sessionReads++;
-      if (sessionReads === 2) {
+    failingStorage.listActiveSessionsByHost = async () => activeSessions;
+    failingStorage.tryRequeueSession = async (options) => {
+      requeueWrites++;
+      if (requeueWrites === 2) {
         throw new Error("injected error after omitted requeue");
       }
-      return ctx.storage!.getSession(sessionId);
+      return ctx.storage!.tryRequeueSession(options);
     };
     const registering = new ControlPlane({
       storage: failingStorage,

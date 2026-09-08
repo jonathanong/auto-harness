@@ -262,6 +262,7 @@ describe("agent registration branch boundaries", () => {
         { ...worktree({ id: "idle", name: "idle", status: "idle", currentSessionId: null }) },
         { ...worktree({ id: "busy", name: "busy" }) },
       ],
+      listActiveSessionsByHost: async () => [],
       putWorktreeFenced: async (row: { id: string; connectionId: string }) => (
         writes.push(`${row.id}:${row.connectionId}`),
         true
@@ -292,6 +293,7 @@ describe("agent registration branch boundaries", () => {
       getHostInventory: async () => null,
       getWorktree: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putWorktreeFenced: async (row: { id: string }) => {
         worktreeWrites.push(row.id);
         return true;
@@ -320,6 +322,7 @@ describe("agent registration branch boundaries", () => {
       getHostInventory: async () => null,
       getWorktree: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putWorktreeFenced: async () => true,
       putHostInventoryFenced: async () => ({ ok: true }),
     } as never;
@@ -341,6 +344,7 @@ describe("agent registration branch boundaries", () => {
       tryRegisterHost: async () => true,
       getHostInventory: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putHostInventoryFenced: async () => ({ ok: true }),
     } as never;
     await expect(

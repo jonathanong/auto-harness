@@ -54,7 +54,7 @@ function releaseSessionUpdate(
       Key: { id: opts.sessionId },
       UpdateExpression:
         `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
-        "REMOVE assignmentConnectionId, reconnectDeadlineAt, providerAccountLease, hostAssignmentLease",
+        "REMOVE assignmentConnectionId, reconnectDeadlineAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease",
       ConditionExpression:
         "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId" +
         (requireNoDrainCancellation

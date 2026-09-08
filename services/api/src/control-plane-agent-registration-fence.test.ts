@@ -11,6 +11,7 @@ describe("durable host inventory registration fence", () => {
       tryRegisterHost: async () => true,
       getHostInventory: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putHostInventoryFenced: async () => ({ ok: false, reason: "lease" as const }),
       releaseHostConnection: async (_hostId: string, connectionId: string) => (
         calls.push(connectionId),
@@ -51,6 +52,7 @@ describe("durable host inventory registration fence", () => {
       tryRegisterHost: async () => true,
       getHostInventory: async () => (putCalls.length === 0 ? null : edited),
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putHostInventoryFenced: async (rec: {
         version?: number;
         providerAccounts: Array<{ providerAccountId: string }>;
@@ -92,6 +94,7 @@ describe("durable host inventory registration fence", () => {
       tryRegisterHost: async () => true,
       getHostInventory: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putHostInventoryFenced: async () => ({ ok: false as const, reason: "version" as const }),
       releaseHostConnection: async (_hostId: string, connectionId: string) => (
         released.push(connectionId),
@@ -122,6 +125,7 @@ describe("durable host inventory registration fence", () => {
         throw new Error("read");
       },
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       releaseHostConnection: async () => true,
       getHostLock: async () => null,
     } as never;
@@ -160,6 +164,7 @@ describe("durable host inventory registration fence", () => {
       getHostInventory: async () => null,
       getWorktree: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putWorktreeFenced: async () => false,
       releaseHostConnection: async () => true,
       getHostLock: async () => null,
@@ -198,6 +203,7 @@ describe("durable host inventory registration fence", () => {
       getHostInventory: async () => null,
       getWorktree: async () => null,
       listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
       putWorktreeFenced: async () => true,
       putHostInventoryFenced: async () => ({ ok: true }),
     } as never;

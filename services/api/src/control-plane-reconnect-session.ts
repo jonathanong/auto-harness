@@ -10,6 +10,8 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     startedAt: ____,
     mainCheckoutLease: _____,
     providerAccountLease: _______,
+    activeHostId: ________,
+    activeHostOrder: _________,
     ...next
   } = session;
   return {

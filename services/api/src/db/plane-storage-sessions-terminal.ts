@@ -94,6 +94,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     removes: [
       "reconnectDeadlineAt",
       "assignmentConnectionId",
+      ...(opts.preserveHostAssignmentLease ? [] : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
     ],

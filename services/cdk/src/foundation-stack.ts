@@ -78,7 +78,10 @@ function addIndexes(table: dynamodb.Table, definition: TableDef): void {
       ...(index.sortKey
         ? { sortKey: { name: index.sortKey.name, type: dynamodb.AttributeType.STRING } }
         : {}),
-      projectionType: dynamodb.ProjectionType.ALL,
+      projectionType:
+        index.projectionType === "KEYS_ONLY"
+          ? dynamodb.ProjectionType.KEYS_ONLY
+          : dynamodb.ProjectionType.ALL,
     });
   }
 }

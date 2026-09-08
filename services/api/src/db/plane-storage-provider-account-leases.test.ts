@@ -330,7 +330,7 @@ describe("provider account lease storage", () => {
     expect(items[0]).toMatchObject({
       Update: {
         UpdateExpression:
-          "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
+          "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
       },
     });
     expect(items[1]).toMatchObject({ Delete: { TableName: "Locks" } });
@@ -421,7 +421,7 @@ describe("provider account lease storage", () => {
       Update: {
         TableName: "Sessions",
         UpdateExpression:
-          "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease",
+          "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
       },
     });
   });

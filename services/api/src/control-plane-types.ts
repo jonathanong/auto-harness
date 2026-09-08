@@ -92,7 +92,10 @@ export type ControlPlaneOptions = {
   onAssignmentRequested?: () => void | Promise<void>;
 };
 
-export type PublicSession = Omit<SessionRecord, "principalId" | "cancelledByDrainOperationId"> & {
+export type PublicSession = Omit<
+  SessionRecord,
+  "principalId" | "cancelledByDrainOperationId" | "activeHostId" | "activeHostOrder"
+> & {
   url: string;
 };
 

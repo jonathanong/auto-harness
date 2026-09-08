@@ -106,6 +106,7 @@ describe("DynamoDB Local clients", () => {
         "statusShard-createdAt",
         "statusShard-queueOrder",
         "repositoryId-createdAt",
+        "activeHostId-activeHostOrder",
       ]),
     );
     const users = await client.send(new DescribeTableCommand({ TableName: a.users }));

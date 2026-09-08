@@ -180,6 +180,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
     " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt" : "")
