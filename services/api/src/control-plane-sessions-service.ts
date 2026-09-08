@@ -23,7 +23,8 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
-import { encodeSessionCursor } from "./control-plane-session-cursor.ts";
+import { encodeSessionCursor, type CursorPosition } from "./control-plane-session-cursor.ts";
+import type { SessionRecord } from "./db/types.ts";
 
 function durableListRepositoryIds(
   requested: sessions.ListSessionsPageQuery,
@@ -115,7 +116,7 @@ export class ControlPlaneSessionsService {
                 sort: normalized.sort,
                 query: normalized.query,
                 scope: normalized.scope,
-                ...(normalized.position ? { position: normalized.position } : {}),
+                ...sessionCursorPosition(page.items.at(-1), normalized.position),
                 partitions: page.continuation,
               }),
       };
@@ -285,4 +286,14 @@ export class ControlPlaneSessionsService {
   ): Promise<ReturnType<typeof usage.usageAggregate>> {
     return usage.aggregateUsage(await this.getUsageDurable(sessionId));
   }
+}
+
+function sessionCursorPosition(
+  session: SessionRecord | undefined,
+  prior: CursorPosition | undefined,
+): { position?: CursorPosition } {
+  const position = session
+    ? { createdAt: session.createdAt, id: session.id, priority: session.priority }
+    : prior;
+  return position ? { position } : {};
 }

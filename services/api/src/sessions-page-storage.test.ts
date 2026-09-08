@@ -25,6 +25,32 @@ describe("listSessionsPageDurable storage pages", () => {
     );
   });
 
+  it("issues a positionless v2 cursor for an initial sparse page", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        listSessionsPage: async () => ({
+          items: [],
+          continuation: [{ id: "status:queued:0", checkpoint: null, exhausted: false }],
+        }),
+      } as never,
+    });
+    const page = await plane.listSessionsPageDurable({ status: "queued" });
+    expect(
+      decodeDurableSessionCursor(plane.state, page.nextCursor!, {
+        sort: "latest",
+        query: {
+          repositoryId: null,
+          status: "queued",
+          hostId: null,
+          concurrencyId: null,
+          scheduleId: null,
+          source: null,
+        },
+        scope: { repositoryIds: null, hostId: null },
+      }),
+    ).toMatchObject({ version: 2, partitions: [{ id: "status:queued:0" }] });
+  });
+
   it("upgrades a v1 logical cursor to v2 while retaining its position", async () => {
     const plane = new ControlPlane({
       storage: {
@@ -62,5 +88,43 @@ describe("listSessionsPageDurable storage pages", () => {
       scope: { repositoryIds: null, hostId: null },
     });
     expect(upgraded).toMatchObject({ version: 2, position: { id: "old" } });
+  });
+
+  it("records the last emitted session as the v2 logical bound", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        listSessionsPage: async () => ({
+          items: [
+            {
+              id: "emitted",
+              repositoryId: "repo-1",
+              status: "queued",
+              queueShard: 0,
+              priority: 7,
+              createdAt: "2026-01-02T00:00:00.000Z",
+              source: "ui",
+            },
+          ],
+          continuation: [{ id: "status:queued:0", checkpoint: null, exhausted: false }],
+        }),
+      } as never,
+    });
+    const page = await plane.listSessionsPageDurable({ status: "queued" });
+    const cursor = decodeDurableSessionCursor(plane.state, page.nextCursor!, {
+      sort: "latest",
+      query: {
+        repositoryId: null,
+        status: "queued",
+        hostId: null,
+        concurrencyId: null,
+        scheduleId: null,
+        source: null,
+      },
+      scope: { repositoryIds: null, hostId: null },
+    });
+    expect(cursor).toMatchObject({
+      version: 2,
+      position: { id: "emitted", priority: 7, createdAt: "2026-01-02T00:00:00.000Z" },
+    });
   });
 });

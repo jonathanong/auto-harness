@@ -59,7 +59,7 @@ export type SessionCursorV2 = {
   sort: SessionListSort;
   query: CursorQuery;
   scope: CursorScope;
-  /** Retained while a v1 logical-position cursor is being drained. */
+  /** Logical emitted bound, also retained while a v1 cursor is being upgraded. */
   position?: CursorPosition;
   partitions: Array<{
     id: string;

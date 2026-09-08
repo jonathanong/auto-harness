@@ -95,13 +95,35 @@ export async function listSessionsPageFromStorage(
       return frontier !== undefined && compareSessions(row.session, frontier, query.sort) <= 0;
     }),
   );
-  const selected = safe.slice(0, query.limit);
+  const selected = selectConsumable(safe, query.limit);
   const selectedRows = new Set(selected.map(({ row }) => row));
   const continuation = windows.map((window) => nextState(window, selectedRows));
   return {
     items: selected.map(({ row }) => row.session),
     continuation: continuation.every((state) => state.exhausted) ? null : continuation,
   };
+}
+
+function selectConsumable(
+  candidates: Array<{ window: PartitionWindow; row: RawRow }>,
+  limit: number,
+): Array<{ window: PartitionWindow; row: RawRow }> {
+  const selected: Array<{ window: PartitionWindow; row: RawRow }> = [];
+  const selectedRows = new Set<RawRow>();
+  const remaining = [...candidates];
+  while (selected.length < limit) {
+    const index = remaining.findIndex(({ window, row }) => {
+      const rowIndex = window.rows.indexOf(row);
+      return window.rows
+        .slice(0, rowIndex)
+        .every((prior) => !prior.matching || selectedRows.has(prior));
+    });
+    if (index < 0) break;
+    const candidate = remaining.splice(index, 1)[0]!;
+    selected.push(candidate);
+    selectedRows.add(candidate.row);
+  }
+  return selected;
 }
 
 function partitionPlan(query: SessionListPageQuery): Partition[] {

@@ -585,6 +585,51 @@ describe("listSessionsPageFromStorage", () => {
     ).rejects.toThrow(InvalidSessionCursorError);
   });
 
+  it("advances only through a consumable raw prefix when equal keys arrive out of id order", async () => {
+    const a = row("a", "2026-01-03T00:00:00.000Z");
+    const b = row("b", "2026-01-03T00:00:00.000Z");
+    const ctx = {
+      doc: {
+        send: async (command: QueryCommand) =>
+          command.input.ExclusiveStartKey ? { Items: [b] } : { Items: [a, b] },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const query = {
+      limit: 1,
+      sort: "latest" as const,
+      shardCount: 1,
+      status: "queued" as const,
+      repositoryId: null,
+      repositoryIds: null,
+      hostId: null,
+      source: null,
+      concurrencyId: null,
+      scheduleId: null,
+    };
+
+    const first = await listSessionsPageFromStorage(ctx, query);
+    expect(first.items.map((item) => item.id)).toEqual(["a"]);
+    const second = await listSessionsPageFromStorage(ctx, {
+      ...query,
+      continuation: {
+        version: 2,
+        sort: "latest",
+        query: {
+          repositoryId: null,
+          status: "queued",
+          hostId: null,
+          concurrencyId: null,
+          scheduleId: null,
+          source: null,
+        },
+        scope: { repositoryIds: null, hostId: null },
+        partitions: first.continuation!,
+      },
+    });
+    expect(second.items.map((item) => item.id)).toEqual(["b"]);
+  });
+
   it("uses the priority index and binds unscoped priority cursors", async () => {
     const commands: QueryCommand[] = [];
     const cursor = { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 };
@@ -627,11 +672,23 @@ describe("listSessionsPageFromStorage", () => {
   it("uses the repository priority range for scoped status pages", async () => {
     const commands: QueryCommand[] = [];
     const cursor = { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 };
+    const session = {
+      ...row("sess-1", "2026-01-02T00:00:00.000Z", "ui", "repo-1"),
+      priority: -1,
+      status: "running" as const,
+    };
     const ctx = {
       doc: {
         send: async (command: QueryCommand) => {
           commands.push(command);
-          return { Items: [] };
+          return {
+            Items: [session],
+            LastEvaluatedKey: {
+              id: session.id,
+              statusShard: "running#0",
+              repositoryPriorityOrder: repositoryPriorityOrderKey("repo-1", session),
+            },
+          };
         },
       },
       tables: { sessions: "sessions" },
@@ -643,8 +700,8 @@ describe("listSessionsPageFromStorage", () => {
       sort: "priority_desc",
       shardCount: 1,
       status: "running",
-      repositoryId: "repo-1",
-      repositoryIds: null,
+      repositoryId: null,
+      repositoryIds: ["repo-1"],
       hostId: null,
       source: null,
       concurrencyId: null,
@@ -679,7 +736,7 @@ describe("listSessionsPageFromStorage", () => {
         send: async (command: QueryCommand) => {
           commands.push(command);
           return commands.length === 1
-            ? { Items: [{ ...session, ...checkpoint }], LastEvaluatedKey: checkpoint }
+            ? { Items: [session], LastEvaluatedKey: checkpoint }
             : { Items: [] };
         },
       },
