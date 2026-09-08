@@ -52,7 +52,7 @@ export function concurrencyIdByteLengthError(concurrencyId: string): string | nu
 export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */
 const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
-const MAX_SESSION_PRIORITY = 10_000;
+export const MAX_SESSION_PRIORITY = 10_000;
 const MAX_REQUIRED_LABELS = 16;
 const MAX_REQUIRED_LABEL_LENGTH = 64;
 const MAX_METADATA_KEYS = 32;
@@ -66,6 +66,29 @@ export const MAX_FALLBACKS = 90;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+/** Shared validation for create, clone, and resume timeout values. */
+export function sessionTimeoutError(timeout: unknown): string | null {
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
+    return "timeout must be a positive number of seconds";
+  }
+  if (timeout > MAX_SESSION_TIMEOUT_SECONDS) {
+    return `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds`;
+  }
+  return null;
+}
+
+/** Shared validation for create, clone, and resume priority values. */
+export function sessionPriorityError(priority: unknown): string | null {
+  if (typeof priority !== "number" || !Number.isFinite(priority)) {
+    return "priority must be a number";
+  }
+  if (!Number.isInteger(priority)) return "priority must be an integer";
+  if (Math.abs(priority) > MAX_SESSION_PRIORITY) {
+    return `priority must be between -${MAX_SESSION_PRIORITY} and ${MAX_SESSION_PRIORITY}`;
+  }
+  return null;
 }
 
 export function isSessionStatus(value: unknown): value is SessionStatus {
@@ -157,28 +180,14 @@ export function validateCreateSessionInput(input: {
   if (promptBytes) return { ok: false, error: promptBytes };
   const routing = validateTargetRouting(input);
   if (!routing.ok) return routing;
-  if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {
-    return { ok: false, error: "timeout must be a positive number of seconds" };
-  }
-  if (input.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
-    return { ok: false, error: `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds` };
-  }
+  const timeoutError = sessionTimeoutError(input.timeout);
+  if (timeoutError) return { ok: false, error: timeoutError };
 
   let priority = 0;
   if (input.priority !== undefined) {
-    if (typeof input.priority !== "number" || !Number.isFinite(input.priority)) {
-      return { ok: false, error: "priority must be a number" };
-    }
-    if (!Number.isInteger(input.priority)) {
-      return { ok: false, error: "priority must be an integer" };
-    }
-    if (Math.abs(input.priority) > MAX_SESSION_PRIORITY) {
-      return {
-        ok: false,
-        error: `priority must be between -${MAX_SESSION_PRIORITY} and ${MAX_SESSION_PRIORITY}`,
-      };
-    }
-    priority = input.priority;
+    const priorityError = sessionPriorityError(input.priority);
+    if (priorityError) return { ok: false, error: priorityError };
+    priority = input.priority as number;
   }
 
   let requiredLabels: string[] = [];
@@ -256,7 +265,7 @@ export function validateCreateSessionInput(input: {
       target: routing.value.target,
       fallbacks: routing.value.fallbacks,
       queueTtlSeconds: routing.value.queueTtlSeconds,
-      timeout: input.timeout,
+      timeout: input.timeout as number,
       priority,
       requiredLabels,
       ref,
