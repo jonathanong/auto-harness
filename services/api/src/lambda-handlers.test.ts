@@ -982,6 +982,96 @@ describe("Lambda runtime adapters", () => {
     ).toContainEqual({ type: "host:draining", hostId: "host-1" });
   });
 
+  it("delivers session:acknowledged on the inbound connection after a host cache miss", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.delete("host-1");
+    fixture.management.send.mockClear();
+    fixture.sessions.set("session-ack-cache-miss", {
+      id: "session-ack-cache-miss",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: "default",
+      fallbacks: [],
+      targetDisplayNames: ["default"],
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-cache-miss",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:ack",
+          sessionId: "session-ack-cache-miss",
+          worktreeId: null,
+          attemptId: "attempt-cache-miss",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+
+    expect(fixture.management.send.mock.calls[0]?.[0].input.ConnectionId).toBe("gateway-1");
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:acknowledged",
+      sessionId: "session-ack-cache-miss",
+      attemptId: "attempt-cache-miss",
+    });
+  });
+
+  it("delivers session:acknowledged on the inbound connection despite a stale host cache", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.plane.state.hostConnection.set("host-1", "replaced-connection");
+    fixture.management.send.mockClear();
+    fixture.sessions.set("session-ack-stale-cache", {
+      id: "session-ack-stale-cache",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: "default",
+      fallbacks: [],
+      targetDisplayNames: ["default"],
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-stale-cache",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:ack",
+          sessionId: "session-ack-stale-cache",
+          worktreeId: null,
+          attemptId: "attempt-stale-cache",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+
+    expect(fixture.management.send.mock.calls[0]?.[0].input.ConnectionId).toBe("gateway-1");
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:acknowledged",
+      sessionId: "session-ack-stale-cache",
+      attemptId: "attempt-stale-cache",
+    });
+  });
+
   it("replies with session:status-acknowledged after a durable terminal report commits", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);

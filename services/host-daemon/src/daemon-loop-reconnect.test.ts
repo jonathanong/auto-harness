@@ -6,7 +6,7 @@ import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared"
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { createLoopbackTransport } from "./loopback-transport.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo, pendingTerminalStatusOf } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop reconnect", () => {
   it("uses the 75-second reconnect grace by default", () => {
@@ -532,6 +532,86 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("keeps a completed result reconnect-claimable when a held log outlives reconnect grace", async () => {
+    const { config, cleanup } = await makeRepo();
+    let transport: BarrierTransport | undefined;
+    try {
+      transport = new BarrierTransport();
+      const loop = new DaemonLoop({ config, transport, reconnectAbortMs: 5, timers: globalThis });
+      await loop.start();
+      const outbound = (
+        loop as unknown as {
+          outbound: { send(message: HostToServerMessage): Promise<void> };
+          runner: { run(): Promise<unknown> };
+        }
+      ).outbound;
+      const heldLogDelivery = outbound.send({
+        type: "session:log",
+        sessionId: "held-terminal",
+        attemptId: "attempt-held-terminal",
+        stream: "stdout",
+        content: "output still queued",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        seq: 1,
+      });
+      await settle();
+      expect(transport.heldLog).toBe(true);
+      (
+        loop as unknown as {
+          runner: {
+            run(): Promise<{ status: "completed"; exitCode: number; logs: [] }>;
+          };
+        }
+      ).runner = {
+        async run() {
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
+      transport.deliver(assignMessage("held-terminal"));
+      await settle();
+      transport.deliver({
+        type: "session:acknowledged",
+        sessionId: "held-terminal",
+        attemptId: "attempt-held-terminal",
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          pendingTerminalStatusOf(loop).get("held-terminal\0attempt-held-terminal"),
+        ).toMatchObject({
+          message: expect.objectContaining({ status: "completed" }),
+          sending: true,
+        }),
+      );
+
+      vi.useFakeTimers();
+      transport.disconnect();
+      await vi.advanceTimersByTimeAsync(5);
+      transport.connect();
+      await settle();
+      expect(transport.registers.at(-1)).toMatchObject({
+        runningSessions: ["held-terminal"],
+        runningAttempts: [{ sessionId: "held-terminal", attemptId: "attempt-held-terminal" }],
+      });
+
+      transport.releaseLog();
+      await expect(heldLogDelivery).resolves.toBeUndefined();
+      await loop.waitForIdle();
+      const heldLog = transport.sent.findIndex(
+        (message) => message.type === "session:log" && message.sessionId === "held-terminal",
+      );
+      const terminal = transport.sent.findIndex(
+        (message) => message.type === "session:status" && message.sessionId === "held-terminal",
+      );
+      expect(heldLog).toBeGreaterThanOrEqual(0);
+      expect(terminal).toBeGreaterThan(heldLog);
+      loop.stop();
+    } finally {
+      transport?.releaseLog();
+      cleanup();
+    }
+  });
+
   it("reports a failed reconnect registration through the loop logger", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -775,6 +855,8 @@ class BarrierTransport implements DaemonTransport {
   readonly registers: Array<Extract<HostToServerMessage, { type: "host:register" }>> = [];
   heldLog = false;
   private connected: (() => void) | undefined;
+  private disconnected: (() => void) | undefined;
+  private message: ((message: HostWireMessage) => void) | undefined;
   private release: (() => void) | undefined;
 
   send(message: HostToServerMessage): Promise<void> {
@@ -796,14 +878,24 @@ class BarrierTransport implements DaemonTransport {
     });
   }
 
-  onMessage(): void {}
-  onDisconnected(): void {}
+  onMessage(handler: (message: HostWireMessage) => void): void {
+    this.message = handler;
+  }
+  onDisconnected(handler: () => void): void {
+    this.disconnected = handler;
+  }
   onConnected(handler: () => void): void {
     this.connected = handler;
   }
   close(): void {}
   connect(): void {
     this.connected?.();
+  }
+  disconnect(): void {
+    this.disconnected?.();
+  }
+  deliver(message: HostWireMessage): void {
+    this.message?.(message);
   }
   releaseLog(): void {
     this.release?.();
