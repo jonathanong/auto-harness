@@ -50,6 +50,17 @@ function archiveCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageC
   return { doc: { send } as never, tables: { archives: "Archives" } as never };
 }
 
+function logCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
+  return {
+    doc: { send } as never,
+    tables: {
+      sessionLogs: "SessionLogs",
+      hostLocks: "HostLocks",
+      sessions: "Sessions",
+    } as never,
+  };
+}
+
 function schedule(ref?: string): ScheduleRecord {
   return {
     id: "schedule-1",
@@ -1095,6 +1106,96 @@ describe("durable schedule management updates", () => {
 });
 
 describe("session log ttl", () => {
+  const fencedRec = {
+    sessionId: "session-1",
+    timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+    stream: "stdout" as const,
+    content: "line",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    seq: 1,
+  };
+
+  it("retries transient transaction conflicts for single and batched fenced writes", async () => {
+    const conflict = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "TransactionConflict" }, { Code: "None" }],
+    };
+    const singleSend = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValueOnce({});
+    await expect(
+      putLogFenced(logCtx(singleSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).resolves.toBe(true);
+    expect(singleSend).toHaveBeenCalledTimes(2);
+
+    const batchSend = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValueOnce({});
+    await expect(
+      putLogsFenced(logCtx(batchSend), [fencedRec], {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).resolves.toBe(true);
+    expect(batchSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a failed fenced-write condition", async () => {
+    const conditional = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }, { Code: "None" }],
+    };
+    const send = vi.fn().mockRejectedValue(conditional);
+    await expect(
+      putLogFenced(logCtx(send), fencedRec, { hostId: "host", connectionId: "connection" }),
+    ).resolves.toBe(false);
+    expect(send).toHaveBeenCalledOnce();
+
+    const mixed = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "TransactionConflict" }, { Code: "ConditionalCheckFailed" }],
+    };
+    const mixedSend = vi.fn().mockRejectedValue(mixed);
+    await expect(
+      putLogFenced(logCtx(mixedSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).resolves.toBe(false);
+    expect(mixedSend).toHaveBeenCalledOnce();
+
+    const missingReasons = { name: "TransactionCanceledException" };
+    const missingReasonsSend = vi.fn().mockRejectedValue(missingReasons);
+    await expect(
+      putLogFenced(logCtx(missingReasonsSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe(missingReasons);
+    expect(missingReasonsSend).toHaveBeenCalledOnce();
+
+    const missingName = {};
+    const missingNameSend = vi.fn().mockRejectedValue(missingName);
+    await expect(
+      putLogFenced(logCtx(missingNameSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe(missingName);
+    expect(missingNameSend).toHaveBeenCalledOnce();
+  });
+
+  it("bounds repeated fenced-write transaction conflicts", async () => {
+    const conflict = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "TransactionConflict" }],
+    };
+    const send = vi.fn().mockRejectedValue(conflict);
+    await expect(
+      putLogFenced(logCtx(send), fencedRec, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toBe(conflict);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
   it("stamps seven-day epoch ttl on single, fenced, and batched writes", async () => {
     const items: Array<Record<string, unknown> | undefined> = [];
     const ctx: PlaneStorageCtx = {

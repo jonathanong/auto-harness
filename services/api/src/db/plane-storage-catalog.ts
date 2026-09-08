@@ -89,6 +89,38 @@ function sessionAttemptChecks(ctx: PlaneStorageCtx, fence: HostLogFence) {
   }));
 }
 
+const LOG_TRANSACTION_MAX_ATTEMPTS = 3;
+const LOG_TRANSACTION_BASE_RETRY_DELAY_MS = 10;
+
+function isTransactionConflict(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("name" in err)) return false;
+  const named = err as { name?: string; CancellationReasons?: Array<{ Code?: string }> };
+  const reasons = named.CancellationReasons ?? [];
+  return (
+    named.name === "TransactionCanceledException" &&
+    reasons.some((reason) => reason.Code === "TransactionConflict") &&
+    !reasons.some((reason) => reason.Code === "ConditionalCheckFailed")
+  );
+}
+
+async function sendFencedLogTransaction(
+  ctx: PlaneStorageCtx,
+  command: TransactWriteCommand,
+): Promise<void> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      await ctx.doc.send(command);
+      return;
+    } catch (err) {
+      if (!isTransactionConflict(err) || attempt === LOG_TRANSACTION_MAX_ATTEMPTS - 1) throw err;
+      const backoff = LOG_TRANSACTION_BASE_RETRY_DELAY_MS * 2 ** attempt;
+      await delay(backoff + randomInt(backoff)); // NOSONAR
+      attempt += 1;
+    }
+  }
+}
+
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
   if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
@@ -130,7 +162,8 @@ export async function putLogFenced(
   const attempts = sessionAttemptChecks(ctx, fence);
   if (attempts === null) return false;
   try {
-    await ctx.doc.send(
+    await sendFencedLogTransaction(
+      ctx,
       new TransactWriteCommand({
         TransactItems: [
           hostLockCheck(ctx, fence),
@@ -163,7 +196,8 @@ export async function putLogsFenced(
     uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
   }
   try {
-    await ctx.doc.send(
+    await sendFencedLogTransaction(
+      ctx,
       new TransactWriteCommand({
         TransactItems: [
           hostLockCheck(ctx, fence),
