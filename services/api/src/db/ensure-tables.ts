@@ -40,18 +40,20 @@ import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-ta
 const LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS = 100_000;
 const LOCAL_SESSION_LIST_MIGRATION_RETRY_MS = 1;
 
-async function completeLocalSessionListMigration(
+export async function completeLocalSessionListMigration(
   doc: DynamoDBDocumentClient,
   names: Pick<DynamoTableNames, "sessions" | "sessionDrains">,
+  maxAttempts = LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS,
+  migratePage: typeof migrateSessionPriorityOrderPage = migrateSessionPriorityOrderPage,
 ): Promise<void> {
-  for (let attempt = 1; attempt <= LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS; attempt += 1) {
-    if (await migrateSessionPriorityOrderPage(doc, names)) return;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (await migratePage(doc, names)) return;
     // A false result is either another bounded page or a concurrent lease holder.
     // Yield before retrying so independent local bootstraps make progress fairly.
     await delay(LOCAL_SESSION_LIST_MIGRATION_RETRY_MS);
   }
   throw new Error(
-    `local session-list migration did not become ready after ${LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS} bounded page attempts`,
+    `local session-list migration did not become ready after ${maxAttempts} bounded page attempts`,
   );
 }
 

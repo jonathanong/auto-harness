@@ -48,7 +48,7 @@ export type SessionStoragePage = {
 type Partition = {
   id: string;
   indexName: string;
-  keyName: "repositoryId" | "statusShard";
+  keyName: "statusShard";
   keyValue: string;
   forward: boolean;
   sortKeyName: "createdOrder" | "priorityOrder" | "repositoryPriorityOrder";
@@ -346,10 +346,7 @@ function keyForRow(partition: Partition, row: RawRow): SessionPartitionCheckpoin
       : partition.sortKeyName === "priorityOrder"
         ? priorityOrderKey(row.session)
         : repositoryPriorityOrderKey(partition.repositoryId!, row.session));
-  const hash =
-    partition.keyName === "repositoryId"
-      ? row.session.repositoryId
-      : statusShardAttr(row.session.status, row.session.queueShard);
+  const hash = statusShardAttr(row.session.status, row.session.queueShard);
   if (typeof id !== "string" || typeof range !== "string" || typeof hash !== "string") {
     throw new Error("session query returned an invalid pagination key");
   }

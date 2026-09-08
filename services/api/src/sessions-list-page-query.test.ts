@@ -185,9 +185,12 @@ describe("listSessionsPageFromStorage", () => {
       source: null,
       concurrencyId: null,
       scheduleId: null,
+      position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
     });
     expect(commands[0]?.input.IndexName).toBe("statusShard-priorityOrder");
-    expect(commands[0]?.input.KeyConditionExpression).toBe("statusShard = :key");
+    expect(commands[0]?.input.KeyConditionExpression).toBe(
+      "statusShard = :key AND priorityOrder < :sortValue",
+    );
     expect(commands[0]?.input.ScanIndexForward).toBe(false);
   });
 
@@ -458,6 +461,66 @@ describe("listSessionsPageFromStorage", () => {
       statusShard: "queued#0",
       createdOrder: `${skipped.createdAt}#${skipped.id}`,
     });
+  });
+
+  it("rejects a non-string key derived from a returned session", async () => {
+    const ctx = {
+      doc: {
+        send: async () => ({
+          Items: [{ ...row("invalid", "2026-01-01T00:00:00.000Z"), createdOrder: 1 }],
+          LastEvaluatedKey: {
+            id: "invalid",
+            statusShard: "queued#0",
+            createdOrder: "2026-01-01T00:00:00.000Z#invalid",
+          },
+        }),
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 1,
+        sort: "latest",
+        shardCount: 1,
+        status: "queued",
+        repositoryId: null,
+        repositoryIds: null,
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+      }),
+    ).rejects.toThrow("session query returned an invalid pagination key");
+  });
+
+  it("rejects a non-string Dynamo continuation key", async () => {
+    const ctx = {
+      doc: {
+        send: async () => ({
+          Items: [],
+          LastEvaluatedKey: {
+            id: 1,
+            statusShard: "queued#0",
+            createdOrder: "2026-01-01T00:00:00.000Z#invalid",
+          },
+        }),
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      listSessionsPageFromStorage(ctx, {
+        limit: 1,
+        sort: "latest",
+        shardCount: 1,
+        status: "queued",
+        repositoryId: null,
+        repositoryIds: null,
+        hostId: null,
+        source: null,
+        concurrencyId: null,
+        scheduleId: null,
+      }),
+    ).rejects.toThrow("session query returned an invalid pagination key");
   });
 
   it("advances an empty Dynamo page with LastEvaluatedKey without marking the list terminal", async () => {
