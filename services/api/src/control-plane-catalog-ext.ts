@@ -330,6 +330,6 @@ export class ControlPlaneCatalogService {
 
   async listSessionTargetsDurable(): Promise<SessionTarget[]> {
     await durableCatalog.refreshTargetCatalogDurable(this.state);
-    return listSessionTargets(this.state);
+    return listSessionTargets(this.state, { includeAvailability: false });
   }
 }
