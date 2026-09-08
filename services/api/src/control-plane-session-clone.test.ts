@@ -127,6 +127,15 @@ describe("session clone", () => {
       });
     }
 
+    const source = plane.state.sessions.get("clone")!;
+    source.priority = 10_001;
+    expect(plane.cloneSession("clone")).toMatchObject({
+      ok: false,
+      error: "priority must be between -10000 and 10000",
+      code: "VALIDATION_ERROR",
+    });
+    source.priority = 0;
+
     plane.state.commands.clear();
     expect(plane.cloneSession("clone")).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
     expect(plane.getSession("clone")?.status).toBe("queued");

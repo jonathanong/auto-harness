@@ -111,6 +111,14 @@ export function prepareResumedSession(
   }
   const overrides = validateResumeOverrides(opts);
   if (!overrides.ok) return overrides;
+  const inheritedTimeoutError = validateTimeoutOverride({
+    timeout: opts.timeout ?? source.timeout,
+  });
+  if (inheritedTimeoutError) return { ok: false, error: inheritedTimeoutError };
+  const inheritedPriorityError = validatePriorityOverride({
+    priority: opts.priority ?? source.priority,
+  });
+  if (inheritedPriorityError) return { ok: false, error: inheritedPriorityError };
   // Terminal transitions detach host/worktree, so the immutable resolved route
   // is the authoritative native-continuation location.
   const pin = source.resolvedRoute?.hostId || source.hostId || source.pinnedHostId;

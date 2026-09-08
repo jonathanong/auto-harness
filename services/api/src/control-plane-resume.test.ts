@@ -610,6 +610,13 @@ describe("control-plane native resume", () => {
         ok: true,
         session: { priority: 5 },
       });
+      const storedSource = overrides.state.sessions.get(source.session.id)!;
+      storedSource.priority = 10_001;
+      expect(overrides.resumeSession(source.session.id)).toEqual({
+        ok: false,
+        error: "priority must be between -10000 and 10000",
+      });
+      storedSource.priority = 0;
       expect(
         overrides.resumeSession(source.session.id, { pinExpiresAt: "not-a-timestamp" }),
       ).toEqual({

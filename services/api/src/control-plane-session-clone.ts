@@ -68,7 +68,12 @@ export function prepareClonedSession(
   if (!source) return { ok: false, error: "session not found", code: "NOT_FOUND" };
   const admissionFailure = repositoryAdmissionFailure(state, source.repositoryId);
   if (admissionFailure) return admissionFailure;
-  const overrideError = validateCloneOverrides(opts);
+  const overrideError = validateCloneOverrides({
+    ...opts,
+    prompt: opts.prompt ?? source.prompt,
+    timeout: opts.timeout ?? source.timeout,
+    priority: opts.priority ?? source.priority,
+  });
   if (overrideError) return { ok: false, error: overrideError, code: "VALIDATION_ERROR" };
   const targets = resolveTargetDisplayNames(state, source.target, source.fallbacks);
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
