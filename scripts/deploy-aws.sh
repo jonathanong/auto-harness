@@ -123,6 +123,28 @@ session_priority_index_state() {
     --output text
 }
 
+read_sessions_table_state() {
+  local output status
+  set +e
+  output="$(aws dynamodb describe-table \
+    --region "$AWS_REGION" \
+    --table-name "$sessions_table" \
+    --query 'Table.TableStatus' \
+    --output text 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$output"
+    return 0
+  fi
+  if [[ "$output" == *"ResourceNotFoundException"* ]]; then
+    printf '%s' MISSING
+    return 0
+  fi
+  echo "Could not inspect the Sessions table: $output" >&2
+  return 1
+}
+
 wait_for_session_priority_index() {
   local index_name="$1" status=""
   for _ in $(seq 1 300); do
@@ -285,6 +307,14 @@ verify_no_active_sessions() {
 
 ledger_record_key="$(read_ledger_key)"
 priority_order_record_key="$(read_priority_order_key)"
+sessions_table_state="$(read_sessions_table_state)"
+if [[ "$sessions_table_state" != "MISSING" ]]; then
+  active_host_index_state="$(session_priority_index_state "activeHostId-activeHostOrder")"
+  if [[ "$active_host_index_state" != "ACTIVE" ]]; then
+    echo "Existing Sessions table lacks an ACTIVE activeHostId-activeHostOrder index; deploy this breaking coordination schema to a fresh environment." >&2
+    exit 1
+  fi
+fi
 needs_ledger=0
 needs_priority_order=0
 if [[ "$ledger_record_key" != "ACTIVITY-V1" ]]; then needs_ledger=1; fi
