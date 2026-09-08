@@ -5,6 +5,7 @@ import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import {
   decodeSessionCursor,
+  decodeDurableSessionCursor,
   encodeSessionCursor,
   InvalidSessionCursorError,
   InvalidSessionListQueryError,
@@ -13,6 +14,7 @@ import {
   normalizeScope,
   normalizeSort,
   type SessionCursor,
+  type SessionCursorV2,
 } from "./control-plane-session-cursor.ts";
 
 const state = { sessionCursorSecret: "secret" } as ControlPlaneState;
@@ -103,6 +105,32 @@ describe("session cursor primitives", () => {
       .update(invalidJson)
       .digest("base64url");
     expect(() => decodeSessionCursor(state, `${invalidJson}.${signature}`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
+  });
+
+  it("round-trips signed v2 partition checkpoints and rejects malformed state", () => {
+    const cursor: SessionCursorV2 = {
+      version: 2,
+      sort: "latest",
+      query: base.query,
+      scope: base.scope,
+      position: { createdAt: "2026-01-01", id: "legacy", priority: 0 },
+      partitions: [
+        {
+          id: "status:queued:0",
+          checkpoint: { id: "s1", statusShard: "queued#0", createdAt: "2026-01-01" },
+          exhausted: false,
+        },
+      ],
+    };
+    const encoded = encodeSessionCursor(state, cursor);
+    expect(decodeDurableSessionCursor(state, encoded, base)).toEqual(cursor);
+    const malformed = encodeSessionCursor(state, {
+      ...cursor,
+      partitions: [{ ...cursor.partitions[0]!, checkpoint: { id: 1 } as never }],
+    });
+    expect(() => decodeDurableSessionCursor(state, malformed, base)).toThrow(
       InvalidSessionCursorError,
     );
   });

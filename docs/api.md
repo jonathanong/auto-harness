@@ -643,6 +643,11 @@ applies there.
 }
 ```
 
+Session filtering is applied while traversing bounded storage pages, so a response may contain
+fewer than `limit` items — including an empty `items` array — while `nextCursor` is non-null. Treat
+only `nextCursor: null` as terminal; clients must continue requesting pages with the returned
+cursor until it becomes null.
+
 #### `GET /sessions/:id`
 
 Get session details.

@@ -23,6 +23,7 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
+import { encodeSessionCursor } from "./control-plane-session-cursor.ts";
 
 function durableListRepositoryIds(
   requested: sessions.ListSessionsPageQuery,
@@ -90,7 +91,7 @@ export class ControlPlaneSessionsService {
       ) {
         return { items: [], nextCursor: null };
       }
-      const records = await storage.listSessionsPage({
+      const page = await storage.listSessionsPage({
         limit: normalized.limit,
         sort: normalized.sort,
         shardCount: this.state.shardCount,
@@ -102,9 +103,22 @@ export class ControlPlaneSessionsService {
         concurrencyId: normalized.query.concurrencyId,
         scheduleId: normalized.query.scheduleId,
         ...(normalized.position ? { position: normalized.position } : {}),
+        ...(normalized.continuation ? { continuation: normalized.continuation } : {}),
       });
-      const { cursor: _ignoredCursor, ...firstPage } = requested;
-      return sessions.listSessionsPage(this.state, firstPage, records);
+      return {
+        items: page.items.map((record) => toPublic(this.state, record)),
+        nextCursor:
+          page.continuation === null
+            ? null
+            : encodeSessionCursor(this.state, {
+                version: 2,
+                sort: normalized.sort,
+                query: normalized.query,
+                scope: normalized.scope,
+                ...(normalized.position ? { position: normalized.position } : {}),
+                partitions: page.continuation,
+              }),
+      };
     }
     const repositoryIds = durableListRepositoryIds(requested);
     if (repositoryIds !== undefined) {

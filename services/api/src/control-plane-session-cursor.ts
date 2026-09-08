@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- v1/v2 cursor validation intentionally shares signing primitives. */
 import {
   concurrencyIdByteLengthError,
   isSessionSource,
@@ -50,6 +51,23 @@ export type SessionCursor = {
   scope: CursorScope;
   position: CursorPosition;
 };
+
+/** A typed DynamoDB `ExclusiveStartKey` retained independently for each list partition. */
+export type SessionPartitionCheckpoint = Record<string, string>;
+export type SessionCursorV2 = {
+  version: 2;
+  sort: SessionListSort;
+  query: CursorQuery;
+  scope: CursorScope;
+  /** Retained while a v1 logical-position cursor is being drained. */
+  position?: CursorPosition;
+  partitions: Array<{
+    id: string;
+    checkpoint: SessionPartitionCheckpoint | null;
+    exhausted: boolean;
+  }>;
+};
+export type AnySessionCursor = SessionCursor | SessionCursorV2;
 
 export class InvalidSessionCursorError extends Error {
   constructor() {
@@ -117,7 +135,7 @@ export function normalizeScope(scope: SessionListScope | undefined): CursorScope
   };
 }
 
-function cursorPayload(cursor: SessionCursor): string {
+function cursorPayload(cursor: AnySessionCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
@@ -131,7 +149,7 @@ function normalizeCursorQuery(query: unknown): unknown {
   return { ...cursorQuery, source: cursorQuery.source ?? null };
 }
 
-export function encodeSessionCursor(state: ControlPlaneState, cursor: SessionCursor): string {
+export function encodeSessionCursor(state: ControlPlaneState, cursor: AnySessionCursor): string {
   const payload = cursorPayload(cursor);
   return `${payload}.${sign(state, payload)}`;
 }
@@ -180,4 +198,92 @@ export function decodeSessionCursor(
     throw new InvalidSessionCursorError();
   }
   return position;
+}
+
+/** Decode a durable cursor. V1 remains supported so old links upgrade on their next response. */
+export function decodeDurableSessionCursor(
+  state: ControlPlaneState,
+  encoded: string,
+  expected: Omit<SessionCursor, "position" | "version">,
+): AnySessionCursor {
+  const parts = encoded.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new InvalidSessionCursorError();
+  const expectedSignature = sign(state, parts[0]);
+  const actualSignature = Buffer.from(parts[1]!, "base64url");
+  const expectedSignatureBytes = Buffer.from(expectedSignature, "base64url");
+  if (
+    actualSignature.length !== expectedSignatureBytes.length ||
+    !timingSafeEqual(actualSignature, expectedSignatureBytes)
+  ) {
+    throw new InvalidSessionCursorError();
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(parts[0]!, "base64url").toString("utf8")) as unknown;
+  } catch {
+    throw new InvalidSessionCursorError();
+  }
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new InvalidSessionCursorError();
+  }
+  const cursor = decoded as Partial<AnySessionCursor>;
+  if (
+    (cursor.version !== 1 && cursor.version !== 2) ||
+    cursor.sort !== expected.sort ||
+    JSON.stringify(normalizeCursorQuery(cursor.query)) !== JSON.stringify(expected.query) ||
+    JSON.stringify(cursor.scope) !== JSON.stringify(expected.scope)
+  ) {
+    throw new InvalidSessionCursorError();
+  }
+  if (cursor.version === 1) {
+    const position = cursor.position;
+    if (
+      !position ||
+      typeof position !== "object" ||
+      typeof position.createdAt !== "string" ||
+      typeof position.id !== "string" ||
+      typeof position.priority !== "number" ||
+      !Number.isFinite(position.priority)
+    ) {
+      throw new InvalidSessionCursorError();
+    }
+    return cursor as SessionCursor;
+  }
+  const durableCursor = cursor as Partial<SessionCursorV2>;
+  if (durableCursor.position !== undefined && !validPosition(durableCursor.position)) {
+    throw new InvalidSessionCursorError();
+  }
+  if (!Array.isArray(durableCursor.partitions)) throw new InvalidSessionCursorError();
+  const seen = new Set<string>();
+  for (const partition of durableCursor.partitions) {
+    if (!partition || typeof partition !== "object" || Array.isArray(partition)) {
+      throw new InvalidSessionCursorError();
+    }
+    if (
+      typeof partition.id !== "string" ||
+      partition.id.length === 0 ||
+      seen.has(partition.id) ||
+      typeof partition.exhausted !== "boolean" ||
+      (partition.checkpoint !== null &&
+        (!partition.checkpoint ||
+          typeof partition.checkpoint !== "object" ||
+          Array.isArray(partition.checkpoint) ||
+          Object.values(partition.checkpoint).some((value) => typeof value !== "string")))
+    ) {
+      throw new InvalidSessionCursorError();
+    }
+    seen.add(partition.id);
+  }
+  return durableCursor as SessionCursorV2;
+}
+
+function validPosition(position: unknown): position is CursorPosition {
+  return (
+    !!position &&
+    typeof position === "object" &&
+    typeof (position as CursorPosition).createdAt === "string" &&
+    typeof (position as CursorPosition).id === "string" &&
+    typeof (position as CursorPosition).priority === "number" &&
+    Number.isFinite((position as CursorPosition).priority)
+  );
 }

@@ -1,11 +1,19 @@
+/* eslint-disable max-lines -- bounded partition planning and cursor advancement are coupled. */
 import { SESSION_STATUSES, type SessionStatus } from "@auto-harness/shared";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
   SESSIONS_QUEUE_ORDER_INDEX,
   SESSIONS_STATUS_CREATED_INDEX,
+  queueOrderKey,
 } from "../control-plane-ordering.ts";
-import type { SessionListSort } from "../control-plane-session-cursor.ts";
+import type {
+  CursorPosition,
+  SessionCursorV2,
+  SessionListSort,
+  SessionPartitionCheckpoint,
+} from "../control-plane-session-cursor.ts";
+import { InvalidSessionCursorError } from "../control-plane-session-cursor.ts";
 import { compareSessionToCursor, compareSessions } from "../control-plane-session-order.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -24,48 +32,159 @@ export type SessionListPageQuery = {
   source: string | null;
   concurrencyId: string | null;
   scheduleId: string | null;
-  position?: { createdAt: string; id: string; priority: number };
+  /** Legacy v1 logical position, used only while upgrading an old cursor. */
+  position?: CursorPosition;
+  continuation?: SessionCursorV2;
 };
 
-/** Bounded Query of the next session window. Never Scans the Sessions table. */
+export type SessionStoragePage = {
+  items: SessionRecord[];
+  /** Null is the sole terminal signal; sparse filters can produce an empty page. */
+  continuation: SessionCursorV2["partitions"] | null;
+};
+
+type Partition = {
+  id: string;
+  indexName: string;
+  keyName: "repositoryId" | "statusShard";
+  keyValue: string;
+  forward: boolean;
+  usesCreatedAt: boolean;
+};
+type RawRow = { item: Record<string, unknown>; session: SessionRecord; matching: boolean };
+type PartitionState = SessionCursorV2["partitions"][number];
+type PartitionWindow = {
+  partition: Partition;
+  previous: PartitionState;
+  rows: RawRow[];
+  nextKey: SessionPartitionCheckpoint | undefined;
+  exhaustedRead: boolean;
+};
+
+/** One raw Query per selected partition. Never scans or loops a sparse partition. */
 export async function listSessionsPageFromStorage(
   ctx: PlaneStorageCtx,
   query: SessionListPageQuery,
-): Promise<SessionRecord[]> {
-  const needed = query.limit + 1;
-  const repositories = repositoryKeys(query);
-  if (repositories !== undefined && repositories.length === 0) return [];
-  const pages =
-    repositories !== undefined
-      ? await Promise.all(
-          repositories.map((repositoryId) =>
-            queryRepositoryWindow(ctx, query, repositoryId, needed),
-          ),
-        )
-      : await Promise.all(
-          statuses(query).flatMap((status) =>
-            [...Array(query.shardCount).keys()].map((shard) =>
-              queryStatusWindow(ctx, query, status, shard, needed),
-            ),
-          ),
-        );
-  return pages
-    .flat()
-    .filter((session) => matchesFilters(session, query) && afterCursor(session, query))
-    .toSorted((a, b) => compareSessions(a, b, query.sort))
-    .slice(0, needed);
+): Promise<SessionStoragePage> {
+  const partitions = partitionPlan(query);
+  if (partitions.length === 0) return { items: [], continuation: null };
+  const states = continuationForPlan(query.continuation, partitions);
+  const windows = await Promise.all(
+    partitions.map(async (partition) => {
+      const previous = states.get(partition.id)!;
+      return previous.exhausted
+        ? { partition, previous, rows: [], nextKey: undefined, exhaustedRead: true }
+        : queryPartitionWindow(ctx, query, partition, previous);
+    }),
+  );
+  const candidates = windows
+    .flatMap((window) => window.rows.filter((row) => row.matching).map((row) => ({ window, row })))
+    .toSorted((a, b) => compareSessions(a.row.session, b.row.session, query.sort));
+
+  // An open partition's unqueried tail begins after its raw frontier. A candidate
+  // is safe only when every such frontier is at or after it in list order.
+  const safe = candidates.filter(({ row }) =>
+    windows.every((window) => {
+      if (window.exhaustedRead) return true;
+      const frontier = window.rows.at(-1)?.session;
+      return frontier !== undefined && compareSessions(row.session, frontier, query.sort) <= 0;
+    }),
+  );
+  const selected = safe.slice(0, query.limit);
+  const selectedRows = new Set(selected.map(({ row }) => row));
+  const continuation = windows.map((window) => nextState(window, selectedRows));
+  return {
+    items: selected.map(({ row }) => row.session),
+    continuation: continuation.every((state) => state.exhausted) ? null : continuation,
+  };
 }
 
-function repositoryKeys(query: SessionListPageQuery): string[] | undefined {
+function partitionPlan(query: SessionListPageQuery): Partition[] {
   if (query.repositoryId) {
     if (query.repositoryIds && !query.repositoryIds.includes(query.repositoryId)) return [];
-    return [query.repositoryId];
+    return [repositoryPartition(query, query.repositoryId)];
   }
-  return query.repositoryIds === null ? undefined : [...query.repositoryIds];
+  const statusPartitions = statuses(query).flatMap((status) =>
+    [...Array(query.shardCount).keys()].map((shard) => statusPartition(query, status, shard)),
+  );
+  const repositories = query.repositoryIds?.toSorted();
+  return repositories !== undefined && repositories.length <= statusPartitions.length
+    ? repositories.map((id) => repositoryPartition(query, id))
+    : statusPartitions;
+}
+
+function repositoryPartition(query: SessionListPageQuery, repositoryId: string): Partition {
+  return {
+    id: `repository:${repositoryId}`,
+    indexName: SESSIONS_REPOSITORY_INDEX,
+    keyName: "repositoryId",
+    keyValue: repositoryId,
+    forward: query.sort !== "latest",
+    usesCreatedAt: true,
+  };
+}
+
+function statusPartition(
+  query: SessionListPageQuery,
+  status: SessionStatus,
+  shard: number,
+): Partition {
+  const queuedPriority = status === "queued" && query.sort.startsWith("priority_");
+  return {
+    id: `status:${status}:${shard}`,
+    indexName: queuedPriority ? SESSIONS_QUEUE_ORDER_INDEX : SESSIONS_STATUS_CREATED_INDEX,
+    keyName: "statusShard",
+    keyValue: statusShardAttr(status, shard),
+    forward: queuedPriority ? query.sort !== "priority_desc" : query.sort !== "latest",
+    usesCreatedAt: !queuedPriority,
+  };
 }
 
 function statuses(query: SessionListPageQuery): readonly SessionStatus[] {
   return query.status ? [query.status] : SESSION_STATUSES;
+}
+
+function continuationForPlan(
+  cursor: SessionCursorV2 | undefined,
+  partitions: readonly Partition[],
+): Map<string, PartitionState> {
+  if (!cursor) {
+    return new Map(
+      partitions.map((partition) => [
+        partition.id,
+        { id: partition.id, checkpoint: null, exhausted: false },
+      ]),
+    );
+  }
+  if (
+    cursor.partitions.length !== partitions.length ||
+    cursor.partitions.some(
+      (state, index) =>
+        state.id !== partitions[index]?.id ||
+        !validCheckpoint(state.checkpoint, partitions[index]!),
+    )
+  ) {
+    throw new InvalidSessionCursorError();
+  }
+  return new Map(cursor.partitions.map((state) => [state.id, state]));
+}
+
+function validCheckpoint(
+  checkpoint: SessionPartitionCheckpoint | null,
+  partition: Partition,
+): boolean {
+  if (checkpoint === null) return true;
+  const expected =
+    partition.indexName === SESSIONS_REPOSITORY_INDEX
+      ? ["id", "repositoryId", "createdAt"]
+      : partition.indexName === SESSIONS_QUEUE_ORDER_INDEX
+        ? ["id", "statusShard", "queueOrder"]
+        : ["id", "statusShard", "createdAt"];
+  return (
+    Object.keys(checkpoint).length === expected.length &&
+    expected.every((key) => typeof checkpoint[key] === "string") &&
+    checkpoint[partition.keyName] === partition.keyValue
+  );
 }
 
 function matchesFilters(session: SessionRecord, query: SessionListPageQuery): boolean {
@@ -75,95 +194,111 @@ function matchesFilters(session: SessionRecord, query: SessionListPageQuery): bo
     (query.source === null || session.source === query.source) &&
     (query.concurrencyId === null || session.concurrencyId === query.concurrencyId) &&
     (query.scheduleId === null || session.scheduleId === query.scheduleId) &&
-    (query.repositoryIds === null || query.repositoryIds.includes(session.repositoryId))
+    (query.repositoryIds === null || query.repositoryIds.includes(session.repositoryId)) &&
+    (!query.position || compareSessionToCursor(session, query.position, query.sort) > 0)
   );
 }
 
-function afterCursor(session: SessionRecord, query: SessionListPageQuery): boolean {
-  return !query.position || compareSessionToCursor(session, query.position, query.sort) > 0;
-}
-
-async function queryRepositoryWindow(
+async function queryPartitionWindow(
   ctx: PlaneStorageCtx,
   query: SessionListPageQuery,
-  repositoryId: string,
-  limit: number,
-): Promise<SessionRecord[]> {
-  return queryWindow(ctx, {
-    indexName: SESSIONS_REPOSITORY_INDEX,
-    keyName: "repositoryId",
-    keyValue: repositoryId,
-    forward: query.sort !== "latest",
-    limit,
-    ...(query.position?.createdAt ? { createdAt: query.position.createdAt } : {}),
-    latest: query.sort === "latest",
+  partition: Partition,
+  previous: PartitionState,
+): Promise<PartitionWindow> {
+  const hasLegacyBound = query.position !== undefined && partition.usesCreatedAt;
+  const condition = hasLegacyBound
+    ? `${partition.keyName} = :key AND createdAt ${partition.forward ? ">=" : "<="} :createdAt`
+    : `${partition.keyName} = :key`;
+  const response = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.sessions,
+      IndexName: partition.indexName,
+      KeyConditionExpression:
+        partition.indexName === SESSIONS_QUEUE_ORDER_INDEX ? "#key = :key" : condition,
+      ExpressionAttributeNames:
+        partition.indexName === SESSIONS_QUEUE_ORDER_INDEX
+          ? { "#key": partition.keyName }
+          : undefined,
+      ExpressionAttributeValues: {
+        ":key": partition.keyValue,
+        ...(hasLegacyBound ? { ":createdAt": query.position!.createdAt } : {}),
+      },
+      ScanIndexForward: partition.forward,
+      Limit: query.limit + 1,
+      ...(previous.checkpoint ? { ExclusiveStartKey: previous.checkpoint } : {}),
+    }),
+  );
+  const rows = (response.Items ?? []).map((item) => {
+    const raw = item as Record<string, unknown>;
+    const session = itemToSession(raw);
+    return { item: raw, session, matching: matchesFilters(session, query) };
   });
+  const nextKey = typedPageKey(
+    response.LastEvaluatedKey as Record<string, unknown> | undefined,
+    partition,
+  );
+  return { partition, previous, rows, nextKey, exhaustedRead: nextKey === undefined };
 }
 
-async function queryStatusWindow(
-  ctx: PlaneStorageCtx,
-  query: SessionListPageQuery,
-  status: SessionStatus,
-  shard: number,
-  limit: number,
-): Promise<SessionRecord[]> {
-  const queuedPriority = status === "queued" && query.sort.startsWith("priority_");
-  return queryWindow(ctx, {
-    indexName: queuedPriority ? SESSIONS_QUEUE_ORDER_INDEX : SESSIONS_STATUS_CREATED_INDEX,
-    keyName: "statusShard",
-    keyValue: statusShardAttr(status, shard),
-    forward: queuedPriority ? query.sort !== "priority_desc" : query.sort !== "latest",
-    limit,
-    ...(!queuedPriority && query.position?.createdAt
-      ? { createdAt: query.position.createdAt }
-      : {}),
-    latest: query.sort === "latest",
-  });
+function nextState(window: PartitionWindow, selected: ReadonlySet<RawRow>): PartitionState {
+  if (window.previous.exhausted) return window.previous;
+  let lastConsumed = -1;
+  for (let index = 0; index < window.rows.length; index++) {
+    const row = window.rows[index]!;
+    if (row.matching && !selected.has(row)) break;
+    lastConsumed = index;
+  }
+  if (lastConsumed < 0) {
+    // Empty Dynamo pages can still carry a continuation key: it is forward progress.
+    if (window.rows.length === 0 && window.nextKey) {
+      return { id: window.partition.id, checkpoint: window.nextKey, exhausted: false };
+    }
+    if (window.rows.length === 0 && window.exhaustedRead) {
+      return { id: window.partition.id, checkpoint: window.previous.checkpoint, exhausted: true };
+    }
+    return { id: window.partition.id, checkpoint: window.previous.checkpoint, exhausted: false };
+  }
+  if (lastConsumed === window.rows.length - 1 && window.exhaustedRead) {
+    return { id: window.partition.id, checkpoint: window.previous.checkpoint, exhausted: true };
+  }
+  return {
+    id: window.partition.id,
+    checkpoint: keyForRow(window.partition, window.rows[lastConsumed]!),
+    exhausted: false,
+  };
 }
 
-async function queryWindow(
-  ctx: PlaneStorageCtx,
-  input: {
-    indexName: string;
-    keyName: string;
-    keyValue: string;
-    forward: boolean;
-    limit: number;
-    createdAt?: string;
-    latest: boolean;
-  },
-): Promise<SessionRecord[]> {
-  const records: SessionRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  const createdBound = input.createdAt
-    ? input.latest
-      ? `${input.keyName} = :key AND createdAt <= :createdAt`
-      : `${input.keyName} = :key AND createdAt >= :createdAt`
-    : `${input.keyName} = :key`;
-  do {
-    const res = await ctx.doc.send(
-      new QueryCommand({
-        TableName: ctx.tables.sessions,
-        IndexName: input.indexName,
-        KeyConditionExpression:
-          input.indexName === SESSIONS_QUEUE_ORDER_INDEX ? "#key = :key" : createdBound,
-        ExpressionAttributeNames:
-          input.indexName === SESSIONS_QUEUE_ORDER_INDEX ? { "#key": input.keyName } : undefined,
-        ExpressionAttributeValues: {
-          ":key": input.keyValue,
-          ...(input.createdAt && input.indexName !== SESSIONS_QUEUE_ORDER_INDEX
-            ? { ":createdAt": input.createdAt }
-            : {}),
-        },
-        ScanIndexForward: input.forward,
-        Limit: input.limit,
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    records.push(
-      ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
-    );
-    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (startKey && records.length < input.limit);
-  return records.slice(0, input.limit);
+function keyForRow(partition: Partition, row: RawRow): SessionPartitionCheckpoint {
+  const id = row.item.id;
+  const range =
+    partition.indexName === SESSIONS_QUEUE_ORDER_INDEX
+      ? (row.item.queueOrder ?? queueOrderKey(row.session))
+      : row.session.createdAt;
+  const hash =
+    partition.keyName === "repositoryId"
+      ? row.session.repositoryId
+      : statusShardAttr(row.session.status, row.session.queueShard);
+  if (typeof id !== "string" || typeof range !== "string" || typeof hash !== "string") {
+    throw new Error("session query returned an invalid pagination key");
+  }
+  return partition.indexName === SESSIONS_REPOSITORY_INDEX
+    ? { id, repositoryId: hash, createdAt: range }
+    : partition.indexName === SESSIONS_QUEUE_ORDER_INDEX
+      ? { id, statusShard: hash, queueOrder: range }
+      : { id, statusShard: hash, createdAt: range };
+}
+
+function typedPageKey(
+  key: Record<string, unknown> | undefined,
+  partition: Partition,
+): SessionPartitionCheckpoint | undefined {
+  const normalized = nextPageKey(key);
+  if (!normalized) return undefined;
+  if (Object.values(normalized).some((value) => typeof value !== "string")) {
+    throw new Error("session query returned an invalid pagination key");
+  }
+  const typed = normalized as SessionPartitionCheckpoint;
+  if (!validCheckpoint(typed, partition))
+    throw new Error("session query returned an invalid pagination key");
+  return typed;
 }
