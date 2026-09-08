@@ -3,7 +3,11 @@ import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { fileURLToPath } from "node:url";
 
-import { AutoHarnessFoundationStack, type SessionPriorityIndexStage } from "./foundation-stack.ts";
+import {
+  AutoHarnessFoundationStack,
+  type SessionCreatedOrderIndexStage,
+  type SessionPriorityIndexStage,
+} from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 import { AutoHarnessWebStack } from "./web-stack.ts";
 
@@ -24,8 +28,14 @@ function removalPolicy(value: string | undefined): RemovalPolicy {
 
 function sessionPriorityIndexStage(value: string | undefined): SessionPriorityIndexStage {
   if (value === undefined || value === "both") return "both";
-  if (value === "status") return "status";
-  throw new Error("sessionPriorityIndexStage context must be either status or both");
+  if (value === "status") return value;
+  throw new Error("sessionPriorityIndexStage context must be status or both");
+}
+
+function sessionCreatedOrderIndexStage(value: string | undefined): SessionCreatedOrderIndexStage {
+  if (value === undefined || value === "status") return "status";
+  if (value === "none") return value;
+  throw new Error("sessionCreatedOrderIndexStage context must be none or status");
 }
 
 const app = new App();
@@ -40,6 +50,9 @@ const stack = new AutoHarnessFoundationStack(
     dataRemovalPolicy,
     sessionPriorityIndexStage: sessionPriorityIndexStage(
       contextString(app, "sessionPriorityIndexStage"),
+    ),
+    sessionCreatedOrderIndexStage: sessionCreatedOrderIndexStage(
+      contextString(app, "sessionCreatedOrderIndexStage"),
     ),
     tablePrefix,
   },

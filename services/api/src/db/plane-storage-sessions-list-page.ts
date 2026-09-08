@@ -3,12 +3,13 @@ import { SESSION_STATUSES, type SessionStatus } from "@auto-harness/shared";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
+  createdOrderKey,
+  SESSIONS_CREATED_ORDER_INDEX,
   priorityOrderKey,
   repositoryPriorityOrderKey,
   repositoryPriorityOrderRange,
   SESSIONS_PRIORITY_ORDER_INDEX,
   SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
-  SESSIONS_STATUS_CREATED_INDEX,
 } from "../control-plane-ordering.ts";
 import type {
   CursorPosition,
@@ -21,8 +22,6 @@ import { compareSessionToCursor, compareSessions } from "../control-plane-sessio
 import { statusShardAttr } from "./dynamo.ts";
 import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
-
-const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
 
 export type SessionListPageQuery = {
   limit: number;
@@ -52,7 +51,7 @@ type Partition = {
   keyName: "repositoryId" | "statusShard";
   keyValue: string;
   forward: boolean;
-  sortKeyName: "createdAt" | "priorityOrder" | "repositoryPriorityOrder";
+  sortKeyName: "createdOrder" | "priorityOrder" | "repositoryPriorityOrder";
   sortKeyRange?: { start: string; end: string };
   repositoryId?: string;
 };
@@ -127,34 +126,21 @@ function selectConsumable(
 }
 
 function partitionPlan(query: SessionListPageQuery): Partition[] {
+  if (query.repositoryIds?.length === 0) return [];
+  const statusPartitions = statuses(query).flatMap((status) =>
+    [...Array(query.shardCount).keys()].map((shard) => statusPartition(query, status, shard)),
+  );
   if (query.repositoryId) {
     if (query.repositoryIds && !query.repositoryIds.includes(query.repositoryId)) return [];
     return query.sort.startsWith("priority_")
       ? repositoryPriorityPartitions(query, [query.repositoryId])
-      : [repositoryPartition(query, query.repositoryId)];
+      : statusPartitions;
   }
-  const statusPartitions = statuses(query).flatMap((status) =>
-    [...Array(query.shardCount).keys()].map((shard) => statusPartition(query, status, shard)),
-  );
   const repositories = query.repositoryIds?.toSorted();
   if (repositories === undefined) return statusPartitions;
-  const repositoryPartitions = query.sort.startsWith("priority_")
+  return query.sort.startsWith("priority_")
     ? repositoryPriorityPartitions(query, repositories)
-    : repositories.map((id) => repositoryPartition(query, id));
-  return repositoryPartitions.length <= statusPartitions.length
-    ? repositoryPartitions
     : statusPartitions;
-}
-
-function repositoryPartition(query: SessionListPageQuery, repositoryId: string): Partition {
-  return {
-    id: `repository:${repositoryId}`,
-    indexName: SESSIONS_REPOSITORY_INDEX,
-    keyName: "repositoryId",
-    keyValue: repositoryId,
-    forward: query.sort !== "latest",
-    sortKeyName: "createdAt",
-  };
 }
 
 function repositoryPriorityPartitions(
@@ -188,11 +174,11 @@ function statusPartition(
   const priority = query.sort.startsWith("priority_");
   return {
     id: `status:${status}:${shard}`,
-    indexName: priority ? SESSIONS_PRIORITY_ORDER_INDEX : SESSIONS_STATUS_CREATED_INDEX,
+    indexName: priority ? SESSIONS_PRIORITY_ORDER_INDEX : SESSIONS_CREATED_ORDER_INDEX,
     keyName: "statusShard",
     keyValue: statusShardAttr(status, shard),
     forward: priority ? query.sort === "priority_asc" : query.sort !== "latest",
-    sortKeyName: priority ? "priorityOrder" : "createdAt",
+    sortKeyName: priority ? "priorityOrder" : "createdOrder",
   };
 }
 
@@ -258,8 +244,8 @@ async function queryPartitionWindow(
   previous: PartitionState,
 ): Promise<PartitionWindow> {
   const legacySortValue = query.position
-    ? partition.sortKeyName === "createdAt"
-      ? query.position.createdAt
+    ? partition.sortKeyName === "createdOrder"
+      ? createdOrderKey(query.position)
       : partition.sortKeyName === "priorityOrder"
         ? priorityOrderKey(query.position)
         : repositoryPriorityOrderKey(partition.repositoryId!, query.position)
@@ -275,7 +261,7 @@ async function queryPartitionWindow(
     ? `${partition.keyName} = :key AND ${partition.sortKeyName} BETWEEN :sortStart AND :sortEnd`
     : legacySortValue
       ? `${partition.keyName} = :key AND ${partition.sortKeyName} ${
-          partition.sortKeyName === "createdAt"
+          partition.sortKeyName === "createdOrder"
             ? partition.forward
               ? ">="
               : "<="
@@ -343,8 +329,8 @@ function keyForRow(partition: Partition, row: RawRow): SessionPartitionCheckpoin
   const id = row.item.id;
   const range =
     row.item[partition.sortKeyName] ??
-    (partition.sortKeyName === "createdAt"
-      ? row.session.createdAt
+    (partition.sortKeyName === "createdOrder"
+      ? createdOrderKey(row.session)
       : partition.sortKeyName === "priorityOrder"
         ? priorityOrderKey(row.session)
         : repositoryPriorityOrderKey(partition.repositoryId!, row.session));

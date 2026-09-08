@@ -351,14 +351,16 @@ protocol.
 
 ### First rollout of priority-ordered session listing
 
-The first priority-list revision also uses the same maintenance fence. It adds
+The priority-list revision uses the same maintenance fence. It adds
 `statusShard-priorityOrder`, waits until DynamoDB reports it `ACTIVE`, then adds
 `statusShard-repositoryPriorityOrder` in a second Foundation update and waits
-again. DynamoDB permits only one GSI create per update of an existing table.
-Only after both indexes are queryable does the wrapper deploy the runtime and run
-the strongly-consistent, lease-fenced 100-session-page backfill. Its durable
-readiness marker is `SessionDrains` `scopeKey=__session-priority-order__`,
-`recordKey=READY-V1`; it is not published until the final checkpoint succeeds.
+again. It then adds `statusShard-createdOrder`, whose `createdAt#id` range key
+matches the REST creation-time tie-breaker. DynamoDB permits only one GSI create
+per update of an existing table. Only after all three indexes are queryable does
+the wrapper deploy the runtime and run the strongly-consistent, lease-fenced
+100-session-page backfill. Its durable readiness marker is `SessionDrains`
+`scopeKey=__session-priority-order__`, `recordKey=READY-V2`; it is not published
+until the final checkpoint succeeds.
 
 For non-interactive deployment, keep external session admission disabled and
 provide the explicit maintenance acknowledgement:

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one fenced migration owns the coupled readiness protocol. */
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -7,13 +8,17 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 
-import { priorityOrderKey, repositoryPriorityOrderKey } from "../control-plane-ordering.ts";
+import {
+  createdOrderKey,
+  priorityOrderKey,
+  repositoryPriorityOrderKey,
+} from "../control-plane-ordering.ts";
 import type { DynamoTableNames } from "./dynamo.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 
 export const SESSION_PRIORITY_ORDER_SCOPE_KEY = "__session-priority-order__";
-export const SESSION_PRIORITY_ORDER_READY_RECORD_KEY = "READY-V1";
-const MIGRATION_RECORD_KEY = "MIGRATION-V1";
+export const SESSION_PRIORITY_ORDER_READY_RECORD_KEY = "READY-V2";
+const MIGRATION_RECORD_KEY = "MIGRATION-V2";
 const MIGRATION_SCAN_LIMIT = 100;
 const MIGRATION_LEASE_MS = 55_000;
 
@@ -32,6 +37,7 @@ function isConditionalFailure(error: unknown): boolean {
 }
 
 function priorityKeys(item: Record<string, unknown>): {
+  createdOrder: string;
   priorityOrder: string;
   repositoryPriorityOrder: string;
 } {
@@ -52,6 +58,7 @@ function priorityKeys(item: Record<string, unknown>): {
   }
   const session = { id: item.id, createdAt: item.createdAt, priority: item.priority };
   return {
+    createdOrder: createdOrderKey(session),
     priorityOrder: priorityOrderKey(session),
     repositoryPriorityOrder: repositoryPriorityOrderKey(item.repositoryId, session),
   };
@@ -65,6 +72,7 @@ async function backfillPage(
   for (const item of items) {
     const keys = priorityKeys(item);
     if (
+      item.createdOrder === keys.createdOrder &&
       item.priorityOrder === keys.priorityOrder &&
       item.repositoryPriorityOrder === keys.repositoryPriorityOrder
     ) {
@@ -76,10 +84,11 @@ async function backfillPage(
           TableName: tableName,
           Key: { id: item.id },
           UpdateExpression:
-            "SET priorityOrder = :priorityOrder, repositoryPriorityOrder = :repositoryPriorityOrder",
+            "SET createdOrder = :createdOrder, priorityOrder = :priorityOrder, repositoryPriorityOrder = :repositoryPriorityOrder",
           ConditionExpression:
-            "attribute_exists(id) AND (attribute_not_exists(priorityOrder) OR priorityOrder <> :priorityOrder OR attribute_not_exists(repositoryPriorityOrder) OR repositoryPriorityOrder <> :repositoryPriorityOrder)",
+            "attribute_exists(id) AND (attribute_not_exists(createdOrder) OR createdOrder <> :createdOrder OR attribute_not_exists(priorityOrder) OR priorityOrder <> :priorityOrder OR attribute_not_exists(repositoryPriorityOrder) OR repositoryPriorityOrder <> :repositoryPriorityOrder)",
           ExpressionAttributeValues: {
+            ":createdOrder": keys.createdOrder,
             ":priorityOrder": keys.priorityOrder,
             ":repositoryPriorityOrder": keys.repositoryPriorityOrder,
           },
@@ -112,7 +121,7 @@ export async function migrateSessionPriorityOrderPage(
       ConsistentRead: true,
     }),
   );
-  if (ready.Item?.recordType === "session-priority-order-v1") return true;
+  if (ready.Item?.recordType === "session-priority-order-v2") return true;
 
   const owner = randomUUID();
   const now = new Date();
@@ -127,7 +136,7 @@ export async function migrateSessionPriorityOrderPage(
           "SET recordType = :type, leaseOwner = :owner, leaseUntil = :leaseUntil ADD fence :one",
         ConditionExpression: "attribute_not_exists(leaseUntil) OR leaseUntil < :now",
         ExpressionAttributeValues: {
-          ":type": "session-priority-order-migration-v1",
+          ":type": "session-priority-order-migration-v2",
           ":owner": owner,
           ":leaseUntil": leaseUntil,
           ":now": now.toISOString(),
@@ -185,7 +194,7 @@ export async function migrateSessionPriorityOrderPage(
               Item: {
                 scopeKey: SESSION_PRIORITY_ORDER_SCOPE_KEY,
                 recordKey: SESSION_PRIORITY_ORDER_READY_RECORD_KEY,
-                recordType: "session-priority-order-v1",
+                recordType: "session-priority-order-v2",
                 readyAt: now.toISOString(),
               },
               ConditionExpression: "attribute_not_exists(scopeKey)",
@@ -206,7 +215,7 @@ export async function migrateSessionPriorityOrderPage(
         ConsistentRead: true,
       }),
     );
-    return published.Item?.recordType === "session-priority-order-v1";
+    return published.Item?.recordType === "session-priority-order-v2";
   }
   return true;
 }

@@ -11,13 +11,19 @@ import {
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  SESSIONS_CREATED_ORDER_INDEX,
   SESSIONS_PRIORITY_ORDER_INDEX,
   SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
 } from "../control-plane-ordering.ts";
 
-export { SESSIONS_PRIORITY_ORDER_INDEX, SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX };
+export {
+  SESSIONS_CREATED_ORDER_INDEX,
+  SESSIONS_PRIORITY_ORDER_INDEX,
+  SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
+};
 
-const PRIORITY_INDEXES = [
+const SESSION_LIST_INDEXES = [
+  { name: SESSIONS_CREATED_ORDER_INDEX, rangeAttribute: "createdOrder" },
   { name: SESSIONS_PRIORITY_ORDER_INDEX, rangeAttribute: "priorityOrder" },
   {
     name: SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
@@ -54,8 +60,8 @@ function isConcurrentIndexUpdate(error: unknown): boolean {
 }
 
 /**
- * Add the two durable session-list priority GSIs one at a time and wait until
- * each is queryable. DynamoDB permits only one GSI creation per UpdateTable.
+ * Add durable session-list GSIs one at a time and wait until each is queryable.
+ * DynamoDB permits only one GSI creation per UpdateTable.
  * Production CDK owns this schema; this repair path keeps pre-existing local
  * (and explicitly bootstrapped) tables compatible.
  */
@@ -63,7 +69,7 @@ export async function ensureSessionsPriorityIndexes(
   client: DynamoDBClient,
   tableName: string,
 ): Promise<void> {
-  for (const index of PRIORITY_INDEXES) {
+  for (const index of SESSION_LIST_INDEXES) {
     for (let attempt = 0; attempt < MAX_ACTIVE_POLLS; attempt += 1) {
       let table;
       try {

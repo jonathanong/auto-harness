@@ -1,11 +1,12 @@
 /* eslint-disable max-lines -- session page queries share one storage fixture. */
 import { QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { InvalidSessionCursorError } from "./control-plane-session-cursor.ts";
 import { listSessionsPageFromStorage } from "./db/plane-storage-sessions-list-page.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
 import {
+  createdOrderKey,
   priorityOrderKey,
   repositoryPriorityOrderKey,
   repositoryPriorityOrderRange,
@@ -84,7 +85,7 @@ describe("listSessionsPageFromStorage", () => {
     expect((commands[0] as QueryCommand).input.Limit).toBe(3);
   });
 
-  it("queries the repository createdAt index when repositoryId is set", async () => {
+  it("uses bounded status partitions when repositoryId is set", async () => {
     const commands: QueryCommand[] = [];
     const ctx = {
       doc: {
@@ -108,9 +109,39 @@ describe("listSessionsPageFromStorage", () => {
       concurrencyId: null,
       scheduleId: null,
     });
-    expect(commands).toHaveLength(1);
-    expect(commands[0]?.input.IndexName).toBe("repositoryId-createdAt");
-    expect(commands[0]?.input.ScanIndexForward).toBe(true);
+    expect(commands).toHaveLength(24);
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          input: expect.objectContaining({
+            IndexName: "statusShard-createdOrder",
+            ScanIndexForward: true,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("treats an empty repository scope as terminal without querying a partition", async () => {
+    const send = vi.fn();
+    await expect(
+      listSessionsPageFromStorage(
+        { doc: { send }, tables: { sessions: "sessions" } } as unknown as PlaneStorageCtx,
+        {
+          limit: 1,
+          sort: "latest",
+          shardCount: 4,
+          status: null,
+          repositoryId: null,
+          repositoryIds: [],
+          hostId: null,
+          source: null,
+          concurrencyId: null,
+          scheduleId: null,
+        },
+      ),
+    ).resolves.toEqual({ items: [], continuation: null });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("binds createdAt on follow-up pages and uses the priority index for priority sorts", async () => {
@@ -140,7 +171,7 @@ describe("listSessionsPageFromStorage", () => {
       scheduleId: null,
       position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
     });
-    expect(commands[0]?.input.KeyConditionExpression).toContain("createdAt <=");
+    expect(commands[0]?.input.KeyConditionExpression).toContain("createdOrder <=");
 
     commands.length = 0;
     await listSessionsPageFromStorage(ctx, {
@@ -160,7 +191,7 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands[0]?.input.ScanIndexForward).toBe(false);
   });
 
-  it("binds createdAt on oldest follow-up pages and queries each repository id", async () => {
+  it("binds created order on oldest follow-up pages and keeps repository scopes bounded", async () => {
     const commands: QueryCommand[] = [];
     const ctx = {
       doc: {
@@ -185,8 +216,8 @@ describe("listSessionsPageFromStorage", () => {
       scheduleId: "s1",
       position: { createdAt: "2026-01-01T00:00:00.000Z", id: "sess-0", priority: 0 },
     });
-    expect(commands[0]?.input.KeyConditionExpression).toContain("createdAt >=");
-    expect(commands[0]?.input.IndexName).toBe("repositoryId-createdAt");
+    expect(commands[0]?.input.KeyConditionExpression).toContain("createdOrder >=");
+    expect(commands[0]?.input.IndexName).toBe("statusShard-createdOrder");
 
     commands.length = 0;
     await listSessionsPageFromStorage(ctx, {
@@ -381,7 +412,7 @@ describe("listSessionsPageFromStorage", () => {
                 LastEvaluatedKey: {
                   id: skipped.id,
                   statusShard: "queued#0",
-                  createdAt: skipped.createdAt,
+                  createdOrder: `${skipped.createdAt}#${skipped.id}`,
                 },
               }
             : { Items: [match] };
@@ -425,7 +456,7 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands[1]?.input.ExclusiveStartKey).toEqual({
       id: "skipped",
       statusShard: "queued#0",
-      createdAt: skipped.createdAt,
+      createdOrder: `${skipped.createdAt}#${skipped.id}`,
     });
   });
 
@@ -435,7 +466,7 @@ describe("listSessionsPageFromStorage", () => {
     const emptyKey = {
       id: "filtered",
       statusShard: "queued#0",
-      createdAt: "2026-01-03T00:00:00.000Z",
+      createdOrder: "2026-01-03T00:00:00.000Z#filtered",
     };
     const ctx = {
       doc: {
@@ -483,7 +514,7 @@ describe("listSessionsPageFromStorage", () => {
     expect(commands[1]?.input.ExclusiveStartKey).toEqual(emptyKey);
   });
 
-  it("merges only the globally safe prefix while querying each repository partition once", async () => {
+  it("merges only the globally safe prefix while querying each status partition once", async () => {
     const commands: QueryCommand[] = [];
     const newest = row("newest", "2026-01-03T00:00:00.000Z", "ui", "repo-a");
     const older = row("older", "2026-01-02T00:00:00.000Z", "ui", "repo-b");
@@ -491,14 +522,14 @@ describe("listSessionsPageFromStorage", () => {
       doc: {
         send: async (command: QueryCommand) => {
           commands.push(command);
-          const repository = command.input.ExpressionAttributeValues?.[":key"];
-          const item = repository === "repo-a" ? newest : older;
+          const statusShard = command.input.ExpressionAttributeValues?.[":key"];
+          const item = statusShard === "queued#0" ? newest : older;
           return {
             Items: [item],
             LastEvaluatedKey: {
               id: item.id,
-              repositoryId: item.repositoryId,
-              createdAt: item.createdAt,
+              statusShard,
+              createdOrder: `${item.createdAt}#${item.id}`,
             },
           };
         },
@@ -508,8 +539,8 @@ describe("listSessionsPageFromStorage", () => {
     const page = await listSessionsPageFromStorage(ctx, {
       limit: 1,
       sort: "latest",
-      shardCount: 1,
-      status: null,
+      shardCount: 2,
+      status: "queued",
       repositoryId: null,
       repositoryIds: ["repo-b", "repo-a"],
       hostId: null,
@@ -528,7 +559,7 @@ describe("listSessionsPageFromStorage", () => {
     const ctx = {
       doc: {
         send: async (command: QueryCommand) => ({
-          Items: [command.input.ExpressionAttributeValues?.[":key"] === "repo-a" ? a : b],
+          Items: [command.input.ExpressionAttributeValues?.[":key"] === "queued#0" ? a : b],
         }),
       },
       tables: { sessions: "sessions" },
@@ -536,8 +567,8 @@ describe("listSessionsPageFromStorage", () => {
     const query = {
       limit: 1,
       sort: "latest" as const,
-      shardCount: 1,
-      status: null,
+      shardCount: 2,
+      status: "queued",
       repositoryId: null,
       repositoryIds: ["repo-a", "repo-b"],
       hostId: null,
@@ -553,7 +584,7 @@ describe("listSessionsPageFromStorage", () => {
         sort: "latest",
         query: {
           repositoryId: null,
-          status: null,
+          status: "queued",
           hostId: null,
           concurrencyId: null,
           scheduleId: null,
@@ -585,13 +616,30 @@ describe("listSessionsPageFromStorage", () => {
     ).rejects.toThrow(InvalidSessionCursorError);
   });
 
-  it("advances only through a consumable raw prefix when equal keys arrive out of id order", async () => {
+  it("pages equal-createdAt rows in one partition without looping or dropping a row", async () => {
     const a = row("a", "2026-01-03T00:00:00.000Z");
     const b = row("b", "2026-01-03T00:00:00.000Z");
+    const rawA = { ...a, createdOrder: createdOrderKey(a) };
+    const rawB = { ...b, createdOrder: createdOrderKey(b) };
+    const commands: QueryCommand[] = [];
     const ctx = {
       doc: {
-        send: async (command: QueryCommand) =>
-          command.input.ExclusiveStartKey ? { Items: [b] } : { Items: [a, b] },
+        send: async (command: QueryCommand) => {
+          commands.push(command);
+          const start = command.input.ExclusiveStartKey as { createdOrder?: string } | undefined;
+          if (!start) {
+            return {
+              Items: [rawB, rawA],
+              LastEvaluatedKey: {
+                id: b.id,
+                statusShard: "queued#0",
+                createdOrder: rawB.createdOrder,
+              },
+            };
+          }
+          if (start.createdOrder === rawB.createdOrder) return { Items: [rawA] };
+          throw new Error("unexpected pagination key");
+        },
       },
       tables: { sessions: "sessions" },
     } as unknown as PlaneStorageCtx;
@@ -609,7 +657,12 @@ describe("listSessionsPageFromStorage", () => {
     };
 
     const first = await listSessionsPageFromStorage(ctx, query);
-    expect(first.items.map((item) => item.id)).toEqual(["a"]);
+    expect(first.items.map((item) => item.id)).toEqual(["b"]);
+    expect(commands[0]?.input).toMatchObject({
+      IndexName: "statusShard-createdOrder",
+      KeyConditionExpression: "statusShard = :key",
+      ScanIndexForward: false,
+    });
     const second = await listSessionsPageFromStorage(ctx, {
       ...query,
       continuation: {
@@ -627,7 +680,14 @@ describe("listSessionsPageFromStorage", () => {
         partitions: first.continuation!,
       },
     });
-    expect(second.items.map((item) => item.id)).toEqual(["b"]);
+    expect(second.items.map((item) => item.id)).toEqual(["a"]);
+    expect(second.continuation).toBeNull();
+    expect(commands).toHaveLength(2);
+    expect(commands[1]?.input.ExclusiveStartKey).toEqual({
+      id: b.id,
+      statusShard: "queued#0",
+      createdOrder: rawB.createdOrder,
+    });
   });
 
   it("uses the priority index and binds unscoped priority cursors", async () => {

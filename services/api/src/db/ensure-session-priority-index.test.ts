@@ -5,6 +5,7 @@ vi.mock("node:timers/promises", () => ({ setTimeout: vi.fn().mockResolvedValue(u
 
 import {
   ensureSessionsPriorityIndexes,
+  SESSIONS_CREATED_ORDER_INDEX,
   SESSIONS_PRIORITY_ORDER_INDEX,
   SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX,
 } from "./ensure-session-priority-index.ts";
@@ -20,37 +21,22 @@ function activeIndexes(names: string[]) {
 describe("ensureSessionsPriorityIndexes", () => {
   it("creates one index at a time and waits for each to be ACTIVE", async () => {
     const commands: unknown[] = [];
-    let describes = 0;
+    const active = new Set<string>();
     const send = vi.fn(async (command: unknown) => {
       commands.push(command);
-      if (command instanceof UpdateTableCommand) return {};
+      if (command instanceof UpdateTableCommand) {
+        const created = command.input.GlobalSecondaryIndexUpdates?.[0]?.Create?.IndexName;
+        if (created) active.add(created);
+        return {};
+      }
       if (!(command instanceof DescribeTableCommand)) throw new Error("unexpected command");
-      describes += 1;
-      if (describes === 1) return { Table: { AttributeDefinitions: [] } };
-      if (describes === 2) {
-        return {
-          Table: {
-            GlobalSecondaryIndexes: [
-              { IndexName: SESSIONS_PRIORITY_ORDER_INDEX, IndexStatus: "ACTIVE" },
-            ],
-          },
-        };
-      }
-      if (describes === 3) {
-        return {
-          Table: {
-            GlobalSecondaryIndexes: [
-              { IndexName: SESSIONS_PRIORITY_ORDER_INDEX, IndexStatus: "ACTIVE" },
-            ],
-          },
-        };
-      }
       return {
         Table: {
-          GlobalSecondaryIndexes: [
-            { IndexName: SESSIONS_PRIORITY_ORDER_INDEX, IndexStatus: "ACTIVE" },
-            { IndexName: SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX, IndexStatus: "ACTIVE" },
-          ],
+          AttributeDefinitions: [],
+          GlobalSecondaryIndexes: [...active].map((IndexName) => ({
+            IndexName,
+            IndexStatus: "ACTIVE",
+          })),
         },
       };
     });
@@ -58,11 +44,14 @@ describe("ensureSessionsPriorityIndexes", () => {
     await ensureSessionsPriorityIndexes({ send } as never, "Sessions");
 
     const updates = commands.filter((command) => command instanceof UpdateTableCommand);
-    expect(updates).toHaveLength(2);
+    expect(updates).toHaveLength(3);
     expect((updates[0] as UpdateTableCommand).input.GlobalSecondaryIndexUpdates).toMatchObject([
-      { Create: { IndexName: SESSIONS_PRIORITY_ORDER_INDEX } },
+      { Create: { IndexName: SESSIONS_CREATED_ORDER_INDEX } },
     ]);
     expect((updates[1] as UpdateTableCommand).input.GlobalSecondaryIndexUpdates).toMatchObject([
+      { Create: { IndexName: SESSIONS_PRIORITY_ORDER_INDEX } },
+    ]);
+    expect((updates[2] as UpdateTableCommand).input.GlobalSecondaryIndexUpdates).toMatchObject([
       { Create: { IndexName: SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX } },
     ]);
   });
@@ -105,13 +94,13 @@ describe("ensureSessionsPriorityIndexes", () => {
     const send = vi.fn().mockResolvedValue({
       Table: {
         GlobalSecondaryIndexes: [
-          { IndexName: SESSIONS_PRIORITY_ORDER_INDEX, IndexStatus: "CREATING" },
+          { IndexName: SESSIONS_CREATED_ORDER_INDEX, IndexStatus: "CREATING" },
         ],
       },
     });
 
     await expect(ensureSessionsPriorityIndexes({ send } as never, "Sessions")).rejects.toThrow(
-      `timed out waiting for ${SESSIONS_PRIORITY_ORDER_INDEX} to become ACTIVE`,
+      `timed out waiting for ${SESSIONS_CREATED_ORDER_INDEX} to become ACTIVE`,
     );
     expect(send).toHaveBeenCalledTimes(300);
   });

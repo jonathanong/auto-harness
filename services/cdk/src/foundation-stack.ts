@@ -9,6 +9,7 @@ import { createFoundationDataAccess } from "./foundation-data-access.ts";
 import { DYNAMO_TABLES, type TableDef } from "./tables.ts";
 
 export type SessionPriorityIndexStage = "status" | "both";
+export type SessionCreatedOrderIndexStage = "none" | "status";
 
 type FoundationStackProps = StackProps & {
   /** Physical table name prefix. Must match `HARNESS_DDB_PREFIX` at runtime. */
@@ -19,6 +20,8 @@ type FoundationStackProps = StackProps & {
   dataRemovalPolicy?: RemovalPolicy;
   /** Existing tables must add Dynamo GSIs in separate CloudFormation updates. */
   sessionPriorityIndexStage?: SessionPriorityIndexStage;
+  /** Existing tables add the created-order GSI after the priority-index rollout. */
+  sessionCreatedOrderIndexStage?: SessionCreatedOrderIndexStage;
 };
 
 export type FoundationResources = {
@@ -50,13 +53,19 @@ function tableName(prefix: string, definition: TableDef): string {
   return `${prefix}-${definition.name}`;
 }
 
-function stagedTables(stage: SessionPriorityIndexStage): readonly TableDef[] {
-  if (stage === "both") return DYNAMO_TABLES;
+function stagedTables(
+  priorityStage: SessionPriorityIndexStage,
+  createdOrderStage: SessionCreatedOrderIndexStage,
+): readonly TableDef[] {
   return DYNAMO_TABLES.map((definition) => {
     if (definition.name !== "Sessions" || !definition.gsis) return definition;
     return {
       ...definition,
-      gsis: definition.gsis.filter((index) => index.name !== "statusShard-repositoryPriorityOrder"),
+      gsis: definition.gsis.filter(
+        (index) =>
+          (priorityStage !== "status" || index.name !== "statusShard-repositoryPriorityOrder") &&
+          (createdOrderStage !== "none" || index.name !== "statusShard-createdOrder"),
+      ),
     };
   });
 }
@@ -96,7 +105,10 @@ export class AutoHarnessFoundationStack extends Stack {
     const tablePrefix = props.tablePrefix ?? defaultTablePrefix;
     assertTablePrefix(tablePrefix);
     const removalPolicy = props.dataRemovalPolicy ?? RemovalPolicy.RETAIN;
-    const definitions = stagedTables(props.sessionPriorityIndexStage ?? "both");
+    const definitions = stagedTables(
+      props.sessionPriorityIndexStage ?? "both",
+      props.sessionCreatedOrderIndexStage ?? "status",
+    );
     const tables: Record<string, dynamodb.Table> = {};
 
     for (const definition of definitions) {

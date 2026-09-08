@@ -15,7 +15,10 @@ function foundationTemplate(
 
 describe("AutoHarnessFoundationStack", () => {
   it("stages only the first priority index for an existing Sessions table", () => {
-    const template = foundationTemplate({ sessionPriorityIndexStage: "status" });
+    const template = foundationTemplate({
+      sessionPriorityIndexStage: "status",
+      sessionCreatedOrderIndexStage: "none",
+    });
     const sessions = template.findResources("AWS::DynamoDB::Table", {
       Properties: { TableName: "AutoHarness-Sessions" },
     });
@@ -26,6 +29,7 @@ describe("AutoHarnessFoundationStack", () => {
     expect(indexes?.map((index) => index.IndexName)).not.toContain(
       "statusShard-repositoryPriorityOrder",
     );
+    expect(indexes?.map((index) => index.IndexName)).not.toContain("statusShard-createdOrder");
   });
 
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
@@ -58,6 +62,14 @@ describe("AutoHarnessFoundationStack", () => {
           KeySchema: [
             { AttributeName: "statusShard", KeyType: "HASH" },
             { AttributeName: "createdAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
+          IndexName: "statusShard-createdOrder",
+          KeySchema: [
+            { AttributeName: "statusShard", KeyType: "HASH" },
+            { AttributeName: "createdOrder", KeyType: "RANGE" },
           ],
           Projection: { ProjectionType: "ALL" },
         },
