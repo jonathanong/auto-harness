@@ -2002,14 +2002,23 @@ describe("durable control-plane transitions", () => {
       });
     }
 
-    let sessionReads = 0;
+    const activeSessions = (
+      await Promise.all(
+        ["first", "second"].map((suffix) =>
+          ctx.storage!.getSession(`session-omitted-requeue-${suffix}`),
+        ),
+      )
+    ).filter((session) => session !== null);
+    expect(activeSessions).toHaveLength(2);
+    let requeueWrites = 0;
     const failingStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
-    failingStorage.getSession = async (sessionId: string) => {
-      sessionReads++;
-      if (sessionReads === 2) {
+    failingStorage.listActiveSessionsByHost = async () => activeSessions;
+    failingStorage.tryRequeueSession = async (options) => {
+      requeueWrites++;
+      if (requeueWrites === 2) {
         throw new Error("injected error after omitted requeue");
       }
-      return ctx.storage!.getSession(sessionId);
+      return ctx.storage!.tryRequeueSession(options);
     };
     const registering = new ControlPlane({
       storage: failingStorage,
