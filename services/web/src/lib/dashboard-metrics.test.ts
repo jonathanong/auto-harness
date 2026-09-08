@@ -38,6 +38,19 @@ describe("getItemPage", () => {
       atLimit: true,
     });
   });
+
+  it("skips empty nonterminal pages before returning a bounded page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ items: [], nextCursor: "sparse" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "a" }], nextCursor: "more" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getItemPage("/api/v1/sessions?limit=50")).resolves.toEqual({
+      items: [{ id: "a" }],
+      atLimit: true,
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/sessions?limit=50&cursor=sparse");
+  });
 });
 
 describe("getSessionCount", () => {
@@ -49,6 +62,15 @@ describe("getSessionCount", () => {
   it("reports atLimit once a nextCursor is present", async () => {
     vi.stubGlobal("fetch", async () => jsonResponse({ items: [{ id: "a" }], nextCursor: "next" }));
     await expect(getSessionCount("queued")).resolves.toEqual({ count: 1, atLimit: true });
+  });
+
+  it("skips empty nonterminal pages when counting a status", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ items: [], nextCursor: "sparse" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "a" }], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getSessionCount("queued")).resolves.toEqual({ count: 1, atLimit: false });
   });
 
   it("defaults count to 0 and atLimit to false when fields are missing", async () => {

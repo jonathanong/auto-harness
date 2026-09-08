@@ -102,7 +102,7 @@ export class DynamoPlaneStorageBase {
 
   listSessionsPage(
     query: import("./plane-storage-sessions-list-page.ts").SessionListPageQuery,
-  ): Promise<SessionRecord[]> {
+  ): Promise<import("./plane-storage-sessions-list-page.ts").SessionStoragePage> {
     return sessions.listSessionsPageFromStorage(this.ctx, query);
   }
 

@@ -15,7 +15,7 @@ import { RepositoryWorktreesTab } from "../../../components/repository-worktrees
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
 import { RepositoryAdmissionControls } from "../../../components/repository-admission-controls.tsx";
-import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -82,8 +82,10 @@ export default async function RepositoryDetailPage({
   };
   let sessions: Session[] = [];
   try {
-    const data = await apiGet<{ items: Session[] }>("/api/v1/sessions?limit=100");
-    sessions = (data.items ?? []).filter((s) => s.repositoryId === repositoryId);
+    const data = await apiGetFirstPageWithItems<Session>(
+      `/api/v1/sessions?repositoryId=${encodeURIComponent(repositoryId)}&limit=100`,
+    );
+    sessions = data.items.filter((s) => s.repositoryId === repositoryId);
   } catch {
     /* ignore — sessions section stays empty */
   }

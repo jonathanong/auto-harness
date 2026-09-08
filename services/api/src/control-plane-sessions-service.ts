@@ -23,6 +23,12 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as usage from "./control-plane-usage.ts";
+import {
+  encodeSessionCursor,
+  sessionCursorScopeHash,
+  type CursorPosition,
+} from "./control-plane-session-cursor.ts";
+import type { SessionRecord } from "./db/types.ts";
 
 function durableListRepositoryIds(
   requested: sessions.ListSessionsPageQuery,
@@ -90,7 +96,7 @@ export class ControlPlaneSessionsService {
       ) {
         return { items: [], nextCursor: null };
       }
-      const records = await storage.listSessionsPage({
+      const page = await storage.listSessionsPage({
         limit: normalized.limit,
         sort: normalized.sort,
         shardCount: this.state.shardCount,
@@ -102,9 +108,22 @@ export class ControlPlaneSessionsService {
         concurrencyId: normalized.query.concurrencyId,
         scheduleId: normalized.query.scheduleId,
         ...(normalized.position ? { position: normalized.position } : {}),
+        ...(normalized.continuation ? { continuation: normalized.continuation } : {}),
       });
-      const { cursor: _ignoredCursor, ...firstPage } = requested;
-      return sessions.listSessionsPage(this.state, firstPage, records);
+      return {
+        items: page.items.map((record) => toPublic(this.state, record)),
+        nextCursor:
+          page.continuation === null
+            ? null
+            : encodeSessionCursor(this.state, {
+                version: 2,
+                sort: normalized.sort,
+                query: normalized.query,
+                scopeHash: sessionCursorScopeHash(this.state, normalized.scope),
+                ...sessionCursorPosition(page.items.at(-1), normalized.position),
+                partitions: page.continuation,
+              }),
+      };
     }
     const repositoryIds = durableListRepositoryIds(requested);
     if (repositoryIds !== undefined) {
@@ -271,4 +290,14 @@ export class ControlPlaneSessionsService {
   ): Promise<ReturnType<typeof usage.usageAggregate>> {
     return usage.aggregateUsage(await this.getUsageDurable(sessionId));
   }
+}
+
+function sessionCursorPosition(
+  session: SessionRecord | undefined,
+  prior: CursorPosition | undefined,
+): { position?: CursorPosition } {
+  const position = session
+    ? { createdAt: session.createdAt, id: session.id, priority: session.priority }
+    : prior;
+  return position ? { position } : {};
 }

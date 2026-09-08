@@ -6,7 +6,10 @@ import {
   type DeploymentOperation,
 } from "../services/cdk/src/deployment-config.ts";
 import { runDeployment } from "../services/cdk/src/deployment.ts";
-import { applySessionPriorityIndexStage } from "../services/cdk/src/deployment-support.ts";
+import {
+  applySessionCreatedOrderIndexStage,
+  applySessionPriorityIndexStage,
+} from "../services/cdk/src/deployment-support.ts";
 import type {
   DeploymentDependencies,
   DeploymentQueryResult,
@@ -14,13 +17,14 @@ import type {
 
 function operation(
   value: string | undefined,
-): DeploymentOperation | "priority-index-status" | "priority-index-both" {
+): DeploymentOperation | "priority-index-status" | "priority-index-both" | "created-order-index" {
   if (value === "deploy" || value === "update" || value === "teardown" || value === "purge") {
     return value;
   }
   if (value === "priority-index-status" || value === "priority-index-both") return value;
+  if (value === "created-order-index") return value;
   throw new Error(
-    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both>",
+    "usage: aws-deployment.mts <deploy|update|teardown|purge|priority-index-status|priority-index-both|created-order-index>",
   );
 }
 
@@ -60,6 +64,8 @@ try {
       dependencies,
       selected === "priority-index-status" ? "status" : "both",
     );
+  } else if (selected === "created-order-index") {
+    await applySessionCreatedOrderIndexStage(deploymentConfig("update"), dependencies);
   } else {
     await runDeployment(selected, deploymentConfig(selected), dependencies);
   }

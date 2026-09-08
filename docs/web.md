@@ -72,13 +72,15 @@ on the viewer WebSocket. The socket does not replay REST history.
 
 The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five seconds. Agent,
 session, and utilization changes appear without a page reload; a paused banner retains the last
-successful snapshot when polling fails and offers an immediate retry.
+successful snapshot when polling fails and offers an immediate retry. Session snapshot and count
+requests follow sparse empty continuation pages until they reach the first non-empty page or the
+terminal cursor, so an intermediate storage page cannot create a false dashboard empty state.
 
 Running and Queued counts come from dedicated `GET /sessions?status=running&limit=100` /
 `?status=queued&limit=100` requests, not from filtering the "Recent sessions" list — so a
 long-queued session is still counted even after enough newer sessions have pushed it out of the
-recent-activity window. Each count is exact up to 100; past that bound the card shows "100+"
-instead of a number that would otherwise look precise but isn't.
+recent-activity window. Each card shows the first non-empty bounded page's count and adds `+` when
+the continuation cursor indicates that more matches may exist.
 
 ### Empty States
 

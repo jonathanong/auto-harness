@@ -14,6 +14,7 @@
     "update": "node ../../scripts/aws-deployment.mts update",
     "priority-index-status": "node ../../scripts/aws-deployment.mts priority-index-status",
     "priority-index-both": "node ../../scripts/aws-deployment.mts priority-index-both",
+    "created-order-index": "node ../../scripts/aws-deployment.mts created-order-index",
     "teardown": "node ../../scripts/aws-deployment.mts teardown",
     "purge": "node ../../scripts/aws-deployment.mts purge",
     "synth": "cdk synth --app 'node src/cli.ts'",

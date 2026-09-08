@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- cursor validation cases deliberately share one fixture. */
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
@@ -5,6 +6,7 @@ import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import {
   decodeSessionCursor,
+  decodeDurableSessionCursor,
   encodeSessionCursor,
   InvalidSessionCursorError,
   InvalidSessionListQueryError,
@@ -12,7 +14,9 @@ import {
   normalizeQuery,
   normalizeScope,
   normalizeSort,
+  sessionCursorScopeHash,
   type SessionCursor,
+  type SessionCursorV2,
 } from "./control-plane-session-cursor.ts";
 
 const state = { sessionCursorSecret: "secret" } as ControlPlaneState;
@@ -86,6 +90,12 @@ describe("session cursor primitives", () => {
     expect(() => decodeSessionCursor(state, encoded, { ...base, sort: "oldest" })).toThrow(
       InvalidSessionCursorError,
     );
+    expect(() =>
+      decodeDurableSessionCursor(state, encoded, {
+        ...base,
+        scope: normalizeScope({ repositoryIds: ["other"] }),
+      }),
+    ).toThrow(InvalidSessionCursorError);
     const malformed = encodeSessionCursor(state, {
       ...cursor,
       position: { ...cursor.position, priority: NaN },
@@ -105,5 +115,122 @@ describe("session cursor primitives", () => {
     expect(() => decodeSessionCursor(state, `${invalidJson}.${signature}`, base)).toThrow(
       InvalidSessionCursorError,
     );
+  });
+
+  it("encrypts compact v2 partition checkpoints and rejects malformed state", () => {
+    const cursor: SessionCursorV2 = {
+      version: 2,
+      sort: "latest",
+      query: base.query,
+      scopeHash: sessionCursorScopeHash(state, base.scope),
+      position: { createdAt: "2026-01-01", id: "legacy", priority: 0 },
+      partitions: [
+        {
+          id: "status:queued:0",
+          checkpoint: { id: "s1", statusShard: "queued#0", createdAt: "2026-01-01" },
+          exhausted: false,
+        },
+      ],
+    };
+    const encoded = encodeSessionCursor(state, cursor);
+    expect(encoded.startsWith("v2.")).toBe(true);
+    const decodedSegments = encoded
+      .split(".")
+      .map((segment) => Buffer.from(segment, "base64url").toString("utf8"))
+      .join("");
+    expect(decodedSegments).not.toContain("statusShard");
+    expect(decodedSegments).not.toContain("queued");
+    expect(decodedSegments).not.toContain("legacy");
+    expect(decodeDurableSessionCursor(state, encoded, base)).toEqual(cursor);
+    const malformed = encodeSessionCursor(state, {
+      ...cursor,
+      partitions: [{ ...cursor.partitions[0]!, checkpoint: { id: 1 } as never }],
+    });
+    expect(() => decodeDurableSessionCursor(state, malformed, base)).toThrow(
+      InvalidSessionCursorError,
+    );
+
+    const invalidCursors: unknown[] = [
+      null,
+      [],
+      { ...cursor, version: 3 },
+      { ...cursor, sort: "oldest" },
+      { ...cursor, scopeHash: undefined },
+      { ...cursor, scopeHash: "wrong-length" },
+      { ...base, position: { ...cursor.position, priority: Number.NaN } },
+      { ...cursor, position: { ...cursor.position, id: 1 } },
+      { ...cursor, partitions: null },
+      { ...cursor, partitions: [null] },
+      { ...cursor, partitions: [{ id: "", checkpoint: null, exhausted: false }] },
+      {
+        ...cursor,
+        partitions: [
+          { id: "duplicate", checkpoint: null, exhausted: false },
+          { id: "duplicate", checkpoint: null, exhausted: false },
+        ],
+      },
+      { ...cursor, partitions: [{ id: "partition", checkpoint: null, exhausted: "no" }] },
+      { ...cursor, partitions: [{ id: "partition", checkpoint: [], exhausted: false }] },
+    ];
+    for (const invalidCursor of invalidCursors) {
+      expect(() =>
+        decodeDurableSessionCursor(state, encodeSessionCursor(state, invalidCursor as never), base),
+      ).toThrow(InvalidSessionCursorError);
+    }
+    expect(() => decodeDurableSessionCursor(state, "bad", base)).toThrow(InvalidSessionCursorError);
+    expect(() => decodeDurableSessionCursor(state, `${encoded}x`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
+    const [version, iv, ciphertext, tag] = encoded.split(".");
+    const tamperedCiphertext = `${ciphertext!.slice(0, -1)}${ciphertext!.endsWith("A") ? "B" : "A"}`;
+    for (const malformedToken of [
+      "v2.",
+      `v2.${iv}..${tag}`,
+      `v2.${iv!.slice(1)}.${ciphertext}.${tag}`,
+      `v2.${iv}.${ciphertext}.${tag!.slice(1)}`,
+      `v2.${iv}.${ciphertext}.${tag}.extra`,
+    ]) {
+      expect(() => decodeDurableSessionCursor(state, malformedToken, base)).toThrow(
+        InvalidSessionCursorError,
+      );
+    }
+    expect(() =>
+      decodeDurableSessionCursor(state, [version, iv, tamperedCiphertext, tag].join("."), base),
+    ).toThrow(InvalidSessionCursorError);
+    const invalidJson = Buffer.from("{", "utf8").toString("base64url");
+    const signature = createHmac("sha256", state.sessionCursorSecret)
+      .update(invalidJson)
+      .digest("base64url");
+    expect(() => decodeDurableSessionCursor(state, `${invalidJson}.${signature}`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
+  });
+
+  it("keeps v2 cursors bounded for a large repository allow-list", () => {
+    const scope = normalizeScope({
+      repositoryIds: Array.from(
+        { length: 250 },
+        (_, index) => `repository-${index.toString().padStart(3, "0")}`,
+      ),
+    });
+    const cursor: SessionCursorV2 = {
+      version: 2,
+      sort: "latest",
+      query: base.query,
+      scopeHash: sessionCursorScopeHash(state, scope),
+      partitions: Array.from({ length: 24 }, (_, index) => ({
+        id: `status:queued:${index}`,
+        checkpoint: {
+          id: `session-${index}`,
+          statusShard: `queued#${index}`,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        exhausted: false,
+      })),
+    };
+    const encoded = encodeSessionCursor(state, cursor);
+    expect(encoded.length).toBeLessThan(6_000);
+    expect(encoded).not.toContain("repository-000");
+    expect(decodeDurableSessionCursor(state, encoded, { ...base, scope })).toEqual(cursor);
   });
 });

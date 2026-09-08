@@ -14,6 +14,7 @@ import type {
 } from "@auto-harness/shared";
 
 import {
+  createdOrderKey,
   priorityOrderKey,
   queueOrderKey,
   repositoryPriorityOrderKey,
@@ -293,6 +294,7 @@ export function sessionToItem(session: SessionRecord): Record<string, unknown> {
   return {
     ...session,
     statusShard: statusShardAttr(session.status, session.queueShard),
+    createdOrder: createdOrderKey(session),
     queueOrder: queueOrderKey(session),
     priorityOrder: priorityOrderKey(session),
     repositoryPriorityOrder: repositoryPriorityOrderKey(session.repositoryId, session),
@@ -313,6 +315,7 @@ export function normalizeTargetDisplayNames(
 export function itemToSession(item: Record<string, unknown>): SessionRecord {
   const {
     statusShard: _ss,
+    createdOrder: _co,
     queueOrder: _qo,
     priorityOrder: _po,
     repositoryPriorityOrder: _rpo,

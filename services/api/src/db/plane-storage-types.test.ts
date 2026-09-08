@@ -6,7 +6,11 @@ import {
   normalizeTargetDisplayNames,
   sessionToItem,
 } from "./plane-storage-types.ts";
-import { priorityOrderKey, repositoryPriorityOrderKey } from "../control-plane-ordering.ts";
+import {
+  createdOrderKey,
+  priorityOrderKey,
+  repositoryPriorityOrderKey,
+} from "../control-plane-ordering.ts";
 
 describe("target display-name hydration", () => {
   it("migrates the legacy targetLabels attribute and removes storage-only keys", () => {
@@ -45,9 +49,11 @@ describe("session priority list keys", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     } as never;
     const item = sessionToItem(session);
+    expect(item.createdOrder).toBe(createdOrderKey(session));
     expect(item.priorityOrder).toBe(priorityOrderKey(session));
     expect(item.repositoryPriorityOrder).toBe(repositoryPriorityOrderKey("repo", session));
     expect(itemToSession(item)).not.toHaveProperty("priorityOrder");
+    expect(itemToSession(item)).not.toHaveProperty("createdOrder");
     expect(itemToSession(item)).not.toHaveProperty("repositoryPriorityOrder");
   });
 });

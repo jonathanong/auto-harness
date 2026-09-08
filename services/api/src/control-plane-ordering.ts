@@ -5,6 +5,8 @@ import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 /** GSI that stores `compareSessionsForQueue` as an ascending sort key. */
 export const SESSIONS_QUEUE_ORDER_INDEX = "statusShard-queueOrder";
 export const SESSIONS_STATUS_CREATED_INDEX = "statusShard-createdAt";
+/** Durable session-list ordering: creation time plus the public id tie-breaker. */
+export const SESSIONS_CREATED_ORDER_INDEX = "statusShard-createdOrder";
 /** GSI used by durable session list priority ordering (ascending key order). */
 export const SESSIONS_PRIORITY_ORDER_INDEX = "statusShard-priorityOrder";
 /** GSI used by durable repository-scoped priority listing. */
@@ -12,6 +14,11 @@ export const SESSIONS_REPOSITORY_PRIORITY_ORDER_INDEX = "statusShard-repositoryP
 
 /** Matches `validateCreateSessionInput` so inverted priorities stay non-negative. */
 export const QUEUE_ORDER_PRIORITY_OFFSET = 10_000;
+
+/** Encode the REST creation-time comparator as one DynamoDB range key. */
+export function createdOrderKey(session: Pick<SessionRecord, "id" | "createdAt">): string {
+  return `${session.createdAt}#${session.id}`;
+}
 
 /**
  * Encode the list comparator's ascending priority order for DynamoDB.

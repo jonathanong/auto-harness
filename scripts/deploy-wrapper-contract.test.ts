@@ -96,6 +96,9 @@ if [[ "$*" == *"@auto-harness/cdk run priority-index-status"* ]]; then
 fi
 if [[ "$*" == *"@auto-harness/cdk run priority-index-both"* ]]; then
   touch "$FAKE_DIRECTORY/priority-repository-active"
+fi
+if [[ "$*" == *"@auto-harness/cdk run created-order-index"* ]]; then
+  touch "$FAKE_DIRECTORY/created-order-active"
 fi`,
   );
   executable(
@@ -109,7 +112,7 @@ case "$1 $2" in
       if [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 && ! -f "$FAKE_DIRECTORY/update-complete" ]]; then
         echo None
       else
-        echo READY-V1
+        echo READY-V2
       fi
       exit 0
     fi
@@ -130,7 +133,9 @@ case "$1 $2" in
     elif [[ "$*" == *"activeHostId-activeHostOrder"* ]]; then
       [[ "\${FAKE_ACTIVE_HOST_INDEX_MISSING:-0}" == 1 ]] && echo None || echo ACTIVE
     elif [[ "\${FAKE_PRIORITY_MISSING:-0}" == 1 ]]; then
-      if [[ "$*" == *"repositoryPriorityOrder"* ]]; then
+      if [[ "$*" == *"createdOrder"* ]]; then
+        [[ -f "$FAKE_DIRECTORY/created-order-active" ]] && echo ACTIVE || echo None
+      elif [[ "$*" == *"repositoryPriorityOrder"* ]]; then
         [[ -f "$FAKE_DIRECTORY/priority-repository-active" ]] && echo ACTIVE || echo None
       else
         [[ -f "$FAKE_DIRECTORY/priority-status-active" ]] && echo ACTIVE || echo None
@@ -239,7 +244,7 @@ describe("deployment wrapper contracts", () => {
     expect(calls).not.toContain("@auto-harness/cdk run update");
   });
 
-  it("adds priority GSIs in separate fenced Foundation updates", () => {
+  it("adds created and priority GSIs in separate fenced Foundation updates", () => {
     const fixture = fakeEnvironment();
     awsDeploymentFakes(fixture);
 
@@ -253,10 +258,14 @@ describe("deployment wrapper contracts", () => {
       position(calls, "@auto-harness/cdk run priority-index-both"),
     );
     expect(position(calls, "@auto-harness/cdk run priority-index-both")).toBeLessThan(
+      position(calls, "@auto-harness/cdk run created-order-index"),
+    );
+    expect(position(calls, "@auto-harness/cdk run created-order-index")).toBeLessThan(
       position(calls, "@auto-harness/cdk run update"),
     );
     expect(calls).toContain("statusShard-priorityOrder");
     expect(calls).toContain("statusShard-repositoryPriorityOrder");
+    expect(calls).toContain("statusShard-createdOrder");
     expect(calls).toContain("node scripts/migrate-session-priority-order.mts");
   });
 

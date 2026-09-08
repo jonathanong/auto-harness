@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- pagination, polling, and sparse-page UI cases share one DOM fixture. */
 // @vitest-environment happy-dom
 
 import React, { act, useState } from "react";
@@ -183,6 +184,34 @@ describe("PaginatedSessions", () => {
     );
     await act(async () => byPw<HTMLButtonElement>(view.container, "sessions-load-more").click());
     expect(byPw(view.container, "session-row-kept")).toBeTruthy();
+    expect(view.container.querySelector('[data-pw="sessions-load-more"]')).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("keeps an empty page with a cursor nonterminal and loads a later session", async () => {
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValue(json({ items: [{ id: "later", status: "completed" }], nextCursor: null }));
+    const view = mount(
+      <PaginatedSessions
+        initialItems={[]}
+        initialNextCursor="sparse-page"
+        path="/api/v1/sessions?status=completed"
+        fetchPage={fetchPage}
+        emptyState={<p data-pw="terminal-onboarding">Create your first session</p>}
+      />,
+    );
+
+    expect(byPw(view.container, "sessions-page-empty-nonterminal").textContent).toContain(
+      "Load more to continue",
+    );
+    expect(view.container.textContent).not.toContain("Create your first session");
+    expect(view.container.textContent).not.toContain("No sessions match filters.");
+
+    await act(async () => byPw<HTMLButtonElement>(view.container, "sessions-load-more").click());
+    expect(fetchPage).toHaveBeenCalledWith("/api/v1/sessions?status=completed&cursor=sparse-page");
+    expect(byPw(view.container, "session-row-later")).toBeTruthy();
+    expect(view.container.querySelector('[data-pw="sessions-page-empty-nonterminal"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="sessions-load-more"]')).toBeNull();
     act(() => view.root.unmount());
   });

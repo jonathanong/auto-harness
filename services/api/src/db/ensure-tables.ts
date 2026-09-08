@@ -11,6 +11,7 @@ import {
   ScalarAttributeType,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { SESSION_LOGS_TTL_ATTRIBUTE, tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
@@ -32,10 +33,30 @@ import {
   ensureSessionsRepositoryIndex,
 } from "./ensure-session-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
-import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
+import { migrateSessionPriorityOrderPage } from "./ensure-session-priority-order.ts";
 import { ensureArchivesRetryIndex } from "./ensure-archive-retry-index.ts";
 import { ensureSessionsActiveHostIndex } from "./ensure-active-host-index.ts";
+import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
+const LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS = 100_000;
+const LOCAL_SESSION_LIST_MIGRATION_RETRY_MS = 1;
+
+export async function completeLocalSessionListMigration(
+  doc: DynamoDBDocumentClient,
+  names: Pick<DynamoTableNames, "sessions" | "sessionDrains">,
+  maxAttempts = LOCAL_SESSION_LIST_MIGRATION_MAX_ATTEMPTS,
+  migratePage: typeof migrateSessionPriorityOrderPage = migrateSessionPriorityOrderPage,
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (await migratePage(doc, names)) return;
+    // A false result is either another bounded page or a concurrent lease holder.
+    // Yield before retrying so independent local bootstraps make progress fairly.
+    await delay(LOCAL_SESSION_LIST_MIGRATION_RETRY_MS);
+  }
+  throw new Error(
+    `local session-list migration did not become ready after ${maxAttempts} bounded page attempts`,
+  );
+}
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
     await client.send(new DescribeTableCommand({ TableName: name }));
@@ -94,6 +115,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "id", AttributeType: ScalarAttributeType.S },
       { AttributeName: "statusShard", AttributeType: ScalarAttributeType.S },
       { AttributeName: "createdAt", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "createdOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "queueOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "priorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryPriorityOrder", AttributeType: ScalarAttributeType.S },
@@ -108,6 +130,14 @@ export async function ensureControlPlaneTables(opts: {
         KeySchema: [
           { AttributeName: "statusShard", KeyType: KeyType.HASH },
           { AttributeName: "createdAt", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "statusShard-createdOrder",
+        KeySchema: [
+          { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "createdOrder", KeyType: KeyType.RANGE },
         ],
         Projection: { ProjectionType: ProjectionType.ALL },
       },
@@ -176,6 +206,10 @@ export async function ensureControlPlaneTables(opts: {
     sessions: names.sessions,
     sessionDrains: names.sessionDrains,
   });
+  // Lambda production paths use skipEnsureTables and the fenced deployment driver.
+  // Local/bootstrap callers must complete the resumable migration before reads
+  // switch to the sparse created-order GSI.
+  await completeLocalSessionListMigration(DynamoDBDocumentClient.from(ddb), names);
 
   await createIfMissing(ddb, {
     TableName: names.worktrees,

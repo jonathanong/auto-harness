@@ -599,8 +599,8 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
   `GET /session-targets`; assignment later selects an eligible attached Provider Account or an
   eligible providerless Command route.
 - `GET /sessions` uses the repository/principal-scoped, filter-first cursor contract documented in
-  [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and signed
-  cursors; search remains client-side over the current page.
+  [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and
+  authenticated-encrypted cursors; search remains client-side over the current page.
 - `GET /repositories` uses a visible-scope-first signed cursor with the same default 50/max 100
   bounds. The catalog page loads more explicitly; first-party selectors and identity lookups follow
   all pages so pagination cannot silently hide supported repositories.

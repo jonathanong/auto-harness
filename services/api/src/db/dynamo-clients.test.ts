@@ -3,6 +3,7 @@ import {
   DescribeTimeToLiveCommand,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -137,6 +138,59 @@ describe("DynamoDB Local clients", () => {
     );
 
     expect(created.map((names) => names.sessions)).toEqual(Array(4).fill(`${prefix}-Sessions`));
+  });
+
+  it("completes the local created-order backfill for more than one legacy page", async () => {
+    if (!ctx.available) {
+      expect(true).toBe(true);
+      return;
+    }
+    const { client, doc } = createDynamoClients();
+    const names = await ensureControlPlaneTables({ client, prefix: `${ctx.prefix}CreatedOrder` });
+    await doc.send(
+      new DeleteCommand({
+        TableName: names.sessionDrains,
+        Key: { scopeKey: "__session-priority-order__", recordKey: "READY-V2" },
+      }),
+    );
+    await doc.send(
+      new DeleteCommand({
+        TableName: names.sessionDrains,
+        Key: { scopeKey: "__session-priority-order__", recordKey: "MIGRATION-V2" },
+      }),
+    );
+    await Promise.all(
+      Array.from({ length: 101 }, (_, index) =>
+        doc.send(
+          new PutCommand({
+            TableName: names.sessions,
+            Item: {
+              id: `legacy-created-order-${index}`,
+              repositoryId: "repo",
+              status: "queued",
+              queueShard: 0,
+              statusShard: "queued#0",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              priority: 0,
+            },
+          }),
+        ),
+      ),
+    );
+
+    await ensureControlPlaneTables({ client, prefix: `${ctx.prefix}CreatedOrder` });
+
+    const repaired = await doc.send(
+      new GetCommand({ TableName: names.sessions, Key: { id: "legacy-created-order-100" } }),
+    );
+    expect(repaired.Item?.createdOrder).toBe("2026-01-01T00:00:00.000Z#legacy-created-order-100");
+    const ready = await doc.send(
+      new GetCommand({
+        TableName: names.sessionDrains,
+        Key: { scopeKey: "__session-priority-order__", recordKey: "READY-V2" },
+      }),
+    );
+    expect(ready.Item?.recordType).toBe("session-priority-order-v2");
   });
 
   it("uses an explicit, environment, or default prefix and propagates Dynamo failures", async () => {

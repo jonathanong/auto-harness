@@ -50,6 +50,12 @@ export const DYNAMO_TABLES: TableDef[] = [
         sortKey: { name: "createdAt", type: "S" },
       },
       {
+        // Durable list creation order: createdAt, id.
+        name: "statusShard-createdOrder",
+        partitionKey: { name: "statusShard", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
+      },
+      {
         // Sharded queue: status#shard → inverted priority, createdAt, id
         name: "statusShard-queueOrder",
         partitionKey: { name: "statusShard", type: "S" },

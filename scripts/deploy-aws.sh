@@ -98,7 +98,7 @@ read_priority_order_key() {
     --region "$AWS_REGION" \
     --table-name "$ledger_table" \
     --consistent-read \
-    --key '{"scopeKey":{"S":"__session-priority-order__"},"recordKey":{"S":"READY-V1"}}' \
+    --key '{"scopeKey":{"S":"__session-priority-order__"},"recordKey":{"S":"READY-V2"}}' \
     --query 'Item.recordKey.S' \
     --output text 2>&1)"
   status=$?
@@ -317,9 +317,12 @@ if [[ "$sessions_table_state" != "MISSING" ]]; then
 fi
 needs_ledger=0
 needs_priority_order=0
+needs_created_order_index=0
 if [[ "$ledger_record_key" != "ACTIVITY-V1" ]]; then needs_ledger=1; fi
-if [[ "$priority_order_record_key" != "READY-V1" ]]; then needs_priority_order=1; fi
-if [[ "$needs_ledger" -eq 0 && "$needs_priority_order" -eq 0 ]]; then
+if [[ "$priority_order_record_key" != "READY-V2" ]]; then needs_priority_order=1; fi
+created_order_index_state="$(session_priority_index_state "statusShard-createdOrder")"
+if [[ "$created_order_index_state" != "ACTIVE" ]]; then needs_created_order_index=1; fi
+if [[ "$needs_ledger" -eq 0 && "$needs_priority_order" -eq 0 && "$needs_created_order_index" -eq 0 ]]; then
   pnpm --filter @auto-harness/cdk run update
   exit 0
 fi
@@ -343,7 +346,7 @@ run_session_migrations() {
     node scripts/migrate-session-priority-order.mts
   fi
   priority_order_record_key="$(read_priority_order_key)"
-  if [[ "$priority_order_record_key" != "READY-V1" ]]; then
+  if [[ "$priority_order_record_key" != "READY-V2" ]]; then
     echo "AWS update completed, but the bounded migration driver did not publish the priority-order readiness marker; keep external admission disabled and investigate." >&2
     return 1
   fi
@@ -431,6 +434,11 @@ if [[ "$needs_priority_order" -eq 1 ]]; then
   fi
   wait_for_session_priority_index "statusShard-priorityOrder"
   wait_for_session_priority_index "statusShard-repositoryPriorityOrder"
+fi
+
+if [[ "$needs_created_order_index" -eq 1 ]]; then
+  pnpm --filter @auto-harness/cdk run created-order-index
+  wait_for_session_priority_index "statusShard-createdOrder"
 fi
 
 if ! pnpm --filter @auto-harness/cdk run update; then

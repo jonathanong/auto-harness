@@ -4,6 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import { toPublic } from "./control-plane-state.ts";
 import {
   decodeSessionCursor,
+  decodeDurableSessionCursor,
   encodeSessionCursor,
   normalizeLimit,
   normalizeQuery,
@@ -51,13 +52,17 @@ export function normalizeListSessionsPageQuery(
   const sort = normalizeSort(query.sort);
   const normalizedQuery = normalizeQuery(query);
   const normalizedScope = normalizeScope(query.scope);
-  const cursorBase = { version: 1 as const, sort, query: normalizedQuery, scope: normalizedScope };
+  const cursorBase = { sort, query: normalizedQuery, scope: normalizedScope };
+  const cursor = query.cursor
+    ? decodeDurableSessionCursor(state, query.cursor, cursorBase)
+    : undefined;
   return {
     limit,
     sort,
     query: normalizedQuery,
     scope: normalizedScope,
-    position: query.cursor ? decodeSessionCursor(state, query.cursor, cursorBase) : undefined,
+    position: cursor?.version === 1 ? cursor.position : cursor?.position,
+    continuation: cursor?.version === 2 ? cursor : undefined,
   };
 }
 

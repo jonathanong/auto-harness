@@ -153,7 +153,11 @@ describe("control detail routes previously omitted from coverage include", () =>
         labels: [],
       },
       "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo", url: "/src/repo" }] },
-      "/api/v1/sessions?limit=100": { items: [] },
+      "/api/v1/sessions?limit=100": { items: [], nextCursor: "sessions-next" },
+      "/api/v1/sessions?limit=100&cursor=sessions-next": {
+        items: [{ id: "session-wt-1", status: "completed", worktreeId: "wt-1" }],
+        nextCursor: null,
+      },
       "/api/v1/hosts/host-1/inventory": {
         setupScript: "pnpm install",
         repositories: [

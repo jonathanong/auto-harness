@@ -11,7 +11,7 @@ import {
 
 import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
-import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -82,9 +82,12 @@ export default async function WorktreeDetailPage({
     /* ignore — repo path/name stay unknown */
   }
   try {
-    // No server-side worktreeId filter yet — scan the most recent page and filter here.
-    const data = await apiGet<{ items: Session[] }>("/api/v1/sessions?limit=100");
-    sessions = (data.items ?? []).filter((s) => s.worktreeId === worktreeId);
+    // No server-side worktreeId filter yet — scan bounded pages until this worktree appears.
+    const data = await apiGetFirstPageWithItems<Session>(
+      "/api/v1/sessions?limit=100",
+      (session) => session.worktreeId === worktreeId,
+    );
+    sessions = data.items.filter((s) => s.worktreeId === worktreeId);
   } catch {
     /* ignore — sessions section stays empty */
   }

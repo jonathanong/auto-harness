@@ -1,5 +1,11 @@
 import { headers } from "next/headers";
-import { apiBase, collectCursorPages, LOCAL_HOST_ID } from "@auto-harness/shared";
+import {
+  apiBase,
+  collectCursorPages,
+  LOCAL_HOST_ID,
+  MAX_CURSOR_PAGES,
+  type CursorPage,
+} from "@auto-harness/shared";
 
 type ApiTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -38,6 +44,31 @@ export async function apiGet<T>(path: string): Promise<T> {
 /** Follow an opaque API cursor until the complete catalog has been loaded. */
 export async function apiGetAllPages<T>(path: string): Promise<T[]> {
   return collectCursorPages<T>(path, (requestPath) => apiGet(requestPath));
+}
+
+/** Skip sparse nonterminal pages, stopping once the first page with items is found. */
+export async function apiGetFirstNonEmptyPage<T>(path: string): Promise<T[]> {
+  return apiGetFirstMatchingPage(path, () => true);
+}
+
+/** Skip pages without a matching item, stopping at the first matching page. */
+export async function apiGetFirstMatchingPage<T>(
+  path: string,
+  matches: (item: T) => boolean,
+): Promise<T[]> {
+  const seen = new Set<string>();
+  let requestPath = path;
+  for (let pageCount = 0; pageCount < MAX_CURSOR_PAGES; pageCount += 1) {
+    const page = await apiGet<CursorPage<T>>(requestPath);
+    const items = page.items ?? [];
+    const matchingItems = items.filter(matches);
+    const cursor = page.nextCursor ?? null;
+    if (matchingItems.length > 0 || !cursor) return matchingItems;
+    if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
+    seen.add(cursor);
+    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`;
+  }
+  throw new Error(`pagination exceeded ${MAX_CURSOR_PAGES} pages for ${path}`);
 }
 
 async function incomingAuthHeaders(): Promise<Record<string, string> | undefined> {

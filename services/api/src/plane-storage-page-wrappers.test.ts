@@ -26,7 +26,7 @@ describe("DynamoPlaneStorageBase page wrappers", () => {
         concurrencyId: null,
         scheduleId: null,
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ items: [], continuation: null });
     await expect(storage.listWorktreesPage({ limit: 1 })).resolves.toEqual({
       items: [],
       nextKey: null,

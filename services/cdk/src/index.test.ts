@@ -93,6 +93,7 @@ describe("CDK table catalog", () => {
     });
     const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);
+    expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdOrder")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-queueOrder")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-priorityOrder")).toBe(true);
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-repositoryPriorityOrder")).toBe(

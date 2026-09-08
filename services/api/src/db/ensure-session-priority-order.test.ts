@@ -7,7 +7,11 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 
-import { priorityOrderKey, repositoryPriorityOrderKey } from "../control-plane-ordering.ts";
+import {
+  createdOrderKey,
+  priorityOrderKey,
+  repositoryPriorityOrderKey,
+} from "../control-plane-ordering.ts";
 import {
   migrateSessionPriorityOrderPage,
   SESSION_PRIORITY_ORDER_READY_RECORD_KEY,
@@ -18,11 +22,27 @@ const tables = { sessions: "Sessions", sessionDrains: "SessionDrains" };
 
 describe("migrateSessionPriorityOrderPage", () => {
   it("is already ready without claiming a lease", async () => {
-    const send = vi.fn().mockResolvedValue({ Item: { recordType: "session-priority-order-v1" } });
+    const send = vi.fn().mockResolvedValue({ Item: { recordType: "session-priority-order-v2" } });
 
     await expect(migrateSessionPriorityOrderPage({ send } as never, tables)).resolves.toBe(true);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]?.[0]).toBeInstanceOf(GetCommand);
+  });
+
+  it("supersedes the v1 readiness marker so createdOrder is backfilled", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Item: { recordType: "session-priority-order-v1" } })
+      .mockResolvedValueOnce({ Attributes: { fence: 1 } })
+      .mockResolvedValueOnce({ Items: [] })
+      .mockResolvedValueOnce({});
+
+    await expect(migrateSessionPriorityOrderPage({ send } as never, tables)).resolves.toBe(true);
+    expect(send.mock.calls[1]?.[0]).toMatchObject({
+      input: expect.objectContaining({
+        Key: { scopeKey: SESSION_PRIORITY_ORDER_SCOPE_KEY, recordKey: "MIGRATION-V2" },
+      }),
+    });
   });
 
   it("repairs a bounded page then checkpoints its opaque scan key", async () => {
@@ -60,10 +80,11 @@ describe("migrateSessionPriorityOrderPage", () => {
       TableName: "Sessions",
     });
     expect((commands[3] as UpdateCommand).input.ExpressionAttributeValues).toMatchObject({
+      ":createdOrder": "2026-01-01T00:00:00.000Z#session-1",
       ":priorityOrder": "10004#2026-01-01T00:00:00.000Z#session-1",
     });
     expect((commands[4] as UpdateCommand).input).toMatchObject({
-      Key: { scopeKey: SESSION_PRIORITY_ORDER_SCOPE_KEY, recordKey: "MIGRATION-V1" },
+      Key: { scopeKey: SESSION_PRIORITY_ORDER_SCOPE_KEY, recordKey: "MIGRATION-V2" },
     });
   });
 
@@ -86,7 +107,7 @@ describe("migrateSessionPriorityOrderPage", () => {
             Item: expect.objectContaining({
               scopeKey: SESSION_PRIORITY_ORDER_SCOPE_KEY,
               recordKey: SESSION_PRIORITY_ORDER_READY_RECORD_KEY,
-              recordType: "session-priority-order-v1",
+              recordType: "session-priority-order-v2",
             }),
           }),
         }),
@@ -145,6 +166,7 @@ describe("migrateSessionPriorityOrderPage", () => {
     const item = {
       ...session,
       repositoryId: "repo-1",
+      createdOrder: createdOrderKey(session),
       priorityOrder: priorityOrderKey(session),
       repositoryPriorityOrder: repositoryPriorityOrderKey("repo-1", session),
     };
@@ -223,7 +245,7 @@ describe("migrateSessionPriorityOrderPage", () => {
           CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
         })
         .mockResolvedValueOnce({
-          Item: ready ? { recordType: "session-priority-order-v1" } : undefined,
+          Item: ready ? { recordType: "session-priority-order-v2" } : undefined,
         });
       await expect(migrateSessionPriorityOrderPage({ send } as never, tables)).resolves.toBe(ready);
     }

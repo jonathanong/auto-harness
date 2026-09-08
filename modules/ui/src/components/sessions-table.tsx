@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- the shared responsive session table keeps one row and keyboard contract. */
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import type { SessionListQuery } from "@auto-harness/shared";
 
@@ -19,7 +20,7 @@ export type SessionsTableProps = {
   items: SessionRow[];
   /** Show hostId column (control plane fleet view). */
   showHost?: boolean | undefined;
-  emptyMessage?: string | undefined;
+  emptyMessage?: ReactNode | undefined;
   /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
   hrefBase?: string | undefined;
   /** Client-side search over the rows loaded on this page only. */

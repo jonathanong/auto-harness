@@ -1,7 +1,11 @@
+/* eslint-disable max-lines -- deployment lifecycle cases share one command harness. */
 import { describe, expect, it, vi } from "vitest";
 
 import { config, dependencies } from "./deployment-test-helpers.ts";
-import { applySessionPriorityIndexStage } from "./deployment-support.ts";
+import {
+  applySessionCreatedOrderIndexStage,
+  applySessionPriorityIndexStage,
+} from "./deployment-support.ts";
 import { runDeployment } from "./deployment.ts";
 
 describe("runDeployment", () => {
@@ -19,6 +23,19 @@ describe("runDeployment", () => {
         ]),
       ]);
     }
+  });
+
+  it("adds created-order without removing the completed priority indexes", async () => {
+    const deps = dependencies([]);
+    await applySessionCreatedOrderIndexStage(config(), deps);
+    expect(deps.runs).toEqual([
+      expect.arrayContaining([
+        "deploy",
+        "AutoHarness-review-Foundation",
+        "sessionPriorityIndexStage=both",
+        "sessionCreatedOrderIndexStage=status",
+      ]),
+    ]);
   });
 
   it("bootstraps, deploys, verifies stacks, and health-checks a new environment", async () => {

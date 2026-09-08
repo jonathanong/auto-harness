@@ -54,6 +54,10 @@ export function PaginatedSessions({
       pollMs,
     });
 
+  // A filtered page can be empty while the bounded server traversal still has work to do. Keep
+  // that state distinct from a terminal empty list so callers can continue with Load more.
+  const hasMore = Boolean(nextCursor);
+
   return (
     <div className="space-y-3">
       {pollMs ? (
@@ -83,13 +87,21 @@ export function PaginatedSessions({
           </p>
         )
       ) : null}
-      {items.length === 0 && emptyState ? (
+      {items.length === 0 && !hasMore && emptyState ? (
         emptyState
       ) : (
         <SessionsTable
           items={items}
           showHost={showHost}
-          emptyMessage={emptyMessage}
+          emptyMessage={
+            hasMore && items.length === 0 ? (
+              <span data-pw="sessions-page-empty-nonterminal" aria-live="polite">
+                No sessions on this page. Load more to continue.
+              </span>
+            ) : (
+              emptyMessage
+            )
+          }
           hrefBase={hrefBase}
           search={search}
           repositoryNames={repositoryNames}
@@ -116,7 +128,7 @@ export function PaginatedSessions({
           </button>
         </Alert>
       ) : null}
-      {nextCursor ? (
+      {hasMore ? (
         <div className="flex justify-center">
           <Button
             type="button"

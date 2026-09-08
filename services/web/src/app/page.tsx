@@ -8,15 +8,15 @@ import {
   type DashboardWorktree,
   type SessionCount,
 } from "../components/dashboard-live.tsx";
-import { apiGet } from "../lib/api.ts";
+import { apiGet, apiGetFirstPageWithItems } from "../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
 async function getSessionCount(status: "running" | "queued"): Promise<SessionCount> {
-  const page = await apiGet<{ items?: unknown[]; nextCursor?: string | null }>(
+  const page = await apiGetFirstPageWithItems<unknown>(
     `/api/v1/sessions?status=${status}&limit=100`,
   );
-  return { count: page.items?.length ?? 0, atLimit: (page.nextCursor ?? null) !== null };
+  return { count: page.items.length, atLimit: page.nextCursor !== null };
 }
 
 export default async function DashboardPage() {
@@ -32,7 +32,7 @@ export default async function DashboardPage() {
   let error: string | null = null;
   try {
     const [sessions, hosts, worktrees, running, queued] = await Promise.all([
-      apiGet<{ items: DashboardSession[] }>("/api/v1/sessions?limit=50"),
+      apiGetFirstPageWithItems<DashboardSession>("/api/v1/sessions?limit=50"),
       apiGet<{ items: DashboardHost[]; nextCursor?: string | null }>("/api/v1/hosts?limit=100"),
       apiGet<{ items: DashboardWorktree[]; nextCursor?: string | null }>(
         "/api/v1/worktrees?limit=100",
@@ -40,7 +40,7 @@ export default async function DashboardPage() {
       getSessionCount("running"),
       getSessionCount("queued"),
     ]);
-    initial.sessions = sessions.items ?? [];
+    initial.sessions = sessions.items;
     initial.hosts = hosts.items ?? [];
     initial.worktrees = worktrees.items ?? [];
     initial.hostsAtLimit = (hosts.nextCursor ?? null) !== null;

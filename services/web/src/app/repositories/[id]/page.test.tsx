@@ -18,7 +18,7 @@ const baseApi = {
     admissionState: "active",
   },
   "/api/v1/worktrees": { items: [] },
-  "/api/v1/sessions?limit=100": { items: [] },
+  "/api/v1/sessions?repositoryId=repo-a&limit=100": { items: [] },
   "/api/v1/host-inventories": { items: [] },
   "/api/v1/providers": { items: [] },
   "/api/v1/provider-accounts": { items: [] },

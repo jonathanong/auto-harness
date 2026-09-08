@@ -41,6 +41,7 @@ async function stackExists(
 export function cdkContext(
   config: DeploymentConfig,
   sessionPriorityIndexStage: "status" | "both" = "both",
+  sessionCreatedOrderIndexStage: "none" | "status" = "status",
 ): string[] {
   return [
     "--app",
@@ -59,6 +60,8 @@ export function cdkContext(
     `accessLogsEnabled=${String(config.accessLogsEnabled)}`,
     "-c",
     `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
+    "-c",
+    `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,
   ];
 }
 
@@ -77,7 +80,23 @@ export async function applySessionPriorityIndexStage(
     "cdk",
     "deploy",
     config.foundationStackName,
-    ...cdkContext(config, stage),
+    ...cdkContext(config, stage, "none"),
+    "--require-approval",
+    "never",
+  ]);
+}
+
+/** Add the created-order GSI after the priority GSIs are already present. */
+export async function applySessionCreatedOrderIndexStage(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+): Promise<void> {
+  await dependencies.run("pnpm", [
+    "exec",
+    "cdk",
+    "deploy",
+    config.foundationStackName,
+    ...cdkContext(config, "both", "status"),
     "--require-approval",
     "never",
   ]);
