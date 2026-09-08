@@ -46,6 +46,11 @@ export function AddHostForm() {
               router.refresh();
               return;
             }
+            if (existing.status !== 404) {
+              showAddHostError(await apiErrorMessage(existing));
+              setPending(false);
+              return;
+            }
             const res = await fetch(
               `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
               {

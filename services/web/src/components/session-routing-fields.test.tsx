@@ -53,4 +53,24 @@ describe("SessionRoutingFields", () => {
     expect(field(view.container, "create-session-fallback-remove-0")).toBeTruthy();
     view.unmount();
   });
+
+  it("keeps the remaining fallback value when adding after removing the first row", () => {
+    const view = mountForm(
+      <SessionRoutingFields
+        targets={targets}
+        prefix="schedule"
+        initialFallbacks={[{ commandId: "c1" }, { providerId: "p1" }]}
+      />,
+    );
+    press(field(view.container, "schedule-fallback-remove-0"));
+    expect(field<HTMLSelectElement>(view.container, "schedule-fallback-select-0").value).toBe(
+      "provider:p1",
+    );
+    press(field(view.container, "schedule-fallback-add"));
+    expect(field<HTMLSelectElement>(view.container, "schedule-fallback-select-0").value).toBe(
+      "provider:p1",
+    );
+    expect(field<HTMLSelectElement>(view.container, "schedule-fallback-select-1").value).toBe("");
+    view.unmount();
+  });
 });

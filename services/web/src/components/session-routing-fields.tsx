@@ -18,13 +18,15 @@ export function SessionRoutingFields({
   initialFallbacks?: SessionTargetSelection[];
 }) {
   const [nextKey, setNextKey] = useState(initialFallbacks?.length ?? 0);
-  const [fallbacks, setFallbacks] = useState(() =>
-    (initialFallbacks ?? []).map((_, index) => index),
+  const [fallbacks, setFallbacks] = useState<FallbackRow[]>(() =>
+    (initialFallbacks ?? []).map((selection, key) => ({
+      key,
+      defaultValue: selectionValue(selection),
+    })),
   );
   const targetValue = initialTarget ? selectionValue(initialTarget) : undefined;
-  const fallbackValues = (initialFallbacks ?? []).map(selectionValue);
   const addFallback = () => {
-    setFallbacks((items) => [...items, nextKey]);
+    setFallbacks((items) => [...items, { key: nextKey }]);
     setNextKey((key) => key + 1);
   };
   return (
@@ -61,10 +63,10 @@ export function SessionRoutingFields({
             Add fallback
           </Button>
         </div>
-        {fallbacks.map((key, index) => (
+        {fallbacks.map((row, index) => (
           <div
             className="flex items-center gap-2"
-            key={key}
+            key={row.key}
             data-pw={`${prefix}-fallback-${index}`}
           >
             <span className="w-5 text-center text-xs text-muted-foreground">{index + 1}</span>
@@ -75,7 +77,7 @@ export function SessionRoutingFields({
                 name="fallback"
                 dataPw={`${prefix}-fallback-select-${index}`}
                 optional
-                defaultValue={fallbackValues[index]}
+                defaultValue={row.defaultValue}
               />
             </div>
             <Button
@@ -124,7 +126,9 @@ function selectionValue(selection: SessionTargetSelection): string {
     : `command:${selection.commandId}`;
 }
 
-function move(items: number[], from: number, to: number): number[] {
+type FallbackRow = { key: number; defaultValue?: string };
+
+function move(items: FallbackRow[], from: number, to: number): FallbackRow[] {
   const next = [...items];
   const [item] = next.splice(from, 1);
   if (item !== undefined) next.splice(to, 0, item);
