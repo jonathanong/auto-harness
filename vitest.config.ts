@@ -44,7 +44,8 @@ const dynamoUnitTests = [
 const serializedDynamo = {
   fileParallelism: false,
   pool: "forks" as const,
-  poolOptions: { forks: { singleFork: true } },
+  // Vitest 4 replaced poolOptions.forks.singleFork with a top-level worker cap.
+  maxWorkers: 1,
   testTimeout: 60_000,
   hookTimeout: 60_000,
 };
