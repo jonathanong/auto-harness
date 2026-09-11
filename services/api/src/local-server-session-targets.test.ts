@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { sessionTargetListKey } from "./local-routes-session-targets.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
 describe("createLocalApp session-targets", () => {
+  it("keys picker rows by kind and id", () => {
+    expect(sessionTargetListKey({ kind: "command", id: "cmd-1" })).toBe("command:cmd-1");
+  });
+
   it("GET /api/v1/session-targets lists provider accounts and standalone commands", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
     plane.createCommand({ id: "cmd-1", name: "echo-hello", argv: ["echo"], providerId: null });
