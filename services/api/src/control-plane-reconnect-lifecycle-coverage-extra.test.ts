@@ -70,6 +70,32 @@ describe("reconnect and lifecycle residual coverage", () => {
     expect(reclaimStaleHosts(state, Date.parse(NOW) + 2)).toEqual(["ordinary"]);
   });
 
+  it("reclaims a disconnected host that has no live connection id", () => {
+    const state = createControlPlaneState({ heartbeatStaleMs: 1, now: () => NOW });
+    state.disconnectedHosts.set("ghost", { lastHeartbeatAt: NOW });
+    expect(reclaimStaleHosts(state, Date.parse(NOW) + 2)).toEqual([]);
+    expect(state.disconnectedHosts.has("ghost")).toBe(false);
+  });
+
+  it("prefers the live connection over a stale disconnected-host observation", () => {
+    const state = createControlPlaneState({ heartbeatStaleMs: 1, now: () => NOW });
+    state.connections.set("connection", {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      commandProfiles: [],
+      capabilities: [],
+      repositoryIds: ["repo"],
+    });
+    state.hostConnection.set("host", "connection");
+    state.disconnectedHosts.set("host", { lastHeartbeatAt: "2025-01-01T00:00:00.000Z" });
+    expect(reclaimStaleHosts(state, Date.parse(NOW) + 2)).toEqual([]);
+    expect(state.hostConnection.has("host")).toBe(false);
+    expect(state.disconnectedHosts.has("host")).toBe(false);
+  });
+
   it("rolls back an earlier worktree confirmation when a scheduled report loses", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     state.hostConnection.set("host", "new");
