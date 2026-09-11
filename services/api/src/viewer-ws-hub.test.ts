@@ -530,6 +530,35 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
+  it("records an anonymous viewer when authentication is disabled", async () => {
+    const auth = new AuthService({ mode: "disabled", secret: "a".repeat(32), admins: "W10" });
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(wsUrl(server), { headers: viewerOrigin() });
+      socket.on("open", () => resolve(socket));
+      socket.on("error", reject);
+    });
+    expect(plane.listUserSessions()).toEqual([
+      expect.objectContaining({ userId: "anonymous", subscriptions: [] }),
+    ]);
+    await new Promise<void>((resolve, reject) => {
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; code?: string };
+        if (message.type === "session:subscribed" || message.type === "session:error") {
+          ws.close();
+          resolve();
+        }
+      });
+      ws.on("error", reject);
+      ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" }));
+    });
+    hub.close();
+    await close(server);
+  });
+
   it("drains a durable cursor page and skips overlapping poll ticks", async () => {
     const auth = authService();
     const principal = await auth.createUser({

@@ -123,8 +123,12 @@ describe("listRepositoriesPage", () => {
       items: [{ id: "repository-a" }],
       nextCursor: expect.any(String),
     });
+    await expect(plane.listRepositoriesPageDurable()).resolves.toMatchObject({
+      items: [{ id: "repository-a" }],
+    });
     expect(listRepositories).not.toHaveBeenCalled();
     expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 1 });
+    expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 50 });
   });
 
   it("binds scoped storage continuations and omits malformed durable rows", async () => {
