@@ -39,6 +39,12 @@ describe("listRepositoriesPage", () => {
   it("exposes in-memory repository pages through the control-plane facade", () => {
     const plane = makePlane();
 
+    expect(plane.listRepositoriesPage().items.map(({ id }) => id)).toEqual([
+      "repository-a",
+      "repository-b",
+      "repository-c",
+      "repository-d",
+    ]);
     expect(plane.listRepositoriesPage({ limit: 1 })).toMatchObject({
       items: [{ id: "repository-a" }],
       nextCursor: expect.any(String),
