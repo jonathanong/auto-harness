@@ -46,6 +46,32 @@ describe("local app error boundary", () => {
     errors.mockRestore();
   });
 
+  it("does not write a second response when headers were already sent", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handler } = app();
+    const req = {
+      method: "GET",
+      url: MALFORMED_URL,
+      headers: {},
+      on() {
+        return req;
+      },
+    };
+    const writes: number[] = [];
+    const res = {
+      headersSent: true,
+      setHeader() {},
+      writeHead(code: number) {
+        writes.push(code);
+      },
+      end() {},
+    };
+    await handler(req as never, res as never);
+    expect(writes).toEqual([]);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("still serves normal requests", async () => {
     const { handler } = app();
 
