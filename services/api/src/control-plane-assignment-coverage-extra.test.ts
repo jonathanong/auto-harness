@@ -125,6 +125,14 @@ describe("assignment residual coverage", () => {
     expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
   });
 
+  it("skips a local candidate when the provider account has no remaining lease capacity", () => {
+    const state = providerAssignmentState();
+    state.providerAccounts.get("account")!.maxConcurrentSessions = 0;
+    expect(assignQueued(state)).toEqual([]);
+    expect(state.sessions.get("s")).toMatchObject({ status: "queued" });
+    expect(state.worktrees.get("w")).toMatchObject({ status: "idle" });
+  });
+
   it("releases a claimed local worktree when provider lease acquisition loses a race", () => {
     const state = providerAssignmentState();
     const leases = new Map<string, never>();
