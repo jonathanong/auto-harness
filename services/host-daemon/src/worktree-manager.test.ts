@@ -534,4 +534,68 @@ describe("WorktreeManager", () => {
     );
     expect(git.checkoutRef).not.toHaveBeenCalled();
   });
+
+  it("retries a claim when inventory generation changes during path validation", async () => {
+    const root = join(tmpdir(), `ah-claim-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) manager.noteInventoryChange();
+      return original(row, cwd);
+    };
+    const claimed = await manager.claim("repo-1", "wt-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(worktree));
+    manager.release("wt-1");
+  });
+
+  it("retries mainClaim after a path-validation error races with inventory refresh", async () => {
+    const root = join(tmpdir(), `ah-main-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    await mkdir(repository, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [{ id: "repo-1", path: repository, defaultBranch: "main", worktrees: [] }],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) {
+        manager.noteInventoryChange();
+        throw new Error("stale path");
+      }
+      return original(row, cwd);
+    };
+    const claimed = await manager.mainClaim("repo-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(repository));
+  });
 });
