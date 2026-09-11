@@ -143,6 +143,37 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
+  it("records a successful keepalive send timestamp", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-keepalive-sent",
+      apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+    });
+    const daemon = await startDaemon({ config, log: (line) => lines.push(line) });
+    try {
+      (
+        daemon.loop as unknown as {
+          keepalive(): Promise<boolean>;
+        }
+      ).keepalive = async () => true;
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(
+        lines.some(
+          (line) =>
+            line.startsWith("daemon liveness:") &&
+            line.includes("last keepalive sent=") &&
+            !line.includes("none yet"),
+        ),
+      ).toBe(true);
+    } finally {
+      daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
   it("keeps the legacy install root when host update config moves its staging root", async () => {
     const harness = await acceptingServer();
     const { config, cleanup } = await makeRepo();

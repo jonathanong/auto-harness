@@ -62,6 +62,7 @@ describe("createPlaneWsBridge", () => {
     expect(parseHostMessage(valid)).toEqual(valid);
     expect(parseHostMessage({ ...valid, draining: true })).toEqual({ ...valid, draining: true });
     expect(parseHostMessage({ ...valid, draining: false })).toBe(null);
+    expect(parseHostMessage({ ...valid, runtime: { gitReady: "nope" } })).toBe(null);
     expect(
       parseHostMessage({ ...valid, worktrees: [{ ...valid.worktrees[0], labels: [1] }] }),
     ).toBe(null);
