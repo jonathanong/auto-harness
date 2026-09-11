@@ -109,7 +109,7 @@ async function settleWithin<T>(
   return new Promise((finish) => {
     let settled = false;
     const timer = setTimeout(() => {
-      /* v8 ignore next -- clearTimeout below always runs strictly before this callback could fire once settled */
+      /* v8 ignore next -- @preserve clearTimeout below always runs strictly before this callback could fire once settled */
       if (settled) return;
       settled = true;
       finish({ state: "timed_out" });
@@ -502,7 +502,7 @@ export function setExitCode(code: number): void {
   process.exitCode = code;
 }
 
-/* v8 ignore next 4 -- only true under a real `node cli.ts` process entrypoint, never on import */
+/* v8 ignore next 4 -- @preserve only true under a real `node cli.ts` process entrypoint, never on import */
 if (isDirectInvocation(process.argv[1])) {
   initHostSentry();
   installCrashLogging({ report: reportHostCrash });

@@ -309,16 +309,16 @@ function forceCloseStaleConnection(
 export async function createLambdaRuntime(
   dependencies: LambdaRuntimeDependencies = {},
 ): Promise<LambdaRuntime> {
-  /* v8 ignore next 4 -- production SSM fetch is exercised through the shared bootstrap-secrets suite */
+  /* v8 ignore next 4 -- @preserve production SSM fetch is exercised through the shared bootstrap-secrets suite */
   const bootstrapSecrets =
     dependencies.created && dependencies.auth
       ? undefined
       : await loadBootstrapSecrets(dependencies.ssmClient);
-  /* v8 ignore next 3 -- production SSM fetch is exercised through the public-base-url suite */
+  /* v8 ignore next 3 -- @preserve production SSM fetch is exercised through the public-base-url suite */
   const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
-  /* v8 ignore next 9 -- production AWS client construction is an SDK boundary */
+  /* v8 ignore next 9 -- @preserve production AWS client construction is an SDK boundary */
   const created =
     dependencies.created ??
     (await createControlPlane({
@@ -329,7 +329,7 @@ export async function createLambdaRuntime(
       hydrateCatalogs: lambdaHydrateCatalogsEnabled(),
       ...(fetchedPublicBaseUrl !== undefined ? { publicBaseUrl: fetchedPublicBaseUrl } : {}),
     }));
-  /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
+  /* v8 ignore next 7 -- @preserve production auth construction is exercised through the shared auth suite */
   const auth =
     dependencies.auth ??
     new AuthService({
@@ -337,7 +337,7 @@ export async function createLambdaRuntime(
       mode: "required",
       secret: bootstrapSecrets!.sessionSecret,
     });
-  /* v8 ignore next -- production hydration is exercised through the shared auth/storage suites */
+  /* v8 ignore next -- @preserve production hydration is exercised through the shared auth/storage suites */
   if (!dependencies.auth) await auth.hydrate(created.storage);
   const management =
     dependencies.management ??
@@ -364,7 +364,7 @@ export async function createLambdaRuntime(
     const delivery = postToHost(created.plane, management, hostId, message).catch(() => undefined);
     track(delivery);
   };
-  /* v8 ignore next 3 -- production origin is the fetched public base URL and fails closed when absent */
+  /* v8 ignore next 3 -- @preserve production origin is the fetched public base URL and fails closed when absent */
   let viewerPublicBaseUrl = dependencies.created
     ? created.plane.state.publicBaseUrl
     : fetchedPublicBaseUrl;
@@ -374,7 +374,7 @@ export async function createLambdaRuntime(
     storage: created.storage,
     resolvePublicBaseUrl: async () => {
       if (viewerPublicBaseUrl !== undefined) return viewerPublicBaseUrl;
-      /* v8 ignore next 3 -- production SSM refetch after a transient cold-start miss */
+      /* v8 ignore next 3 -- @preserve production SSM refetch after a transient cold-start miss */
       const resolved = await fetchPublicBaseUrl(dependencies.ssmClient);
       if (resolved !== undefined) viewerPublicBaseUrl = resolved;
       return resolved;
@@ -418,7 +418,7 @@ export async function createLambdaRuntime(
         await created.plane.requestAssignment();
         return;
       }
-      /* v8 ignore start -- production Event invoke is an SDK boundary */
+      /* v8 ignore start -- @preserve production Event invoke is an SDK boundary */
       await new LambdaClient({}).send(
         new InvokeCommand({
           FunctionName: functionName,
@@ -426,7 +426,7 @@ export async function createLambdaRuntime(
           Payload: Buffer.from(JSON.stringify({ source: "enqueue" })),
         }),
       );
-      /* v8 ignore stop */
+      /* v8 ignore stop -- @preserve */
     });
   created.plane.setOnAssignmentRequested(() =>
     invokeAssignment().catch((error: unknown) => {
@@ -535,7 +535,7 @@ export async function createLambdaRuntime(
         const { connectionId, routeKey } = event.requestContext;
         if (routeKey === "$connect") {
           if (dependencies.refreshAuth) await dependencies.refreshAuth();
-          /* v8 ignore next -- production refresh uses the shared auth/storage integration */ else if (
+          /* v8 ignore next -- @preserve production refresh uses the shared auth/storage integration */ else if (
             !dependencies.auth
           )
             await auth.hydrate(created.storage);
