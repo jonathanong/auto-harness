@@ -22,8 +22,16 @@ describe("initWebSentryServer", () => {
     expect(Sentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: "https://abc123@o1.ingest.sentry.io/450",
+        environment: "local",
         tracesSampleRate: 0,
       }),
     );
+    expect(
+      initWebSentryServer({
+        HARNESS_DEPLOY_ENVIRONMENT: " qa ",
+        HARNESS_WEB_SENTRY_DSN_SERVER: "https://abc123@o1.ingest.sentry.io/450",
+      }),
+    ).toBe(true);
+    expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ environment: "qa" }));
   });
 });
