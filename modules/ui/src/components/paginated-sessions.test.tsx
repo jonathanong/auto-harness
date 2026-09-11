@@ -215,4 +215,46 @@ describe("PaginatedSessions", () => {
     expect(view.container.querySelector('[data-pw="sessions-load-more"]')).toBeNull();
     act(() => view.root.unmount());
   });
+
+  it("ignores poll and load-more failures after unmount", async () => {
+    vi.useFakeTimers();
+    let rejectPoll!: (reason: unknown) => void;
+    const fetchPage = vi.fn(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectPoll = reject;
+        }),
+    );
+    const pollView = mount(
+      <PaginatedSessions
+        initialItems={[{ id: "live", status: "queued" }]}
+        initialNextCursor={null}
+        path="/api/v1/sessions"
+        fetchPage={fetchPage}
+        pollMs={10}
+      />,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    act(() => pollView.root.unmount());
+    await act(async () => rejectPoll("poll-offline"));
+
+    let rejectLoad!: (reason: unknown) => void;
+    const loadPage = vi.fn(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    const loadView = mount(
+      <PaginatedSessions
+        initialItems={[{ id: "kept", status: "queued" }]}
+        initialNextCursor="next"
+        path="/api/v1/sessions"
+        fetchPage={loadPage}
+      />,
+    );
+    act(() => byPw<HTMLButtonElement>(loadView.container, "sessions-load-more").click());
+    act(() => loadView.root.unmount());
+    await act(async () => rejectLoad("load-offline"));
+  });
 });
