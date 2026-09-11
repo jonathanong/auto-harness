@@ -59,7 +59,7 @@ describe("new session route", () => {
       "/api/v1/session-targets": {
         items: [{ kind: "provider", id: "provider", label: "Provider" }],
       },
-      "/api/v1/repositories": { items: [] },
+      "/api/v1/repositories": { items: [{ id: "other-repository", name: "other" }] },
       "/api/v1/worktrees": { items: [{ online: true, labels: ["online"] }] },
       "/api/v1/sessions/source%2Fsession": {
         repositoryId: "source-repository",
