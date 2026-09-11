@@ -117,7 +117,8 @@ describe("DaemonLoop terminal status retry", () => {
         sendToServer: (message) => {
           if (message.type === "session:status") {
             statusAttempts += 1;
-            if (statusAttempts <= 2) throw new Error(`send failed #${String(statusAttempts)}`);
+            if (statusAttempts === 1) throw "primitive send failed";
+            if (statusAttempts === 2) throw new Error(`send failed #${String(statusAttempts)}`);
           }
         },
       });
@@ -139,7 +140,11 @@ describe("DaemonLoop terminal status retry", () => {
 
       expect(statusAttempts).toBe(1);
       expect(
-        lines.some((line) => line.includes("session:status send failed for flaky-status")),
+        lines.some((line) =>
+          line.includes(
+            "session:status send failed for flaky-status, will retry via keepalive: primitive send failed",
+          ),
+        ),
       ).toBe(true);
       expect(pendingTerminalStatusOf(loop).size).toBe(1);
 

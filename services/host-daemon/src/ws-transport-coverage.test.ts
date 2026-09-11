@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- residual runtime branches share one FakeSocket harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
@@ -139,6 +140,49 @@ describe("WebSocket transport residual runtime branches", () => {
       sessionId: "session-1",
       status: "completed",
     });
+  });
+
+  it("reports an Error socket failure after registration", async () => {
+    const sockets: FakeSocket[] = [];
+    const errors: Error[] = [];
+    const transport = createWsTransport({
+      url: "ws://fake/ws",
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      onError: (error) => errors.push(error),
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    await transport.send(register());
+    socket.server({ type: "host:registered", hostId: "host-1" });
+    await transport.registered;
+    socket.emit("error", new Error("socket exploded"));
+    expect(errors.map((error) => error.message)).toContain("socket exploded");
+    transport.close();
+  });
+
+  it("closes a refresh when disconnect already shut the transport down", async () => {
+    const sockets: FakeSocket[] = [];
+    let transport: ReturnType<typeof createWsTransport>;
+    transport = createWsTransport({
+      url: "ws://fake/ws",
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      onClose: () => transport.close(),
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    await transport.send(register());
+    socket.server({ type: "host:registered", hostId: "host-1" });
+    await transport.registered;
+    await transport.send(register(["next"]));
+    expect(sockets).toHaveLength(1);
   });
 });
 

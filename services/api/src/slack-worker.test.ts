@@ -208,6 +208,14 @@ describe("Slack lifecycle worker", () => {
     disabled.start();
     await disabled.stop();
     expect(getDisabledConfig).toHaveBeenCalledOnce();
+    await expect(
+      new SlackLifecycleWorker({
+        store: new MemoryOutbox(),
+        transport: { deliver: vi.fn() },
+        getConfig: async () => ({ ...config, enabled: false }),
+        listSessions: vi.fn(),
+      }).stop(),
+    ).resolves.toBeUndefined();
 
     const store = new MemoryOutbox();
     const bounded = new SlackLifecycleWorker(

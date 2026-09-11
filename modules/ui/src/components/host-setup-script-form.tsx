@@ -104,13 +104,12 @@ export function HostSetupScriptForm({
                 if (scriptDirty) patch.setupScript = script;
                 if (rootsDirty) {
                   try {
-                    parsedRoots =
-                      parseAllowedRoots(
-                        roots
-                          .split("\n")
-                          .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
-                          .filter((line) => line.length > 0),
-                      ) ?? [];
+                    parsedRoots = parseAllowedRoots(
+                      roots
+                        .split("\n")
+                        .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+                        .filter((line) => line.length > 0),
+                    )!;
                   } catch (error) {
                     showToast(error instanceof Error ? error.message : String(error), {
                       variant: "destructive",

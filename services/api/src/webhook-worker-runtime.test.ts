@@ -105,6 +105,7 @@ describe("WebhookWorker", () => {
       { onError },
     );
     await expect(worker.tick()).resolves.toBe(false);
+    await expect(worker.stop()).resolves.toBeUndefined();
     worker.start();
     await expect(worker.tick()).resolves.toBe(false);
     await worker.stop();

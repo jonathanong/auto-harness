@@ -51,6 +51,11 @@ describe("DaemonLoop drain", () => {
       expect(logs.some((l) => l.includes("cancel"))).toBe(true);
       await loop.resumeFromDrain();
       expect(loop.isDraining()).toBe(false);
+      const pendingDrain = loop.beginDrain();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await loop.resumeFromDrain();
+      await pendingDrain;
+      expect(loop.isDraining()).toBe(false);
       // unknown wire type ignored
       transport.deliver({ type: "ping" } as never);
       loop.stop();

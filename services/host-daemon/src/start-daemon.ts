@@ -451,9 +451,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   });
   const stopUpdatePoll = startOptionalUpdatePoll(update, loop, log, error);
   const stopLivenessLog = startLivenessLog({
-    isRegistered: () => transport.isRegistered?.() ?? false,
+    isRegistered: () => transport.isRegistered!(),
     lastKeepaliveSentAtMs: () => lastKeepaliveSentAtMs,
-    queuedCount: () => transport.queuedCount?.() ?? 0,
+    queuedCount: () => transport.queuedCount!(),
     log,
   });
   const stop = daemonStop(loop, keepalive, stopInventoryPoll, stopUpdatePoll, stopLivenessLog);

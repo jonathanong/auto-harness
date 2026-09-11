@@ -257,4 +257,114 @@ describe("host message residual coverage", () => {
       ),
     ).resolves.toEqual({ ok: false, error: "stale host connection" });
   });
+
+  it("retries archive for a durable terminal report on an already-finished session", async () => {
+    const current = state(session({ status: "completed", completedAt: NOW }));
+    const archives: string[] = [];
+    setDurableReadStorage(current, {
+      getSession: async () => current.sessions.get("s"),
+      getArchive: async () => null,
+      putArchive: async (metadata: { key: string }) => {
+        archives.push(metadata.key);
+      },
+    });
+    current.archiveWriter = {
+      putArchive: async (object: { key: string }) => {
+        archives.push(object.key);
+      },
+    } as never;
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(archives.length).toBeGreaterThan(0);
+  });
+
+  it("releases a cancelled worktree whose live row belongs to someone else", async () => {
+    const current = state(
+      session({
+        status: "cancelled",
+        completedAt: NOW,
+        worktreeId: "w",
+      }),
+    );
+    current.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "other",
+    });
+    setDurableReadStorage(current, {
+      getSession: async () => current.sessions.get("s"),
+      releaseCancelledSessionWorktree: async () => true,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.worktrees.get("w")?.currentSessionId).toBe("other");
+    expect(current.sessions.get("s")?.worktreeId).toBeNull();
+  });
+
+  it("cools down a local usage-limited account and requeues a prompt session", async () => {
+    const current = state(
+      session({
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "cmd",
+          providerAccountId: "account",
+          hostId: "host",
+          worktreeId: "w",
+          attemptId: "attempt",
+        },
+      }),
+    );
+    current.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+    });
+    current.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      createdAt: NOW,
+      updatedAt: NOW,
+      usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
+    });
+    expect(
+      handleHostMessage(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "failed",
+        errorCode: "usage_limit",
+      }),
+    ).toEqual({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("queued");
+    expect(current.providerAccounts.get("account")?.usageLimitedUntil).toBeDefined();
+  });
 });

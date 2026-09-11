@@ -473,9 +473,7 @@ export function parseHostMessage(
       ) {
         return null;
       }
-      const advertised = parseHostCapabilitiesAdvertisement(message.capabilities) ?? {
-        features: [],
-      };
+      const advertised = parseHostCapabilitiesAdvertisement(message.capabilities)!;
       const maxConcurrentAssignments =
         typeof message.maxConcurrentAssignments === "number"
           ? message.maxConcurrentAssignments

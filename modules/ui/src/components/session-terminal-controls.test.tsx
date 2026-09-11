@@ -46,8 +46,10 @@ describe("SessionTerminalControls", () => {
     input.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
     );
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
     expect(search).toHaveBeenCalledWith("next");
     expect(search).toHaveBeenCalledWith("previous");
+    expect(search).toHaveBeenCalledTimes(2);
 
     press(field(view.container, "session-terminal-search-previous"));
     press(field(view.container, "session-terminal-search-next"));

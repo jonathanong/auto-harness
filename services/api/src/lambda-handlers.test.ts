@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
 import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
+import { SSMClient } from "@aws-sdk/client-ssm";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
@@ -802,6 +803,94 @@ describe("Lambda runtime adapters", () => {
     expect(refreshAuth.mock.invocationCallOrder[0]).toBeLessThan(
       fixture.auth.authenticate.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("refetches a missing public base URL before accepting a viewer socket", async () => {
+    const fixture = runtimeFixture();
+    fixture.plane.state.publicBaseUrl = undefined as unknown as string;
+    const previousParam = process.env.PUBLIC_BASE_URL_SSM_PARAM;
+    const previousWs = process.env.WS_API_ENDPOINT;
+    const send = vi.fn(async () => ({ Parameter: { Value: "https://d1234.cloudfront.net" } }));
+    try {
+      process.env.PUBLIC_BASE_URL_SSM_PARAM = "/auto-harness/qa/public-base-url";
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      const runtime = await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        ssmClient: { send } as never,
+      });
+      await expect(
+        runtime.websocket({
+          headers: { origin: "https://d1234.cloudfront.net" },
+          queryStringParameters: { ticket: "viewer-ticket" },
+          requestContext: { connectionId: "viewer-refetch", routeKey: "$connect" },
+        }),
+      ).resolves.toEqual({ statusCode: 200 });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      if (previousParam === undefined) delete process.env.PUBLIC_BASE_URL_SSM_PARAM;
+      else process.env.PUBLIC_BASE_URL_SSM_PARAM = previousParam;
+      if (previousWs === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previousWs;
+    }
+  });
+
+  it("rehydrates auth on connect when the runtime constructed AuthService itself", async () => {
+    const fixture = runtimeFixture();
+    const previous = {
+      admins: process.env.HARNESS_ADMINS_SSM_PARAM,
+      session: process.env.HARNESS_SESSION_SECRET_SSM_PARAM,
+      cursor: process.env.HARNESS_CURSOR_SECRET_SSM_PARAM,
+      ws: process.env.WS_API_ENDPOINT,
+    };
+    const admins = Buffer.from(
+      JSON.stringify([{ username: "admin", password: "admin-password" }]),
+    ).toString("base64url");
+    Object.assign(fixture.storage, {
+      listAuthAccounts: async () => [
+        {
+          id: "user:alice",
+          kind: "user",
+          username: "alice",
+          role: "operator",
+          passwordHash: "hash",
+          createdAt: "2026-08-12T00:00:00.000Z",
+          updatedAt: "2026-08-12T00:00:00.000Z",
+        },
+      ],
+    });
+    const send = vi.fn(async (command: { input: { Name: string } }) => {
+      const name = command.input.Name;
+      if (name.includes("admins")) return { Parameter: { Value: admins } };
+      return { Parameter: { Value: "s".repeat(32) } };
+    });
+    try {
+      process.env.HARNESS_ADMINS_SSM_PARAM = "/auto-harness/admins";
+      process.env.HARNESS_SESSION_SECRET_SSM_PARAM = "/auto-harness/session-secret";
+      process.env.HARNESS_CURSOR_SECRET_SSM_PARAM = "/auto-harness/cursor-secret";
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      const runtime = await createLambdaRuntime({
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+        ssmClient: { send } as never,
+      });
+      await expect(
+        runtime.websocket({
+          requestContext: { connectionId: "self-auth", routeKey: "$connect" },
+        }),
+      ).resolves.toMatchObject({ statusCode: expect.any(Number) });
+      expect(send).toHaveBeenCalled();
+    } finally {
+      if (previous.admins === undefined) delete process.env.HARNESS_ADMINS_SSM_PARAM;
+      else process.env.HARNESS_ADMINS_SSM_PARAM = previous.admins;
+      if (previous.session === undefined) delete process.env.HARNESS_SESSION_SECRET_SSM_PARAM;
+      else process.env.HARNESS_SESSION_SECRET_SSM_PARAM = previous.session;
+      if (previous.cursor === undefined) delete process.env.HARNESS_CURSOR_SECRET_SSM_PARAM;
+      else process.env.HARNESS_CURSOR_SECRET_SSM_PARAM = previous.cursor;
+      if (previous.ws === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previous.ws;
+    }
   });
 
   it("routes viewer tickets and read-only messages through the Lambda viewer adapter", async () => {
@@ -1905,6 +1994,27 @@ describe("loadBootstrapSecrets", () => {
       ),
     ).rejects.toThrow("SSM parameter /auto-harness/admins has no value");
   });
+
+  it("constructs the default SSM client when none is injected", async () => {
+    const send = vi.spyOn(SSMClient.prototype, "send").mockImplementation(async (command) => {
+      const name = (command as { input: { Name: string } }).input.Name;
+      return { Parameter: { Value: `value-for-${name}` } } as never;
+    });
+    try {
+      const secrets = await withEnv(
+        {
+          HARNESS_ADMINS_SSM_PARAM: "/auto-harness/admins",
+          HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+          HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+        },
+        () => loadBootstrapSecrets(),
+      );
+      expect(secrets.admins).toBe("value-for-/auto-harness/admins");
+      expect(send).toHaveBeenCalled();
+    } finally {
+      send.mockRestore();
+    }
+  });
 });
 
 /**
@@ -1968,5 +2078,19 @@ describe("fetchPublicBaseUrl", () => {
         fetchPublicBaseUrl(failing as never),
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("constructs the default SSM client when fetching the public base URL", async () => {
+    const send = vi.spyOn(SSMClient.prototype, "send").mockResolvedValue({
+      Parameter: { Value: "https://d1234.cloudfront.net" },
+    } as never);
+    try {
+      await expect(
+        withPublicBaseUrlParamEnv("/auto-harness/qa/public-base-url", () => fetchPublicBaseUrl()),
+      ).resolves.toBe("https://d1234.cloudfront.net");
+      expect(send).toHaveBeenCalled();
+    } finally {
+      send.mockRestore();
+    }
   });
 });
