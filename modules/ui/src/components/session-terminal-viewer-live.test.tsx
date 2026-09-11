@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount, reset as resetHelper } from "./action-form-test-helpers.ts";
 import { openRawTerminal } from "./session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
+import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 
 const mocks = vi.hoisted(() => ({
@@ -139,5 +140,30 @@ describe("SessionTerminalViewer live raw writes", () => {
     );
     expect(mocks.terminalReset).toHaveBeenCalled();
     expect(mocks.write).toHaveBeenCalledWith("zzz", expect.any(Function));
+  });
+
+  it("clears the live cursor when items become empty and ignores theme before attach", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    let replaceItems:
+      | ((items: Array<Parameters<typeof SessionTerminalViewer>[0]["items"][number]>) => void)
+      | undefined;
+    function Emptying() {
+      const [items, setItems] = useState<TerminalLogEntry[]>([
+        { timestampSeq: "a", seq: 1, stream: "stdout", content: "one", timestamp: "now" },
+      ]);
+      replaceItems = setItems;
+      return <SessionTerminalViewer sessionId="emptying" items={items} />;
+    }
+    const view = mount(<Emptying />);
+    act(() => window.dispatchEvent(new Event(THEME_CHANGE_EVENT)));
+    await openRaw(view.container);
+    act(() => replaceItems?.([]));
+    expect(mocks.terminalReset).toHaveBeenCalled();
   });
 });
