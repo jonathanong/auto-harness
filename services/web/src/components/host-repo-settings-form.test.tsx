@@ -222,6 +222,19 @@ describe("HostRepoSettingsForm", () => {
     expect(field(document, "repo-settings-error-repo-1").textContent).toContain("denied");
     view.unmount();
 
+    const thrown: Mutation = vi.fn(async () => {
+      throw "repo-offline";
+    }) as Mutation;
+    const thrownView = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={thrown} />,
+    );
+    press(field(thrownView.container, "repo-settings-open-repo-1"));
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain("repo-offline");
+    thrownView.unmount();
+
     const hidden = mountForm(
       <HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig={false} />,
     );

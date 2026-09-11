@@ -529,6 +529,105 @@ describe("browser session log websocket", () => {
     hub.close();
     await close(server);
   });
+
+  it("drains a durable cursor page and skips overlapping poll ticks", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const session = plane.state.sessions.get("session-a")!;
+    let queryStarts = 0;
+    let releaseQuery: ((records: ReturnType<typeof log>[]) => void) | undefined;
+    const queries: Array<{ after?: string }> = [];
+    plane.state.storage = {
+      getSession: async () => session,
+      queryLogs: async (_id: string, query: { after?: string }) => {
+        queryStarts += 1;
+        queries.push(query);
+        if (queryStarts === 1) {
+          return await new Promise<ReturnType<typeof log>[]>((resolve) => {
+            releaseQuery = resolve;
+          });
+        }
+        return [];
+      },
+    } as never;
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+    const received = new Promise<string[]>((resolve, reject) => {
+      const records: string[] = [];
+      const timer = setTimeout(() => reject(new Error("durable cursor drain timeout")), 3_000);
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        if (message.type === "session:log" && message.timestampSeq) {
+          records.push(message.timestampSeq);
+          if (records.includes(log(2).timestampSeq)) {
+            clearTimeout(timer);
+            ws.close();
+            resolve(records);
+          }
+        }
+      });
+      ws.on("error", reject);
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", resolve);
+      ws.on("error", reject);
+    });
+    ws.send(
+      JSON.stringify({
+        type: "session:subscribe",
+        sessionId: "session-a",
+        after: log(1).timestampSeq,
+      }),
+    );
+    await expect.poll(() => queryStarts).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(queryStarts).toBe(1);
+    releaseQuery?.([log(2)]);
+    await expect(received).resolves.toContain(log(2).timestampSeq);
+    expect(queries[0]).toMatchObject({ after: log(1).timestampSeq });
+    hub.close();
+    await close(server);
+  });
+
+  it("does not send logs after the viewer socket has closed", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      socket.on("open", () => resolve(socket));
+      socket.on("error", reject);
+    });
+    await new Promise<void>((resolve) => {
+      ws.on("message", (raw) => {
+        if ((JSON.parse(String(raw)) as { type: string }).type === "session:subscribed") resolve();
+      });
+      ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" }));
+    });
+    await new Promise<void>((resolve) => {
+      ws.on("close", () => resolve());
+      ws.close();
+    });
+    plane.state.onLogCommitted?.(log(9));
+    hub.close();
+    await close(server);
+  });
 });
 
 describe("browser session log protocol", () => {

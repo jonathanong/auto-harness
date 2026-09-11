@@ -1629,6 +1629,47 @@ describe("Lambda runtime adapters", () => {
     expect(retry.mock.calls[0]?.[1]?.()).toBe(false);
   });
 
+  it("keeps retrying archives when the cron context omits a remaining-time budget", async () => {
+    const fixture = runtimeFixture();
+    const retry = vi.spyOn(fixture.plane, "retryPendingArchivesDurable");
+    const redeliver = vi.spyOn(fixture.plane, "redeliverPendingCancelsDurable");
+    await (await fixture.runtime).cron();
+    expect(retry.mock.calls[0]?.[1]?.()).toBe(true);
+    expect(redeliver.mock.calls[0]?.[1]?.()).toBe(true);
+  });
+
+  it("logs a non-Error closeReclaimedConnection failure without failing the sweep", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-12T00:00:00.000Z");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const fixture = runtimeFixture();
+      seedSchedulerSweep(fixture);
+      fixture.management.send.mockImplementation(
+        async (command: { input: { ConnectionId?: string; Data?: unknown } }) => {
+          if (command.input.ConnectionId === "stale-connection" && !("Data" in command.input)) {
+            throw "raw-close-failure";
+          }
+          return {};
+        },
+      );
+      await expect((await fixture.runtime).cron()).resolves.toMatchObject({
+        staleHostsReclaimed: 1,
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        JSON.stringify({
+          msg: "closeReclaimedConnection failure",
+          hostId: "stale-host",
+          connectionId: "stale-connection",
+          error: "raw-close-failure",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+      consoleError.mockRestore();
+    }
+  });
+
   it("posts through the management API and prunes gone connections", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
@@ -1698,6 +1739,29 @@ describe("Lambda runtime adapters", () => {
       delete process.env.HARNESS_METRIC_ENVIRONMENT;
       metricLog.mockRestore();
       consoleError.mockRestore();
+    }
+  });
+
+  it("runs assignment inline when ASSIGNMENT_FUNCTION_NAME is unset", async () => {
+    const fixture = runtimeFixture();
+    const request = vi.spyOn(fixture.plane, "requestAssignment").mockResolvedValue(undefined);
+    const previousFn = process.env.ASSIGNMENT_FUNCTION_NAME;
+    const previousWs = process.env.WS_API_ENDPOINT;
+    try {
+      delete process.env.ASSIGNMENT_FUNCTION_NAME;
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      await createLambdaRuntime({
+        auth: fixture.auth as never,
+        created: { plane: fixture.plane, storage: fixture.storage } as never,
+        management: fixture.management,
+      });
+      await fixture.plane.enqueueAssignment();
+      expect(request).toHaveBeenCalled();
+    } finally {
+      if (previousFn === undefined) delete process.env.ASSIGNMENT_FUNCTION_NAME;
+      else process.env.ASSIGNMENT_FUNCTION_NAME = previousFn;
+      if (previousWs === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previousWs;
     }
   });
 

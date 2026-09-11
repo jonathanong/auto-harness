@@ -171,4 +171,14 @@ describe("DashboardLive", () => {
     await act(async () => vi.advanceTimersByTimeAsync(10));
     expect(request.requests).toHaveLength(10);
   });
+
+  it("stringifies a non-Error poll rejection", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", async () => {
+      throw "dashboard-offline";
+    });
+    const view = mountForm(<DashboardLive initial={emptySnapshot} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(field(view.container, "live-updates-paused").textContent).toContain("dashboard-offline");
+  });
 });

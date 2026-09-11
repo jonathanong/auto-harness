@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- disconnect fence-loss cases share one durable fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -154,5 +155,316 @@ describe("disconnect durable fallback coverage", () => {
       hostId: "host",
       connectionId: "connection",
     });
+  });
+
+  it("leaves idle and missing-session worktrees unchanged when the online fence loses", async () => {
+    const idle = createControlPlaneState({ now: () => NOW });
+    const idleWorktree: WorktreeRecord = {
+      id: "idle",
+      name: "idle",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/idle",
+      labels: [],
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+      connectionId: "connection",
+    };
+    idle.storage = {
+      listWorktreesByHost: async () => [idleWorktree],
+      setWorktreeOnlineFenced: async () => false,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(idle, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(idle.worktrees.has("idle")).toBe(false);
+
+    const missing = createControlPlaneState({ now: () => NOW });
+    const missingWorktree: WorktreeRecord = {
+      ...idleWorktree,
+      id: "busy",
+      name: "busy",
+      path: "/repo/busy",
+      status: "busy",
+      currentSessionId: "gone",
+    };
+    missing.storage = {
+      listWorktreesByHost: async () => [missingWorktree],
+      getSession: async () => null,
+      setWorktreeOnlineFenced: async () => false,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(missing, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(missing.worktrees.has("busy")).toBe(false);
+  });
+
+  it("keeps a cancelled assignment when the cancelled-worktree release loses", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const worktree: WorktreeRecord = {
+      id: "cancelled",
+      name: "cancelled",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/cancelled",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "cancelled",
+      connectionId: "connection",
+    };
+    const session: SessionRecord = {
+      id: "cancelled",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "cancelled",
+      queueShard: 0,
+      createdAt: NOW,
+      type: "prompt",
+      source: "api",
+      hostId: "host",
+      worktreeId: "cancelled",
+      attemptId: "attempt",
+      assignmentConnectionId: "connection",
+    };
+    state.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => session,
+      releaseCancelledSessionWorktree: async () => false,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(state.sessions.has("cancelled")).toBe(false);
+    expect(state.worktrees.has("cancelled")).toBe(false);
+  });
+
+  it("mirrors storage when an acknowledged reconnect fence cannot requeue", async () => {
+    const present = createControlPlaneState({ now: () => NOW });
+    const worktree: WorktreeRecord = {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+      connectionId: "connection",
+    };
+    const running: SessionRecord = {
+      id: "s",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      type: "prompt",
+      source: "api",
+      hostId: "host",
+      worktreeId: "w",
+      attemptId: "attempt",
+      ackReceivedAt: NOW,
+      assignmentConnectionId: "connection",
+    };
+    const racedSession = { ...running, reconnectDeadlineAt: "2026-01-01T00:00:05.000Z" };
+    const racedWorktree = { ...worktree, online: false };
+    present.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => racedSession,
+      markReconnectPending: async () => false,
+      getWorktree: async () => racedWorktree,
+      tryRequeueSession: async () => {
+        throw new Error("must not requeue when the session already has a deadline");
+      },
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(present, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(present.sessions.get("s")).toEqual(racedSession);
+    expect(present.worktrees.get("w")).toEqual(racedWorktree);
+
+    const missing = createControlPlaneState({ now: () => NOW });
+    missing.sessions.set("s", running);
+    missing.worktrees.set("w", worktree);
+    let missingSessionReads = 0;
+    missing.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => {
+        missingSessionReads += 1;
+        return missingSessionReads === 1 ? running : null;
+      },
+      markReconnectPending: async () => false,
+      getWorktree: async () => null,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(missing, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(missing.sessions.has("s")).toBe(false);
+    expect(missing.worktrees.has("w")).toBe(false);
+  });
+
+  it("refetches rows when a still-runnable reconnect requeue loses", async () => {
+    const present = createControlPlaneState({ now: () => NOW });
+    const worktree: WorktreeRecord = {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+      connectionId: "connection",
+    };
+    const running: SessionRecord = {
+      id: "s",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      type: "prompt",
+      source: "api",
+      hostId: "host",
+      worktreeId: "w",
+      attemptId: "attempt",
+      ackReceivedAt: NOW,
+      assignmentConnectionId: "connection",
+    };
+    const latestSession = { ...running, errorMessage: "raced" };
+    const latestWorktree = { ...worktree, online: false };
+    let sessionReads = 0;
+    let worktreeReads = 0;
+    present.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => {
+        sessionReads += 1;
+        return sessionReads <= 2 ? running : latestSession;
+      },
+      markReconnectPending: async () => false,
+      getWorktree: async () => {
+        worktreeReads += 1;
+        return worktreeReads === 1 ? worktree : latestWorktree;
+      },
+      tryRequeueSession: async () => false,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(present, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(sessionReads).toBe(3);
+    expect(worktreeReads).toBe(2);
+    expect(present.sessions.get("s")).toEqual(latestSession);
+    expect(present.worktrees.get("w")).toEqual(latestWorktree);
+
+    const gone = createControlPlaneState({ now: () => NOW });
+    gone.sessions.set("s", running);
+    gone.worktrees.set("w", worktree);
+    let goneSessionReads = 0;
+    let goneWorktreeReads = 0;
+    gone.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => {
+        goneSessionReads += 1;
+        return goneSessionReads <= 2 ? running : null;
+      },
+      markReconnectPending: async () => false,
+      getWorktree: async () => {
+        goneWorktreeReads += 1;
+        return goneWorktreeReads === 1 ? worktree : null;
+      },
+      tryRequeueSession: async () => false,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(gone, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(gone.sessions.has("s")).toBe(false);
+    expect(gone.worktrees.has("w")).toBe(false);
+  });
+
+  it("leaves in-memory rows when an unacknowledged requeue loses and storage is empty", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const worktree: WorktreeRecord = {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+      connectionId: "connection",
+    };
+    const session: SessionRecord = {
+      id: "s",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      type: "prompt",
+      source: "api",
+      hostId: "host",
+      worktreeId: "w",
+      attemptId: "attempt",
+      assignmentConnectionId: "connection",
+    };
+    state.sessions.set("s", session);
+    state.worktrees.set("w", worktree);
+    let sessionReads = 0;
+    state.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => {
+        sessionReads += 1;
+        return sessionReads === 1 ? session : null;
+      },
+      tryRequeueSession: async () => false,
+      getWorktree: async () => null,
+    } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+    expect(state.sessions.get("s")).toEqual(session);
+    expect(state.worktrees.get("w")).toEqual(worktree);
   });
 });

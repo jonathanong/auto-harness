@@ -152,5 +152,19 @@ describe("HostUpdateConfigForm", () => {
     await submit(field(thrown.container, "form-host-update-config"));
     expect(field(document.body, "host-update-config-error").textContent).toBe("network down");
     thrown.unmount();
+
+    const thrownValue = mount(
+      <HostUpdateConfigForm
+        hostId="host"
+        updateConfig={updateConfig}
+        mutateUpdate={async () => {
+          throw "network-string";
+        }}
+        canWriteExecConfig
+      />,
+    );
+    await submit(field(thrownValue.container, "form-host-update-config"));
+    expect(field(document.body, "host-update-config-error").textContent).toBe("network-string");
+    thrownValue.unmount();
   });
 });
