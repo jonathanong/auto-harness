@@ -74,6 +74,14 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
+  it("restores an inactive allowed-roots policy without retaining previous roots", () => {
+    const mgr = new WorktreeManager(config, fakeGit());
+    mgr.restoreAllowedRootsPolicy({ active: true, roots: ["/safe"] });
+    expect(mgr.getAllowedRootsPolicy()).toEqual({ active: true, roots: ["/safe"] });
+    mgr.restoreAllowedRootsPolicy({ active: false, roots: ["/ignored"] });
+    expect(mgr.getAllowedRootsPolicy()).toEqual({ active: false, roots: [] });
+  });
+
   it("validates a candidate that explicitly clears retained allowed roots", async () => {
     const root = join(tmpdir(), `ah-candidate-clear-roots-${String(Date.now())}`);
     fixtures.push(root);

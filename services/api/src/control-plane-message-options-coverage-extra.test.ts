@@ -337,4 +337,91 @@ describe("host message optional-field coverage", () => {
       }),
     ).resolves.toMatchObject({ ok: true });
   });
+
+  it("accepts array capability advertisements and acks a session with no host", () => {
+    const current = createControlPlaneState({ connectionIdFactory: () => "connection" });
+    expect(
+      handleHostMessage(current, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        capabilities: ["scheduled-main-checkout"],
+      }),
+    ).toEqual({ ok: true });
+    expect(current.connections.get("connection")?.capabilities).toEqual([
+      "scheduled-main-checkout",
+    ]);
+
+    const orphan = state(session({ hostId: null }));
+    expect(
+      handleHostMessage(orphan, {
+        type: "session:ack",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+      }),
+    ).toEqual({ ok: true });
+    expect(orphan.sessions.get("s")?.ackReceivedAt).toBe(NOW);
+  });
+
+  it("rejects a durable log batch whose session disappeared", async () => {
+    const current = state(session());
+    setDurableReadStorage(current, {
+      getSession: async () => null,
+      getHostLock: async () => "connection",
+    });
+    await expect(
+      handleHostLogBatchDurable(
+        current,
+        [
+          {
+            type: "session:log",
+            sessionId: "s",
+            attemptId: "attempt",
+            stream: "stdout",
+            content: "gone",
+            timestamp: NOW,
+            seq: 1,
+          },
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: false, error: "stale host connection" });
+  });
+
+  it("requeues omitted in-memory sessions on a keepalive that lists running sessions", async () => {
+    const current = createControlPlaneState({
+      now: () => NOW,
+      connectionIdFactory: () => "connection",
+    });
+    expect(
+      handleHostMessage(current, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [{ id: "w", name: "w", repositoryId: "repo", path: "/repo/w", labels: [] }],
+      }),
+    ).toEqual({ ok: true });
+    const row = session({ ackReceivedAt: NOW });
+    current.sessions.set(row.id, row);
+    current.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      currentSessionId: "s",
+      online: true,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+        runningSessions: [],
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("queued");
+  });
 });
