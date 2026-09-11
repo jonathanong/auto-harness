@@ -329,6 +329,22 @@ describe("assignment residual coverage", () => {
 
     await expect(enforceAckDeadlinesDurable(state, Date.parse(NOW) + 2)).resolves.toEqual(["s"]);
     expect(state.pendingAcks.has("s")).toBe(false);
+
+    const hostlessPrompt = createControlPlaneState({ now: () => NOW, ackDeadlineMs: 1 });
+    const hostlessRow = session({
+      status: "running",
+      worktreeId: null,
+      hostId: "host",
+      attemptId: "attempt",
+      assignmentSentAt: NOW,
+    });
+    setDurableReadStorage(hostlessPrompt, {
+      listAllSessions: async () => [hostlessRow],
+      tryRequeueSession: async () => true,
+    });
+    await expect(enforceAckDeadlinesDurable(hostlessPrompt, Date.parse(NOW) + 2)).resolves.toEqual(
+      [],
+    );
   });
 
   it("reconciles legacy host capacity after prompt and scheduled ACK releases commit", async () => {
