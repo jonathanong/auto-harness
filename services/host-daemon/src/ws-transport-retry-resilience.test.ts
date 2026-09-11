@@ -63,4 +63,41 @@ describe("reconnect resilience to a failing socket factory", () => {
       vi.useRealTimers();
     }
   });
+
+  it("wraps a primitive factory throw on the reconnect ladder", async () => {
+    vi.useFakeTimers();
+    try {
+      const errors: Error[] = [];
+      let attempt = 0;
+      const sockets: FakeSocket[] = [];
+      const transport = createWsTransport({
+        url: "ws://fake.test/ws",
+        hostId: "a1",
+        onError: (error) => errors.push(error),
+        random: () => 0.5,
+        socketFactory: () => {
+          attempt += 1;
+          if (attempt === 1) {
+            const socket = new FakeSocket();
+            sockets.push(socket);
+            return socket as unknown as WebSocket;
+          }
+          throw "EMFILE";
+        },
+      });
+      const socket = sockets[0]!;
+      socket.open();
+      await transport.send(register());
+      socket.server(registered("c1"));
+      await transport.registered;
+      errors.length = 0;
+      await transport.send(register());
+      expect(errors.map((error) => error.message)).toEqual(["EMFILE"]);
+      expect(() => vi.advanceTimersByTime(30_000)).not.toThrow();
+      expect(errors.some((error) => error.message === "EMFILE")).toBe(true);
+      transport.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
