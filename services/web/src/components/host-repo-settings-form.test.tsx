@@ -243,6 +243,19 @@ describe("HostRepoSettingsForm", () => {
     hidden.unmount();
   });
 
+  it("treats a missing required-environment control as an empty list", async () => {
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={persistence.mutate} />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    field(document, "repo-settings-required-environment-repo-1")?.removeAttribute("name");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(persistence.mutate).toHaveBeenCalled();
+    view.unmount();
+  });
+
   it("rejects invalid required environment names before saving", () => {
     const persistence = inMemoryInventory(inventory);
     const view = mountForm(

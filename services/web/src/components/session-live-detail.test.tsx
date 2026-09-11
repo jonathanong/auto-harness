@@ -85,6 +85,44 @@ describe("session live detail", () => {
     );
   });
 
+  it("loads, ignores, and rejects assigned-host lookups around a running session", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, running))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ hostId: "host-one", online: true }),
+      })
+      .mockResolvedValueOnce(response(true, running))
+      .mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) })
+      .mockResolvedValueOnce(response(true, running))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ hostId: "other", online: true }),
+      })
+      .mockResolvedValueOnce(response(true, running))
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
+      session: running,
+      hosts: [{ hostId: "host-one", online: true }],
+    });
+    await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
+      session: running,
+      hosts: [],
+    });
+    await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
+      session: running,
+      hosts: [],
+    });
+    await expect(fetchSessionLiveState("session/one")).rejects.toThrow(
+      "GET /api/v1/hosts/host-one failed",
+    );
+  });
+
   it("shows the accessible offline warning and refreshes it away", async () => {
     const fetchMock = vi
       .fn()
