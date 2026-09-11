@@ -6,6 +6,7 @@ import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-he
 import {
   evaluateCronDurable,
   triggerScheduleDurable,
+  tryClaimScheduleFire,
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -58,6 +59,13 @@ function state(row: ScheduleRecord, storage: object = {}) {
 }
 
 describe("schedule fire residual coverage", () => {
+  it("advances nextRunAt when a local fire is blocked by closed admission", () => {
+    const current = state(schedule());
+    current.repositories.get("repo")!.admissionState = "paused";
+    expect(tryClaimScheduleFire(current, "nightly", NOW, NOW)).toBeNull();
+    expect(current.schedules.get("nightly")?.nextRunAt).not.toBe(NOW);
+  });
+
   it("rejects missing, closed, and invalid durable schedule repositories", async () => {
     const missing = createControlPlaneState();
     await expect(
