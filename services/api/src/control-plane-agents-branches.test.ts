@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
-import { drainHostDurable } from "./control-plane-agents.ts";
+import { drainHost, drainHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const inventory = [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }];
@@ -210,6 +210,21 @@ describe("agent registration branch boundaries", () => {
     } as never;
     expect(await drainHostDurable(drain.state, "h")).toEqual({ ok: true, runningSessionIds: [] });
     expect(online).toEqual(["idle"]);
+  });
+
+  it("ignores foreign worktrees and a stale drain fence", () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "current");
+    plane.state.worktrees.set("idle", {
+      ...worktree({ id: "idle", status: "idle", currentSessionId: null }),
+    });
+    plane.state.worktrees.set("foreign", {
+      ...worktree({ id: "foreign", hostId: "other", status: "idle", currentSessionId: null }),
+    });
+    expect(drainHost(plane.state, "h", "stale")).toEqual({ ok: false, runningSessionIds: [] });
+    expect(drainHost(plane.state, "h")).toEqual({ ok: true, runningSessionIds: [] });
+    expect(plane.getWorktree("idle")?.online).toBe(false);
+    expect(plane.getWorktree("foreign")?.online).toBe(true);
   });
 
   it("keeps a reconnecting drain excluded until a fresh registration clears it", () => {
