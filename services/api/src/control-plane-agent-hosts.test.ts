@@ -188,6 +188,12 @@ describe("agent host inventory", () => {
       ok: false,
       conflict: true,
     });
+
+    plane.state.hostInventories.set("unversioned", {
+      repositories: [],
+      providerAccounts: [],
+    } as never);
+    expect(plane.deleteHostInventory("unversioned").ok).toBe(true);
   });
 
   it("ignores a viewer's browser connection when listing hosts", () => {
