@@ -27,6 +27,39 @@ function app() {
 }
 
 describe("scheduler and session route residual coverage", () => {
+  it("pages live user sessions with a stable item key", async () => {
+    const plane = new ControlPlane();
+    plane.listUserSessionsDurable = async () =>
+      [
+        {
+          id: "viewer-1",
+          userId: "user:alice",
+          username: "alice",
+          role: "operator",
+          kind: "user",
+          connectedAt: "2026-01-01T00:00:00.000Z",
+          lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+          subscriptions: [],
+        },
+      ] as never;
+    const response = await invokeHandler(
+      (req, res) =>
+        handleHostSchedulerRoutes({
+          plane,
+          req,
+          res,
+          url: new URL("/api/v1/user-sessions", "http://localhost"),
+          method: "GET",
+        }),
+      "GET",
+      "/api/v1/user-sessions",
+    );
+    expect(response).toMatchObject({
+      status: 200,
+      json: { items: [{ id: "viewer-1", username: "alice" }] },
+    });
+  });
+
   it("fails closed for host-message and drain outcome audits", async () => {
     for (const outcome of ["message-failure", "message-success", "drain-failure"] as const) {
       const { plane } = app();

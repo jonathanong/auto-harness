@@ -32,7 +32,13 @@ describe("ensureSessionsPriorityIndexes", () => {
       if (!(command instanceof DescribeTableCommand)) throw new Error("unexpected command");
       return {
         Table: {
-          AttributeDefinitions: [],
+          AttributeDefinitions: [
+            { AttributeName: "statusShard", AttributeType: "S" },
+            { AttributeName: "createdOrder", AttributeType: "S" },
+            { AttributeName: "priorityOrder", AttributeType: "S" },
+            { AttributeName: "repositoryPriorityOrder", AttributeType: "S" },
+            { AttributeName: "other", AttributeType: "S" },
+          ],
           GlobalSecondaryIndexes: [...active].map((IndexName) => ({
             IndexName,
             IndexStatus: "ACTIVE",
