@@ -23,9 +23,23 @@ describe("durable hydration boundary records", () => {
       status: "queued",
       providerAccountLease: { ...running.providerAccountLease, concurrencyId: "account:1" },
     };
+    const timedOut = {
+      ...running,
+      id: "timed",
+      status: "timed_out",
+      hostId: undefined,
+      timedOutHostId: "timeout-host",
+      providerAccountLease: { ...running.providerAccountLease, concurrencyId: "account:2" },
+    };
+    const hostless = {
+      ...running,
+      id: "hostless",
+      hostId: undefined,
+      providerAccountLease: { ...running.providerAccountLease, concurrencyId: "account:3" },
+    };
     const state = createControlPlaneState({
       storage: {
-        listAllSessions: async () => [running, queued],
+        listAllSessions: async () => [running, queued, timedOut, hostless],
         listAllWorktrees: async () => [],
         listConnections: async () => [
           { connectionId: "ignored", type: "host", hostId: "ignored", registered: false },
@@ -46,7 +60,18 @@ describe("durable hydration boundary records", () => {
 
     await hydrateFromStorage(state);
 
-    expect(state.providerAccountLeases.get("account:0")).toMatchObject({ sessionId: "running" });
+    expect(state.providerAccountLeases.get("account:0")).toMatchObject({
+      sessionId: "running",
+      hostId: "host",
+    });
+    expect(state.providerAccountLeases.get("account:2")).toMatchObject({
+      sessionId: "timed",
+      hostId: "timeout-host",
+    });
+    expect(state.providerAccountLeases.get("account:3")).toMatchObject({
+      sessionId: "hostless",
+      hostId: "",
+    });
     expect(state.providerAccountLeases.has("account:1")).toBe(false);
     expect(state.connections.get("legacy")?.runtime).toMatchObject({
       daemonVersion: "legacy/unknown",

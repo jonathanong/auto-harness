@@ -70,4 +70,43 @@ describe("RepositoryPageClient", () => {
     expect(field(view.container, "attach-repo-catalog-id").textContent).toContain("recovered");
     view.unmount();
   });
+
+  it("treats a missing items array as empty and stringifies non-Error load failures", async () => {
+    const missingItems = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", missingItems);
+    const emptyView = mountForm(
+      <RepositoryPageClient
+        initialItems={[repo("first")]}
+        initialNextCursor="next"
+        initialPath="/api/v1/repositories?limit=1"
+        attachRepositories={[repo("first")]}
+        hostIds={[]}
+        worktrees={[]}
+        canWriteInventory={false}
+        canWriteCatalog={false}
+      />,
+    );
+    await act(async () => press(field(emptyView.container, "repositories-load-more")));
+    expect(field(emptyView.container, "repo-link-first")).toBeTruthy();
+    emptyView.unmount();
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("repo-offline"));
+    const errorView = mountForm(
+      <RepositoryPageClient
+        initialItems={[repo("first")]}
+        initialNextCursor="next"
+        initialPath="/api/v1/repositories?limit=1"
+        attachRepositories={[repo("first")]}
+        hostIds={[]}
+        worktrees={[]}
+        canWriteInventory={false}
+        canWriteCatalog={false}
+      />,
+    );
+    await act(async () => press(field(errorView.container, "repositories-load-more")));
+    expect(field(errorView.container, "repositories-load-more-error").textContent).toContain(
+      "repo-offline",
+    );
+    errorView.unmount();
+  });
 });
