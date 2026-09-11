@@ -142,4 +142,20 @@ describe("CreateSessionForm", () => {
     });
     view.unmount();
   });
+
+  it("defaults missing create-session fields to empty strings and zeros", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "session/empty" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<CreateSessionForm targets={targets} repositories={repositories} />);
+    fill(view);
+    field(view.container, "create-session-repository-id").removeAttribute("name");
+    field(view.container, "create-session-prompt").removeAttribute("name");
+    submit(field(view.container, "form-create-session"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      repositoryId: "",
+      prompt: "",
+    });
+    view.unmount();
+  });
 });

@@ -72,6 +72,20 @@ describe("auth forms", () => {
     expect(field(view.container, "change-password-ok").textContent).toContain("Password changed");
   });
 
+  it("submits empty passwords when the fields are missing from the form", async () => {
+    const api = createApiFake(json({ ok: true }));
+    const view = mountForm(<ChangePasswordForm />);
+    const form = field<HTMLFormElement>(view.container, "form-change-password");
+    field(view.container, "change-password-current").remove();
+    field(view.container, "change-password-new").remove();
+    submit(form);
+    await settle();
+    expect(JSON.parse(String(api.requests[0]?.[1]?.body))).toEqual({
+      currentPassword: "",
+      newPassword: "",
+    });
+  });
+
   it("logs out and replaces the location with /login", async () => {
     createApiFake(json({ ok: true }));
     const view = mountForm(<LogoutButton />);

@@ -102,4 +102,30 @@ describe("ProviderUsageRatesForm", () => {
     );
     view.unmount();
   });
+
+  it("treats unnamed usage-rate controls as empty strings", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ProviderUsageRatesForm provider={{ ...provider, usageRates: undefined }} />,
+    );
+    field(document, "provider-usage-rates-currency").removeAttribute("name");
+    for (const key of [
+      "inputTokenMicros",
+      "outputTokenMicros",
+      "cachedInputTokenMicros",
+      "reasoningTokenMicros",
+    ]) {
+      field(document, `provider-usage-rates-${key}`).removeAttribute("name");
+    }
+    submit(field(document, "form-provider-usage-rates"));
+    await act(async () => Promise.resolve());
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/providers/provider%2Fone",
+      expect.objectContaining({
+        body: JSON.stringify({ usageRates: null }),
+      }),
+    );
+    view.unmount();
+  });
 });

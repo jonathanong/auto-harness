@@ -52,4 +52,23 @@ describe("ProviderAccountConcurrencyForm", () => {
     await act(async () => Promise.resolve());
     view.unmount();
   });
+
+  it("defaults a missing concurrency field to one session", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ProviderAccountConcurrencyForm account={{ id: "account/one", maxConcurrentSessions: 2 }} />,
+    );
+    press(field(view.container, "provider-account-concurrency-edit-account/one"));
+    field(view.container, "provider-account-concurrency-input-account/one").removeAttribute("name");
+    submit(field(view.container, "provider-account-concurrency-form-account/one"));
+    await act(async () => Promise.resolve());
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/provider-accounts/account%2Fone",
+      expect.objectContaining({
+        body: JSON.stringify({ maxConcurrentSessions: 1 }),
+      }),
+    );
+    view.unmount();
+  });
 });

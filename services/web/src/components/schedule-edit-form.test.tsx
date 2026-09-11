@@ -88,4 +88,15 @@ describe("ScheduleEditForm", () => {
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
+
+  it("defaults a missing prompt field to an empty string", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<ScheduleEditForm schedule={schedule} targets={targets} />);
+    field(view.container, "schedule-prompt").removeAttribute("name");
+    submit(field(view.container, "form-edit-schedule"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ prompt: "" });
+    view.unmount();
+  });
 });
