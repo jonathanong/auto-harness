@@ -1,3 +1,4 @@
+import { forwardSentryTunnel, isSentryTunnelPath } from "@auto-harness/shared";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasValidSession, loginPath, SESSION_COOKIE } from "./lib/auth-session.ts";
 
@@ -23,6 +24,14 @@ function pass(request: NextRequest): NextResponse {
 
 /** Public UI binds must have a session before rendering or proxying data. */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (isSentryTunnelPath(request.nextUrl.pathname)) {
+    const { status } = await forwardSentryTunnel({
+      body: await request.text(),
+      configuredDsn: process.env.HARNESS_WEB_SENTRY_DSN_CLIENT,
+      method: request.method,
+    });
+    return new NextResponse(null, { status });
+  }
   if (process.env.HARNESS_AUTH_MODE !== "required") return pass(request);
   // A locally valid token can still name an account revoked by the API. Keep
   // login reachable so that stale cookies never trap the browser in a loop.

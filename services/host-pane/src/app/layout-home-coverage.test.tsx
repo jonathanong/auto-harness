@@ -6,16 +6,20 @@ import RootLayout from "./layout.tsx";
 import HostHomePage from "./page.tsx";
 
 const originalHostId = process.env.HARNESS_HOST_ID;
+const originalSentry = process.env.HARNESS_HOST_PANE_SENTRY_DSN_CLIENT;
 
 afterEach(() => {
   setApiTransportForTests(undefined);
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
+  if (originalSentry === undefined) delete process.env.HARNESS_HOST_PANE_SENTRY_DSN_CLIENT;
+  else process.env.HARNESS_HOST_PANE_SENTRY_DSN_CLIENT = originalSentry;
 });
 
 describe("host-pane root routes", () => {
   it("renders the shell with the matching host's live status", async () => {
     process.env.HARNESS_HOST_ID = "host-a";
+    process.env.HARNESS_HOST_PANE_SENTRY_DSN_CLIENT = "https://abc123@o1.ingest.sentry.io/450";
     setApiTransportForTests(async () =>
       Response.json({
         hostId: "host-a",

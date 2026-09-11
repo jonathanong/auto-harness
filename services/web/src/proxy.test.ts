@@ -13,6 +13,7 @@ describe("web authentication proxy", () => {
     delete process.env.HARNESS_SESSION_SECRET;
     delete process.env.HARNESS_WEB_REMOTE_AUTH;
     delete process.env.HARNESS_API_HTTP;
+    delete process.env.HARNESS_WEB_SENTRY_DSN_CLIENT;
     vi.unstubAllGlobals();
   });
 
@@ -39,6 +40,27 @@ describe("web authentication proxy", () => {
       }),
     );
     expect(expired.headers.get("location")).toContain("/login?");
+  });
+
+  it("lets the Sentry tunnel through without a session", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    process.env.HARNESS_SESSION_SECRET = "a".repeat(32);
+    expect(
+      (await proxy(new NextRequest("http://localhost/sentry-tunnel", { method: "POST" }))).status,
+    ).toBe(404);
+    process.env.HARNESS_WEB_SENTRY_DSN_CLIENT = "https://abc123@o1.ingest.sentry.io/450";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const envelope = '{"dsn":"https://abc123@o1.ingest.sentry.io/450"}\n{}';
+    expect(
+      (
+        await proxy(
+          new NextRequest("http://localhost/sentry-tunnel", { method: "POST", body: envelope }),
+        )
+      ).status,
+    ).toBe(200);
   });
 
   it("allows a valid session and always keeps login reachable", async () => {

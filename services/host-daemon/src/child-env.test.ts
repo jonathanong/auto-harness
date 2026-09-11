@@ -60,6 +60,21 @@ describe("child environment", () => {
     expect(createChildEnv({ Path: "not-real-path", SECRET: "nope" }, "linux")).toEqual({});
   });
 
+  it("never forwards HARNESS_HOST_SENTRY_DSN to repository commands", () => {
+    expect(
+      createChildEnv({
+        HARNESS_HOST_SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/450",
+        PATH: "/usr/bin",
+      }),
+    ).toEqual({ PATH: "/usr/bin" });
+    expect(
+      parseChildEnvAllowlist({
+        HARNESS_CHILD_ENV_ALLOWLIST: "HARNESS_HOST_SENTRY_DSN",
+        HARNESS_HOST_SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/450",
+      }).errors,
+    ).toEqual(["HARNESS_CHILD_ENV_ALLOWLIST reserved name: HARNESS_HOST_SENTRY_DSN"]);
+  });
+
   it("does not echo a malformed entry that may contain a secret", () => {
     const result = parseChildEnvAllowlist({
       HARNESS_CHILD_ENV_ALLOWLIST: "TOKEN=super-secret",

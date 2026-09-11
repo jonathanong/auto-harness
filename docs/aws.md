@@ -591,6 +591,7 @@ one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` 
 | Stale-attempt log drops | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
 | WS messages discarded   | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |
 | Function logs           | CloudWatch Logs per Lambda; retention 14 days                                                                                                                                                                             |
+| Sentry (opt-in)         | Optional `HARNESS_API_SENTRY_DSN` / web client+server DSNs. Unhandled errors only; not a CloudWatch alarm source. Unset by default.                                                                                       |
 
 Successful REST requests use API Gateway metrics and, when enabled, redacted access logs rather
 than duplicate application lifecycle lines. Successful `host:keepalive-ack` deliveries are also

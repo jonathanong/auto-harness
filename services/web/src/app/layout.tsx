@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "@auto-harness/ui/globals.css";
 import { THEME_INIT_SCRIPT } from "@auto-harness/ui";
+import { optionalSentryDsn } from "@auto-harness/shared";
 
 import { ControlShell } from "../components/control-shell.tsx";
+import { SentryClientInit } from "../components/sentry-client-init.tsx";
 import { can, loadPrincipal } from "../lib/principal.ts";
 
 export const metadata: Metadata = {
@@ -24,9 +26,11 @@ async function layoutPathname(): Promise<string | null> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = await layoutPathname();
   const principal = pathname === "/login" ? undefined : await loadPrincipal();
+  const sentryDsn = optionalSentryDsn(process.env.HARNESS_WEB_SENTRY_DSN_CLIENT);
   return (
     <html lang="en">
       <body>
+        {sentryDsn ? <SentryClientInit dsn={sentryDsn} plane="web" /> : null}
         {/* Runs before paint so the stored/system theme is applied before hydration — without
             this, every page load flashes light before React could catch up. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />

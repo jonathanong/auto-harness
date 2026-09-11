@@ -20,6 +20,7 @@ afterEach(() => {
 describe("control root layout", () => {
   it("renders the theme bootstrap and unauthenticated application shell", async () => {
     vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    vi.stubEnv("HARNESS_WEB_SENTRY_DSN_CLIENT", "https://abc123@o1.ingest.sentry.io/450");
     const html = await renderPage(RootLayout({ children: "dashboard" }));
     expect(html).toContain('<html lang="en">');
     expect(html).toContain("dashboard");

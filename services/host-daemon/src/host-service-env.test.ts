@@ -107,6 +107,13 @@ describe("renderEnvFile", () => {
     expect(rendered).toContain("HARNESS_DAEMON_VERSION=1.2.3");
   });
 
+  it("persists an optional host Sentry DSN in a new service environment", () => {
+    const rendered = renderEnvFile(example, {
+      HARNESS_HOST_SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/450",
+    });
+    expect(rendered).toContain("HARNESS_HOST_SENTRY_DSN=https://abc123@o1.ingest.sentry.io/450");
+  });
+
   it("quotes escaped updater PEM values for systemd EnvironmentFile", () => {
     const rendered = renderEnvFile(example, {
       HARNESS_UPDATE_PUBLIC_KEY: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",

@@ -2,6 +2,7 @@ import { installCrashLogging, onShutdownSignal } from "@auto-harness/shared";
 
 import { publicBaseUrlFromEnv } from "./local-http.ts";
 import { startLocalServer } from "./local-server.ts";
+import { initApiSentry, reportApiCrash } from "./sentry.ts";
 
 export async function main(argv: string[] = process.argv): Promise<number> {
   const args = argv.slice(2);
@@ -39,7 +40,8 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     host = raw;
   }
 
-  installCrashLogging();
+  initApiSentry();
+  installCrashLogging({ report: reportApiCrash });
   const publicBaseUrl = publicBaseUrlFromEnv();
   const server = await startLocalServer({
     port,

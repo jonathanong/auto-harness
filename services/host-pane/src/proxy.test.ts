@@ -40,6 +40,11 @@ describe("host-pane authentication proxy", () => {
       headers: { cookie: `auto_harness_session=${signedToken()}` },
     });
     expect((await proxy(authenticated)).headers.get("x-middleware-next")).toBe("1");
+    expect(
+      (
+        await proxy(new NextRequest("http://localhost/sentry-tunnel", { method: "POST" }))
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
   });
 });
 

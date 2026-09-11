@@ -38,6 +38,7 @@ import {
   type HttpApiEvent,
   type HttpApiResponse,
 } from "./lambda-http-adapter.ts";
+import { captureSentryException, flushSentryIfCaptured, initApiSentry } from "./sentry.ts";
 
 type HeaderMap = Record<string, string | undefined>;
 
@@ -526,7 +527,7 @@ export async function createLambdaRuntime(
         );
         return result;
       } catch (error) {
-        return restUnhandledError(event, error, startedAt);
+        return await restUnhandledError(event, error, startedAt);
       }
     },
     async websocket(event) {
@@ -706,11 +707,11 @@ export function lambdaHydrateCatalogsEnabled(
   return value !== "false";
 }
 
-function restUnhandledError(
+async function restUnhandledError(
   event: HttpApiEvent,
   error: unknown,
   startedAt?: number,
-): HttpApiResponse {
+): Promise<HttpApiResponse> {
   let method = "UNKNOWN";
   let path = "";
   try {
@@ -728,6 +729,8 @@ function restUnhandledError(
       error: error instanceof Error ? error.message : String(error),
     }),
   );
+  captureSentryException(error, "rest");
+  await flushSentryIfCaptured();
   return {
     statusCode: 500,
     headers: { "content-type": "application/json" },
@@ -740,6 +743,7 @@ function restUnhandledError(
 export function createLambdaHandlers(
   createRuntime: () => Promise<LambdaRuntime> = createLambdaRuntime,
 ): LambdaRuntime {
+  initApiSentry();
   let runtime: Promise<LambdaRuntime> | undefined;
   const getRuntime = (): Promise<LambdaRuntime> => {
     // A rejected promise is a valid, non-nullish value, so `??=` alone would cache a
@@ -756,17 +760,29 @@ export function createLambdaHandlers(
   };
   return {
     async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
-      return (await getRuntime()).cron(eventOrContext, lambdaContext);
+      try {
+        return await (await getRuntime()).cron(eventOrContext, lambdaContext);
+      } catch (error) {
+        captureSentryException(error, "cron");
+        await flushSentryIfCaptured();
+        throw error;
+      }
     },
     async rest(event) {
       try {
         return await (await getRuntime()).rest(event);
       } catch (error) {
-        return restUnhandledError(event, error);
+        return await restUnhandledError(event, error);
       }
     },
     async websocket(event) {
-      return (await getRuntime()).websocket(event);
+      try {
+        return await (await getRuntime()).websocket(event);
+      } catch (error) {
+        captureSentryException(error, "websocket");
+        await flushSentryIfCaptured();
+        throw error;
+      }
     },
   };
 }

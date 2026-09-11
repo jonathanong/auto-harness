@@ -17,6 +17,7 @@
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
     "@replit/ruspty": "3.7.0",
+    "@sentry/node": "^10.74.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {

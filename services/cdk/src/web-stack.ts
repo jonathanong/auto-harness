@@ -9,6 +9,8 @@ import type { Construct } from "constructs";
 type WebStackProps = StackProps & {
   imageCode: lambda.DockerImageCode;
   restApiUrl: string;
+  sentryDsnClient?: string;
+  sentryDsnServer?: string;
   websocketUrl: string;
 };
 
@@ -34,6 +36,8 @@ export class AutoHarnessWebStack extends Stack {
         HARNESS_API_HTTP: props.restApiUrl,
         HARNESS_AUTH_MODE: "required",
         HARNESS_WEB_REMOTE_AUTH: "1",
+        ...(props.sentryDsnClient ? { HARNESS_WEB_SENTRY_DSN_CLIENT: props.sentryDsnClient } : {}),
+        ...(props.sentryDsnServer ? { HARNESS_WEB_SENTRY_DSN_SERVER: props.sentryDsnServer } : {}),
       },
       logGroup: webFunctionLogGroup,
       memorySize: 1024,

@@ -167,17 +167,20 @@ already-warm containers re-read WebUrl instead of keeping the localhost session
 URL fallback. AWS CLI v2 pages that JSON through `less` on a TTY; the lifecycle
 sets `AWS_PAGER=""` so the dump prints to stdout and deploy continues.
 
-| Variable                     | Purpose                                                                                                                                      |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| SSM: bootstrap secrets       | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
-| SSM: public base URL         | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable  |
-| Table names / prefix         | From stack (see [aws.md](aws.md) env table)                                                                                                  |
-| `ARCHIVE_BUCKET`             | S3 archive bucket (REST and Cron only — WebSocket does not write archives)                                                                   |
-| `WS_API_ENDPOINT`            | API Gateway Management API for `postToConnection`                                                                                            |
-| `KMS_KEY_ID`                 | REST and Cron only — Slack / integration secrets. WebSocket does not receive the key or decrypt grants                                       |
-| `HARNESS_METRIC_ENVIRONMENT` | Table prefix used as the CloudWatch `Environment` dimension for operational EMF metrics                                                      |
-| Rate-limit variables         | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
-| `HARNESS_HYDRATE_CATALOGS`   | REST only — `false` so cold start does not Scan catalogs. Cron and WebSocket omit this and still hydrate catalogs (not session history)      |
+| Variable                        | Purpose                                                                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SSM: bootstrap secrets          | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var                                            |
+| SSM: public base URL            | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable                                          |
+| Table names / prefix            | From stack (see [aws.md](aws.md) env table)                                                                                                                                          |
+| `ARCHIVE_BUCKET`                | S3 archive bucket (REST and Cron only — WebSocket does not write archives)                                                                                                           |
+| `WS_API_ENDPOINT`               | API Gateway Management API for `postToConnection`                                                                                                                                    |
+| `KMS_KEY_ID`                    | REST and Cron only — Slack / integration secrets. WebSocket does not receive the key or decrypt grants                                                                               |
+| `HARNESS_METRIC_ENVIRONMENT`    | Table prefix used as the CloudWatch `Environment` dimension for operational EMF metrics                                                                                              |
+| Rate-limit variables            | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting)                                         |
+| `HARNESS_HYDRATE_CATALOGS`      | REST only — `false` so cold start does not Scan catalogs. Cron and WebSocket omit this and still hydrate catalogs (not session history)                                              |
+| `HARNESS_API_SENTRY_DSN`        | Optional. When set, REST, WebSocket, and Cron Lambdas send unhandled errors to Sentry. Omitted from Lambda env when unset. Not an SSM secret.                                        |
+| `HARNESS_WEB_SENTRY_DSN_CLIENT` | Optional. Browser Sentry DSN for the control-plane UI. Injected at request time; changing it does not require rebuilding the web image. Events POST to same-origin `/sentry-tunnel`. |
+| `HARNESS_WEB_SENTRY_DSN_SERVER` | Optional. Next.js server Sentry DSN for the web Lambda. Distinct from the client DSN so browser and server projects can stay separate.                                               |
 
 **Rotation:** replace the value in the Parameter Store UI; no redeploy is required.
 Existing warm Lambda containers keep the value they fetched at their own
@@ -204,6 +207,9 @@ characters.
 | `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                            |
 | `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete all four SSM parameters (three bootstrap secrets + the public base URL) |
 | `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                             |
+| `HARNESS_API_SENTRY_DSN`             | No                   | Optional Sentry DSN for REST/WebSocket/Cron Lambdas. Invalid non-empty values fail deploy.        |
+| `HARNESS_WEB_SENTRY_DSN_CLIENT`      | No                   | Optional browser Sentry DSN for the CloudFront UI                                                 |
+| `HARNESS_WEB_SENTRY_DSN_SERVER`      | No                   | Optional Next.js server Sentry DSN for the web Lambda                                             |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
