@@ -311,6 +311,19 @@ describe("host message optional-field coverage", () => {
     await expect(
       handleHostMessageDurable(durable, status({ usage: { unsupported: true } }) as never),
     ).resolves.toMatchObject({ ok: false });
+
+    const fenced = state(session());
+    setDurableReadStorage(fenced, {
+      getSession: async () => session(),
+      getHostLock: async () => "connection",
+    });
+    await expect(
+      handleHostMessageDurable(
+        fenced,
+        status({ worktreeId: "w", usage: { unsupported: true } }) as never,
+        "connection",
+      ),
+    ).resolves.toMatchObject({ ok: false });
   });
 
   it("passes draining registration snapshots and rejects unsupported in-memory messages", async () => {
