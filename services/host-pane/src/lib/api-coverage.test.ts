@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   apiGet,
@@ -8,11 +8,33 @@ import {
   setApiTransportForTests,
 } from "./api.ts";
 
+const headerState = vi.hoisted(() => ({
+  throws: true,
+  cookie: null as string | null,
+  authorization: null as string | null,
+}));
+
+vi.mock("next/headers", () => ({
+  headers: async () => {
+    if (headerState.throws) throw new Error("headers unavailable");
+    return {
+      get: (name: string) => {
+        if (name === "cookie") return headerState.cookie;
+        if (name === "authorization") return headerState.authorization;
+        return null;
+      },
+    };
+  },
+}));
+
 const originalHostId = process.env.HARNESS_HOST_ID;
 const originalPublicHostId = process.env.NEXT_PUBLIC_HARNESS_HOST_ID;
 
 afterEach(() => {
   setApiTransportForTests(undefined);
+  headerState.throws = true;
+  headerState.cookie = null;
+  headerState.authorization = null;
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
   if (originalPublicHostId === undefined) delete process.env.NEXT_PUBLIC_HARNESS_HOST_ID;
@@ -21,6 +43,51 @@ afterEach(() => {
 });
 
 describe("host pane API branch coverage", () => {
+  it("forwards cookie and authorization when a request context exists", async () => {
+    headerState.throws = false;
+    headerState.cookie = "session=abc";
+    headerState.authorization = "Bearer token";
+    let receivedInit: RequestInit | undefined;
+    setApiTransportForTests(async (_input, init) => {
+      receivedInit = init;
+      return Response.json({ ok: true });
+    });
+
+    await expect(apiGet<{ ok: boolean }>("/api/v1/test")).resolves.toEqual({ ok: true });
+    expect(receivedInit).toEqual({
+      cache: "no-store",
+      headers: { cookie: "session=abc", authorization: "Bearer token" },
+    });
+  });
+
+  it("forwards only the cookie when authorization is absent", async () => {
+    headerState.throws = false;
+    headerState.cookie = "session=abc";
+    let receivedInit: RequestInit | undefined;
+    setApiTransportForTests(async (_input, init) => {
+      receivedInit = init;
+      return Response.json({ ok: true });
+    });
+
+    await expect(apiGet<{ ok: boolean }>("/api/v1/test")).resolves.toEqual({ ok: true });
+    expect(receivedInit).toEqual({
+      cache: "no-store",
+      headers: { cookie: "session=abc" },
+    });
+  });
+
+  it("omits forwarding when the request context has no auth headers", async () => {
+    headerState.throws = false;
+    let receivedInit: RequestInit | undefined;
+    setApiTransportForTests(async (_input, init) => {
+      receivedInit = init;
+      return Response.json({ ok: true });
+    });
+
+    await expect(apiGet<{ ok: boolean }>("/api/v1/test")).resolves.toEqual({ ok: true });
+    expect(receivedInit).toEqual({ cache: "no-store" });
+  });
+
   it("skips request header forwarding in a browser runtime", async () => {
     Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
     let receivedInit: RequestInit | undefined;

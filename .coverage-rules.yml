@@ -15,7 +15,11 @@ scope:
     - "services/{api,cdk}/src/cli.ts"
     - "services/cdk/src/apigateway-account-cli.ts"
     - "**/modules/ui/src/index.ts"
+    - "**/modules/shared/src/index.ts"
     - "**/services/host-pane/src/index.ts"
+    - "**/services/api/src/control-plane-facade.ts"
+    - "**/services/api/src/control-plane-commands-durable.ts"
+    - "**/services/api/src/db/plane-storage-sessions.ts"
   supplemental:
     - "**/types.ts"
     - "**/*-types.ts"
