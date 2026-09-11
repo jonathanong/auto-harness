@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
-import { drainHost, drainHostDurable } from "./control-plane-agents.ts";
+import { disconnectHost, drainHost, drainHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const inventory = [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }];
@@ -399,5 +399,62 @@ describe("agent registration branch boundaries", () => {
       ok: false,
       runningSessionIds: [],
     });
+  });
+
+  it("rolls back when republishing worktree labels loses the inventory fence", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "retry" });
+    let inventoryWrites = 0;
+    let worktreeWrites = 0;
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      getWorktree: async () => null,
+      listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
+      setWorktreeOnlineFenced: async () => true,
+      releaseHostConnection: async () => true,
+      getHostLock: async () => null,
+      putWorktreeFenced: async () => {
+        worktreeWrites += 1;
+        return worktreeWrites === 1;
+      },
+      putHostInventoryFenced: async () => {
+        inventoryWrites += 1;
+        return inventoryWrites === 1 ? { ok: false, reason: "version" } : { ok: true };
+      },
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "retry-host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          { id: "wt", name: "wt", repositoryId: "repo", path: "/repo/wt", labels: ["daemon"] },
+        ],
+        commandProfiles: [],
+      }),
+    ).resolves.toEqual({ ok: false, error: "host connection changed while publishing inventory" });
+    expect(worktreeWrites).toBeGreaterThan(1);
+  });
+
+  it("does not drop a replacement host connection when disconnecting a stale socket", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "live" });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "live" });
+    plane.state.connections.set("stale", {
+      connectionId: "stale",
+      type: "host",
+      hostId: "h",
+      connectedAt: "old",
+      lastHeartbeatAt: "old",
+      commandProfiles: [],
+    });
+    expect(disconnectHost(plane.state, "stale")).toEqual([]);
+    expect(plane.state.hostConnection.get("h")).toBe("live");
+    expect(plane.state.connections.has("live")).toBe(true);
   });
 });

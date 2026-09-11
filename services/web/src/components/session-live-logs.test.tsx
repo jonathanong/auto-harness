@@ -187,6 +187,8 @@ describe("SessionLiveLogs status display", () => {
       "unavailable for this session",
     );
     expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
+    act(() => socket.emit("close", { code: 1000 }));
+    expect(FakeWebSocket.instances).toHaveLength(1);
     view.unmount();
   });
 

@@ -24,6 +24,8 @@ describe("DaemonLoop drain", () => {
       await loop.start();
       const draining = loop.beginDrain();
       expect(loop.isDraining()).toBe(false);
+      transport.deliver({ type: "host:draining", hostId: "other-host" });
+      expect(loop.isDraining()).toBe(false);
       transport.deliver({ type: "host:draining", hostId: config.hostId });
       await draining;
       expect(loop.isDraining()).toBe(true);

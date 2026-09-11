@@ -657,6 +657,113 @@ describe("browser session log websocket", () => {
     hub.close();
     await close(server);
   });
+
+  it("queues live commits that arrive while a cursor page is draining", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const session = plane.state.sessions.get("session-a")!;
+    let releaseQuery: ((records: ReturnType<typeof log>[]) => void) | undefined;
+    plane.state.storage = {
+      getSession: async () => session,
+      queryLogs: async () =>
+        await new Promise<ReturnType<typeof log>[]>((resolve) => {
+          releaseQuery = resolve;
+        }),
+    } as never;
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const received = new Promise<string[]>((resolve, reject) => {
+      const records: string[] = [];
+      const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      const timer = setTimeout(() => reject(new Error("pending drain timeout")), 3_000);
+      ws.on("open", () =>
+        ws.send(
+          JSON.stringify({
+            type: "session:subscribe",
+            sessionId: "session-a",
+            after: log(1).timestampSeq,
+          }),
+        ),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        if (message.type === "session:log" && message.timestampSeq) {
+          records.push(message.timestampSeq);
+          if (records.includes(log(3).timestampSeq)) {
+            clearTimeout(timer);
+            ws.close();
+            resolve(records);
+          }
+        }
+      });
+      ws.on("error", reject);
+    });
+    await expect.poll(() => releaseQuery).toBeTruthy();
+    plane.state.onLogCommitted?.(log(3));
+    releaseQuery?.([log(2)]);
+    await expect(received).resolves.toEqual(
+      expect.arrayContaining([log(2).timestampSeq, log(3).timestampSeq]),
+    );
+    hub.close();
+    await close(server);
+  });
+
+  it("drains a full durable tail page before stopping", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const session = plane.state.sessions.get("session-a")!;
+    const pages = [Array.from({ length: 250 }, (_, index) => log(index + 2)), [log(252)]];
+    plane.state.storage = {
+      getSession: async () => session,
+      queryLogs: async () => pages.shift() ?? [],
+    } as never;
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 5 });
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const received = await new Promise<string[]>((resolve, reject) => {
+      const records: string[] = [];
+      const ws = new WebSocket(ticketUrl(wsUrl(server), ticket), { headers: viewerOrigin() });
+      const timer = setTimeout(() => reject(new Error("full page drain timeout")), 3_000);
+      ws.on("open", () =>
+        ws.send(
+          JSON.stringify({
+            type: "session:subscribe",
+            sessionId: "session-a",
+            after: log(1).timestampSeq,
+          }),
+        ),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        if (message.type === "session:log" && message.timestampSeq) {
+          records.push(message.timestampSeq);
+          if (records.includes(log(252).timestampSeq)) {
+            clearTimeout(timer);
+            ws.close();
+            resolve(records);
+          }
+        }
+      });
+      ws.on("error", reject);
+    });
+    expect(received).toHaveLength(251);
+    expect(received.at(-1)).toBe(log(252).timestampSeq);
+    hub.close();
+    await close(server);
+  });
 });
 
 describe("browser session log protocol", () => {

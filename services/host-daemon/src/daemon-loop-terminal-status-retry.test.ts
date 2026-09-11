@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- keepalive retry, ack, and primitive-failure cases share one loop fixture. */
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
@@ -203,6 +204,64 @@ describe("DaemonLoop terminal status retry", () => {
       // leaving it queued to transmit whenever the connection recovers.
       expect(controller.signal.aborted).toBe(true);
 
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("clears every pending terminal status for a session when the ack omits attemptId", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport, now: () => "now" });
+      await loop.start();
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-2", {
+        message: { ...statusMessage, attemptId: "attempt-2" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
+      transport.deliver({ type: "session:status-acknowledged", sessionId: "done-session" });
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("logs a primitive terminal-status retry failure", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:status") return Promise.reject("wire down");
+          return undefined;
+        },
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        now: () => "now",
+        onLog: (line) => lines.push(line),
+      });
+      await loop.start();
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
+      await loop.keepalive();
+      await flushMicrotasks();
+      expect(lines.some((line) => line.includes("wire down"))).toBe(true);
       loop.stop();
     } finally {
       cleanup();

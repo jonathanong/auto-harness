@@ -257,4 +257,38 @@ describe("PaginatedSessions", () => {
     act(() => loadView.root.unmount());
     await act(async () => rejectLoad("load-offline"));
   });
+
+  it("surfaces poll and load-more failures while the page is still mounted", async () => {
+    vi.useFakeTimers();
+    const pollPage = vi.fn().mockRejectedValue("poll-offline");
+    const pollView = mount(
+      <PaginatedSessions
+        initialItems={[{ id: "live", status: "queued" }]}
+        initialNextCursor={null}
+        path="/api/v1/sessions"
+        fetchPage={pollPage}
+        pollMs={10}
+      />,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(byPw(pollView.container, "sessions-live-error").textContent).toContain("poll-offline");
+    act(() => pollView.root.unmount());
+
+    const loadPage = vi.fn().mockRejectedValue("load-offline");
+    const loadView = mount(
+      <PaginatedSessions
+        initialItems={[{ id: "kept", status: "queued" }]}
+        initialNextCursor="next"
+        path="/api/v1/sessions"
+        fetchPage={loadPage}
+      />,
+    );
+    await act(async () =>
+      byPw<HTMLButtonElement>(loadView.container, "sessions-load-more").click(),
+    );
+    expect(byPw(loadView.container, "sessions-load-more-error").textContent).toContain(
+      "load-offline",
+    );
+    act(() => loadView.root.unmount());
+  });
 });

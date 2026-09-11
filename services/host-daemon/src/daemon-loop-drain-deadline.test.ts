@@ -63,4 +63,54 @@ describe("DaemonLoop drain deadline", () => {
       await cleanup();
     }
   });
+
+  it("does not log a drain deadline once shutdown is already draining", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const logs: string[] = [];
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => logs.push(line),
+        drainRetryMs: 10,
+        drainDeadlineMs: 40,
+      });
+      await loop.start();
+      const draining = loop.beginDrain();
+      (
+        loop as unknown as {
+          draining: boolean;
+        }
+      ).draining = true;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(logs.some((line) => line.includes("not acknowledged"))).toBe(false);
+      await loop.resumeFromDrain();
+      await draining;
+      loop.stop();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("clears pending drain timers when resuming before acknowledgement", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        drainRetryMs: 10,
+        drainDeadlineMs: 60_000,
+      });
+      await loop.start();
+      const draining = loop.beginDrain();
+      await loop.resumeFromDrain();
+      await draining;
+      expect(loop.isDraining()).toBe(false);
+      loop.stop();
+    } finally {
+      await cleanup();
+    }
+  });
 });

@@ -176,4 +176,36 @@ describe("SlackSettingsForm", () => {
     await settle();
     expect(document.body.textContent ?? "").not.toContain("late");
   });
+
+  it("toasts a thrown save failure while the form is still mounted", async () => {
+    createApiFake(() => Promise.reject("slack-offline"));
+    const view = mountForm(<SlackSettingsForm />);
+    fillCreate(view);
+    submit(field(view.container, "form-slack-create"));
+    await settle();
+    expect(field(document.body, "slack-error").textContent).toContain(
+      "Unable to save Slack configuration",
+    );
+    view.unmount();
+  });
+
+  it("toasts a thrown delete failure while the form is still mounted", async () => {
+    createApiFake(() => Promise.reject("slack-offline"));
+    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(view.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    await settle();
+    expect(field(document.body, "slack-error").textContent).toContain(
+      "Unable to delete Slack configuration",
+    );
+    view.unmount();
+  });
+
+  it("uses the create form key when a configured integration has no version", () => {
+    const view = mountForm(
+      <SlackSettingsForm initial={{ ...configured, version: undefined as never }} />,
+    );
+    expect(field(view.container, "form-slack-replace")).toBeTruthy();
+    view.unmount();
+  });
 });
