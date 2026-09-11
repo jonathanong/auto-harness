@@ -529,6 +529,11 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       { repositories: [], providerAccounts: [], updateConfig: { enabled: false } },
     );
     expect(withUpdateConfig.updateConfig).toEqual({ enabled: false });
+    const incomingWins = preserveHostExecConfig(
+      { repositories: [], providerAccounts: [], updateConfig: { enabled: true } },
+      { repositories: [], providerAccounts: [], updateConfig: { enabled: false } },
+    );
+    expect(incomingWins.updateConfig).toEqual({ enabled: true });
   });
 
   it("handles sparse inventories and explicit blank nested values", () => {
