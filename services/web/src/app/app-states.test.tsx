@@ -5,9 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { mountForm } from "../components/form-test-helpers.tsx";
+import { reportClientError } from "../lib/sentry-client.ts";
 import ErrorPage from "./error.tsx";
 import Loading from "./loading.tsx";
 import NotFound from "./not-found.tsx";
+
+vi.mock("../lib/sentry-client.ts", () => ({
+  reportClientError: vi.fn(),
+}));
 
 describe("shared route states", () => {
   it("announces loading while hiding visual skeletons", () => {
@@ -31,6 +36,7 @@ describe("shared route states", () => {
     const alert = view.container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("could not be loaded");
     expect(alert?.textContent).not.toContain("private detail");
+    expect(reportClientError).toHaveBeenCalledWith(expect.any(Error));
     expect(document.activeElement?.textContent).toContain("could not be loaded");
     const retry = [...view.container.querySelectorAll("button")].find(
       (button) => button.textContent === "Retry",

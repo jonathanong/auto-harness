@@ -12,6 +12,7 @@ import {
   loadBootstrapSecrets,
   type LambdaRuntime,
 } from "./lambda-handlers.ts";
+import { resetApiSentryForTests, type SentryClient } from "./sentry.ts";
 import * as slackRuntime from "./slack-runtime.ts";
 
 function hostPrincipal(hostId = "host-1") {
@@ -1421,6 +1422,42 @@ describe("Lambda runtime adapters", () => {
       }),
     });
     error.mockRestore();
+  });
+
+  it("reports REST, cron, and websocket failures to Sentry when a DSN is configured", async () => {
+    const captured: unknown[] = [];
+    const sentry: SentryClient = {
+      captureException: (error, hint) => {
+        captured.push({ error, hint });
+      },
+      flush: vi.fn(async () => true),
+      init: vi.fn(),
+    };
+    resetApiSentryForTests(sentry);
+    vi.stubEnv("HARNESS_API_SENTRY_DSN", "https://abc123@o1.ingest.sentry.io/450");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const handlers = createLambdaHandlers(async () => {
+        throw new Error("bootstrap failed");
+      });
+      await expect(
+        handlers.rest({ rawPath: "/x", requestContext: { http: { method: "GET" } } }),
+      ).resolves.toMatchObject({ statusCode: 500 });
+      await expect(handlers.cron()).rejects.toThrow("bootstrap failed");
+      await expect(
+        handlers.websocket({ requestContext: { connectionId: "c1", routeKey: "$default" } }),
+      ).rejects.toThrow("bootstrap failed");
+      expect(captured).toEqual([
+        { error: expect.any(Error), hint: { tags: { runtime: "rest" } } },
+        { error: expect.any(Error), hint: { tags: { runtime: "cron" } } },
+        { error: expect.any(Error), hint: { tags: { runtime: "websocket" } } },
+      ]);
+      expect(sentry.flush).toHaveBeenCalledTimes(3);
+    } finally {
+      error.mockRestore();
+      vi.unstubAllEnvs();
+      resetApiSentryForTests();
+    }
   });
 
   it("hydrates catalogs unless HARNESS_HYDRATE_CATALOGS is false", () => {

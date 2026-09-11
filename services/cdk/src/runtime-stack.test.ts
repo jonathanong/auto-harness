@@ -112,6 +112,7 @@ describe("AutoHarnessRuntimeStack", () => {
       expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
         Ref: "HarnessCursorSecretSsmParam",
       });
+      expect(fn.Properties?.Environment?.Variables?.HARNESS_API_SENTRY_DSN).toBeUndefined();
     }
     const roles = Object.values(template.findResources("AWS::IAM::Role")).filter((role) =>
       JSON.stringify(role.Properties?.ManagedPolicyArns ?? []).includes("ArchiveDataAccessPolicy"),
@@ -216,5 +217,27 @@ describe("AutoHarnessRuntimeStack", () => {
       },
       3,
     );
+  });
+
+  it("sets HARNESS_API_SENTRY_DSN on every runtime Lambda when configured", () => {
+    const app = new App();
+    const foundation = new AutoHarnessFoundationStack(app, "Foundation", {
+      tablePrefix: "ReviewRuntime",
+    });
+    const runtime = new AutoHarnessRuntimeStack(app, "Runtime", {
+      foundation: foundation.resources,
+      sentryDsn: "https://abc123@o1.ingest.sentry.io/450",
+      tablePrefix: "ReviewRuntime",
+    });
+    const template = Template.fromStack(runtime);
+    const functions = Object.values(template.findResources("AWS::Lambda::Function")).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.HARNESS_DDB_PREFIX,
+    );
+    expect(functions).toHaveLength(3);
+    for (const fn of functions) {
+      expect(fn.Properties?.Environment?.Variables?.HARNESS_API_SENTRY_DSN).toBe(
+        "https://abc123@o1.ingest.sentry.io/450",
+      );
+    }
   });
 });

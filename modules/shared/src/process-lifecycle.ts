@@ -30,17 +30,48 @@ export function installCrashLogging(
   options: {
     logger?: LifecycleLogger;
     process?: Pick<NodeJS.Process, "on" | "exit">;
+    /** Best-effort crash reporter (Sentry flush). Must not prevent exit. */
+    report?: (error: unknown) => void | Promise<void>;
+    reportTimeoutMs?: number;
+    setTimeout?: typeof globalThis.setTimeout;
+    clearTimeout?: typeof globalThis.clearTimeout;
   } = {},
 ): void {
   const log = options.logger ?? defaultLogger;
   const target = options.process ?? process;
+  const schedule = options.setTimeout ?? setTimeout;
+  const cancel = options.clearTimeout ?? clearTimeout;
+  const finish = (error: unknown): void => {
+    if (!options.report) {
+      target.exit(1);
+      return;
+    }
+    const timeoutMs = options.reportTimeoutMs ?? 2_000;
+    void (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve(options.report!(error)).then(
+            () => undefined,
+            () => undefined,
+          ),
+          new Promise<void>((resolve) => {
+            timer = schedule(() => resolve(), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timer !== undefined) cancel(timer);
+        target.exit(1);
+      }
+    })();
+  };
   target.on("unhandledRejection", (reason) => {
     log("unhandled promise rejection", reason);
-    target.exit(1);
+    finish(reason);
   });
   target.on("uncaughtException", (error) => {
     log("uncaught exception", error);
-    target.exit(1);
+    finish(error);
   });
 }
 

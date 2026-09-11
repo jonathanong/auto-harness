@@ -119,4 +119,34 @@ describe("deploymentConfig", () => {
       teardownConfirmation: "review",
     });
   });
+
+  it("accepts optional Sentry DSNs and rejects invalid ones", () => {
+    const dsn = "https://abc123@o1.ingest.sentry.io/450";
+    expect(
+      deploymentConfig("deploy", {
+        AWS_REGION: "us-west-2",
+        HARNESS_API_SENTRY_DSN: dsn,
+        HARNESS_DEPLOY_ENVIRONMENT: "review",
+        HARNESS_WEB_SENTRY_DSN_CLIENT: dsn,
+        HARNESS_WEB_SENTRY_DSN_SERVER: dsn,
+      }),
+    ).toMatchObject({
+      apiSentryDsn: dsn,
+      webSentryDsnClient: dsn,
+      webSentryDsnServer: dsn,
+    });
+    expect(
+      deploymentConfig("deploy", {
+        AWS_REGION: "us-west-2",
+        HARNESS_DEPLOY_ENVIRONMENT: "review",
+      }).apiSentryDsn,
+    ).toBeUndefined();
+    expect(() =>
+      deploymentConfig("deploy", {
+        AWS_REGION: "us-west-2",
+        HARNESS_API_SENTRY_DSN: "not-a-dsn",
+        HARNESS_DEPLOY_ENVIRONMENT: "review",
+      }),
+    ).toThrow("HARNESS_API_SENTRY_DSN");
+  });
 });

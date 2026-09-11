@@ -199,6 +199,24 @@ describe("persisted service environment validation", () => {
     expect(updated).not.toContain("updates.example.test");
   });
 
+  it("persists and clears an optional host Sentry DSN", () => {
+    const original =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";
+    const withDsn = preparePersistedEnv({
+      existing: original,
+      example: "",
+      env: { HARNESS_HOST_SENTRY_DSN: "https://abc123@o1.ingest.sentry.io/450" },
+    }).contents;
+    expect(withDsn).toContain("HARNESS_HOST_SENTRY_DSN=https://abc123@o1.ingest.sentry.io/450");
+    const cleared = preparePersistedEnv({
+      existing: withDsn,
+      example: "",
+      env: { HARNESS_HOST_SENTRY_DSN: "" },
+    }).contents;
+    expect(cleared).toContain("HARNESS_HOST_SENTRY_DSN=\n");
+    expect(cleared).not.toContain("o1.ingest.sentry.io");
+  });
+
   it("rejects multiline URL replacements before editing persisted contents", () => {
     const original =
       "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://old.example.com\nHARNESS_API_KEY=secret\n";

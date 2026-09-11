@@ -21,6 +21,7 @@ type RuntimeStackProps = StackProps & {
   tablePrefix: string;
   /** Defaults to false — see addRuntimeObservability's account-role prerequisite. */
   accessLogsEnabled?: boolean;
+  sentryDsn?: string;
 };
 
 type RuntimeResources = {
@@ -64,6 +65,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       HARNESS_METRIC_ENVIRONMENT: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
       PUBLIC_BASE_URL_SSM_PARAM: publicBaseUrl.param.valueAsString,
+      ...(props.sentryDsn ? { HARNESS_API_SENTRY_DSN: props.sentryDsn } : {}),
     };
     const archiveAndKms = {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,

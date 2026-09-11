@@ -21,6 +21,10 @@ describe("package exports", () => {
     expect(shared.KEEPALIVE_ACK_PROTOCOL_VERSION).toBe(2);
     expect(typeof shared.isHostRunningAttempt).toBe("function");
     expect(typeof shared.validateCommandExecutable).toBe("function");
+    expect(typeof shared.optionalSentryDsn).toBe("function");
+    expect(typeof shared.evaluateSentryTunnel).toBe("function");
+    expect(typeof shared.forwardSentryTunnel).toBe("function");
+    expect(shared.SENTRY_TUNNEL_PATH).toBe("/sentry-tunnel");
   });
 
   it("exposes session assign typing at runtime via usage", () => {

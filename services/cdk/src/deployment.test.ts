@@ -25,6 +25,18 @@ describe("runDeployment", () => {
     }
   });
 
+  it("passes optional Sentry DSNs through CDK context", async () => {
+    const deps = dependencies([]);
+    await applySessionPriorityIndexStage(
+      config({ apiSentryDsn: "https://abc123@o1.ingest.sentry.io/450" }),
+      deps,
+      "status",
+    );
+    expect(deps.runs[0]).toEqual(
+      expect.arrayContaining(["-c", "apiSentryDsn=https://abc123@o1.ingest.sentry.io/450"]),
+    );
+  });
+
   it("adds created-order without removing the completed priority indexes", async () => {
     const deps = dependencies([]);
     await applySessionCreatedOrderIndexStage(config(), deps);

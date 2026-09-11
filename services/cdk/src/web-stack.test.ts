@@ -85,4 +85,24 @@ describe("AutoHarnessWebStack", () => {
     template.resourceCountIs("AWS::CloudFront::Function", 1);
     template.hasOutput("WebUrl", {});
   });
+
+  it("sets optional web Sentry DSNs on the Next.js Lambda when configured", () => {
+    const app = new App();
+    const repositoryStack = new Stack(app, "RepositoryStack");
+    const stack = new AutoHarnessWebStack(app, "Web", {
+      imageCode: lambda.DockerImageCode.fromEcr(new ecr.Repository(repositoryStack, "Repository")),
+      restApiUrl: "https://rest.execute-api.us-west-2.amazonaws.com",
+      sentryDsnClient: "https://client@o1.ingest.sentry.io/1",
+      sentryDsnServer: "https://server@o1.ingest.sentry.io/2",
+      websocketUrl: "wss://socket.execute-api.us-west-2.amazonaws.com/prod",
+    });
+    Template.fromStack(stack).hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          HARNESS_WEB_SENTRY_DSN_CLIENT: "https://client@o1.ingest.sentry.io/1",
+          HARNESS_WEB_SENTRY_DSN_SERVER: "https://server@o1.ingest.sentry.io/2",
+        }),
+      },
+    });
+  });
 });

@@ -27,6 +27,11 @@ control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or a 401 
 control-plane domain) renders a short HTML explanation instead of a raw `authentication required`
 body or a half-empty shell.
 
+Optional Sentry error reporting uses process env DSNs (`HARNESS_WEB_SENTRY_DSN_CLIENT` /
+`HARNESS_WEB_SENTRY_DSN_SERVER` for this app, and `HARNESS_HOST_PANE_SENTRY_DSN_CLIENT` /
+`HARNESS_HOST_PANE_SENTRY_DSN_SERVER` for the host pane). Browser events go to same-origin
+`/sentry-tunnel` so the CSP does not allow `*.ingest.sentry.io`. Unset DSNs disable Sentry.
+
 ## Authentication
 
 UI-facing login behavior below. Server-side credential types, auth priority, and JWT cookie details: [auth.md](auth.md).

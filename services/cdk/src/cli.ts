@@ -58,6 +58,9 @@ const stack = new AutoHarnessFoundationStack(
   },
 );
 void stack;
+const apiSentryDsn = contextString(app, "apiSentryDsn");
+const webSentryDsnClient = contextString(app, "webSentryDsnClient");
+const webSentryDsnServer = contextString(app, "webSentryDsnServer");
 const runtime = new AutoHarnessRuntimeStack(
   app,
   contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
@@ -65,6 +68,7 @@ const runtime = new AutoHarnessRuntimeStack(
     foundation: stack.resources,
     tablePrefix,
     accessLogsEnabled: contextBoolean(app, "accessLogsEnabled"),
+    ...(apiSentryDsn !== undefined ? { sentryDsn: apiSentryDsn } : {}),
   },
 );
 runtime.addStackDependency(stack);
@@ -75,5 +79,7 @@ const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "
   ),
   restApiUrl: runtime.resources.restApiUrl,
   websocketUrl: runtime.resources.websocketUrl,
+  ...(webSentryDsnClient !== undefined ? { sentryDsnClient: webSentryDsnClient } : {}),
+  ...(webSentryDsnServer !== undefined ? { sentryDsnServer: webSentryDsnServer } : {}),
 });
 web.addStackDependency(runtime);

@@ -62,6 +62,13 @@ export function cdkContext(
     `sessionPriorityIndexStage=${sessionPriorityIndexStage}`,
     "-c",
     `sessionCreatedOrderIndexStage=${sessionCreatedOrderIndexStage}`,
+    ...(config.apiSentryDsn ? (["-c", `apiSentryDsn=${config.apiSentryDsn}`] as const) : []),
+    ...(config.webSentryDsnClient
+      ? (["-c", `webSentryDsnClient=${config.webSentryDsnClient}`] as const)
+      : []),
+    ...(config.webSentryDsnServer
+      ? (["-c", `webSentryDsnServer=${config.webSentryDsnServer}`] as const)
+      : []),
   ];
 }
 

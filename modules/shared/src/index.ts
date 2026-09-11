@@ -291,6 +291,23 @@ export {
   type ShutdownHandle,
 } from "./process-lifecycle.ts";
 
+export {
+  inspectSentryDsn,
+  optionalSentryDsn,
+  parseSentryDsn,
+  scrubSentryEvent,
+  sentryIngestEnvelopeUrl,
+  type SentryDsnInspection,
+  type SentryDsnParts,
+} from "./sentry-dsn.ts";
+export {
+  evaluateSentryTunnel,
+  forwardSentryTunnel,
+  isSentryTunnelPath,
+  SENTRY_TUNNEL_MAX_BYTES,
+  SENTRY_TUNNEL_PATH,
+  type SentryTunnelResult,
+} from "./sentry-tunnel.ts";
 export { contentSecurityPolicy, securityHeaders, wsOrigin } from "./security-headers.ts";
 export { SESSION_COOKIE, hasValidSession, sessionCookieValue } from "./session-cookie.ts";
 export { collectCursorPages, MAX_CURSOR_PAGES, type CursorPage } from "./cursor-pages.ts";

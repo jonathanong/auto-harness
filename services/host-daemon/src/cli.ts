@@ -25,6 +25,7 @@ import {
 } from "./host-service.ts";
 import { fetchControlPlaneHostStatus, type ControlPlaneHostStatus } from "./host-status.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
+import { initHostSentry, reportHostCrash } from "./sentry.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 
 export { printUsage } from "./cli-usage.ts";
@@ -503,6 +504,7 @@ export function setExitCode(code: number): void {
 
 /* v8 ignore next 4 -- only true under a real `node cli.ts` process entrypoint, never on import */
 if (isDirectInvocation(process.argv[1])) {
-  installCrashLogging();
+  initHostSentry();
+  installCrashLogging({ report: reportHostCrash });
   void main().then(setExitCode);
 }

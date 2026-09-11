@@ -46,6 +46,22 @@ the required public-bind configuration.
 offset, with its own DynamoDB container that gets wiped on every run. See
 [e2e.md](e2e.md#how-the-stack-is-started).
 
+### Optional Sentry DSNs
+
+All Sentry reporting is off unless a DSN is set in the process environment. Invalid or placeholder
+values are ignored at runtime (CDK deploy rejects a non-empty invalid DSN). Error events only — no
+tracing or session replay.
+
+| Variable                                                                      | Process                                         |
+| ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| `HARNESS_WEB_SENTRY_DSN_CLIENT` / `HARNESS_WEB_SENTRY_DSN_SERVER`             | `pnpm local:web`                                |
+| `HARNESS_API_SENTRY_DSN`                                                      | `pnpm local:api` (and AWS REST/WS/Cron Lambdas) |
+| `HARNESS_HOST_SENTRY_DSN`                                                     | `pnpm local:daemon` / installed host service    |
+| `HARNESS_HOST_PANE_SENTRY_DSN_CLIENT` / `HARNESS_HOST_PANE_SENTRY_DSN_SERVER` | `pnpm local:host-pane`                          |
+
+Browser events from the Next.js apps POST to same-origin `/sentry-tunnel` so CSP `connect-src`
+stays `'self'`. The tunnel is a closed proxy: it only forwards to the configured client DSN.
+
 ---
 
 ## DynamoDB Local

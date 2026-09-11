@@ -1,9 +1,12 @@
+import { inspectSentryDsn } from "@auto-harness/shared";
+
 export type DeploymentOperation = "deploy" | "purge" | "teardown" | "update";
 
 export type DeploymentConfig = {
   accessLogsEnabled: boolean;
   accountId?: string;
   adminsSsmParam: string;
+  apiSentryDsn?: string;
   cursorSecretSsmParam: string;
   environment: string;
   foundationStackName: string;
@@ -16,6 +19,8 @@ export type DeploymentConfig = {
   sessionSecretSsmParam: string;
   tablePrefix: string;
   teardownConfirmation?: string;
+  webSentryDsnClient?: string;
+  webSentryDsnServer?: string;
   webStackName: string;
 };
 
@@ -25,6 +30,15 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function optionalDsn(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const inspected = inspectSentryDsn(env[name]);
+  if (inspected.kind === "unset") return undefined;
+  if (inspected.kind === "invalid") {
+    throw new Error(`${name} must be a Sentry DSN (https://<key>@<host>/<project>)`);
+  }
+  return inspected.dsn;
 }
 
 export function deploymentConfig(
@@ -44,6 +58,9 @@ export function deploymentConfig(
     throw new Error("HARNESS_DEPLOY_REMOVAL_POLICY must be retain or destroy");
   }
   const base = `/auto-harness/${environment}`;
+  const apiSentryDsn = optionalDsn(env, "HARNESS_API_SENTRY_DSN");
+  const webSentryDsnClient = optionalDsn(env, "HARNESS_WEB_SENTRY_DSN_CLIENT");
+  const webSentryDsnServer = optionalDsn(env, "HARNESS_WEB_SENTRY_DSN_SERVER");
   return {
     // Default-safe opt-in, matching HARNESS_DEPLOY_PURGE_SSM: only the literal "1" enables it.
     // Access logs need a one-time, account-wide API Gateway CloudWatch Logs role that this
@@ -71,5 +88,8 @@ export function deploymentConfig(
     ...(env.HARNESS_DEPLOY_PURGE_CONFIRM?.trim()
       ? { purgeConfirmation: env.HARNESS_DEPLOY_PURGE_CONFIRM.trim() }
       : {}),
+    ...(apiSentryDsn ? { apiSentryDsn } : {}),
+    ...(webSentryDsnClient ? { webSentryDsnClient } : {}),
+    ...(webSentryDsnServer ? { webSentryDsnServer } : {}),
   };
 }

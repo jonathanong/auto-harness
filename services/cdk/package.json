@@ -22,6 +22,7 @@
     "synth:apigateway-account": "cdk synth --app 'node src/apigateway-account-cli.ts' AutoHarnessApiGatewayAccount"
   },
   "dependencies": {
+    "@auto-harness/shared": "workspace:*",
     "aws-cdk-lib": "^2.268.0",
     "constructs": "^10.8.1"
   },
