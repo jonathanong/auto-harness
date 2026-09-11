@@ -260,4 +260,35 @@ describe("DaemonLoop coverage guards", () => {
       cleanup();
     }
   });
+
+  it("confirms a matching drain advertisement and cancels every inflight attempt", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => lines.push(line),
+      });
+      await loop.start();
+      const internals = loop as unknown as LoopInternals;
+      const controller = new AbortController();
+      internals.inflight.set("session-1\0attempt-1", {
+        sessionId: "session-1",
+        attemptId: "attempt-1",
+        controller,
+        work: Promise.resolve(),
+        acknowledged: true,
+      });
+      await internals.handleServerMessage({ type: "host:draining", hostId: config.hostId });
+      expect(loop.isDraining()).toBe(true);
+      await internals.handleServerMessage({ type: "session:cancel", sessionId: "session-1" });
+      expect(controller.signal.aborted).toBe(true);
+      expect(lines.some((line) => line.includes("cancel requested for session-1"))).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });
