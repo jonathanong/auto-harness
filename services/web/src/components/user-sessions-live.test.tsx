@@ -37,4 +37,16 @@ describe("UserSessionsLive", () => {
       "/api/v1/user-sessions?limit=100",
     ]);
   });
+
+  it("surfaces a poll failure without dropping the last snapshot", async () => {
+    vi.useFakeTimers();
+    const request = createRequestFake(json({ items: [] }, 503));
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<UserSessionsLive initialItems={[]} initialError={null} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(field(view.container, "user-sessions-api-error").textContent).toContain(
+      "GET /api/v1/user-sessions",
+    );
+    view.unmount();
+  });
 });

@@ -65,6 +65,53 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
+  it("drains stored logs on the poll interval when a subscription has a cursor", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    plane.appendLog(log(1));
+    plane.appendLog(log(2));
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 20 });
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const received = await new Promise<string[]>((resolve, reject) => {
+      const records: string[] = [];
+      const ws = new WebSocket(`${wsUrl(server)}?ticket=${encodeURIComponent(ticket)}`, {
+        headers: viewerOrigin(),
+      });
+      const timer = setTimeout(() => reject(new Error("poll drain timeout")), 3_000);
+      ws.on("open", () =>
+        ws.send(
+          JSON.stringify({
+            type: "session:subscribe",
+            sessionId: "session-a",
+            after: log(1).timestampSeq,
+          }),
+        ),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        if (message.type === "session:log" && message.timestampSeq) {
+          records.push(message.timestampSeq);
+          if (records.includes(log(2).timestampSeq)) {
+            clearTimeout(timer);
+            ws.close();
+            resolve(records);
+          }
+        }
+      });
+      ws.on("error", reject);
+    });
+    expect(received).toContain(log(2).timestampSeq);
+    hub.close();
+    await close(server);
+  });
+
   it("ignores upgrade requests without a URL", () => {
     const server = createServer();
     const hub = attachViewerWsHub(server, planeWithSessions(), authService());
