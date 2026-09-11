@@ -41,6 +41,14 @@ describe("host-pane sessions route", () => {
     expect(markup).toContain("offline");
   });
 
+  it("stringifies a non-Error sessions request failure", async () => {
+    setApiTransportForTests(async () => {
+      throw "pane-offline";
+    });
+    const markup = renderToStaticMarkup(await SessionsPage({ searchParams: Promise.resolve({}) }));
+    expect(markup).toContain("pane-offline");
+  });
+
   it("defaults legacy collections and toggles both sort directions", async () => {
     setApiTransportForTests(async (input) =>
       String(input).includes("/sessions")

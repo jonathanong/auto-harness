@@ -89,4 +89,17 @@ describe("ProviderUsageRatesForm", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     view.unmount();
   });
+
+  it("uses the clear-rates fallback when fetch rejects a non-Error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
+    const view = mountForm(<ProviderUsageRatesForm provider={provider} />);
+    await act(async () => {
+      field(document, "provider-usage-rates-clear").click();
+      await Promise.resolve();
+    });
+    expect(field(document, "provider-usage-rates-error").textContent).toBe(
+      "Could not clear provider usage rates",
+    );
+    view.unmount();
+  });
 });
