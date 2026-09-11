@@ -153,6 +153,55 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("ignores malformed payloads and merges valid live log lines", async () => {
+    const { view, socket } = await mountLive("session-log", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() => socket.emit("message", { data: "not-json" }));
+    act(() => socket.emit("message", { data: JSON.stringify(["nope"]) }));
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({
+          type: "session:log",
+          timestampSeq: "ts-1",
+          seq: 1,
+          stream: "stdout",
+          content: "hello from pty",
+          timestamp: "2026-01-01T00:00:00.000Z",
+        }),
+      }),
+    );
+    expect(view.container.textContent).toContain("hello from pty");
+    view.unmount();
+  });
+
+  it("stops reconnecting after a terminal viewer error", async () => {
+    const { view, socket } = await mountLive("session-missing", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "NOT_FOUND" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain(
+      "unavailable for this session",
+    );
+    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
+    view.unmount();
+  });
+
+  it("pauses and reconnects after a non-terminal viewer error", async () => {
+    const { view, socket } = await mountLive("session-busy", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "UNAVAILABLE" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain("reconnecting");
+    expect(socket.close).toHaveBeenCalledWith(1011, "viewer error");
+    view.unmount();
+  });
+
   it("ignores a stale queued status after the session has finished", async () => {
     const { view, socket } = await mountLive("session-stale", "failed");
     emitStatus(socket, "session:subscribed", "failed");
