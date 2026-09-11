@@ -424,4 +424,40 @@ describe("host message optional-field coverage", () => {
     ).resolves.toEqual({ ok: true });
     expect(current.sessions.get("s")?.status).toBe("queued");
   });
+
+  it("does not requeue on a keepalive that still reports the running session", async () => {
+    const current = createControlPlaneState({
+      now: () => NOW,
+      connectionIdFactory: () => "connection",
+    });
+    expect(
+      handleHostMessage(current, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [{ id: "w", name: "w", repositoryId: "repo", path: "/repo/w", labels: [] }],
+      }),
+    ).toEqual({ ok: true });
+    const row = session({ ackReceivedAt: NOW });
+    current.sessions.set(row.id, row);
+    current.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/repo/w",
+      labels: [],
+      status: "busy",
+      currentSessionId: "s",
+      online: true,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "host:keepalive",
+        hostId: "host",
+        at: NOW,
+        runningSessions: ["s"],
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("running");
+  });
 });

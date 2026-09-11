@@ -164,4 +164,16 @@ describe("SlackSettingsForm", () => {
     resolveDelete(json({}, 204));
     await settle();
   });
+
+  it("does not toast a late error after the Slack form unmounts", async () => {
+    let resolveSave!: (response: Response) => void;
+    createApiFake(() => new Promise<Response>((resolve) => (resolveSave = resolve)));
+    const view = mountForm(<SlackSettingsForm />);
+    fillCreate(view);
+    submit(field(view.container, "form-slack-create"));
+    view.unmount();
+    resolveSave(json({ error: { message: "late" } }, 503));
+    await settle();
+    expect(document.body.textContent ?? "").not.toContain("late");
+  });
 });
