@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- connection, rate, and close-race cases share one WebSocket harness. */
 import { createServer } from "node:http";
 
 import { describe, expect, it } from "vitest";
@@ -127,11 +128,48 @@ describe("WebSocket hub connection guards", () => {
       await throwingHarness.close();
     }
   });
+
+  it("skips error frames and registration when the peer closes mid-durable-write", async () => {
+    const harness = await startHarness(new SlowRejectPlane());
+    try {
+      const socket = await open(`${harness.origin}/ws`);
+      socket.send(JSON.stringify(register("host-gone")));
+      socket.close();
+      expect(await waitForClose(socket)).toBe(1005);
+    } finally {
+      await harness.close();
+    }
+
+    const closedRegister = await startHarness(new SlowAcceptPlane());
+    try {
+      const socket = await open(`${closedRegister.origin}/ws`);
+      socket.send(JSON.stringify(register("host-closed-register")));
+      socket.close();
+      expect(await waitForClose(socket)).toBe(1005);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    } finally {
+      await closedRegister.close();
+    }
+  });
 });
 
 class ThrowingPlane extends ControlPlane {
   override async handleHostMessageDurable(_message: HostToServerMessage) {
     throw new Error("durable boundary failed");
+  }
+}
+
+class SlowRejectPlane extends ControlPlane {
+  override async handleHostMessageDurable() {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return { ok: false, error: "stale host connection" };
+  }
+}
+
+class SlowAcceptPlane extends ControlPlane {
+  override async handleHostMessageDurable() {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return { ok: true, connectionId: "late" };
   }
 }
 

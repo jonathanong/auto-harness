@@ -764,6 +764,39 @@ describe("browser session log websocket", () => {
     hub.close();
     await close(server);
   });
+
+  it("drops live logs after the viewer socket has already closed", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "closed-viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth);
+    await listen(server);
+    const ticket = await auth.issueViewerTicket(principal);
+    const ws = await new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(`${wsUrl(server)}?ticket=${encodeURIComponent(ticket)}`, {
+        headers: viewerOrigin(),
+      });
+      socket.on("open", () => resolve(socket));
+      socket.on("error", reject);
+    });
+    ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" }));
+    await new Promise<void>((resolve) => {
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string };
+        if (message.type === "session:subscribed") resolve();
+      });
+    });
+    ws.close();
+    await new Promise<void>((resolve) => ws.once("close", () => resolve()));
+    plane.state.onLogCommitted?.(log(9));
+    hub.close();
+    await close(server);
+  });
 });
 
 describe("browser session log protocol", () => {
