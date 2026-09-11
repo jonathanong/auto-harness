@@ -189,6 +189,13 @@ describe("Slack message formatting", () => {
         errorCode: "usage_limit",
       }),
     ).toContain("usage limit");
+    expect(
+      formatSlackLifecycleMessage("session_failed", {
+        ...base,
+        status: "failed",
+        exitCode: null,
+      }),
+    ).toContain("Exit code: —");
   });
 
   it("formats duration only for valid chronological terminal timestamps", () => {
