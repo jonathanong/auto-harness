@@ -688,6 +688,164 @@ describe("host message optional-field coverage", () => {
     expect(current.sessions.get("s")?.status).toBe("queued");
   });
 
+  it("applies a valid usage report before a durable terminal status", async () => {
+    const usage = {
+      kind: "delta" as const,
+      sequence: 1,
+      inputTokens: "2",
+      source: "cli" as const,
+      observedAt: NOW,
+    };
+    const current = state(session());
+    current.hostConnection.set("host", "connection");
+    current.connections.set("connection", {
+      connectionId: "connection",
+      type: "host",
+      hostId: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      commandProfiles: [],
+    });
+    setDurableReadStorage(current, {
+      getSession: async () => current.sessions.get("s"),
+      getHostLock: async () => "connection",
+      listUsageRecords: async () => [],
+      putUsageRecord: async () => true,
+      finishSession: async () => true,
+      putArchive: async () => undefined,
+    });
+    await expect(
+      handleHostMessageDurable(
+        current,
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "attempt",
+          status: "completed",
+          usage,
+        },
+        "connection",
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("completed");
+  });
+
+  it("releases a cancelled durable worktree even when the row is already gone from memory", async () => {
+    const row = session({ status: "cancelled" });
+    const current = state(row);
+    setDurableReadStorage(current, {
+      getSession: async () => row,
+      releaseCancelledSessionWorktree: async () => true,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")?.worktreeId).toBeNull();
+  });
+
+  it("requeues a missing-account scheduled run without a host assignment lease", async () => {
+    const row = session({
+      type: "scheduled",
+      source: "schedule",
+      worktreeId: null,
+      mainCheckoutLease: true,
+      assignmentConnectionId: "connection",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "account",
+        hostId: "host",
+        worktreeId: null,
+        attemptId: "attempt",
+      },
+    });
+    const current = state(row);
+    let released: Record<string, unknown> | undefined;
+    setDurableReadStorage(current, {
+      getSession: async () => current.sessions.get("s") ?? row,
+      getProviderAccount: async () => null,
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        released = input;
+        return true;
+      },
+      listConnections: async () => [],
+      listHostInventories: async () => [],
+    });
+    await expect(handleHostMessageDurable(current, status())).resolves.toMatchObject({ ok: true });
+    expect(released).not.toHaveProperty("hostAssignmentLease");
+  });
+
+  it("requeues a usage-limited worktree even when the live worktree row is missing", async () => {
+    const account = {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
+    };
+    const row = session({
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "account",
+        hostId: "host",
+        worktreeId: "w",
+        attemptId: "attempt",
+      },
+    });
+    const current = state(row);
+    setDurableReadStorage(current, {
+      getSession: async () => current.sessions.get("s") ?? row,
+      getProviderAccount: async () => account,
+      requeueUsageLimitedSession: async () => true,
+      listConnections: async () => [],
+      listHostInventories: async () => [],
+    });
+    await expect(
+      handleHostMessageDurable(current, { ...status(), worktreeId: "w" }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("queued");
+  });
+
+  it("ignores a late local terminal report with nothing left to release", () => {
+    const current = state(session({ status: "cancelled", worktreeId: null }));
+    expect(
+      handleHostMessage(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: null,
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("finishes a local worktree attempt without clearing an existing resume ref", () => {
+    const current = state(session({ cliResumeRef: "keep" }));
+    expect(
+      handleHostMessage(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "completed",
+        cliResumeRef: "keep",
+      }),
+    ).toEqual({ ok: true });
+    expect(current.sessions.get("s")).toMatchObject({
+      status: "completed",
+      worktreeId: null,
+      cliResumeRef: "keep",
+    });
+  });
+
   it("clears a continuation reference when a resumed local attempt finishes without a new one", () => {
     const current = state(session({ resumedFromSessionId: "parent", cliResumeRef: "old" }));
     expect(

@@ -9,6 +9,7 @@ describe("classifyLogLine", () => {
     expect(parseJsonLine('  {"ok":true}  ')).toEqual({ ok: true });
     expect(parseJsonLine("[1]")).toEqual([1]);
     expect(parseJsonLine("true")).toBeUndefined();
+    expect(parseJsonLine("null")).toBeUndefined();
     expect(parseJsonLine("{nope")).toBeUndefined();
     expect(classifyLogLine("hello")).toMatchObject({ category: "output", preview: "hello" });
     expect(classifyLogLine("[system] done")).toMatchObject({
@@ -53,6 +54,15 @@ describe("classifyLogLine", () => {
     ).toMatchObject({
       category: "error",
       preview: "quota",
+    });
+    expect(classifyLogLine(json({ type: "result", is_error: true }))).toMatchObject({
+      category: "error",
+      preview: "error",
+    });
+    expect(classifyLogLine(json({ error: { message: "bare" } }))).toMatchObject({
+      category: "error",
+      typeLabel: "error",
+      preview: "bare",
     });
     expect(
       classifyLogLine(`${String.fromCharCode(27)}[?25l${json({ type: "result", result: "ok" })}`),
