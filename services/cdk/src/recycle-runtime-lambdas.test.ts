@@ -53,6 +53,15 @@ describe("recycleRuntimeLambdas", () => {
       "aws cloudformation list-stack-resources failed: AccessDenied",
     );
     expect(deps.runs).toEqual([]);
+
+    deps.query = vi.fn(async () => ({
+      status: 1,
+      stderr: "",
+      stdout: "timed out",
+    }));
+    await expect(recycleRuntimeLambdas(config(), deps)).rejects.toThrow(
+      "aws cloudformation list-stack-resources failed: timed out",
+    );
   });
 
   it("does not touch Lambda when the runtime stack lists no functions", async () => {

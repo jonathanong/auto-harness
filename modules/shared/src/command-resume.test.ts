@@ -88,6 +88,8 @@ describe("command native resume schema", () => {
       expect(validateCommandExecutable(executable)).toMatchObject({ ok: false });
     }
     expect(validateCommandExecutable("bin/.../codex")).toEqual({ ok: true, kind: "relative" });
+    expect(validateCommandExecutable("")).toMatchObject({ ok: false });
+    expect(validateCommandExecutable(null)).toMatchObject({ ok: false });
   });
 
   it("applies executable validation to argv and keeps resume argv0 fixed", () => {

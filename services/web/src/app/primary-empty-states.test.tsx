@@ -76,6 +76,16 @@ describe("primary control-plane empty states", () => {
     expect(html).not.toContain('data-pw="dashboard-empty-hosts"');
 
     stubApi({
+      "/api/v1/sessions": new Error("dashboard-error"),
+      "/api/v1/hosts": {},
+      "/api/v1/worktrees": {},
+      "/api/v1/sessions?status=running&limit=100": {},
+      "/api/v1/sessions?status=queued&limit=100": {},
+    });
+    html = await renderPage(DashboardPage());
+    expect(html).toContain("Live updates paused (dashboard-error)");
+
+    stubApi({
       "/api/v1/schedules": "__throw_string__",
       "/api/v1/session-targets": {},
       "/api/v1/repositories": {},

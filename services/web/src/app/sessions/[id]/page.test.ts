@@ -29,5 +29,12 @@ describe("session usage summary", () => {
         costMicrosByCurrency: { USD: "4", EUR: "6" },
       }),
     ).toBe("4 USD micros, 6 EUR micros");
+    expect(
+      configuredCost({
+        ...aggregate,
+        currency: undefined,
+        costMicrosByCurrency: { USD: "4" },
+      }),
+    ).toBe("4 micros");
   });
 });
