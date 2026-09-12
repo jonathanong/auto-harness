@@ -28,6 +28,16 @@ async function redact(
 }
 
 describe("SecretRedactingProcessRunner", () => {
+  it("preserves a merged terminal runner's stream capability", () => {
+    const mergedRunner: ProcessRunner = {
+      outputStreams: "merged",
+      async run() {
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    expect(new SecretRedactingProcessRunner(mergedRunner, secret).outputStreams).toBe("merged");
+  });
+
   it("redacts a complete secret in one chunk", async () => {
     await expect(redact([{ stream: "stdout", data: "xabc!" }])).resolves.toBe("x[redacted]!");
   });
