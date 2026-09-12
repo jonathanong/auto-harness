@@ -418,7 +418,11 @@ sudo chmod -R a-w /etc/auto-harness/pull-ref-materializers
 
 Keys are canonical repository paths. Each `remoteUrl` must be credential-free HTTPS without a query
 string or fragment. The optional
-transport fields preserve only the explicit HTTPS settings needed by that host. `httpProxy` must
+transport fields preserve only the explicit HTTPS settings needed by that host. `credentialHelper`
+names a helper such as `manager-core`; policy load resolves `git-credential-manager-core` from the
+daemon's PATH and pins the resulting absolute executable. That executable and every ancestor must
+be root-owned, non-writable, regular-file/directory-only, and symlink-free, so do not place it in a
+daemon-user-writable PATH directory. `httpProxy` must
 also be credential-free and have no query string or fragment so proxy secrets are never exposed in
 a Git command line; URL rewrites and shell helpers are deliberately unsupported.
 The remote's advertised default `HEAD` must already be a complete local object in the mapped

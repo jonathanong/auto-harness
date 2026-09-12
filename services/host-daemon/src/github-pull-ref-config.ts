@@ -2,6 +2,8 @@
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
+import { resolveTrustedExecutable } from "./resolve-executable.ts";
+
 export const GITHUB_PULL_REF_CONFIG_ENV = "HARNESS_GITHUB_PULL_REF_CONFIG";
 
 type GitHubPullRefTransport = Readonly<{
@@ -28,6 +30,11 @@ type PolicyPathStatus = Readonly<{
 
 type InspectPolicyPath = (path: string) => PolicyPathStatus;
 type ReadPolicyDirectory = (path: string) => string[];
+type ResolveCredentialHelper = (
+  command: string,
+  env: NodeJS.ProcessEnv,
+  platformName: NodeJS.Platform,
+) => string;
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -84,7 +91,14 @@ function assertRootOwnedPath(path: string, inspect: InspectPolicyPath): void {
   }
 }
 
-function parseTransport(value: unknown, context: string): GitHubPullRefTransport {
+function parseTransport(
+  value: unknown,
+  context: string,
+  env: NodeJS.ProcessEnv,
+  platformName: NodeJS.Platform,
+  inspect: InspectPolicyPath,
+  resolveCredentialHelper: ResolveCredentialHelper,
+): GitHubPullRefTransport {
   if (value === undefined) return {};
   const transport = record(value, context);
   if (
@@ -98,10 +112,42 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
     transport.credentialHelper,
     `${context}.credentialHelper`,
   );
-  // Do not accept Git's shell helper form or an arbitrary executable path. The configured helper
-  // is resolved by Git from the daemon's trusted PATH.
+  // Do not accept Git's shell helper form or an arbitrary executable path. Resolve the helper
+  // during policy load, then pin the resulting administrator-owned executable for every fetch.
   if (credentialHelper !== undefined && !/^[A-Za-z0-9_-]+$/.test(credentialHelper)) {
-    throw new Error(`${context}.credentialHelper must name a built-in helper`);
+    throw new Error(`${context}.credentialHelper must name a helper without shell syntax`);
+  }
+  let resolvedCredentialHelper: string | undefined;
+  if (credentialHelper !== undefined) {
+    try {
+      resolvedCredentialHelper = resolveCredentialHelper(
+        `git-credential-${credentialHelper}`,
+        env,
+        platformName,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${context}.credentialHelper must resolve to an immutable executable: ${message}`,
+        { cause: error },
+      );
+    }
+    if (!isAbsolute(resolvedCredentialHelper)) {
+      throw new Error(`${context}.credentialHelper must resolve to an absolute executable`);
+    }
+    assertRootOwnedPath(resolvedCredentialHelper, inspect);
+    const helperStatus = inspect(resolvedCredentialHelper);
+    if (
+      helperStatus.isSymbolicLink() ||
+      !helperStatus.isFile() ||
+      helperStatus.uid !== 0 ||
+      (helperStatus.mode & 0o222) !== 0 ||
+      (helperStatus.mode & 0o111) === 0
+    ) {
+      throw new Error(
+        `${context}.credentialHelper must resolve to a root-owned immutable executable`,
+      );
+    }
   }
   const httpProxy = optionalString(transport.httpProxy, `${context}.httpProxy`);
   if (httpProxy !== undefined) {
@@ -126,7 +172,9 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
     throw new Error(`${context}.sslCAInfo must be absolute`);
   }
   return {
-    ...(credentialHelper === undefined ? {} : { credentialHelper }),
+    ...(resolvedCredentialHelper === undefined
+      ? {}
+      : { credentialHelper: resolvedCredentialHelper }),
     ...(httpProxy === undefined ? {} : { httpProxy }),
     ...(sslCAInfo === undefined ? {} : { sslCAInfo }),
   };
@@ -198,6 +246,8 @@ export function loadGitHubPullRefConfigs(
   inspect: InspectPolicyPath = lstatSync,
   platformName: NodeJS.Platform = process.platform,
   readDirectory: ReadPolicyDirectory = readdirSync,
+  resolveCredentialHelper: ResolveCredentialHelper = (command, resolverEnv, resolverPlatform) =>
+    resolveTrustedExecutable(command, resolverEnv, resolverPlatform),
 ): GitHubPullRefConfigs {
   const path = env[GITHUB_PULL_REF_CONFIG_ENV]?.trim();
   if (!path) return new Map();
@@ -242,6 +292,10 @@ export function loadGitHubPullRefConfigs(
       transport: parseTransport(
         config.transport,
         `GitHub pull-ref config.repositories.${repositoryPath}.transport`,
+        env,
+        platformName,
+        inspect,
+        resolveCredentialHelper,
       ),
     });
   }

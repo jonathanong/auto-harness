@@ -19,14 +19,26 @@ const rootOwnedDirectory = {
   isFile: () => false,
   isSymbolicLink: () => false,
 };
+const rootOwnedExecutable = {
+  uid: 0,
+  mode: 0o100555,
+  isDirectory: () => false,
+  isFile: () => true,
+  isSymbolicLink: () => false,
+};
 const materializerGitDirs = {
   sha1: "/etc/auto-harness/pull-ref-materializers/sha1.git",
   sha256: "/etc/auto-harness/pull-ref-materializers/sha256.git",
 };
 
 function inspectPolicyPath(path: string) {
+  if (path.startsWith("/usr/bin/git-credential-")) return rootOwnedExecutable;
   if (path === configPath || path.endsWith("/config")) return rootOwnedFile;
   return rootOwnedDirectory;
+}
+
+function resolveCredentialHelper(command: string): string {
+  return join("/usr/bin", command);
 }
 
 function readPolicyDirectory(path: string): string[] {
@@ -42,6 +54,7 @@ function load(value: unknown) {
     inspectPolicyPath,
     "linux",
     readPolicyDirectory,
+    resolveCredentialHelper,
   );
 }
 
@@ -95,12 +108,13 @@ describe("GitHub pull-ref host policy", () => {
       inspectPolicyPath,
       "linux",
       readPolicyDirectory,
+      resolveCredentialHelper,
     );
     expect(configs.get("/srv/repository")).toEqual({
       materializerGitDirs,
       remoteUrl: "https://github.example/repository.git",
       transport: {
-        credentialHelper: "manager-core",
+        credentialHelper: "/usr/bin/git-credential-manager-core",
         httpProxy: "https://proxy.example",
         sslCAInfo: "/etc/ssl/private-ca.pem",
       },
@@ -137,14 +151,89 @@ describe("GitHub pull-ref host policy", () => {
   });
 
   it("retains only the individually configured safe transport settings", () => {
-    for (const transport of [
-      { credentialHelper: "manager-core" },
-      { httpProxy: "https://proxy.example" },
-      { sslCAInfo: "/etc/ssl/private-ca.pem" },
-      {},
-    ]) {
+    for (const [transport, expected] of [
+      [
+        { credentialHelper: "manager-core" },
+        { credentialHelper: "/usr/bin/git-credential-manager-core" },
+      ],
+      [{ httpProxy: "https://proxy.example" }, { httpProxy: "https://proxy.example" }],
+      [{ sslCAInfo: "/etc/ssl/private-ca.pem" }, { sslCAInfo: "/etc/ssl/private-ca.pem" }],
+      [{}, {}],
+    ] as const) {
       const configs = load(repositoryConfig({ transport }));
-      expect(configs.get("/srv/repository")?.transport).toEqual(transport);
+      expect(configs.get("/srv/repository")?.transport).toEqual(expected);
+    }
+  });
+
+  it("pins a configured credential helper to its immutable administrator-owned executable", () => {
+    const configs = load(repositoryConfig({ transport: { credentialHelper: "manager-core" } }));
+    expect(configs.get("/srv/repository")?.transport.credentialHelper).toBe(
+      "/usr/bin/git-credential-manager-core",
+    );
+  });
+
+  it("rejects credential helpers that cannot be pinned to an immutable executable", () => {
+    expect(() =>
+      loadGitHubPullRefConfigs(
+        { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+        () => JSON.stringify(repositoryConfig({ transport: { credentialHelper: "manager-core" } })),
+        inspectPolicyPath,
+        "linux",
+        readPolicyDirectory,
+        () => {
+          throw new Error("not found");
+        },
+      ),
+    ).toThrow("must resolve to an immutable executable");
+
+    expect(() =>
+      loadGitHubPullRefConfigs(
+        { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+        () => JSON.stringify(repositoryConfig({ transport: { credentialHelper: "manager-core" } })),
+        inspectPolicyPath,
+        "linux",
+        readPolicyDirectory,
+        () => {
+          throw { reason: "not found" };
+        },
+      ),
+    ).toThrow("must resolve to an immutable executable");
+
+    expect(() =>
+      loadGitHubPullRefConfigs(
+        { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+        () => JSON.stringify(repositoryConfig({ transport: { credentialHelper: "manager-core" } })),
+        inspectPolicyPath,
+        "linux",
+        readPolicyDirectory,
+        () => "git-credential-manager-core",
+      ),
+    ).toThrow("must resolve to an absolute executable");
+
+    for (const status of [
+      { ...rootOwnedExecutable, isSymbolicLink: () => true },
+      { ...rootOwnedExecutable, isFile: () => false },
+      { ...rootOwnedExecutable, uid: 501 },
+      { ...rootOwnedExecutable, mode: 0o100755 },
+      { ...rootOwnedExecutable, mode: 0o100444 },
+    ]) {
+      let helperInspectionCount = 0;
+      expect(() =>
+        loadGitHubPullRefConfigs(
+          { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+          () =>
+            JSON.stringify(repositoryConfig({ transport: { credentialHelper: "manager-core" } })),
+          (path) => {
+            if (path.startsWith("/usr/bin/git-credential-")) {
+              return helperInspectionCount++ === 0 ? rootOwnedExecutable : status;
+            }
+            return inspectPolicyPath(path);
+          },
+          "linux",
+          readPolicyDirectory,
+          resolveCredentialHelper,
+        ),
+      ).toThrow();
     }
   });
 

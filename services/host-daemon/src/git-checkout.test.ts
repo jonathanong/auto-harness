@@ -350,7 +350,7 @@ describe("createGitClient checkout and revParse", () => {
       {
         match: [
           "-c",
-          "credential.helper=manager-core",
+          "credential.helper=/usr/bin/git-credential-manager-core",
           "-c",
           "http.proxy=https://proxy.example",
           "-c",
@@ -369,7 +369,7 @@ describe("createGitClient checkout and revParse", () => {
       {
         match: [
           "-c",
-          "credential.helper=manager-core",
+          "credential.helper=/usr/bin/git-credential-manager-core",
           "-c",
           "http.proxy=https://proxy.example",
           "-c",
@@ -448,7 +448,7 @@ describe("createGitClient checkout and revParse", () => {
             materializerGitDirs,
             remoteUrl,
             transport: {
-              credentialHelper: "manager-core",
+              credentialHelper: "/usr/bin/git-credential-manager-core",
               httpProxy: "https://proxy.example",
               sslCAInfo: "/etc/ssl/private-ca.pem",
             },

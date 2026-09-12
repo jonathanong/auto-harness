@@ -552,7 +552,11 @@ refspec commonly does not advertise them. They require a host-local, absolute
 remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential-free,
 query/fragment-free `httpProxy`, or absolute `sslCAInfo`. Repository, global, and system Git
 configuration are never the source of that policy, so a session cannot replace it before or after a
-daemon restart. URL rewrite settings and shell credential helpers are not supported. The policy file
+daemon restart. A helper name is resolved at daemon policy load to its `git-credential-<name>`
+executable and accepted only when that resolved path is an absolute, root-owned, non-writable,
+regular executable with no symlinked ancestor; the absolute path is then passed to every Git
+fetch. Keep the helper on an administrator-owned PATH (a daemon-user-writable directory such as
+`/opt/homebrew/bin` is rejected). URL rewrite settings and shell credential helpers are not supported. The policy file
 and every ancestor must be root-owned, non-group/world-writable, and not a symlink; each remote URL
 is credential-free HTTPS without a query string or fragment. It also names separate immutable bare
 materializer Git directories for SHA-1 and SHA-256; each directory and descendant must be root-owned,
