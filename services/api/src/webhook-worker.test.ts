@@ -163,4 +163,30 @@ describe("webhook outbox processor", () => {
     await processWebhookOutboxBatch(store, { deliver: vi.fn() }, {}, () => false);
     expect(store.deadLetterExhaustedWebhookDelivery).toHaveBeenCalledTimes(2);
   });
+
+  it("claims sequential batch candidates using their current time", async () => {
+    const first = webhookTestDelivery({ id: "first", dueAt: webhookTestNow });
+    const second = webhookTestDelivery({ id: "second", dueAt: webhookTestNow });
+    const claimed: Array<{ id: string; now: string; leaseExpiresAt: string }> = [];
+    const store = webhookProcessStore({
+      listDueWebhookDeliveries: vi.fn(async ({ state }) =>
+        state === "pending" ? [first, second] : [],
+      ),
+      claimWebhookDelivery: vi.fn(async (input) => {
+        claimed.push(input);
+        return webhookTestDelivery({ id: input.id, attemptCount: 1, state: "leased" });
+      }),
+    });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:01.000Z", "2026-08-15T12:00:10.000Z"];
+    await processWebhookOutboxBatch(
+      store,
+      { deliver: async () => ({ ok: true }) },
+      { now: () => nowValues.shift()!, leaseMs: 30_000 },
+      () => true,
+    );
+    expect(claimed).toMatchObject([
+      { id: "first", now: "2026-08-15T12:00:01.000Z", leaseExpiresAt: "2026-08-15T12:00:31.000Z" },
+      { id: "second", now: "2026-08-15T12:00:10.000Z", leaseExpiresAt: "2026-08-15T12:00:40.000Z" },
+    ]);
+  });
 });

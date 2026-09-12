@@ -28,6 +28,8 @@ describe("applyLocalCors", () => {
     expect(status).toBe(204);
     expect(headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:7421");
     expect(headers.get("access-control-allow-methods")).toContain("POST");
+    expect(headers.get("access-control-allow-headers")).toContain("If-Match");
+    expect(headers.get("access-control-allow-headers")).toContain("If-Match-Generation");
   });
 
   it("allows host-pane origin on normal requests without finishing the response", () => {

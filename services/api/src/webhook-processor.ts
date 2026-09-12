@@ -40,7 +40,8 @@ export async function processWebhookOutboxBatch(
   );
   for (const candidate of candidates) {
     if (!canContinue()) return;
-    await processCandidate(store, transport, candidate, now, options);
+    const candidateNow = (options.now ?? (() => new Date().toISOString()))();
+    await processCandidate(store, transport, candidate, candidateNow, options);
   }
 }
 

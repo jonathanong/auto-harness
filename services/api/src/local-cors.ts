@@ -37,7 +37,7 @@ export function applyLocalCors(req: IncomingMessage, res: ServerResponse): boole
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, Accept, X-Requested-With",
+      "Content-Type, Authorization, Accept, X-Requested-With, If-Match, If-Match-Generation",
     );
     res.setHeader("Access-Control-Max-Age", "86400");
   }
