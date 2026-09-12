@@ -1214,10 +1214,15 @@ async function applySessionStatusDurable(
   terminalHookHandoffId?: string | undefined;
   terminalHookHandoffExpiresAt?: string | undefined;
 }> {
-  const protocolVersion =
+  // An absent source connection is a direct/internal durable transition, not
+  // evidence of a legacy daemon. Only an actual registered protocol version
+  // below the deferred-hook boundary must suppress the safe checkout retry.
+  const knownProtocolVersion =
     sourceProtocolVersion ??
-    (fence ? connectionProtocolVersion(state.connections.get(fence.connectionId)) : 0) ??
-    0;
+    (fence && state.connections.has(fence.connectionId)
+      ? connectionProtocolVersion(state.connections.get(fence.connectionId))
+      : undefined);
+  const protocolVersion = knownProtocolVersion ?? 0;
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = await ingestUsageDurable(
@@ -1321,7 +1326,7 @@ async function applySessionStatusDurable(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "durable", providerAccount, protocolVersion),
+    plannerContext(state, "durable", providerAccount, knownProtocolVersion),
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };
