@@ -103,6 +103,46 @@ describe("CustomWebhookSettings", () => {
     expect(fake.requests[1]?.[1]?.method).toBe("POST");
   });
 
+  it("normalizes optional loaded routing fields and updates later dynamic rows", async () => {
+    createApiFake(
+      json({
+        ...existing,
+        target: {},
+        fallbacks: [{}],
+        requiredLabels: undefined,
+      }),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-target").value).toBe("");
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-fallback-id-0").value).toBe("");
+    press(field(view.container, "custom-webhook-add-label"));
+    press(field(view.container, "custom-webhook-add-label"));
+    setValue(field(view.container, "custom-webhook-label-1"), "release");
+    press(field(view.container, "custom-webhook-add-fallback"));
+    setValue(field(view.container, "custom-webhook-fallback-id-1"), "backup");
+    view.unmount();
+  });
+
+  it("hides dynamic add controls when the loaded configuration reaches routing limits", async () => {
+    createApiFake(
+      json({
+        ...existing,
+        requiredLabels: Array.from({ length: 16 }, (_, index) => `label-${index}`),
+        fallbacks: Array.from({ length: 90 }, (_, index) => ({ providerId: `provider-${index}` })),
+      }),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(view.container.querySelector('[data-pw="custom-webhook-add-label"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="custom-webhook-add-fallback"]')).toBeNull();
+    view.unmount();
+  });
+
   it("reports load, save, and delete failures", async () => {
     const fake = createApiFake(
       json({}, 404),

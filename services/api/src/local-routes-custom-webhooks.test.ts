@@ -43,6 +43,10 @@ function signature(body: unknown): string {
   return `sha256=${createHmac("sha256", secret).update(bytes).digest("hex")}`;
 }
 
+async function auditFailure(): Promise<never> {
+  throw new Error("audit unavailable");
+}
+
 function directRoute(
   plane: ControlPlane,
   path: string,
@@ -190,6 +194,143 @@ describe("custom webhook receiver", () => {
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });
 
+  it("maps every configuration write outcome and fails closed when its audit cannot persist", async () => {
+    const { plane } = await fixture();
+    const complete = {
+      secret: "n".repeat(32),
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      timeout: 60,
+    };
+    const mutable = plane as unknown as {
+      createCustomWebhookIntegration: (input: unknown) => Promise<unknown>;
+    };
+    const outcomes = [
+      [{ ok: false, error: "encryption unavailable", unavailable: true }, 500],
+      [{ ok: false, error: "changed", conflict: true }, 409],
+      [{ ok: false, error: "repository not found" }, 404],
+      [{ ok: false, error: "invalid routing" }, 400],
+    ] as const;
+    for (const [result, expectedStatus] of outcomes) {
+      mutable.createCustomWebhookIntegration = async () => result;
+      const route = directRoute(
+        plane,
+        "/api/v1/integrations/custom/outcome",
+        "POST",
+        Buffer.from(JSON.stringify(complete)),
+      );
+      await expect(handleCustomWebhookConfigRoutes(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(expectedStatus);
+    }
+    const unsupported = directRoute(plane, "/api/v1/integrations/custom/outcome", "PATCH");
+    await expect(handleCustomWebhookConfigRoutes(unsupported.ctx as never)).resolves.toBe(false);
+    const unmatched = directRoute(plane, "/api/v1/integrations/github", "GET");
+    await expect(handleCustomWebhookConfigRoutes(unmatched.ctx as never)).resolves.toBe(false);
+
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const malformed = directRoute(
+      plane,
+      "/api/v1/integrations/custom/outcome",
+      "POST",
+      Buffer.from("{bad"),
+    );
+    await expect(handleCustomWebhookConfigRoutes(malformed.ctx as never)).resolves.toBe(true);
+    expect(malformed.status()).toBe(500);
+  });
+
+  it("keeps optional configuration fields omitted and handles a not-found delete", async () => {
+    const { plane, handler } = await fixture();
+    const optional = {
+      secret: "n".repeat(32),
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      timeout: 60,
+    };
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/integrations/custom/optional", optional),
+    ).toMatchObject({ status: 201, json: { id: "optional", enabled: true } });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/missing"),
+    ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const deleting = directRoute(plane, "/api/v1/integrations/custom/optional", "DELETE");
+    await expect(handleCustomWebhookConfigRoutes(deleting.ctx as never)).resolves.toBe(true);
+    expect(deleting.status()).toBe(500);
+  });
+
+  it("stops configuration responses when an outcome or exception cannot be audited", async () => {
+    const integration = {
+      id: "audit",
+      type: "custom-webhook",
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      fallbacks: [],
+      queueTtlSeconds: 60,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      enabled: true,
+      version: 1,
+      createdAt: "now",
+      updatedAt: "now",
+      secretConfigured: true,
+    };
+    const cases = [
+      {
+        method: "DELETE",
+        plane: { deleteCustomWebhookIntegration: async () => ({ ok: false, error: "missing" }) },
+      },
+      {
+        method: "DELETE",
+        plane: {
+          deleteCustomWebhookIntegration: async () => {
+            throw new Error("storage unavailable");
+          },
+        },
+      },
+      {
+        method: "POST",
+        plane: {
+          createCustomWebhookIntegration: async () => ({ ok: false, error: "invalid routing" }),
+        },
+      },
+      {
+        method: "POST",
+        plane: { createCustomWebhookIntegration: async () => ({ ok: true, integration }) },
+      },
+      {
+        method: "POST",
+        plane: {
+          createCustomWebhookIntegration: async () => {
+            throw new Error("storage unavailable");
+          },
+        },
+      },
+    ] as const;
+    const body = Buffer.from(
+      JSON.stringify({
+        secret: "s".repeat(32),
+        repositoryId: "repo",
+        target: { providerId: "provider" },
+        timeout: 60,
+      }),
+    );
+    for (const current of cases) {
+      const route = directRoute(
+        { ...current.plane, appendAuditLog: auditFailure } as never,
+        "/api/v1/integrations/custom/audit",
+        current.method,
+        body,
+      );
+      await expect(handleCustomWebhookConfigRoutes(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(500);
+    }
+  });
+
   it("verifies the raw body, applies operator routing, and asynchronously acknowledges", async () => {
     const { plane, handler } = await fixture();
     const body = { prompt: "run deploy", idempotencyKey: "delivery-1", ref: "main" };
@@ -321,6 +462,108 @@ describe("custom webhook receiver", () => {
       }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     expect(plane.listSessions()).toHaveLength(1);
+  });
+
+  it("maps durable session conflicts and fails closed when ingress auditing fails", async () => {
+    const { plane } = await fixture();
+    const mutable = plane as unknown as {
+      createSessionDurable: () => Promise<unknown>;
+    };
+    const body = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "conflict" }));
+    const headers = {
+      "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+    };
+    for (const [result, expectedStatus] of [
+      [{ ok: false, code: "CONFLICT", error: "already exists" }, 409],
+      [{ ok: false, code: "REPOSITORY_ADMISSION_CLOSED", error: "closed" }, 409],
+      [{ ok: false, code: "VALIDATION_ERROR", error: "invalid" }, 400],
+    ]) {
+      mutable.createSessionDurable = async () => result;
+      const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, headers);
+      await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(expectedStatus);
+    }
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const rejected = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, {
+      "x-auto-harness-signature-256": "sha256=" + "0".repeat(64),
+    });
+    await expect(handleCustomWebhookRoute(rejected.ctx as never)).resolves.toBe(true);
+    expect(rejected.status()).toBe(500);
+  });
+
+  it("does not send a second ingress response after each denied or failed audit", async () => {
+    const request = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-failure" }));
+    const signedHeaders = {
+      "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(request).digest("hex")}`,
+    };
+    const cases: Array<{
+      configure: (plane: ControlPlane) => Promise<void>;
+      path?: string;
+      method?: string;
+      body?: Buffer;
+      headers?: Record<string, string>;
+      expectedStatus?: number;
+    }> = [
+      { configure: async () => undefined, method: "GET", expectedStatus: 405 },
+      { configure: async () => undefined, body: Buffer.alloc(1024 * 1024 + 1) },
+      { configure: async () => undefined, path: "/api/v1/webhooks/custom/missing" },
+      {
+        configure: async (plane) => {
+          await plane.updateCustomWebhookIntegration({
+            id: "deploy",
+            repositoryId: "repo",
+            target: { providerId: "provider" },
+            timeout: 60,
+            enabled: false,
+          });
+        },
+      },
+      { configure: async () => undefined, body: Buffer.from("{bad") },
+      {
+        configure: async (plane) => {
+          (
+            plane as unknown as { createSessionDurable: () => Promise<unknown> }
+          ).createSessionDurable = async () => ({
+            ok: false,
+            code: "VALIDATION_ERROR",
+            error: "invalid",
+          });
+        },
+      },
+      {
+        configure: async (plane) => {
+          plane.setOnAssignmentRequested(async () => {
+            throw new Error("assignment unavailable");
+          });
+        },
+      },
+    ];
+    for (const current of cases) {
+      const { plane } = await fixture();
+      await current.configure(plane);
+      plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      const body = current.body ?? request;
+      const headers =
+        current.headers ??
+        (body === request || body.toString("utf8") === request.toString("utf8")
+          ? signedHeaders
+          : {
+              "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+            });
+      const route = directRoute(
+        plane,
+        current.path ?? "/api/v1/webhooks/custom/deploy",
+        current.method ?? "POST",
+        body,
+        headers,
+      );
+      await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(current.expectedStatus ?? 500);
+    }
   });
 
   it("rejects malformed raw payloads and malformed encoded integration ids", async () => {

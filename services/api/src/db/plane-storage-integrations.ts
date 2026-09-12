@@ -99,7 +99,11 @@ export async function getCustomWebhookIntegration(
   id: string,
 ): Promise<CustomWebhookIntegrationRecord | null> {
   const response = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.integrations, Key: { id: customWebhookStorageId(id) } }),
+    new GetCommand({
+      TableName: ctx.tables.integrations,
+      Key: { id: customWebhookStorageId(id) },
+      ConsistentRead: true,
+    }),
   );
   const item = response.Item as CustomWebhookIntegrationRecord | undefined;
   return item?.type === "custom-webhook" ? { ...item, id } : null;

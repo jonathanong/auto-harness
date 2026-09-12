@@ -111,6 +111,62 @@ describe("custom webhook integration lifecycle", () => {
     expect(created.ok).toBe(true);
   });
 
+  it("uses the durable integration record for reads and rejects lifecycle writes with missing references", async () => {
+    const source = plane();
+    await expect(source.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+      ok: true,
+    });
+    const stored = await source.getCustomWebhookIntegrationRecord("deploy");
+    expect(stored).not.toBeNull();
+    const durable = new ControlPlane({
+      secretEncryptor: encryptor(),
+      storage: { getCustomWebhookIntegration: async () => stored } as never,
+    });
+    await expect(durable.getCustomWebhookIntegration("deploy")).resolves.toMatchObject({
+      id: "deploy",
+      secretConfigured: true,
+    });
+    await expect(durable.getCustomWebhookIntegrationRecord("deploy")).resolves.toEqual(stored);
+
+    const value = plane();
+    await expect(
+      value.createCustomWebhookIntegration(config({ repositoryId: "missing" })),
+    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
+    await expect(
+      value.updateCustomWebhookIntegration(config({ target: { providerId: "missing" } })),
+    ).resolves.toMatchObject({ ok: false, error: "providerId missing not found" });
+    value.state.secretEncryptor = undefined;
+    await expect(value.updateCustomWebhookIntegration(config())).resolves.toMatchObject({
+      ok: false,
+      unavailable: true,
+    });
+  });
+
+  it("fences durable updates and deletes when their compare-and-swap writes lose", async () => {
+    const source = plane();
+    await source.createCustomWebhookIntegration(config());
+    const stored = await source.getCustomWebhookIntegrationRecord("deploy");
+    expect(stored).not.toBeNull();
+    const storage = {
+      getRepository: async () => ({ id: "repo" }),
+      listProviders: async () => [{ id: "provider" }],
+      listCommands: async () => [{ id: "command" }],
+      getCustomWebhookIntegration: async () => stored,
+      putCustomWebhookIntegration: async () => false,
+      deleteCustomWebhookIntegration: async () => false,
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => undefined,
+    };
+    const durable = new ControlPlane({ secretEncryptor: encryptor(), storage: storage as never });
+    await expect(
+      durable.updateCustomWebhookIntegration(config({ secret: undefined })),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+    await expect(durable.deleteCustomWebhookIntegration("deploy")).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+  });
+
   it("rejects absent catalog references and every malformed encrypted-secret shape", async () => {
     const value = plane();
     await expect(

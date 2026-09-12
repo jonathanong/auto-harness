@@ -111,7 +111,7 @@ describe("custom webhook integration storage", () => {
     expect(await deleteCustomWebhookIntegration(storage, "slack", 1)).toBe(true);
     expect(sends).toEqual([
       expect.objectContaining({ Item: expect.objectContaining({ id: "custom-webhook:slack" }) }),
-      expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
+      expect.objectContaining({ Key: { id: "custom-webhook:slack" }, ConsistentRead: true }),
       expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
     ]);
   });
