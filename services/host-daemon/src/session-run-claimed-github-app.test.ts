@@ -129,7 +129,10 @@ describe("claimed session GitHub App credentials", () => {
     };
     const commandRunner: ProcessRunner = {
       async run(options) {
-        options.onChunk({ stream: "stdout", data: "trailing command output" });
+        options.onChunk({
+          stream: "stdout",
+          data: "resume: native-conversation\ntrailing command output",
+        });
         throw new Error("pty failed with ghs_exact-token");
       },
     };
@@ -156,7 +159,11 @@ describe("claimed session GitHub App credentials", () => {
       app(),
       () => now,
     );
-    expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      cliResumeRef: "native-conversation",
+    });
     expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
     expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
     expect(logs.map((chunk) => chunk.content).join("")).toContain("trailing command output");
