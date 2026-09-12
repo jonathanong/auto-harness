@@ -312,7 +312,9 @@ describe("control-plane host message coverage paths", () => {
           errorCode: "checkout_fetch_failed",
         }),
       ),
-    ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: scheduledRun.id } });
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { sessionId: scheduledRun.id, retryAccepted: true },
+    });
     expect(scheduled.sessions.get(scheduledRun.id)).toMatchObject({
       status: "queued",
       infrastructureRetryCount: 1,
@@ -329,13 +331,29 @@ describe("control-plane host message coverage paths", () => {
           errorCode: "checkout_fetch_failed",
         }),
       ),
-    ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: worktreeRun.id } });
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { sessionId: worktreeRun.id, retryAccepted: true },
+    });
     expect(ordinary.sessions.get(worktreeRun.id)).toMatchObject({
       status: "queued",
       infrastructureRetryCount: 1,
       errorMessage: "checkout fetch failed; retrying once",
     });
     expect(ordinary.worktrees.get("worktree")).toMatchObject({ status: "idle" });
+
+    const terminalRun = running({ id: "terminal-first-fetch", worktreeId: null });
+    const terminal = durable(terminalRun);
+    await expect(
+      handleHostMessageDurable(
+        terminal,
+        status(terminalRun.id, "failed", {
+          worktreeId: null,
+          errorCode: "checkout_fetch_failed",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { sessionId: terminalRun.id, retryAccepted: false },
+    });
   });
 
   it("records a cached provider cooldown and finishes an exhausted infrastructure retry", async () => {

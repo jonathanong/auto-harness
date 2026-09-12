@@ -124,6 +124,9 @@ type PendingTerminalStatus = {
    * abandoned.
    */
   controller: AbortController;
+  /** Set only for a v4 checkout failure awaiting the durable retry disposition. */
+  settleDeferredTerminalHook?: ((runHook: boolean) => Promise<void>) | undefined;
+  resolveDeferredDisposition?: (() => void) | undefined;
 };
 
 type PendingCommandStart = {
@@ -485,6 +488,22 @@ export class DaemonLoop {
     for (const key of this.pendingCommandStarts.keys()) {
       this.finishCommandStart(key, false);
     }
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      this.pendingTerminalStatus.delete(key);
+      pending.controller.abort();
+      if (pending.settleDeferredTerminalHook) {
+        void pending
+          .settleDeferredTerminalHook(true)
+          .catch((error: unknown) => {
+            this.onLog?.(
+              `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+            );
+          })
+          .finally(() => pending.resolveDeferredDisposition?.());
+      } else {
+        pending.resolveDeferredDisposition?.();
+      }
+    }
     this.transport.close();
   }
 
@@ -512,7 +531,7 @@ export class DaemonLoop {
         this.handleCommandStartAcknowledged(msg);
         return;
       case "session:status-acknowledged":
-        this.handleStatusAcknowledged(msg);
+        await this.handleStatusAcknowledged(msg);
         return;
       case "session:assign":
         await this.handleAssign(msg);
@@ -565,12 +584,23 @@ export class DaemonLoop {
    * the old report here would make the daemon own two attempts for one logical
    * session in that delivery interval.
    */
-  private discardSupersededTerminalStatuses(sessionId: string): void {
+  private discardSupersededTerminalStatuses(sessionId: string): Promise<void> | undefined {
+    const settlements: Promise<void>[] = [];
     for (const [key, pending] of this.pendingTerminalStatus) {
       if (pending.message.sessionId !== sessionId) continue;
       pending.controller.abort();
       this.pendingTerminalStatus.delete(key);
+      if (pending.settleDeferredTerminalHook) {
+        settlements.push(
+          pending
+            .settleDeferredTerminalHook(false)
+            .finally(() => pending.resolveDeferredDisposition?.()),
+        );
+      } else {
+        pending.resolveDeferredDisposition?.();
+      }
     }
+    return settlements.length > 0 ? Promise.all(settlements).then(() => undefined) : undefined;
   }
 
   private async waitForAbortedAttempts(sessionId: string, attemptId: string): Promise<void> {
@@ -746,15 +776,38 @@ export class DaemonLoop {
     return [...ids];
   }
 
-  private handleStatusAcknowledged(
+  private async handleStatusAcknowledged(
     msg: Extract<HostWireMessage, { type: "session:status-acknowledged" }>,
-  ): void {
+  ): Promise<void> {
+    const acknowledge = (
+      key: string,
+      pending: PendingTerminalStatus,
+    ): Promise<void> | undefined => {
+      // Delete before invoking the hook: duplicate/late acknowledgements must
+      // never turn a deferred terminal hook into duplicate external work.
+      this.pendingTerminalStatus.delete(key);
+      // Deferral is negotiated only with v4. A disposition-less acknowledgement
+      // for such a pending hook fails closed as terminal rather than losing it.
+      if (!pending.settleDeferredTerminalHook) {
+        pending.resolveDeferredDisposition?.();
+        return undefined;
+      }
+      return pending
+        .settleDeferredTerminalHook(msg.retryAccepted !== true)
+        .finally(() => pending.resolveDeferredDisposition?.());
+    };
     if (msg.attemptId) {
-      this.pendingTerminalStatus.delete(inflightKey(msg.sessionId, msg.attemptId));
+      const key = inflightKey(msg.sessionId, msg.attemptId);
+      const pending = this.pendingTerminalStatus.get(key);
+      const settled = pending ? acknowledge(key, pending) : undefined;
+      if (settled) await settled;
       return;
     }
     for (const [key, pending] of this.pendingTerminalStatus) {
-      if (pending.message.sessionId === msg.sessionId) this.pendingTerminalStatus.delete(key);
+      if (pending.message.sessionId === msg.sessionId) {
+        const settled = acknowledge(key, pending);
+        if (settled) await settled;
+      }
     }
   }
 
@@ -782,8 +835,20 @@ export class DaemonLoop {
         );
         // Cancels a still-buffered retained frame instead of leaving it
         // queued to be transmitted whenever the connection recovers.
-        pending.controller.abort();
         this.pendingTerminalStatus.delete(key);
+        pending.controller.abort();
+        if (pending.settleDeferredTerminalHook) {
+          void pending
+            .settleDeferredTerminalHook(true)
+            .catch((error: unknown) => {
+              this.onLog?.(
+                `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+              );
+            })
+            .finally(() => pending.resolveDeferredDisposition?.());
+        } else {
+          pending.resolveDeferredDisposition?.();
+        }
         continue;
       }
       if (pending.sending) continue;
@@ -854,8 +919,10 @@ export class DaemonLoop {
       acknowledged: false,
     };
     this.inflight.set(key, entry);
-    this.discardSupersededTerminalStatuses(msg.sessionId);
-    const work = this.runAssign(msg, controller.signal);
+    const settleSuperseded = this.discardSupersededTerminalStatuses(msg.sessionId);
+    const work = settleSuperseded
+      ? settleSuperseded.then(() => this.runAssign(msg, controller.signal))
+      : this.runAssign(msg, controller.signal);
     entry.work = work;
     try {
       await work;
@@ -934,6 +1001,9 @@ export class DaemonLoop {
     const result: SessionRunResult = await this.runner.run(assign, {
       signal,
       initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
+      deferCheckoutFetchFailureHook:
+        this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION &&
+        this.pendingTerminalStatus.size < this.pendingStatusMaxCount,
     });
 
     if (result.logs.length > 0) {
@@ -963,6 +1033,13 @@ export class DaemonLoop {
     // retries from duplicating the original send while flush is still pending.
     const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
     const controller = new AbortController();
+    const needsDeferredDisposition = result.settleDeferredTerminalHook !== undefined;
+    let resolveDeferredDisposition: (() => void) | undefined;
+    const deferredDisposition = needsDeferredDisposition
+      ? new Promise<void>((resolve) => {
+          resolveDeferredDisposition = resolve;
+        })
+      : undefined;
     if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
       // A control plane that never sends session:status-acknowledged (e.g. not yet
       // upgraded to support it) would otherwise grow this set without bound until a
@@ -978,6 +1055,10 @@ export class DaemonLoop {
         firstAttemptedAtMs: Date.now(),
         sending: true,
         controller,
+        ...(result.settleDeferredTerminalHook
+          ? { settleDeferredTerminalHook: result.settleDeferredTerminalHook }
+          : {}),
+        ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
     await this.outbound.flush();
@@ -993,6 +1074,13 @@ export class DaemonLoop {
         const pending = this.pendingTerminalStatus.get(pendingKey);
         if (pending) pending.sending = false;
       });
+    if (deferredDisposition) {
+      if (!this.pendingTerminalStatus.has(pendingKey)) {
+        await result.settleDeferredTerminalHook!(true);
+        resolveDeferredDisposition?.();
+      }
+      await deferredDisposition;
+    }
   }
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {

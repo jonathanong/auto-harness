@@ -214,6 +214,9 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 type: "session:status-acknowledged",
                 sessionId: result.sessionStatusAcknowledged.sessionId,
                 attemptId: result.sessionStatusAcknowledged.attemptId,
+                ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
+                  ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
+                  : {}),
               }),
             );
           } else if (

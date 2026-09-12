@@ -336,7 +336,10 @@ export function createWsTransport(options: Options): DaemonTransport & {
             (message.attemptId === undefined ||
               (typeof message.attemptId === "string" &&
                 message.attemptId.length > 0 &&
-                message.attemptId.length <= 512))) ||
+                message.attemptId.length <= 512)) &&
+            (message.type !== "session:status-acknowledged" ||
+              !("retryAccepted" in message) ||
+              typeof message.retryAccepted === "boolean")) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||

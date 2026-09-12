@@ -22,13 +22,15 @@ export type SessionRunResult = {
   cliResumeRef?: string;
   usage?: SessionUsage;
   result?: SessionResult;
+  /** Settles a retained first-fetch-failure hook before its worktree claim releases. */
+  settleDeferredTerminalHook?: (runHook: boolean) => Promise<void>;
   logs: SessionLogChunk[];
 };
 
 type SessionOutcome = {
   status: SessionTerminalStatus;
   exitCode: number | null;
-  skipTerminalHook?: boolean;
+  deferTerminalHook?: boolean;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
@@ -161,14 +163,14 @@ export async function finishClaimedSession(
     refreshed = null;
   }
   const target = refreshed;
-  return finishSession(
+  const finish = await finishSession(
     processRunner,
     streamer,
     logs,
     assign,
     claimed.worktree.id,
     target?.cwd ?? claimed.cwd,
-    outcome.skipTerminalHook ? undefined : target?.repository.terminalHookScript,
+    outcome.deferTerminalHook ? undefined : target?.repository.terminalHookScript,
     outcome,
     childEnvSource,
     target?.allowedRoots ?? [],
@@ -176,4 +178,35 @@ export async function finishClaimedSession(
     target !== null && target !== undefined,
     environmentIsChild,
   );
+  if (!outcome.deferTerminalHook) return finish;
+  return {
+    ...finish,
+    settleDeferredTerminalHook: async (runHook) => {
+      if (!runHook) return;
+      let current: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
+      try {
+        current = await claimed.currentHookTarget();
+      } catch (error) {
+        streamer.write(
+          "system",
+          `terminal hook revalidation failed for session ${assign.sessionId}: ${thrownMessage(error)}`,
+        );
+        return;
+      }
+      const scriptPath = current?.repository.terminalHookScript;
+      if (!current || !scriptPath) return;
+      await runTerminalHook(processRunner, {
+        scriptPath,
+        cwd: current.cwd,
+        sessionId: assign.sessionId,
+        status: outcome.status as SessionStatus,
+        worktreePath: current.cwd,
+        childEnvSource,
+        ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
+        ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
+        ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
+        ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
+      });
+    },
+  };
 }

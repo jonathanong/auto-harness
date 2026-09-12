@@ -14,6 +14,61 @@ import {
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop terminal status retry", () => {
+  it("runs a deferred fetch hook only for a terminal retry disposition", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      let hooks = 0;
+      const pending = pendingTerminalStatusOf(loop);
+      const deferred = () => Promise.resolve().then(() => void (hooks += 1));
+
+      pending.set("fetch\0attempt-retried", {
+        message: { ...statusMessage, sessionId: "fetch", attemptId: "attempt-retried" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async (runHook) => {
+          if (runHook) await deferred();
+        },
+      });
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "fetch",
+        attemptId: "attempt-retried",
+        retryAccepted: true,
+      });
+      await flushMicrotasks();
+      expect(hooks).toBe(0);
+      expect(pending.size).toBe(0);
+
+      pending.set("fetch\0attempt-terminal", {
+        message: { ...statusMessage, sessionId: "fetch", attemptId: "attempt-terminal" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async (runHook) => {
+          if (runHook) await deferred();
+        },
+      });
+      const terminalAck = {
+        type: "session:status-acknowledged" as const,
+        sessionId: "fetch",
+        attemptId: "attempt-terminal",
+        retryAccepted: false,
+      };
+      transport.deliver(terminalAck);
+      transport.deliver(terminalAck);
+      await flushMicrotasks();
+      expect(hooks).toBe(1);
+      expect(pending.size).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("reports a session with an unacknowledged terminal status as still owned, resends it on keepalive, and stops once acked", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -64,6 +119,7 @@ describe("DaemonLoop terminal status retry", () => {
       const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
       const loop = new DaemonLoop({ config, transport });
       let start!: () => void;
+      let runnerStarted = false;
       const started = new Promise<void>((resolve) => {
         start = resolve;
       });
@@ -79,6 +135,7 @@ describe("DaemonLoop terminal status retry", () => {
         }
       ).runner = {
         async run() {
+          runnerStarted = true;
           start();
           await finished;
           return { status: "completed", exitCode: 0, logs: [] };
@@ -87,11 +144,20 @@ describe("DaemonLoop terminal status retry", () => {
       await loop.start();
 
       const oldStatusController = new AbortController();
+      const supersededDispositions: boolean[] = [];
+      let settleSuperseded!: () => void;
+      const supersededSettled = new Promise<void>((resolve) => {
+        settleSuperseded = resolve;
+      });
       pendingTerminalStatusOf(loop).set("done-session\0attempt-old", {
         message: { ...statusMessage, attemptId: "attempt-old" },
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: oldStatusController,
+        settleDeferredTerminalHook: async (runHook) => {
+          supersededDispositions.push(runHook);
+          await supersededSettled;
+        },
       });
       transport.deliver({
         type: "session:assign",
@@ -105,10 +171,16 @@ describe("DaemonLoop terminal status retry", () => {
         assignedAt: new Date().toISOString(),
       });
 
-      await started;
+      await flushMicrotasks();
       expect(loop.inflightCount()).toBe(1);
       expect(pendingTerminalStatusOf(loop).has("done-session\0attempt-old")).toBe(false);
       expect(oldStatusController.signal.aborted).toBe(true);
+      expect(supersededDispositions).toEqual([false]);
+      expect(runnerStarted).toBe(false);
+
+      settleSuperseded();
+      await started;
+      expect(loop.inflightCount()).toBe(1);
 
       finish();
       await loop.waitForIdle();
@@ -270,6 +342,41 @@ describe("DaemonLoop terminal status retry", () => {
       expect(controller.signal.aborted).toBe(true);
 
       loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails closed and settles deferred hooks when stopping", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const loop = new DaemonLoop({
+        config,
+        transport: createLoopbackTransport({ sendToServer: () => undefined }),
+      });
+      await loop.start();
+      const dispositions: boolean[] = [];
+      let resolved = false;
+      const controller = new AbortController();
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller,
+        settleDeferredTerminalHook: async (runHook) => {
+          dispositions.push(runHook);
+        },
+        resolveDeferredDisposition: () => {
+          resolved = true;
+        },
+      });
+
+      loop.stop();
+      await flushMicrotasks();
+      expect(dispositions).toEqual([true]);
+      expect(resolved).toBe(true);
+      expect(controller.signal.aborted).toBe(true);
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
     } finally {
       cleanup();
     }

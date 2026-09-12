@@ -1283,6 +1283,43 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("forwards a durable retry disposition with session:status-acknowledged", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    vi.spyOn(fixture.plane, "handleHostMessageDurable").mockResolvedValue({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "retry-session",
+        attemptId: "retry-attempt",
+        retryAccepted: true,
+      },
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:status",
+          sessionId: "retry-session",
+          worktreeId: null,
+          attemptId: "retry-attempt",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({
+      type: "session:status-acknowledged",
+      sessionId: "retry-session",
+      attemptId: "retry-attempt",
+      retryAccepted: true,
+    });
+  });
+
   it("uses the authenticated durable protocol on a cold process cache", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture, "gateway-1", 3);

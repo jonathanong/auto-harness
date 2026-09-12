@@ -52,6 +52,7 @@ describe("WebSocket durable ACK replies", () => {
         type: "session:status-acknowledged",
         sessionId: "ack-session",
         attemptId: "attempt-1",
+        retryAccepted: true,
       });
       socket.close();
       await waitForClose(socket);
@@ -113,7 +114,11 @@ class StatusPlane extends ControlPlane {
     if (message.type === "session:status") {
       return {
         ok: true,
-        sessionStatusAcknowledged: { sessionId: message.sessionId, attemptId: message.attemptId! },
+        sessionStatusAcknowledged: {
+          sessionId: message.sessionId,
+          attemptId: message.attemptId!,
+          retryAccepted: true,
+        },
       };
     }
     return super.handleHostMessageDurable(message);

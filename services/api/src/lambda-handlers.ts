@@ -667,6 +667,9 @@ export async function createLambdaRuntime(
               type: "session:status-acknowledged",
               sessionId: result.sessionStatusAcknowledged.sessionId,
               attemptId: result.sessionStatusAcknowledged.attemptId,
+              ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
+                ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
+                : {}),
             }).catch(() => undefined),
           );
         } else if (result.hostDraining) {

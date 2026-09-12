@@ -148,7 +148,13 @@ export type HostWireMessage =
   /** Sent only after the control plane durably applies a `session:status`
    * report. A successful WebSocket write is not delivery: the daemon retains
    * and retries an unacknowledged terminal status until this arrives. */
-  | { type: "session:status-acknowledged"; sessionId: string; attemptId?: string | undefined }
+  | {
+      type: "session:status-acknowledged";
+      sessionId: string;
+      attemptId?: string | undefined;
+      /** Present for a v4 first checkout-fetch failure after its durable retry decision. */
+      retryAccepted?: boolean | undefined;
+    }
   | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }

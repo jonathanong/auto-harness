@@ -223,6 +223,29 @@ function hostStatusEvent(
   };
 }
 
+function isFirstCheckoutFetchFailure(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | undefined,
+): boolean {
+  return (
+    msg.status === "failed" &&
+    msg.errorCode === "checkout_fetch_failed" &&
+    (session?.infrastructureRetryCount ?? 0) === 0
+  );
+}
+
+/** Keep a deferred hook's retry decision stable across a resent moot report. */
+function settledCheckoutFetchRetryDisposition(
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  session: SessionRecord | null | undefined,
+): boolean | undefined {
+  if (msg.status !== "failed" || msg.errorCode !== "checkout_fetch_failed") return undefined;
+  return (
+    (session?.infrastructureRetryCount ?? 0) >= 1 &&
+    session?.lastInfrastructureErrorCode === "checkout_fetch_failed"
+  );
+}
+
 function plannerContext(
   state: ControlPlaneState,
   source: SessionTransitionContext["source"],
@@ -416,7 +439,7 @@ export function handleHostMessage(
   state: ControlPlaneState,
   msg: HostToServerMessage,
   sourceConnectionId?: string,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; retryAccepted?: boolean | undefined } {
   switch (msg.type) {
     case "host:register": {
       const r = registerHost(state, {
@@ -506,9 +529,12 @@ export function handleHostMessage(
           type: "session:status-acknowledged",
           sessionId: msg.sessionId,
           attemptId: msg.attemptId,
+          ...(result.retryAccepted !== undefined ? { retryAccepted: result.retryAccepted } : {}),
         });
       }
-      return result;
+      return result.error === undefined
+        ? { ok: result.ok }
+        : { ok: result.ok, error: result.error };
     }
     case "session:usage": {
       return ingestUsage(state, msg);
@@ -571,7 +597,11 @@ export async function handleHostMessageDurable(
   /** Present only after command launch is durably authorized. */
   sessionCommandStartAcknowledged?: { sessionId: string; attemptId: string };
   /** Present only after a `session:status` report was durably applied. */
-  sessionStatusAcknowledged?: { sessionId: string; attemptId: string };
+  sessionStatusAcknowledged?: {
+    sessionId: string;
+    attemptId: string;
+    retryAccepted?: boolean | undefined;
+  };
   /** Present only after the host's drain flag committed. */
   hostDraining?: string;
 }> {
@@ -725,7 +755,13 @@ export async function handleHostMessageDurable(
             // rather than resending it every keepalive for up to 24h.
             return {
               ok: true,
-              sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+              sessionStatusAcknowledged: {
+                sessionId: msg.sessionId,
+                attemptId: msg.attemptId,
+                ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
+                  ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
+                  : {}),
+              },
             };
           }
           return { ok: true };
@@ -744,7 +780,13 @@ export async function handleHostMessageDurable(
           // stop retrying a status the control plane never durably recorded.
           return {
             ok: true,
-            sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+            sessionStatusAcknowledged: {
+              sessionId: msg.sessionId,
+              attemptId: msg.attemptId,
+              ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
+                ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
+                : {}),
+            },
           };
         }
       }
@@ -839,7 +881,11 @@ export async function handleHostMessageDurable(
     return result.ok && applied
       ? {
           ...result,
-          sessionStatusAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+          sessionStatusAcknowledged: {
+            sessionId: msg.sessionId,
+            attemptId: msg.attemptId,
+            ...(result.retryAccepted !== undefined ? { retryAccepted: result.retryAccepted } : {}),
+          },
         }
       : result;
   }
@@ -864,6 +910,8 @@ async function applySessionStatusDurable(
    * the caller withholds sessionStatusAcknowledged and the daemon retries.
    */
   applied?: boolean;
+  /** The durable disposition for a first checkout-fetch failure's deferred hook. */
+  retryAccepted?: boolean | undefined;
 }> {
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
@@ -1042,7 +1090,11 @@ async function applySessionStatusDurable(
   if (session.status !== "running") {
     // The session row is already durably resolved to a non-running status by
     // some other transition; this report cannot change it further.
-    return { ok: true, applied: true };
+    return {
+      ok: true,
+      applied: true,
+      ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+    };
   }
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
@@ -1075,7 +1127,13 @@ async function applySessionStatusDurable(
       emitInfrastructureRetry();
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-      return { ok: true, applied: true };
+      return {
+        ok: true,
+        applied: true,
+        ...(code === "checkout_fetch_failed" && isFirstCheckoutFetchFailure(msg, session)
+          ? { retryAccepted: true }
+          : {}),
+      };
     }
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
@@ -1244,7 +1302,11 @@ async function applySessionStatusDurable(
     state.pendingAcks.delete(session.id);
     await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true, applied: true };
+    return {
+      ok: true,
+      applied: true,
+      ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+    };
   }
   if (cooldown && requeue && session.worktreeId) {
     const now = state.now();
@@ -1298,7 +1360,13 @@ async function applySessionStatusDurable(
     emitInfrastructureRetry();
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-    return { ok: true, applied: true };
+    return {
+      ok: true,
+      applied: true,
+      ...(code === "checkout_fetch_failed" && isFirstCheckoutFetchFailure(msg, session)
+        ? { retryAccepted: true }
+        : {}),
+    };
   }
   const shouldSuppressTarget = suppress !== undefined;
   if (shouldSuppressTarget && session.worktreeId) {
@@ -1386,13 +1454,17 @@ async function applySessionStatusDurable(
     noteSlackSessionLifecycle(state, nextSession);
   }
   await requestAssignmentAfterHostEvent(state, fence?.connectionId);
-  return { ok: true, applied: true };
+  return {
+    ok: true,
+    applied: true,
+    ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+  };
 }
 
 function applySessionStatus(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
-): { ok: boolean; error?: string } {
+): { ok: boolean; error?: string; retryAccepted?: boolean | undefined } {
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = ingestUsage(state, {
@@ -1406,6 +1478,7 @@ function applySessionStatus(
   }
   const session = state.sessions.get(msg.sessionId);
   if (!session) return { ok: false, error: "session not found" };
+  const firstCheckoutFetchFailure = isFirstCheckoutFetchFailure(msg, session);
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
@@ -1454,7 +1527,12 @@ function applySessionStatus(
     } else if (reschedule) {
       void assignQueued(state);
     }
-    return { ok: true };
+    return {
+      ok: true,
+      ...(code === "checkout_fetch_failed" && firstCheckoutFetchFailure
+        ? { retryAccepted: true }
+        : {}),
+    };
   }
 
   const terminal = isTerminalSessionStatus(msg.status);
@@ -1579,5 +1657,8 @@ function applySessionStatus(
     }
   }
   persistSession(state, session);
-  return { ok: true };
+  return {
+    ok: true,
+    ...(firstCheckoutFetchFailure ? { retryAccepted: false } : {}),
+  };
 }

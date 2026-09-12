@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- checkout, deferred-hook, and claim-release ordering share one fence. */
 import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
@@ -5,6 +6,7 @@ import type { ProcessRunner } from "./executor.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { isCheckoutFetchFailure } from "./git-commands.ts";
+import { retainClaimForDeferredTerminalHook } from "./deferred-terminal-hook.ts";
 import {
   failSession,
   finishClaimedSession,
@@ -40,6 +42,8 @@ type SessionRunOptions = {
   signal?: AbortSignal;
   /** Sequence after the latest persisted log for a reassigned session. */
   initialLogSeq?: number;
+  /** A v4 peer sends a durable retry disposition with the terminal-status acknowledgement. */
+  deferCheckoutFetchFailureHook?: boolean;
 };
 
 export class SessionRunner {
@@ -87,6 +91,7 @@ export class SessionRunner {
 
     let claimed;
     let mainClaimed = false;
+    let retainedClaim = false;
     try {
       if (assign.worktreeId) {
         claimed = await this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId, signal);
@@ -164,7 +169,7 @@ export class SessionRunner {
         if (signal.aborted) {
           return await finishCheckoutInterruption();
         }
-        return await finishClaimedSession(
+        const result = await finishClaimedSession(
           this.deps.processRunner,
           streamer,
           logs,
@@ -175,9 +180,22 @@ export class SessionRunner {
             exitCode: null,
             errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
             errorMessage: thrownMessage(err),
-            skipTerminalHook: isCheckoutFetchFailure(err) && assign.infrastructureRetryCount === 0,
+            deferTerminalHook:
+              isCheckoutFetchFailure(err) &&
+              assign.infrastructureRetryCount === 0 &&
+              options.deferCheckoutFetchFailureHook === true,
           },
           this.deps.childEnvSource ?? process.env,
+        );
+        if (!result.settleDeferredTerminalHook) return result;
+        retainedClaim = true;
+        return retainClaimForDeferredTerminalHook(
+          result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
+            SessionRunResult,
+          () => {
+            if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId);
+            else this.deps.worktrees.release(assign.worktreeId!);
+          },
         );
       }
       if (signal.aborted) {
@@ -220,12 +238,9 @@ export class SessionRunner {
     } finally {
       streamer.flush();
       clearTimeout(timeoutTimer);
-      if (mainClaimed) {
-        this.deps.worktrees.releaseMain(assign.repositoryId);
-      } else {
-        // Reaching execution without the main lock means the worktree claim
-        // above succeeded, so a worktree id is guaranteed here.
-        this.deps.worktrees.release(assign.worktreeId!);
+      if (!retainedClaim) {
+        if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId);
+        else this.deps.worktrees.release(assign.worktreeId!);
       }
     }
   }

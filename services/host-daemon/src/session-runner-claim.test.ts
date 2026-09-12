@@ -168,14 +168,18 @@ describe("SessionRunner claim and checkout failures", () => {
       },
     });
 
-    await expect(
-      sessionRunner.run(baseAssign({ ref: "missing", infrastructureRetryCount: 0 })),
-    ).resolves.toMatchObject({ errorCode: "checkout_fetch_failed" });
+    const first = await sessionRunner.run(
+      baseAssign({ ref: "missing", infrastructureRetryCount: 0 }),
+      { deferCheckoutFetchFailureHook: true },
+    );
+    expect(first).toMatchObject({ errorCode: "checkout_fetch_failed" });
     expect(hooks).toEqual([]);
+    await first.settleDeferredTerminalHook?.(true);
+    expect(hooks).toEqual(["checkout_fetch_failed"]);
 
     await expect(
       sessionRunner.run(baseAssign({ ref: "missing", infrastructureRetryCount: 1 })),
     ).resolves.toMatchObject({ errorCode: "checkout_fetch_failed" });
-    expect(hooks).toEqual(["checkout_fetch_failed"]);
+    expect(hooks).toEqual(["checkout_fetch_failed", "checkout_fetch_failed"]);
   });
 });
