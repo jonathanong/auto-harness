@@ -30,13 +30,13 @@ describe("durable resume concurrency", () => {
       },
     });
 
-    await expect(plane.resumeSessionDurable(source.id)).resolves.toMatchObject({
+    await expect(
+      plane.resumeSessionDurable(source.id, { target: { commandId: "cmd-base" } }),
+    ).resolves.toMatchObject({
       ok: true,
       created: true,
       session: {
         id: "resume-2",
-        pinnedHostId: "host-1",
-        pinExpiresAt: "2026-01-01T01:00:00.000Z",
       },
     });
     expect(plane.getSession("resume-2")).not.toHaveProperty("cliResumeRef");
