@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_FALLBACKS } from "@auto-harness/shared";
+
 import {
   parseGitHubWebhookIngress,
   type GitHubWebhookRepositoryBinding,
@@ -10,6 +12,7 @@ const binding: GitHubWebhookRepositoryBinding = {
   repositoryId: "auto-harness",
   target: { commandId: "codex" },
   defaultRef: "refs/heads/main",
+  timeout: 3600,
 };
 
 function issueComment(overrides: Record<string, unknown> = {}) {
@@ -47,6 +50,16 @@ describe("parseGitHubWebhookIngress edge cases", () => {
       { ...binding, target: { providerId: "", commandId: "codex" } },
       { ...binding, target: { providerId: 42, commandId: "codex" } },
       { ...binding, fallbacks: [{ providerId: "" }] },
+      { ...binding, fallbacks: [{ commandId: "codex" }] },
+      { ...binding, fallbacks: [{ commandId: "duplicate" }, { commandId: "duplicate" }] },
+      {
+        ...binding,
+        fallbacks: Array.from({ length: MAX_FALLBACKS + 1 }, (_, index) => ({
+          commandId: `fallback-${index}`,
+        })),
+      },
+      { ...binding, defaultRef: "-main" },
+      { ...binding, timeout: 0 },
       { ...binding, allowedLogins: "trusted-contributor" },
       { ...binding, allowedLogins: { login: "trusted-contributor" } },
       { ...binding, allowedLogins: ["trusted-contributor", 42] },

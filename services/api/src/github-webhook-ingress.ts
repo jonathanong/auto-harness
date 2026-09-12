@@ -1,4 +1,10 @@
-import type { TargetRef } from "@auto-harness/shared";
+import {
+  isValidSessionRef,
+  promptByteLengthError,
+  sessionTimeoutError,
+  validateTargetRouting,
+  type TargetRef,
+} from "@auto-harness/shared";
 
 /** Immutable configuration that maps a GitHub numeric repository id to one session target. */
 export type GitHubWebhookRepositoryBinding = Readonly<{
@@ -8,6 +14,8 @@ export type GitHubWebhookRepositoryBinding = Readonly<{
   fallbacks?: readonly TargetRef[];
   /** Canonical branch ref used for issue comments that are not pull requests. */
   defaultRef: string;
+  /** Bounded lifetime for sessions created from this binding. */
+  timeout: number;
   /** Explicit exceptions to GitHub's author-association gate. */
   allowedLogins?: readonly string[];
 }>;
@@ -18,6 +26,7 @@ type GitHubWebhookSessionIntent = Readonly<{
   fallbacks?: TargetRef[];
   prompt: string;
   ref: string;
+  timeout: number;
   concurrencyId: string;
   source: "webhook";
   metadata: Readonly<{
@@ -71,12 +80,14 @@ export function parseGitHubWebhookIngress(input: {
   if (bindings.length === 0) return ignored("unconfigured_repository");
   if (bindings.length !== 1) return ignored("invalid_payload");
   const binding = bindings[0]!;
+  const routing = validateTargetRouting({ target: binding.target, fallbacks: binding.fallbacks });
+  const timeoutError = sessionTimeoutError(binding.timeout);
   if (
     !nonEmptyString(binding.repositoryId) ||
-    !isTarget(binding.target) ||
-    !validFallbacks(binding.fallbacks) ||
-    !nonEmptyString(binding.defaultRef) ||
-    !validAllowedLogins(binding.allowedLogins)
+    !routing.ok ||
+    !isValidSessionRef(binding.defaultRef) ||
+    !validAllowedLogins(binding.allowedLogins) ||
+    timeoutError !== null
   ) {
     return ignored("invalid_payload");
   }
@@ -99,6 +110,7 @@ export function parseGitHubWebhookIngress(input: {
   }
   const prompt = promptAfterMention(body);
   if (prompt === undefined) return ignored("missing_mention");
+  if (promptByteLengthError(prompt) !== null) return ignored("invalid_payload");
 
   const thread = threadFor(input.event, payload, binding.defaultRef);
   if (!thread) return ignored("invalid_payload");
@@ -107,7 +119,8 @@ export function parseGitHubWebhookIngress(input: {
     kind: "accepted",
     session: {
       repositoryId: binding.repositoryId,
-      target: copyTarget(binding.target),
+      target: routing.value.target,
+      timeout: binding.timeout,
       prompt,
       ref: thread.ref,
       concurrencyId: `github-comment:${input.event}:${String(githubRepositoryId)}:${String(githubCommentId)}`,
@@ -120,7 +133,7 @@ export function parseGitHubWebhookIngress(input: {
         githubPullRequestNumber: thread.pullRequestNumber,
         githubAuthorLogin,
       },
-      ...(binding.fallbacks ? { fallbacks: binding.fallbacks.map(copyTarget) } : {}),
+      ...(binding.fallbacks !== undefined ? { fallbacks: routing.value.fallbacks } : {}),
     },
   };
 }
@@ -147,20 +160,7 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function isTarget(value: unknown): value is TargetRef {
-  const target = record(value);
-  if (!target) return false;
-  const hasProvider = target.providerId !== undefined;
-  const hasCommand = target.commandId !== undefined;
-  if (hasProvider === hasCommand) return false;
-  return hasProvider ? nonEmptyString(target.providerId) : nonEmptyString(target.commandId);
-}
-
-function validFallbacks(
-  value: readonly TargetRef[] | undefined,
-): value is readonly TargetRef[] | undefined {
-  return value === undefined || (Array.isArray(value) && value.every(isTarget));
-}
+// Keep this local guard because allowlists are configuration input rather than session routing.
 
 function validAllowedLogins(
   value: readonly string[] | undefined,
@@ -169,12 +169,6 @@ function validAllowedLogins(
     value === undefined ||
     (Array.isArray(value) && value.every((login) => typeof login === "string"))
   );
-}
-
-function copyTarget(target: TargetRef): TargetRef {
-  return "providerId" in target
-    ? { providerId: target.providerId }
-    : { commandId: target.commandId };
 }
 
 function isAuthorized(

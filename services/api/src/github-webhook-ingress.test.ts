@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_FALLBACKS, MAX_PROMPT_BYTES } from "@auto-harness/shared";
+
 import {
   parseGitHubWebhookIngress,
   type GitHubWebhookRepositoryBinding,
@@ -10,6 +12,7 @@ const binding: GitHubWebhookRepositoryBinding = {
   repositoryId: "auto-harness",
   target: { commandId: "codex" },
   defaultRef: "refs/heads/main",
+  timeout: 3600,
   allowedLogins: ["trusted-contributor"],
 };
 
@@ -52,6 +55,7 @@ describe("parseGitHubWebhookIngress", () => {
       session: {
         repositoryId: "auto-harness",
         target: { commandId: "codex" },
+        timeout: 3600,
         prompt: " fix it",
         ref: "refs/heads/main",
         concurrencyId: "github-comment:issue_comment:42:99",
@@ -119,6 +123,50 @@ describe("parseGitHubWebhookIngress", () => {
         },
       },
     });
+  });
+
+  it("rejects prompts over the shared UTF-8 byte limit", () => {
+    const asciiPrompt = `${"x".repeat(MAX_PROMPT_BYTES)} `;
+    expectIgnored(
+      "issue_comment",
+      issueComment({
+        comment: { ...issueComment().comment, body: `@auto-harness ${asciiPrompt}` },
+      }),
+      "invalid_payload",
+    );
+
+    const unicodePrompt = "é".repeat(Math.floor(MAX_PROMPT_BYTES / 2));
+    expectIgnored(
+      "issue_comment",
+      issueComment({
+        comment: { ...issueComment().comment, body: `@auto-harness ${unicodePrompt}` },
+      }),
+      "invalid_payload",
+    );
+  });
+
+  it("rejects bindings whose fallback routing cannot be used to create a session", () => {
+    const tooManyFallbacks = Array.from({ length: MAX_FALLBACKS + 1 }, (_, index) => ({
+      commandId: `fallback-${index}`,
+    }));
+    for (const candidate of [
+      { ...binding, fallbacks: [{ commandId: "codex" }] },
+      { ...binding, fallbacks: [{ commandId: "same" }, { commandId: "same" }] },
+      { ...binding, fallbacks: tooManyFallbacks },
+    ]) {
+      expectIgnored("issue_comment", issueComment(), "invalid_payload", [candidate]);
+    }
+  });
+
+  it("rejects invalid default refs and session timeouts in bindings", () => {
+    for (const candidate of [
+      { ...binding, defaultRef: "-main" },
+      { ...binding, defaultRef: "refs/heads/main\nattacker" },
+      { ...binding, timeout: 0 },
+      { ...binding, timeout: Number.POSITIVE_INFINITY },
+    ]) {
+      expectIgnored("issue_comment", issueComment(), "invalid_payload", [candidate]);
+    }
   });
 
   it("keeps issue and review comment concurrency namespaces distinct", () => {

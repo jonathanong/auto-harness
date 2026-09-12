@@ -258,6 +258,7 @@ export {
   type RepositoryAdmissionState,
 } from "./repository-admission.ts";
 export {
+  isValidSessionRef,
   isValidScheduledBranchRef,
   MAX_SCHEDULED_BRANCH_REF_BYTES,
 } from "./scheduled-branch-ref.ts";
