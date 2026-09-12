@@ -253,7 +253,7 @@ Orchestrates a single session after `session:assign`:
    - **Resume** (`resume: true`): skip every host/repository/worktree setup script; the assigned worktree still checks out the session `ref` (or default branch) before the native CLI resume command starts
 6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 7. Pipe output to Log Streamer
-8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status
+8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status. The first `checkout_fetch_failed` assignment (whose `infrastructureRetryCount` is `0`) defers its hook because the control plane retries it; the retry runs the hook if it fails and exhausts that budget.
 9. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).

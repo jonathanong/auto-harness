@@ -139,7 +139,10 @@ describe("scheduled assignment branch coverage", () => {
     current.connections.set("c2", second);
     current.hostConnection.set("h1", "c1");
     current.hostConnection.set("h2", "c2");
-    current.sessions.set("s", session({ ref: "main", metadata: { source: "test" } }));
+    current.sessions.set(
+      "s",
+      session({ ref: "main", metadata: { source: "test" }, infrastructureRetryCount: 1 }),
+    );
     const messages: unknown[] = [];
     current.onHostMessage = (_host, message) => messages.push(message);
     const assigned = await assignScheduledQueuedDurable(current);
@@ -159,6 +162,7 @@ describe("scheduled assignment branch coverage", () => {
       sessionType: "scheduled",
       worktreeId: null,
       resolvedArgv: ["echo", "run"],
+      infrastructureRetryCount: 1,
       ref: "main",
       metadata: { source: "test" },
     });

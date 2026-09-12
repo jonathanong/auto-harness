@@ -51,6 +51,7 @@ export async function requeueOmittedScheduled(
           connectionId: session.assignmentConnectionId,
           status: terminalHostLoss ? "failed" : "queued",
           queueShard: session.queueShard,
+          ...(session.attemptId ? { attemptId: session.attemptId } : {}),
           reason: terminalHostLoss
             ? HOST_LOSS_TERMINAL_REASON
             : retryableHostLoss
@@ -105,6 +106,7 @@ export async function reclaimScheduledReconnect(
         connectionId: session.assignmentConnectionId,
         status: cancelled ? "cancelled" : terminalHostLoss ? "failed" : "queued",
         queueShard: session.queueShard,
+        ...(session.attemptId ? { attemptId: session.attemptId } : {}),
         reason: cancelled
           ? (session.errorMessage ?? "cancelled by operator")
           : terminalHostLoss

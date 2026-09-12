@@ -33,6 +33,8 @@ export type SessionAssign = {
   resolvedArgv: string[];
   timeout: number;
   worktreeId: string | null;
+  /** Automatic infrastructure retries consumed before this assignment. */
+  infrastructureRetryCount?: number;
   ref?: string;
   setupScript?: string;
   resume?: boolean;
@@ -117,6 +119,8 @@ export type HostWireMessage =
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;
+      /** Automatic infrastructure retries consumed before this assignment. */
+      infrastructureRetryCount?: number;
       ref?: string;
       setupScript?: string;
       resume?: boolean;

@@ -27,6 +27,9 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
     resolvedArgv: message.resolvedArgv,
     timeout: message.timeout,
     worktreeId: message.worktreeId,
+    ...(message.infrastructureRetryCount !== undefined
+      ? { infrastructureRetryCount: message.infrastructureRetryCount }
+      : {}),
     ...(message.ref !== undefined ? { ref: message.ref } : {}),
     ...(message.setupScript !== undefined ? { setupScript: message.setupScript } : {}),
     ...(message.resume !== undefined ? { resume: message.resume } : {}),

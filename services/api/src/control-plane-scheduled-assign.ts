@@ -88,6 +88,7 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
     resolvedArgv: session.resolvedArgv!,
     timeout: session.timeout,
     worktreeId: null,
+    infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
     assignedAt: now,
     attemptId: session.attemptId!,
     ...(session.ref ? { ref: session.ref } : {}),

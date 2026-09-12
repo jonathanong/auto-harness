@@ -28,6 +28,7 @@ export type SessionRunResult = {
 type SessionOutcome = {
   status: SessionTerminalStatus;
   exitCode: number | null;
+  skipTerminalHook?: boolean;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
@@ -167,7 +168,7 @@ export async function finishClaimedSession(
     assign,
     claimed.worktree.id,
     target?.cwd ?? claimed.cwd,
-    target?.repository.terminalHookScript,
+    outcome.skipTerminalHook ? undefined : target?.repository.terminalHookScript,
     outcome,
     childEnvSource,
     target?.allowedRoots ?? [],

@@ -225,14 +225,18 @@ describe("control-plane host message coverage paths", () => {
         attemptId: promptAssignment.session.attemptId!,
         status: "failed",
         errorCode: "checkout_fetch_failed",
+        errorMessage: "checkout failed",
       }),
     ).toEqual({ ok: true });
-    expect(promptPlane.getSession(promptCreated.session.id)).toMatchObject({
+    const retriedPrompt = promptPlane.getSession(promptCreated.session.id);
+    expect(retriedPrompt).toMatchObject({
       status: "running",
       worktreeId: "prompt-worktree",
       infrastructureRetryCount: 1,
       attemptId: "prompt-attempt-2",
     });
+    expect(retriedPrompt).not.toHaveProperty("errorCode");
+    expect(retriedPrompt).not.toHaveProperty("errorMessage");
 
     const scheduledPlane = new ControlPlane({
       now: () => NOW,

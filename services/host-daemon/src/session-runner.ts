@@ -175,11 +175,11 @@ export class SessionRunner {
             exitCode: null,
             errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
             errorMessage: thrownMessage(err),
+            skipTerminalHook: isCheckoutFetchFailure(err) && assign.infrastructureRetryCount === 0,
           },
           this.deps.childEnvSource ?? process.env,
         );
       }
-
       if (signal.aborted) {
         return await finishCheckoutInterruption();
       }

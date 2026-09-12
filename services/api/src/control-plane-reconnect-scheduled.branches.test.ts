@@ -123,6 +123,28 @@ describe("scheduled reconnect branch coverage", () => {
     });
   });
 
+  it("fences an omitted scheduled release against a replacement attempt", async () => {
+    const omitted = state();
+    const staleSnapshot = session({ attemptId: "attempt-old" });
+    const options: Record<string, unknown>[] = [];
+    omitted.storage = {
+      listActiveSessionsByHost: async () => [staleSnapshot],
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        options.push(input);
+        // Model the durable condition: a missing attemptId would release the
+        // replacement assignment, while the stale snapshot's token must lose.
+        return input.attemptId === undefined || input.attemptId === "attempt-new";
+      },
+    } as never;
+    const requeued: string[] = [];
+
+    await requeueOmittedScheduled(omitted, "host", new Set(), requeued);
+
+    expect(options[0]).toMatchObject({ attemptId: "attempt-old" });
+    expect(requeued).toEqual([]);
+    expect(omitted.sessions.has("s")).toBe(false);
+  });
+
   it("restores confirmed reconnects in reverse order and skips unusable entries", async () => {
     const current = state();
     const first = session({ id: "first", assignmentConnectionId: "old-1" });

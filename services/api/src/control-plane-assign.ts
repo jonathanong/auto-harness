@@ -112,6 +112,8 @@ export function assignQueued(
       else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
       delete session.ackReceivedAt;
+      delete session.errorCode;
+      delete session.errorMessage;
       clearAbandonedUsageLimitRetryFields(session);
       state.pendingAcks.set(session.id, {
         sessionId: session.id,
@@ -129,6 +131,7 @@ export function assignQueued(
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
+        infrastructureRetryCount: session.infrastructureRetryCount ?? 0,
         assignedAt: nowIso,
         attemptId,
         ...(session.ref !== undefined ? { ref: session.ref } : {}),
@@ -311,6 +314,8 @@ export async function assignQueuedDurable(
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
       };
+      delete nextSession.errorCode;
+      delete nextSession.errorMessage;
       clearAbandonedUsageLimitRetryFields(nextSession);
       const nextWorktree = {
         ...candidate,
@@ -336,6 +341,7 @@ export async function assignQueuedDurable(
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
+        infrastructureRetryCount: nextSession.infrastructureRetryCount ?? 0,
         assignedAt: nowIso,
         attemptId,
         ...(session.ref !== undefined ? { ref: session.ref } : {}),
