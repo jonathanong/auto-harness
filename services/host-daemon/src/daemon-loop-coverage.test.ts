@@ -399,11 +399,13 @@ describe("DaemonLoop coverage guards", () => {
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: async () => {
+        settleDeferredTerminalHook: () => {
           throw prepareError;
         },
       } as never);
       internals.prepareForShutdown();
+      // Synchronous adapter failures still settle the shutdown idle fence.
+      await loop.waitForIdle();
       await flushMacrotask();
       expect(lines).toContain("deferred terminal hook failed for prepare: prepare hook failed");
 

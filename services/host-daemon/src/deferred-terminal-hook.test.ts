@@ -50,6 +50,72 @@ describe("retainClaimForDeferredTerminalHook", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("does not start a hook when its lease expires during checkout revalidation", async () => {
+    const run = vi.fn();
+    const deadlineAtMs = Date.now() + 1_000;
+    let finishRevalidation!: () => void;
+    const revalidation = new Promise<void>((resolve) => {
+      finishRevalidation = resolve;
+    });
+    const settle = createDeferredTerminalHookSettlement({
+      processRunner: { run },
+      streamer: { write: vi.fn() } as never,
+      assign: { sessionId: "session" } as never,
+      claimed: {
+        currentHookTarget: async () => {
+          await revalidation;
+          return { cwd: process.cwd(), repository: { terminalHookScript: "/hook.sh" } };
+        },
+      },
+      status: "failed",
+      errorCode: undefined,
+      childEnvSource: process.env,
+      environmentIsChild: true,
+    });
+
+    const pending = settle(true, deadlineAtMs);
+    vi.spyOn(Date, "now").mockReturnValue(deadlineAtMs);
+    try {
+      finishRevalidation();
+      await expect(pending).resolves.toBeUndefined();
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("does not start a hook if its lease expires after revalidation", async () => {
+    const run = vi.fn();
+    const deadlineAtMs = Date.now() + 1_000;
+    const now = vi.spyOn(Date, "now");
+    now
+      .mockReturnValueOnce(deadlineAtMs - 2)
+      .mockReturnValueOnce(deadlineAtMs - 1)
+      .mockReturnValueOnce(deadlineAtMs);
+    const settle = createDeferredTerminalHookSettlement({
+      processRunner: { run },
+      streamer: { write: vi.fn() } as never,
+      assign: { sessionId: "session" } as never,
+      claimed: {
+        currentHookTarget: async () => ({
+          cwd: process.cwd(),
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      status: "failed",
+      errorCode: undefined,
+      childEnvSource: process.env,
+      environmentIsChild: true,
+    });
+
+    try {
+      await expect(settle(true, deadlineAtMs)).resolves.toBeUndefined();
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("bounds hook execution and result collection by the recovery deadline", async () => {
     const run = vi.fn(async () => ({ exitCode: 1, timedOut: false, signal: null }));
     const settle = createDeferredTerminalHookSettlement({
