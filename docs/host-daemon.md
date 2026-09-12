@@ -549,12 +549,14 @@ GitHub pull-request heads use the special exact form `refs/pull/<positive-number
 not resolved through the ordinary `fetch --all` fallback because a repository's configured
 refspec commonly does not advertise them. They require a host-local, absolute
 `HARNESS_GITHUB_PULL_REF_CONFIG` file. It maps each canonical repository path to its immutable
-remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential-free `httpProxy`,
-or absolute `sslCAInfo`. Repository, global, and system Git configuration are never the source of
-that policy, so a session cannot replace it before or after a daemon restart. URL rewrite settings
-and shell credential helpers are not supported. The policy file and every ancestor must be root-owned,
-non-group/world-writable, and not a symlink; each remote URL is credential-free HTTPS without a
-query string or fragment.
+remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential-free,
+query/fragment-free `httpProxy`, or absolute `sslCAInfo`. Repository, global, and system Git
+configuration are never the source of that policy, so a session cannot replace it before or after a
+daemon restart. URL rewrite settings and shell credential helpers are not supported. The policy file
+and every ancestor must be root-owned, non-group/world-writable, and not a symlink; each remote URL
+is credential-free HTTPS without a query string or fragment. It also names separate immutable bare
+materializer Git directories for SHA-1 and SHA-256; each directory and descendant must be root-owned,
+non-writable, regular-file/directory-only, and symlink-free.
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
@@ -566,11 +568,13 @@ cleanup. The imported commit is rooted in a fresh worktree-private scratch ref. 
 reachable through detached checkout and `HEAD` verification, then is deleted with its own bounded
 cleanup signal; it is never a shared predictable ref or `FETCH_HEAD`.
 
-The worktree materialization itself runs from a separate fresh Git directory that has no
-session-writable local/worktree configuration or `info/attributes`. It receives only the claimed
-worktree's validated index path, worktree path, and object directory, and disables sparse checkout
-before applying the exact fetched commit. A target tree can name a filter in `.gitattributes`, but
-the fresh Git directory has no session-configured filter driver or `info/attributes` to define it.
+The worktree materialization itself runs from the root-owned bare Git directory selected by the
+policy's validated object format, never from a session-discoverable temporary repository. The daemon
+verifies that the selected directory reports that exact object format before materializing. It
+receives only the claimed worktree's validated index path, worktree path, and object directory, and
+disables sparse checkout before applying the exact fetched commit. A target tree can name a filter
+in `.gitattributes`, but that Git directory has no session-configured filter driver or
+`info/attributes` to define it.
 Thus a prior or concurrent session cannot choose filter drivers, alter file bytes through
 attributes, omit paths through sparse patterns, or launch an fsmonitor during pull-head
 materialization. Pull heads fail closed if the claimed linked worktree has an interrupted merge,

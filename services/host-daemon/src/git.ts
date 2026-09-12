@@ -218,6 +218,7 @@ export function createGitClient(
         if (isPullRequestRef) {
           const materialized = await materializeGitHubPullRequestRef(
             runner,
+            pullConfig!.materializerGitDirs[targetObjectFormat!],
             cwd,
             sha,
             resolve(claimedWorktree.commonDir, "objects"),

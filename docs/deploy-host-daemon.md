@@ -404,17 +404,33 @@ To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file
 `root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
 `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
 non-group/world-writable, and free of symlinks.
+Create one immutable bare materializer for each Git object format before enabling this policy. The
+directories, every descendant (including `config` and `info/`), and every ancestor must be
+root-owned, symlink-free, and non-writable; the materializers are read-only Git metadata, not
+session scratch space.
+
+```sh
+sudo install -d -o root -g root -m 0755 /etc/auto-harness/pull-ref-materializers
+sudo git init --bare /etc/auto-harness/pull-ref-materializers/sha1.git
+sudo git init --bare --object-format=sha256 /etc/auto-harness/pull-ref-materializers/sha256.git
+sudo chmod -R a-w /etc/auto-harness/pull-ref-materializers
+```
+
 Keys are canonical repository paths. Each `remoteUrl` must be credential-free HTTPS without a query
 string or fragment. The optional
 transport fields preserve only the explicit HTTPS settings needed by that host. `httpProxy` must
-also be credential-free so proxy secrets are never exposed in a Git command line; URL rewrites and
-shell helpers are deliberately unsupported.
+also be credential-free and have no query string or fragment so proxy secrets are never exposed in
+a Git command line; URL rewrites and shell helpers are deliberately unsupported.
 
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
 ```json
 {
+  "materializerGitDirs": {
+    "sha1": "/etc/auto-harness/pull-ref-materializers/sha1.git",
+    "sha256": "/etc/auto-harness/pull-ref-materializers/sha256.git"
+  },
   "repositories": {
     "/srv/repos/example": {
       "remoteUrl": "https://github.com/example/project.git",

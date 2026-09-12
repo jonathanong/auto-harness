@@ -51,7 +51,10 @@ async function git(cwd: string, args: string[]): Promise<string> {
   });
 }
 
-async function createTwoCommitWorktree(root: string): Promise<{
+async function createTwoCommitWorktree(
+  root: string,
+  objectFormat: "sha1" | "sha256" = "sha1",
+): Promise<{
   repo: string;
   targetSha: string;
   worktree: string;
@@ -59,7 +62,7 @@ async function createTwoCommitWorktree(root: string): Promise<{
   const repo = join(root, "repo");
   const worktree = join(root, "wt-1");
   mkdirSync(repo);
-  await git(repo, ["init"]);
+  await git(repo, ["init", `--object-format=${objectFormat}`]);
   await git(repo, ["config", "core.autocrlf", "false"]);
   await git(repo, ["config", "user.email", "t@example.com"]);
   await git(repo, ["config", "user.name", "t"]);
@@ -79,12 +82,13 @@ async function createTwoCommitWorktree(root: string): Promise<{
 async function createPinnedPullHead(
   root: string,
   files: Readonly<Record<string, string>>,
+  objectFormat: "sha1" | "sha256" = "sha1",
 ): Promise<{ remote: string; sha: string }> {
   const remote = join(root, "remote.git");
   const source = join(root, "source");
-  await git(root, ["init", "--bare", remote]);
+  await git(root, ["init", "--bare", `--object-format=${objectFormat}`, remote]);
   mkdirSync(source);
-  await git(source, ["init"]);
+  await git(source, ["init", `--object-format=${objectFormat}`]);
   await git(source, ["config", "user.email", "t@example.com"]);
   await git(source, ["config", "user.name", "t"]);
   for (const [path, contents] of Object.entries(files)) {
@@ -96,6 +100,23 @@ async function createPinnedPullHead(
   const sha = (await git(source, ["rev-parse", "HEAD"])).trim();
   await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
   return { remote, sha };
+}
+
+async function createTrustedMaterializer(
+  root: string,
+  objectFormat: "sha1" | "sha256" = "sha1",
+): Promise<string> {
+  const materializer = join(root, `pull-ref-materializer-${objectFormat}.git`);
+  await git(root, ["init", "--bare", `--object-format=${objectFormat}`, materializer]);
+  return materializer;
+}
+
+function pullRefPolicy(remoteUrl: string, materializer: string, sha256Materializer = materializer) {
+  return {
+    materializerGitDirs: { sha1: materializer, sha256: sha256Materializer },
+    remoteUrl,
+    transport: {},
+  };
 }
 
 async function indexLockPath(worktree: string): Promise<string> {
@@ -182,9 +203,10 @@ describe("createGitClient real git", () => {
     await git(attacker, ["push", attackerRemote, "HEAD:refs/pull/42/head"]);
 
     await git(repo, ["remote", "add", "origin", remote]);
+    const materializer = await createTrustedMaterializer(root);
     const client = createGitClient(
       new SpawnProcessRunner(),
-      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
     // Models a prior untrusted session mutating the shared local Git config after policy load.
     await git(repo, ["config", `url.${attackerRemote}.insteadOf`, remote]);
@@ -206,6 +228,7 @@ describe("createGitClient real git", () => {
     roots.push(root);
     const { repo, worktree } = await createTwoCommitWorktree(root);
     const { remote, sha } = await createPinnedPullHead(root, { "trusted.txt": "trusted\n" });
+    const materializer = await createTrustedMaterializer(root);
 
     const fsmonitorLog = join(root, "fsmonitor.log");
     const fsmonitor = join(root, "fsmonitor.sh");
@@ -219,7 +242,7 @@ describe("createGitClient real git", () => {
 
     const client = createGitClient(
       new SpawnProcessRunner(),
-      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
 
     await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
@@ -227,6 +250,28 @@ describe("createGitClient real git", () => {
     await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
     expect(readFileSync(join(worktree, "trusted.txt"), "utf8")).toBe("trusted\n");
     expect(readFileSync(fsmonitorLog, "utf8")).toBe("");
+  });
+
+  it("uses the separate SHA-256 policy materializer for a SHA-256 pull head", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-sha256-"));
+    roots.push(root);
+    const { repo, worktree } = await createTwoCommitWorktree(root, "sha256");
+    const { remote, sha } = await createPinnedPullHead(
+      root,
+      { "trusted.txt": "trusted SHA-256 pull head\n" },
+      "sha256",
+    );
+    const sha1Materializer = await createTrustedMaterializer(root);
+    const sha256Materializer = await createTrustedMaterializer(root, "sha256");
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, sha1Materializer, sha256Materializer)]]),
+    );
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(sha);
+    expect(readFileSync(join(worktree, "trusted.txt"), "utf8")).toBe("trusted SHA-256 pull head\n");
   });
 
   it("materializes every trusted pull-ref path despite prior sparse settings", async () => {
@@ -237,13 +282,14 @@ describe("createGitClient real git", () => {
       "included.txt": "included\n",
       "omitted.txt": "omitted\n",
     });
+    const materializer = await createTrustedMaterializer(root);
     const commonDir = (await git(repo, ["rev-parse", "--git-common-dir"])).trim();
     await git(repo, ["config", "core.sparseCheckout", "true"]);
     writeFileSync(join(resolvePath(repo, commonDir), "info", "sparse-checkout"), "/included.txt\n");
 
     const client = createGitClient(
       new SpawnProcessRunner(),
-      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
     await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
 
@@ -261,6 +307,7 @@ describe("createGitClient real git", () => {
     roots.push(root);
     const { repo, worktree } = await createTwoCommitWorktree(root);
     const { remote, sha } = await createPinnedPullHead(root, { "race.txt": "trusted\n" });
+    const materializer = await createTrustedMaterializer(root);
     const filterLog = join(root, "filter.log");
     const filter = join(root, "filter.sh");
     writeFileSync(filter, `#!/bin/sh\nprintf 'invoked\\n' >> '${filterLog}'\ncat\n`);
@@ -287,7 +334,7 @@ describe("createGitClient real git", () => {
     };
     const client = createGitClient(
       runner,
-      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
 
     await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
@@ -320,9 +367,10 @@ describe("createGitClient real git", () => {
     await git(source, ["commit", "-m", "pull head with submodule"]);
     await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
     const before = await git(worktree, ["rev-parse", "HEAD"]);
+    const materializer = await createTrustedMaterializer(root);
     const client = createGitClient(
       new SpawnProcessRunner(),
-      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+      new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
 
     await expect(
@@ -366,10 +414,11 @@ describe("createGitClient real git", () => {
     await expect(git(shallowWorktree, ["rev-parse", "--is-shallow-repository"])).resolves.toBe(
       "true\n",
     );
+    const materializer = await createTrustedMaterializer(root);
 
     const client = createGitClient(
       new SpawnProcessRunner(),
-      new Map([[resolvePath(shallowRepo), { remoteUrl: `file://${remote}`, transport: {} }]]),
+      new Map([[resolvePath(shallowRepo), pullRefPolicy(`file://${remote}`, materializer)]]),
     );
     await client.checkoutRef({
       cwd: shallowWorktree,

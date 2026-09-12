@@ -5,13 +5,14 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
-import {
-  fetchGitHubPullRequestRef,
-  materializeGitHubPullRequestRef,
-} from "./git-github-pull-ref.ts";
+import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const pullSha = "0123456789abcdef0123456789abcdef01234567";
+const materializerGitDirs = {
+  sha1: "/etc/auto-harness/pull-ref-materializers/sha1.git",
+  sha256: "/etc/auto-harness/pull-ref-materializers/sha256.git",
+};
 
 function resolvesCommit(ref: string, sha = "abc") {
   return {
@@ -66,7 +67,7 @@ function hardReset(sha: string) {
 }
 
 function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") {
-  return new Map([[resolve(checkoutRepo), { remoteUrl, transport: {} }]]);
+  return new Map([[resolve(checkoutRepo), { materializerGitDirs, remoteUrl, transport: {} }]]);
 }
 
 function pullRefCheckoutSteps(
@@ -85,8 +86,14 @@ function pullRefCheckoutSteps(
     },
     ...fetchesGitHubPullRef(ref, remoteUrl, undefined, objectFormat),
     {
-      match: ["init", "--bare", `--object-format=${objectFormat}`, "*"],
+      match: [
+        "--git-dir",
+        materializerGitDirs[objectFormat as "sha1" | "sha256"],
+        "rev-parse",
+        "--show-object-format=storage",
+      ],
       exitCode: 0,
+      stdout: `${objectFormat}\n`,
     },
     { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
     { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 0 },
@@ -378,7 +385,11 @@ describe("createGitClient checkout and revParse", () => {
       },
       { match: ["bundle", "unbundle", "*"], exitCode: 0 },
       { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
-      { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+      {
+        match: ["--git-dir", materializerGitDirs.sha1, "rev-parse", "--show-object-format=storage"],
+        exitCode: 0,
+        stdout: "sha1\n",
+      },
       { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
       { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 0 },
       checksPullRefSubmodules(),
@@ -399,6 +410,7 @@ describe("createGitClient checkout and revParse", () => {
         [
           resolve(checkoutRepo),
           {
+            materializerGitDirs,
             remoteUrl,
             transport: {
               credentialHelper: "manager-core",
@@ -430,7 +442,7 @@ describe("createGitClient checkout and revParse", () => {
       GIT_CONFIG_VALUE_3: "false",
       GIT_CONFIG_VALUE_4: "false",
       GIT_CONFIG_VALUE_5: "false",
-      GIT_DIR: expect.stringMatching(/auto-harness-pull-checkout-/),
+      GIT_DIR: materializerGitDirs.sha1,
       GIT_INDEX_FILE: expect.stringMatching(/repo\/\.git\/worktrees\/one\/index$/),
       GIT_NO_REPLACE_OBJECTS: "1",
     });
@@ -492,19 +504,6 @@ describe("createGitClient checkout and revParse", () => {
     ).rejects.toThrow(`Failed to fetch GitHub pull-request ref ${ref}`);
   });
 
-  it("fails closed when isolated pull-ref materialization cannot initialize", async () => {
-    await expect(
-      materializeGitHubPullRequestRef(
-        scripted([{ match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 1 }]),
-        checkoutCwd,
-        pullSha,
-        join(checkoutRepo, ".git", "objects"),
-        join(checkoutGitDir, "index"),
-        "sha1",
-      ),
-    ).resolves.toBe(false);
-  });
-
   it("fails closed when isolated materialization cannot detach the real worktree HEAD", async () => {
     const ref = "refs/pull/137/head";
     const git = createGitClient(
@@ -516,7 +515,16 @@ describe("createGitClient checkout and revParse", () => {
           stdout: "sha1\n",
         },
         ...fetchesGitHubPullRef(ref),
-        { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+        {
+          match: [
+            "--git-dir",
+            materializerGitDirs.sha1,
+            "rev-parse",
+            "--show-object-format=storage",
+          ],
+          exitCode: 0,
+          stdout: "sha1\n",
+        },
         { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
         { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 1 },
         deletesFetchedPullRef(),
@@ -564,7 +572,16 @@ describe("createGitClient checkout and revParse", () => {
         ...lockProbe(),
         { match: ["rev-parse", "--show-object-format=storage"], exitCode: 0, stdout: "sha1\n" },
         ...fetchesGitHubPullRef(ref),
-        { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+        {
+          match: [
+            "--git-dir",
+            materializerGitDirs.sha1,
+            "rev-parse",
+            "--show-object-format=storage",
+          ],
+          exitCode: 0,
+          stdout: "sha1\n",
+        },
         { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),

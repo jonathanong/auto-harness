@@ -1,5 +1,6 @@
-import { lstatSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+/* eslint-disable max-lines -- policy parsing and immutable materializer validation are one security boundary. */
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 export const GITHUB_PULL_REF_CONFIG_ENV = "HARNESS_GITHUB_PULL_REF_CONFIG";
 
@@ -10,6 +11,7 @@ type GitHubPullRefTransport = Readonly<{
 }>;
 
 export type GitHubPullRefConfig = Readonly<{
+  materializerGitDirs: Readonly<Record<"sha1" | "sha256", string>>;
   remoteUrl: string;
   transport: GitHubPullRefTransport;
 }>;
@@ -19,10 +21,13 @@ export type GitHubPullRefConfigs = ReadonlyMap<string, GitHubPullRefConfig>;
 type PolicyPathStatus = Readonly<{
   uid: number;
   mode: number;
+  isDirectory(): boolean;
+  isFile(): boolean;
   isSymbolicLink(): boolean;
 }>;
 
 type InspectPolicyPath = (path: string) => PolicyPathStatus;
+type ReadPolicyDirectory = (path: string) => string[];
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -109,7 +114,9 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
     if (
       (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
       parsed.username.length > 0 ||
-      parsed.password.length > 0
+      parsed.password.length > 0 ||
+      parsed.search.length > 0 ||
+      parsed.hash.length > 0
     ) {
       throw new Error(`${context}.httpProxy must be an http(s) URL`);
     }
@@ -125,12 +132,72 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
   };
 }
 
+function materializerGitDirs(
+  value: unknown,
+  inspect: InspectPolicyPath,
+  readDirectory: ReadPolicyDirectory,
+): Readonly<Record<"sha1" | "sha256", string>> {
+  const dirs = record(value, "GitHub pull-ref config.materializerGitDirs");
+  if (Object.keys(dirs).some((key) => key !== "sha1" && key !== "sha256")) {
+    throw new Error("GitHub pull-ref config.materializerGitDirs has an unsupported key");
+  }
+  const result = {} as Record<"sha1" | "sha256", string>;
+  for (const objectFormat of ["sha1", "sha256"] as const) {
+    const path = nonEmptyString(
+      dirs[objectFormat],
+      `GitHub pull-ref config.materializerGitDirs.${objectFormat}`,
+    );
+    if (!isAbsolute(path)) {
+      throw new Error(
+        `GitHub pull-ref config.materializerGitDirs.${objectFormat} must be absolute`,
+      );
+    }
+    assertRootOwnedPath(path, inspect);
+    if (!inspect(path).isDirectory()) {
+      throw new Error(
+        `GitHub pull-ref config.materializerGitDirs.${objectFormat} must be a directory`,
+      );
+    }
+    const pending = [path];
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      const status = inspect(current);
+      if (status.isSymbolicLink() || status.uid !== 0 || (status.mode & 0o222) !== 0) {
+        throw new Error(
+          `GitHub pull-ref config.materializerGitDirs.${objectFormat} must be root-owned and immutable`,
+        );
+      }
+      if (status.isFile()) continue;
+      if (!status.isDirectory()) {
+        throw new Error(
+          `GitHub pull-ref config.materializerGitDirs.${objectFormat} must contain only regular files and directories`,
+        );
+      }
+      pending.push(...readDirectory(current).map((entry) => join(current, entry)));
+    }
+    const config = inspect(join(path, "config"));
+    if (
+      !config.isFile() ||
+      config.isSymbolicLink() ||
+      config.uid !== 0 ||
+      (config.mode & 0o222) !== 0
+    ) {
+      throw new Error(
+        `GitHub pull-ref config.materializerGitDirs.${objectFormat}/config must be a root-owned immutable regular file`,
+      );
+    }
+    result[objectFormat] = path;
+  }
+  return result;
+}
+
 /** Load immutable pull-ref routing and transport policy from a host-local file. */
 export function loadGitHubPullRefConfigs(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
   inspect: InspectPolicyPath = lstatSync,
   platformName: NodeJS.Platform = process.platform,
+  readDirectory: ReadPolicyDirectory = readdirSync,
 ): GitHubPullRefConfigs {
   const path = env[GITHUB_PULL_REF_CONFIG_ENV]?.trim();
   if (!path) return new Map();
@@ -142,10 +209,11 @@ export function loadGitHubPullRefConfigs(
   if (!isAbsolute(path)) throw new Error(`${GITHUB_PULL_REF_CONFIG_ENV} must be absolute`);
   assertRootOwnedPath(path, inspect);
   const root = record(JSON.parse(readFile(path, "utf8")) as unknown, "GitHub pull-ref config");
-  if (Object.keys(root).some((key) => key !== "repositories")) {
+  if (Object.keys(root).some((key) => key !== "repositories" && key !== "materializerGitDirs")) {
     throw new Error("GitHub pull-ref config has an unsupported key");
   }
   const repositories = record(root.repositories, "GitHub pull-ref config.repositories");
+  const dirs = materializerGitDirs(root.materializerGitDirs, inspect, readDirectory);
   const configs = new Map<string, GitHubPullRefConfig>();
   for (const [repositoryPath, raw] of Object.entries(repositories)) {
     if (!isAbsolute(repositoryPath)) {
@@ -169,6 +237,7 @@ export function loadGitHubPullRefConfigs(
       throw new Error("GitHub pull-ref config repository paths must not normalize to the same key");
     }
     configs.set(canonicalRepositoryPath, {
+      materializerGitDirs: dirs,
       remoteUrl,
       transport: parseTransport(
         config.transport,

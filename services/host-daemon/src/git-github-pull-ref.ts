@@ -83,18 +83,18 @@ function scratchRefEnvironment(): NodeJS.ProcessEnv {
 }
 
 function isolatedMaterializationEnvironment(
-  temporaryRepository: string,
+  trustedGitDirectory: string,
   cwd: string,
   objectDirectory: string,
   indexPath: string,
 ): NodeJS.ProcessEnv {
   return {
     ...isolatedFetchEnvironment(objectDirectory),
-    // The temporary Git directory has no shared local/worktree configuration or info/attributes.
-    // A target-tree attribute can name a filter, but its driver has no definition in this fresh
-    // repository. The exact object and real index are explicit operands, not discovered through
-    // the session-controlled checkout.
-    GIT_DIR: temporaryRepository,
+    // The policy loader accepts only an immutable administrator-owned bare repository here. A
+    // target-tree attribute can name a filter, but its driver has no session-configured definition.
+    // The exact object and real index are explicit operands, not discovered through the
+    // session-controlled checkout.
+    GIT_DIR: trustedGitDirectory,
     GIT_WORK_TREE: cwd,
     GIT_INDEX_FILE: indexPath,
     GIT_CONFIG_COUNT: "6",
@@ -105,7 +105,7 @@ function isolatedMaterializationEnvironment(
   };
 }
 
-function transportArguments(config: GitHubPullRefConfig): string[] {
+function transportArguments(config: GitHubPullRefFetchConfig): string[] {
   const { transport } = config;
   return [
     ...(transport.credentialHelper === undefined
@@ -116,9 +116,11 @@ function transportArguments(config: GitHubPullRefConfig): string[] {
   ];
 }
 
+type GitHubPullRefFetchConfig = Pick<GitHubPullRefConfig, "remoteUrl" | "transport">;
+
 function normalizedConfig(
   value: GitHubPullRefConfig | string | undefined,
-): GitHubPullRefConfig | undefined {
+): GitHubPullRefFetchConfig | undefined {
   if (typeof value === "string") return { remoteUrl: value, transport: {} };
   return value;
 }
@@ -338,12 +340,14 @@ export async function fetchGitHubPullRequestRef(
 }
 
 /**
- * Materialize a fetched pull head using a fresh Git directory and the claimed
- * worktree's real index. This deliberately never runs checkout/reset porcelain
- * against the shared repository configuration, which a prior session can edit.
+ * Materialize a fetched pull head using a root-owned policy-provisioned bare Git
+ * directory and the claimed worktree's real index. This deliberately never runs
+ * checkout/reset porcelain against the shared repository configuration, which a
+ * prior session can edit.
  */
 export async function materializeGitHubPullRequestRef(
   runner: ProcessRunner,
+  trustedGitDirectory: string,
   cwd: string,
   sha: string,
   objectDirectory: string,
@@ -351,28 +355,29 @@ export async function materializeGitHubPullRequestRef(
   objectFormat: GitObjectFormat,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "auto-harness-pull-checkout-"));
-  const temporaryRepository = join(temporaryDirectory, "repository.git");
-  try {
-    const initialized = await runGit(
-      runner,
-      parse(temporaryDirectory).root,
-      ["init", "--bare", `--object-format=${objectFormat}`, temporaryRepository],
-      signal,
-      isolatedFetchEnvironment(objectDirectory),
-    );
-    if (initialized.exitCode !== 0) return false;
-    const materialized = await runGit(
-      runner,
-      cwd,
-      ["read-tree", "--reset", "-u", "--no-sparse-checkout", sha],
-      signal,
-      isolatedMaterializationEnvironment(temporaryRepository, cwd, objectDirectory, indexPath),
-    );
-    return materialized.exitCode === 0;
-  } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
+  // `read-tree` needs only an object database, worktree, and index. The policy-provisioned bare
+  // repository is root-owned and immutable to sessions, unlike a same-UID temporary repository.
+  const trustedFormat = await runGit(
+    runner,
+    parse(trustedGitDirectory).root,
+    ["--git-dir", trustedGitDirectory, "rev-parse", "--show-object-format=storage"],
+    signal,
+    isolatedFetchEnvironment(undefined),
+  );
+  if (
+    trustedFormat.exitCode !== 0 ||
+    gitObjectFormat(trustedFormat.stdout.trim()) !== objectFormat
+  ) {
+    return false;
   }
+  const materialized = await runGit(
+    runner,
+    cwd,
+    ["read-tree", "--reset", "-u", "--no-sparse-checkout", sha],
+    signal,
+    isolatedMaterializationEnvironment(trustedGitDirectory, cwd, objectDirectory, indexPath),
+  );
+  return materialized.exitCode === 0;
 }
 
 export async function deleteGitHubPullRequestRef(

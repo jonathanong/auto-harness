@@ -1,20 +1,53 @@
+/* eslint-disable max-lines -- parser policy cases share one immutable filesystem fixture. */
 import { describe, expect, it } from "vitest";
+import { join } from "node:path";
 
 import { GITHUB_PULL_REF_CONFIG_ENV, loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 const configPath = "/etc/auto-harness/pull-refs.json";
-const rootOwnedFile = { uid: 0, mode: 0o100644, isSymbolicLink: () => false };
+const rootOwnedFile = {
+  uid: 0,
+  mode: 0o100444,
+  isDirectory: () => false,
+  isFile: () => true,
+  isSymbolicLink: () => false,
+};
+const rootOwnedDirectory = {
+  uid: 0,
+  mode: 0o40555,
+  isDirectory: () => true,
+  isFile: () => false,
+  isSymbolicLink: () => false,
+};
+const materializerGitDirs = {
+  sha1: "/etc/auto-harness/pull-ref-materializers/sha1.git",
+  sha256: "/etc/auto-harness/pull-ref-materializers/sha256.git",
+};
+
+function inspectPolicyPath(path: string) {
+  if (path === configPath || path.endsWith("/config")) return rootOwnedFile;
+  return rootOwnedDirectory;
+}
+
+function readPolicyDirectory(path: string): string[] {
+  return path === materializerGitDirs.sha1 || path === materializerGitDirs.sha256
+    ? ["config", "info"]
+    : [];
+}
 
 function load(value: unknown) {
   return loadGitHubPullRefConfigs(
     { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
     () => JSON.stringify(value),
-    () => rootOwnedFile,
+    inspectPolicyPath,
+    "linux",
+    readPolicyDirectory,
   );
 }
 
 function repositoryConfig(overrides: Record<string, unknown> = {}) {
   return {
+    materializerGitDirs,
     repositories: {
       "/srv/repository": {
         remoteUrl: "https://github.example/repository.git",
@@ -36,7 +69,7 @@ describe("GitHub pull-ref host policy", () => {
       loadGitHubPullRefConfigs(
         { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
         () => JSON.stringify(repositoryConfig()),
-        () => rootOwnedFile,
+        inspectPolicyPath,
         "win32",
       ),
     ).toThrow("unsupported on Windows");
@@ -47,6 +80,7 @@ describe("GitHub pull-ref host policy", () => {
       { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
       () =>
         JSON.stringify({
+          materializerGitDirs,
           repositories: {
             "/srv/repository": {
               remoteUrl: "https://github.example/repository.git",
@@ -58,9 +92,12 @@ describe("GitHub pull-ref host policy", () => {
             },
           },
         }),
-      () => rootOwnedFile,
+      inspectPolicyPath,
+      "linux",
+      readPolicyDirectory,
     );
     expect(configs.get("/srv/repository")).toEqual({
+      materializerGitDirs,
       remoteUrl: "https://github.example/repository.git",
       transport: {
         credentialHelper: "manager-core",
@@ -72,6 +109,7 @@ describe("GitHub pull-ref host policy", () => {
 
   it("normalizes repository paths and permits an omitted transport block", () => {
     const configs = load({
+      materializerGitDirs,
       repositories: {
         "/srv/repository/../repository": {
           remoteUrl: "https://github.example/repository.git",
@@ -80,6 +118,7 @@ describe("GitHub pull-ref host policy", () => {
     });
 
     expect(configs.get("/srv/repository")).toEqual({
+      materializerGitDirs,
       remoteUrl: "https://github.example/repository.git",
       transport: {},
     });
@@ -88,6 +127,7 @@ describe("GitHub pull-ref host policy", () => {
   it("rejects repository paths that normalize to the same policy key", () => {
     expect(() =>
       load({
+        materializerGitDirs,
         repositories: {
           "/srv/repository": { remoteUrl: "https://github.example/first.git" },
           "/srv/./repository": { remoteUrl: "https://github.example/second.git" },
@@ -118,12 +158,13 @@ describe("GitHub pull-ref host policy", () => {
       [{ repositories: [] }, "GitHub pull-ref config.repositories must be an object"],
       [
         {
+          materializerGitDirs,
           repositories: { "relative/repository": { remoteUrl: "https://github.example/repo.git" } },
         },
         "GitHub pull-ref config repository path must be absolute",
       ],
       [
-        { repositories: { "/srv/repository": null } },
+        { materializerGitDirs, repositories: { "/srv/repository": null } },
         "GitHub pull-ref config.repositories./srv/repository must be an object",
       ],
       [
@@ -142,6 +183,99 @@ describe("GitHub pull-ref host policy", () => {
     }
   });
 
+  it("requires immutable bare materializers for both supported object formats", () => {
+    for (const [dirs, message] of [
+      [undefined, "materializerGitDirs must be an object"],
+      [{ sha1: materializerGitDirs.sha1 }, "materializerGitDirs.sha256 must be a non-empty string"],
+      [
+        { ...materializerGitDirs, sha256: "relative.git" },
+        "materializerGitDirs.sha256 must be absolute",
+      ],
+      [{ ...materializerGitDirs, md5: "/etc/auto-harness/md5.git" }, "unsupported key"],
+    ] as const) {
+      expect(() => load({ ...repositoryConfig(), materializerGitDirs: dirs })).toThrow(message);
+    }
+  });
+
+  it("rejects symlinked, writable, non-directory, and writable-descendant materializers", () => {
+    const cases: ReadonlyArray<
+      readonly [
+        string,
+        (path: string) => typeof rootOwnedFile | typeof rootOwnedDirectory,
+        (path: string) => string[],
+        string,
+      ]
+    > = [
+      [
+        "symlinked",
+        (path) =>
+          path === materializerGitDirs.sha1
+            ? { ...rootOwnedDirectory, isSymbolicLink: () => true }
+            : inspectPolicyPath(path),
+        readPolicyDirectory,
+        "must not traverse symlinks",
+      ],
+      [
+        "writable",
+        (path) =>
+          path === materializerGitDirs.sha1
+            ? { ...rootOwnedDirectory, mode: 0o40755 }
+            : inspectPolicyPath(path),
+        readPolicyDirectory,
+        "materializerGitDirs.sha1",
+      ],
+      [
+        "not a directory",
+        (path) => (path === materializerGitDirs.sha1 ? rootOwnedFile : inspectPolicyPath(path)),
+        readPolicyDirectory,
+        "materializerGitDirs.sha1",
+      ],
+      [
+        "non-regular config",
+        (path) =>
+          path === join(materializerGitDirs.sha1, "config")
+            ? rootOwnedDirectory
+            : inspectPolicyPath(path),
+        readPolicyDirectory,
+        "materializerGitDirs.sha1/config",
+      ],
+      [
+        "non-regular descendant",
+        (path) =>
+          path === join(materializerGitDirs.sha1, "unsupported")
+            ? { ...rootOwnedFile, isFile: () => false }
+            : inspectPolicyPath(path),
+        (path) => (path === materializerGitDirs.sha1 ? ["config", "unsupported"] : []),
+        "must contain only regular files and directories",
+      ],
+      [
+        "writable attributes descendant",
+        (path) =>
+          path === join(materializerGitDirs.sha1, "info", "attributes")
+            ? { ...rootOwnedFile, mode: 0o100644 }
+            : inspectPolicyPath(path),
+        (path) =>
+          path === materializerGitDirs.sha1
+            ? ["config", "info"]
+            : path === join(materializerGitDirs.sha1, "info")
+              ? ["attributes"]
+              : [],
+        "materializerGitDirs.sha1",
+      ],
+    ];
+    for (const [_description, inspect, readDirectory, message] of cases) {
+      expect(() =>
+        loadGitHubPullRefConfigs(
+          { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+          () => JSON.stringify(repositoryConfig()),
+          inspect,
+          "linux",
+          readDirectory,
+        ),
+      ).toThrow(message);
+    }
+  });
+
   it("rejects relative files, unsafe helpers, malformed proxies, and relative CA paths", () => {
     expect(() =>
       loadGitHubPullRefConfigs({ [GITHUB_PULL_REF_CONFIG_ENV]: "pull-refs.json" }),
@@ -153,6 +287,8 @@ describe("GitHub pull-ref host policy", () => {
       { httpProxy: "not-a-url" },
       { httpProxy: "ftp://proxy.example" },
       { httpProxy: "https://username:password@proxy.example" },
+      { httpProxy: "https://proxy.example?token=secret" },
+      { httpProxy: "https://proxy.example#credentials" },
       { httpProxy: "" },
       { httpProxy: 1 },
       { sslCAInfo: "private-ca.pem" },
@@ -165,6 +301,7 @@ describe("GitHub pull-ref host policy", () => {
           { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
           () =>
             JSON.stringify({
+              materializerGitDirs,
               repositories: {
                 "/srv/repository": {
                   remoteUrl: "https://github.example/repository.git",
@@ -172,7 +309,9 @@ describe("GitHub pull-ref host policy", () => {
                 },
               },
             }),
-          () => rootOwnedFile,
+          inspectPolicyPath,
+          "linux",
+          readPolicyDirectory,
         ),
       ).toThrow();
     }

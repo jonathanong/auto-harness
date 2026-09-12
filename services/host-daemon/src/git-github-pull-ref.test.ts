@@ -23,6 +23,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 import {
   deleteGitHubPullRequestRef,
   fetchGitHubPullRequestRef,
+  materializeGitHubPullRequestRef,
   nullGlobalGitConfigPath,
 } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
@@ -190,6 +191,74 @@ describe("isolated GitHub pull-ref fetch", () => {
     expect(fetchEnvironment?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(
       '"/srv/repos/team:project/.git/objects"',
     );
+  });
+
+  it("materializes through the policy-owned Git directory, not a session-writable temporary repository", async () => {
+    let materializationEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        const args = options.argv.slice(1);
+        if (args[0] === "--git-dir") {
+          expect(args).toEqual([
+            "--git-dir",
+            "/etc/auto-harness/pull-ref-materializers/sha1.git",
+            "rev-parse",
+            "--show-object-format=storage",
+          ]);
+          options.onChunk({ stream: "stdout", data: "sha1\n" });
+        } else {
+          expect(args).toEqual(["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha]);
+          materializationEnvironment = options.env;
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    await expect(
+      materializeGitHubPullRequestRef(
+        runner,
+        "/etc/auto-harness/pull-ref-materializers/sha1.git",
+        cwd,
+        pullSha,
+        "/srv/repository/.git/objects",
+        "/srv/repository/.git/worktrees/one/index",
+        "sha1",
+      ),
+    ).resolves.toBe(true);
+
+    expect(materializationEnvironment).toMatchObject({
+      GIT_DIR: "/etc/auto-harness/pull-ref-materializers/sha1.git",
+      GIT_WORK_TREE: cwd,
+      GIT_INDEX_FILE: "/srv/repository/.git/worktrees/one/index",
+    });
+    expect(materializationEnvironment?.GIT_DIR).not.toContain("auto-harness-pull-checkout-");
+  });
+
+  it("fails closed when the selected immutable materializer uses the wrong object format", async () => {
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        expect(options.argv.slice(1)).toEqual([
+          "--git-dir",
+          "/etc/auto-harness/pull-ref-materializers/sha1.git",
+          "rev-parse",
+          "--show-object-format=storage",
+        ]);
+        options.onChunk({ stream: "stdout", data: "sha256\n" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    await expect(
+      materializeGitHubPullRequestRef(
+        runner,
+        "/etc/auto-harness/pull-ref-materializers/sha1.git",
+        cwd,
+        pullSha,
+        "/srv/repository/.git/objects",
+        "/srv/repository/.git/worktrees/one/index",
+        "sha1",
+      ),
+    ).resolves.toBe(false);
   });
 
   it("disables repository hooks while deleting the scratch ref", async () => {
