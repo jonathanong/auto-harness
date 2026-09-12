@@ -1,6 +1,7 @@
 {
   "name": "@auto-harness/host-daemon",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "bin": {
     "auto-harness-host-daemon": "./bin/auto-harness-host-daemon.mjs"
