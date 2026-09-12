@@ -51,6 +51,11 @@ running as the same user can unset that variable or read other same-user credent
 remains the accepted risk documented below; selected-repository App installation limits its blast
 radius. Git continues to use the existing SSH transport.
 
+If a terminal hook is handed to a replacement daemon or deferred until after the original
+assignment ends, recovery mints a fresh repository-scoped token, uses a new isolated `gh` config
+directory, and bounds hook execution by both the handoff deadline and token expiry. A failed
+credential mint does not fall back to the daemon's ambient GitHub credentials.
+
 The App private key remains a host secret, but the daemon and its session CLIs run as the same OS
 user. A compromised session can therefore read it; mode `0600` prevents other local users, not the
 session itself. Mitigate this accepted risk by installing the App only on the repositories served by

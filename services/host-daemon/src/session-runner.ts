@@ -231,6 +231,10 @@ export class SessionRunner {
                 options.deferCheckoutFetchFailureHook === true,
             },
             sessionChildEnv,
+            undefined,
+            false,
+            this.deps.githubApp,
+            this.deps.nowMs,
           );
           if (!result.settleDeferredTerminalHook) return result;
           retainedClaim = true;

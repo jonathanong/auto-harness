@@ -1,5 +1,8 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
   DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
@@ -44,7 +47,16 @@ import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
-import { loadGitHubAppConfig, type GitHubAppConfig } from "./github-app.ts";
+import {
+  GITHUB_APP_TOKEN_MARGIN_MS,
+  loadGitHubAppConfig,
+  mintInstallationToken,
+  withoutAmbientGitHubTokens,
+  withInstallationToken,
+  withIsolatedGitHubConfigDir,
+  type GitHubAppConfig,
+} from "./github-app.ts";
+import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -1227,30 +1239,89 @@ export class DaemonLoop {
     const current = await claim.currentHookTarget();
     const scriptPath = current?.repository.terminalHookScript;
     if (!current) return undefined;
-    if (scriptPath) {
-      const remainingMs = expiresAtMs - Date.now();
-      if (remainingMs <= 0) return undefined;
-      await runTerminalHook(this.processRunner, {
-        scriptPath,
+    const mappedGitHubApp = this.githubApp?.repositories.has(msg.repositoryId) ?? false;
+    let isolatedGitHubConfigDir: string | undefined;
+    let terminalEnvironment = mappedGitHubApp
+      ? withoutAmbientGitHubTokens(this.childEnvSource)
+      : this.childEnvSource;
+    let terminalRunner = this.processRunner;
+    let effectiveExpiresAtMs = expiresAtMs;
+    const credentialController = new AbortController();
+    let credentialTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (mappedGitHubApp) {
+        const credentialTimeoutMs = Math.min(60_000, expiresAtMs - Date.now());
+        if (credentialTimeoutMs <= 0) credentialController.abort();
+        else {
+          credentialTimer = this.timers.setTimeout(
+            () => credentialController.abort(),
+            credentialTimeoutMs,
+          );
+        }
+        isolatedGitHubConfigDir = await mkdtemp(join(tmpdir(), "auto-harness-gh-config-"));
+        terminalEnvironment = withIsolatedGitHubConfigDir(
+          terminalEnvironment,
+          isolatedGitHubConfigDir,
+        );
+        const token = await mintInstallationToken(
+          this.githubApp!,
+          msg.repositoryId,
+          credentialController.signal,
+        );
+        if (!token || token.expiresAtMs - Date.now() <= GITHUB_APP_TOKEN_MARGIN_MS) {
+          this.onLog?.(`GitHub App credential provisioning failed for ${msg.sessionId}`);
+          return undefined;
+        }
+        effectiveExpiresAtMs = Math.min(
+          expiresAtMs,
+          token.expiresAtMs - GITHUB_APP_TOKEN_MARGIN_MS,
+        );
+        if (effectiveExpiresAtMs <= Date.now()) return undefined;
+        terminalEnvironment = withInstallationToken(terminalEnvironment, this.githubApp!, token);
+        terminalRunner = new SecretRedactingProcessRunner(this.processRunner, token.token);
+      }
+      if (scriptPath) {
+        const remainingMs = effectiveExpiresAtMs - Date.now();
+        if (remainingMs <= 0) return undefined;
+        await runTerminalHook(terminalRunner, {
+          scriptPath,
+          cwd: current.cwd,
+          sessionId: msg.sessionId,
+          status: msg.status,
+          worktreePath: current.cwd,
+          childEnvSource: terminalEnvironment,
+          timeoutMs: Math.min(60_000, remainingMs),
+          ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
+          ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+          ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
+          ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
+        });
+      }
+      return await collectSessionResult({
+        runner: terminalRunner,
         cwd: current.cwd,
-        sessionId: msg.sessionId,
         status: msg.status,
-        worktreePath: current.cwd,
-        childEnvSource: this.childEnvSource,
-        timeoutMs: Math.min(60_000, remainingMs),
-        ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
-        ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
-        ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
-        ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
+        environment: terminalEnvironment,
+        deadlineAtMs: effectiveExpiresAtMs,
       });
+    } catch (error) {
+      if (mappedGitHubApp) {
+        this.onLog?.(`GitHub App credential provisioning failed for ${msg.sessionId}`);
+        return undefined;
+      }
+      throw error;
+    } finally {
+      if (credentialTimer !== undefined) this.timers.clearTimeout(credentialTimer);
+      if (isolatedGitHubConfigDir) {
+        try {
+          await rm(isolatedGitHubConfigDir, { force: true, recursive: true });
+        } catch (error) {
+          this.onLog?.(
+            `failed to remove isolated GitHub config directory: ${thrownMessage(error)}`,
+          );
+        }
+      }
     }
-    return await collectSessionResult({
-      runner: this.processRunner,
-      cwd: current.cwd,
-      status: msg.status,
-      environment: this.childEnvSource,
-      deadlineAtMs: expiresAtMs,
-    });
   }
 
   private sendTerminalHookHandoffCompletion(pending: PendingTerminalHookHandoff): void {

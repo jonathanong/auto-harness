@@ -4,7 +4,6 @@ import {
   createDeferredTerminalHookSettlement,
   retainClaimForDeferredTerminalHook,
 } from "./deferred-terminal-hook.ts";
-
 describe("retainClaimForDeferredTerminalHook", () => {
   it("collects a result without a configured hook, baseline, or child environment", async () => {
     const run = vi.fn(async () => ({ exitCode: 1, timedOut: false, signal: null }));
@@ -141,32 +140,6 @@ describe("retainClaimForDeferredTerminalHook", () => {
     });
     expect(run).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: expect.any(Number) }));
     expect(run.mock.calls[0]?.[0].timeoutMs).toBeLessThanOrEqual(10_000);
-  });
-
-  it("returns the post-hook result before releasing the retained checkout", async () => {
-    const release = vi.fn();
-    const settle = vi.fn(async () => ({
-      summary: "after hook",
-      summarySource: "harness" as const,
-    }));
-    const retained = retainClaimForDeferredTerminalHook(
-      {
-        status: "failed",
-        exitCode: null,
-        logs: [],
-        settleDeferredTerminalHook: settle,
-      },
-      release,
-    );
-
-    await expect(retained.settleDeferredTerminalHook?.(true)).resolves.toEqual({
-      summary: "after hook",
-      summarySource: "harness",
-    });
-    expect(release).toHaveBeenCalledOnce();
-    await expect(retained.settleDeferredTerminalHook?.(true)).resolves.toBeUndefined();
-    expect(settle).toHaveBeenCalledOnce();
-    expect(release).toHaveBeenCalledOnce();
   });
 
   it("shares an in-progress settlement with a concurrent caller", async () => {

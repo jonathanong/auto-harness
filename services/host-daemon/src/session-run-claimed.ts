@@ -23,9 +23,9 @@ import {
 } from "./prior-context-file.ts";
 import {
   GITHUB_APP_TOKEN_MARGIN_MS,
-  githubBotEmail,
   mintInstallationToken,
   withoutAmbientGitHubTokens,
+  withInstallationToken,
   withIsolatedGitHubConfigDir,
   type GitHubAppConfig,
   type InstallationToken,
@@ -108,35 +108,6 @@ class SessionCredentialRedactor {
       ? content.split(this.credential).join(SESSION_CREDENTIAL_REDACTION)
       : content;
   }
-}
-
-function withInstallationToken(
-  environment: NodeJS.ProcessEnv,
-  githubApp: GitHubAppConfig,
-  installationToken: InstallationToken,
-): NodeJS.ProcessEnv {
-  const allowlist = (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean);
-  for (const name of [
-    "GH_TOKEN",
-    "GIT_AUTHOR_NAME",
-    "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME",
-    "GIT_COMMITTER_EMAIL",
-  ]) {
-    if (!allowlist.some((existing) => existing.toUpperCase() === name)) allowlist.push(name);
-  }
-  return {
-    ...environment,
-    GH_TOKEN: installationToken.token,
-    GIT_AUTHOR_NAME: githubApp.botLogin,
-    GIT_AUTHOR_EMAIL: githubBotEmail(githubApp),
-    GIT_COMMITTER_NAME: githubApp.botLogin,
-    GIT_COMMITTER_EMAIL: githubBotEmail(githubApp),
-    HARNESS_CHILD_ENV_ALLOWLIST: allowlist.join(","),
-  };
 }
 
 /**

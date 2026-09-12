@@ -12,6 +12,7 @@ import type { SessionResult } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { createDeferredTerminalHookSettlement } from "./deferred-terminal-hook.ts";
+import type { GitHubAppConfig } from "./github-app.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
 
@@ -162,6 +163,8 @@ export async function finishClaimedSession(
   childEnvSource: NodeJS.ProcessEnv = process.env,
   baseline?: string,
   environmentIsChild = false,
+  githubApp?: GitHubAppConfig,
+  nowMs?: () => number,
 ): Promise<SessionRunResult> {
   let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
@@ -206,6 +209,8 @@ export async function finishClaimedSession(
       childEnvSource,
       ...(baseline !== undefined ? { baseline } : {}),
       environmentIsChild,
+      ...(githubApp !== undefined ? { githubApp } : {}),
+      ...(nowMs !== undefined ? { nowMs } : {}),
     }),
   };
 }
