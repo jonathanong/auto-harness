@@ -128,7 +128,7 @@ describe("GitHub App webhook ingress", () => {
     const disabled = await fixture();
     await disabled.plane.updateGitHubIngressConfig({
       enabled: false,
-      bindings: [configBody().bindings[0]],
+      bindings: [configBody().bindings[0]!],
     });
     const disabledPayload = body({ comment: { ...body().comment, id: 12 } });
     expect(
