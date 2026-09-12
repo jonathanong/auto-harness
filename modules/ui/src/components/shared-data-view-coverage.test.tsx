@@ -81,7 +81,7 @@ describe("shared data display composites", () => {
     );
     const codeOnly = render(<SessionExecutionSummary status="failed" errorCode="queue_expired" />);
     expect(codeOnly).toContain('role="alert"');
-    expect(codeOnly).toContain("queue_expired");
+    expect(codeOnly).toContain("Queue expired");
     expect(codeOnly).toContain("Session ended with this error code.");
     expect(
       render(<SessionExecutionSummary status="queued" errorCode="usage_limit" />),
