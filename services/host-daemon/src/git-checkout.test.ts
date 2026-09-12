@@ -5,7 +5,10 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
-import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
+import {
+  fetchGitHubPullRequestRef,
+  materializeGitHubPullRequestRef,
+} from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const pullSha = "0123456789abcdef0123456789abcdef01234567";
@@ -468,6 +471,62 @@ describe("createGitClient checkout and revParse", () => {
     } finally {
       rmSync(marker, { force: true });
     }
+  });
+
+  it("fails closed before fetching a pull ref whose object format is not supported", async () => {
+    const ref = "refs/pull/136/head";
+    const git = createGitClient(
+      scripted([
+        ...lockProbe(),
+        {
+          match: ["rev-parse", "--show-object-format=storage"],
+          exitCode: 0,
+          stdout: "sha512\n",
+        },
+      ]),
+      pullRefPolicy(),
+    );
+
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).rejects.toThrow(`Failed to fetch GitHub pull-request ref ${ref}`);
+  });
+
+  it("fails closed when isolated pull-ref materialization cannot initialize", async () => {
+    await expect(
+      materializeGitHubPullRequestRef(
+        scripted([{ match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 1 }]),
+        checkoutCwd,
+        pullSha,
+        join(checkoutRepo, ".git", "objects"),
+        join(checkoutGitDir, "index"),
+        "sha1",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("fails closed when isolated materialization cannot detach the real worktree HEAD", async () => {
+    const ref = "refs/pull/137/head";
+    const git = createGitClient(
+      scripted([
+        ...lockProbe(),
+        {
+          match: ["rev-parse", "--show-object-format=storage"],
+          exitCode: 0,
+          stdout: "sha1\n",
+        },
+        ...fetchesGitHubPullRef(ref),
+        { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+        { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
+        { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 1 },
+        deletesFetchedPullRef(),
+      ]),
+      pullRefPolicy(),
+    );
+
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).rejects.toThrow("Failed to detach GitHub pull-request checkout");
   });
 
   it("fails closed when a pull-ref checkout cannot inspect submodules", async () => {

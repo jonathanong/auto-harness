@@ -15,7 +15,12 @@ import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { scripted } from "../test-helpers/git-test-helpers.ts";
-import { claimedLinkedWorktreeCommonDir, removeStaleIndexLock } from "./git-worktree-checkout.ts";
+import {
+  claimedLinkedWorktree,
+  claimedLinkedWorktreeCommonDir,
+  hasInterruptedWorktreeOperation,
+  removeStaleIndexLock,
+} from "./git-worktree-checkout.ts";
 
 function writeWorktreeIdentity(cwd: string, gitDir: string): void {
   mkdirSync(cwd, { recursive: true });
@@ -321,4 +326,32 @@ describe("stale worktree index lock safety", () => {
       }
     },
   );
+});
+
+describe("interrupted worktree state", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+    roots.length = 0;
+  });
+
+  it("fails closed when interrupted-state metadata cannot be inspected", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-interrupted-worktree-"));
+    roots.push(root);
+    const notDirectory = join(root, "not-a-directory");
+    writeFileSync(notDirectory, "not a directory\n");
+
+    await expect(hasInterruptedWorktreeOperation(notDirectory)).rejects.toMatchObject({
+      code: "ENOTDIR",
+    });
+  });
+
+  it("does not claim a worktree when its configured repository metadata is absent", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-claimed-worktree-"));
+    roots.push(root);
+
+    await expect(
+      claimedLinkedWorktree(join(root, "missing-repository"), join(root, "worktree")),
+    ).resolves.toBeNull();
+  });
 });
