@@ -111,6 +111,38 @@ function advertisedPullRequestHead(output: string, ref: string): string | undefi
   return sha;
 }
 
+async function cleanupTemporaryDirectory(
+  runner: ProcessRunner,
+  cwd: string,
+  temporaryDirectory: string,
+  destination: string,
+  sourceRef: string,
+  scratchRefCreated: boolean,
+): Promise<void> {
+  try {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  } catch (error) {
+    if (scratchRefCreated) {
+      // A failed temporary-directory cleanup must not leave the successfully created handoff
+      // ref behind. Do not reuse the session signal: it may already be aborted, and cleanup
+      // must remain independently bounded. Preserve the directory-removal error for callers.
+      try {
+        await deleteGitHubPullRequestRef(
+          runner,
+          cwd,
+          destination,
+          sourceRef,
+          AbortSignal.timeout(10_000),
+        );
+      } catch {
+        // Preserve the original temporary-directory failure; the scratch-ref cleanup was a
+        // best-effort containment step because the caller never receives the handoff ref.
+      }
+    }
+    throw error;
+  }
+}
+
 export async function fetchGitHubPullRequestRef(
   runner: ProcessRunner,
   cwd: string,
@@ -134,6 +166,7 @@ export async function fetchGitHubPullRequestRef(
   // `refs/worktree` is private to this linked worktree. A fresh random component also prevents a
   // prior session in the same worktree from precreating the handoff ref.
   const destination = `refs/worktree/auto-harness/pull-fetch/${randomUUID()}`;
+  let scratchRefCreated = false;
   const environment = isolatedFetchEnvironment(objectDirectory);
   const transport = transportArguments(configured);
   try {
@@ -215,7 +248,9 @@ export async function fetchGitHubPullRequestRef(
             signal,
             scratchRefEnvironment(),
           );
-          return recorded.exitCode === 0 ? { ref: destination, sha } : null;
+          if (recorded.exitCode !== 0) return null;
+          scratchRefCreated = true;
+          return { ref: destination, sha };
         }
         if (alreadyPresent.exitCode !== 1) return null;
       }
@@ -251,11 +286,20 @@ export async function fetchGitHubPullRequestRef(
         signal,
         scratchRefEnvironment(),
       );
-      return recorded.exitCode === 0 ? { ref: destination, sha } : null;
+      if (recorded.exitCode !== 0) return null;
+      scratchRefCreated = true;
+      return { ref: destination, sha };
     }
     return null;
   } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
+    await cleanupTemporaryDirectory(
+      runner,
+      cwd,
+      temporaryDirectory,
+      destination,
+      ref,
+      scratchRefCreated,
+    );
   }
 }
 

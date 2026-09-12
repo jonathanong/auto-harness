@@ -184,6 +184,8 @@ describe("GitHub pull-ref host policy", () => {
       "ssh://github.com/example/repository.git",
       "http://github.com/example/repository.git",
       "https://token@github.com/example/repository.git",
+      "https://github.com/example/repository.git?ref=main",
+      "https://github.com/example/repository.git#main",
       "not-a-url",
     ]) {
       expect(() => load(repositoryConfig({ remoteUrl }))).toThrow("remoteUrl must be an https URL");

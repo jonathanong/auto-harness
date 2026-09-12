@@ -62,11 +62,15 @@ async function listedWorktreePaths(output: string, repoPath: string): Promise<Se
 function isolatedPullCheckoutEnvironment(): NodeJS.ProcessEnv {
   return {
     ...createChildEnv(),
-    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_COUNT: "2",
     GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
     GIT_CONFIG_KEY_0: "core.hooksPath",
+    // A pull head controls .gitmodules. Keep normal checkout commands from honoring a prior
+    // session's recursive-submodule preference before the pull-ref-specific guard can reject it.
+    GIT_CONFIG_KEY_1: "submodule.recurse",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
+    GIT_CONFIG_VALUE_1: "false",
     GIT_NO_REPLACE_OBJECTS: "1",
   };
 }
@@ -121,6 +125,26 @@ export function createGitClient(
       const pullCheckoutEnvironment = isPullRequestRef
         ? isolatedPullCheckoutEnvironment()
         : undefined;
+      const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
+      // Check every effective repository scope before recovery runs any Git operation that could
+      // materialize a tracked file. `--local` excludes worktree config once a repository enables
+      // extensions.worktreeConfig, so it cannot establish this boundary on its own.
+      const configuredFilters =
+        isPullRequestRef && pullConfig !== undefined
+          ? await runGit(
+              runner,
+              cwd,
+              ["config", "--show-scope", "--get-regexp", "^filter\\."],
+              signal,
+              pullCheckoutEnvironment,
+            )
+          : undefined;
+      if (isPullRequestRef && pullConfig === undefined) {
+        throw new Error("Configured pull-ref checkout has no operator policy");
+      }
+      if (isPullRequestRef && configuredFilters?.exitCode !== 1) {
+        throw new Error("Configured pull-ref checkout has repository filters");
+      }
       const claimedCommonDir = await claimedLinkedWorktreeCommonDir(repoPath, cwd);
       if (claimedCommonDir === null) {
         throw new Error("Configured checkout is not the claimed linked worktree");
@@ -147,18 +171,10 @@ export function createGitClient(
       let pullRequestFetch: GitHubPullRequestFetch | null = null;
       let sha = "";
       try {
-        const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
-        const localFilters =
-          isPullRequestRef && pullConfig !== undefined
-            ? await runGit(runner, cwd, ["config", "--local", "--get-regexp", "^filter\\."], signal)
-            : undefined;
         // Materializing an exact commit through a session-controlled filter can change worktree
-        // bytes while keeping HEAD unchanged. Pull-ref policy deliberately fails closed instead of
-        // accepting any local filter driver in the shared checkout.
-        const filtersAreAbsent = localFilters?.exitCode === 1;
-        if (isPullRequestRef && pullConfig !== undefined && !filtersAreAbsent) {
-          throw new Error("Configured pull-ref checkout has repository-local filters");
-        }
+        // bytes while keeping HEAD unchanged. Pull-ref policy deliberately failed closed above
+        // instead of accepting any effective filter driver in the shared checkout.
+        const filtersAreAbsent = configuredFilters?.exitCode === 1;
         const objectFormat =
           isPullRequestRef && pullConfig !== undefined
             ? await runGit(runner, cwd, ["rev-parse", "--show-object-format=storage"], signal)
@@ -270,7 +286,23 @@ export function createGitClient(
         if (co.exitCode !== 0) {
           throw gitFailure("Failed to checkout resolved ref", co.stderr);
         }
-        await resetInitializedSubmodules(runner, cwd, signal, pullCheckoutEnvironment);
+        if (isPullRequestRef) {
+          // A pull head controls .gitmodules. Do not sync or update even an already initialized
+          // submodule from that untrusted tree; status only reads the checked-out gitlinks, then
+          // rejects them before the session can run against stale or newly materialized contents.
+          const submodules = await runGit(
+            runner,
+            cwd,
+            ["submodule", "status", "--recursive"],
+            signal,
+            pullCheckoutEnvironment,
+          );
+          if (submodules.exitCode !== 0 || submodules.stdout.trim().length > 0) {
+            throw new Error("Configured pull-ref checkout contains submodules");
+          }
+        } else {
+          await resetInitializedSubmodules(runner, cwd, signal, pullCheckoutEnvironment);
+        }
         const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
         if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
           throw new Error("Failed to verify detached checkout");

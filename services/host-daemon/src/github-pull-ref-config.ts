@@ -50,7 +50,13 @@ function httpsUrl(value: string, context: string): string {
   } catch {
     throw new Error(`${context} must be an https URL`);
   }
-  if (parsed.protocol !== "https:" || parsed.username.length > 0 || parsed.password.length > 0) {
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0 ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0
+  ) {
     throw new Error(`${context} must be an https URL`);
   }
   // Git receives this exact string as a transport operand. Return WHATWG's canonical HTTPS form

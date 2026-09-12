@@ -1,7 +1,24 @@
 /* eslint-disable max-lines -- failure modes and race regressions share one scripted transfer fixture. */
 import { tmpdir } from "node:os";
 import { parse } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({ failNextTemporaryDirectoryRemoval: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    rm: vi.fn(async (...args: Parameters<typeof actual.rm>) => {
+      if (state.failNextTemporaryDirectoryRemoval) {
+        state.failNextTemporaryDirectoryRemoval = false;
+        await actual.rm(...args);
+        throw new Error("temporary directory cleanup failed");
+      }
+      return actual.rm(...args);
+    }),
+  };
+});
 
 import {
   deleteGitHubPullRequestRef,
@@ -57,6 +74,10 @@ const bundled = {
   exitCode: 0,
 };
 const imported = { match: ["bundle", "unbundle", "*"], exitCode: 0 };
+
+afterEach(() => {
+  state.failNextTemporaryDirectoryRemoval = false;
+});
 
 describe("isolated GitHub pull-ref fetch", () => {
   it.each([
@@ -292,6 +313,64 @@ describe("isolated GitHub pull-ref fetch", () => {
       ref: expect.stringMatching(/^refs\/worktree\/auto-harness\/pull-fetch\//),
       sha: pullSha,
     });
+  });
+
+  it("removes a created scratch ref with a fresh bounded signal when directory cleanup fails", async () => {
+    state.failNextTemporaryDirectoryRemoval = true;
+    const sessionController = new AbortController();
+    let cleanupSignal: AbortSignal | undefined;
+    const runner = scripted([
+      advertised,
+      initialized,
+      fetched,
+      resolved,
+      bundled,
+      imported,
+      { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+      { match: ["update-ref", "--no-deref", "-d", "*"], exitCode: 0 },
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).includes("-d")) cleanupSignal = options.signal;
+      const result = await originalRun(options);
+      if (options.argv.slice(1).includes("update-ref") && !options.argv.slice(1).includes("-d")) {
+        sessionController.abort();
+      }
+      return result;
+    };
+
+    await expect(
+      fetchGitHubPullRequestRef(
+        runner,
+        cwd,
+        ref,
+        remoteUrl,
+        undefined,
+        undefined,
+        sessionController.signal,
+      ),
+    ).rejects.toThrow("temporary directory cleanup failed");
+    expect(cleanupSignal).toBeDefined();
+    expect(cleanupSignal).not.toBe(sessionController.signal);
+    expect(cleanupSignal?.aborted).toBe(false);
+  });
+
+  it("preserves the directory cleanup error when scratch-ref deletion also fails", async () => {
+    state.failNextTemporaryDirectoryRemoval = true;
+    const runner = scripted([
+      advertised,
+      initialized,
+      fetched,
+      resolved,
+      bundled,
+      imported,
+      { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+      { match: ["update-ref", "--no-deref", "-d", "*"], exitCode: 1, stderr: "locked" },
+    ]);
+
+    await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).rejects.toThrow(
+      "temporary directory cleanup failed",
+    );
   });
 
   it.each([

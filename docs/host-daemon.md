@@ -553,7 +553,8 @@ remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential
 or absolute `sslCAInfo`. Repository, global, and system Git configuration are never the source of
 that policy, so a session cannot replace it before or after a daemon restart. URL rewrite settings
 and shell credential helpers are not supported. The policy file and every ancestor must be root-owned,
-non-group/world-writable, and not a symlink; each remote URL is credential-free HTTPS.
+non-group/world-writable, and not a symlink; each remote URL is credential-free HTTPS without a
+query string or fragment.
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
@@ -570,9 +571,12 @@ predictable ref or `FETCH_HEAD`. Any missing policy, failed exact fetch, bundle 
 resolution, checkout, verification, or cleanup fails the checkout closed and does not probe another
 remote or use the generic recovery path.
 
-It syncs their configured URLs and force-checks out already initialized submodules recursively, so
-tracked submodule changes cannot leak into the next session without implicitly
-initializing new submodules. Before any destructive checkout, the daemon verifies
+Ordinary ref checkouts sync configured URLs and force-check out already initialized submodules
+recursively, so tracked submodule changes cannot leak into the next session without implicitly
+initializing new submodules. Pull-head checkouts instead disable recursive-submodule checkout and
+fail closed when the fetched commit declares any submodule: a pull head controls `.gitmodules`, so
+it must not select a transport or materialize a submodule in the daemon-owned worktree. Before any
+destructive checkout, the daemon verifies
 that the linked-worktree administrative directory belongs to the configured repository and
 points back to the claimed path.
 If checkout reports an `index.lock`, the daemon retries only after

@@ -179,6 +179,78 @@ describe("createGitClient real git", () => {
     ).resolves.toBe("");
   });
 
+  it("rejects a worktree-scoped filter before interrupted-worktree recovery can invoke it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-worktree-filter-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    await git(worktree, ["switch", "-c", "interrupted"]);
+    writeFileSync(join(worktree, "tracked.txt"), "conflicting session change\n");
+    await git(worktree, ["add", "tracked.txt"]);
+    await git(worktree, ["commit", "-m", "interrupted work"]);
+    await expect(git(worktree, ["merge", targetSha])).rejects.toThrow();
+    const mergeHead = (await git(worktree, ["rev-parse", "--git-path", "MERGE_HEAD"])).trim();
+    expect(existsSync(mergeHead)).toBe(true);
+
+    const filterLog = join(root, "filter.log");
+    const filter = join(root, "filter.sh");
+    writeFileSync(filter, `#!/bin/sh\nprintf 'invoked\\n' >> '${filterLog}'\ncat\n`);
+    chmodSync(filter, 0o700);
+    await git(repo, ["config", "extensions.worktreeConfig", "true"]);
+    await git(worktree, ["config", "--worktree", "filter.attacker.clean", "cat"]);
+    await git(worktree, ["config", "--worktree", "filter.attacker.smudge", filter]);
+    writeFileSync(join(worktree, ".gitattributes"), "tracked.txt filter=attacker\n");
+    writeFileSync(filterLog, "");
+
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([
+        [
+          resolvePath(repo),
+          { remoteUrl: "https://github.com/example/repository.git", transport: {} },
+        ],
+      ]),
+    );
+    await expect(
+      client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" }),
+    ).rejects.toThrow("Configured pull-ref checkout has repository filters");
+
+    expect(readFileSync(filterLog, "utf8")).toBe("");
+    expect(existsSync(mergeHead)).toBe(true);
+  });
+
+  it("rejects a pull head with submodules without initializing its configured URL", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-submodule-"));
+    roots.push(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
+    const remote = join(root, "remote.git");
+    const source = join(root, "source");
+    await git(root, ["init", "--bare", remote]);
+    mkdirSync(source);
+    await git(source, ["init"]);
+    await git(source, ["config", "user.email", "t@example.com"]);
+    await git(source, ["config", "user.name", "t"]);
+    writeFileSync(
+      join(source, ".gitmodules"),
+      `[submodule "attacker"]\n\tpath = attacker\n\turl = ${join(root, "attacker.git")}\n`,
+    );
+    await git(source, ["add", ".gitmodules"]);
+    await git(source, ["update-index", "--add", "--cacheinfo", `160000,${targetSha},attacker`]);
+    await git(source, ["commit", "-m", "pull head with submodule"]);
+    await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
+    const before = await git(worktree, ["rev-parse", "HEAD"]);
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+    );
+
+    await expect(
+      client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" }),
+    ).rejects.toThrow("Configured pull-ref checkout contains submodules");
+
+    expect(existsSync(join(worktree, "attacker", ".git"))).toBe(false);
+    await expect(client.revParse(worktree, "HEAD")).resolves.not.toBe(before.trim());
+  });
+
   it("fetches a complete pinned pull graph for a shallow claimed checkout", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-shallow-pull-ref-"));
     roots.push(root);

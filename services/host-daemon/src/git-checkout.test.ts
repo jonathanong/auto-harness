@@ -30,6 +30,10 @@ function syncsSubmodules(exitCode = 0, stderr = "") {
   return { match: ["submodule", "sync", "--recursive"], exitCode, stderr };
 }
 
+function checksPullRefSubmodules(exitCode = 0, stdout = "") {
+  return { match: ["submodule", "status", "--recursive"], exitCode, stdout };
+}
+
 function lockProbe() {
   return [
     {
@@ -64,7 +68,7 @@ function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") 
 
 function pullRefObjectReuse(baseSha = "base-sha", objectFormat = "sha1") {
   return [
-    { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
+    { match: ["config", "--show-scope", "--get-regexp", "^filter\\."], exitCode: 1 },
     {
       match: ["rev-parse", "--show-object-format=storage"],
       exitCode: 0,
@@ -280,8 +284,7 @@ describe("createGitClient checkout and revParse", () => {
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
         { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
         hardReset(pullSha),
-        syncsSubmodules(),
-        updatesSubmodules(),
+        checksPullRefSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
@@ -304,8 +307,7 @@ describe("createGitClient checkout and revParse", () => {
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha", "sha256"),
         { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
         hardReset(pullSha),
-        syncsSubmodules(),
-        updatesSubmodules(),
+        checksPullRefSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
@@ -325,7 +327,7 @@ describe("createGitClient checkout and revParse", () => {
     let materializationEnvironment: NodeJS.ProcessEnv | undefined;
     const steps = [
       ...resetsPriorState(),
-      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
+      { match: ["config", "--show-scope", "--get-regexp", "^filter\\."], exitCode: 1 },
       {
         match: ["rev-parse", "--show-object-format=storage"],
         exitCode: 0,
@@ -414,8 +416,7 @@ describe("createGitClient checkout and revParse", () => {
       { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
       { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
       hardReset(pullSha),
-      syncsSubmodules(),
-      updatesSubmodules(),
+      checksPullRefSubmodules(),
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
@@ -451,11 +452,13 @@ describe("createGitClient checkout and revParse", () => {
       GIT_NO_REPLACE_OBJECTS: "1",
     });
     expect(materializationEnvironment).toMatchObject({
-      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_COUNT: "2",
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_KEY_1: "submodule.recurse",
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_VALUE_0: "/dev/null",
+      GIT_CONFIG_VALUE_1: "false",
       GIT_NO_REPLACE_OBJECTS: "1",
     });
   });
@@ -466,7 +469,7 @@ describe("createGitClient checkout and revParse", () => {
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
       ...resetsPriorState(),
-      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
+      { match: ["config", "--show-scope", "--get-regexp", "^filter\\."], exitCode: 1 },
       {
         match: ["rev-parse", "--show-object-format=storage"],
         exitCode: 0,
@@ -481,8 +484,7 @@ describe("createGitClient checkout and revParse", () => {
       ...fetchesGitHubPullRef(ref, remoteUrl),
       { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
       hardReset(pullSha),
-      syncsSubmodules(),
-      updatesSubmodules(),
+      checksPullRefSubmodules(),
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
@@ -508,7 +510,7 @@ describe("createGitClient checkout and revParse", () => {
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
       ...resetsPriorState(),
-      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
+      { match: ["config", "--show-scope", "--get-regexp", "^filter\\."], exitCode: 1 },
       {
         match: ["rev-parse", "--show-object-format=storage"],
         exitCode: 0,
@@ -533,8 +535,7 @@ describe("createGitClient checkout and revParse", () => {
       ...fetchesGitHubPullRef(ref, remoteUrl),
       { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
       hardReset(pullSha),
-      syncsSubmodules(),
-      updatesSubmodules(),
+      checksPullRefSubmodules(),
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
@@ -554,13 +555,13 @@ describe("createGitClient checkout and revParse", () => {
     expect(fetchEnvironment).not.toHaveProperty("GIT_ALTERNATE_OBJECT_DIRECTORIES");
   });
 
-  it("fails closed before materializing a pinned pull ref with local filters", async () => {
+  it("fails closed before recovery with effective pull-ref filters", async () => {
     const ref = "refs/pull/134/head";
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
         {
-          match: ["config", "--local", "--get-regexp", "^filter\\."],
+          match: ["config", "--show-scope", "--get-regexp", "^filter\\."],
           exitCode: 0,
           stdout: "filter.attacker.smudge attacker-command\n",
         },
@@ -568,10 +569,28 @@ describe("createGitClient checkout and revParse", () => {
       pullRefPolicy(),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
-    await expect(checkout).rejects.toThrow("repository-local filters");
+    await expect(checkout).rejects.toThrow("repository filters");
   });
 
-  it("fails closed under configured policy when the repository has no pinned entry", async () => {
+  it("fails closed when a pull-ref checkout cannot inspect submodules", async () => {
+    const ref = "refs/pull/135/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
+        checksPullRefSubmodules(1),
+        deletesFetchedPullRef(),
+      ]),
+      pullRefPolicy(),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Configured pull-ref checkout contains submodules");
+  });
+
+  it("fails closed before recovery when the repository has no pull-ref policy", async () => {
     const ref = "refs/pull/127/head";
     const checkout = createGitClient(
       scripted([
@@ -586,7 +605,7 @@ describe("createGitClient checkout and revParse", () => {
       new Map(),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
-    await expect(checkout).rejects.toThrow(`Failed to fetch GitHub pull-request ref ${ref}`);
+    await expect(checkout).rejects.toThrow("no operator policy");
   });
 
   it("does not recover a pull-ref checkout through mutable repository remotes", async () => {
@@ -617,8 +636,7 @@ describe("createGitClient checkout and revParse", () => {
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
         { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
         hardReset(pullSha),
-        syncsSubmodules(),
-        updatesSubmodules(),
+        checksPullRefSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
@@ -640,8 +658,7 @@ describe("createGitClient checkout and revParse", () => {
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
         { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
         hardReset(pullSha),
-        syncsSubmodules(),
-        updatesSubmodules(),
+        checksPullRefSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
@@ -654,7 +671,7 @@ describe("createGitClient checkout and revParse", () => {
     ).resolves.toBe(pullSha);
   });
 
-  it("fails closed when no immutable origin URL is available", async () => {
+  it("fails closed when no immutable pull-ref policy is available", async () => {
     const ref = "refs/pull/127/head";
     const checkout = createGitClient(
       scripted([
@@ -663,10 +680,10 @@ describe("createGitClient checkout and revParse", () => {
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
-    await expect(checkout).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+    await expect(checkout).rejects.toThrow("no operator policy");
   });
 
-  it("fails closed when the captured origin URL is empty", async () => {
+  it("fails closed when no pull-ref policy is available before a Git config read", async () => {
     const ref = "refs/pull/128/head";
     const checkout = createGitClient(
       scripted([
@@ -675,10 +692,10 @@ describe("createGitClient checkout and revParse", () => {
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
-    await expect(checkout).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+    await expect(checkout).rejects.toThrow("no operator policy");
   });
 
-  it("pins unavailable origin capture instead of accepting an origin added by an untrusted session", async () => {
+  it("does not accept an origin added by an untrusted session without operator policy", async () => {
     const ref = "refs/pull/129/head";
     const git = createGitClient(
       scripted([
@@ -691,7 +708,7 @@ describe("createGitClient checkout and revParse", () => {
     await git.ensureRepo(checkoutRepo);
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+    ).rejects.toThrow("no operator policy");
   });
 
   it("checkoutRef fails closed instead of probing an untrusted fallback remote", async () => {
@@ -761,8 +778,7 @@ describe("createGitClient checkout and revParse", () => {
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
         { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
         hardReset(pullSha),
-        syncsSubmodules(),
-        updatesSubmodules(),
+        checksPullRefSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(1),
@@ -785,8 +801,7 @@ describe("createGitClient checkout and revParse", () => {
       ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
       { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
       hardReset(pullSha),
-      syncsSubmodules(),
-      updatesSubmodules(),
+      checksPullRefSubmodules(),
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
