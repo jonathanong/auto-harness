@@ -254,7 +254,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         )
           return true;
         send(res, 201, result);
-      } catch (error) {
+      } catch {
         if (!(await audit(ctx, "service-account:create", "service-account", "new", "failed")))
           return true;
         send(res, 500, {
