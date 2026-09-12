@@ -106,4 +106,25 @@ describe("SecretRedactingProcessRunner", () => {
       }),
     ).rejects.toThrow("remote rejected [redacted]");
   });
+
+  it("redacts an exact secret in a structured agent summary", async () => {
+    const structured: ProcessRunner = {
+      async run() {
+        return {
+          exitCode: 0,
+          timedOut: false,
+          signal: null,
+          agentSummary: `finished with ${secret}`,
+        };
+      },
+    };
+    await expect(
+      new SecretRedactingProcessRunner(structured, secret).run({
+        argv: ["tool"],
+        cwd: "/tmp",
+        timeoutMs: 1_000,
+        onChunk: () => undefined,
+      }),
+    ).resolves.toMatchObject({ agentSummary: "finished with [redacted]" });
+  });
 });

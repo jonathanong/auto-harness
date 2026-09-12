@@ -212,7 +212,6 @@ export async function runClaimedSession(
             },
         sessionChildEnv,
         baseline,
-        true,
       );
     }
   }
@@ -236,7 +235,6 @@ export async function runClaimedSession(
       },
       authenticatedTerminalEnvironment,
       baseline,
-      true,
     );
   }
   let setup: Awaited<ReturnType<typeof runSetupIfNeeded>>;
@@ -270,7 +268,6 @@ export async function runClaimedSession(
       },
       authenticatedTerminalEnvironment,
       baseline,
-      true,
     );
   }
   if (setup.failure) return setup.failure;
@@ -292,7 +289,6 @@ export async function runClaimedSession(
       },
       authenticatedTerminalEnvironment,
       baseline,
-      true,
     );
   }
 
@@ -306,7 +302,6 @@ export async function runClaimedSession(
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
       authenticatedTerminalEnvironment,
       baseline,
-      true,
     );
   }
 

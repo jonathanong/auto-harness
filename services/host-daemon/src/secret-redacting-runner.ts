@@ -31,13 +31,19 @@ export class SecretRedactingProcessRunner implements ProcessRunner {
       if (emitted) options.onChunk({ stream, data: emitted });
     };
     try {
-      return await this.inner.run({
+      const result = await this.inner.run({
         ...options,
         onChunk: (chunk) => {
           pending[chunk.stream] += chunk.data;
           forward(chunk.stream, false);
         },
       });
+      return {
+        ...result,
+        ...(result.agentSummary !== undefined
+          ? { agentSummary: result.agentSummary.replaceAll(this.secret, "[redacted]") }
+          : {}),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // eslint-disable-next-line preserve-caught-error -- the original cause can contain the token.

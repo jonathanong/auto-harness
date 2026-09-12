@@ -242,6 +242,55 @@ describe("claimed session GitHub App credentials", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("filters daemon credentials before probing a credential-provisioning failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("installation unavailable", { status: 503 })),
+    );
+    const probeEnvironments: NodeJS.ProcessEnv[] = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        if (options.env) probeEnvironments.push(options.env);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await expect(
+      runClaimedSession(
+        runner,
+        new LogStreamer("session-1", "attempt-1", () => undefined),
+        [],
+        baseAssign(),
+        {
+          ...claimed,
+          currentHookTarget: async () => ({
+            cwd: claimed.cwd,
+            repository: {},
+          }),
+        },
+        undefined,
+        () => false,
+        () => 4_000_000,
+        runner,
+        {
+          PATH: process.env.PATH,
+          HOME: "/home/harness",
+          HARNESS_API_KEY: "daemon-api-key",
+          HARNESS_GITHUB_APP_CONFIG: "daemon-app-config",
+        },
+        undefined,
+        undefined,
+        app(),
+        () => now,
+        "baseline",
+      ),
+    ).resolves.toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(probeEnvironments).not.toHaveLength(0);
+    for (const environment of probeEnvironments) {
+      expect(environment.HARNESS_API_KEY).toBeUndefined();
+      expect(environment.HARNESS_GITHUB_APP_CONFIG).toBeUndefined();
+    }
+  });
+
   it("does not duplicate injected identity names already in the hook allowlist", async () => {
     installTokenFetch();
     let hookEnv: NodeJS.ProcessEnv | undefined;
