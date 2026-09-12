@@ -62,8 +62,13 @@ function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") 
   return new Map([[resolve(checkoutRepo), { remoteUrl, transport: {} }]]);
 }
 
-function pullRefObjectReuse(baseSha = "base-sha") {
+function pullRefObjectReuse(baseSha = "base-sha", objectFormat = "sha1") {
   return [
+    {
+      match: ["rev-parse", "--show-object-format=storage"],
+      exitCode: 0,
+      stdout: `${objectFormat}\n`,
+    },
     {
       match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
       exitCode: 0,
@@ -89,10 +94,11 @@ function fetchesGitHubPullRef(
   ref: string,
   remoteUrl = "https://github.com/example/repository.git",
   baseSha: string | undefined = undefined,
+  objectFormat = "sha1",
 ) {
   return [
     advertisesGitHubPullRef(ref, remoteUrl),
-    { match: ["init", "--bare", "*"], exitCode: 0 },
+    { match: ["init", "--bare", `--object-format=${objectFormat}`, "*"], exitCode: 0 },
     {
       match: [
         "--git-dir",
@@ -270,12 +276,41 @@ describe("createGitClient checkout and revParse", () => {
     ).resolves.toBe("pr-sha");
   });
 
+  it("initializes the pinned pull-ref scratch repository with the checkout hash format", async () => {
+    const ref = "refs/pull/132/head";
+    const remoteUrl = "https://github.com/example/repository.git";
+    const git = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        ...pullRefObjectReuse("base-sha", "sha256"),
+        ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha", "sha256"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+        deletesFetchedPullRef(),
+      ]),
+      pullRefPolicy(remoteUrl),
+    );
+
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).resolves.toBeUndefined();
+  });
+
   it("uses restart-stable operator policy, object reuse, safe transport, and replacement-free Git", async () => {
     const ref = "refs/pull/126/head";
     const remoteUrl = "https://github.com/example/repository.git";
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
     const steps = [
       ...resetsPriorState(),
+      {
+        match: ["rev-parse", "--show-object-format=storage"],
+        exitCode: 0,
+        stdout: "sha1\n",
+      },
       {
         match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
         exitCode: 0,
@@ -299,7 +334,7 @@ describe("createGitClient checkout and revParse", () => {
         exitCode: 0,
         stdout: `${pullSha}\t${ref}\n`,
       },
-      { match: ["init", "--bare", "*"], exitCode: 0 },
+      { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
       {
         match: [
           "-c",
@@ -393,6 +428,11 @@ describe("createGitClient checkout and revParse", () => {
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
       ...resetsPriorState(),
+      {
+        match: ["rev-parse", "--show-object-format=storage"],
+        exitCode: 0,
+        stdout: "sha1\n",
+      },
       {
         match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
         exitCode: 0,
@@ -553,7 +593,7 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         advertisesGitHubPullRef(ref),
-        { match: ["init", "--bare", "*"], exitCode: 0 },
+        { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
         {
           match: [
             "--git-dir",
@@ -582,7 +622,7 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         advertisesGitHubPullRef(ref),
-        { match: ["init", "--bare", "*"], exitCode: 0 },
+        { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
         {
           match: [
             "--git-dir",

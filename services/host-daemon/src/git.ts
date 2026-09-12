@@ -7,6 +7,7 @@ import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts"
 import {
   deleteGitHubPullRequestRef,
   fetchGitHubPullRequestRef,
+  gitObjectFormat,
   isGitHubPullRequestRef,
   type GitHubPullRequestFetch,
 } from "./git-github-pull-ref.ts";
@@ -122,6 +123,12 @@ export function createGitClient(
       let sha = "";
       try {
         const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
+        const objectFormat =
+          isPullRequestRef && pullConfig !== undefined
+            ? await runGit(runner, cwd, ["rev-parse", "--show-object-format=storage"], signal)
+            : undefined;
+        const targetObjectFormat =
+          objectFormat?.exitCode === 0 ? gitObjectFormat(objectFormat.stdout.trim()) : undefined;
         const objectDirectory =
           isPullRequestRef && pullConfig !== undefined
             ? await runGit(
@@ -143,15 +150,18 @@ export function createGitClient(
           ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
           : undefined;
         pullRequestFetch = isPullRequestRef
-          ? await fetchGitHubPullRequestRef(
-              runner,
-              cwd,
-              ref,
-              pullConfig,
-              reusesObjects ? objectDirectory?.stdout.trim() : undefined,
-              base?.exitCode === 0 ? base.stdout.trim() : undefined,
-              signal,
-            )
+          ? targetObjectFormat === undefined
+            ? null
+            : await fetchGitHubPullRequestRef(
+                runner,
+                cwd,
+                ref,
+                pullConfig,
+                reusesObjects ? objectDirectory?.stdout.trim() : undefined,
+                base?.exitCode === 0 ? base.stdout.trim() : undefined,
+                signal,
+                targetObjectFormat,
+              )
           : null;
         if (isPullRequestRef && pullRequestFetch === null) {
           throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
