@@ -74,4 +74,59 @@ describe("DaemonLoop terminal-hook shutdown", () => {
       cleanup();
     }
   });
+
+  it("releases shutdown when a handoff expires behind earlier target work", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const logs: string[] = [];
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        onLog: (line) => logs.push(line),
+      });
+      await loop.start();
+      const internals = loop as unknown as {
+        worktreeAssignmentTails: Map<string, Promise<void>>;
+        pendingTerminalHookHandoffs: Map<
+          string,
+          { executing: boolean; work?: Promise<void> | undefined }
+        >;
+      };
+      let releaseEarlierWork!: () => void;
+      const earlierWork = new Promise<void>((resolve) => {
+        releaseEarlierWork = resolve;
+      });
+      internals.worktreeAssignmentTails.set("worktree\0demo\0wt-1", earlierWork);
+
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "expired-waiter",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 25).toISOString(),
+      });
+      await waitFor(
+        () => internals.pendingTerminalHookHandoffs.get("expired-waiter")?.executing === true,
+      );
+
+      let idle = false;
+      const waiting = loop.waitForIdle().then(() => {
+        idle = true;
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+      releaseEarlierWork();
+      await waiting;
+
+      expect(idle).toBe(true);
+      expect(internals.pendingTerminalHookHandoffs.has("expired-waiter")).toBe(false);
+      expect(logs).toContainEqual(expect.stringContaining("at the control-plane expiry"));
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

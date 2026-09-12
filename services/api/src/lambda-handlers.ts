@@ -755,6 +755,12 @@ export async function createLambdaRuntime(
               ...(result.sessionStatusAcknowledged.terminalHookHandoffId !== undefined
                 ? { terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId }
                 : {}),
+              ...(result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt !== undefined
+                ? {
+                    terminalHookHandoffExpiresAt:
+                      result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt,
+                  }
+                : {}),
             }).catch(() => undefined),
           );
         } else if (

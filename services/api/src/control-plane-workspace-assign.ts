@@ -92,7 +92,7 @@ function nextSession(
   lease: SessionRecord["providerAccountLease"],
   protocolVersion: number | undefined,
 ): SessionRecord {
-  return {
+  const assigned: SessionRecord = {
     ...session,
     status: "running",
     repositoryId: "",
@@ -118,6 +118,12 @@ function nextSession(
     ...(lease ? { providerAccountLease: lease } : {}),
     hostAssignmentLease: { hostId: slot.hostId },
   };
+  // A retryable infrastructure failure is useful queue history, not the
+  // outcome of the replacement attempt. Keep the retry metadata but do not
+  // surface the stale failure while this new assignment is running.
+  delete assigned.errorCode;
+  delete assigned.errorMessage;
+  return assigned;
 }
 
 function touchAccount(state: ControlPlaneState, id: string | undefined, at: string): void {

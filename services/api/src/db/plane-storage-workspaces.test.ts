@@ -381,6 +381,9 @@ describe("workspace storage", () => {
         ":primaryCommandStartState": "pending",
       }),
     });
+    expect(send.mock.calls[0]?.[0].input.TransactItems[2].Update.UpdateExpression).toContain(
+      "REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage",
+    );
 
     const withLease = {
       ...assignment,

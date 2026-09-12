@@ -974,7 +974,26 @@ export class DaemonLoop {
               // duplicate that completion before its acknowledgement arrives.
               return;
             }
+            const handoffExpiresAtMs =
+              msg.terminalHookHandoffExpiresAt === undefined
+                ? undefined
+                : Date.parse(msg.terminalHookHandoffExpiresAt);
+            if (
+              this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+              (msg.terminalHookHandoffExpiresAt === undefined ||
+                !Number.isFinite(handoffExpiresAtMs))
+            ) {
+              this.onLog?.(
+                `terminal hook handoff ${msg.terminalHookHandoffId} has no valid control-plane expiry; ` +
+                  "refusing synthetic completion",
+              );
+              return;
+            }
+            if (handoffExpiresAtMs !== undefined && handoffExpiresAtMs <= Date.now()) return;
             const handoff: PendingTerminalHookHandoff = {
+              ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
+                ? { expiresAtMs: handoffExpiresAtMs }
+                : {}),
               message: {
                 type: "session:terminal-hook",
                 handoffId: msg.terminalHookHandoffId,
@@ -985,6 +1004,10 @@ export class DaemonLoop {
                   import("@auto-harness/shared").SessionStatus,
                   "completed" | "failed" | "cancelled" | "timed_out"
                 >,
+                ...(msg.terminalHookHandoffExpiresAt !== undefined &&
+                Number.isFinite(handoffExpiresAtMs)
+                  ? { expiresAt: msg.terminalHookHandoffExpiresAt }
+                  : {}),
                 ...(pending.message.errorCode !== undefined
                   ? { errorCode: pending.message.errorCode }
                   : {}),
@@ -1114,7 +1137,15 @@ export class DaemonLoop {
     this.worktreeAssignmentTails.set(targetKey, targetWork);
     try {
       if (previousTargetWork) await previousTargetWork.catch(() => undefined);
-      if (Date.now() >= expiresAtMs) return;
+      // This hook may have spent its entire control-plane lease behind a
+      // preceding session on the same physical target. Drop it here rather
+      // than merely returning: waitForIdle() restarts incomplete handoffs,
+      // which would otherwise turn an expired waiter into an endless
+      // microtask loop once shutdown has stopped keepalives.
+      if (Date.now() >= expiresAtMs) {
+        this.expirePendingTerminalHookHandoffs(Date.now());
+        return;
+      }
       if (msg.worktreeId === null) {
         if (!(await this.worktrees.acquireMain(msg.repositoryId))) {
           throw new Error(`main checkout unavailable for terminal hook ${msg.sessionId}`);

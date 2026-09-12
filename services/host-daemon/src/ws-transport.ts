@@ -349,7 +349,12 @@ export function createWsTransport(options: Options): DaemonTransport & {
               !("terminalHookHandoffId" in message) ||
               (typeof message.terminalHookHandoffId === "string" &&
                 message.terminalHookHandoffId.length > 0 &&
-                message.terminalHookHandoffId.length <= 512))) ||
+                message.terminalHookHandoffId.length <= 512)) &&
+            (message.type !== "session:status-acknowledged" ||
+              !("terminalHookHandoffExpiresAt" in message) ||
+              (typeof message.terminalHookHandoffExpiresAt === "string" &&
+                Number.isFinite(Date.parse(message.terminalHookHandoffExpiresAt)) &&
+                message.terminalHookHandoffExpiresAt.length <= 128))) ||
             (message.type === "session:terminal-hook" &&
               "handoffId" in message &&
               "repositoryId" in message &&

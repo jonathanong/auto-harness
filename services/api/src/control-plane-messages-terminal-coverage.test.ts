@@ -900,7 +900,7 @@ describe("control-plane terminal message coverage", () => {
     setDurableReadStorage(state, { getSession: async () => session });
 
     await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
+      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 7),
     ).resolves.toMatchObject({
       ok: true,
       sessionStatusAcknowledged: {
@@ -908,6 +908,7 @@ describe("control-plane terminal message coverage", () => {
         attemptId: "attempt",
         retryAccepted: false,
         terminalHookHandoffId: "settled-handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
   });

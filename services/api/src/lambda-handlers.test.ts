@@ -1518,6 +1518,7 @@ describe("Lambda runtime adapters", () => {
         attemptId: "retry-attempt",
         retryAccepted: false,
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
 
@@ -1543,6 +1544,7 @@ describe("Lambda runtime adapters", () => {
       attemptId: "retry-attempt",
       retryAccepted: false,
       terminalHookHandoffId: "handoff",
+      terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
     });
   });
 

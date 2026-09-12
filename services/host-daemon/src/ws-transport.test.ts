@@ -279,6 +279,17 @@ describe("createWsTransport", () => {
               attemptId: "attempt-s1",
               retryAccepted: false,
               terminalHookHandoffId: "handoff",
+              terminalHookHandoffExpiresAt: "not-a-date",
+            }),
+          );
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
+              retryAccepted: false,
+              terminalHookHandoffId: "handoff",
+              terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
             }),
           );
           sock.send(
@@ -306,6 +317,7 @@ describe("createWsTransport", () => {
           type: "session:status-acknowledged",
           retryAccepted: false,
           terminalHookHandoffId: "handoff",
+          terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
         }),
         expect.objectContaining({ type: "session:status-acknowledged" }),
       ]);

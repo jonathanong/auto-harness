@@ -469,7 +469,7 @@ export async function tryAssignWorkspaceSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount`,
+        UpdateExpression: `SET ${sets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt, retryAfter, retryCount, errorCode, errorMessage`,
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: values,

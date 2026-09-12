@@ -84,6 +84,141 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("retains the control-plane expiry on a synthetic deferred completion", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const pending = pendingTerminalStatusOf(loop);
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+      pending.set("done-session\0attempt-1", {
+        message: {
+          ...statusMessage,
+          deferTerminalHookResult: true,
+          errorCode: "checkout_fetch_failed",
+        },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => undefined,
+      });
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "done-session",
+        attemptId: "attempt-1",
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: expiresAt,
+      });
+      await flushMicrotasks();
+
+      const handoff = (
+        loop as unknown as {
+          pendingTerminalHookHandoffs: Map<
+            string,
+            { expiresAtMs?: number; message: { expiresAt?: string } }
+          >;
+        }
+      ).pendingTerminalHookHandoffs.get("handoff");
+      expect(handoff?.message.expiresAt).toBe(expiresAt);
+      expect(handoff?.expiresAtMs).toBe(Date.parse(expiresAt));
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it.each([
+    ["missing", {}],
+    ["invalid", { terminalHookHandoffExpiresAt: "not-a-date" }],
+  ] as const)("fails closed for a v7 synthetic handoff with %s expiry", async (_label, extra) => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      const pending = pendingTerminalStatusOf(loop);
+      pending.set("done-session\0attempt-1", {
+        message: {
+          ...statusMessage,
+          deferTerminalHookResult: true,
+          errorCode: "checkout_fetch_failed",
+        },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => undefined,
+      });
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "done-session",
+        attemptId: "attempt-1",
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
+        ...extra,
+      });
+      await flushMicrotasks();
+
+      expect(
+        (
+          loop as unknown as {
+            pendingTerminalHookHandoffs: Map<string, unknown>;
+          }
+        ).pendingTerminalHookHandoffs.size,
+      ).toBe(0);
+      expect(pending.size).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps the legacy local retention fallback for a v6 synthetic handoff", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
+      const pending = pendingTerminalStatusOf(loop);
+      pending.set("done-session\0attempt-1", {
+        message: {
+          ...statusMessage,
+          deferTerminalHookResult: true,
+          errorCode: "checkout_fetch_failed",
+        },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async () => undefined,
+      });
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "done-session",
+        attemptId: "attempt-1",
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
+      });
+      await flushMicrotasks();
+
+      const handoff = (
+        loop as unknown as {
+          pendingTerminalHookHandoffs: Map<string, { expiresAtMs?: number }>;
+        }
+      ).pendingTerminalHookHandoffs.get("handoff");
+      expect(handoff).toBeDefined();
+      expect(handoff?.expiresAtMs).toBeUndefined();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("handles a retry disposition acknowledged during the initial status send", async () => {
     const { config, cleanup } = await makeRepo();
     try {

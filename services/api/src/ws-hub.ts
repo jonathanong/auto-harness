@@ -262,6 +262,12 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                       terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId,
                     }
                   : {}),
+                ...(result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt !== undefined
+                  ? {
+                      terminalHookHandoffExpiresAt:
+                        result.sessionStatusAcknowledged.terminalHookHandoffExpiresAt,
+                    }
+                  : {}),
               }),
             );
           } else if (

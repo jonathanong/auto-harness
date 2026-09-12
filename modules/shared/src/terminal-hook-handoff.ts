@@ -8,6 +8,8 @@ export type TerminalStatusAcknowledgedMessage = {
   attemptId?: string | undefined;
   retryAccepted?: boolean | undefined;
   terminalHookHandoffId?: string | undefined;
+  /** Control-plane-owned expiry for a deferred terminal-hook handoff. */
+  terminalHookHandoffExpiresAt?: string | undefined;
 };
 
 /** Server-owned recovery work for an agent-local terminal hook after host loss. */

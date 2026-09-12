@@ -55,6 +55,7 @@ describe("WebSocket durable ACK replies", () => {
         attemptId: "attempt-1",
         retryAccepted: false,
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       });
       socket.close();
       await waitForClose(socket);
@@ -263,6 +264,7 @@ class StatusPlane extends ControlPlane {
           attemptId: message.attemptId!,
           retryAccepted: false,
           terminalHookHandoffId: "handoff",
+          terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
         },
       };
     }
