@@ -112,6 +112,7 @@ export class UsageCapturingProcessRunner implements ProcessRunner {
       ...result,
       ...(result.usage === undefined && parsed.usage ? { usage: parsed.usage } : {}),
       ...(result.usageLimit === true || parsed.usageLimit ? { usageLimit: true } : {}),
+      ...(parsed.agentSummary !== undefined ? { agentSummary: parsed.agentSummary } : {}),
     };
   }
 }
@@ -191,6 +192,7 @@ function parseClaudeRecord(value: JsonRecord, observedAt: string): ParsedCliUsag
   return {
     ...(usage ? withUsage(usageFromRecord(usage, observedAt, "claude")) : {}),
     ...(value.is_error && claudeUsageLimit(value) ? { usageLimit: true } : {}),
+    ...(typeof value.result === "string" ? { agentSummary: value.result } : {}),
   };
 }
 
@@ -200,7 +202,10 @@ function parseGeminiRecord(value: JsonRecord, observedAt: string): ParsedCliUsag
   const stats = record(value.stats);
   const usage =
     record(value.usageMetadata) ?? record(stats?.usageMetadata) ?? record(stats?.tokens);
-  return usage ? withUsage(usageFromRecord(usage, observedAt, "gemini")) : {};
+  return {
+    ...(usage ? withUsage(usageFromRecord(usage, observedAt, "gemini")) : {}),
+    ...(typeof value.response === "string" ? { agentSummary: value.response } : {}),
+  };
 }
 
 function claudeUsageLimit(value: JsonRecord): boolean {

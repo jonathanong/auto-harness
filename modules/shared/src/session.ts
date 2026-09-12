@@ -10,6 +10,7 @@ import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capab
 import type { HostRuntimeReport } from "./host-runtime.ts";
 import type { HostRunningAttempt, ProviderAccountReadiness } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";
+import type { SessionResult } from "./session-result.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
@@ -78,6 +79,7 @@ export type SessionStatusUpdate = {
   errorMessage?: string;
   cliResumeRef?: string;
   usage?: SessionUsage;
+  result?: SessionResult;
 };
 
 export type CreateSessionFields = {
@@ -206,6 +208,7 @@ export type HostToServerMessage =
       errorMessage?: string;
       cliResumeRef?: string;
       usage?: SessionUsage;
+      result?: SessionResult;
     }
   | {
       type: "session:usage";

@@ -57,6 +57,8 @@ export type ProcessResult = {
    * (including Codex's own error-path message text) — never from model/agent-generated content.
    */
   usageLimit?: boolean;
+  /** Structured provider terminal response, never inferred from free-form output. */
+  agentSummary?: string;
   /** Exported environment captured after a trusted setup script succeeds. */
   environment?: NodeJS.ProcessEnv;
 };

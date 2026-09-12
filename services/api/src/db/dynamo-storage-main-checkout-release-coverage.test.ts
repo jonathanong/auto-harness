@@ -196,6 +196,7 @@ describe("DynamoDB Local main-checkout release", () => {
       queueShard: 1,
       expectedStatus: "cancelled" as const,
       concurrencyId: "concurrency",
+      result: { summary: "finished result", summarySource: "harness" as const },
     };
     await ctx.doc.send(
       new PutCommand({
@@ -240,6 +241,7 @@ describe("DynamoDB Local main-checkout release", () => {
       statusShard: "completed#1",
       hostId: opts.hostId,
       worktreeId: null,
+      result: opts.result,
     });
     expect(
       (

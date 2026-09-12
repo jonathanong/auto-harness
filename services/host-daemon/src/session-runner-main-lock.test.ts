@@ -22,7 +22,10 @@ describe("SessionRunner main checkout lock cleanup", () => {
     );
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     const timedOut = await queued;
-    expect(timedOut).toMatchObject({ status: "timed_out" });
+    expect(timedOut).toMatchObject({
+      status: "timed_out",
+      result: { summary: "Session timed_out", summarySource: "harness" },
+    });
     expect(timedOut.logs.at(-1)?.content).toMatch(/^Session timed_out at /);
     expect(test.hooks).toEqual([]);
     firstGate.resolve();

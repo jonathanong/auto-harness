@@ -7,10 +7,12 @@ import type {
   SessionTerminalStatus,
 } from "@auto-harness/shared";
 import type { SessionUsage } from "@auto-harness/shared";
+import type { SessionResult } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
+import { collectSessionResult } from "./session-result.ts";
 
 export type SessionRunResult = {
   status: SessionTerminalStatus;
@@ -19,6 +21,7 @@ export type SessionRunResult = {
   errorMessage?: string;
   cliResumeRef?: string;
   usage?: SessionUsage;
+  result?: SessionResult;
   logs: SessionLogChunk[];
 };
 
@@ -29,6 +32,7 @@ type SessionOutcome = {
   errorMessage?: string;
   cliResumeRef?: string;
   usage?: SessionUsage;
+  agentSummary?: string;
 };
 
 type ClaimedHookTarget = {
@@ -42,6 +46,11 @@ type ClaimedHookTarget = {
     allowedRoots?: readonly string[];
   } | null>;
 };
+
+/** Every daemon-owned terminal path has a queryable fallback, even without a checkout. */
+export function harnessSessionResult(status: SessionTerminalStatus): SessionResult {
+  return { summary: `Session ${status}`, summarySource: "harness" };
+}
 
 export async function failSession(
   streamer: LogStreamer,
@@ -58,6 +67,7 @@ export async function failSession(
     exitCode,
     errorCode,
     errorMessage,
+    result: harnessSessionResult("failed"),
     logs,
   };
 }
@@ -73,6 +83,7 @@ async function finishSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
   allowedRoots: readonly string[] = [],
+  baseline?: string,
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -90,6 +101,17 @@ async function finishSession(
     });
   }
   streamer.writeTimestampedSystem(`Session ${outcome.status}`);
+  const result =
+    baseline !== undefined || outcome.agentSummary !== undefined
+      ? await collectSessionResult({
+          runner: processRunner,
+          cwd: worktreePath,
+          status: outcome.status,
+          ...(baseline !== undefined ? { baseline } : {}),
+          ...(outcome.agentSummary !== undefined ? { agentSummary: outcome.agentSummary } : {}),
+          environment: childEnvSource,
+        })
+      : harnessSessionResult(outcome.status);
   void worktreeId;
   return {
     status: outcome.status,
@@ -99,6 +121,7 @@ async function finishSession(
     ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
     ...(outcome.cliResumeRef !== undefined ? { cliResumeRef: outcome.cliResumeRef } : {}),
     ...(outcome.usage !== undefined ? { usage: outcome.usage } : {}),
+    result,
   };
 }
 
@@ -110,6 +133,7 @@ export async function finishClaimedSession(
   claimed: ClaimedHookTarget,
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  baseline?: string,
 ): Promise<SessionRunResult> {
   let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
@@ -133,5 +157,6 @@ export async function finishClaimedSession(
     outcome,
     childEnvSource,
     target?.allowedRoots ?? [],
+    baseline,
   );
 }

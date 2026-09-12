@@ -1,4 +1,5 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import type { SessionResult } from "@auto-harness/shared";
 
 import {
   isConditionalFailed,
@@ -106,6 +107,7 @@ export async function releaseTimedOutHostAssignment(
     attemptId: string;
     hostId: string;
     hostAssignmentLease?: HostAssignmentLease | undefined;
+    result?: SessionResult | undefined;
   },
 ): Promise<boolean> {
   try {
@@ -116,15 +118,20 @@ export async function releaseTimedOutHostAssignment(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
+              UpdateExpression: opts.result
+                ? "SET #result = if_not_exists(#result, :result) REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder"
+                : "REMOVE timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
               ConditionExpression:
                 "#s = :timedOut AND timedOutHostId = :hostId AND attemptId = :attemptId",
-              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeNames: {
+                "#s": "status",
+                ...(opts.result ? { "#result": "result" } : {}),
+              },
               ExpressionAttributeValues: {
                 ":timedOut": "timed_out",
                 ":hostId": opts.hostId,
                 ":attemptId": opts.attemptId,
+                ...(opts.result ? { ":result": opts.result } : {}),
               },
             },
           },

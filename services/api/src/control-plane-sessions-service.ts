@@ -111,7 +111,7 @@ export class ControlPlaneSessionsService {
         ...(normalized.continuation ? { continuation: normalized.continuation } : {}),
       });
       return {
-        items: page.items.map((record) => toPublic(this.state, record)),
+        items: page.items.map((record) => toPublic(this.state, record, false)),
         nextCursor:
           page.continuation === null
             ? null

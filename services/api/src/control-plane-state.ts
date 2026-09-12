@@ -305,7 +305,11 @@ export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): v
   }
 }
 
-export function toPublic(state: ControlPlaneState, session: SessionRecord): PublicSession {
+export function toPublic(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  includeResult = true,
+): PublicSession {
   const {
     principalId: _principalId,
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
@@ -313,6 +317,7 @@ export function toPublic(state: ControlPlaneState, session: SessionRecord): Publ
     activeHostOrder: _activeHostOrder,
     ...publicSession
   } = session;
+  if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;
   return {
     ...publicSession,
     url: `${state.publicBaseUrl}/sessions/${session.id}`,

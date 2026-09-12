@@ -25,8 +25,13 @@ import {
   setOutput,
 } from "./io.ts";
 import { actionErrorMessage, validateSession } from "./validation.ts";
+import {
+  isTerminalSessionStatus,
+  setSessionResultOutputs,
+  validateSessionDetail,
+} from "./session-result.ts";
 
-type Operation = "dispatch" | "resume" | DrainOperation;
+type Operation = "dispatch" | "resume" | "get-result" | DrainOperation;
 
 const PRIORITY_MIN = -10_000;
 const PRIORITY_MAX = 10_000;
@@ -45,16 +50,27 @@ function operationInput(): Operation {
   if (
     operation !== "dispatch" &&
     operation !== "resume" &&
+    operation !== "get-result" &&
     operation !== "start-drain" &&
     operation !== "get-drain" &&
     operation !== "wait-for-drain" &&
     operation !== "release-drain"
   ) {
     throw new Error(
-      `operation must be dispatch, resume, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`,
+      `operation must be dispatch, resume, get-result, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`,
     );
   }
   return operation;
+}
+
+function resultUrl(baseUrl: string, sessionId: string): string {
+  return new URL(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, `${baseUrl}/`).toString();
+}
+
+function setSessionReferenceOutputs(baseUrl: string, session: { id: string; url: string }): void {
+  setOutput("session-id", session.id);
+  setOutput("session-url", session.url);
+  setOutput("result-url", resultUrl(baseUrl, session.id));
 }
 
 function sourceInput(): CreatableSessionSource | undefined {
@@ -102,8 +118,7 @@ async function dispatch(options: ClientOptions, repositoryId: string): Promise<v
     ...(source ? { source } : {}),
   };
   const session = validateSession(await client(options).createSession(request));
-  setOutput("session-id", session.id);
-  setOutput("session-url", session.url);
+  setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
 }
@@ -137,10 +152,22 @@ async function resume(options: ClientOptions): Promise<void> {
     ...(fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}),
   };
   const session = validateSession(await client(options).resumeSession(sessionId, request));
-  setOutput("session-id", session.id);
-  setOutput("session-url", session.url);
+  setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}\n`);
+}
+
+/** Makes exactly one bounded detail request; callers can branch on `session-terminal` themselves. */
+async function getResult(options: ClientOptions): Promise<void> {
+  const sessionId = input("session-id", true);
+  const session = validateSessionDetail(await client(options).getSession(sessionId));
+  if (session.id !== sessionId) {
+    throw new Error("Auto Harness returned a different session");
+  }
+  setSessionReferenceOutputs(options.baseUrl, session);
+  setOutput("session-status", session.status);
+  setOutput("session-terminal", String(isTerminalSessionStatus(session.status)));
+  setSessionResultOutputs(session.result);
 }
 
 async function main(): Promise<void> {
@@ -160,6 +187,7 @@ async function main(): Promise<void> {
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);
+    else if (operation === "get-result") await getResult(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
     throw new Error(actionErrorMessage(error, baseUrl), { cause: error });

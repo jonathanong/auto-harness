@@ -466,7 +466,38 @@ components:
         status: { type: string }
         createdAt: { type: string, format: date-time }
         url: { type: string }
+        result: { $ref: "#/components/schemas/SessionResult" }
       additionalProperties: true
+    SessionResult:
+      type: object
+      required: [summary, summarySource]
+      properties:
+        summary:
+          type: string
+          description: Agent- or harness-produced terminal summary, at most 4,096 UTF-8 bytes.
+        summarySource:
+          type: string
+          enum: [agent, harness]
+        branch:
+          type: string
+          description: Final named branch, at most 1,024 UTF-8 bytes.
+        filesChanged:
+          type: array
+          maxItems: 256
+          description: Sorted changed-path prefix. An empty array means the checkout was observed clean; omission means unavailable.
+          items:
+            type: string
+            description: Repository-relative path, at most 4,096 UTF-8 bytes.
+        filesChangedTruncated:
+          type: boolean
+          const: true
+          description: Present only when additional changed paths were omitted.
+        pullRequestUrl:
+          type: string
+          format: uri
+          description: Unique pull request associated with the final branch, at most 2,048 UTF-8 bytes.
+      additionalProperties: false
+      description: Untrusted, best-effort terminal outcome bounded to 32 KiB overall. Absent on list responses and when unavailable.
     SessionCreateResult:
       allOf:
         - $ref: "#/components/schemas/Session"

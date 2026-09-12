@@ -26,6 +26,7 @@ export async function runSetupIfNeeded(
   timedOut: () => boolean,
   remainingMs: () => number,
   childEnvSource: NodeJS.ProcessEnv = process.env,
+  baseline?: string,
 ): Promise<SessionSetupResult> {
   let environment = createChildEnv(childEnvSource);
   const scopedSetupScript =
@@ -36,7 +37,16 @@ export async function runSetupIfNeeded(
   if (assign.resume || setupScripts.length === 0) return { environment, failure: null };
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
-    finishClaimedSession(processRunner, streamer, logs, assign, claimed, outcome, childEnvSource);
+    finishClaimedSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      outcome,
+      childEnvSource,
+      baseline,
+    );
   const abortedFailure = () =>
     finish({ status: timedOut() ? "timed_out" : "cancelled", exitCode: null });
   const revalidationFailure = (error: unknown) =>

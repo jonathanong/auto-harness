@@ -4,7 +4,12 @@ import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
-import { failSession, finishClaimedSession, type SessionRunResult } from "./session-outcome.ts";
+import {
+  failSession,
+  finishClaimedSession,
+  harnessSessionResult,
+  type SessionRunResult,
+} from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { PriorContextIdentity } from "./prior-context-file.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
@@ -87,7 +92,7 @@ export class SessionRunner {
           clearTimeout(timeoutTimer);
           const status = expired ? "timed_out" : "cancelled";
           streamer.writeTimestampedSystem(`Session ${status}`);
-          return { status, exitCode: null, logs };
+          return { status, exitCode: null, result: harnessSessionResult(status), logs };
         }
         mainClaimed = true;
         // The lock can wait behind another session. Resolve the current repository object and
@@ -101,7 +106,7 @@ export class SessionRunner {
         streamer.flush();
         const status = expired ? "timed_out" : "cancelled";
         streamer.writeTimestampedSystem(`Session ${status}`);
-        return { status, exitCode: null, logs };
+        return { status, exitCode: null, result: harnessSessionResult(status), logs };
       }
       return failSession(streamer, logs, "setup_failed", thrownMessage(err), null);
     }
@@ -115,6 +120,7 @@ export class SessionRunner {
       );
 
       const checkoutRef = assign.ref ?? claimed.repository.defaultBranch;
+      let baseline: string | undefined;
       const finishCheckoutInterruption = () =>
         finishClaimedSession(
           this.deps.processRunner,
@@ -130,6 +136,7 @@ export class SessionRunner {
               : {}),
           },
           this.deps.childEnvSource ?? process.env,
+          baseline,
         );
       streamer.write("system", `Checking out ref ${checkoutRef}...`);
 
@@ -139,9 +146,9 @@ export class SessionRunner {
 
       try {
         if (mainClaimed) {
-          await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
+          baseline = await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
         } else {
-          await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
+          baseline = await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
         }
         streamer.write(
           "system",
@@ -188,6 +195,7 @@ export class SessionRunner {
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
           this.deps.identity,
+          baseline,
         );
       } catch (error) {
         const errorMessage = thrownMessage(error);
@@ -202,6 +210,7 @@ export class SessionRunner {
           claimed,
           { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
           this.deps.childEnvSource ?? process.env,
+          baseline,
         );
       }
     } finally {

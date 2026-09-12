@@ -83,20 +83,31 @@ export const runActionWithEnv = async (extraEnv: Record<string, string>) => {
   await rm(directory, { force: true, recursive: true });
   return {
     code,
-    output: Object.fromEntries(
-      outputText
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          const separator = line.indexOf("=");
-          return [line.slice(0, separator), line.slice(separator + 1)];
-        }),
-    ),
+    output: parseGithubOutput(outputText),
     stderr,
     stdout,
   };
 };
+
+function parseGithubOutput(outputText: string): Record<string, string> {
+  const output: Record<string, string> = {};
+  const lines = outputText.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const heredoc = line.indexOf("<<");
+    if (heredoc !== -1) {
+      const name = line.slice(0, heredoc);
+      const delimiter = line.slice(heredoc + 2);
+      const value: string[] = [];
+      while (++index < lines.length && lines[index] !== delimiter) value.push(lines[index]!);
+      output[name] = value.join("\n");
+      continue;
+    }
+    const separator = line.indexOf("=");
+    if (separator !== -1) output[line.slice(0, separator)] = line.slice(separator + 1);
+  }
+  return output;
+}
 
 // Matches the real GitHub Actions runner's INPUT_* naming (actions/toolkit's core.ts):
 // only spaces become underscores; hyphens are preserved literally.

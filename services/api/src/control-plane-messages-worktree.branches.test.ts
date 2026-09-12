@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- terminal variants share one durable worktree fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -33,13 +34,14 @@ function row(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
-function run(session: SessionRecord) {
+function run(session: SessionRecord, methods: Record<string, unknown> = {}) {
   const state = createControlPlaneState({ now: () => NOW });
   setDurableReadStorage(state, {
     finishSession: async () => true,
     suppressProviderlessUsageLimit: async () => true,
     releaseCancelledSessionWorktree: async () => true,
     putArchive: async () => undefined,
+    ...methods,
   });
   state.sessions.set(session.id, session);
   return state;
@@ -67,20 +69,36 @@ describe("durable worktree terminal branches", () => {
       online: false,
       currentSessionId: "done",
     };
-    const completed = run(row("done"));
+    const finishes: Record<string, unknown>[] = [];
+    const completed = run(row("done"), {
+      finishSession: async (input: Record<string, unknown>) => (finishes.push(input), true),
+    });
     completed.worktrees.set("w", worktree);
+    const completedResult = { summary: "changed files", summarySource: "agent" as const };
     await handleHostMessageDurable(
       completed,
-      terminal("done", "completed", { cliResumeRef: "ref" }),
+      terminal("done", "completed", { cliResumeRef: "ref", result: completedResult }),
     );
+    expect(finishes[0]).toMatchObject({ result: completedResult });
     expect(completed.worktrees.get("w")).toMatchObject({ status: "idle", currentSessionId: null });
     expect(completed.sessions.get("done")).toMatchObject({
       status: "completed",
       worktreeId: null,
       cliResumeRef: "ref",
+      result: completedResult,
     });
+    await handleHostMessageDurable(
+      completed,
+      terminal("done", "completed", {
+        result: { summary: "stale overwrite", summarySource: "harness" },
+      }),
+    );
+    expect(finishes).toHaveLength(1);
+    expect(completed.sessions.get("done")?.result).toEqual(completedResult);
 
-    const retry = run(row("retry"));
+    const retry = run(
+      row("retry", { result: { summary: "intermediate", summarySource: "agent" } }),
+    );
     retry.worktrees.set("w", { ...worktree, currentSessionId: "retry" });
     await handleHostMessageDurable(
       retry,
@@ -91,14 +109,22 @@ describe("durable worktree terminal branches", () => {
       hostId: null,
       suppressedTargetIndexes: [0],
     });
+    expect(retry.sessions.get("retry")).not.toHaveProperty("result");
 
     const cancelled = run(row("cancelled", { status: "cancelled" }));
     cancelled.worktrees.set("w", { ...worktree, currentSessionId: "cancelled" });
     await handleHostMessageDurable(
       cancelled,
-      terminal("cancelled", "timed_out", { cliResumeRef: "late" }),
+      terminal("cancelled", "timed_out", {
+        cliResumeRef: "late",
+        result: { summary: "cancelled result", summarySource: "harness" },
+      }),
     );
     expect(cancelled.worktrees.get("w")).toMatchObject({ status: "idle", currentSessionId: null });
+    expect(cancelled.sessions.get("cancelled")?.result).toEqual({
+      summary: "cancelled result",
+      summarySource: "harness",
+    });
   });
 
   it("does not fail a legacy providerless terminal when host capacity is already zero", async () => {

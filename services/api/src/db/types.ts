@@ -1,4 +1,9 @@
-import type { SessionResumeSpec, SessionStatus, TargetRef } from "@auto-harness/shared";
+import type {
+  SessionResult,
+  SessionResumeSpec,
+  SessionStatus,
+  TargetRef,
+} from "@auto-harness/shared";
 export type { UsageRecord } from "../usage.ts";
 
 export type SessionRecord = {
@@ -67,6 +72,8 @@ export type SessionRecord = {
   reconnectDeadlineAt?: string;
   exitCode?: number | null | undefined;
   cliResumeRef?: string | undefined;
+  /** Bounded machine-readable terminal outcome, absent for legacy/unavailable reports. */
+  result?: SessionResult;
   resumedFromSessionId?: string;
   pinnedHostId?: string | null;
   pinnedProviderAccountId?: string | null;

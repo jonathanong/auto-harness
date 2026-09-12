@@ -380,22 +380,23 @@ export class WorktreeManager {
     claimed: ClaimedWorktree,
     ref: string | undefined,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
-    await this.git.checkoutRef({
+    const baseline = await this.git.checkoutRef({
       cwd: claimed.cwd,
       repoPath: claimed.repository.path,
       ref: target,
       ...(signal ? { signal } : {}),
     });
+    return baseline && /^[0-9a-f]{40}$/i.test(baseline) ? baseline : undefined;
   }
 
   async prepareMainCheckout(
     claimed: ClaimedWorktree,
     ref: string | undefined,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     await claimed.currentExecutionTarget?.();
     const target = ref ?? claimed.repository.defaultBranch;
     await this.git.prepareMainCheckout({
@@ -403,5 +404,7 @@ export class WorktreeManager {
       ref: target,
       ...(signal ? { signal } : {}),
     });
+    const baseline = await this.git.revParse(claimed.cwd, "HEAD").catch(() => undefined);
+    return baseline && /^[0-9a-f]{40}$/i.test(baseline) ? baseline : undefined;
   }
 }

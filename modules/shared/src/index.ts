@@ -36,6 +36,18 @@ export type {
   SessionActiveStatus,
   SessionTerminalStatus,
 } from "./session.ts";
+export type { SessionResult } from "./session-result.ts";
+export {
+  SESSION_RESULT_PROTOCOL_VERSION,
+  MAX_SESSION_RESULT_BYTES,
+  MAX_SESSION_RESULT_SUMMARY_BYTES,
+  MAX_SESSION_RESULT_BRANCH_BYTES,
+  MAX_SESSION_RESULT_URL_BYTES,
+  MAX_SESSION_RESULT_FILES,
+  MAX_SESSION_RESULT_FILE_BYTES,
+  isSessionResult,
+  normalizeSessionResult,
+} from "./session-result.ts";
 
 export {
   HOST_CAPABILITIES,

@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { SessionStatus } from "@auto-harness/shared";
+import type { SessionResult, SessionStatus } from "@auto-harness/shared";
 import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
@@ -357,6 +357,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     attemptId: string;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    result?: SessionResult | undefined;
   }): Promise<boolean> {
     return providerAccountLeases.releaseTimedOutProviderAccountLease(this.ctx, opts);
   }
@@ -449,6 +450,7 @@ export class DynamoPlaneStorageBase {
     exitCode?: number | null | undefined;
     errorCode?: string | undefined;
     cliResumeRef?: string | undefined;
+    result?: SessionResult | undefined;
     suppressedTargetIndex?: number;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
@@ -562,6 +564,7 @@ export class DynamoPlaneStorageBase {
      * every callsite instead of deriving it from the terminal session. */
     online: boolean;
     cliResumeRef?: string | undefined;
+    result?: SessionResult | undefined;
     fence?: { hostId: string; connectionId: string } | undefined;
     attemptId: string;
     concurrencyId?: string | undefined;
@@ -693,6 +696,7 @@ export class DynamoPlaneStorageBase {
     errorMessage?: string;
     exitCode?: number | null;
     cliResumeRef?: string;
+    result?: SessionResult;
     fence?: { hostId: string; connectionId: string };
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];

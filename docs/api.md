@@ -647,7 +647,8 @@ applies there.
 Session filtering is applied while traversing bounded storage pages, so a response may contain
 fewer than `limit` items — including an empty `items` array — while `nextCursor` is non-null. Treat
 only `nextCursor: null` as terminal; clients must continue requesting pages with the returned
-cursor until it becomes null.
+cursor until it becomes null. List items deliberately omit the potentially large structured
+`result`; fetch the session detail when an automation caller needs the outcome.
 
 #### `GET /sessions/:id`
 
@@ -665,14 +666,14 @@ Get session details.
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
   "targetDisplayNames": ["codex", "echo"],
-  "status": "running",
+  "status": "completed",
   "type": "prompt",
   "source": "ui",
   "timeout": 1800,
   "priority": 10,
   "hostId": "vps-prod-1",
   "requiredLabels": ["codex"],
-  "exitCode": null,
+  "exitCode": 0,
   "errorCode": null,
   "errorMessage": null,
   "resumedFromSessionId": null,
@@ -690,7 +691,14 @@ Get session details.
   },
   "createdAt": "2026-08-01T12:00:00Z",
   "startedAt": "2026-08-01T12:00:05Z",
-  "completedAt": null
+  "completedAt": "2026-08-01T12:10:05Z",
+  "result": {
+    "summary": "Updated the retry policy and opened a pull request.",
+    "summarySource": "agent",
+    "branch": "auto-harness/retry-policy",
+    "filesChanged": ["src/retry.ts", "src/retry.test.ts"],
+    "pullRequestUrl": "https://github.com/example/repo/pull/42"
+  }
 }
 ```
 
@@ -704,6 +712,21 @@ Get session details.
 | `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                              |
 | `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                                                |
 | `resolvedRoute`                 | Last assigned route: `targetIndex`, optional `providerAccountId`, `commandId`, `hostId`, `worktreeId`, `attemptId` (no secrets) |
+| `result`                        | Best-effort structured terminal outcome; absent for active, legacy, and unavailable-result sessions                             |
+
+`result` is captured after the terminal hook and is untrusted agent/worktree-derived data. Its
+`summarySource` is `agent` only when a supported structured CLI result supplied the summary;
+otherwise the daemon produces a deterministic `harness` summary. `branch`, `filesChanged`, and
+`pullRequestUrl` are optional because their probes may fail. An observed clean checkout is
+represented by `filesChanged: []`; an omitted field means it was unavailable. When more than 256
+sorted paths are observed, the stored prefix is accompanied by `filesChangedTruncated: true`.
+The result is bounded to 32 KiB overall: summary 4 KiB, branch 1 KiB, pull-request URL 2 KiB,
+and each file path 4 KiB. Pull-request discovery is an association with the final named branch,
+not proof that this session created the PR. Existing sessions are not backfilled.
+
+Accepted terminal status owns the result atomically with the session transition. Duplicate or
+stale attempt reports cannot replace it, and a `usage_limit` report that requeues onto a fallback
+does not retain an intermediate result.
 
 #### `POST /sessions/:id/clone`
 

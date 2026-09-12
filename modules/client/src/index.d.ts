@@ -1,6 +1,15 @@
 import type { Command, Provider } from "./catalog-types.js";
 export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-types.js";
 
+export type SessionResult = {
+  summary: string;
+  summarySource: "agent" | "harness";
+  branch?: string;
+  filesChanged?: string[];
+  filesChangedTruncated?: true;
+  pullRequestUrl?: string;
+};
+
 export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
@@ -75,6 +84,8 @@ export type Session = {
   createdAt: string;
   url: string;
   created?: boolean;
+  /** Present on detail reads and terminal action results when available. */
+  result?: SessionResult;
 };
 
 /** Body accepted by `POST /sessions/:id/resume`. `target`/`fallbacks` are an optional

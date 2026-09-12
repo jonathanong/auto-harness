@@ -93,8 +93,13 @@ describe("DynamoDB Local terminal options", () => {
         status: "completed",
         queueShard: 0,
         concurrencyId: "key",
+        result: { summary: "terminal result", summarySource: "agent" },
       }),
     ).toBe(true);
+    expect((await getSession(ctx, "terminal"))?.result).toEqual({
+      summary: "terminal result",
+      summarySource: "agent",
+    });
   });
 
   it("reconciles legacy host capacity without failing a zero-count row", async () => {

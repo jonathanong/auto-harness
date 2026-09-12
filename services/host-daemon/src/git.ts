@@ -19,7 +19,7 @@ export type GitClient = {
     repoPath: string;
     ref: string;
     signal?: AbortSignal;
-  }): Promise<void>;
+  }): Promise<string | undefined>;
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
@@ -156,6 +156,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       if (detached.exitCode !== 1) {
         throw new Error("Failed to verify detached checkout");
       }
+      return sha;
     },
 
     async prepareMainCheckout({ cwd, ref, signal }) {

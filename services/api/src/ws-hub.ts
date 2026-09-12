@@ -5,15 +5,18 @@ import type { Duplex } from "node:stream";
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
   HOST_PROTOCOL_VERSION,
+  SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
   isHostRuntimeReport,
   isHostRunningAttempt,
   isValidCliResumeRef,
   isSessionStatus,
+  isTerminalSessionStatus,
   parseHostCapabilitiesAdvertisement,
   principalHas,
   sanitizeProviderAccountReadiness,
   validateProviderAccountReadiness,
+  normalizeSessionResult,
   type HostToServerMessage,
   type HostWireMessage,
   type ProviderAccountReadiness,
@@ -518,7 +521,11 @@ export function parseHostMessage(
         validExitCode &&
         optionalText(message.errorCode, 128) &&
         optionalText(message.errorMessage, 4_096) &&
-        (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef))
+        (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef)) &&
+        (message.result === undefined ||
+          (isTerminalSessionStatus(message.status) &&
+            (options?.protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION &&
+            normalizeSessionResult(message.result) !== undefined))
         ? (message as HostToServerMessage)
         : null;
     }

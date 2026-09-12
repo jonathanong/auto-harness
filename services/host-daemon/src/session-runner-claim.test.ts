@@ -16,6 +16,7 @@ describe("SessionRunner claim and checkout failures", () => {
     const result = await sessionRunner.run(baseAssign({ worktreeId: "missing" }));
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("setup_failed");
+    expect(result.result).toEqual({ summary: "Session failed", summarySource: "harness" });
   });
 
   it("stringifies non-Error claim failures", async () => {
@@ -94,6 +95,9 @@ describe("SessionRunner claim and checkout failures", () => {
         },
       },
     });
-    expect((await runner2.run(baseAssign())).errorMessage).toBe("co-nope");
+    await expect(runner2.run(baseAssign())).resolves.toMatchObject({
+      errorMessage: "co-nope",
+      result: { summary: "Session failed", summarySource: "harness" },
+    });
   });
 });

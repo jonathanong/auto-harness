@@ -1,5 +1,9 @@
 /* eslint-disable max-lines -- one policy table covers every host and lifecycle event. */
-import { isTerminalSessionStatus, type SessionStatus } from "@auto-harness/shared";
+import {
+  isTerminalSessionStatus,
+  type SessionResult,
+  type SessionStatus,
+} from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 
@@ -8,6 +12,7 @@ type SessionReportFields = {
   errorCode?: string;
   errorMessage?: string;
   cliResumeRef?: string;
+  result?: SessionResult;
 };
 
 export type SessionTransitionEvent =
@@ -104,6 +109,7 @@ function report(event: Extract<SessionTransitionEvent, { type: "status" }>): Ses
     ...(event.errorCode !== undefined ? { errorCode: event.errorCode } : {}),
     ...(event.errorMessage !== undefined ? { errorMessage: event.errorMessage } : {}),
     ...(event.cliResumeRef !== undefined ? { cliResumeRef: event.cliResumeRef } : {}),
+    ...(event.result !== undefined ? { result: event.result } : {}),
   };
 }
 
@@ -211,8 +217,14 @@ function planLateTerminal(
   return planOf(
     ...prefix,
     ...releaseEffects(session),
-    ...(event.cliResumeRef !== undefined
-      ? [{ type: "patch_report" as const, cliResumeRef: event.cliResumeRef }]
+    ...(event.cliResumeRef !== undefined || event.result !== undefined
+      ? [
+          {
+            type: "patch_report" as const,
+            ...(event.cliResumeRef !== undefined ? { cliResumeRef: event.cliResumeRef } : {}),
+            ...(event.result !== undefined ? { result: event.result } : {}),
+          },
+        ]
       : []),
   );
 }

@@ -1537,9 +1537,27 @@ describe("provider account execution-profile leases", () => {
 
   it("cleans timeout leases through each local and durable host-assignment path", async () => {
     const state = createControlPlaneState();
-    const noLease = { id: "no-lease", attemptId: "attempt", timedOutHostId: "host" } as never;
-    await expect(releaseTimedOutProviderAccountLease(state, noLease)).resolves.toBe(true);
+    const firstResult = { summary: "first", summarySource: "harness" as const };
+    const noLease = {
+      id: "no-lease",
+      attemptId: "attempt",
+      timedOutHostId: "host",
+      result: firstResult,
+    } as never;
+    await expect(
+      releaseTimedOutProviderAccountLease(state, noLease, {
+        summary: "replacement",
+        summarySource: "agent",
+      }),
+    ).resolves.toBe(true);
     expect(noLease).not.toHaveProperty("timedOutHostId");
+    expect(noLease).toHaveProperty("result", firstResult);
+
+    const freshResult = { id: "fresh", attemptId: "attempt", timedOutHostId: "host" } as never;
+    await expect(
+      releaseTimedOutProviderAccountLease(state, freshResult, firstResult),
+    ).resolves.toBe(true);
+    expect(freshResult).toHaveProperty("result", firstResult);
 
     const localLease = {
       concurrencyId: "provider-lease:acct:0",
@@ -1558,9 +1576,16 @@ describe("provider account execution-profile leases", () => {
       id: "local",
       providerAccountLease: localLease,
       timedOutHostId: "host",
+      result: firstResult,
     } as never;
-    await expect(releaseTimedOutProviderAccountLease(state, local)).resolves.toBe(true);
+    await expect(
+      releaseTimedOutProviderAccountLease(state, local, {
+        summary: "replacement",
+        summarySource: "agent",
+      }),
+    ).resolves.toBe(true);
     expect(local).not.toHaveProperty("providerAccountLease");
+    expect(local).toHaveProperty("result", firstResult);
 
     const durableCalls: unknown[] = [];
     const legacyCalls: unknown[] = [];

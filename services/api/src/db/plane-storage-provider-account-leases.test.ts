@@ -298,7 +298,11 @@ describe("provider account lease storage", () => {
     await expect(
       releaseProviderAccountLease(
         { doc: { send }, tables: { concurrencyLocks: "Locks" } } as never,
-        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+        {
+          concurrencyId: "provider-lease:acct:0",
+          sessionId: "sess",
+          attemptId: "attempt",
+        },
       ),
     ).resolves.toBeUndefined();
   });
@@ -321,7 +325,12 @@ describe("provider account lease storage", () => {
           doc: { send },
           tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
         } as never,
-        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
+        {
+          concurrencyId: "provider-lease:acct:0",
+          sessionId: "sess",
+          attemptId: "attempt",
+          result: { summary: "late result", summarySource: "harness" },
+        },
       ),
     ).resolves.toBe(true);
     const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } };
@@ -330,7 +339,7 @@ describe("provider account lease storage", () => {
     expect(items[0]).toMatchObject({
       Update: {
         UpdateExpression:
-          "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
+          "SET #result = if_not_exists(#result, :result) REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
       },
     });
     expect(items[1]).toMatchObject({ Delete: { TableName: "Locks" } });
@@ -396,6 +405,7 @@ describe("provider account lease storage", () => {
           attemptId: "attempt",
           hostId: "host",
           hostAssignmentLease: { hostId: "host" },
+          result: { summary: "late result", summarySource: "harness" },
         },
       ),
     ).resolves.toBe(true);

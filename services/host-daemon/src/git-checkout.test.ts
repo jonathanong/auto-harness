@@ -142,7 +142,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("abc");
   });
 
   it("checkoutRef fails when the hard reset cannot restore tracked files", async () => {
@@ -229,7 +229,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "v1.2.3" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("commit-sha");
   });
 
   it("checkoutRef retries once after a target graph connectivity failure", async () => {
@@ -264,7 +264,7 @@ describe("createGitClient checkout and revParse", () => {
     );
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("abc");
   });
 
   it("checkoutRef does not refetch after an unrelated checkout failure", async () => {

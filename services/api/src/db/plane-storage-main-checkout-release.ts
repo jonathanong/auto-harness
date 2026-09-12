@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- release planning and transaction fencing stay co-located. */
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import type { SessionResult } from "@auto-harness/shared";
 
 import { queueOrderKeyForWrite } from "../control-plane-ordering.ts";
 import { statusShardAttr } from "./dynamo.ts";
@@ -30,6 +31,7 @@ type ReleaseMainCheckoutOptions = {
   exitCode?: number | null | undefined;
   errorCode?: string | undefined;
   cliResumeRef?: string | undefined;
+  result?: SessionResult | undefined;
   suppressedTargetIndex?: number;
   queueOrder?: string;
   expectedStatus?: "running" | "cancelled";
@@ -115,7 +117,10 @@ export async function releaseMainCheckoutSession(
                 (requireNoDrainCancellation
                   ? " AND attribute_not_exists(cancelledByDrainOperationId)"
                   : ""),
-              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeNames: {
+                "#s": "status",
+                ...(isQueued || opts.result ? { "#result": "result" } : {}),
+              },
               ExpressionAttributeValues: expressionValues(opts, queueOrder),
             },
           },
@@ -176,6 +181,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.exitCode !== undefined ? ", exitCode = :exitCode" : "") +
     (opts.errorCode ? ", errorCode = :errorCode" : "") +
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
+    (opts.result && !isQueued ? ", #result = if_not_exists(#result, :result)" : "") +
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
@@ -183,7 +189,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
-    (isQueued ? ", startedAt" : "")
+    (isQueued ? ", startedAt, #result" : "")
   );
 }
 
@@ -209,6 +215,7 @@ function expressionValues(
     ...(opts.exitCode !== undefined ? { ":exitCode": opts.exitCode } : {}),
     ...(opts.errorCode ? { ":errorCode": opts.errorCode } : {}),
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
+    ...(opts.result && opts.status !== "queued" ? { ":result": opts.result } : {}),
     ...(opts.suppressedTargetIndex !== undefined
       ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
       : {}),

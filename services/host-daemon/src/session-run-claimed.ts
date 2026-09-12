@@ -42,6 +42,8 @@ export async function runClaimedSession(
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   /** Daemon identity used only to fetch `assign.priorContext`; never forwarded to the CLI. */
   identity?: PriorContextIdentity,
+  /** HEAD captured after checkout and before setup; used for post-session facts. */
+  baseline?: string,
 ): Promise<SessionRunResult> {
   try {
     await claimed.currentExecutionTarget?.();
@@ -59,6 +61,7 @@ export async function runClaimedSession(
         errorMessage: thrownMessage(error),
       },
       childEnvSource,
+      baseline,
     );
   }
   const setup = await runSetupIfNeeded(
@@ -71,6 +74,7 @@ export async function runClaimedSession(
     timedOut,
     remainingMs,
     childEnvSource,
+    baseline,
   );
   if (setup.failure) return setup.failure;
 
@@ -90,6 +94,7 @@ export async function runClaimedSession(
         errorMessage: thrownMessage(error),
       },
       childEnvSource,
+      baseline,
     );
   }
 
@@ -102,6 +107,7 @@ export async function runClaimedSession(
       claimed,
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
       childEnvSource,
+      baseline,
     );
   }
 
@@ -119,6 +125,7 @@ export async function runClaimedSession(
         errorMessage: "no resolved command argv for this session",
       },
       childEnvSource,
+      baseline,
     );
   }
 
@@ -136,6 +143,7 @@ export async function runClaimedSession(
     setup.environment,
     executionProfiles,
     identity,
+    baseline,
   );
 }
 
@@ -153,6 +161,7 @@ async function runProcessAndFinish(
   environment: NodeJS.ProcessEnv,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   identity?: PriorContextIdentity,
+  baseline?: string,
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -177,6 +186,7 @@ async function runProcessAndFinish(
         errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
       },
       environment,
+      baseline,
     );
   }
   const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
@@ -229,7 +239,16 @@ async function runProcessAndFinish(
   );
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
-    finishClaimedSession(processRunner, streamer, logs, assign, claimed, outcome, environment);
+    finishClaimedSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      outcome,
+      environment,
+      baseline,
+    );
 
   if (result.timedOut || timedOut()) {
     return await finish({
@@ -237,6 +256,7 @@ async function runProcessAndFinish(
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
     });
   }
 
@@ -246,6 +266,7 @@ async function runProcessAndFinish(
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
     });
   }
 
@@ -255,6 +276,7 @@ async function runProcessAndFinish(
       exitCode: 0,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
     });
   }
 
@@ -272,6 +294,7 @@ async function runProcessAndFinish(
       errorMessage: "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
     });
   }
 
@@ -281,5 +304,6 @@ async function runProcessAndFinish(
     errorMessage: `process exited with code ${String(result.exitCode)}`,
     ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
     ...(result.usage !== undefined ? { usage: result.usage } : {}),
+    ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
   });
 }

@@ -651,9 +651,14 @@ describe("host message optional-field coverage", () => {
         worktreeId: null,
         attemptId: "attempt",
         status: "completed",
+        result: { summary: "late scheduled", summarySource: "harness" },
       }),
     ).toEqual({ ok: true });
     expect(current.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
+    expect(current.sessions.get("s")?.result).toEqual({
+      summary: "late scheduled",
+      summarySource: "harness",
+    });
   });
 
   it("clears a cancelled local worktree that another session now owns", () => {
@@ -676,9 +681,14 @@ describe("host message optional-field coverage", () => {
         worktreeId: "w",
         attemptId: "attempt",
         status: "completed",
+        result: { summary: "late worktree", summarySource: "agent" },
       }),
     ).toEqual({ ok: true });
     expect(current.sessions.get("s")?.worktreeId).toBeNull();
+    expect(current.sessions.get("s")?.result).toEqual({
+      summary: "late worktree",
+      summarySource: "agent",
+    });
     expect(current.worktrees.get("w")?.currentSessionId).toBe("other");
   });
 
@@ -856,12 +866,14 @@ describe("host message optional-field coverage", () => {
         attemptId: "attempt",
         status: "completed",
         cliResumeRef: "keep",
+        result: { summary: "local result", summarySource: "agent" },
       }),
     ).toEqual({ ok: true });
     expect(current.sessions.get("s")).toMatchObject({
       status: "completed",
       worktreeId: null,
       cliResumeRef: "keep",
+      result: { summary: "local result", summarySource: "agent" },
     });
   });
 
