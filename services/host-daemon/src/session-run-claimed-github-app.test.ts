@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- token setup, expiry, cancellation, and environment isolation share one fixture. */
 import { generateKeyPairSync } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseGitHubAppConfig } from "./github-app.ts";
@@ -331,7 +332,7 @@ describe("claimed session GitHub App credentials", () => {
         () => false,
         () => 4_000_000,
         commandRunner,
-        { PATH: process.env.PATH, GH_CONFIG_DIR: "/ambient-gh" },
+        { PATH: process.env.PATH, HOME: "/daemon-home", GH_CONFIG_DIR: "/ambient-gh" },
         executionProfiles,
         undefined,
         app(),
@@ -340,6 +341,8 @@ describe("claimed session GitHub App credentials", () => {
         isolatedGitHubConfigDir,
       ),
     ).resolves.toMatchObject({ status: "completed" });
+    expect(commandEnv?.HOME).toBe(realpathSync("/tmp"));
+    expect(hookEnv?.HOME).toBe("/daemon-home");
     expect(commandEnv?.GH_CONFIG_DIR).toBe(isolatedGitHubConfigDir);
     expect(hookEnv?.GH_CONFIG_DIR).toBe(isolatedGitHubConfigDir);
   });
