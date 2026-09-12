@@ -130,7 +130,14 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     // This is the only unauthenticated /api/v1 route. Signature verification and strict body
     // filtering happen inside the handler; rate limiting still applies before any KMS decrypt.
     if (/^\/api\/v1\/webhooks\/custom\/[^/]+$/.test(url.pathname)) {
-      if (await enforceRateLimit({ ...loginLimit, bucket: "mutation" })) return;
+      if (
+        await enforceRateLimit({
+          ...loginLimit,
+          bucket: "publicIngress",
+          auditDenied: false,
+        })
+      )
+        return;
       if (await handleCustomWebhookRoute(ctx)) return;
     }
     if (loginRoute) {
