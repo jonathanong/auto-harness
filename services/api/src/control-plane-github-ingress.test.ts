@@ -263,6 +263,11 @@ describe("GitHub ingress config", () => {
     for (const invalid of [
       { defaultRef: "-main" },
       { defaultRef: "bad ref" },
+      { defaultRef: "../main" },
+      { defaultRef: "refs/heads/" },
+      { defaultRef: "x".repeat(256) },
+      { requiredLabels: Array.from({ length: 17 }, () => "label") },
+      { requiredLabels: ["x".repeat(65)] },
       { allowedLogins: [""] },
       { allowedLogins: ["x".repeat(40)] },
       { allowedLogins: Array.from({ length: 101 }, () => "login") },

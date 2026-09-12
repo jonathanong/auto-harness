@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 
 import {
   DEFAULT_QUEUE_TTL_SECONDS,
+  isValidSessionRef,
+  MAX_REQUIRED_LABELS,
+  MAX_REQUIRED_LABEL_LENGTH,
   sessionPriorityError,
   sessionTimeoutError,
   validateTargetRouting,
@@ -263,7 +266,7 @@ function validateInput(
     ) {
       return { ok: false, error: "repositoryId is required" };
     }
-    if (typeof binding.defaultRef !== "string" || !isSafeDefaultRef(binding.defaultRef)) {
+    if (!isValidSessionRef(binding.defaultRef)) {
       return { ok: false, error: "defaultRef must be a valid git ref" };
     }
     const routing = validateTargetRouting(binding);
@@ -272,6 +275,25 @@ function validateInput(
     if (timeout) return { ok: false, error: timeout };
     const priority = sessionPriorityError(binding.priority ?? 0);
     if (priority) return { ok: false, error: priority };
+    if (
+      binding.requiredLabels !== undefined &&
+      (!Array.isArray(binding.requiredLabels) ||
+        binding.requiredLabels.some((label) => typeof label !== "string"))
+    ) {
+      return { ok: false, error: "requiredLabels must be an array of strings" };
+    }
+    if (binding.requiredLabels && binding.requiredLabels.length > MAX_REQUIRED_LABELS) {
+      return {
+        ok: false,
+        error: `requiredLabels must have at most ${MAX_REQUIRED_LABELS} entries`,
+      };
+    }
+    if (binding.requiredLabels?.some((label) => label.length > MAX_REQUIRED_LABEL_LENGTH)) {
+      return {
+        ok: false,
+        error: `requiredLabels entries must be at most ${MAX_REQUIRED_LABEL_LENGTH} characters`,
+      };
+    }
     if (
       binding.allowedLogins !== undefined &&
       (!Array.isArray(binding.allowedLogins) ||
@@ -356,18 +378,4 @@ function configSizeError(record: GitHubIngressConfigRecord): string | null {
   return bytes > MAX_GITHUB_INGRESS_CONFIG_BYTES
     ? `GitHub ingress configuration must be at most ${MAX_GITHUB_INGRESS_CONFIG_BYTES} bytes`
     : null;
-}
-
-function isSafeDefaultRef(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value.length <= 512 &&
-    !value.startsWith("-") &&
-    !Array.from(value).some(
-      (character) =>
-        character.charCodeAt(0) < 32 ||
-        character.charCodeAt(0) === 127 ||
-        " ~^:?*\\[".includes(character),
-    )
-  );
 }

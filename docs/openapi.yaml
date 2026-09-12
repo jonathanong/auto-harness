@@ -857,14 +857,14 @@ components:
         repositoryId: { type: string, minLength: 1, maxLength: 256 }
         target: { $ref: "#/components/schemas/Target" }
         fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }
-        queueTtlSeconds: { type: number, minimum: 1 }
-        timeout: { type: number, minimum: 1 }
-        priority: { type: integer }
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+        timeout: { type: number, exclusiveMinimum: 0, maximum: 604800 }
+        priority: { type: integer, minimum: -10000, maximum: 10000 }
         requiredLabels:
           type: array
           maxItems: 16
           items: { type: string, minLength: 1, maxLength: 64 }
-        defaultRef: { type: string, minLength: 1, maxLength: 512 }
+        defaultRef: { type: string, minLength: 1, maxLength: 255 }
         allowedLogins:
           type: array
           maxItems: 100
