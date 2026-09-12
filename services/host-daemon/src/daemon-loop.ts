@@ -523,6 +523,11 @@ export class DaemonLoop {
   }
 
   async waitForIdle(): Promise<void> {
+    // In-flight entries remove themselves from the map when their owning
+    // handleAssign call unwinds. Await the current work once: a resolved entry
+    // can still be present briefly (and tests may install one to model a
+    // superseded attempt), so repeatedly rereading this map can spin forever.
+    await Promise.all([...this.inflight.values()].map((entry) => entry.work));
     // Handoff hooks can be the sole remaining work after an assignment has
     // already stopped.  Keep the transport alive through both the hook and
     // its current completion write; an unacknowledged completion remains
@@ -530,13 +535,9 @@ export class DaemonLoop {
     // for the server's 24-hour retention window.
     while (true) {
       this.startPendingTerminalHookHandoffs();
-      const activeWork = [
-        ...[...this.inflight.values()].map((entry) => entry.work),
-        ...[...this.pendingTerminalHookHandoffs.values()].flatMap((pending) => [
-          pending.work,
-          pending.completionSend,
-        ]),
-      ].filter((work): work is Promise<void> => work !== undefined);
+      const activeWork = [...this.pendingTerminalHookHandoffs.values()]
+        .flatMap((pending) => [pending.work, pending.completionSend])
+        .filter((work): work is Promise<void> => work !== undefined);
       if (activeWork.length === 0) return;
       await Promise.all(activeWork);
     }

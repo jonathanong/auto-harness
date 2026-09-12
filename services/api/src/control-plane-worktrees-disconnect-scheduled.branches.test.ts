@@ -56,11 +56,17 @@ describe("scheduled disconnect branch coverage", () => {
       connectionId: "old",
     });
     expect(await reclaimScheduledReconnect(terminal, authorized, [])).toBe(true);
-    expect(terminal.sessions.get("s")).toMatchObject({ status: "failed", errorCode: "host_lost" });
-    expect(terminal.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
-    expect(terminal.sessions.get("s")).not.toHaveProperty("assignmentConnectionId");
-    expect(terminal.sessions.get("s")).not.toHaveProperty("ackReceivedAt");
-    expect(terminal.mainCheckoutLeases.size).toBe(0);
+    expect(terminal.sessions.get("s")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "old",
+      ackReceivedAt: NOW,
+    });
+    expect(terminal.mainCheckoutLeases.get("host\0repo")).toEqual({
+      sessionId: "s",
+      connectionId: "old",
+    });
     expect(terminal.sessions.get("s")?.terminalHookHandoff).toMatchObject({
       hostId: "host",
       worktreeId: null,
