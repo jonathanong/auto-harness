@@ -106,7 +106,8 @@ export function preparePersistedEnv(opts: {
   // and returning the original contents makes that no-write guarantee explicit.
   if (
     errors.includes("HARNESS_EXECUTION_PROFILES") ||
-    errors.includes("HARNESS_GITHUB_APP_CONFIG")
+    errors.includes("HARNESS_GITHUB_APP_CONFIG") ||
+    errors.includes("HARNESS_GITHUB_PULL_REF_CONFIG")
   ) {
     return { contents: opts.existing ?? "", errors };
   }

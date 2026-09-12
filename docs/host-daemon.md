@@ -547,15 +547,23 @@ failure identifies checkout and the requested ref as the timeout cause.
 
 GitHub pull-request heads use the special exact form `refs/pull/<positive-number>/head`; they are
 not resolved through the ordinary `fetch --all` fallback because a repository's configured
-refspec commonly does not advertise them. Before an untrusted session can edit Git configuration,
-the daemon captures `origin` once (including an unavailable origin, which remains unavailable for
-the daemon lifetime). A pull-head checkout fetches only that captured URL in a fresh temporary bare
-repository with system/global URL-rewrite configuration disabled, imports the resulting bundle into
-the claimed checkout, and roots it in a fresh worktree-private scratch ref. The scratch ref remains
-reachable through detached checkout and `HEAD` verification, then is deleted in `finally`; it is
-never a shared predictable ref or `FETCH_HEAD`. Any missing origin, failed exact fetch, bundle
-import, ref resolution, checkout, verification, or cleanup fails the checkout closed and does not
-probe another remote or use the generic recovery path.
+refspec commonly does not advertise them. They require a host-local, absolute
+`HARNESS_GITHUB_PULL_REF_CONFIG` file. It maps each canonical repository path to its immutable
+remote URL and, where HTTPS needs it, an explicit `credentialHelper`, `httpProxy`, or absolute
+`sslCAInfo`. Repository, global, and system Git configuration are never the source of that policy,
+so a session cannot replace it before or after a daemon restart. URL rewrite settings and shell
+credential helpers are not supported.
+
+A pull-head checkout fetches only that pinned URL in a fresh temporary bare repository with
+system/global URL-rewrite configuration disabled. Its object database reuses the claimed checkout's
+existing objects read-only for negotiation, and the bundle excludes the current checkout commit
+when available, so routine PR fetches transfer only the missing graph. Replacement refs are disabled
+throughout fetch, resolution, checkout, connectivity checks, and reset. The imported commit is
+rooted in a fresh worktree-private scratch ref. That ref remains reachable through detached checkout
+and `HEAD` verification, then is deleted with its own bounded cleanup signal; it is never a shared
+predictable ref or `FETCH_HEAD`. Any missing policy, failed exact fetch, bundle import, ref
+resolution, checkout, verification, or cleanup fails the checkout closed and does not probe another
+remote or use the generic recovery path.
 
 It syncs their configured URLs and force-checks out already initialized submodules recursively, so
 tracked submodule changes cannot leak into the next session without implicitly

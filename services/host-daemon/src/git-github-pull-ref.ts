@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { runGit } from "./git-commands.ts";
+import type { GitHubPullRefConfig } from "./github-pull-ref-config.ts";
 
 const GITHUB_PULL_REQUEST_REF = /^refs\/pull\/([1-9]\d*)\/head$/;
 
@@ -13,26 +14,52 @@ export function isGitHubPullRequestRef(ref: string): boolean {
   return GITHUB_PULL_REQUEST_REF.test(ref);
 }
 
-function isolatedFetchEnvironment(configDirectory: string): NodeJS.ProcessEnv {
+function isolatedFetchEnvironment(
+  configDirectory: string,
+  objectDirectory: string | undefined,
+): NodeJS.ProcessEnv {
   // Do not let system or user configuration rewrite the daemon-pinned URL. The temporary bare
   // repository below is new for this operation, so it has no repository-local URL rewrites either.
   return {
     ...createChildEnv(),
     GIT_CONFIG_GLOBAL: join(configDirectory, "global.gitconfig"),
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_NO_REPLACE_OBJECTS: "1",
+    ...(objectDirectory === undefined ? {} : { GIT_ALTERNATE_OBJECT_DIRECTORIES: objectDirectory }),
   };
+}
+
+function transportArguments(config: GitHubPullRefConfig): string[] {
+  const { transport } = config;
+  return [
+    ...(transport.credentialHelper === undefined
+      ? []
+      : ["-c", `credential.helper=${transport.credentialHelper}`]),
+    ...(transport.httpProxy === undefined ? [] : ["-c", `http.proxy=${transport.httpProxy}`]),
+    ...(transport.sslCAInfo === undefined ? [] : ["-c", `http.sslCAInfo=${transport.sslCAInfo}`]),
+  ];
+}
+
+function normalizedConfig(
+  value: GitHubPullRefConfig | string | undefined,
+): GitHubPullRefConfig | undefined {
+  if (typeof value === "string") return { remoteUrl: value, transport: {} };
+  return value;
 }
 
 export async function fetchGitHubPullRequestRef(
   runner: ProcessRunner,
   cwd: string,
   ref: string,
-  remoteUrl: string | undefined,
+  config: GitHubPullRefConfig | string | undefined,
+  objectDirectory?: string,
+  baseCommit?: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  if (!isGitHubPullRequestRef(ref) || !remoteUrl) return null;
-  // The URL was captured from `origin` before any untrusted session ran and is kept in the
-  // daemon's memory for the repository lifetime. Do not re-read mutable repository config here.
+  const configured = normalizedConfig(config);
+  if (!isGitHubPullRequestRef(ref) || !configured) return null;
+  // The URL and narrowly scoped transport options are loaded from an operator-owned file, never
+  // mutable repository, global, or system Git configuration.
   // Fetch it in a fresh bare repository with URL-rewrite configuration disabled, then import a
   // bundle. This prevents a prior session's common-config `url.*.insteadOf` setting from changing
   // the pinned transport endpoint.
@@ -43,7 +70,8 @@ export async function fetchGitHubPullRequestRef(
   // `refs/worktree` is private to this linked worktree. A fresh random component also prevents a
   // prior session in the same worktree from precreating the handoff ref.
   const destination = `refs/worktree/auto-harness/pull-fetch/${randomUUID()}`;
-  const environment = isolatedFetchEnvironment(temporaryDirectory);
+  const environment = isolatedFetchEnvironment(temporaryDirectory, objectDirectory);
+  const transport = transportArguments(configured);
   try {
     const initialized = await runGit(
       runner,
@@ -57,12 +85,13 @@ export async function fetchGitHubPullRequestRef(
       runner,
       temporaryDirectory,
       [
+        ...transport,
         "--git-dir",
         temporaryRepository,
         "fetch",
         "--no-write-fetch-head",
         "--no-tags",
-        remoteUrl,
+        configured.remoteUrl,
         `+${ref}:${fetchedRef}`,
       ],
       signal,
@@ -82,18 +111,30 @@ export async function fetchGitHubPullRequestRef(
     const bundled = await runGit(
       runner,
       temporaryDirectory,
-      ["--git-dir", temporaryRepository, "bundle", "create", bundlePath, fetchedRef],
+      [
+        "--git-dir",
+        temporaryRepository,
+        "bundle",
+        "create",
+        bundlePath,
+        fetchedRef,
+        ...(baseCommit === undefined ? [] : [`^${baseCommit}`]),
+      ],
       signal,
       environment,
     );
     if (bundled.exitCode !== 0) return null;
-    const imported = await runGit(runner, cwd, ["bundle", "unbundle", bundlePath], signal);
+    const imported = await runGit(runner, cwd, ["bundle", "unbundle", bundlePath], signal, {
+      ...createChildEnv(),
+      GIT_NO_REPLACE_OBJECTS: "1",
+    });
     if (imported.exitCode !== 0) return null;
     const recorded = await runGit(
       runner,
       cwd,
       ["update-ref", "--no-deref", destination, sha],
       signal,
+      { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
     );
     return recorded.exitCode === 0 ? destination : null;
   } finally {
@@ -113,6 +154,7 @@ export async function deleteGitHubPullRequestRef(
     cwd,
     ["update-ref", "--no-deref", "-d", destination],
     signal,
+    { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
   );
   if (cleaned.exitCode !== 0) {
     throw new Error(`Failed to clean up GitHub pull-request ref ${sourceRef}`);

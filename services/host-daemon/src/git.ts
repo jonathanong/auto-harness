@@ -16,6 +16,7 @@ import {
   resetClaimedWorktree,
 } from "./git-worktree-checkout.ts";
 import { resetInitializedSubmodules } from "./git-worktree-reset.ts";
+import { type GitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -54,7 +55,10 @@ async function listedWorktreePaths(output: string, repoPath: string): Promise<Se
   return paths;
 }
 
-export function createGitClient(runner: ProcessRunner): GitClient {
+export function createGitClient(
+  runner: ProcessRunner,
+  pullRefConfigs: GitHubPullRefConfigs | undefined = undefined,
+): GitClient {
   const originUnavailable = Symbol("origin-unavailable");
   const pinnedOriginUrls = new Map<string, string | typeof originUnavailable>();
 
@@ -62,6 +66,15 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     const key = await canonicalPath(path);
     const existing = pinnedOriginUrls.get(key);
     if (existing !== undefined) return existing === originUnavailable ? undefined : existing;
+    const configuredPullRef = pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
+    if (configuredPullRef !== undefined) {
+      pinnedOriginUrls.set(key, configuredPullRef.remoteUrl);
+      return configuredPullRef.remoteUrl;
+    }
+    if (pullRefConfigs !== undefined) {
+      pinnedOriginUrls.set(key, originUnavailable);
+      return undefined;
+    }
     try {
       const configured = await runGit(runner, path, ["remote", "get-url", "--", "origin"]);
       if (configured.exitCode !== 0) {
@@ -83,13 +96,18 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     }
   }
 
+  async function pullRefConfig(path: string) {
+    const key = await canonicalPath(path);
+    return pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
+  }
+
   return {
     async ensureRepo(path: string) {
       const probe = await runGit(runner, path, ["rev-parse", "--is-inside-work-tree"]);
       if (probe.exitCode !== 0) {
         throw new Error(`Not a git repository: ${path}`);
       }
-      await captureOrigin(path);
+      if (pullRefConfigs === undefined) await captureOrigin(path);
     },
 
     async ensureWorktree({ repoPath, worktreePath, branch }) {
@@ -138,9 +156,42 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // which does accept plain `--`).
       const isPullRequestRef = isGitHubPullRequestRef(ref);
       let pullRequestRef: string | null = null;
+      let sha = "";
       try {
+        const objectDirectory =
+          isPullRequestRef && pullRefConfigs !== undefined
+            ? await runGit(
+                runner,
+                cwd,
+                ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+                signal,
+              )
+            : undefined;
+        const base =
+          isPullRequestRef && pullRefConfigs !== undefined
+            ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
+            : undefined;
+        const legacyOrigin =
+          isPullRequestRef && pullRefConfigs === undefined
+            ? await captureOrigin(repoPath)
+            : undefined;
+        const pullConfig = isPullRequestRef
+          ? pullRefConfigs === undefined
+            ? legacyOrigin === undefined
+              ? undefined
+              : { remoteUrl: legacyOrigin, transport: {} }
+            : await pullRefConfig(repoPath)
+          : undefined;
         pullRequestRef = isPullRequestRef
-          ? await fetchGitHubPullRequestRef(runner, cwd, ref, await captureOrigin(repoPath), signal)
+          ? await fetchGitHubPullRequestRef(
+              runner,
+              cwd,
+              ref,
+              pullConfig,
+              objectDirectory?.exitCode === 0 ? objectDirectory.stdout.trim() : undefined,
+              base?.exitCode === 0 ? base.stdout.trim() : undefined,
+              signal,
+            )
           : null;
         if (isPullRequestRef && pullRequestRef === null) {
           throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
@@ -165,7 +216,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         if (resolved.exitCode !== 0) {
           throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
         }
-        const sha = resolved.stdout.trim();
+        sha = resolved.stdout.trim();
         let co = await checkoutDetached(runner, cwd, sha, signal);
         if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
           if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
@@ -203,7 +254,14 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         }
       } finally {
         if (pullRequestRef !== null) {
-          await deleteGitHubPullRequestRef(runner, cwd, pullRequestRef, ref, signal);
+          // Cleanup must run even after the execution deadline aborts the checkout signal.
+          await deleteGitHubPullRequestRef(
+            runner,
+            cwd,
+            pullRequestRef,
+            ref,
+            AbortSignal.timeout(10_000),
+          );
         }
       }
       return sha;

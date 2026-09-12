@@ -586,6 +586,15 @@ describe("validateCreateSessionInput", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "github-comment:issue_comment:42:99" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput(
+        { ...base, concurrencyId: "github-comment:issue_comment:42:99" },
+        { allowGitHubCommentConcurrencyId: true },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
       validateCreateSessionInput({
         ...base,
         concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1),

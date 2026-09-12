@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- checkout resolution, recovery, and diagnostics share one scripted Git fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
@@ -220,7 +220,88 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("pr-sha");
+  });
+
+  it("uses restart-stable operator policy, object reuse, safe transport, and replacement-free Git", async () => {
+    const ref = "refs/pull/126/head";
+    const remoteUrl = "https://github.com/example/repository.git";
+    let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    const steps = [
+      ...resetsPriorState(),
+      {
+        match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+        exitCode: 0,
+        stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
+      },
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "base-sha\n" },
+      { match: ["init", "--bare", "*"], exitCode: 0 },
+      {
+        match: [
+          "-c",
+          "credential.helper=manager-core",
+          "-c",
+          "http.proxy=https://proxy.example",
+          "-c",
+          "http.sslCAInfo=/etc/ssl/private-ca.pem",
+          "--git-dir",
+          "*",
+          "fetch",
+          "--no-write-fetch-head",
+          "--no-tags",
+          remoteUrl,
+          `+${ref}:refs/auto-harness/pull-fetch/source`,
+        ],
+        exitCode: 0,
+      },
+      {
+        match: ["--git-dir", "*", "rev-parse", "--verify", "refs/auto-harness/pull-fetch/source^{commit}"],
+        exitCode: 0,
+        stdout: "pr-sha\n",
+      },
+      {
+        match: ["--git-dir", "*", "bundle", "create", "*", "refs/auto-harness/pull-fetch/source", "^base-sha"],
+        exitCode: 0,
+      },
+      { match: ["bundle", "unbundle", "*"], exitCode: 0 },
+      { match: ["update-ref", "--no-deref", "*", "pr-sha"], exitCode: 0 },
+      resolvesFetchedPullRef(),
+      { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
+      hardReset("pr-sha"),
+      syncsSubmodules(),
+      updatesSubmodules(),
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+      { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      deletesFetchedPullRef(),
+    ];
+    const runner = scripted(steps);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).includes("fetch")) fetchEnvironment = options.env;
+      return originalRun(options);
+    };
+    const git = createGitClient(
+      runner,
+      new Map([
+        [
+          resolve(checkoutRepo),
+          {
+            remoteUrl,
+            transport: {
+              credentialHelper: "manager-core",
+              httpProxy: "https://proxy.example",
+              sslCAInfo: "/etc/ssl/private-ca.pem",
+            },
+          },
+        ],
+      ]),
+    );
+    await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+    expect(fetchEnvironment).toMatchObject({
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: join(checkoutRepo, ".git", "objects"),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_NO_REPLACE_OBJECTS: "1",
+    });
   });
 
   it("uses the origin URL captured before an untrusted session can mutate repository config", async () => {
@@ -250,7 +331,7 @@ describe("createGitClient checkout and revParse", () => {
     await git.ensureRepo(checkoutRepo);
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("pinned-pr-sha");
   });
 
   it("uses a fresh per-worktree scratch ref rather than inspecting a shared predictable ref", async () => {
@@ -273,7 +354,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("pr-sha");
   });
 
   it("fails closed when no immutable origin URL is available", async () => {
@@ -391,6 +472,40 @@ describe("createGitClient checkout and revParse", () => {
     await expect(checkout).rejects.toThrow(
       "Failed to clean up GitHub pull-request ref refs/pull/9/head",
     );
+  });
+
+  it("cleans the scratch ref with a fresh bounded signal after the session signal aborts", async () => {
+    const ref = "refs/pull/10/head";
+    const controller = new AbortController();
+    let cleanupAborted: boolean | undefined;
+    const runner = scripted([
+      ...resetsPriorState(),
+      capturesOrigin(),
+      ...fetchesGitHubPullRef(ref),
+      resolvesFetchedPullRef(),
+      { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
+      hardReset("pr-sha"),
+      syncsSubmodules(),
+      updatesSubmodules(),
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+      { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      deletesFetchedPullRef(),
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      const args = options.argv.slice(1);
+      const result = await originalRun(options);
+      if (args[0] === "symbolic-ref") controller.abort();
+      if (args[0] === "update-ref" && args.includes("-d")) cleanupAborted = options.signal?.aborted;
+      return result;
+    };
+    await createGitClient(runner).checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref,
+      signal: controller.signal,
+    });
+    expect(cleanupAborted).toBe(false);
   });
 
   it("checkoutRef retries when an index lock appears after preparation", async () => {

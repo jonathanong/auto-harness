@@ -192,6 +192,7 @@ export function validateSessionCreate(
     allowScheduleId?: boolean;
     allowReservedConcurrencyId?: boolean;
     allowCustomWebhookConcurrencyId?: boolean;
+    allowGitHubCommentConcurrencyId?: boolean;
   } = {},
 ):
   | {
@@ -227,7 +228,10 @@ export function validateSessionCreate(
       setupScript: record.setupScript,
       ...(options.allowReservedConcurrencyId ? { allowReservedConcurrencyId: true } : {}),
     },
-    options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
+    {
+      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+    },
   );
   if (!validated.ok) return validated;
   if (validated.value.repositoryId) {
