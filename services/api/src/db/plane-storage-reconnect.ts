@@ -14,6 +14,7 @@ export type ReconnectSession = {
 
 export type WorkspaceReconnectSession = Omit<ReconnectSession, "worktreeId"> & {
   workspaceSlotId: string;
+  expectedStatus?: "running" | "cancelled";
 };
 
 /** Atomically take an acknowledged session offline without allowing a late
@@ -101,11 +102,11 @@ export async function markWorkspaceReconnectPending(
               UpdateExpression:
                 "SET reconnectDeadlineAt = :deadline, assignmentConnectionId = :connectionId",
               ConditionExpression:
-                "#s = :running AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId) AND attribute_exists(ackReceivedAt) AND attribute_not_exists(reconnectDeadlineAt)",
+                "#s = :expectedStatus AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId) AND attribute_exists(ackReceivedAt) AND attribute_not_exists(reconnectDeadlineAt)",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":deadline": opts.deadlineAt,
-                ":running": "running",
+                ":expectedStatus": opts.expectedStatus ?? "running",
                 ":hostId": opts.hostId,
                 ":workspaceSlotId": opts.workspaceSlotId,
                 ":connectionId": opts.connectionId,
@@ -223,13 +224,13 @@ export async function confirmWorkspaceReconnect(
               UpdateExpression:
                 "SET assignmentConnectionId = :connectionId REMOVE reconnectDeadlineAt",
               ConditionExpression:
-                "#s = :running AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
+                "#s = :expectedStatus AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
                 (opts.deadlineAt
                   ? " AND reconnectDeadlineAt = :deadline"
                   : " AND attribute_not_exists(reconnectDeadlineAt)"),
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
-                ":running": "running",
+                ":expectedStatus": opts.expectedStatus ?? "running",
                 ":hostId": opts.hostId,
                 ":workspaceSlotId": opts.workspaceSlotId,
                 ...(opts.deadlineAt ? { ":deadline": opts.deadlineAt } : {}),

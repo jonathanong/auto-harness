@@ -291,6 +291,18 @@ describe("repository and schedule route coverage", () => {
       ),
     ).toMatchObject({ status: 201, json: { workspacePoolId: "workspace" } });
     expect(
+      await invoke(plane, "POST", "/api/v1/schedules", {
+        id: "workspace-schedule-auth-disabled",
+        repositoryId: null,
+        workspacePoolId: "workspace",
+        destroyWorkspaceAfter: true,
+        name: "workspace auth disabled",
+        target: { commandId: "command" },
+        cron: "*/5 * * * *",
+        timeout: 30,
+      }),
+    ).toMatchObject({ status: 201, json: { destroyWorkspaceAfter: true } });
+    expect(
       await invokeDirect(
         handleScheduleRoutes,
         plane,

@@ -2,6 +2,7 @@
 import { expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { disconnectHost } from "./control-plane-agents.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 
@@ -136,6 +137,98 @@ it("holds an acknowledged workspace attempt through durable reconnect grace", as
     status: "busy",
     currentSessionId: session.id,
     online: false,
+  });
+});
+
+it("holds an acknowledged cancelled workspace through local and durable reconnect grace", async () => {
+  const local = createControlPlaneState({
+    now: () => "2026-09-12T00:00:00.000Z",
+    reconnectGraceMs: 10_000,
+  });
+  const cancelled: SessionRecord = {
+    id: "cancelled",
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    prompt: "inspect",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: [],
+    queueTtlSeconds: 300,
+    queueExpiresAt: "later",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "cancelled",
+    queueShard: 0,
+    createdAt: "now",
+    completedAt: "now",
+    worktreeId: null,
+    hostId: "host",
+    attemptId: "attempt",
+    ackReceivedAt: "now",
+    assignmentConnectionId: "connection",
+  };
+  const leasedSlot: WorkspaceSlotRecord = {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "host",
+    workspacePoolId: "pool",
+    status: "busy",
+    online: true,
+    currentSessionId: cancelled.id,
+    connectionId: "connection",
+  };
+  local.sessions.set(cancelled.id, cancelled);
+  local.workspaceSlots.set(leasedSlot.id, leasedSlot);
+  local.connections.set("connection", {
+    connectionId: "connection",
+    type: "host",
+    hostId: "host",
+    connectedAt: "now",
+    lastHeartbeatAt: "now",
+    repositoryIds: [],
+    capabilities: [],
+  });
+  local.hostConnection.set("host", "connection");
+
+  expect(disconnectHost(local, "connection")).toEqual([]);
+  expect(local.sessions.get(cancelled.id)).toMatchObject({
+    status: "cancelled",
+    workspaceSlotId: leasedSlot.id,
+    workspaceSlotLease: true,
+    reconnectDeadlineAt: "2026-09-12T00:00:10.000Z",
+  });
+  expect(local.workspaceSlots.get(leasedSlot.id)).toMatchObject({
+    status: "busy",
+    currentSessionId: cancelled.id,
+    online: false,
+  });
+
+  const durable = createControlPlaneState({
+    now: () => "2026-09-12T00:00:00.000Z",
+    reconnectGraceMs: 10_000,
+  });
+  const mark = vi.fn(async () => true);
+  durable.storage = {
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => [leasedSlot],
+    getSession: async () => cancelled,
+    getWorkspaceSlot: async () => leasedSlot,
+    putWorkspaceSlot: async () => undefined,
+    markWorkspaceReconnectPending: mark,
+  } as never;
+  await expect(
+    offlineHostAndRequeueDurableImpl(durable, "host", "connection", "offline", () => []),
+  ).resolves.toEqual([]);
+  expect(mark).toHaveBeenCalledWith(
+    expect.objectContaining({ expectedStatus: "cancelled", sessionId: cancelled.id }),
+  );
+  expect(durable.sessions.get(cancelled.id)).toMatchObject({
+    workspaceSlotId: leasedSlot.id,
+    workspaceSlotLease: true,
   });
 });
 

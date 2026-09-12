@@ -241,8 +241,8 @@ describe("session authoring is closed to host-bound credentials", () => {
       json: { error: { message: "setupScript is not accepted; use setupProfileId" } },
     });
     expect(await invoke({ ...baseWorkspace, destroyWorkspaceAfter: true })).toMatchObject({
-      status: 404,
-      json: { error: { message: "resource not found" } },
+      status: 201,
+      json: { destroyWorkspaceAfter: true },
     });
     const created = await invoke(baseWorkspace);
     expect(created).toMatchObject({

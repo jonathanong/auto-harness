@@ -74,6 +74,9 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
 function projectHostWorkspaceSlots(
   state: ControlPlaneState,
   host: HostInventoryRecord,
+  options: {
+    advertisedWorkspacePools?: readonly import("@auto-harness/shared").WorkspacePoolAttachment[];
+  } = {},
 ): { slots: WorkspaceSlotRecord[]; retiredSlots: WorkspaceSlotRecord[]; removedIds: string[] } {
   const online = state.hostConnection.has(host.hostId);
   const configuredIds = new Set<string>();
@@ -82,7 +85,27 @@ function projectHostWorkspaceSlots(
     for (const slot of attachment.slots) {
       configuredIds.add(slot.id);
       const previous = state.workspaceSlots.get(slot.id);
-      const connectionId = state.hostConnection.get(host.hostId) ?? previous?.connectionId;
+      const unchanged =
+        previous?.hostId === host.hostId &&
+        previous.workspacePoolId === attachment.workspacePoolId &&
+        previous.path === slot.path;
+      const daemonAcknowledged = options.advertisedWorkspacePools?.some(
+        (advertisedPool) =>
+          advertisedPool.workspacePoolId === attachment.workspacePoolId &&
+          advertisedPool.slots.some(
+            (advertisedSlot) =>
+              advertisedSlot.id === slot.id &&
+              advertisedSlot.name === slot.name &&
+              advertisedSlot.path === slot.path,
+          ),
+      );
+      const connectionId = daemonAcknowledged
+        ? state.hostConnection.get(host.hostId)
+        : options.advertisedWorkspacePools
+          ? undefined
+          : unchanged
+            ? previous.connectionId
+            : undefined;
       slots.push({
         id: slot.id,
         name: slot.name,
@@ -91,7 +114,11 @@ function projectHostWorkspaceSlots(
         workspacePoolId: attachment.workspacePoolId,
         status:
           previous?.status === "busy" || previous?.status === "error" ? previous.status : "idle",
-        online: previous?.online ?? online,
+        online: options.advertisedWorkspacePools
+          ? Boolean(daemonAcknowledged && online)
+          : unchanged
+            ? previous.online
+            : false,
         currentSessionId: previous?.currentSessionId ?? null,
         lastAssignedAt: previous?.lastAssignedAt ?? null,
         ...(connectionId ? { connectionId } : {}),
@@ -121,8 +148,19 @@ function projectHostWorkspaceSlots(
 }
 
 /** Project a locally accepted inventory snapshot into its workspace-slot read model. */
-export function syncHostWorkspaceSlots(state: ControlPlaneState, host: HostInventoryRecord): void {
-  const projection = projectHostWorkspaceSlots(state, host);
+export function syncHostWorkspaceSlots(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+  advertisedWorkspacePools?:
+    | readonly import("@auto-harness/shared").WorkspacePoolAttachment[]
+    | null,
+): void {
+  const advertised = advertisedWorkspacePools ?? host.workspacePools ?? [];
+  const projection = projectHostWorkspaceSlots(
+    state,
+    host,
+    advertisedWorkspacePools === null ? {} : { advertisedWorkspacePools: advertised },
+  );
   for (const slot of projection.slots) {
     state.workspaceSlots.set(slot.id, slot);
     if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
@@ -146,9 +184,17 @@ export function syncHostWorkspaceSlots(state: ControlPlaneState, host: HostInven
 export async function syncHostWorkspaceSlotsDurable(
   state: ControlPlaneState,
   host: HostInventoryRecord,
+  advertisedWorkspacePools?:
+    | readonly import("@auto-harness/shared").WorkspacePoolAttachment[]
+    | null,
 ): Promise<void> {
-  if (!state.storage) return syncHostWorkspaceSlots(state, host);
-  const projection = projectHostWorkspaceSlots(state, host);
+  const advertised = advertisedWorkspacePools ?? host.workspacePools ?? [];
+  if (!state.storage) return syncHostWorkspaceSlots(state, host, advertisedWorkspacePools);
+  const projection = projectHostWorkspaceSlots(
+    state,
+    host,
+    advertisedWorkspacePools === null ? {} : { advertisedWorkspacePools: advertised },
+  );
   const retired = await Promise.all(
     projection.retiredSlots.map((slot) => persistRetiredWorkspaceSlot(state.storage!, slot)),
   );
@@ -239,7 +285,7 @@ export function putHostInventory(
     );
   }
   syncWorktreesFromHost(state, rec);
-  syncHostWorkspaceSlots(state, rec);
+  syncHostWorkspaceSlots(state, rec, null);
   return { ok: true, config: withoutDaemonLabelProvenance(rec) };
 }
 
@@ -292,8 +338,27 @@ function prepareHostInventory(
         if (projected && projected.hostId !== hostId) {
           return { ok: false, error: `workspace slot id already in use: ${slot.id}` };
         }
-        if (projected?.status === "busy" && projected.path !== slot.path) {
-          return { ok: false, error: `cannot change the path of busy workspace slot: ${slot.id}` };
+        if (
+          (projected?.status === "busy" || projected?.currentSessionId) &&
+          (projected.path !== slot.path || projected.workspacePoolId !== attachment.workspacePoolId)
+        ) {
+          return {
+            ok: false,
+            error: `cannot change the path or pool of busy workspace slot: ${slot.id}`,
+          };
+        }
+        const leasedPath = [...state.workspaceSlots.values()].find(
+          (candidate) =>
+            candidate.hostId === hostId &&
+            candidate.id !== slot.id &&
+            candidate.path === slot.path &&
+            (candidate.status === "busy" || candidate.currentSessionId != null),
+        );
+        if (leasedPath) {
+          return {
+            ok: false,
+            error: `cannot replace the id of busy workspace slot: ${leasedPath.id}`,
+          };
         }
       }
     }

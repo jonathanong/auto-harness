@@ -116,7 +116,7 @@ export async function restoreWorkspaceReconnectPending(
   const sessionSets = ["hostId = :hostId"];
   const sessionRemoves: string[] = [];
   const sessionValues: Record<string, unknown> = {
-    ":running": "running",
+    ":expectedStatus": opts.expectedStatus ?? "running",
     ":hostId": opts.hostId,
     ":workspaceSlotId": opts.workspaceSlotId,
     ":connectionId": opts.connectionId,
@@ -160,7 +160,7 @@ export async function restoreWorkspaceReconnectPending(
                 `SET ${sessionSets.join(", ")}` +
                 (sessionRemoves.length > 0 ? ` REMOVE ${sessionRemoves.join(", ")}` : ""),
               ConditionExpression:
-                "#s = :running AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
+                "#s = :expectedStatus AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
                 " AND assignmentConnectionId = :connectionId" +
                 " AND attribute_not_exists(reconnectDeadlineAt)",
               ExpressionAttributeNames: { "#s": "status" },

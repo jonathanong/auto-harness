@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 type Schedule = {
   id: string;
   name: string;
-  repositoryId: string;
+  repositoryId: string | null;
   targetDisplayNames: string[];
   target: { providerId: string } | { commandId: string };
   fallbacks: Array<{ providerId: string } | { commandId: string }>;
@@ -103,7 +103,10 @@ export default async function SchedulesPage({
   // A schedule can reference a repository since removed from the catalog — keep it selectable
   // rather than letting the <select> silently fall back to the first real option and rewrite
   // the schedule's repositoryId out from under the user on save.
-  if (editing && !repositories.some((repository) => repository.id === editing.repositoryId)) {
+  if (
+    editing?.repositoryId &&
+    !repositories.some((repository) => repository.id === editing.repositoryId)
+  ) {
     repositories = [{ id: editing.repositoryId, name: editing.repositoryId }, ...repositories];
   }
 
@@ -120,7 +123,7 @@ export default async function SchedulesPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Repo</TableHead>
+                <TableHead>Workspace / repo</TableHead>
                 <TableHead>Route</TableHead>
                 <TableHead>Queue TTL</TableHead>
                 <TableHead>Cron</TableHead>
@@ -144,12 +147,19 @@ export default async function SchedulesPage({
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    <Link
-                      href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
-                      className="hover:underline"
-                    >
-                      {s.repositoryId}
-                    </Link>
+                    {s.workspacePoolId ? (
+                      (workspacePools.find((pool) => pool.id === s.workspacePoolId)?.name ??
+                      s.workspacePoolId)
+                    ) : s.repositoryId ? (
+                      <Link
+                        href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
+                        className="hover:underline"
+                      >
+                        {s.repositoryId}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     <div data-pw={`schedule-route-${s.id}`}>
@@ -256,7 +266,9 @@ export default async function SchedulesPage({
                 repositories={repositories}
                 workspacePools={workspacePools}
                 canWriteExecConfig={canWriteExecConfig}
-                schedule={editing}
+                schedule={
+                  editing ? { ...editing, repositoryId: editing.repositoryId ?? "" } : undefined
+                }
               />
             </div>
           ) : null}

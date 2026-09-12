@@ -37,6 +37,7 @@ export function workspacePlane() {
     hostId: "host-1",
     worktrees: [],
     capabilities: ["workspace-sessions"],
+    workspacePools: inventory.config.workspacePools ?? [],
   });
   if (!host.ok) throw new Error(host.error);
   return { plane, messages };

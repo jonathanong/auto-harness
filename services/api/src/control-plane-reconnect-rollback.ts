@@ -33,6 +33,7 @@ export async function restoreConfirmedSessions(
         hostId,
         workspaceSlotId: item.workspaceSlot.id,
         connectionId,
+        expectedStatus: item.session.status === "cancelled" ? "cancelled" : "running",
         ...(item.session.reconnectDeadlineAt
           ? { previousDeadlineAt: item.session.reconnectDeadlineAt }
           : {}),

@@ -224,8 +224,8 @@ describe("session clone route", () => {
         destroyWorkspaceAfter: true,
       }),
     ).toMatchObject({
-      status: 404,
-      json: { error: { message: "resource not found" } },
+      status: 201,
+      json: { destroyWorkspaceAfter: true },
     });
 
     const cloned = await invokeHandler(handler, "POST", `/api/v1/sessions/${source.id}/clone`, {

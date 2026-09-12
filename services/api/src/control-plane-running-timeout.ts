@@ -76,7 +76,7 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
     if (wt?.currentSessionId === session.id) {
       releaseWorktree(state, session.worktreeId);
     }
-  } else if (session.workspaceSlotId) {
+  } else if (!session.workspaceSlotId) {
     releaseWorkspaceSlot(state, session);
   }
   session.worktreeId = null;

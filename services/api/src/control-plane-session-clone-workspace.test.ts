@@ -86,3 +86,17 @@ it("validates workspace cleanup overrides and requires the source pool", () => {
     code: "VALIDATION_ERROR",
   });
 });
+
+it("rejects a clone whose prompt override makes the frozen assignment frame too large", () => {
+  let id = 0;
+  const plane = workspacePlane(() => `workspace-${++id}`);
+  plane.state.workspacePools.get("pool-1")!.setupProfiles[0]!.script = '"'.repeat(50_000);
+  const source = createWorkspaceSource(plane);
+
+  expect(plane.cloneSession(source.id, { prompt: '"'.repeat(20_000) })).toMatchObject({
+    ok: false,
+    code: "VALIDATION_ERROR",
+    error: expect.stringContaining("assignment exceeds"),
+  });
+  expect(plane.state.sessions.size).toBe(1);
+});

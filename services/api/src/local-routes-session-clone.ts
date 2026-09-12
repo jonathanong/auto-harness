@@ -164,7 +164,8 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
   }
   if (
     parsed.destroyWorkspaceAfter !== undefined &&
-    (!ctx.principal || !may(ctx.principal, "fleet:exec-config"))
+    ctx.principal &&
+    !may(ctx.principal, "fleet:exec-config")
   ) {
     return respondAfterCloneAudit(
       ctx,

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- admission validates the frozen workspace control frame. */
-import { validateCreateSessionInput } from "@auto-harness/shared";
+import { validateCreateSessionInput, type TargetRef } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString } from "./control-plane-state.ts";
@@ -25,10 +25,22 @@ type WorkspaceAssignmentRoute = {
 
 type WorkspaceAdmissionRoute = Omit<WorkspaceAssignmentRoute, "targetIndex" | "resolvedArgv">;
 
+export type WorkspaceAssignmentFields = {
+  workspacePoolId: string;
+  setupProfileId?: string | undefined;
+  workspaceSetupScript?: string | undefined;
+  destroyWorkspaceAfter?: boolean | undefined;
+  prompt: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  timeout: number;
+  metadata?: Record<string, unknown> | undefined;
+};
+
 function workspaceAdmissionRoutes(
   state: ControlPlaneState,
   workspacePoolId: string,
-  target: ValidatedFields["target"],
+  target: TargetRef,
 ): WorkspaceAdmissionRoute[] {
   if ("commandId" in target) {
     const command = state.commands.get(target.commandId);
@@ -76,7 +88,7 @@ function workspaceAdmissionRoutes(
 }
 
 function workspaceAssignmentMessage(
-  fields: ValidatedFields,
+  fields: WorkspaceAssignmentFields,
   setupScript: string | undefined,
   route: WorkspaceAssignmentRoute,
 ): Record<string, unknown> {
@@ -114,17 +126,18 @@ function workspaceAssignmentMessage(
  * pass freezes the selected setup profile and rejects any currently-routable
  * command whose escaped JSON assignment cannot fit the control channel.
  */
-function workspaceAssignmentPayloadError(
+export function workspaceAssignmentPayloadError(
   state: ControlPlaneState,
-  fields: ValidatedFields,
+  fields: WorkspaceAssignmentFields,
 ): string | null {
-  if (!fields.workspacePoolId) return null;
   const pool = state.workspacePools.get(fields.workspacePoolId);
   const setupProfileId = fields.setupProfileId ?? pool?.defaultSetupProfileId;
-  const setupScript = setupProfileId
-    ? pool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
-    : undefined;
-  const frozenFields: ValidatedFields = {
+  const setupScript =
+    fields.workspaceSetupScript ??
+    (setupProfileId
+      ? pool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
+      : undefined);
+  const frozenFields: WorkspaceAssignmentFields = {
     ...fields,
     ...(setupProfileId ? { setupProfileId } : {}),
     destroyWorkspaceAfter: fields.destroyWorkspaceAfter ?? pool?.destroyWorkspaceAfter ?? false,
@@ -206,7 +219,12 @@ export function validateSessionCreate(
     validated.value.fallbacks,
   );
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
-  const workspacePayloadError = workspaceAssignmentPayloadError(state, validated.value);
+  const workspacePayloadError = validated.value.workspacePoolId
+    ? workspaceAssignmentPayloadError(state, {
+        ...validated.value,
+        workspacePoolId: validated.value.workspacePoolId,
+      })
+    : null;
   if (workspacePayloadError) {
     return { ok: false, error: workspacePayloadError, code: "VALIDATION_ERROR" };
   }

@@ -205,7 +205,7 @@ export async function offlineHostAndRequeueDurableImpl(
       ? await state.storage.getSession(slot.currentSessionId)
       : null;
     if (
-      session?.status === "running" &&
+      (session?.status === "running" || session?.status === "cancelled") &&
       session.ackReceivedAt &&
       typeof state.storage.markWorkspaceReconnectPending === "function"
     ) {
@@ -222,6 +222,7 @@ export async function offlineHostAndRequeueDurableImpl(
         workspaceSlotId: slot.id,
         deadlineAt: nextSession.reconnectDeadlineAt,
         connectionId,
+        expectedStatus: session.status,
       });
       if (marked) {
         state.sessions.set(session.id, nextSession);

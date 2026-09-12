@@ -101,3 +101,41 @@ it("reclaims local workspace deadlines and safely ignores a lease whose worktree
   expect(state.sessions.get(workspace.id)).toMatchObject({ status: "queued" });
   expect(state.sessions.get("missing-worktree")?.status).toBe("running");
 });
+
+it("releases a cancelled workspace only after reconnect grace expires", async () => {
+  const state = createControlPlaneState();
+  const cancelled = reconnectingWorkspace({ status: "cancelled", completedAt: "now" });
+  state.sessions.set(cancelled.id, cancelled);
+  state.workspaceSlots.set(slot.id, slot);
+
+  await expect(reclaimReconnectDeadlines(state, Date.now())).resolves.toEqual([]);
+  expect(state.sessions.get(cancelled.id)).toMatchObject({
+    status: "cancelled",
+    workspaceSlotId: null,
+  });
+  expect(state.workspaceSlots.get(slot.id)).toMatchObject({
+    status: "idle",
+    currentSessionId: null,
+    online: false,
+  });
+});
+
+it("confirms a cancelled workspace that reconnects before grace expires", async () => {
+  const state = createControlPlaneState();
+  const cancelled = reconnectingWorkspace({
+    status: "cancelled",
+    completedAt: "now",
+    reconnectDeadlineAt: "2999-01-01T00:00:00.000Z",
+  });
+  state.sessions.set(cancelled.id, cancelled);
+  state.workspaceSlots.set(slot.id, slot);
+  state.hostConnection.set("host", "replacement");
+
+  await expect(reconcileHostRunningSessions(state, "host", [cancelled.id])).resolves.toEqual([]);
+  expect(state.sessions.get(cancelled.id)).not.toHaveProperty("reconnectDeadlineAt");
+  expect(state.workspaceSlots.get(slot.id)).toMatchObject({
+    status: "busy",
+    online: true,
+    connectionId: "replacement",
+  });
+});

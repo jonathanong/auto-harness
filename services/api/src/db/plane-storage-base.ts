@@ -689,6 +689,7 @@ export class DynamoPlaneStorageBase {
     workspaceSlotId: string;
     deadlineAt: string;
     connectionId: string;
+    expectedStatus?: "running" | "cancelled";
   }): Promise<boolean> {
     return reconnect.markWorkspaceReconnectPending(this.ctx, opts);
   }
@@ -709,6 +710,7 @@ export class DynamoPlaneStorageBase {
     workspaceSlotId: string;
     deadlineAt?: string;
     connectionId: string;
+    expectedStatus?: "running" | "cancelled";
   }): Promise<boolean> {
     return reconnect.confirmWorkspaceReconnect(this.ctx, opts);
   }
@@ -730,6 +732,7 @@ export class DynamoPlaneStorageBase {
     hostId: string;
     workspaceSlotId: string;
     connectionId: string;
+    expectedStatus?: "running" | "cancelled";
     previousDeadlineAt?: string;
     previousAssignmentConnectionId?: string;
     previousWorkspaceSlotConnectionId?: string;

@@ -83,7 +83,7 @@ describe("running timeout residual coverage", () => {
     expect(cancels).toEqual([`host:${sessionId}`]);
   });
 
-  it("releases the exact workspace slot when a local workspace assignment times out", () => {
+  it("retains the exact workspace slot when a local workspace assignment times out", () => {
     const plane = new ControlPlane({ now: () => NOW });
     const session = scheduledRunning({
       id: "workspace-timeout",
@@ -111,16 +111,16 @@ describe("running timeout residual coverage", () => {
     ]);
     expect(plane.getSession(session.id)).toMatchObject({
       status: "timed_out",
-      workspaceSlotId: null,
+      workspaceSlotId: "slot",
     });
     expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
-      status: "idle",
-      currentSessionId: null,
+      status: "busy",
+      currentSessionId: session.id,
+      errorMessage: "stale failure",
     });
-    expect(plane.state.workspaceSlots.get("slot")).not.toHaveProperty("errorMessage");
   });
 
-  it("clears a timed-out workspace lease without releasing a slot owned by another session", () => {
+  it("does not release a slot owned by another session when recording a workspace timeout", () => {
     const plane = new ControlPlane({ now: () => NOW });
     const session = scheduledRunning({
       id: "workspace-race",
@@ -151,7 +151,7 @@ describe("running timeout residual coverage", () => {
     });
     expect(plane.getSession(session.id)).toMatchObject({
       status: "timed_out",
-      workspaceSlotId: null,
+      workspaceSlotId: "slot",
     });
   });
 

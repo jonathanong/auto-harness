@@ -48,14 +48,11 @@ describe("workspace schedule route validation", () => {
     });
   });
 
-  it("requires the privileged capability for cleanup overrides", async () => {
+  it("allows cleanup overrides when authentication is disabled", async () => {
     const { invoke } = workspaceRoutes();
     expect(
       await invoke("POST", "/api/v1/schedules", { ...schedule, destroyWorkspaceAfter: true }),
-    ).toMatchObject({
-      status: 403,
-      json: { error: { message: "fleet:exec-config capability is required" } },
-    });
+    ).toMatchObject({ status: 201, json: { destroyWorkspaceAfter: true } });
   });
 
   it("validates workspace fields while patching an existing schedule", async () => {
@@ -75,10 +72,7 @@ describe("workspace schedule route validation", () => {
     });
     expect(
       await invoke("PATCH", "/api/v1/schedules/schedule-1", { destroyWorkspaceAfter: true }),
-    ).toMatchObject({
-      status: 403,
-      json: { error: { message: "fleet:exec-config capability is required" } },
-    });
+    ).toMatchObject({ status: 200, json: { destroyWorkspaceAfter: true } });
   });
 
   it("drops an inherited repository ref when converting a schedule to a workspace", async () => {

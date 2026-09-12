@@ -35,7 +35,8 @@ function publicSchedule<T extends { repositoryId: string }>(
 function cleanupOverrideAllowed(ctx: RouteCtx, body: Record<string, unknown>): boolean {
   return (
     body.destroyWorkspaceAfter === undefined ||
-    (!!ctx.principal && may(ctx.principal, "fleet:exec-config"))
+    !ctx.principal ||
+    may(ctx.principal, "fleet:exec-config")
   );
 }
 

@@ -41,7 +41,8 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
   }
   if (
     sessionBody?.destroyWorkspaceAfter !== undefined &&
-    (!ctx.principal || !may(ctx.principal, "fleet:exec-config"))
+    ctx.principal &&
+    !may(ctx.principal, "fleet:exec-config")
   ) {
     sendSessionForbidden(res);
     return true;

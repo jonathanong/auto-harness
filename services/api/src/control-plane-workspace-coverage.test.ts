@@ -112,7 +112,7 @@ describe("workspace control-plane branch boundaries", () => {
     expect(replacement).toMatchObject({ ok: true });
     expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
       status: "error",
-      online: true,
+      online: false,
       errorMessage: "needs operator repair",
     });
     expect(disconnectHost(plane.state, plane.state.hostConnection.get("host-1")!)).toEqual([]);
@@ -191,7 +191,10 @@ describe("workspace control-plane branch boundaries", () => {
           },
         ],
       }),
-    ).toEqual({ ok: false, error: "cannot change the path of busy workspace slot: slot-1" });
+    ).toEqual({
+      ok: false,
+      error: "cannot change the path or pool of busy workspace slot: slot-1",
+    });
 
     plane.state.workspaceSlots.set("slot-1", {
       ...plane.state.workspaceSlots.get("slot-1")!,

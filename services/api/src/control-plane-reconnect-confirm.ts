@@ -69,6 +69,7 @@ export async function confirmReportedWorkspaceSession(
       workspaceSlotId: slot.id,
       ...(deadlineAt ? { deadlineAt } : {}),
       connectionId: connectionId!,
+      expectedStatus: session.status === "cancelled" ? "cancelled" : "running",
     }));
   if (!confirmed) return false;
   const { reconnectDeadlineAt: _, ...next } = session;

@@ -25,6 +25,7 @@ import {
 } from "./control-plane-repository-admission-state.ts";
 import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
+import { workspaceAssignmentPayloadError } from "./control-plane-session-create.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -138,6 +139,13 @@ export async function triggerScheduleDurable(
     return target;
   }
   const session = createScheduledSession(state, schedule);
+  if (session.workspacePoolId) {
+    const payloadError = workspaceAssignmentPayloadError(state, {
+      ...session,
+      workspacePoolId: session.workspacePoolId,
+    });
+    if (payloadError) return { ok: false, error: payloadError };
+  }
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
     expectedNextRunAt: schedule.nextRunAt,
@@ -363,6 +371,15 @@ export async function tryClaimScheduleFireDurable(
     return null;
   }
   const session = createScheduledSession(state, schedule);
+  if (
+    session.workspacePoolId &&
+    workspaceAssignmentPayloadError(state, {
+      ...session,
+      workspacePoolId: session.workspacePoolId,
+    })
+  ) {
+    return null;
+  }
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
     expectedNextRunAt,

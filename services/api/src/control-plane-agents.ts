@@ -59,10 +59,21 @@ function publishWorkspaceSlotsLocal(
   hostId: string,
   connectionId: string,
   online: boolean,
+  advertisedWorkspacePools: readonly import("@auto-harness/shared").WorkspacePoolAttachment[] = [],
 ): void {
   for (const slot of state.workspaceSlots.values()) {
     if (slot.hostId !== hostId || slot.status === "busy") continue;
-    const next = { ...slot, online, connectionId };
+    const advertised = advertisedWorkspacePools.some(
+      (pool) =>
+        pool.workspacePoolId === slot.workspacePoolId &&
+        pool.slots.some(
+          (candidate) =>
+            candidate.id === slot.id &&
+            candidate.name === slot.name &&
+            candidate.path === slot.path,
+        ),
+    );
+    const next = { ...slot, online: online && advertised, connectionId };
     state.workspaceSlots.set(slot.id, next);
     if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot(next));
   }
@@ -78,7 +89,7 @@ function offlineWorkspaceSlotsLocal(
     if (slot.hostId !== hostId) continue;
     const session = slot.currentSessionId ? state.sessions.get(slot.currentSessionId) : undefined;
     if (session && (session.status === "running" || session.status === "cancelled")) {
-      if (session.status === "running" && session.ackReceivedAt) {
+      if (session.ackReceivedAt) {
         session.reconnectDeadlineAt = new Date(
           Date.parse(state.now()) + state.reconnectGraceMs,
         ).toISOString();
@@ -125,6 +136,7 @@ async function publishWorkspaceSlotsDurable(
   hostId: string,
   connectionId: string,
   online: boolean,
+  advertisedWorkspacePools: readonly import("@auto-harness/shared").WorkspacePoolAttachment[] = [],
 ): Promise<boolean> {
   if (
     typeof state.storage?.listWorkspaceSlotsByHost !== "function" ||
@@ -138,7 +150,17 @@ async function publishWorkspaceSlotsDurable(
       state.workspaceSlots.set(slot.id, slot);
       continue;
     }
-    const next = { ...slot, online, connectionId };
+    const advertised = advertisedWorkspacePools.some(
+      (pool) =>
+        pool.workspacePoolId === slot.workspacePoolId &&
+        pool.slots.some(
+          (candidate) =>
+            candidate.id === slot.id &&
+            candidate.name === slot.name &&
+            candidate.path === slot.path,
+        ),
+    );
+    const next = { ...slot, online: online && advertised, connectionId };
     if (typeof state.storage!.putWorkspaceSlotFenced === "function") {
       if (!(await state.storage!.putWorkspaceSlotFenced(next, connectionId, slot.connectionId))) {
         return false;
@@ -653,7 +675,7 @@ export function registerHost(
     queueWrite(state, (storage) => storage!.putConnection(conn));
   }
   state.hostConnection.set(opts.hostId, connectionId);
-  publishWorkspaceSlotsLocal(state, opts.hostId, connectionId, !opts.draining);
+  publishWorkspaceSlotsLocal(state, opts.hostId, connectionId, !opts.draining, opts.workspacePools);
   state.disconnectedHosts.delete(opts.hostId);
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
@@ -669,7 +691,7 @@ export function registerHost(
     opts.workspacePools,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
-  syncHostWorkspaceSlots(state, registrationInventory);
+  syncHostWorkspaceSlots(state, registrationInventory, opts.workspacePools ?? []);
   state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putHostInventory(registrationInventory));
@@ -888,7 +910,15 @@ export async function registerHostDurable(
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
   try {
-    if (!(await publishWorkspaceSlotsDurable(state, opts.hostId, connectionId, !opts.draining))) {
+    if (
+      !(await publishWorkspaceSlotsDurable(
+        state,
+        opts.hostId,
+        connectionId,
+        !opts.draining,
+        opts.workspacePools,
+      ))
+    ) {
       await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
       return { ok: false, error: "host connection changed while publishing workspace slots" };
     }
@@ -992,7 +1022,7 @@ export async function registerHostDurable(
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
   try {
-    await syncHostWorkspaceSlotsDurable(state, registrationInventory);
+    await syncHostWorkspaceSlotsDurable(state, registrationInventory, opts.workspacePools ?? []);
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;

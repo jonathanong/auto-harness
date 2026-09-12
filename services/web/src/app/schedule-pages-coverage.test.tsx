@@ -151,6 +151,8 @@ describe("schedule pages", () => {
     expect(html).toContain('data-pw="schedule-mode-workspace"');
     expect(html).toContain('data-pw="schedule-workspace-pool"');
     expect(html).toContain("Trusted setup");
+    expect(html).toContain("Workspace");
+    expect(html).not.toContain("/repositories/null");
   });
 
   it("keeps encoded-looking schedule ids intact when opening an edit", async () => {

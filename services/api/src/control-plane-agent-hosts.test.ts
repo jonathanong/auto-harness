@@ -438,11 +438,8 @@ describe("agent host inventory", () => {
       expect.any(Array),
       0,
     );
-    expect(putFenced).toHaveBeenCalledWith(
-      expect.objectContaining({ id: slot.id, connectionId: "connection" }),
-      "connection",
-      "connection",
-    );
+    expect(putFenced).not.toHaveBeenCalled();
+    expect(putSlot).toHaveBeenCalledWith(expect.objectContaining({ id: slot.id, online: false }));
 
     // The committed inventory response can intentionally queue derived projection work.
     plane.state.hostConnection.delete(host);
@@ -455,7 +452,7 @@ describe("agent host inventory", () => {
     ).resolves.toMatchObject({ ok: true });
     await plane.state.writeTail;
     expect(deleteSlot).toHaveBeenCalledWith(slot.id);
-    expect(putSlot).not.toHaveBeenCalled();
+    expect(putSlot).toHaveBeenCalledTimes(1);
   });
 
   it("fences durable deletion and removes projected worktrees", async () => {
@@ -775,9 +772,10 @@ describe("agent host inventory", () => {
     expect(plane.state.workspaceSlots.has(retired.id)).toBe(false);
   });
 
-  it("fails closed when durable inventory publication loses its slot fence", async () => {
+  it("publishes a newly configured durable slot offline without claiming daemon acknowledgement", async () => {
     const plane = new ControlPlane();
     plane.state.hostConnection.set("fenced-host", "connection");
+    const putWorkspaceSlot = vi.fn(async () => undefined);
     plane.state.storage = {
       listHostInventories: async () => [],
       listAllWorktrees: async () => [],
@@ -796,7 +794,7 @@ describe("agent host inventory", () => {
       ],
       putHostInventory: async () => true,
       putWorkspaceSlotFenced: async () => false,
-      putWorkspaceSlot: async () => undefined,
+      putWorkspaceSlot,
     } as never;
     await expect(
       plane.putHostInventoryDurable("fenced-host", {
@@ -805,11 +803,10 @@ describe("agent host inventory", () => {
           { workspacePoolId: "pool", slots: [{ id: "slot", name: "slot", path: "/slot" }] },
         ],
       }),
-    ).resolves.toMatchObject({
-      ok: false,
-      committed: true,
-      error: expect.stringContaining("host connection changed while publishing workspace slots"),
-    });
+    ).resolves.toMatchObject({ ok: true });
+    expect(putWorkspaceSlot).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "slot", online: false }),
+    );
   });
 
   it("blocks local and durable inventory deletion while a workspace slot is active", async () => {

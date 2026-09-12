@@ -9,6 +9,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
+import { workspaceAssignmentPayloadError } from "./control-plane-session-create.ts";
 
 export type CloneOptions = {
   prompt?: string;
@@ -140,5 +141,14 @@ export function prepareClonedSession(
     type: source.workspacePoolId ? "workspace" : "prompt",
     source: "api",
   };
+  if (session.workspacePoolId) {
+    const payloadError = workspaceAssignmentPayloadError(state, {
+      ...session,
+      workspacePoolId: session.workspacePoolId,
+    });
+    if (payloadError) {
+      return { ok: false, error: payloadError, code: "VALIDATION_ERROR" };
+    }
+  }
   return { ok: true, session };
 }
