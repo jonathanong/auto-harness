@@ -64,6 +64,7 @@ function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") 
 
 function pullRefObjectReuse(baseSha = "base-sha", objectFormat = "sha1") {
   return [
+    { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
     {
       match: ["rev-parse", "--show-object-format=storage"],
       exitCode: 0,
@@ -75,6 +76,15 @@ function pullRefObjectReuse(baseSha = "base-sha", objectFormat = "sha1") {
       stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
     },
     { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+    {
+      match: [
+        "config",
+        "--local",
+        "--get-regexp",
+        "^(extensions\\.partialClone|remote\\..*\\.promisor)$",
+      ],
+      exitCode: 1,
+    },
     { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${baseSha}\n` },
   ];
 }
@@ -273,7 +283,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe("pr-sha");
+    ).resolves.toBe(pullSha);
   });
 
   it("initializes the pinned pull-ref scratch repository with the checkout hash format", async () => {
@@ -297,15 +307,17 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(pullSha);
   });
 
   it("uses restart-stable operator policy, object reuse, safe transport, and replacement-free Git", async () => {
     const ref = "refs/pull/126/head";
     const remoteUrl = "https://github.com/example/repository.git";
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    let materializationEnvironment: NodeJS.ProcessEnv | undefined;
     const steps = [
       ...resetsPriorState(),
+      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
       {
         match: ["rev-parse", "--show-object-format=storage"],
         exitCode: 0,
@@ -317,6 +329,15 @@ describe("createGitClient checkout and revParse", () => {
         stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
       },
       { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+      {
+        match: [
+          "config",
+          "--local",
+          "--get-regexp",
+          "^(extensions\\.partialClone|remote\\..*\\.promisor)$",
+        ],
+        exitCode: 1,
+      },
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "base-sha\n" },
       {
         match: [
@@ -395,6 +416,7 @@ describe("createGitClient checkout and revParse", () => {
     const originalRun = runner.run.bind(runner);
     runner.run = async (options) => {
       if (options.argv.slice(1).includes("fetch")) fetchEnvironment = options.env;
+      if (options.argv.slice(1)[0] === "switch") materializationEnvironment = options.env;
       return originalRun(options);
     };
     const git = createGitClient(
@@ -420,6 +442,14 @@ describe("createGitClient checkout and revParse", () => {
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_NO_REPLACE_OBJECTS: "1",
     });
+    expect(materializationEnvironment).toMatchObject({
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_VALUE_0: "/dev/null",
+      GIT_NO_REPLACE_OBJECTS: "1",
+    });
   });
 
   it("fetches a pull head completely when the claimed checkout is shallow", async () => {
@@ -428,6 +458,7 @@ describe("createGitClient checkout and revParse", () => {
     let fetchEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
       ...resetsPriorState(),
+      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
       {
         match: ["rev-parse", "--show-object-format=storage"],
         exitCode: 0,
@@ -461,6 +492,75 @@ describe("createGitClient checkout and revParse", () => {
     });
 
     expect(fetchEnvironment).not.toHaveProperty("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+  });
+
+  it("fetches a pull head completely when the claimed checkout is a partial clone", async () => {
+    const ref = "refs/pull/133/head";
+    const remoteUrl = "https://github.com/example/repository.git";
+    let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = scripted([
+      ...resetsPriorState(),
+      { match: ["config", "--local", "--get-regexp", "^filter\\."], exitCode: 1 },
+      {
+        match: ["rev-parse", "--show-object-format=storage"],
+        exitCode: 0,
+        stdout: "sha1\n",
+      },
+      {
+        match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+        exitCode: 0,
+        stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
+      },
+      { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+      {
+        match: [
+          "config",
+          "--local",
+          "--get-regexp",
+          "^(extensions\\.partialClone|remote\\..*\\.promisor)$",
+        ],
+        exitCode: 0,
+        stdout: "remote.origin.promisor true\n",
+      },
+      ...fetchesGitHubPullRef(ref, remoteUrl),
+      { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+      hardReset(pullSha),
+      syncsSubmodules(),
+      updatesSubmodules(),
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
+      { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      deletesFetchedPullRef(),
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).includes("fetch")) fetchEnvironment = options.env;
+      return originalRun(options);
+    };
+
+    await createGitClient(runner, pullRefPolicy(remoteUrl)).checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref,
+    });
+
+    expect(fetchEnvironment).not.toHaveProperty("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+  });
+
+  it("fails closed before materializing a pinned pull ref with local filters", async () => {
+    const ref = "refs/pull/134/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        {
+          match: ["config", "--local", "--get-regexp", "^filter\\."],
+          exitCode: 0,
+          stdout: "filter.attacker.smudge attacker-command\n",
+        },
+      ]),
+      pullRefPolicy(),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("repository-local filters");
   });
 
   it("fails closed under configured policy when the repository has no pinned entry", async () => {
@@ -520,7 +620,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe("pr-sha");
+    ).resolves.toBe(pullSha);
   });
 
   it("uses a fresh per-worktree scratch ref rather than inspecting a shared predictable ref", async () => {
@@ -543,7 +643,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe("pr-sha");
+    ).resolves.toBe(pullSha);
   });
 
   it("fails closed when no immutable origin URL is available", async () => {

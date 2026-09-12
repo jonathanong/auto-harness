@@ -559,9 +559,11 @@ on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
 A pull-head checkout fetches only that pinned URL in a fresh temporary bare repository with
 system/global URL-rewrite configuration disabled. Its object database reuses the claimed checkout's
-existing objects read-only for negotiation, and the bundle excludes the current checkout commit
-when available, so routine PR fetches transfer only the missing graph. Replacement refs are disabled
-throughout fetch, resolution, checkout, connectivity checks, and reset. The imported commit is
+existing objects read-only for negotiation only when that checkout is neither shallow nor a
+partial/promisor clone; otherwise it fetches the complete pinned graph. The bundle excludes the
+current checkout commit when object reuse is safe, so routine PR fetches transfer only the missing
+graph. Replacement refs are disabled throughout fetch, resolution, checkout, connectivity checks,
+and reset. The imported commit is
 rooted in a fresh worktree-private scratch ref. That ref remains reachable through detached checkout
 and `HEAD` verification, then is deleted with its own bounded cleanup signal; it is never a shared
 predictable ref or `FETCH_HEAD`. Any missing policy, failed exact fetch, bundle import, ref

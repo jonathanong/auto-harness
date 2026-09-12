@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- linked-worktree identity and isolated materialization share one boundary. */
 import { lstat, readFile, realpath, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -23,18 +24,26 @@ export async function checkoutDetached(
   cwd: string,
   sha: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<GitResult> {
   let checkout = await runGit(
     runner,
     cwd,
     ["switch", "--discard-changes", "--detach", sha],
     signal,
+    environment,
   );
   if (checkout.exitCode !== 0) {
-    checkout = await runGit(runner, cwd, ["checkout", "--force", "--detach", sha], signal);
+    checkout = await runGit(
+      runner,
+      cwd,
+      ["checkout", "--force", "--detach", sha],
+      signal,
+      environment,
+    );
   }
   if (checkout.exitCode === 0) {
-    checkout = await runGit(runner, cwd, ["reset", "--hard", sha], signal);
+    checkout = await runGit(runner, cwd, ["reset", "--hard", sha], signal, environment);
   }
   return checkout;
 }
@@ -125,10 +134,11 @@ export async function resetClaimedWorktree(
   cwd: string,
   commonDir: string,
   signal?: AbortSignal,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<boolean> {
   const gitDir = await claimedLinkedWorktreeGitDir(cwd, commonDir);
   if (gitDir === null) return false;
-  await resetPriorWorktreeState(runner, cwd, gitDir, signal);
+  await resetPriorWorktreeState(runner, cwd, gitDir, signal, environment);
   return true;
 }
 
