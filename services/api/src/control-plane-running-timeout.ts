@@ -134,7 +134,12 @@ function rememberDurableTimeout(
   delete next.assignmentConnectionId;
   delete next.assignmentSentAt;
   delete next.ackReceivedAt;
-  delete next.reconnectDeadlineAt;
+  // A workspace that was already disconnected still owns its slot through the
+  // reconnect grace period. The durable write preserves this marker so the
+  // deadline sweep can release the slot after it is safe to reuse.
+  if (!(workspaceSlotId && session.reconnectDeadlineAt)) {
+    delete next.reconnectDeadlineAt;
+  }
   state.sessions.set(session.id, next);
   queueSessionArchive(state, session.id);
   noteSlackSessionLifecycle(state, next);
@@ -195,6 +200,9 @@ async function commitDurableTimeout(
     ...(timedOutHostId ? { timedOutHostId } : {}),
     ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
     ...(session.workspaceSlotId ? { preserveWorkspaceSlotLease: true } : {}),
+    ...(session.workspaceSlotId && session.reconnectDeadlineAt
+      ? { preserveReconnectDeadlineAt: true }
+      : {}),
   });
 }
 

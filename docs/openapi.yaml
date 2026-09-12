@@ -530,6 +530,7 @@ components:
           type: string
           enum: [api, ui, webhook, schedule]
     CreateRepositorySession:
+      unevaluatedProperties: false
       allOf:
         - $ref: "#/components/schemas/CreateSessionCommon"
         - type: object
@@ -539,8 +540,8 @@ components:
             type:
               type: string
               enum: [prompt, scheduled]
-          unevaluatedProperties: false
     CreateWorkspaceSession:
+      unevaluatedProperties: false
       allOf:
         - $ref: "#/components/schemas/CreateSessionCommon"
         - type: object
@@ -559,7 +560,6 @@ components:
             requiredLabels:
               type: array
               maxItems: 0
-          unevaluatedProperties: false
     ResumeSession:
       type: object
       properties:

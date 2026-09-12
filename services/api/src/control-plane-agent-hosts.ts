@@ -65,6 +65,27 @@ async function persistRetiredWorkspaceSlot(
   throw new Error("workspace slot changed repeatedly while retiring it from inventory");
 }
 
+/**
+ * Remove a slot only if the scheduler has not claimed it since this inventory
+ * projection was prepared. A lost idle-delete fence re-reads durable ownership
+ * and retires the winner, so a removed attachment can never become capacity.
+ */
+async function removeWorkspaceSlotFromDurableProjection(
+  storage: DynamoPlaneStorage,
+  id: string,
+): Promise<WorkspaceSlotRecord | null> {
+  if (typeof storage.deleteWorkspaceSlotIfIdle !== "function") {
+    await storage.deleteWorkspaceSlot(id);
+    return null;
+  }
+  if (await storage.deleteWorkspaceSlotIfIdle(id)) return null;
+  const current =
+    typeof storage.getWorkspaceSlot === "function" ? await storage.getWorkspaceSlot(id) : null;
+  if (!current) return null;
+  if (!current.currentSessionId) return { ...current, online: false };
+  return persistRetiredWorkspaceSlot(storage, { ...current, online: false, retired: true });
+}
+
 function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
   const { worktrees, removedIds } = projectHostWorktrees(state, host);
   for (const worktree of worktrees) {
@@ -200,8 +221,11 @@ export async function syncHostWorkspaceSlotsDurable(
   const retired = await Promise.all(
     projection.retiredSlots.map((slot) => persistRetiredWorkspaceSlot(state.storage!, slot)),
   );
-  await Promise.all([
-    ...projection.slots.map(async (slot) => {
+  const removed = await Promise.all(
+    projection.removedIds.map((id) => removeWorkspaceSlotFromDurableProjection(state.storage!, id)),
+  );
+  await Promise.all(
+    projection.slots.map(async (slot) => {
       if (slot.status === "busy" && !slot.retired) return;
       const connectionId = state.hostConnection.get(host.hostId);
       if (connectionId && typeof state.storage!.putWorkspaceSlotFenced === "function") {
@@ -219,14 +243,16 @@ export async function syncHostWorkspaceSlotsDurable(
         await state.storage!.putWorkspaceSlot({ ...slot });
       }
     }),
-    ...projection.removedIds.map(async (id) => await state.storage!.deleteWorkspaceSlot(id)),
-  ]);
+  );
   for (const slot of projection.slots) state.workspaceSlots.set(slot.id, slot);
   for (const [index, slot] of retired.entries()) {
     if (slot) state.workspaceSlots.set(slot.id, slot);
     else state.workspaceSlots.delete(projection.retiredSlots[index]!.id);
   }
-  for (const id of projection.removedIds) state.workspaceSlots.delete(id);
+  for (const [index, slot] of removed.entries()) {
+    if (slot) state.workspaceSlots.set(slot.id, slot);
+    else state.workspaceSlots.delete(projection.removedIds[index]!);
+  }
 }
 
 function projectHostWorktrees(
@@ -482,7 +508,11 @@ export async function putHostInventoryDurable(
         if (retired) state.workspaceSlots.set(retired.id, retired);
         else state.workspaceSlots.delete(slot.id);
       }),
-      ...workspaceProjection.removedIds.map((id) => storage!.deleteWorkspaceSlot(id)),
+      ...workspaceProjection.removedIds.map(async (id) => {
+        const slot = await removeWorkspaceSlotFromDurableProjection(storage!, id);
+        if (slot) state.workspaceSlots.set(slot.id, slot);
+        else state.workspaceSlots.delete(id);
+      }),
     ]);
   };
   state.hostInventoryRevision += 1;

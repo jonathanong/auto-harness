@@ -42,6 +42,8 @@ type FinishSessionOpts = {
   preserveHostAssignmentLease?: boolean;
   /** Timeout keeps a workspace slot until terminal/disconnect cleanup. */
   preserveWorkspaceSlotLease?: boolean;
+  /** A disconnected timeout keeps its reconnect marker until grace expiry. */
+  preserveReconnectDeadlineAt?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   expectedStatus?: string;
@@ -108,7 +110,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     values,
     sets,
     removes: [
-      "reconnectDeadlineAt",
+      ...(opts.preserveReconnectDeadlineAt ? [] : ["reconnectDeadlineAt"]),
       "assignmentConnectionId",
       ...(opts.preserveHostAssignmentLease ? [] : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),

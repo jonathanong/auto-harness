@@ -79,6 +79,7 @@ describe("session terminal cleanup branches", () => {
         status: "timed_out",
         queueShard: 0,
         preserveWorkspaceSlotLease: true,
+        preserveReconnectDeadlineAt: true,
         preserveProviderAccountLease: true,
         preserveHostAssignmentLease: true,
         providerAccountLease: {
@@ -98,5 +99,9 @@ describe("session terminal cleanup branches", () => {
       items.find((transactionItem) => transactionItem.Update?.TableName === "Sessions")?.Update
         ?.UpdateExpression,
     ).not.toContain("workspaceSlotId = :null");
+    expect(
+      items.find((transactionItem) => transactionItem.Update?.TableName === "Sessions")?.Update
+        ?.UpdateExpression,
+    ).not.toContain("reconnectDeadlineAt");
   });
 });

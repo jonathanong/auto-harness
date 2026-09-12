@@ -547,6 +547,7 @@ export class DynamoPlaneStorageBase {
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
+    preserveReconnectDeadlineAt?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;

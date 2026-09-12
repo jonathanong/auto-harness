@@ -415,6 +415,118 @@ describe("agent host inventory", () => {
     });
   });
 
+  it("retires a slot claimed while a durable inventory projection removes it", async () => {
+    const plane = new ControlPlane();
+    const idleSlot = {
+      id: "racing-slot",
+      name: "slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      path: "/work/slot",
+      status: "idle" as const,
+      online: true,
+      currentSessionId: null,
+    };
+    const claimedSlot = {
+      ...idleSlot,
+      status: "busy" as const,
+      currentSessionId: "session",
+    };
+    const deleteIfIdle = vi.fn(async () => false);
+    const retire = vi.fn(async () => true);
+    plane.state.workspaceSlots.set(idleSlot.id, idleSlot);
+    plane.state.storage = {
+      deleteWorkspaceSlotIfIdle: deleteIfIdle,
+      getWorkspaceSlot: async () => claimedSlot,
+      putWorkspaceSlot: async () => undefined,
+      retireWorkspaceSlot: retire,
+    } as never;
+
+    await syncHostWorkspaceSlotsDurable(plane.state, {
+      hostId: "host",
+      version: 1,
+      updatedAt: "now",
+      repositories: [],
+      providerAccounts: [],
+      workspacePools: [],
+    });
+
+    expect(deleteIfIdle).toHaveBeenCalledWith(idleSlot.id);
+    expect(retire).toHaveBeenCalledWith(idleSlot.id, claimedSlot.currentSessionId);
+    expect(plane.state.workspaceSlots.get(idleSlot.id)).toMatchObject({
+      ...claimedSlot,
+      online: false,
+      retired: true,
+    });
+  });
+
+  it("retires a scheduler winner while a durable host update removes its slot", async () => {
+    const plane = new ControlPlane();
+    const pool = {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    const inventory = {
+      hostId: "host",
+      version: 1,
+      updatedAt: "now",
+      repositories: [],
+      providerAccounts: [],
+      workspacePools: [
+        { workspacePoolId: pool.id, slots: [{ id: "racing-slot", name: "slot", path: "/work" }] },
+      ],
+    };
+    const idleSlot = {
+      id: "racing-slot",
+      name: "slot",
+      hostId: inventory.hostId,
+      workspacePoolId: pool.id,
+      path: "/work",
+      status: "idle" as const,
+      online: true,
+      currentSessionId: null,
+    };
+    const claimedSlot = {
+      ...idleSlot,
+      status: "busy" as const,
+      currentSessionId: "session",
+    };
+    const deleteIfIdle = vi.fn(async () => false);
+    const retire = vi.fn(async () => true);
+    plane.state.storage = {
+      getHostInventory: async () => inventory,
+      listHostInventories: async () => [inventory],
+      listAllWorktrees: async () => [],
+      listWorkspaceSlots: async () => [idleSlot],
+      listWorkspaceSlotsByPool: async () => [idleSlot],
+      listProviderAccounts: async () => [],
+      listWorkspacePools: async () => [pool],
+      putHostInventory: async () => true,
+      deleteWorkspaceSlotIfIdle: deleteIfIdle,
+      getWorkspaceSlot: async () => claimedSlot,
+      putWorkspaceSlot: async () => undefined,
+      retireWorkspaceSlot: retire,
+    } as never;
+
+    await expect(
+      plane.putHostInventoryDurable(inventory.hostId, { repositories: [] }),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+
+    expect(deleteIfIdle).toHaveBeenCalledWith(idleSlot.id);
+    expect(retire).toHaveBeenCalledWith(idleSlot.id, claimedSlot.currentSessionId);
+    expect(plane.state.workspaceSlots.get(idleSlot.id)).toMatchObject({
+      ...claimedSlot,
+      online: false,
+      retired: true,
+    });
+  });
+
   it("persists durable inventory projections with fenced and queued slot writes", async () => {
     const pool = {
       id: "pool",
