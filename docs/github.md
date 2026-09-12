@@ -28,7 +28,7 @@ rejects a split lockfile snapshot.
 
 [`.github/labeler.yml`](../.github/labeler.yml) maps changed paths to `area/*` labels plus
 `documentation`. [`.github/workflows/labeler.yml`](../.github/workflows/labeler.yml) applies them on
-pull requests against `main` and creates a missing label when needed.
+pull requests against any base branch and creates a missing label when needed.
 
 ## actionlint
 
