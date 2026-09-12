@@ -482,6 +482,213 @@ describe("agent host inventory", () => {
     expect(putSlot).toHaveBeenCalledTimes(1);
   });
 
+  it("covers durable fenced slot writes, retired projections, and path fallbacks", async () => {
+    const noPools = new ControlPlane();
+    syncHostWorkspaceSlots(noPools.state, {
+      hostId: "no-pools",
+      version: 1,
+      updatedAt: "now",
+      repositories: [],
+      providerAccounts: [],
+    });
+    syncHostWorkspaceSlots(
+      noPools.state,
+      {
+        hostId: "no-pools",
+        version: 1,
+        updatedAt: "now",
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [],
+      },
+      null,
+    );
+    await syncHostWorkspaceSlotsDurable(noPools.state, {
+      hostId: "no-pools",
+      version: 1,
+      updatedAt: "now",
+      repositories: [],
+      providerAccounts: [],
+    });
+    await syncHostWorkspaceSlotsDurable(
+      noPools.state,
+      {
+        hostId: "no-pools",
+        version: 1,
+        updatedAt: "now",
+        repositories: [],
+        providerAccounts: [],
+      },
+      null,
+    );
+    const durableNull = new ControlPlane();
+    durableNull.state.storage = { putWorkspaceSlot: vi.fn(async () => undefined) } as never;
+    await syncHostWorkspaceSlotsDurable(
+      durableNull.state,
+      {
+        hostId: "durable-null",
+        version: 1,
+        updatedAt: "now",
+        repositories: [],
+        providerAccounts: [],
+      },
+      null,
+    );
+
+    const localRetired = new ControlPlane();
+    localRetired.state.workspaceSlots.set("retired", {
+      id: "retired",
+      name: "retired",
+      hostId: "local-retired",
+      workspacePoolId: "pool",
+      path: "/retired",
+      status: "busy",
+      online: true,
+      currentSessionId: "session",
+    });
+    localRetired.state.storage = {
+      retireWorkspaceSlot: vi.fn(async () => false),
+      getWorkspaceSlot: vi.fn(async () => null),
+    } as never;
+    syncHostWorkspaceSlots(localRetired.state, {
+      hostId: "local-retired",
+      version: 1,
+      updatedAt: "now",
+      repositories: [],
+      providerAccounts: [],
+      workspacePools: [],
+    });
+    await localRetired.state.writeTail;
+    expect(localRetired.state.workspaceSlots.has("retired")).toBe(false);
+
+    const aliasPlane = new ControlPlane();
+    expect(aliasPlane.createWorkspacePool({ id: "pool", name: "pool" }).ok).toBe(true);
+    aliasPlane.state.workspaceSlots.set("existing", {
+      id: "existing",
+      name: "existing",
+      hostId: "alias-host",
+      workspacePoolId: "pool",
+      path: "/",
+      status: "idle",
+      online: false,
+      currentSessionId: null,
+    });
+    expect(
+      aliasPlane.putHostInventory("alias-host", {
+        repositories: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "replacement", name: "replacement", path: "/" }],
+          },
+        ],
+      }),
+    ).toMatchObject({ ok: true });
+
+    const pool = {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    const slot = {
+      id: "fenced",
+      name: "fenced",
+      path: "/work/fenced",
+      hostId: "fenced-host",
+      workspacePoolId: pool.id,
+      status: "idle" as const,
+      online: false,
+      currentSessionId: null,
+      connectionId: "connection",
+    };
+    const putFenced = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const fencedPlane = new ControlPlane();
+    fencedPlane.state.hostConnection.set(slot.hostId, slot.connectionId);
+    fencedPlane.state.storage = {
+      listHostInventories: vi.fn(async () => []),
+      listAllWorktrees: vi.fn(async () => []),
+      listWorkspaceSlots: vi.fn(async () => [slot]),
+      listWorkspaceSlotsByPool: vi.fn(async () => [slot]),
+      listProviderAccounts: vi.fn(async () => []),
+      listWorkspacePools: vi.fn(async () => [pool]),
+      putHostInventory: vi.fn(async () => true),
+      putWorkspaceSlotFenced: putFenced,
+      putWorkspaceSlot: vi.fn(async () => undefined),
+      deleteWorkspaceSlot: vi.fn(async () => undefined),
+    } as never;
+    await expect(
+      fencedPlane.putHostInventoryDurable(slot.hostId, {
+        repositories: [],
+        workspacePools: [
+          { workspacePoolId: pool.id, slots: [{ id: slot.id, name: slot.name, path: slot.path }] },
+        ],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(putFenced).toHaveBeenCalledTimes(1);
+    await expect(
+      fencedPlane.putHostInventoryDurable(slot.hostId, {
+        repositories: [],
+        workspacePools: [
+          { workspacePoolId: pool.id, slots: [{ id: slot.id, name: slot.name, path: slot.path }] },
+        ],
+      }),
+    ).resolves.toMatchObject({ ok: false, committed: true });
+    expect(putFenced).toHaveBeenCalledWith(
+      expect.objectContaining({ id: slot.id }),
+      "connection",
+      "connection",
+    );
+
+    const retiredPlane = new ControlPlane();
+    const retired = {
+      ...slot,
+      id: "retired",
+      status: "busy" as const,
+      currentSessionId: "session",
+    };
+    const retireWorkspaceSlot = vi.fn(async () => true);
+    retiredPlane.state.storage = {
+      listHostInventories: vi.fn(async () => []),
+      listAllWorktrees: vi.fn(async () => []),
+      listWorkspaceSlots: vi.fn(async () => [retired]),
+      listWorkspaceSlotsByPool: vi.fn(async () => [retired]),
+      listProviderAccounts: vi.fn(async () => []),
+      listWorkspacePools: vi.fn(async () => [pool]),
+      putHostInventory: vi.fn(async () => true),
+      retireWorkspaceSlot,
+      putWorkspaceSlot: vi.fn(async () => undefined),
+      deleteWorkspaceSlot: vi.fn(async () => undefined),
+    } as never;
+    await expect(
+      retiredPlane.putHostInventoryDurable(retired.hostId, { repositories: [] }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(retireWorkspaceSlot).toHaveBeenCalledWith("retired", "session");
+  });
+
+  it("defaults durable inventory deletion to version zero when no version is stored", async () => {
+    const plane = new ControlPlane();
+    const deleteHostInventory = vi.fn(async () => true);
+    plane.state.storage = {
+      getHostInventory: vi.fn(async () => ({
+        hostId: "no-version",
+        updatedAt: "now",
+        repositories: [],
+        providerAccounts: [],
+      })),
+      listAllWorktrees: vi.fn(async () => []),
+      deleteHostInventory,
+      deleteWorkspaceSlot: vi.fn(async () => undefined),
+      deleteWorktree: vi.fn(async () => undefined),
+    } as never;
+    await expect(plane.deleteHostInventoryDurable("no-version")).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(deleteHostInventory).toHaveBeenCalledWith("no-version", 0);
+  });
+
   it("fences durable deletion and removes projected worktrees", async () => {
     const plane = new ControlPlane();
     const inventory = {

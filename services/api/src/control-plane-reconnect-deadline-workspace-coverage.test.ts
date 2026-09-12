@@ -69,6 +69,76 @@ it("keeps a durable workspace session when its deadline transition has already b
   expect(state.sessions.has(session.id)).toBe(false);
 });
 
+it("leaves an expired durable workspace session alone when its advertised slot has disappeared", async () => {
+  const state = createControlPlaneState();
+  const session = reconnectingWorkspace();
+  const finishSession = vi.fn(async () => true);
+  state.storage = {
+    listAllSessions: async () => [session],
+    getWorkspaceSlot: async () => null,
+    finishSession,
+  } as never;
+
+  await expect(reclaimReconnectDeadlines(state, Date.now())).resolves.toEqual([]);
+  expect(finishSession).not.toHaveBeenCalled();
+  expect(state.sessions.has(session.id)).toBe(false);
+});
+
+it("leaves an expired durable workspace session alone after its host ownership is cleared", async () => {
+  const state = createControlPlaneState();
+  const session = reconnectingWorkspace({ hostId: null });
+  const finishSession = vi.fn(async () => true);
+  state.storage = {
+    listAllSessions: async () => [session],
+    getWorkspaceSlot: async () => slot,
+    finishSession,
+  } as never;
+
+  await expect(reclaimReconnectDeadlines(state, Date.now())).resolves.toEqual([]);
+  expect(finishSession).not.toHaveBeenCalled();
+  expect(state.sessions.has(session.id)).toBe(false);
+});
+
+it("does not reconcile durable reports after their host connection lease is gone", async () => {
+  const state = createControlPlaneState();
+  const getSession = vi.fn(async () => reconnectingWorkspace());
+  state.storage = { getSession } as never;
+
+  await expect(reconcileHostRunningSessions(state, "host", ["session"])).resolves.toEqual([]);
+  expect(getSession).not.toHaveBeenCalled();
+});
+
+it("releases a cancelled durable workspace without queuing a new attempt", async () => {
+  const state = createControlPlaneState();
+  const cancelled = reconnectingWorkspace({ status: "cancelled", completedAt: "now" });
+  const finishSession = vi.fn(async () => true);
+  state.storage = {
+    listAllSessions: async () => [cancelled],
+    getWorkspaceSlot: async () => slot,
+    finishSession,
+  } as never;
+
+  await expect(reclaimReconnectDeadlines(state, Date.now())).resolves.toEqual([]);
+  expect(finishSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: cancelled.id,
+      status: "cancelled",
+      workspaceSlotId: slot.id,
+    }),
+  );
+  expect(state.sessions.get(cancelled.id)).toMatchObject({
+    status: "cancelled",
+    workspaceSlotId: null,
+    hostId: null,
+  });
+  expect(state.sessions.get(cancelled.id)).not.toHaveProperty("workspaceSlotLease");
+  expect(state.workspaceSlots.get(slot.id)).toMatchObject({
+    status: "idle",
+    currentSessionId: null,
+    online: false,
+  });
+});
+
 it("rejects a reported workspace run that was never acknowledged", async () => {
   const state = createControlPlaneState();
   state.hostConnection.set("host", "connection");
