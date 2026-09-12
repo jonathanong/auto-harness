@@ -55,7 +55,7 @@ function installTokenFetch(): ReturnType<typeof vi.fn> {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("claimed session GitHub App credentials", () => {
-  it("injects a fresh token after bot identity configuration, clamps expiry, and redacts output", async () => {
+  it("injects a fresh token and session-scoped bot identity, clamps expiry, and redacts output", async () => {
     const fetchMock = installTokenFetch();
     const calls: string[][] = [];
     const systemRunner: ProcessRunner = {
@@ -100,11 +100,12 @@ describe("claimed session GitHub App credentials", () => {
     );
     expect(result.status).toBe("completed");
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(calls.map((argv) => argv.slice(-4))).toEqual([
-      ["config", "--local", "user.name", "auto-harness[bot]"],
-      ["config", "--local", "user.email", "2+auto-harness[bot]@users.noreply.github.com"],
-    ]);
+    expect(calls).toEqual([]);
     expect(commandEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(commandEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(commandEnv?.GIT_AUTHOR_EMAIL).toBe("2+auto-harness[bot]@users.noreply.github.com");
+    expect(commandEnv?.GIT_COMMITTER_NAME).toBe("auto-harness[bot]");
+    expect(commandEnv?.GIT_COMMITTER_EMAIL).toBe("2+auto-harness[bot]@users.noreply.github.com");
     expect(commandEnv?.GITHUB_TOKEN).toBeUndefined();
     expect(commandEnv?.GH_ENTERPRISE_TOKEN).toBeUndefined();
     expect(commandEnv?.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();

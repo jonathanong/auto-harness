@@ -28,7 +28,6 @@ import {
   type GitHubAppConfig,
   type InstallationToken,
 } from "./github-app.ts";
-import { runGit } from "./git-commands.ts";
 import { SecretRedactingProcessRunner } from "./secret-redacting-runner.ts";
 
 const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
@@ -335,21 +334,6 @@ async function runProcessAndFinish(
       ) {
         throw new Error("GitHub App token expires too soon to run a session");
       }
-      const configuredName = await runGit(
-        processRunner,
-        claimed.cwd,
-        ["config", "--local", "user.name", githubApp.botLogin],
-        signal,
-      );
-      const configuredEmail = await runGit(
-        processRunner,
-        claimed.cwd,
-        ["config", "--local", "user.email", githubBotEmail(githubApp)],
-        signal,
-      );
-      if (configuredName.exitCode !== 0 || configuredEmail.exitCode !== 0) {
-        throw new Error("GitHub App commit identity could not be configured");
-      }
     } catch {
       await removePriorContextFile(priorContextPath);
       if (signal?.aborted) {
@@ -397,7 +381,14 @@ async function runProcessAndFinish(
         }
       : scopedCommandEnv;
   const authenticatedEnv = installationToken
-    ? { ...sessionEnv, GH_TOKEN: installationToken.token }
+    ? {
+        ...sessionEnv,
+        GH_TOKEN: installationToken.token,
+        GIT_AUTHOR_NAME: githubApp!.botLogin,
+        GIT_AUTHOR_EMAIL: githubBotEmail(githubApp!),
+        GIT_COMMITTER_NAME: githubApp!.botLogin,
+        GIT_COMMITTER_EMAIL: githubBotEmail(githubApp!),
+      }
     : sessionEnv;
   const spawnEnv = priorContextPath
     ? { ...authenticatedEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }

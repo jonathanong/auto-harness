@@ -395,10 +395,11 @@ Create a mode-`0600` config file outside the checkout, then set its absolute pat
 
 `catalog-repository-id` is the Auto Harness repository id, not its path. Obtain the other numeric
 values from GitHub's App/installations and repository metadata. A mapped session mints one token with
-only that repository and the three listed write permissions, sets bot commit identity, and limits its
-command to the token expiry less five minutes. A native resume receives a new token; there is no
-refresh service. A host without this setting, or a repository omitted from the mapping, retains its
-current ambient GitHub behavior.
+only that repository and the three listed write permissions, injects bot author/committer identity
+only into that session's process environment, and limits its command to the token expiry less five
+minutes. It never writes the shared repository config. A native resume receives a new token; there
+is no refresh service. A host without this setting, or a repository omitted from the mapping,
+retains its current ambient GitHub behavior.
 
 The verifier reads the root-only environment file without echoing its API key, tolerates a
 `ws(s)://…/ws`-shaped value even though `HARNESS_API_URL` is expected to be the plain
