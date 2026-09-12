@@ -75,6 +75,7 @@ describe("DaemonLoop terminal status retry", () => {
       transport.deliver(terminalAck);
       transport.deliver(terminalAck);
       await flushMicrotasks();
+      await flushMacrotask();
       expect(hooks).toBe(1);
       expect(pending.size).toBe(0);
       loop.stop();

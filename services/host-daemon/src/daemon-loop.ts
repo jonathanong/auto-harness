@@ -136,6 +136,10 @@ type PendingTerminalStatus = {
   settleDeferredTerminalHook?:
     | ((runHook: boolean) => Promise<import("@auto-harness/shared").SessionResult | undefined>)
     | undefined;
+  /** An acknowledged deferred status remains discoverable until its hook settles. */
+  settlement?: Promise<void> | undefined;
+  /** The shared hook result for a same-process handoff that overlaps its status ACK. */
+  settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
 };
 
@@ -917,19 +921,30 @@ export class DaemonLoop {
       key: string,
       pending: PendingTerminalStatus,
     ): Promise<void> | undefined => {
-      // Delete before invoking the hook: duplicate/late acknowledgements must
-      // never turn a deferred terminal hook into duplicate external work.
-      this.pendingTerminalStatus.delete(key);
       // Deferral is negotiated only with v4. A disposition-less acknowledgement
       // for such a pending hook fails closed as terminal rather than losing it.
       if (!pending.settleDeferredTerminalHook) {
+        this.pendingTerminalStatus.delete(key);
         pending.resolveDeferredDisposition?.();
         return undefined;
       }
-      return pending
-        .settleDeferredTerminalHook(msg.retryAccepted !== true)
+      // Keep the entry indexed during settlement: an overlapping durable
+      // handoff must find this exact promise rather than run the hook again.
+      if (pending.settlement) return pending.settlement;
+      const settlementResult = pending.settleDeferredTerminalHook(msg.retryAccepted !== true);
+      pending.settlementResult = settlementResult;
+      const settlement = settlementResult
         .then((result) => {
           if (msg.terminalHookHandoffId && msg.retryAccepted !== true) {
+            const existing = this.pendingTerminalHookHandoffs.get(msg.terminalHookHandoffId);
+            if (existing) {
+              if (result !== undefined) existing.result = result;
+              existing.complete = true;
+              // The inbound handoff's reconciliation owns the first completion
+              // send; sending here too races a fast local transport and can
+              // duplicate that completion before its acknowledgement arrives.
+              return;
+            }
             const handoff: PendingTerminalHookHandoff = {
               message: {
                 type: "session:terminal-hook",
@@ -955,7 +970,14 @@ export class DaemonLoop {
             this.sendTerminalHookHandoffCompletion(handoff);
           }
         })
-        .finally(() => pending.resolveDeferredDisposition?.());
+        .finally(() => {
+          if (this.pendingTerminalStatus.get(key) === pending) {
+            this.pendingTerminalStatus.delete(key);
+          }
+          pending.resolveDeferredDisposition?.();
+        });
+      pending.settlement = settlement;
+      return settlement;
     };
     if (msg.attemptId) {
       const key = inflightKey(msg.sessionId, msg.attemptId);
@@ -1198,9 +1220,8 @@ export class DaemonLoop {
     const results = await Promise.all(
       matching.map(async (pending) => {
         if (pending.settleDeferredTerminalHook) {
-          return await pending
-            .settleDeferredTerminalHook(true)
-            .finally(() => pending.resolveDeferredDisposition?.());
+          const settlement = pending.settlementResult ?? pending.settleDeferredTerminalHook(true);
+          return await settlement.finally(() => pending.resolveDeferredDisposition?.());
         } else {
           pending.resolveDeferredDisposition?.();
           return undefined;
