@@ -222,9 +222,13 @@ export async function retryPendingArchives(
 export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
   // pendingPersists only tracks completion (drain waits on it), never the resolved
   // ArchiveObject — void it explicitly rather than pushing the value-carrying promise.
-  state.pendingPersists.push(
-    archiveSessionLogs(state, sessionId, undefined, true).then(() => undefined),
-  );
+  const queued = archiveSessionLogs(state, sessionId, undefined, true).then(() => undefined);
+  state.pendingPersists.push(queued);
+  // The invocation may not settle the queue until other work completes. Observe
+  // rejection immediately so Node does not report it as unhandled in the meantime;
+  // keep the original rejected promise in pendingPersists so settleStorage still
+  // propagates the failure to the durable caller.
+  void queued.catch(() => undefined);
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {

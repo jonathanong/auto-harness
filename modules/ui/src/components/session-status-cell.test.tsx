@@ -18,6 +18,8 @@ describe("SessionStatusCell", () => {
     expect(sessionStatusReason("host_lost")).toBe("Host lost");
     expect(sessionInfrastructureRetryReason("host_lost")).toBe("Host lost before launch");
     expect(sessionErrorLabel("checkout_fetch_failed")).toBe("Checkout fetch failed");
+    expect(sessionErrorLabel("usage_limit")).toBe("Usage limit");
+    expect(sessionErrorLabel("queue_expired")).toBe("Queue expired");
     expect(sessionErrorLabel("unknown_failure")).toBe("unknown_failure");
     expect(sessionStatusReason("setup_failed")).toBeNull();
     expect(sessionStatusReason(null)).toBeNull();

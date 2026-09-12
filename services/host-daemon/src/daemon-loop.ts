@@ -288,6 +288,17 @@ export class DaemonLoop {
       },
       onRegistered: (protocolVersion) => {
         this.serverProtocolVersion = protocolVersion ?? 0;
+        // A reconnect can negotiate an older peer than the connection that
+        // created these checkpoints.  The older peer cannot acknowledge a
+        // v3 command-start, so leave the authorization gate closed rather
+        // than leaving the session-runner waiting forever.  This also wins
+        // over any late ACK from the superseded connection; stop() and abort
+        // use the same false settlement through finishCommandStart().
+        if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
+          for (const key of this.pendingCommandStarts.keys()) {
+            this.finishCommandStart(key, false);
+          }
+        }
         // A reconnect registration carrying `draining: true` is itself a
         // durable acknowledgement. This covers a lost drain reply.
         if (this.drainRequested) this.confirmDrain();

@@ -57,6 +57,10 @@ describe("claimed session PTY output", () => {
     const authorization = new Promise<boolean>((resolve) => {
       authorize = () => resolve(true);
     });
+    let authorizationEntered!: () => void;
+    const authorizationStarted = new Promise<void>((resolve) => {
+      authorizationEntered = resolve;
+    });
     let commandRuns = 0;
     const commandRunner: ProcessRunner = {
       async run() {
@@ -77,10 +81,13 @@ describe("claimed session PTY output", () => {
       process.env,
       undefined,
       undefined,
-      async () => await authorization,
+      async () => {
+        authorizationEntered();
+        return await authorization;
+      },
     );
 
-    await Promise.resolve();
+    await authorizationStarted;
     expect(commandRuns).toBe(0);
     authorize();
     await expect(work).resolves.toMatchObject({ status: "completed" });

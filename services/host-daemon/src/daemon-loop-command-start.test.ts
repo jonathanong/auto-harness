@@ -121,6 +121,33 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
+  it("rejects pending v3 authorization when reconnect downgrades the protocol", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    try {
+      transport.negotiate(3);
+      const pending = authorize(loop);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+
+      transport.negotiate(2);
+      await expect(pending).resolves.toBe(false);
+
+      // An ACK from the superseded v3 connection must not reopen the gate.
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+    } finally {
+      loop.stop();
+    }
+  });
+
   it("bypasses command-start authorization for protocol 2", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);

@@ -101,6 +101,8 @@ export async function offlineHostAndRequeueDurableImpl(
           latestSession?.status === "running" &&
           latestSession.hostId === hostId &&
           latestSession.worktreeId === wt.id &&
+          latestSession.attemptId === session.attemptId &&
+          Boolean(latestSession.ackReceivedAt) &&
           !latestSession.reconnectDeadlineAt;
         const retryableHostLoss = canRequeue && canRetryHostLoss(latestSession);
         const terminalHostLoss = canRequeue && !canRetryHostLoss(latestSession);

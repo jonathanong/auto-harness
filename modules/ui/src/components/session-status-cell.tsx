@@ -20,10 +20,7 @@ export function sessionInfrastructureRetryReason(errorCode?: string | null): str
 
 /** Friendly labels for the bounded infrastructure failures exposed by the public session API. */
 export function sessionErrorLabel(errorCode?: string | null): string | null {
-  if (errorCode === "checkout_fetch_failed" || errorCode === "host_lost") {
-    return sessionStatusReason(errorCode);
-  }
-  return errorCode ?? null;
+  return sessionStatusReason(errorCode) ?? errorCode ?? null;
 }
 
 function infrastructureRetryCopy(
