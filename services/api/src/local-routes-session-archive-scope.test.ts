@@ -52,6 +52,7 @@ async function harness() {
   });
   const own = plane.listSessions().find((session) => session.repositoryId === "repo-a")!;
   const other = plane.listSessions().find((session) => session.repositoryId === "repo-b")!;
+  plane.state.sessions.set(own.id, { ...own, status: "completed" });
 
   const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
   const { apiKey } = await auth.createServiceAccount({

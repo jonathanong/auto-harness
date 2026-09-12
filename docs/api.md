@@ -1110,7 +1110,9 @@ The response is one of:
 { "state": "incomplete", "reason": "content-length-mismatch" }
 ```
 
-`dynamodb` means the transcript remains on the recent-log path or archival is still pending.
+`dynamodb` means the transcript remains on the recent-log path or archival is still pending. It is
+also returned for queued and running sessions even if stale or pre-existing complete archive
+metadata is present; archived retrieval is exposed only after the authoritative session is terminal.
 `archived` means S3 metadata was verified against the durable archive record and `downloadUrl` is
 a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `incomplete` means the
 version-pinned S3 object was found, but its content length or content type differs from the verified

@@ -260,6 +260,8 @@ means archive metadata exists but the verified S3 object cannot currently be rea
 rechecks any state manually, and a successful Archive logs action triggers an immediate recheck.
 **Archived transcript failed integrity verification** means S3's version-pinned object length or
 content type differs from the verified DynamoDB metadata; it is withheld from download until repaired.
+Queued and running sessions always remain in the recent/not-archived state, even if stale complete
+archive metadata exists; archived retrieval is exposed only after the authoritative session is terminal.
 
 **Behavior:**
 

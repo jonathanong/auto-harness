@@ -1,4 +1,4 @@
-import { isSessionStatus } from "@auto-harness/shared";
+import { isSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import {
@@ -147,6 +147,9 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         !mayAccessHost(ctx.principal, session.hostId)
       ) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+      } else if (!isTerminalSessionStatus(session.status)) {
+        res.setHeader("Cache-Control", "no-store");
+        send(res, 200, { state: "dynamodb" });
       } else {
         res.setHeader("Cache-Control", "no-store");
         send(res, 200, await plane.getArchiveDownloadDurable(archiveMatch[1]!));
