@@ -1,7 +1,10 @@
 import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 
 import type { SlackIntegrationRecord } from "../slack-integration-types.ts";
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import type {
+  CustomWebhookIntegrationRecord,
+  PlaneStorageCtx,
+} from "./plane-storage-types.ts";
 
 export async function getSlackIntegration(
   ctx: PlaneStorageCtx,
@@ -90,4 +93,76 @@ export async function deleteSlackIntegration(
     }
     throw error;
   }
+}
+
+export async function getCustomWebhookIntegration(
+  ctx: PlaneStorageCtx,
+  id: string,
+): Promise<CustomWebhookIntegrationRecord | null> {
+  const response = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.integrations, Key: { id: customWebhookStorageId(id) } }),
+  );
+  const item = response.Item as CustomWebhookIntegrationRecord | undefined;
+  return item?.type === "custom-webhook" ? { ...item, id } : null;
+}
+
+/** Compare-and-swap protects rotation and deletion from stale operator tabs. */
+export async function putCustomWebhookIntegration(
+  ctx: PlaneStorageCtx,
+  record: CustomWebhookIntegrationRecord,
+  expectedVersion: number | null,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.integrations,
+        Item: { ...record, id: customWebhookStorageId(record.id) },
+        ConditionExpression:
+          expectedVersion === null
+            ? "attribute_not_exists(id)"
+            : "attribute_exists(id) AND version = :expectedVersion",
+        ...(expectedVersion === null
+          ? {}
+          : { ExpressionAttributeValues: { ":expectedVersion": expectedVersion } }),
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailure(error)) return false;
+    throw error;
+  }
+}
+
+export async function deleteCustomWebhookIntegration(
+  ctx: PlaneStorageCtx,
+  id: string,
+  expectedVersion: number,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.integrations,
+        Key: { id: customWebhookStorageId(id) },
+        ConditionExpression: "attribute_exists(id) AND version = :expectedVersion",
+        ExpressionAttributeValues: { ":expectedVersion": expectedVersion },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailure(error)) return false;
+    throw error;
+  }
+}
+
+function customWebhookStorageId(id: string): string {
+  return `custom-webhook:${id}`;
+}
+
+function isConditionalFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: string }).name === "ConditionalCheckFailedException"
+  );
 }

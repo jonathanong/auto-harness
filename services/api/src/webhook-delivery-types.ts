@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 import type { SessionTerminalStatus } from "@auto-harness/shared";
 
 import type { WebhookLeaseFence, WebhookLeaseInput } from "./db/plane-storage-webhook-outbox.ts";
@@ -52,6 +54,67 @@ export type WebhookTransportResult =
 export type WebhookTransport = {
   deliver(request: WebhookTransportRequest): Promise<WebhookTransportResult>;
 };
+
+/** Stable wire contract shared by generic outbound consumers and custom inbound senders. */
+export const WEBHOOK_SIGNATURE_256_HEADER = "x-auto-harness-signature-256";
+export const WEBHOOK_EVENT_HEADER = "x-auto-harness-event";
+export const WEBHOOK_DELIVERY_HEADER = "x-auto-harness-delivery";
+
+export function signWebhookBody(secret: string, body: string): string {
+  return `sha256=${createHmac("sha256", secret).update(body, "utf8").digest("hex")}`;
+}
+
+export type WebhookDestinationConfig = {
+  url: string;
+  secret: string;
+  timeoutMs?: number;
+};
+
+/** HTTP boundary for production outbound delivery; secret resolution stays outside the outbox. */
+export function createSignedWebhookTransport(options: {
+  resolveDestination: (
+    destination: WebhookDestinationRef,
+  ) => Promise<WebhookDestinationConfig | null>;
+  fetch?: typeof globalThis.fetch;
+}): WebhookTransport {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  return {
+    async deliver(request): Promise<WebhookTransportResult> {
+      const destination = await options.resolveDestination(request.destination);
+      if (!destination) return { ok: false, failureCode: "configuration-unavailable" };
+      let response: Response;
+      if (process.env.NODE_ENV === "production" && !destination.url.startsWith("https://")) {
+        return { ok: false, failureCode: "configuration-unavailable" };
+      }
+      try {
+        response = await fetcher(destination.url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [WEBHOOK_SIGNATURE_256_HEADER]: signWebhookBody(destination.secret, request.body),
+            [WEBHOOK_EVENT_HEADER]: request.event.id,
+            [WEBHOOK_DELIVERY_HEADER]: request.idempotencyKey,
+          },
+          body: request.body,
+          redirect: "error",
+          ...(destination.timeoutMs !== undefined
+            ? { signal: AbortSignal.timeout(destination.timeoutMs) }
+            : {}),
+        });
+      } catch {
+        return { ok: false, failureCode: "transient-failure" };
+      }
+      if (response.ok) return { ok: true };
+      return {
+        ok: false,
+        failureCode:
+          response.status === 408 || response.status === 429 || response.status >= 500
+            ? "transient-failure"
+            : "delivery-rejected",
+      };
+    },
+  };
+}
 
 export type WebhookOutboxStore = {
   enqueueWebhookDelivery(input: WebhookEnqueueInput): Promise<{

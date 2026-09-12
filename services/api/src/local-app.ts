@@ -31,6 +31,8 @@ import {
 } from "./local-routes-slack-public.ts";
 import { parseSlackAppCredentials } from "./slack-app-config.ts";
 import { createSlackOAuthClient } from "./slack-oauth-client.ts";
+import { handleCustomWebhookRoute } from "./local-routes-custom-webhooks.ts";
+import { handleCustomWebhookConfigRoutes } from "./local-routes-custom-webhook-config.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
 import {
@@ -125,6 +127,12 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       bucket: "login" as const,
       trustProxy,
     };
+    // This is the only unauthenticated /api/v1 route. Signature verification and strict body
+    // filtering happen inside the handler; rate limiting still applies before any KMS decrypt.
+    if (/^\/api\/v1\/webhooks\/custom\/[^/]+$/.test(url.pathname)) {
+      if (await enforceRateLimit({ ...loginLimit, bucket: "mutation" })) return;
+      if (await handleCustomWebhookRoute(ctx)) return;
+    }
     if (loginRoute) {
       if (await enforceRateLimit(loginLimit)) return;
       if (await handleAuthRoutes({ auth, ...ctx })) return;
@@ -233,6 +241,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleCommandRoutes(ctx)) return;
     if (await handleSlackOAuthStartRoute(ctx, slackRoutes)) return;
     if (await handleSlackIntegrationRoutes(ctx)) return;
+    if (await handleCustomWebhookConfigRoutes(ctx)) return;
     if (await handleSessionTargetRoutes(ctx)) return;
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
   };

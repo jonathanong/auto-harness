@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- durable create, resume, and clone share admission semantics. */
+/* eslint-disable max-lines -- durable create, resume, clone, and webhook fences share admission semantics. */
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
@@ -22,6 +22,7 @@ import {
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
+import type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
 
 function sessionDrainFailure(
   error: unknown,
@@ -40,12 +41,21 @@ function sessionDrainFailure(
 export async function createSessionDurable(
   state: ControlPlaneState,
   body: unknown,
-  options: { principalId?: string } = {},
+  options: { principalId?: string; integrationFence?: IntegrationSessionFence } = {},
 ): Promise<
   | { ok: true; session: PublicSession; created: boolean }
   | { ok: false; error: string; code?: string; operationId?: string }
 > {
-  if (!state.storage) return createSession(state, body);
+  if (!state.storage) {
+    if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
+      return {
+        ok: false,
+        error: "integration changed concurrently",
+        code: "CONFLICT",
+      };
+    }
+    return createSession(state, body);
+  }
   await refreshTargetCatalogDurable(state);
   if (
     typeof body === "object" &&
@@ -62,10 +72,22 @@ export async function createSessionDurable(
   }
   const prepared = validateSessionCreate(state, body);
   if (!prepared.ok) return prepared;
+  if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
+    return {
+      ok: false,
+      error: "integration changed concurrently",
+      code: "CONFLICT",
+    };
+  }
   let result;
   try {
     const session = buildSessionRecord(state, prepared, options.principalId);
-    result = await state.storage.createSession(session, referenceMarkers(state.now(), session));
+    result = await state.storage.createSession(
+      session,
+      referenceMarkers(state.now(), session),
+      undefined,
+      options.integrationFence,
+    );
   } catch (err) {
     const draining = sessionDrainFailure(err);
     if (draining) return draining;
@@ -88,6 +110,19 @@ export async function createSessionDurable(
   state.sessions.set(result.session.id, { ...result.session });
   noteSlackSessionLifecycle(state, result.session);
   return { ok: true, session: toPublic(state, result.session), created: result.created };
+}
+
+function matchesIntegrationFence(
+  state: ControlPlaneState,
+  fence: IntegrationSessionFence,
+): boolean {
+  const current = state.customWebhookIntegrations.get(fence.id);
+  return (
+    !!current &&
+    current.type === fence.type &&
+    current.version === fence.version &&
+    current.enabled === fence.enabled
+  );
 }
 
 /** Durable resume uses the same concurrency lock as a fresh create. */

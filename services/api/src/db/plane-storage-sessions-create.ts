@@ -10,6 +10,7 @@ import {
   isConditionalTransactionFailed,
   isConditionalTransactionFailureAt,
   sessionToItem,
+  type IntegrationSessionFence,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 import {
@@ -23,9 +24,31 @@ import {
   activeSessionDrainError,
   CatalogDeletionInProgressError,
   type CreateSessionResult,
+  IntegrationChangedError,
   RepositoryAdmissionClosedError,
   SessionIdCollisionError,
 } from "./plane-storage-sessions-errors.ts";
+
+function integrationSessionFenceCheck(
+  ctx: PlaneStorageCtx,
+  fence: IntegrationSessionFence | undefined,
+) {
+  if (!fence) return undefined;
+  return {
+    ConditionCheck: {
+      TableName: ctx.tables.integrations,
+      Key: { id: fence.storageId },
+      ConditionExpression:
+        "attribute_exists(id) AND #type = :type AND #version = :version AND #enabled = :enabled",
+      ExpressionAttributeNames: { "#type": "type", "#version": "version", "#enabled": "enabled" },
+      ExpressionAttributeValues: {
+        ":type": fence.type,
+        ":version": fence.version,
+        ":enabled": fence.enabled,
+      },
+    },
+  };
+}
 
 export async function putSession(ctx: PlaneStorageCtx, session: SessionRecord): Promise<void> {
   await ctx.doc.send(
@@ -48,12 +71,14 @@ async function throwCreateSessionTransactionFailure(
   markers: readonly DeletionMarker[],
   principalCheck: ReturnType<typeof principalExistsCheck>,
   drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>,
+  integrationCheck: ReturnType<typeof integrationSessionFenceCheck>,
 ): Promise<never> {
   if (!isConditionalTransactionFailed(err)) throw err;
   const principalIndex = markers.length;
   const resourceIndex = principalIndex + Number(!!principalCheck);
   const drainIndex = resourceIndex + 1;
-  const sessionIndex = drainIndex + Number(!!drainCheck);
+  const integrationIndex = drainIndex + Number(!!drainCheck);
+  const sessionIndex = integrationIndex + Number(!!integrationCheck);
   const markerFailed =
     markers.length > 0 &&
     Array.from({ length: markers.length }, (_, index) => index).some((index) =>
@@ -69,6 +94,9 @@ async function throwCreateSessionTransactionFailure(
   if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
     throw await activeSessionDrainError(ctx, session);
   }
+  if (integrationCheck && isConditionalTransactionFailureAt(err, integrationIndex)) {
+    throw new IntegrationChangedError();
+  }
   if (isConditionalTransactionFailureAt(err, sessionIndex)) {
     throw new SessionIdCollisionError(session.id);
   }
@@ -80,18 +108,21 @@ export async function createSession(
   session: SessionRecord,
   markers: readonly DeletionMarker[] = [],
   parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string },
+  integrationFence?: IntegrationSessionFence,
 ): Promise<CreateSessionResult> {
   const drainCheck = session.repositoryId
     ? sessionDrainAdmissionCheck(ctx, session.repositoryId, sessionPrincipalId(session))
     : null;
   const activityPut = session.repositoryId ? sessionDrainActivityPut(ctx, session) : null;
   const principalCheck = principalExistsCheck(ctx, sessionPrincipalId(session));
+  const integrationCheck = integrationSessionFenceCheck(ctx, integrationFence);
   if (session.concurrencyId) {
     return createSessionWithConcurrency(ctx, session, markers, {
       drainCheck,
       activityPut,
       principalCheck,
       ...(parentFence ? { parentFence } : {}),
+      integrationCheck,
     });
   }
   try {
@@ -118,6 +149,7 @@ export async function createSession(
                 },
               },
           ...(drainCheck ? [drainCheck] : []),
+          ...(integrationCheck ? [integrationCheck] : []),
           {
             Put: {
               TableName: ctx.tables.sessions,
@@ -137,6 +169,7 @@ export async function createSession(
       markers,
       principalCheck,
       drainCheck,
+      integrationCheck,
     );
   }
   return { created: true, session };

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { deleteSlackIntegration, putSlackIntegration } from "./plane-storage-integrations.ts";
+import {
+  deleteCustomWebhookIntegration,
+  deleteSlackIntegration,
+  getCustomWebhookIntegration,
+  putCustomWebhookIntegration,
+  putSlackIntegration,
+} from "./plane-storage-integrations.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const record = {
@@ -67,5 +73,42 @@ describe("Slack integration storage failures", () => {
     await expect(deleteSlackIntegration(ctx(vi.fn().mockRejectedValue(failure)), 1)).rejects.toBe(
       failure,
     );
+  });
+});
+
+describe("custom webhook integration storage", () => {
+  it("uses a namespace separate from the Slack singleton and restores the public id", async () => {
+    const sends: unknown[] = [];
+    const customRecord = {
+      id: "slack",
+      type: "custom-webhook" as const,
+      encryptedSecret: "ciphertext",
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      fallbacks: [],
+      queueTtlSeconds: 60,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      enabled: true,
+      version: 1,
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    };
+    const storage = ctx(
+      vi.fn(async (command: { input?: Record<string, unknown> }) => {
+        sends.push(command.input);
+        if (command.input?.Key) return { Item: { ...customRecord, id: "custom-webhook:slack" } };
+        return {};
+      }),
+    );
+    expect(await putCustomWebhookIntegration(storage, customRecord, null)).toBe(true);
+    expect(await getCustomWebhookIntegration(storage, "slack")).toMatchObject({ id: "slack" });
+    expect(await deleteCustomWebhookIntegration(storage, "slack", 1)).toBe(true);
+    expect(sends).toEqual([
+      expect.objectContaining({ Item: expect.objectContaining({ id: "custom-webhook:slack" }) }),
+      expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
+      expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
+    ]);
   });
 });

@@ -322,6 +322,27 @@ The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`
 no need for GHA to poll. If Slack is configured but delivery is unavailable, use GitHub activity
 or the UI instead. Worked examples: [harness.md](harness.md).
 
+### Custom Webhooks (Inbound and outbound)
+
+Generic inbound webhooks are available at `POST /api/v1/webhooks/custom/:integrationId`. An admin
+creates the integration at `/api/v1/integrations/custom/:integrationId`, choosing the repository
+and target routing and supplying a signing secret. The secret is encrypted with KMS. Callers send
+only `{prompt, idempotencyKey, ref?}` and sign the exact request bytes with HMAC-SHA256:
+
+```text
+x-auto-harness-signature-256: sha256=<lowercase hex digest>
+```
+
+Unknown fields and invalid signatures are rejected. A successful request returns a small `202`
+acknowledgment after the session write and dispatch enqueue; `idempotencyKey` is scoped to the
+integration and uses the existing atomic session concurrency lock to make concurrent redelivery
+safe. The endpoint is intentionally unauthenticated because the HMAC secret is its credential.
+
+Outbound HTTP delivery signs the exact JSON event body with the same header and sends stable
+`x-auto-harness-event` and `x-auto-harness-delivery` headers. Production destinations must be
+HTTPS and redirects are disabled. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
+responses are permanent failures.
+
 ### Custom Webhooks (Outbound)
 
 **Safe local pre-transport runtime:** optional machine-to-machine callbacks remain a target if
@@ -365,8 +386,8 @@ the stable delivery idempotency key, and the exact event body only after a worke
 The selector is a historical resolver: for a given snapshot it must always return the configuration
 versions that were effective at `occurredAt`, even after rotation or process restart, rather than
 the versions that are current during a later reconciliation. The transport must deduplicate
-ambiguous retries by the stable delivery key. Configuration CRUD, HTTP transport, signing, endpoint
-validation, and secret resolution are not part of the safe local runtime.
+ambiguous retries by the stable delivery key. Configuration CRUD and secret resolution stay outside
+outbox rows; the opt-in runtime supplies a signed transport and destination resolver.
 
 The eventual configuration shape remains target-only:
 

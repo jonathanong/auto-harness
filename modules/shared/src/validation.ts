@@ -88,8 +88,8 @@ export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */
 const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
 export const MAX_SESSION_PRIORITY = 10_000;
-const MAX_REQUIRED_LABELS = 16;
-const MAX_REQUIRED_LABEL_LENGTH = 64;
+export const MAX_REQUIRED_LABELS = 16;
+export const MAX_REQUIRED_LABEL_LENGTH = 64;
 const MAX_METADATA_KEYS = 32;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;

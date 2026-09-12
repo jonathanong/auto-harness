@@ -4,6 +4,7 @@ import {
   type CommandRecord,
   type ProviderAccountRecord,
   type ProviderRecord,
+  type CustomWebhookIntegrationRecord,
 } from "./plane-storage-types.ts";
 import * as catalog from "./plane-storage-catalog-providers.ts";
 import * as providerAccounts from "./plane-storage-provider-accounts.ts";
@@ -26,6 +27,7 @@ export type {
   CommandRecord,
   ProviderAccountRecord,
   ProviderRecord,
+  CustomWebhookIntegrationRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
   WorkspacePoolSummary,
@@ -186,6 +188,21 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   putSlackInboundEvent(record: import("../slack-oauth-types.ts").SlackInboundEventRecord) {
     return slackInbound.putSlackInboundEvent(this.ctx, record);
+  }
+
+  getCustomWebhookIntegration(id: string): Promise<CustomWebhookIntegrationRecord | null> {
+    return integrations.getCustomWebhookIntegration(this.ctx, id);
+  }
+
+  putCustomWebhookIntegration(
+    record: CustomWebhookIntegrationRecord,
+    expectedVersion: number | null,
+  ): Promise<boolean> {
+    return integrations.putCustomWebhookIntegration(this.ctx, record, expectedVersion);
+  }
+
+  deleteCustomWebhookIntegration(id: string, expectedVersion: number): Promise<boolean> {
+    return integrations.deleteCustomWebhookIntegration(this.ctx, id, expectedVersion);
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

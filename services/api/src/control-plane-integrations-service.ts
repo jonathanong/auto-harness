@@ -3,6 +3,8 @@ import * as slack from "./control-plane-slack.ts";
 import { getSlackInboundIntegrationDurable } from "./control-plane-slack-inbound.ts";
 import { installSlackOAuthIntegrationDurable } from "./control-plane-slack-oauth.ts";
 import { getSlackBotTokenOwnershipDurable } from "./slack-oauth-token-ownership.ts";
+import * as customWebhooks from "./control-plane-custom-webhooks.ts";
+import type { CustomWebhookConfigInput } from "./custom-webhook-types.ts";
 
 /** Slack and other outbound integration configuration. */
 export class ControlPlaneIntegrationsService {
@@ -56,5 +58,42 @@ export class ControlPlaneIntegrationsService {
 
   deleteSlackIntegrationDurable(): ReturnType<typeof slack.deleteSlackIntegrationDurable> {
     return slack.deleteSlackIntegrationDurable(this.state);
+  }
+
+  getCustomWebhookIntegration(
+    id: string,
+  ): ReturnType<typeof customWebhooks.getCustomWebhookIntegration> {
+    return customWebhooks.getCustomWebhookIntegration(this.state, id);
+  }
+
+  getCustomWebhookIntegrationRecord(
+    id: string,
+  ): ReturnType<typeof customWebhooks.getCustomWebhookIntegrationRecord> {
+    return customWebhooks.getCustomWebhookIntegrationRecord(this.state, id);
+  }
+
+  createCustomWebhookIntegration(
+    input: CustomWebhookConfigInput,
+  ): ReturnType<typeof customWebhooks.createCustomWebhookIntegration> {
+    return customWebhooks.createCustomWebhookIntegration(this.state, input);
+  }
+
+  updateCustomWebhookIntegration(
+    input: CustomWebhookConfigInput,
+  ): ReturnType<typeof customWebhooks.updateCustomWebhookIntegration> {
+    return customWebhooks.updateCustomWebhookIntegration(this.state, input);
+  }
+
+  deleteCustomWebhookIntegration(
+    id: string,
+  ): ReturnType<typeof customWebhooks.deleteCustomWebhookIntegration> {
+    return customWebhooks.deleteCustomWebhookIntegration(this.state, id);
+  }
+
+  decryptCustomWebhookSecret(
+    id: string,
+    record: import("./db/plane-storage-types.ts").CustomWebhookIntegrationRecord,
+  ): ReturnType<typeof customWebhooks.decryptCustomWebhookSecret> {
+    return customWebhooks.decryptCustomWebhookSecret(this.state, id, record);
   }
 }

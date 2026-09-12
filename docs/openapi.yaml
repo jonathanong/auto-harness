@@ -8,6 +8,90 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /webhooks/custom/{integrationId}:
+    parameters:
+      - name: integrationId
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+      - name: x-auto-harness-signature-256
+        in: header
+        required: true
+        schema: { type: string, pattern: "^sha256=[0-9a-f]{64}$" }
+    post:
+      operationId: receiveCustomWebhook
+      summary: Create or deduplicate a session from an HMAC-signed webhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomWebhookRequest" }
+      responses:
+        "202":
+          description: Durable session accepted and assignment dispatch enqueued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomWebhookAccepted" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /integrations/custom/{integrationId}:
+    parameters:
+      - name: integrationId
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+    get:
+      operationId: getCustomWebhookIntegration
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Redacted operator configuration
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/CustomWebhookIntegration" } },
+            }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createCustomWebhookIntegration
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: "#/components/schemas/CustomWebhookConfig" } } }
+      responses:
+        "201":
+          description: Created redacted configuration
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/CustomWebhookIntegration" } },
+            }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateCustomWebhookIntegration
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: "#/components/schemas/CustomWebhookConfig" } } }
+      responses:
+        "200":
+          description: Updated redacted configuration
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/CustomWebhookIntegration" } },
+            }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteCustomWebhookIntegration
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        default: { $ref: "#/components/responses/Error" }
   /sessions:
     post:
       operationId: createSession
@@ -527,6 +611,92 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    CustomWebhookConfig:
+      type: object
+      required: [repositoryId, target, timeout]
+      additionalProperties: false
+      properties:
+        secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
+        repositoryId: { type: string, minLength: 1 }
+        target:
+          oneOf:
+            - {
+                type: object,
+                required: [providerId],
+                properties: { providerId: { type: string } },
+                additionalProperties: false,
+              }
+            - {
+                type: object,
+                required: [commandId],
+                properties: { commandId: { type: string } },
+                additionalProperties: false,
+              }
+        fallbacks:
+          { type: array, maxItems: 90, items: { $ref: "#/components/schemas/CustomWebhookTarget" } }
+        queueTtlSeconds: { type: number, minimum: 1 }
+        timeout: { type: number, minimum: 1 }
+        priority: { type: integer }
+        requiredLabels:
+          type: array
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 64 }
+        enabled: { type: boolean }
+    CustomWebhookTarget:
+      oneOf:
+        - {
+            type: object,
+            required: [providerId],
+            properties: { providerId: { type: string } },
+            additionalProperties: false,
+          }
+        - {
+            type: object,
+            required: [commandId],
+            properties: { commandId: { type: string } },
+            additionalProperties: false,
+          }
+    CustomWebhookIntegration:
+      allOf:
+        - $ref: "#/components/schemas/CustomWebhookConfig"
+        - type: object
+          required:
+            [
+              id,
+              type,
+              fallbacks,
+              queueTtlSeconds,
+              priority,
+              requiredLabels,
+              enabled,
+              version,
+              createdAt,
+              updatedAt,
+              secretConfigured,
+            ]
+          properties:
+            id: { type: string }
+            type: { type: string, const: custom-webhook }
+            secretConfigured: { type: boolean, const: true }
+            version: { type: integer, minimum: 1 }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    CustomWebhookRequest:
+      type: object
+      required: [prompt, idempotencyKey]
+      additionalProperties: false
+      properties:
+        prompt: { type: string, minLength: 1, maxLength: 65536 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 1900 }
+        ref: { type: string, minLength: 1 }
+    CustomWebhookAccepted:
+      type: object
+      required: [accepted, sessionId, created]
+      additionalProperties: false
+      properties:
+        accepted: { type: boolean, const: true }
+        sessionId: { type: string }
+        created: { type: boolean }
     Error:
       description: Error response
       content:
