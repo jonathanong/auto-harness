@@ -27,6 +27,8 @@ export async function runSetupIfNeeded(
   remainingMs: () => number,
   childEnvSource: NodeJS.ProcessEnv = process.env,
   baseline?: string,
+  terminalProcessRunner: ProcessRunner = processRunner,
+  terminalChildEnvSource: NodeJS.ProcessEnv = childEnvSource,
 ): Promise<SessionSetupResult> {
   let environment = createChildEnv(childEnvSource);
   const scopedSetupScript =
@@ -38,13 +40,13 @@ export async function runSetupIfNeeded(
 
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
     finishClaimedSession(
-      processRunner,
+      terminalProcessRunner,
       streamer,
       logs,
       assign,
       claimed,
       outcome,
-      childEnvSource,
+      terminalChildEnvSource,
       baseline,
     );
   const abortedFailure = () =>

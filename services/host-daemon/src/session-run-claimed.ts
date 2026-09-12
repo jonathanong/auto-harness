@@ -110,6 +110,31 @@ class SessionCredentialRedactor {
   }
 }
 
+function withInstallationToken(
+  environment: NodeJS.ProcessEnv,
+  githubApp: GitHubAppConfig,
+  installationToken: InstallationToken,
+): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    GH_TOKEN: installationToken.token,
+    GIT_AUTHOR_NAME: githubApp.botLogin,
+    GIT_AUTHOR_EMAIL: githubBotEmail(githubApp),
+    GIT_COMMITTER_NAME: githubApp.botLogin,
+    GIT_COMMITTER_EMAIL: githubBotEmail(githubApp),
+    HARNESS_CHILD_ENV_ALLOWLIST: [
+      environment.HARNESS_CHILD_ENV_ALLOWLIST,
+      "GH_TOKEN",
+      "GIT_AUTHOR_NAME",
+      "GIT_AUTHOR_EMAIL",
+      "GIT_COMMITTER_NAME",
+      "GIT_COMMITTER_EMAIL",
+    ]
+      .filter(Boolean)
+      .join(","),
+  };
+}
+
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
  * argv is resolved control-plane-side (cascade walk + prompt append); the daemon
@@ -141,11 +166,57 @@ export async function runClaimedSession(
   const sessionChildEnv = mappedGitHubApp
     ? withoutAmbientGitHubTokens(childEnvSource)
     : childEnvSource;
+  let installationToken: InstallationToken | undefined;
+  let authenticatedTerminalEnvironment = sessionChildEnv;
+  if (mappedGitHubApp) {
+    try {
+      installationToken = await mintInstallationToken(
+        githubApp!,
+        assign.repositoryId,
+        signal,
+        fetch,
+        nowMs,
+      );
+      if (
+        !installationToken ||
+        installationToken.expiresAtMs - nowMs() <= GITHUB_APP_TOKEN_MARGIN_MS
+      ) {
+        throw new Error("GitHub App token expires too soon to run a session");
+      }
+      authenticatedTerminalEnvironment = withInstallationToken(
+        sessionChildEnv,
+        githubApp!,
+        installationToken,
+      );
+    } catch {
+      return await finishClaimedSession(
+        processRunner,
+        streamer,
+        logs,
+        assign,
+        claimed,
+        signal?.aborted
+          ? { status: timedOut() ? "timed_out" : "cancelled", exitCode: null }
+          : {
+              status: "failed",
+              exitCode: null,
+              errorCode: "setup_failed",
+              errorMessage: "GitHub App credential provisioning failed",
+            },
+        sessionChildEnv,
+        baseline,
+        true,
+      );
+    }
+  }
+  const effectiveTerminalRunner = installationToken
+    ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
+    : processRunner;
   try {
     await claimed.currentExecutionTarget?.();
   } catch (error) {
     return await finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
@@ -156,8 +227,9 @@ export async function runClaimedSession(
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
       },
-      sessionChildEnv,
+      authenticatedTerminalEnvironment,
       baseline,
+      true,
     );
   }
   const setup = await runSetupIfNeeded(
@@ -171,6 +243,8 @@ export async function runClaimedSession(
     remainingMs,
     sessionChildEnv,
     baseline,
+    effectiveTerminalRunner,
+    authenticatedTerminalEnvironment,
   );
   if (setup.failure) return setup.failure;
 
@@ -178,7 +252,7 @@ export async function runClaimedSession(
     await claimed.currentExecutionTarget?.();
   } catch (error) {
     return await finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
@@ -189,7 +263,7 @@ export async function runClaimedSession(
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
       },
-      setup.environment,
+      authenticatedTerminalEnvironment,
       baseline,
       true,
     );
@@ -197,13 +271,13 @@ export async function runClaimedSession(
 
   if (signal?.aborted) {
     return await finishClaimedSession(
-      processRunner,
+      effectiveTerminalRunner,
       streamer,
       logs,
       assign,
       claimed,
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
-      setup.environment,
+      authenticatedTerminalEnvironment,
       baseline,
       true,
     );
@@ -246,6 +320,7 @@ export async function runClaimedSession(
     nowMs,
     baseline,
     isolatedGitHubConfigDir,
+    installationToken,
   );
 }
 
@@ -267,6 +342,7 @@ async function runProcessAndFinish(
   nowMs: () => number = Date.now,
   baseline?: string,
   isolatedGitHubConfigDir?: string,
+  installationToken?: InstallationToken,
 ): Promise<SessionRunResult> {
   const scrubbedTerminalEnvironment = githubApp?.repositories.has(assign.repositoryId)
     ? withoutAmbientGitHubTokens(environment)
@@ -324,55 +400,6 @@ async function runProcessAndFinish(
         })
       : null;
   if (priorContextPath) streamer.write("system", "Wrote prior-session context for this run");
-  let installationToken: InstallationToken | undefined;
-  if (githubApp?.repositories.has(assign.repositoryId)) {
-    try {
-      installationToken = await mintInstallationToken(
-        githubApp,
-        assign.repositoryId,
-        signal,
-        fetch,
-        nowMs,
-      );
-      if (
-        !installationToken ||
-        installationToken.expiresAtMs - nowMs() <= GITHUB_APP_TOKEN_MARGIN_MS
-      ) {
-        throw new Error("GitHub App token expires too soon to run a session");
-      }
-    } catch {
-      await removePriorContextFile(priorContextPath);
-      if (signal?.aborted) {
-        return await finishClaimedSession(
-          processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
-          terminalEnvironment,
-          baseline,
-          true,
-        );
-      }
-      return await finishClaimedSession(
-        processRunner,
-        streamer,
-        logs,
-        assign,
-        claimed,
-        {
-          status: "failed",
-          exitCode: null,
-          errorCode: "setup_failed",
-          errorMessage: "GitHub App credential provisioning failed",
-        },
-        terminalEnvironment,
-        baseline,
-        true,
-      );
-    }
-  }
   const scopedCommandEnv = installationToken ? withoutAmbientGitHubTokens(commandEnv) : commandEnv;
   // The daemon's host credential must never reach an agent command. Give the
   // primary command only its one-attempt child-session credential instead;
@@ -387,37 +414,13 @@ async function runProcessAndFinish(
         }
       : scopedCommandEnv;
   const authenticatedEnv = installationToken
-    ? {
-        ...sessionEnv,
-        GH_TOKEN: installationToken.token,
-        GIT_AUTHOR_NAME: githubApp!.botLogin,
-        GIT_AUTHOR_EMAIL: githubBotEmail(githubApp!),
-        GIT_COMMITTER_NAME: githubApp!.botLogin,
-        GIT_COMMITTER_EMAIL: githubBotEmail(githubApp!),
-      }
+    ? withInstallationToken(sessionEnv, githubApp!, installationToken)
     : sessionEnv;
   // Terminal hooks implement repository-scoped completion/escalation policy (including GitHub
   // issue creation), so they receive the same short-lived App identity as the assigned command.
   // Early finish paths before successful minting continue to receive only the scrubbed environment.
   const authenticatedTerminalEnvironment = installationToken
-    ? {
-        ...terminalEnvironment,
-        GH_TOKEN: installationToken.token,
-        GIT_AUTHOR_NAME: githubApp!.botLogin,
-        GIT_AUTHOR_EMAIL: githubBotEmail(githubApp!),
-        GIT_COMMITTER_NAME: githubApp!.botLogin,
-        GIT_COMMITTER_EMAIL: githubBotEmail(githubApp!),
-        HARNESS_CHILD_ENV_ALLOWLIST: [
-          terminalEnvironment.HARNESS_CHILD_ENV_ALLOWLIST,
-          "GH_TOKEN",
-          "GIT_AUTHOR_NAME",
-          "GIT_AUTHOR_EMAIL",
-          "GIT_COMMITTER_NAME",
-          "GIT_COMMITTER_EMAIL",
-        ]
-          .filter(Boolean)
-          .join(","),
-      }
+    ? withInstallationToken(terminalEnvironment, githubApp!, installationToken)
     : terminalEnvironment;
   const spawnEnv = priorContextPath
     ? { ...authenticatedEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }

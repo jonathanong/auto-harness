@@ -161,6 +161,52 @@ describe("claimed session GitHub App credentials", () => {
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
+  it("mints before setup so a failed setup hook receives the scoped token", async () => {
+    const fetchMock = installTokenFetch();
+    let setupEnv: NodeJS.ProcessEnv | undefined;
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        setupEnv = options.env;
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    const logs = [];
+    const result = await runClaimedSession(
+      systemRunner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign({ setupScript: "setup" }),
+      {
+        ...claimed,
+        currentHookTarget: async () => ({
+          cwd: claimed.cwd,
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      undefined,
+      () => false,
+      () => 4_000_000,
+      systemRunner,
+      { PATH: process.env.PATH },
+      undefined,
+      undefined,
+      app(),
+      () => now,
+    );
+
+    expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed", exitCode: 1 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setupEnv?.GH_TOKEN).toBeUndefined();
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
+  });
+
   it.each([
     { timeout: false, status: "cancelled" },
     { timeout: true, status: "timed_out" },
