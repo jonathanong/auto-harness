@@ -173,6 +173,14 @@ describe("session result normalization", () => {
 
   it("recognizes only strictly valid result values without normalizing them", () => {
     expect(isSessionResult({ summary: "done", summarySource: "harness" })).toBe(true);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "agent",
+        filesChanged: ["src/index.ts"],
+        pullRequestUrl: "https://example.test/pull/1",
+      }),
+    ).toBe(true);
     expect(isSessionResult({ summary: "done", summarySource: "other" })).toBe(false);
     expect(isSessionResult({ summary: "done", summarySource: "harness", branch: 42 })).toBe(false);
     expect(isSessionResult({ summary: "done", summarySource: "harness", filesChanged: [42] })).toBe(

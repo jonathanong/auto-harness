@@ -265,6 +265,29 @@ describe("finishClaimedSession", () => {
     });
   });
 
+  it("collects an agent summary without requiring a checkout baseline", async () => {
+    const runner: ProcessRunner = {
+      async run(options) {
+        return { exitCode: options.argv.includes("pr") ? 1 : 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await finishClaimedSession(
+      runner,
+      new LogStreamer("session-1", "attempt-1", () => undefined),
+      [],
+      baseAssign(),
+      {
+        worktree: { id: "wt-1" },
+        cwd: "/repo/wt-1",
+        repository: {},
+        currentHookTarget: async () => ({ cwd: "/repo/wt-1", repository: {} }),
+      },
+      { status: "completed", exitCode: 0, agentSummary: "Agent finished." },
+    );
+
+    expect(result.result).toMatchObject({ summary: "Agent finished.", summarySource: "agent" });
+  });
+
   it("passes optional terminal-hook fields only when they are present", async () => {
     const calls: Array<{ argv: string[]; env?: NodeJS.ProcessEnv }> = [];
     const runner: ProcessRunner = {

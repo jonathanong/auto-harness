@@ -117,6 +117,15 @@ describe("collectSessionResult", () => {
       summary: "The agent reported a failure.",
       summarySource: "agent",
     });
+
+    await expect(
+      collectSessionResult({
+        runner,
+        cwd: process.cwd(),
+        status: "cancelled",
+        environment: { HARNESS_CHILD_ENV_ALLOWLIST: "not-a-valid-name!" },
+      }),
+    ).resolves.toEqual({ summary: "Session cancelled", summarySource: "harness" });
   });
 
   it("omits an oversized branch probe rather than recording a partial branch name", async () => {
@@ -372,5 +381,28 @@ describe("collectSessionResult", () => {
     expect(calls.every((call) => call.timeoutMs <= SESSION_RESULT_PROBE_DEADLINE_MS)).toBe(true);
     expect(calls.every((call) => call.signal?.aborted)).toBe(true);
     expect(calls.some((call) => call.argv.includes("pr"))).toBe(false);
+  });
+
+  it("does not lose a deadline that expires while a probe registers its completion", async () => {
+    vi.useFakeTimers();
+    const runner: ProcessRunner = {
+      run() {
+        return {
+          // eslint-disable-next-line unicorn/no-thenable -- synchronously models the abort race inside Promise registration.
+          then() {
+            vi.advanceTimersByTime(SESSION_RESULT_PROBE_DEADLINE_MS);
+          },
+        } as unknown as ReturnType<ProcessRunner["run"]>;
+      },
+    };
+
+    await expect(
+      collectSessionResult({
+        runner,
+        cwd: process.cwd(),
+        status: "completed",
+        environment: process.env,
+      }),
+    ).resolves.toEqual({ summary: "Session completed", summarySource: "harness" });
   });
 });

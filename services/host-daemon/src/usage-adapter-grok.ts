@@ -80,12 +80,10 @@ export function parseGrokRecords(
   if (grokUsageLimit(envelope)) return { usageLimit: true };
   if (typeof envelope.response !== "string" && typeof envelope.text !== "string") return {};
   const usage = record(envelope.usage);
+  const agentSummary =
+    typeof envelope.response === "string" ? envelope.response : (envelope.text as string);
   return {
     ...(usage ? withUsage(usageFromRecord(usage, observedAt, "grok")) : {}),
-    ...(typeof envelope.response === "string"
-      ? { agentSummary: envelope.response }
-      : typeof envelope.text === "string"
-        ? { agentSummary: envelope.text }
-        : {}),
+    agentSummary,
   };
 }
