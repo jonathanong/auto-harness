@@ -138,7 +138,8 @@ export function createLocalApp(options: LocalServerOptions = {}): {
         })
       )
         return;
-      if (await handleCustomWebhookRoute(ctx)) return;
+      await handleCustomWebhookRoute(ctx);
+      return;
     }
     if (loginRoute) {
       if (await enforceRateLimit(loginLimit)) return;
