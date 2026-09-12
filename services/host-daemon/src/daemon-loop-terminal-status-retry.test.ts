@@ -488,6 +488,69 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("fails closed when active work becomes deferred after shutdown preparation", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      const dispositions: boolean[] = [];
+      let finish!: () => void;
+      const finishing = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      (
+        loop as unknown as {
+          runner: {
+            run(): Promise<{
+              status: "failed";
+              exitCode: null;
+              logs: [];
+              errorCode: "checkout_fetch_failed";
+              settleDeferredTerminalHook: (runHook: boolean) => Promise<void>;
+            }>;
+          };
+        }
+      ).runner = {
+        async run() {
+          await finishing;
+          return {
+            status: "failed",
+            exitCode: null,
+            logs: [],
+            errorCode: "checkout_fetch_failed",
+            settleDeferredTerminalHook: async (runHook) => {
+              dispositions.push(runHook);
+            },
+          };
+        },
+      };
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "finishing-during-shutdown",
+        attemptId: "attempt-1",
+        repositoryId: "demo",
+        prompt: "hello",
+        resolvedArgv: ["printf", "%s", "hello"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+      await flushMacrotask();
+
+      loop.prepareForShutdown();
+      finish();
+      await loop.waitForIdle();
+
+      expect(dispositions).toEqual([true]);
+      expect(pendingTerminalStatusOf(loop).size).toBe(1);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("clears every pending terminal status for a session when the ack omits attemptId", async () => {
     const { config, cleanup } = await makeRepo();
     try {

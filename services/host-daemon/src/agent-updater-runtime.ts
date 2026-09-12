@@ -167,6 +167,7 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
         // cannot resume a maintenance drain that it did not acquire.
         const alreadyDraining = bindings.loop.isDraining();
         await bindings.loop.beginDrain();
+        if (!alreadyDraining) bindings.loop.prepareForShutdown();
         return !alreadyDraining;
       },
       waitForIdle: () => bindings.loop.waitForIdle(),

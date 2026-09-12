@@ -289,6 +289,9 @@ describe("daemon updater runtime", () => {
           calls.push("begin");
           draining = true;
         },
+        prepareForShutdown: () => {
+          calls.push("prepare");
+        },
         waitForIdle: async () => {
           calls.push("idle");
         },
@@ -314,7 +317,7 @@ describe("daemon updater runtime", () => {
     });
 
     await expect(updater!.run()).resolves.toMatchObject({ phase: "failed" });
-    expect(calls).toEqual(["begin", "idle", "resume"]);
+    expect(calls).toEqual(["begin", "prepare", "idle", "resume"]);
     expect(draining).toBe(false);
   });
 });

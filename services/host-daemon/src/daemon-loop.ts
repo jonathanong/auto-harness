@@ -194,6 +194,8 @@ export class DaemonLoop {
   private inventoryPolicyDrainPublished = false;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
+  /** Fail closed instead of waiting for retry dispositions while shutting down. */
+  private settleDeferredOnCompletion = false;
   private drainConfirmation: Promise<void> | undefined;
   private resolveDrainConfirmation: (() => void) | undefined;
   private drainRetry: ReturnType<typeof setTimeout> | undefined;
@@ -481,6 +483,27 @@ export class DaemonLoop {
     await Promise.all([...this.inflight.values()].map((entry) => entry.work));
   }
 
+  /**
+   * Let active commands finish while ensuring a lost v4 retry-disposition ACK
+   * cannot keep the subsequent idle wait pending forever.
+   */
+  prepareForShutdown(): void {
+    this.settleDeferredOnCompletion = true;
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      if (!pending.settleDeferredTerminalHook) continue;
+      this.pendingTerminalStatus.delete(key);
+      pending.controller.abort();
+      void pending
+        .settleDeferredTerminalHook(true)
+        .catch((error: unknown) => {
+          this.onLog?.(
+            `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+          );
+        })
+        .finally(() => pending.resolveDeferredDisposition?.());
+    }
+  }
+
   async resumeFromDrain(): Promise<void> {
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
@@ -488,6 +511,7 @@ export class DaemonLoop {
     this.drainDeadline = undefined;
     this.drainRequested = false;
     this.draining = false;
+    this.settleDeferredOnCompletion = false;
     const resolve = this.resolveDrainConfirmation;
     this.resolveDrainConfirmation = undefined;
     this.drainConfirmation = undefined;
@@ -496,6 +520,7 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    this.prepareForShutdown();
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
     this.drainDeadline = undefined;
@@ -1069,6 +1094,13 @@ export class DaemonLoop {
       deferCheckoutFetchFailureHook:
         this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
     });
+    let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
+    if (this.settleDeferredOnCompletion && settleDeferredTerminalHook) {
+      await settleDeferredTerminalHook(true).catch((error: unknown) => {
+        this.onLog?.(`deferred terminal hook failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+      });
+      settleDeferredTerminalHook = undefined;
+    }
 
     if (result.logs.length > 0) {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
@@ -1097,7 +1129,7 @@ export class DaemonLoop {
     // retries from duplicating the original send while flush is still pending.
     const pendingKey = inflightKey(msg.sessionId, msg.attemptId);
     const controller = new AbortController();
-    const needsDeferredDisposition = result.settleDeferredTerminalHook !== undefined;
+    const needsDeferredDisposition = settleDeferredTerminalHook !== undefined;
     let resolveDeferredDisposition: (() => void) | undefined;
     const deferredDisposition = needsDeferredDisposition
       ? new Promise<void>((resolve) => {
@@ -1106,7 +1138,7 @@ export class DaemonLoop {
       : undefined;
     if (
       this.pendingTerminalStatus.size >= this.pendingStatusMaxCount &&
-      !result.settleDeferredTerminalHook
+      !settleDeferredTerminalHook
     ) {
       // A control plane that never sends session:status-acknowledged (e.g. not yet
       // upgraded to support it) would otherwise grow this set without bound until a
@@ -1126,9 +1158,7 @@ export class DaemonLoop {
         firstAttemptedAtMs: Date.now(),
         sending: true,
         controller,
-        ...(result.settleDeferredTerminalHook
-          ? { settleDeferredTerminalHook: result.settleDeferredTerminalHook }
-          : {}),
+        ...(settleDeferredTerminalHook ? { settleDeferredTerminalHook } : {}),
         ...(resolveDeferredDisposition ? { resolveDeferredDisposition } : {}),
       });
     }
@@ -1147,7 +1177,7 @@ export class DaemonLoop {
       });
     if (deferredDisposition) {
       if (!this.pendingTerminalStatus.has(pendingKey)) {
-        await result.settleDeferredTerminalHook!(true);
+        await settleDeferredTerminalHook!(true);
         resolveDeferredDisposition?.();
       }
       await deferredDisposition;

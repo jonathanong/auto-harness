@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -47,6 +48,117 @@ describe("startDaemon runtime wiring", () => {
       expect(daemon.loop.inflightCount()).toBe(0);
     } finally {
       await harness.close();
+    }
+  });
+
+  it("settles a lost terminal disposition ACK before waiting for idle", async () => {
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    let peer: WebSocket | undefined;
+    const received: string[] = [];
+    wss.on("connection", (socket) => {
+      peer = socket;
+      socket.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as {
+          type?: string;
+          hostId?: string;
+          sessionId?: string;
+          attemptId?: string;
+        };
+        received.push(message.type ?? "");
+        if (message.type === "host:register") {
+          socket.send(
+            JSON.stringify({
+              type: "host:registered",
+              hostId: message.hostId,
+              protocolVersion: 4,
+            }),
+          );
+        } else if (message.type === "host:status") {
+          socket.send(JSON.stringify({ type: "host:draining", hostId: message.hostId }));
+        } else if (message.type === "session:ack") {
+          socket.send(
+            JSON.stringify({
+              type: "session:acknowledged",
+              sessionId: message.sessionId,
+              attemptId: message.attemptId,
+            }),
+          );
+        }
+        // Deliberately drop session:status-acknowledged to model a lost durable
+        // disposition. Shutdown preparation must settle the deferred hook
+        // before the idle wait while leaving active work undisturbed.
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, "127.0.0.1", resolve);
+      server.on("error", reject);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const { config, cleanup } = await makeRepo();
+    let stopPromise: Promise<void> | undefined;
+    const dispositions: boolean[] = [];
+    try {
+      const daemon = await startDaemon({
+        config: { ...config, apiUrl: `ws://127.0.0.1:${address.port}/ws` },
+        inventoryPollMs: 0,
+      });
+      (
+        daemon.loop as unknown as {
+          runner: {
+            run(): Promise<{
+              status: "failed";
+              exitCode: null;
+              logs: [];
+              errorCode: "checkout_fetch_failed";
+              settleDeferredTerminalHook(runHook: boolean): Promise<void>;
+            }>;
+          };
+        }
+      ).runner = {
+        async run() {
+          return {
+            status: "failed",
+            exitCode: null,
+            logs: [],
+            errorCode: "checkout_fetch_failed",
+            settleDeferredTerminalHook: async (runHook) => {
+              dispositions.push(runHook);
+            },
+          };
+        },
+      };
+      peer!.send(
+        JSON.stringify({
+          type: "session:assign",
+          sessionId: "lost-status-ack",
+          attemptId: "attempt-1",
+          repositoryId: "demo",
+          prompt: "run",
+          resolvedArgv: ["printf", "%s", "run"],
+          timeout: 30,
+          worktreeId: "wt-1",
+          assignedAt: new Date().toISOString(),
+        }),
+      );
+      await waitFor(() => received.includes("session:status"));
+
+      stopPromise = daemon.stop();
+      await expect(
+        Promise.race([
+          stopPromise.then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+        ]),
+      ).resolves.toBe(true);
+      expect(dispositions).toEqual([true]);
+    } finally {
+      cleanup();
+      await stopPromise;
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 
