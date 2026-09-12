@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository/workspace location and lineage share one details card. */
 "use client";
 
 import type { ReactNode } from "react";
