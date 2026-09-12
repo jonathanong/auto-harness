@@ -59,43 +59,6 @@ export function createGitClient(
   runner: ProcessRunner,
   pullRefConfigs: GitHubPullRefConfigs | undefined = undefined,
 ): GitClient {
-  const originUnavailable = Symbol("origin-unavailable");
-  const pinnedOriginUrls = new Map<string, string | typeof originUnavailable>();
-
-  async function captureOrigin(path: string): Promise<string | undefined> {
-    const key = await canonicalPath(path);
-    const existing = pinnedOriginUrls.get(key);
-    if (existing !== undefined) return existing === originUnavailable ? undefined : existing;
-    const configuredPullRef = pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
-    if (configuredPullRef !== undefined) {
-      pinnedOriginUrls.set(key, configuredPullRef.remoteUrl);
-      return configuredPullRef.remoteUrl;
-    }
-    if (pullRefConfigs !== undefined) {
-      pinnedOriginUrls.set(key, originUnavailable);
-      return undefined;
-    }
-    try {
-      const configured = await runGit(runner, path, ["remote", "get-url", "--", "origin"]);
-      if (configured.exitCode !== 0) {
-        pinnedOriginUrls.set(key, originUnavailable);
-        return undefined;
-      }
-      const remoteUrl = configured.stdout.trim();
-      if (remoteUrl.length === 0) {
-        pinnedOriginUrls.set(key, originUnavailable);
-        return undefined;
-      }
-      pinnedOriginUrls.set(key, remoteUrl);
-      return remoteUrl;
-    } catch {
-      // Repositories without an origin remain valid for ordinary local-ref checkouts. A
-      // GitHub pull-ref checkout fails closed later when no immutable origin was captured.
-      pinnedOriginUrls.set(key, originUnavailable);
-      return undefined;
-    }
-  }
-
   async function pullRefConfig(path: string) {
     const key = await canonicalPath(path);
     return pullRefConfigs?.get(key) ?? pullRefConfigs?.get(resolve(path));
@@ -107,7 +70,6 @@ export function createGitClient(
       if (probe.exitCode !== 0) {
         throw new Error(`Not a git repository: ${path}`);
       }
-      if (pullRefConfigs === undefined) await captureOrigin(path);
     },
 
     async ensureWorktree({ repoPath, worktreePath, branch }) {
@@ -171,17 +133,7 @@ export function createGitClient(
           isPullRequestRef && pullRefConfigs !== undefined
             ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
             : undefined;
-        const legacyOrigin =
-          isPullRequestRef && pullRefConfigs === undefined
-            ? await captureOrigin(repoPath)
-            : undefined;
-        const pullConfig = isPullRequestRef
-          ? pullRefConfigs === undefined
-            ? legacyOrigin === undefined
-              ? undefined
-              : { remoteUrl: legacyOrigin, transport: {} }
-            : await pullRefConfig(repoPath)
-          : undefined;
+        const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
         pullRequestRef = isPullRequestRef
           ? await fetchGitHubPullRequestRef(
               runner,
@@ -234,6 +186,9 @@ export function createGitClient(
             signal,
           );
           if (connectivity.exitCode !== 0) {
+            if (isPullRequestRef) {
+              throw new Error("Failed to verify GitHub pull-request checkout objects");
+            }
             if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
               throw new Error("Failed to fetch required checkout objects");
             }

@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import { GITHUB_PULL_REF_CONFIG_ENV, loadGitHubPullRefConfigs } from "./github-pull-ref-config.ts";
 
 const configPath = "/etc/auto-harness/pull-refs.json";
+const rootOwnedFile = { uid: 0, mode: 0o100644, isSymbolicLink: () => false };
 
 function load(value: unknown) {
-  return loadGitHubPullRefConfigs({ [GITHUB_PULL_REF_CONFIG_ENV]: configPath }, () =>
-    JSON.stringify(value),
+  return loadGitHubPullRefConfigs(
+    { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+    () => JSON.stringify(value),
+    () => rootOwnedFile,
   );
 }
 
@@ -29,19 +32,22 @@ describe("GitHub pull-ref host policy", () => {
   });
 
   it("loads a pinned repository URL and safe transport settings from an absolute host file", () => {
-    const configs = loadGitHubPullRefConfigs({ [GITHUB_PULL_REF_CONFIG_ENV]: configPath }, () =>
-      JSON.stringify({
-        repositories: {
-          "/srv/repository": {
-            remoteUrl: "https://github.example/repository.git",
-            transport: {
-              credentialHelper: "manager-core",
-              httpProxy: "https://proxy.example",
-              sslCAInfo: "/etc/ssl/private-ca.pem",
+    const configs = loadGitHubPullRefConfigs(
+      { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+      () =>
+        JSON.stringify({
+          repositories: {
+            "/srv/repository": {
+              remoteUrl: "https://github.example/repository.git",
+              transport: {
+                credentialHelper: "manager-core",
+                httpProxy: "https://proxy.example",
+                sslCAInfo: "/etc/ssl/private-ca.pem",
+              },
             },
           },
-        },
-      }),
+        }),
+      () => rootOwnedFile,
     );
     expect(configs.get("/srv/repository")).toEqual({
       remoteUrl: "https://github.example/repository.git",
@@ -66,6 +72,18 @@ describe("GitHub pull-ref host policy", () => {
       remoteUrl: "https://github.example/repository.git",
       transport: {},
     });
+  });
+
+  it("retains only the individually configured safe transport settings", () => {
+    for (const transport of [
+      { credentialHelper: "manager-core" },
+      { httpProxy: "https://proxy.example" },
+      { sslCAInfo: "/etc/ssl/private-ca.pem" },
+      {},
+    ]) {
+      const configs = load(repositoryConfig({ transport }));
+      expect(configs.get("/srv/repository")?.transport).toEqual(transport);
+    }
   });
 
   it("rejects invalid policy shapes and unrecognized keys", () => {
@@ -120,17 +138,48 @@ describe("GitHub pull-ref host policy", () => {
       { urlInsteadOf: "https://attacker" },
     ]) {
       expect(() =>
-        loadGitHubPullRefConfigs({ [GITHUB_PULL_REF_CONFIG_ENV]: configPath }, () =>
-          JSON.stringify({
-            repositories: {
-              "/srv/repository": {
-                remoteUrl: "https://github.example/repository.git",
-                transport,
+        loadGitHubPullRefConfigs(
+          { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+          () =>
+            JSON.stringify({
+              repositories: {
+                "/srv/repository": {
+                  remoteUrl: "https://github.example/repository.git",
+                  transport,
+                },
               },
-            },
-          }),
+            }),
+          () => rootOwnedFile,
         ),
       ).toThrow();
+    }
+  });
+
+  it("requires a credential-free HTTPS remote URL", () => {
+    for (const remoteUrl of [
+      "git@github.com:example/repository.git",
+      "ssh://github.com/example/repository.git",
+      "http://github.com/example/repository.git",
+      "https://token@github.com/example/repository.git",
+      "not-a-url",
+    ]) {
+      expect(() => load(repositoryConfig({ remoteUrl }))).toThrow("remoteUrl must be an https URL");
+    }
+  });
+
+  it("rejects symlinked, non-root-owned, and session-writable policy paths", () => {
+    for (const [path, status, message] of [
+      [configPath, { ...rootOwnedFile, isSymbolicLink: () => true }, "must not traverse symlinks"],
+      ["/etc/auto-harness", { ...rootOwnedFile, uid: 501 }, "must be root-owned"],
+      ["/etc", { ...rootOwnedFile, mode: 0o100664 }, "must be root-owned"],
+    ] as const) {
+      expect(() =>
+        loadGitHubPullRefConfigs(
+          { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+          () => JSON.stringify(repositoryConfig()),
+          (candidate) => (candidate === path ? status : rootOwnedFile),
+        ),
+      ).toThrow(message);
     }
   });
 });

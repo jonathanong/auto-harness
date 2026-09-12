@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { lstatSync, readFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 export const GITHUB_PULL_REF_CONFIG_ENV = "HARNESS_GITHUB_PULL_REF_CONFIG";
 
@@ -15,6 +15,14 @@ export type GitHubPullRefConfig = Readonly<{
 }>;
 
 export type GitHubPullRefConfigs = ReadonlyMap<string, GitHubPullRefConfig>;
+
+type PolicyPathStatus = Readonly<{
+  uid: number;
+  mode: number;
+  isSymbolicLink(): boolean;
+}>;
+
+type InspectPolicyPath = (path: string) => PolicyPathStatus;
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -33,6 +41,34 @@ function nonEmptyString(value: unknown, context: string): string {
 function optionalString(value: unknown, context: string): string | undefined {
   if (value === undefined) return undefined;
   return nonEmptyString(value, context);
+}
+
+function httpsUrl(value: string, context: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${context} must be an https URL`);
+  }
+  if (parsed.protocol !== "https:" || parsed.username.length > 0 || parsed.password.length > 0) {
+    throw new Error(`${context} must be an https URL`);
+  }
+  return value;
+}
+
+function assertRootOwnedPath(path: string, inspect: InspectPolicyPath): void {
+  for (let current = path; ; current = dirname(current)) {
+    const status = inspect(current);
+    if (status.isSymbolicLink()) {
+      throw new Error(`${GITHUB_PULL_REF_CONFIG_ENV} must not traverse symlinks`);
+    }
+    if (status.uid !== 0 || (status.mode & 0o022) !== 0) {
+      throw new Error(
+        `${GITHUB_PULL_REF_CONFIG_ENV} must be root-owned and not group/world writable`,
+      );
+    }
+    if (current === dirname(current)) return;
+  }
 }
 
 function parseTransport(value: unknown, context: string): GitHubPullRefTransport {
@@ -81,10 +117,12 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
 export function loadGitHubPullRefConfigs(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
+  inspect: InspectPolicyPath = lstatSync,
 ): GitHubPullRefConfigs {
   const path = env[GITHUB_PULL_REF_CONFIG_ENV]?.trim();
   if (!path) return new Map();
   if (!isAbsolute(path)) throw new Error(`${GITHUB_PULL_REF_CONFIG_ENV} must be absolute`);
+  assertRootOwnedPath(path, inspect);
   const root = record(JSON.parse(readFile(path, "utf8")) as unknown, "GitHub pull-ref config");
   if (Object.keys(root).some((key) => key !== "repositories")) {
     throw new Error("GitHub pull-ref config has an unsupported key");
@@ -101,8 +139,11 @@ export function loadGitHubPullRefConfigs(
         `GitHub pull-ref config.repositories.${repositoryPath} has an unsupported key`,
       );
     }
-    const remoteUrl = nonEmptyString(
-      config.remoteUrl,
+    const remoteUrl = httpsUrl(
+      nonEmptyString(
+        config.remoteUrl,
+        `GitHub pull-ref config.repositories.${repositoryPath}.remoteUrl`,
+      ),
       `GitHub pull-ref config.repositories.${repositoryPath}.remoteUrl`,
     );
     configs.set(resolve(repositoryPath), {

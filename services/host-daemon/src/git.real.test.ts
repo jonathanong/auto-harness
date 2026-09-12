@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -160,9 +160,11 @@ describe("createGitClient real git", () => {
     await git(attacker, ["push", attackerRemote, "HEAD:refs/pull/42/head"]);
 
     await git(repo, ["remote", "add", "origin", remote]);
-    const client = createGitClient(new SpawnProcessRunner());
-    await client.ensureRepo(repo);
-    // Models a prior untrusted session mutating the shared local Git config after capture.
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(repo), { remoteUrl: remote, transport: {} }]]),
+    );
+    // Models a prior untrusted session mutating the shared local Git config after policy load.
     await git(repo, ["config", `url.${attackerRemote}.insteadOf`, remote]);
 
     await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });

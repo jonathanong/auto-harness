@@ -66,4 +66,26 @@ describe("isolated GitHub pull-ref fetch", () => {
       fetchGitHubPullRequestRef(scripted(steps), cwd, ref, remoteUrl),
     ).resolves.toBeNull();
   });
+
+  it("roots an already-present pull head without creating an empty bundle", async () => {
+    const destination = await fetchGitHubPullRequestRef(
+      scripted([
+        initialized,
+        fetched,
+        resolved,
+        {
+          match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pull-sha", "base-sha"],
+          exitCode: 0,
+        },
+        { match: ["update-ref", "--no-deref", "*", "pull-sha"], exitCode: 0 },
+      ]),
+      cwd,
+      ref,
+      { remoteUrl, transport: {} },
+      "/srv/repository/.git/objects",
+      "base-sha",
+    );
+
+    expect(destination).toMatch(/^refs\/worktree\/auto-harness\/pull-fetch\//);
+  });
 });

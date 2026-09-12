@@ -108,6 +108,30 @@ export async function fetchGitHubPullRequestRef(
     if (resolved.exitCode !== 0) return null;
     const sha = resolved.stdout.trim();
     if (sha.length === 0) return null;
+    // When the requested pull head is already reachable from the current checkout, `bundle
+    // create fetchedRef ^baseCommit` correctly refuses to create an empty bundle. The object is
+    // already present through the alternate object directory, so root it directly instead.
+    const excludesPresentBase = objectDirectory !== undefined && baseCommit !== undefined;
+    if (excludesPresentBase) {
+      const alreadyPresent = await runGit(
+        runner,
+        temporaryDirectory,
+        ["--git-dir", temporaryRepository, "merge-base", "--is-ancestor", sha, baseCommit],
+        signal,
+        environment,
+      );
+      if (alreadyPresent.exitCode === 0) {
+        const recorded = await runGit(
+          runner,
+          cwd,
+          ["update-ref", "--no-deref", destination, sha],
+          signal,
+          { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
+        );
+        return recorded.exitCode === 0 ? destination : null;
+      }
+      if (alreadyPresent.exitCode !== 1) return null;
+    }
     const bundled = await runGit(
       runner,
       temporaryDirectory,
@@ -118,7 +142,7 @@ export async function fetchGitHubPullRequestRef(
         "create",
         bundlePath,
         fetchedRef,
-        ...(baseCommit === undefined ? [] : [`^${baseCommit}`]),
+        ...(excludesPresentBase ? [`^${baseCommit}`] : []),
       ],
       signal,
       environment,

@@ -56,13 +56,25 @@ function hardReset(sha: string) {
   return { match: ["reset", "--hard", sha], exitCode: 0 };
 }
 
-function capturesOrigin(url = "https://github.com/example/repository.git") {
-  return { match: ["remote", "get-url", "--", "origin"], exitCode: 0, stdout: `${url}\n` };
+function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") {
+  return new Map([[resolve(checkoutRepo), { remoteUrl, transport: {} }]]);
+}
+
+function pullRefObjectReuse(baseSha = "base-sha") {
+  return [
+    {
+      match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+      exitCode: 0,
+      stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
+    },
+    { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${baseSha}\n` },
+  ];
 }
 
 function fetchesGitHubPullRef(
   ref: string,
   remoteUrl = "https://github.com/example/repository.git",
+  baseSha: string | undefined = undefined,
 ) {
   return [
     { match: ["init", "--bare", "*"], exitCode: 0 },
@@ -89,8 +101,24 @@ function fetchesGitHubPullRef(
       exitCode: 0,
       stdout: "pr-sha\n",
     },
+    ...(baseSha === undefined
+      ? []
+      : [
+          {
+            match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pr-sha", baseSha],
+            exitCode: 1,
+          },
+        ]),
     {
-      match: ["--git-dir", "*", "bundle", "create", "*", "refs/auto-harness/pull-fetch/source"],
+      match: [
+        "--git-dir",
+        "*",
+        "bundle",
+        "create",
+        "*",
+        "refs/auto-harness/pull-fetch/source",
+        ...(baseSha === undefined ? [] : [`^${baseSha}`]),
+      ],
       exitCode: 0,
     },
     { match: ["bundle", "unbundle", "*"], exitCode: 0 },
@@ -205,8 +233,8 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        capturesOrigin(remoteUrl),
-        ...fetchesGitHubPullRef(ref, remoteUrl),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
         resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
@@ -216,6 +244,7 @@ describe("createGitClient checkout and revParse", () => {
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
+      pullRefPolicy(remoteUrl),
     );
 
     await expect(
@@ -264,6 +293,10 @@ describe("createGitClient checkout and revParse", () => {
         ],
         exitCode: 0,
         stdout: "pr-sha\n",
+      },
+      {
+        match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pr-sha", "base-sha"],
+        exitCode: 1,
       },
       {
         match: [
@@ -336,19 +369,33 @@ describe("createGitClient checkout and revParse", () => {
     await expect(checkout).rejects.toThrow(`Failed to fetch GitHub pull-request ref ${ref}`);
   });
 
-  it("uses the origin URL captured before an untrusted session can mutate repository config", async () => {
+  it("does not recover a pull-ref checkout through mutable repository remotes", async () => {
+    const ref = "refs/pull/130/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
+        resolvesFetchedPullRef(),
+        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 1 },
+        { match: ["checkout", "--force", "--detach", "pr-sha"], exitCode: 1 },
+        { match: ["fsck", "--connectivity-only", "pr-sha"], exitCode: 1 },
+        deletesFetchedPullRef(),
+      ]),
+      pullRefPolicy(),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow("Failed to verify GitHub pull-request checkout objects");
+  });
+
+  it("uses a pinned policy URL without consulting mutable repository configuration", async () => {
     const ref = "refs/pull/124/head";
     const remoteUrl = "https://github.com/example/repository.git";
-    const mutatedUrl = "https://attacker.example/other.git";
     const git = createGitClient(
       scripted([
-        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
-        capturesOrigin(remoteUrl),
-        // If checkoutRef re-reads mutable config, this response would replace the pinned URL and
-        // make the expected fetch below fail.
-        capturesOrigin(mutatedUrl),
         ...resetsPriorState(),
-        ...fetchesGitHubPullRef(ref, remoteUrl),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
         resolvesFetchedPullRef("pinned-pr-sha"),
         { match: ["switch", "--discard-changes", "--detach", "pinned-pr-sha"], exitCode: 0 },
         hardReset("pinned-pr-sha"),
@@ -358,9 +405,9 @@ describe("createGitClient checkout and revParse", () => {
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
+      pullRefPolicy(remoteUrl),
     );
 
-    await git.ensureRepo(checkoutRepo);
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
     ).resolves.toBe("pinned-pr-sha");
@@ -371,8 +418,8 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        capturesOrigin(),
-        ...fetchesGitHubPullRef(ref),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
         resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
@@ -382,6 +429,7 @@ describe("createGitClient checkout and revParse", () => {
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
+      pullRefPolicy(),
     );
 
     await expect(
@@ -434,7 +482,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
-        capturesOrigin(),
+        ...pullRefObjectReuse(),
         { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
@@ -449,6 +497,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 1,
         },
       ]),
+      pullRefPolicy(),
     );
 
     await expect(
@@ -461,7 +510,7 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        capturesOrigin(),
+        ...pullRefObjectReuse(),
         { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
@@ -476,6 +525,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 1,
         },
       ]),
+      pullRefPolicy(),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
     await expect(checkout).rejects.toThrow(
@@ -488,8 +538,8 @@ describe("createGitClient checkout and revParse", () => {
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
-        capturesOrigin(),
-        ...fetchesGitHubPullRef(ref),
+        ...pullRefObjectReuse(),
+        ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
         resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
@@ -499,6 +549,7 @@ describe("createGitClient checkout and revParse", () => {
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(1),
       ]),
+      pullRefPolicy(),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 
     await expect(checkout).rejects.toThrow(
@@ -512,8 +563,8 @@ describe("createGitClient checkout and revParse", () => {
     let cleanupAborted: boolean | undefined;
     const runner = scripted([
       ...resetsPriorState(),
-      capturesOrigin(),
-      ...fetchesGitHubPullRef(ref),
+      ...pullRefObjectReuse(),
+      ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
       resolvesFetchedPullRef(),
       { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
       hardReset("pr-sha"),
@@ -531,7 +582,7 @@ describe("createGitClient checkout and revParse", () => {
       if (args[0] === "update-ref" && args.includes("-d")) cleanupAborted = options.signal?.aborted;
       return result;
     };
-    await createGitClient(runner).checkoutRef({
+    await createGitClient(runner, pullRefPolicy()).checkoutRef({
       cwd: checkoutCwd,
       repoPath: checkoutRepo,
       ref,
