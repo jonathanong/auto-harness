@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- transaction cancellation and marker index cases share one fixture. */
 import { DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
@@ -190,6 +191,19 @@ describe("fenced host inventory publication", () => {
         [marker],
       ),
     ).resolves.toEqual({ ok: false, reason: "reference" });
+    await expect(
+      putHostInventoryFenced(
+        ctx,
+        inventory,
+        { hostId: "host-1", connectionId: "connection-1" },
+        undefined,
+        Array.from({ length: 99 }, (_, index) => ({
+          key: `workspace-pool:pool-${index}`,
+          now: marker.now,
+        })),
+      ),
+    ).rejects.toThrow("100 transaction action limit");
+    expect(commands).toHaveLength(2);
   });
 
   it("rethrows an error that is not a recognized conditional failure", async () => {

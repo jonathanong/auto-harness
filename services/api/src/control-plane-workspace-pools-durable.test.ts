@@ -2,6 +2,12 @@
 import { expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import {
+  getWorkspacePoolPublicDurable,
+  listWorkspacePoolSummariesDurable,
+  listWorkspacePoolsPublicDurable,
+} from "./control-plane-workspace-pools.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
 
 it("uses durable workspace-pool catalog reads, writes, and fenced deletion", async () => {
   const record = {
@@ -284,4 +290,120 @@ it("blocks durable deletion when refreshed inventories reference the pool", asyn
     ok: false,
     error: "workspace pool is attached to a host",
   });
+});
+
+it("keeps public pool reads script-free across local and legacy durable fallbacks", async () => {
+  const state = createControlPlaneState();
+  state.workspacePools.set("pool", {
+    id: "pool",
+    name: "pool",
+    setupProfiles: [{ id: "setup", name: "Setup", script: "secret" }],
+    setupProfileSummaries: [{ id: "setup", name: "Setup" }],
+    defaultSetupProfileId: "setup",
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+
+  await expect(getWorkspacePoolPublicDurable(state, "pool")).resolves.toEqual({
+    id: "pool",
+    name: "pool",
+    setupProfiles: [{ id: "setup", name: "Setup" }],
+    defaultSetupProfileId: "setup",
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+  await expect(getWorkspacePoolPublicDurable(state, "missing")).resolves.toBeNull();
+
+  const refreshed = vi.fn(async () => {
+    state.workspacePools.set("refreshed", {
+      id: "refreshed",
+      name: "refreshed",
+      setupProfiles: [],
+      destroyWorkspaceAfter: true,
+      createdAt: "now",
+      updatedAt: "now",
+    });
+  });
+  await expect(listWorkspacePoolsPublicDurable(state, refreshed)).resolves.toEqual([
+    expect.objectContaining({ id: "pool" }),
+    expect.objectContaining({ id: "refreshed" }),
+  ]);
+  expect(refreshed).toHaveBeenCalledOnce();
+});
+
+it("refreshes scheduler summaries and tolerates legacy storage doubles", async () => {
+  const state = createControlPlaneState();
+  state.workspacePools.set("stale", {
+    id: "stale",
+    name: "stale",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+  await expect(listWorkspacePoolSummariesDurable(state)).resolves.toEqual([
+    expect.objectContaining({ id: "stale" }),
+  ]);
+
+  const storage = {
+    listWorkspacePoolSummaries: vi.fn(async () => [
+      {
+        id: "z",
+        name: "same",
+        setupProfiles: [],
+        destroyWorkspaceAfter: false,
+        createdAt: "now",
+        updatedAt: "now",
+      },
+      {
+        id: "a",
+        name: "same",
+        setupProfiles: [],
+        destroyWorkspaceAfter: false,
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]),
+  };
+  state.storage = storage as never;
+  await expect(listWorkspacePoolSummariesDurable(state)).resolves.toEqual([
+    expect.objectContaining({ id: "a" }),
+    expect.objectContaining({ id: "z" }),
+  ]);
+  expect(state.workspacePools.get("a")).toMatchObject({ id: "a" });
+});
+
+it("returns null for a missing durable public summary", async () => {
+  const state = createControlPlaneState({
+    storage: { getWorkspacePoolSummary: vi.fn(async () => null) } as never,
+  });
+  await expect(getWorkspacePoolPublicDurable(state, "missing")).resolves.toBeNull();
+});
+
+it("sorts public durable summaries by name and then id", async () => {
+  const state = createControlPlaneState({
+    storage: {
+      listWorkspacePoolSummaries: async () => [
+        { id: "z", name: "same", setupProfiles: [], destroyWorkspaceAfter: false },
+        { id: "a", name: "same", setupProfiles: [], destroyWorkspaceAfter: false },
+      ],
+    } as never,
+  });
+  await expect(listWorkspacePoolsPublicDurable(state)).resolves.toEqual([
+    expect.objectContaining({ id: "a" }),
+    expect.objectContaining({ id: "z" }),
+  ]);
+});
+
+it("allows local deletion when only inactive sessions reference a pool", async () => {
+  const plane = new ControlPlane({ workspacePoolIdFactory: () => "pool" });
+  expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
+  plane.state.sessions.set("completed", {
+    id: "completed",
+    workspacePoolId: "pool",
+    status: "completed",
+  } as never);
+  await expect(plane.deleteWorkspacePoolDurable("pool")).resolves.toEqual({ ok: true });
 });

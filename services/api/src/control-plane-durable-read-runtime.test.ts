@@ -738,6 +738,70 @@ describe("durable runtime read-through", () => {
     expect(state.workspaceSlots.has("slot")).toBe(true);
   });
 
+  it("refreshes all durable workspace slots and removes stale rows", async () => {
+    const state = createControlPlaneState({
+      storage: {
+        listWorkspaceSlots: async () => [
+          {
+            id: "fresh",
+            name: "fresh",
+            path: "/fresh",
+            hostId: "host",
+            workspacePoolId: "pool",
+            status: "idle",
+            online: true,
+            currentSessionId: null,
+          },
+        ],
+        listWorkspaceSlotsByPool: async () => [],
+      } as never,
+    });
+    state.workspaceSlots.set("stale", {
+      id: "stale",
+      name: "stale",
+      path: "/stale",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    await expect(listWorkspaceSlotsDurable(state)).resolves.toEqual([
+      expect.objectContaining({ id: "fresh" }),
+    ]);
+    expect(state.workspaceSlots.has("stale")).toBe(false);
+
+    state.workspaceSlots.set("old-pool-slot", {
+      id: "old-pool-slot",
+      name: "old",
+      path: "/old",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    state.storage = {
+      listWorkspaceSlots: async () => [],
+      listWorkspaceSlotsByPool: async () => [
+        {
+          id: "pool-slot",
+          name: "pool",
+          path: "/pool",
+          hostId: "host",
+          workspacePoolId: "pool",
+          status: "idle",
+          online: true,
+          currentSessionId: null,
+        },
+      ],
+    } as never;
+    await expect(listWorkspaceSlotsDurable(state, "pool")).resolves.toEqual([
+      expect.objectContaining({ id: "pool-slot" }),
+    ]);
+    expect(state.workspaceSlots.has("old-pool-slot")).toBe(false);
+  });
+
   it("does not revert a just-assigned session when the queued GSI still lists it", async () => {
     const assigned = {
       ...session,
@@ -1045,6 +1109,20 @@ describe("durable runtime read-through", () => {
       }),
     ).resolves.toMatchObject({ items: [{ id: "session" }] });
     await expect(plane.listRepositoryCountsDurable([])).resolves.toEqual(new Map());
+  });
+
+  it("normalizes absent index results for every repository count", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => undefined,
+        countWorktreesByRepository: async () => undefined,
+        countSchedulesByRepository: async () => undefined,
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).resolves.toEqual(
+      new Map([["repository", { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]]),
+    );
   });
 
   it("uses repository indexes for page counts instead of catalog scans", async () => {

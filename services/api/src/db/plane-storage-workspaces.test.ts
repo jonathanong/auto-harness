@@ -134,6 +134,26 @@ describe("workspace storage", () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
+  it("maps legacy pool summaries without profile projections or defaults", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ id: "legacy", name: "Legacy", destroyWorkspaceAfter: true }],
+    });
+    await expect(listWorkspacePoolSummaries(ctx(send))).resolves.toEqual([
+      {
+        id: "legacy",
+        name: "Legacy",
+        setupProfiles: [],
+        destroyWorkspaceAfter: true,
+        createdAt: undefined,
+        updatedAt: undefined,
+      },
+    ]);
+
+    await expect(listWorkspacePoolSummaries(ctx(vi.fn().mockResolvedValue({})))).resolves.toEqual(
+      [],
+    );
+  });
+
   it("point-reads public pool metadata without a script-bearing read or scan", async () => {
     const send = vi.fn().mockResolvedValue({
       Item: {

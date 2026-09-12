@@ -173,4 +173,30 @@ describe("reconnect confirmation helpers", () => {
     expect(local.workspaceSlots.get(localSlot.id)).toMatchObject({ online: true });
     expect(local.workspaceSlots.get(localSlot.id)).not.toHaveProperty("connectionId");
   });
+
+  it("passes cancellation status without an absent reconnect deadline", async () => {
+    const state = createControlPlaneState();
+    const row = session({
+      status: "cancelled",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      worktreeId: null,
+      reconnectDeadlineAt: undefined,
+    });
+    const reportedSlot = slot();
+    const confirmWorkspaceReconnect = vi.fn(async () => true);
+    state.storage = { confirmWorkspaceReconnect } as never;
+
+    await expect(
+      confirmReportedWorkspaceSession(state, row, reportedSlot, "host", "connection"),
+    ).resolves.toBe(true);
+
+    expect(confirmWorkspaceReconnect).toHaveBeenCalledWith({
+      sessionId: row.id,
+      hostId: "host",
+      workspaceSlotId: reportedSlot.id,
+      connectionId: "connection",
+      expectedStatus: "cancelled",
+    });
+  });
 });

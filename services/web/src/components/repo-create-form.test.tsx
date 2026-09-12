@@ -91,4 +91,39 @@ describe("RepoCreateForm", () => {
     );
     view.unmount();
   });
+
+  it("uses defaults when optional catalog fields are absent", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "repo-defaults" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<RepoCreateForm />);
+    const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
+    field<HTMLInputElement>(view.container, "repo-catalog-branch").remove();
+    field<HTMLTextAreaElement>(view.container, "repo-catalog-setup").remove();
+    setValue(field(view.container, "repo-catalog-name"), "catalog-repo");
+    setValue(field(view.container, "repo-catalog-url"), "https://example.test/repo.git");
+    submit(form);
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      name: "catalog-repo",
+      url: "https://example.test/repo.git",
+      defaultBranch: "main",
+      setupScript: "",
+    });
+    view.unmount();
+  });
+
+  it("rejects a submission when the form omits its name and URL", () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "repo-missing" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<RepoCreateForm />);
+    const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
+    field<HTMLInputElement>(view.container, "repo-catalog-name").remove();
+    field<HTMLInputElement>(view.container, "repo-catalog-url").remove();
+    submit(form);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(field(view.container, "repo-catalog-error").textContent).toBe(
+      "url must be an HTTPS or SCP-style SSH Git remote",
+    );
+    view.unmount();
+  });
 });

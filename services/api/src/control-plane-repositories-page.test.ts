@@ -186,4 +186,27 @@ describe("listRepositoriesPage", () => {
     });
     expect(listRepositories).toHaveBeenCalledOnce();
   });
+
+  it("rejects cursors issued by the other paging implementation", async () => {
+    const storageListRepositoriesPage = vi.fn(async () => ({
+      items: [repository("repository-a", "alpha")],
+      nextKey: { exclusiveStart: "repository-a" },
+    }));
+    const plane = new ControlPlane({
+      sessionCursorSecret: "repository-page-test-secret",
+      storage: { listRepositoriesPage: storageListRepositoriesPage } as never,
+    });
+    plane.state.repositories.set("repository-a", repository("repository-a", "alpha"));
+    plane.state.repositories.set("repository-b", repository("repository-b", "bravo"));
+
+    const localCursor = plane.listRepositoriesPage({ limit: 1 }).nextCursor;
+    const durableCursor = (await plane.listRepositoriesPageDurable({ limit: 1 })).nextCursor;
+
+    expect(() => plane.listRepositoriesPage({ cursor: durableCursor! })).toThrow(
+      InvalidRepositoryCursorError,
+    );
+    await expect(plane.listRepositoriesPageDurable({ cursor: localCursor! })).rejects.toThrow(
+      InvalidRepositoryCursorError,
+    );
+  });
 });
