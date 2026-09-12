@@ -314,9 +314,9 @@ describe("createGitClient checkout and revParse", () => {
       pullRefPolicy(remoteUrl),
     );
 
-    await expect(
-      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe(pullSha);
+    await expect(git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref })).resolves.toBe(
+      pullSha,
+    );
   });
 
   it("initializes the pinned pull-ref scratch repository with the checkout hash format", async () => {
@@ -327,9 +327,9 @@ describe("createGitClient checkout and revParse", () => {
       pullRefPolicy(remoteUrl),
     );
 
-    await expect(
-      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe(pullSha);
+    await expect(git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref })).resolves.toBe(
+      objectId("sha256", pullSha),
+    );
   });
 
   it("uses restart-stable operator policy and isolated pull-ref materialization", async () => {
@@ -634,18 +634,18 @@ describe("createGitClient checkout and revParse", () => {
       pullRefPolicy(remoteUrl),
     );
 
-    await expect(
-      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe(pullSha);
+    await expect(git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref })).resolves.toBe(
+      pullSha,
+    );
   });
 
   it("uses a fresh per-worktree scratch ref rather than inspecting a shared predictable ref", async () => {
     const ref = "refs/pull/125/head";
     const git = createGitClient(scripted([...pullRefCheckoutSteps(ref)]), pullRefPolicy());
 
-    await expect(
-      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe(pullSha);
+    await expect(git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref })).resolves.toBe(
+      pullSha,
+    );
   });
 
   it("fails closed when no immutable pull-ref policy is available", async () => {
