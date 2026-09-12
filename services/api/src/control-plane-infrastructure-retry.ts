@@ -67,6 +67,18 @@ export function finishHostLostSession(
   return next;
 }
 
+/** Terminalize a workspace session after an ambiguous host loss and release its slot. */
+export function finishHostLostWorkspaceSession(
+  state: ControlPlaneState,
+  session: SessionRecord,
+): SessionRecord {
+  const next = finishHostLostSession(state, session, undefined);
+  delete next.workspaceSlotId;
+  delete next.workspaceSlotLease;
+  next.hostId = null;
+  return next;
+}
+
 /** Snapshot only route metadata; the replacement daemon resolves its live local hook policy. */
 export function hostLostTerminalHookHandoff(
   state: ControlPlaneState,

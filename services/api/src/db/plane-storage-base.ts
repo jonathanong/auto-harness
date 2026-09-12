@@ -879,6 +879,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
     terminalHookHandoff?: SessionRecord["terminalHookHandoff"];
     expectedStatus?: string;
   }): Promise<boolean> {

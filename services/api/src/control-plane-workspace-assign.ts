@@ -19,6 +19,7 @@ import {
   listWorkspaceSlotsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
+import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
@@ -88,6 +89,7 @@ function nextSession(
   attemptId: string,
   now: string,
   lease: SessionRecord["providerAccountLease"],
+  protocolVersion: number | undefined,
 ): SessionRecord {
   return {
     ...session,
@@ -111,6 +113,7 @@ function nextSession(
       workspaceSlotId: slot.id,
       attemptId,
     },
+    primaryCommandStartState: commandStartStateForProtocol(protocolVersion),
     ...(lease ? { providerAccountLease: lease } : {}),
     hostAssignmentLease: { hostId: slot.hostId },
   };
@@ -254,6 +257,9 @@ export async function assignWorkspaceQueuedDurable(
               ? { hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments }
               : {}),
             queueShard: session.queueShard,
+            primaryCommandStartState: commandStartStateForProtocol(
+              state.connections.get(connectionId)?.protocolVersion,
+            ),
           });
         } else {
           won = slot.status === "idle" && slot.online;
@@ -264,7 +270,15 @@ export async function assignWorkspaceQueuedDurable(
         occupied.add(lease.slot);
       }
       if (won !== true) continue;
-      const updatedSession = nextSession(session, slot, route, attemptId, now, lease);
+      const updatedSession = nextSession(
+        session,
+        slot,
+        route,
+        attemptId,
+        now,
+        lease,
+        state.connections.get(connectionId)?.protocolVersion,
+      );
       const updatedSlot: WorkspaceSlotRecord = {
         ...slot,
         status: "busy",

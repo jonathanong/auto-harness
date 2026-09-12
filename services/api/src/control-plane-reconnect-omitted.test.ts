@@ -362,4 +362,76 @@ describe("reconcileHostOwnedSessions", () => {
     expect(finishSession).not.toHaveBeenCalled();
     expect(state.sessions.get(workspace.id)?.status).toBe("running");
   });
+
+  it("bounds omitted workspace host loss to one pre-launch retry and terminalizes post-launch loss", async () => {
+    const state = createControlPlaneState();
+    const retry = {
+      id: "retry",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "retry-slot",
+      workspaceSlotLease: true,
+      prompt: "run",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2099-01-01T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      hostId: "host",
+      worktreeId: null,
+      attemptId: "retry-attempt",
+      ackReceivedAt: "2026-01-01T00:00:01.000Z",
+      primaryCommandStartState: "pending",
+    } as SessionRecord;
+    const terminal = {
+      ...retry,
+      id: "terminal",
+      workspaceSlotId: "terminal-slot",
+      attemptId: "terminal-attempt",
+      primaryCommandStartState: "authorized" as const,
+    };
+    state.sessions.set(retry.id, retry);
+    state.sessions.set(terminal.id, terminal);
+    for (const session of [retry, terminal]) {
+      state.workspaceSlots.set(session.workspaceSlotId!, {
+        id: session.workspaceSlotId!,
+        name: session.workspaceSlotId!,
+        path: `/workspace/${session.id}`,
+        hostId: "host",
+        workspacePoolId: "pool",
+        status: "busy",
+        online: true,
+        currentSessionId: session.id,
+      });
+    }
+
+    await expect(
+      reconcileHostOwnedSessions(state, "host", undefined, new Set(), "host omitted"),
+    ).resolves.toEqual([retry.id]);
+    expect(state.sessions.get(retry.id)).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+      workspaceSlotId: null,
+    });
+    expect(state.sessions.get(terminal.id)).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+    });
+    expect(state.sessions.get(terminal.id)).not.toHaveProperty("workspaceSlotId");
+    expect(state.workspaceSlots.get("retry-slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+    expect(state.workspaceSlots.get("terminal-slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+  });
 });

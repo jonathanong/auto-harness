@@ -104,4 +104,37 @@ describe("session terminal cleanup branches", () => {
         ?.UpdateExpression,
     ).not.toContain("reconnectDeadlineAt");
   });
+
+  it("records a bounded host-loss retry while fencing the workspace slot", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "workspace-retry",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        attemptId: "attempt",
+        status: "queued",
+        queueShard: 0,
+        errorMessage: "host was lost before command launch; retrying once",
+        infrastructureErrorCode: "host_lost",
+        expectedConnectionId: "old-connection",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0].input;
+    const sessionUpdate = request.TransactItems.find(
+      (transactionItem: { Update?: { TableName?: string } }) =>
+        transactionItem.Update?.TableName === "Sessions",
+    )?.Update;
+    expect(sessionUpdate?.ConditionExpression).toContain("workspaceSlotId = :workspaceSlotId");
+    expect(sessionUpdate?.ConditionExpression).toContain(
+      "primaryCommandStartState = :pendingCommandStart",
+    );
+    expect(sessionUpdate?.UpdateExpression).toContain("infrastructureRetryCount");
+    expect(sessionUpdate?.UpdateExpression).toContain("primaryCommandStartState");
+    expect(sessionUpdate?.ExpressionAttributeValues).toMatchObject({
+      ":workspaceSlotId": "slot",
+      ":infrastructureErrorCode": "host_lost",
+    });
+    expect(request.TransactItems).toHaveLength(2);
+  });
 });

@@ -31,6 +31,7 @@ import {
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  finishHostLostWorkspaceSession,
   hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
@@ -174,12 +175,20 @@ export async function reclaimReconnectDeadlines(
       if (!slot || !ownerHostId || slot.currentSessionId !== session.id) continue;
       const cancelled = session.status === "cancelled";
       const timedOut = session.status === "timed_out";
+      const retryableHostLoss =
+        !cancelled && !timedOut && Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+      const terminalHostLoss =
+        !cancelled && !timedOut && Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
       if (!state.storage) {
         releaseProviderAccountLease(state, session);
         const next =
           cancelled || timedOut
             ? { ...session, workspaceSlotId: null, hostId: null }
-            : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+            : retryableHostLoss
+              ? queueHostLossRetry(session)
+              : terminalHostLoss
+                ? finishHostLostWorkspaceSession(state, session)
+                : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
         delete next.workspaceSlotLease;
         delete next.assignmentConnectionId;
         delete next.assignmentSentAt;
@@ -196,7 +205,7 @@ export async function reclaimReconnectDeadlines(
         });
         removeReleasedRetiredWorkspaceSlot(state, slot.id);
         state.pendingAcks.delete(session.id);
-        if (!cancelled && !timedOut) requeued.push(session.id);
+        if (!cancelled && !timedOut && !terminalHostLoss) requeued.push(session.id);
         continue;
       }
       const released = await state.storage.finishSession({
@@ -204,13 +213,27 @@ export async function reclaimReconnectDeadlines(
         worktreeId: null,
         workspaceSlotId: slot.id,
         attemptId: session.attemptId!,
-        status: cancelled ? "cancelled" : timedOut ? "timed_out" : "queued",
+        status: cancelled
+          ? "cancelled"
+          : timedOut
+            ? "timed_out"
+            : terminalHostLoss
+              ? "failed"
+              : "queued",
         expectedStatus: session.status,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
         queueShard: session.queueShard,
         ...(!cancelled && !timedOut
-          ? { errorMessage: "daemon reconnect deadline exceeded; requeued" }
+          ? {
+              errorMessage: terminalHostLoss
+                ? HOST_LOSS_TERMINAL_REASON
+                : retryableHostLoss
+                  ? HOST_LOSS_RETRY_REASON
+                  : "daemon reconnect deadline exceeded; requeued",
+            }
           : {}),
+        ...(terminalHostLoss ? { errorCode: "host_lost", completedAt: state.now() } : {}),
+        ...(retryableHostLoss ? { infrastructureErrorCode: "host_lost" as const } : {}),
         ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),
         ...(session.hostAssignmentLease
@@ -223,7 +246,11 @@ export async function reclaimReconnectDeadlines(
       const next =
         cancelled || timedOut
           ? { ...session, workspaceSlotId: null, hostId: null }
-          : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+          : retryableHostLoss
+            ? queueHostLossRetry(session)
+            : terminalHostLoss
+              ? finishHostLostWorkspaceSession(state, session)
+              : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
       delete next.workspaceSlotLease;
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
@@ -240,7 +267,7 @@ export async function reclaimReconnectDeadlines(
       });
       await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
       state.pendingAcks.delete(session.id);
-      if (!cancelled && !timedOut) requeued.push(session.id);
+      if (!cancelled && !timedOut && !terminalHostLoss) requeued.push(session.id);
       continue;
     }
     // The guard above allows a mainCheckoutLease session with no worktreeId through; the

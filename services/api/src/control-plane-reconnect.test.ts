@@ -164,6 +164,7 @@ describe("reconnect reconciliation", () => {
       worktreeId: null,
       attemptId: "attempt",
       ackReceivedAt: "t",
+      primaryCommandStartState: "pending" as const,
       reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     };
     const slot = {
@@ -192,6 +193,7 @@ describe("reconnect reconciliation", () => {
         workspaceSlotId: slot.id,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
         status: "queued",
+        infrastructureErrorCode: "host_lost",
       }),
     );
     expect(plane.state.workspaceSlots.get(slot.id)).toMatchObject({

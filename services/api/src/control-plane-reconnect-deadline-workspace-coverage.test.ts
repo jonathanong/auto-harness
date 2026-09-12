@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace reconnect-deadline branches share one fixture. */
 import { expect, it, vi } from "vitest";
 
 import {
@@ -30,6 +31,7 @@ function reconnectingWorkspace(overrides: Partial<SessionRecord> = {}): SessionR
     hostId: "host",
     attemptId: "attempt",
     ackReceivedAt: "now",
+    primaryCommandStartState: "pending",
     reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     ...overrides,
   };
@@ -207,5 +209,38 @@ it("confirms a cancelled workspace that reconnects before grace expires", async 
     status: "busy",
     online: true,
     connectionId: "replacement",
+  });
+});
+
+it("terminalizes an authorized workspace after reconnect grace instead of replaying it", async () => {
+  const state = createControlPlaneState({ now: () => "2026-09-12T00:00:00.000Z" });
+  const session = reconnectingWorkspace({ primaryCommandStartState: "authorized" });
+  const finishSession = vi.fn(async () => true);
+  state.sessions.set(session.id, session);
+  state.workspaceSlots.set(slot.id, slot);
+  state.storage = {
+    listAllSessions: async () => [session],
+    getWorkspaceSlot: async () => slot,
+    getHostLock: async () => null,
+    finishSession,
+  } as never;
+
+  await expect(
+    reclaimReconnectDeadlines(state, Date.parse(session.reconnectDeadlineAt!)),
+  ).resolves.toEqual([]);
+  expect(finishSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: "failed",
+      errorCode: "host_lost",
+      errorMessage: "host lost after command authorization or retry exhaustion",
+      workspaceSlotId: slot.id,
+      expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
+    }),
+  );
+  expect(state.sessions.get(session.id)).toMatchObject({ status: "failed" });
+  expect(state.sessions.get(session.id)).not.toHaveProperty("workspaceSlotId");
+  expect(state.workspaceSlots.get(slot.id)).toMatchObject({
+    status: "idle",
+    currentSessionId: null,
   });
 });

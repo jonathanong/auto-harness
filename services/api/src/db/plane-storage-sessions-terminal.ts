@@ -50,6 +50,8 @@ type FinishSessionOpts = {
   preserveWorkspaceSlotLease?: boolean;
   /** A disconnected timeout keeps its reconnect marker until grace expiry. */
   preserveReconnectDeadlineAt?: boolean;
+  /** Bounded safe-replay marker for a pre-launch host loss. */
+  infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   /** Retain a host-indexed, replacement-daemon terminal-hook handoff. */
@@ -95,6 +97,16 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
       ? { ":reconnectDeadlineAt": opts.expectedReconnectDeadlineAt }
       : {}),
     ...(opts.expectedConnectionId ? { ":connectionId": opts.expectedConnectionId } : {}),
+    ...(opts.workspaceSlotId !== undefined ? { ":workspaceSlotId": opts.workspaceSlotId } : {}),
+    ...(opts.infrastructureErrorCode
+      ? {
+          ":zero": 0,
+          ":one": 1,
+          ":maxInfrastructureRetries": 1,
+          ":infrastructureErrorCode": opts.infrastructureErrorCode,
+          ":pendingCommandStart": "pending",
+        }
+      : {}),
   };
   const sets = [
     "#s = :status",
@@ -102,6 +114,13 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     "worktreeId = :null",
     ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotId = :null"]),
     ...(opts.status === "queued" ? ["hostId = :null"] : []),
+    ...(opts.infrastructureErrorCode
+      ? [
+          "infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one",
+          "lastInfrastructureErrorCode = :infrastructureErrorCode",
+          "infrastructureRetryAttemptId = :attemptId",
+        ]
+      : []),
   ];
   setOptional(sets, values, "completedAt", opts.completedAt);
   setOptional(sets, values, "errorCode", opts.errorCode);
@@ -135,12 +154,13 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
       ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
+      ...(opts.infrastructureErrorCode ? ["primaryCommandStartState"] : []),
     ],
   };
 }
 
 function finishSessionCondition(opts: FinishSessionOpts): string {
-  return `#s = :expectedStatus AND worktreeId = :worktreeId AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}`;
+  return `#s = :expectedStatus AND worktreeId = :worktreeId${opts.workspaceSlotId !== undefined ? " AND workspaceSlotId = :workspaceSlotId" : ""} AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}${opts.infrastructureErrorCode ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries) AND primaryCommandStartState = :pendingCommandStart" : ""}`;
 }
 
 function finishSessionItems(

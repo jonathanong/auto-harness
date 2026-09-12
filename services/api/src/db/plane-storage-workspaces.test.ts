@@ -378,6 +378,7 @@ describe("workspace storage", () => {
       ExpressionAttributeValues: expect.objectContaining({
         ":poolId": "pool",
         ":slotId": "slot",
+        ":primaryCommandStartState": "pending",
       }),
     });
 

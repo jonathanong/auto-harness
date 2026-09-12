@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace assignment routing and protocol cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
@@ -125,6 +126,29 @@ describe("workspace assignment matrix", () => {
       errorCode: "queue_expired",
     });
   });
+
+  it.each([
+    [3, "authorized"],
+    [4, "pending"],
+  ] as const)(
+    "initializes workspace command-start state for protocol %s",
+    async (protocolVersion, primaryCommandStartState) => {
+      const { plane } = workspacePlane();
+      const session = createWorkspaceSession(plane);
+      plane.state.connections.get("connection-1")!.protocolVersion = protocolVersion;
+      const tryAssignWorkspaceSession = vi.fn(async () => true);
+      plane.state.storage = { tryAssignWorkspaceSession } as never;
+
+      await expect(
+        assignWorkspaceQueuedDurable(plane.state, undefined, { readModelLoaded: true }),
+      ).resolves.toHaveLength(1);
+
+      expect(tryAssignWorkspaceSession).toHaveBeenCalledWith(
+        expect.objectContaining({ primaryCommandStartState }),
+      );
+      expect(plane.state.sessions.get(session.id)).toMatchObject({ primaryCommandStartState });
+    },
+  );
 
   it("dispatches provider-account workspace routes and updates account recency", async () => {
     const { plane, messages } = workspacePlane();

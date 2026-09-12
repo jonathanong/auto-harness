@@ -11,6 +11,7 @@ import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-pla
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  finishHostLostWorkspaceSession,
   hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
@@ -198,9 +199,18 @@ async function requeueOmittedWorkspaceSessions(
     ) {
       continue;
     }
+    const retryableHostLoss = Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+    const terminalHostLoss = Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, queueReconnectSession(session, reason));
+      state.sessions.set(
+        session.id,
+        retryableHostLoss
+          ? queueHostLossRetry(session)
+          : terminalHostLoss
+            ? finishHostLostWorkspaceSession(state, session)
+            : queueReconnectSession(session, reason),
+      );
       const { errorMessage: _, ...cleanSlot } = slot;
       state.workspaceSlots.set(slot.id, {
         ...cleanSlot,
@@ -209,19 +219,26 @@ async function requeueOmittedWorkspaceSessions(
       });
       removeReleasedRetiredWorkspaceSlot(state, slot.id);
       state.pendingAcks.delete(session.id);
-      requeued.push(session.id);
+      if (!terminalHostLoss) requeued.push(session.id);
       continue;
     }
     if (!connectionId) continue;
+    const nextStatus = terminalHostLoss ? "failed" : "queued";
     const released = await state.storage.finishSession({
       sessionId: session.id,
       worktreeId: null,
       workspaceSlotId: slot.id,
       attemptId: session.attemptId!,
-      status: "queued",
+      status: nextStatus,
       expectedStatus: "running",
       queueShard: session.queueShard,
-      errorMessage: reason,
+      errorMessage: terminalHostLoss
+        ? HOST_LOSS_TERMINAL_REASON
+        : retryableHostLoss
+          ? HOST_LOSS_RETRY_REASON
+          : reason,
+      ...(terminalHostLoss ? { errorCode: "host_lost", completedAt: state.now() } : {}),
+      ...(retryableHostLoss ? { infrastructureErrorCode: "host_lost" as const } : {}),
       fence: { hostId, connectionId },
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       ...providerAccountLeaseWriteOpts(session),
@@ -230,7 +247,14 @@ async function requeueOmittedWorkspaceSessions(
     if (!released) continue;
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseProviderAccountLease(state, session);
-    state.sessions.set(session.id, queueReconnectSession(session, reason));
+    state.sessions.set(
+      session.id,
+      retryableHostLoss
+        ? queueHostLossRetry(session)
+        : terminalHostLoss
+          ? finishHostLostWorkspaceSession(state, session)
+          : queueReconnectSession(session, reason),
+    );
     const { errorMessage: _, ...cleanSlot } = slot;
     state.workspaceSlots.set(slot.id, {
       ...cleanSlot,
@@ -239,7 +263,7 @@ async function requeueOmittedWorkspaceSessions(
     });
     await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
     state.pendingAcks.delete(session.id);
-    requeued.push(session.id);
+    if (!terminalHostLoss) requeued.push(session.id);
   }
 }
 
