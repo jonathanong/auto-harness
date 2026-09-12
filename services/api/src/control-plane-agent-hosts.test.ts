@@ -125,11 +125,11 @@ describe("agent host inventory", () => {
       currentSessionId: null,
     });
     const fenced = vi.fn(async () => true);
-    const deleted = vi.fn(async () => undefined);
+    const deleted = vi.fn(async () => true);
     plane.state.storage = {
       putWorkspaceSlot: vi.fn(async () => undefined),
       putWorkspaceSlotFenced: fenced,
-      deleteWorkspaceSlot: deleted,
+      deleteWorkspaceSlotIfIdle: deleted,
     } as never;
     await syncHostWorkspaceSlotsDurable(plane.state, {
       hostId: "host",
