@@ -1652,7 +1652,14 @@ export async function putHostInventoryFenced(
   rec: HostInventoryRecord,
   fence: { hostId: string; connectionId: string },
   expectedVersion?: number,
-): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
+  markers?: readonly DeletionMarker[],
+): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" | "reference" }> {
+  const markerChecks = markers ? withMarkerTable(ctx, markerConditions([...markers])) : [];
+  // The lease and inventory write consume two transaction slots. Keep the
+  // same DynamoDB action bound as guarded catalog writes.
+  if (markerChecks.length > 98) {
+    throw new Error("catalog reference write exceeds DynamoDB's 100 transaction action limit");
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1665,6 +1672,7 @@ export async function putHostInventoryFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
+          ...markerChecks,
           {
             Put: {
               TableName: ctx.tables.hostInventories,
@@ -1678,7 +1686,14 @@ export async function putHostInventoryFenced(
     return { ok: true };
   } catch (err) {
     if (!isConditionalTransactionFailed(err)) throw err;
-    return { ok: false, reason: isConditionalTransactionFailureAt(err, 1) ? "version" : "lease" };
+    const inventoryWriteIndex = markerChecks.length + 1;
+    if (isConditionalTransactionFailureAt(err, inventoryWriteIndex)) {
+      return { ok: false, reason: "version" };
+    }
+    return {
+      ok: false,
+      reason: isConditionalTransactionFailureAt(err, 0) ? "lease" : "reference",
+    };
   }
 }
 

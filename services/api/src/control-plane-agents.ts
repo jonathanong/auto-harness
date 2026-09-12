@@ -30,6 +30,8 @@ import {
   syncHostWorkspaceSlotsDurable,
 } from "./control-plane-agent-hosts.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
 import {
   releaseProviderAccountLease,
@@ -784,6 +786,18 @@ export async function registerHostDurable(
   }
   const attemptsError = validateReportedAttempts(opts);
   if (attemptsError) return { ok: false, error: attemptsError };
+  // Check each advertised attachment against the durable catalog before
+  // acquiring a host lease. The inventory publication below repeats this as
+  // transaction marker checks, so a pool deletion cannot slip between this
+  // admission read and the durable attachment write.
+  const advertisedWorkspacePoolIds = new Set(
+    (opts.workspacePools ?? []).map((attachment) => attachment.workspacePoolId),
+  );
+  for (const workspacePoolId of advertisedWorkspacePoolIds) {
+    if (!(await getWorkspacePoolDurable(state, workspacePoolId))) {
+      return { ok: false, error: `unknown workspacePoolId: ${workspacePoolId}` };
+    }
+  }
   const runningError = await validateRunningSessionsDurable(
     state,
     opts.hostId,
@@ -964,20 +978,45 @@ export async function registerHostDurable(
     // with the edit instead of re-losing it. A "lease" failure means a different
     // connection won registration entirely and is not retryable here.
     for (let attempt = 0; ; attempt += 1) {
+      // A version retry reuses this connection lease but has crossed more
+      // durable round trips. Recheck catalog presence; the marker check below
+      // then closes the read-to-write deletion race again.
+      if (attempt > 0) {
+        for (const workspacePoolId of advertisedWorkspacePoolIds) {
+          if (!(await getWorkspacePoolDurable(state, workspacePoolId))) {
+            await rollbackDurableRegistration(
+              state,
+              opts.hostId,
+              connectionId,
+              at,
+              publishedWorktrees,
+            );
+            return { ok: false, error: `unknown workspacePoolId: ${workspacePoolId}` };
+          }
+        }
+      }
+      const markers = inventoryReferenceMarkers(state.now(), registrationInventory);
+      if (markers.length > 98) {
+        await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+        return { ok: false, error: "host inventory has too many catalog references" };
+      }
       const result = await state.storage.putHostInventoryFenced(
         registrationInventory,
         { hostId: opts.hostId, connectionId },
         previousInventory?.version ?? 0,
+        markers,
       );
       if (result.ok) break;
-      if (result.reason === "lease" || attempt >= 2) {
+      if (result.reason === "lease" || result.reason === "reference" || attempt >= 2) {
         await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
         return {
           ok: false,
           error:
             result.reason === "lease"
               ? "host connection changed while publishing inventory"
-              : "host inventory changed while publishing registration",
+              : result.reason === "reference"
+                ? "workspace pool changed while publishing inventory"
+                : "host inventory changed while publishing registration",
         };
       }
       previousInventory = (await state.storage.getHostInventory(opts.hostId)) ?? undefined;

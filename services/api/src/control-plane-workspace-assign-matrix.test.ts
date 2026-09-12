@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
 import { createWorkspaceSession, workspacePlane } from "./test-helpers/workspace-session.ts";
@@ -76,6 +76,26 @@ describe("workspace assignment matrix", () => {
       assignWorkspaceQueuedDurable(failing.plane.state, undefined, { readModelLoaded: true }),
     ).rejects.toThrow("assignment unavailable");
     expect(failing.plane.getSession(failingSession.id)).toMatchObject({ status: "queued" });
+  });
+
+  it("hydrates the selected pool when the storage point read is available", async () => {
+    const { plane } = workspacePlane();
+    createWorkspaceSession(plane);
+    const pointRead = vi.fn(async () => ({
+      ...plane.state.workspacePools.get("pool-1")!,
+      name: "durable-general",
+    }));
+    plane.state.storage = {
+      getWorkspacePool: pointRead,
+      tryAssignWorkspaceSession: async () => true,
+    } as never;
+
+    const result = await assignWorkspaceQueuedDurable(plane.state, undefined, {
+      readModelLoaded: true,
+    });
+    expect(result).toHaveLength(1);
+    expect(pointRead).toHaveBeenCalledWith("pool-1");
+    expect(plane.state.workspacePools.get("pool-1")?.name).toBe("durable-general");
   });
 
   it("uses durable claims and expires queued sessions through storage", async () => {

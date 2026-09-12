@@ -1234,8 +1234,9 @@ export class DynamoPlaneStorageBase {
     rec: HostInventoryRecord,
     fence: { hostId: string; connectionId: string },
     expectedVersion?: number,
-  ): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
-    return catalog.putHostInventoryFenced(this.ctx, rec, fence, expectedVersion);
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" | "reference" }> {
+    return catalog.putHostInventoryFenced(this.ctx, rec, fence, expectedVersion, markers);
   }
 
   getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {

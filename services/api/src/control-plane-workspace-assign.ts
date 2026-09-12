@@ -171,7 +171,13 @@ export async function assignWorkspaceQueuedDurable(
       session.workspacePoolId &&
       !hydratedWorkspacePools.has(session.workspacePoolId)
     ) {
-      await getWorkspacePoolDurable(state, session.workspacePoolId);
+      // Older storage doubles may only implement the assignment/listing
+      // surface. Keep using the selected-pool point read in production when
+      // the adapter provides it, while allowing those compatible doubles to
+      // use the already-hydrated scheduler read model.
+      if (typeof state.storage.getWorkspacePool === "function") {
+        await getWorkspacePoolDurable(state, session.workspacePoolId);
+      }
       hydratedWorkspacePools.add(session.workspacePoolId);
     }
     if (state.storage && session.workspacePoolId) {

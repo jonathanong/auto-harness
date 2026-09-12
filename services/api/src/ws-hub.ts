@@ -557,6 +557,7 @@ export function parseHostMessage(
         validExitCode &&
         optionalText(message.errorCode, 128) &&
         optionalText(message.errorMessage, 4_096) &&
+        optionalText(message.workspaceSlotError, 4_096) &&
         (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef)) &&
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&
