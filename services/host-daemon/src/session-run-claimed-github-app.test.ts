@@ -32,13 +32,13 @@ function app() {
   );
 }
 
-function installTokenFetch(): ReturnType<typeof vi.fn> {
+function installTokenFetch(expiresAt = "2026-09-12T01:00:00.000Z"): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(
     async () =>
       new Response(
         JSON.stringify({
           token: "ghs_exact-token",
-          expires_at: "2026-09-12T01:00:00.000Z",
+          expires_at: expiresAt,
           permissions: {
             contents: "write",
             pull_requests: "write",
@@ -128,7 +128,8 @@ describe("claimed session GitHub App credentials", () => {
       },
     };
     const commandRunner: ProcessRunner = {
-      async run() {
+      async run(options) {
+        options.onChunk({ stream: "stdout", data: "trailing command output" });
         throw new Error("pty failed with ghs_exact-token");
       },
     };
@@ -137,7 +138,7 @@ describe("claimed session GitHub App credentials", () => {
       systemRunner,
       new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
       logs,
-      baseAssign(),
+      baseAssign({ resumeRefCapture: { stream: "stdout", linePrefix: "resume: " } }),
       {
         ...claimed,
         currentHookTarget: async () => ({
@@ -158,6 +159,7 @@ describe("claimed session GitHub App credentials", () => {
     expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
     expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
     expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(logs.map((chunk) => chunk.content).join("")).toContain("trailing command output");
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
@@ -205,6 +207,39 @@ describe("claimed session GitHub App credentials", () => {
     expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
     expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
+  });
+
+  it("fails closed when the App token is too close to expiry", async () => {
+    const fetchMock = installTokenFetch("2026-09-12T00:04:59.999Z");
+    const runner: ProcessRunner = {
+      async run() {
+        throw new Error("must not spawn after token expiry validation");
+      },
+    };
+    const logs = [];
+    const result = await runClaimedSession(
+      runner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      claimed,
+      undefined,
+      () => false,
+      () => 4_000_000,
+      runner,
+      { PATH: process.env.PATH },
+      undefined,
+      undefined,
+      app(),
+      () => now,
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "GitHub App credential provisioning failed",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("does not duplicate injected identity names already in the hook allowlist", async () => {
