@@ -66,7 +66,7 @@ describe("GitHubIngressSettings", () => {
     setValue(labelled(view.container, "Queue TTL seconds"), "7200");
     setValue(labelled(view.container, "Priority"), "7");
     setValue(labelled(view.container, "Default ref"), "refs/heads/release");
-    setValue(labelled(view.container, "Required labels"), "ready, safe");
+    setValue(labelled(view.container, "Required labels"), "ready\nsafe");
     setValue(labelled(view.container, "Fallback targets"), "provider:backup, command:fallback");
     setValue(labelled(view.container, "Allowed GitHub logins"), "release-bot");
     press(field(view.container, "github-ingress-add-binding"));
@@ -100,6 +100,26 @@ describe("GitHubIngressSettings", () => {
       "if-match": "3",
       "if-match-generation": "generation-1",
     });
+  });
+
+  it("round-trips required labels containing commas", async () => {
+    const commaExisting = {
+      ...existing,
+      bindings: existing.bindings.map((binding) => ({
+        ...binding,
+        requiredLabels: ["needs,review"],
+      })),
+    };
+    const fake = createApiFake(json(commaExisting), json({ ...commaExisting, version: 3 }));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(labelled(view.container, "Timeout seconds"), "240");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as {
+      bindings: Array<{ requiredLabels: string[] }>;
+    };
+    expect(saved.bindings[0]?.requiredLabels).toEqual(["needs,review"]);
   });
 
   it("validates required values and rejects malformed fallback prefixes", async () => {

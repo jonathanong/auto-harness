@@ -295,6 +295,19 @@ describe("GitHub App webhook ingress", () => {
     });
   });
 
+  it("acknowledges an active redelivery after repository admission is paused", async () => {
+    const { plane, handler } = await fixture();
+    const payload = body();
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({ status: 202, json: { accepted: true, created: true } });
+    plane.state.repositories.get("repo")!.admissionState = "paused";
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({ status: 202, json: { accepted: true, created: false } });
+    expect(plane.listSessions()).toHaveLength(1);
+  });
+
   it("reserves GitHub comment concurrency ids from the ordinary session API", async () => {
     const { handler } = await fixture();
     expect(

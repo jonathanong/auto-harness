@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- config lifecycle and CAS edge cases share fixtures. */
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -166,6 +168,17 @@ describe("GitHub ingress config", () => {
     expect(results.filter((result) => !result.ok && result.conflict)).toHaveLength(1);
   });
 
+  it("allows only one concurrent in-memory delete for an observed config", async () => {
+    const plane = createPlane();
+    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const results = await Promise.all([
+      plane.deleteGitHubIngressConfig(1),
+      plane.deleteGitHubIngressConfig(1),
+    ]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok && result.conflict)).toHaveLength(1);
+  });
+
   it("validates bindings while repository admission is paused or draining", async () => {
     const paused = createPlane();
     paused.state.repositories.get("repo")!.admissionState = "paused";
@@ -266,6 +279,7 @@ describe("GitHub ingress config", () => {
       { defaultRef: "../main" },
       { defaultRef: "refs/heads/" },
       { defaultRef: "x".repeat(256) },
+      { defaultRef: "é".repeat(128) },
       { requiredLabels: Array.from({ length: 17 }, () => "label") },
       { requiredLabels: ["x".repeat(65)] },
       { requiredLabels: [""] },
@@ -371,6 +385,14 @@ describe("GitHub ingress config", () => {
         `at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
       ),
     });
+  });
+
+  it("documents the runtime UTF-8 byte bound for defaultRef", () => {
+    const openapi = readFileSync(new URL("../../../docs/openapi.yaml", import.meta.url), "utf8");
+    expect(openapi).toMatch(
+      /defaultRef:\n\s+type: string\n\s+minLength: 1\n\s+description: .*255 bytes\./,
+    );
+    expect(openapi).not.toMatch(/defaultRef:.*maxLength:/);
   });
 
   it("fences durable writes against referenced catalog deletion", async () => {

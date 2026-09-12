@@ -154,6 +154,17 @@ export async function getConcurrencyLock(
     : null;
 }
 
+/** Resolve an active session through its authoritative concurrency lock. */
+export async function getActiveSessionByConcurrencyId(
+  ctx: PlaneStorageCtx,
+  concurrencyId: string,
+): Promise<SessionRecord | null> {
+  const lock = await getConcurrencyLock(ctx, concurrencyId);
+  if (!lock) return null;
+  const session = await getSession(ctx, lock.sessionId, true);
+  return session && (session.status === "queued" || session.status === "running") ? session : null;
+}
+
 /** Delete only the lock owned by this session; stale owners cannot unlock newer work. */
 export async function releaseConcurrencyLock(
   ctx: PlaneStorageCtx,

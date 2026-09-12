@@ -10,6 +10,7 @@ import {
   CardTitle,
   Input,
   Label,
+  Textarea,
   showToast,
 } from "@auto-harness/ui";
 
@@ -120,7 +121,7 @@ export function GitHubIngressSettings() {
             timeout: String(binding.timeout),
             queueTtlSeconds: String(binding.queueTtlSeconds),
             priority: String(binding.priority),
-            requiredLabels: binding.requiredLabels.join(", "),
+            requiredLabels: binding.requiredLabels.join("\n"),
             fallbacks: binding.fallbacks
               .map((fallback) =>
                 "providerId" in fallback
@@ -180,7 +181,7 @@ export function GitHubIngressSettings() {
           queueTtlSeconds: Number(binding.queueTtlSeconds),
           priority: Number(binding.priority),
           requiredLabels: binding.requiredLabels
-            .split(",")
+            .split(/\r?\n/)
             .map((label) => label.trim())
             .filter(Boolean),
           fallbacks: parsedFallbacks[index]!.ok ? parsedFallbacks[index].targets : [],
@@ -345,11 +346,11 @@ export function GitHubIngressSettings() {
               value={binding.defaultRef}
               onChange={(event) => change(index, "defaultRef", event.target.value)}
             />
-            <Input
+            <Textarea
               aria-label="Required labels"
               value={binding.requiredLabels}
               onChange={(event) => change(index, "requiredLabels", event.target.value)}
-              placeholder="Required labels, comma-separated"
+              placeholder="Required labels, one per line"
             />
             <Input
               aria-label="Fallback targets"

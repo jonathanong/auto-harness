@@ -23,6 +23,7 @@ import {
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import type { IntegrationSessionFence } from "./db/plane-storage-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 
 function sessionDrainFailure(
   error: unknown,
@@ -63,6 +64,12 @@ export async function createSessionDurable(
       ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
       ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
     });
+  }
+  if (options.allowGitHubCommentConcurrencyId) {
+    const active = await activeGitHubIngressSession(state, body, options.integrationFence);
+    if (active) {
+      return { ok: true, session: toPublic(state, active), created: false };
+    }
   }
   await refreshTargetCatalogDurable(state);
   if (
@@ -163,6 +170,41 @@ function matchesIntegrationFence(
     current.version === fence.version &&
     current.enabled === fence.enabled
   );
+}
+
+async function activeGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+  fence: IntegrationSessionFence | undefined,
+): Promise<SessionRecord | null> {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as { concurrencyId?: unknown }).concurrencyId !== "string" ||
+    !(body as { concurrencyId: string }).concurrencyId.startsWith("github-comment:")
+  ) {
+    return null;
+  }
+  if (fence?.type === "github-ingress") {
+    const current = await state.storage!.getGitHubIngressConfig();
+    state.githubIngressConfig = current ?? undefined;
+    if (!current || !matchesIntegrationFence(state, fence)) return null;
+  }
+  const concurrencyId = (body as { concurrencyId: string }).concurrencyId;
+  const cached = [...state.sessions.values()].find(
+    (session) =>
+      session.concurrencyId === concurrencyId &&
+      (session.status === "queued" || session.status === "running"),
+  );
+  if (cached) return cached;
+  const active = await state.storage!.getActiveSessionByConcurrencyId(concurrencyId);
+  if (active && fence?.type === "github-ingress") {
+    const current = await state.storage!.getGitHubIngressConfig();
+    state.githubIngressConfig = current ?? undefined;
+    if (!current || !matchesIntegrationFence(state, fence)) return null;
+  }
+  if (active) state.sessions.set(active.id, { ...active });
+  return active;
 }
 
 /** Durable resume uses the same concurrency lock as a fresh create. */

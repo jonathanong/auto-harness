@@ -156,6 +156,7 @@ export async function deleteGitHubIngressConfig(
     !(await state.storage.deleteGitHubIngressConfig(current.version, current.generation ?? null))
   )
     return conflict();
+  if (!state.storage && state.githubIngressConfig !== current) return conflict();
   state.githubIngressConfig = undefined;
   return { ok: true };
 }
