@@ -110,8 +110,8 @@ function preparePutSchedule(
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     ...(mode.workspacePoolId ? { workspacePoolId: mode.workspacePoolId } : {}),
     ...(mode.setupProfileId ? { setupProfileId: mode.setupProfileId } : {}),
-    ...(mode.workspacePoolId
-      ? { destroyWorkspaceAfter: input.destroyWorkspaceAfter ?? mode.poolDefaultCleanup }
+    ...(mode.workspacePoolId && input.destroyWorkspaceAfter != null
+      ? { destroyWorkspaceAfter: input.destroyWorkspaceAfter }
       : {}),
     concurrencyId,
     ...(prompt !== undefined ? { prompt } : {}),
@@ -300,9 +300,17 @@ export function prepareUpdateSchedule(
     if (mode.workspacePoolId) next.workspacePoolId = mode.workspacePoolId;
     if (mode.setupProfileId) next.setupProfileId = mode.setupProfileId;
     else delete next.setupProfileId;
-    next.destroyWorkspaceAfter = Boolean(
-      mergedInput.destroyWorkspaceAfter ?? mode.poolDefaultCleanup,
-    );
+    if (
+      mergedInput.destroyWorkspaceAfter === undefined ||
+      mergedInput.destroyWorkspaceAfter === null
+    ) {
+      // An omitted/cleared override inherits the pool's current policy when the
+      // next session is created. Do not freeze today's pool default in the
+      // schedule row.
+      delete next.destroyWorkspaceAfter;
+    } else {
+      next.destroyWorkspaceAfter = Boolean(mergedInput.destroyWorkspaceAfter);
+    }
   }
   if (patch.prompt !== undefined) applyStoredPrompt(next, patch.prompt);
   return { ok: true, schedule: next };
@@ -314,14 +322,12 @@ type ScheduleMode =
       repositoryId: string;
       workspacePoolId?: undefined;
       setupProfileId?: undefined;
-      poolDefaultCleanup?: undefined;
     }
   | {
       ok: true;
       repositoryId: "";
       workspacePoolId: string;
       setupProfileId?: string;
-      poolDefaultCleanup: boolean;
     };
 
 function validateScheduleMode(
@@ -383,7 +389,6 @@ function validateScheduleMode(
     repositoryId: "",
     workspacePoolId: input.workspacePoolId,
     ...(input.setupProfileId ? { setupProfileId: input.setupProfileId } : {}),
-    poolDefaultCleanup: pool.destroyWorkspaceAfter,
   };
 }
 

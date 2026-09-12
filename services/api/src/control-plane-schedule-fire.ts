@@ -52,7 +52,9 @@ export function triggerSchedule(
   if (!target.ok) {
     return target;
   }
-  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
+  const result = createSession(state, scheduledSessionInput(state, schedule), {
+    allowScheduleId: true,
+  });
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
@@ -241,7 +243,9 @@ export function tryClaimScheduleFire(
   if (!target.ok) {
     return null;
   }
-  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
+  const result = createSession(state, scheduledSessionInput(state, schedule), {
+    allowScheduleId: true,
+  });
   if (!result.ok) {
     if (result.code === "REPOSITORY_ADMISSION_CLOSED") schedule.nextRunAt = newNextRunAt;
     return null;
@@ -563,7 +567,10 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     ...(setupProfileId ? { setupProfileId } : {}),
     ...(workspaceSetupScript ? { workspaceSetupScript } : {}),
     ...(schedule.workspacePoolId
-      ? { destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false }
+      ? {
+          destroyWorkspaceAfter:
+            schedule.destroyWorkspaceAfter ?? workspacePool?.destroyWorkspaceAfter ?? false,
+        }
       : {}),
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
@@ -602,7 +609,10 @@ function resolveScheduledTarget(
   return resolveTargetDisplayNames(state, schedule.target, schedule.fallbacks);
 }
 
-function scheduledSessionInput(schedule: ScheduleRecord): {
+function scheduledSessionInput(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+): {
   repositoryId: string | null;
   prompt: string;
   target: import("@auto-harness/shared").TargetRef;
@@ -634,7 +644,12 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
     ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
     ...(schedule.setupProfileId ? { setupProfileId: schedule.setupProfileId } : {}),
     ...(schedule.workspacePoolId
-      ? { destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false }
+      ? {
+          destroyWorkspaceAfter:
+            schedule.destroyWorkspaceAfter ??
+            state.workspacePools.get(schedule.workspacePoolId)?.destroyWorkspaceAfter ??
+            false,
+        }
       : {}),
     ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
   };

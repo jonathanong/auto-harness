@@ -356,11 +356,13 @@ function prepareHostInventory(
         }
         if (
           (projected?.status === "busy" || projected?.currentSessionId) &&
-          (projected.path !== slot.path || projected.workspacePoolId !== attachment.workspacePoolId)
+          (projected.name !== slot.name ||
+            projected.path !== slot.path ||
+            projected.workspacePoolId !== attachment.workspacePoolId)
         ) {
           return {
             ok: false,
-            error: `cannot change the path or pool of busy workspace slot: ${slot.id}`,
+            error: `cannot change the name, path, or pool of busy workspace slot: ${slot.id}`,
           };
         }
         const leasedPath = [...state.workspaceSlots.values()].find(

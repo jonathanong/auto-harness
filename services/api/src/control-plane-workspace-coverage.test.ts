@@ -193,7 +193,7 @@ describe("workspace control-plane branch boundaries", () => {
       }),
     ).toEqual({
       ok: false,
-      error: "cannot change the path or pool of busy workspace slot: slot-1",
+      error: "cannot change the name, path, or pool of busy workspace slot: slot-1",
     });
 
     plane.state.workspaceSlots.set("slot-1", {

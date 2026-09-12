@@ -39,8 +39,8 @@ describe("workspace schedules", () => {
       repositoryId: "",
       workspacePoolId: "pool-1",
       setupProfileId: "default",
-      destroyWorkspaceAfter: false,
     });
+    expect(schedule).not.toHaveProperty("destroyWorkspaceAfter");
     expect(plane.triggerSchedule(schedule.id)).toMatchObject({
       ok: true,
       session: {
@@ -190,8 +190,11 @@ describe("workspace schedules", () => {
     });
     expect(result).toMatchObject({
       ok: true,
-      schedule: { workspacePoolId: "pool-1", destroyWorkspaceAfter: false },
+      schedule: { workspacePoolId: "pool-1" },
     });
-    if (result.ok) expect(result.schedule).not.toHaveProperty("setupProfileId");
+    if (result.ok) {
+      expect(result.schedule).not.toHaveProperty("setupProfileId");
+      expect(result.schedule).not.toHaveProperty("destroyWorkspaceAfter");
+    }
   });
 });
