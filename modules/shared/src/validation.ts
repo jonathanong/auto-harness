@@ -69,16 +69,18 @@ export function repositoryUrlError(url: string): string | null {
     return "url must not include query parameters or fragments";
   }
 
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === "https:" && parsed.hostname) return null;
-  } catch {
-    // SCP-style SSH remotes are not URLs and are handled below.
+  if (/^https:\/\/[^/\\]/iu.test(url)) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" && parsed.hostname) return null;
+    } catch {
+      // Malformed HTTPS input can still be checked against the SCP form below.
+    }
   }
 
   // Git's SCP syntax is deliberately narrower than shell-style host aliases:
   // the user must be Git, and both the host and remote path must be present.
-  if (/^git@(?:\[[^\]\s]+\]|[^:@\s]+):[^\s]+$/u.test(url)) return null;
+  if (/^git@(?:\[[^\]\s]+\]|[^:/@\\\s]+):[^\s]+$/u.test(url)) return null;
   return INVALID_REPOSITORY_URL_ERROR;
 }
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */

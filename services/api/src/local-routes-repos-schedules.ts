@@ -4,6 +4,7 @@ import { writeRouteAudit } from "./local-audit.ts";
 import {
   commitMutationAudit,
   readJsonBody,
+  readJsonBodyWithAudit,
   repositoryInScope,
   sendHiddenNotFound,
   sendRouteError,
@@ -74,7 +75,7 @@ function repositoryUpdateError(error: string): { status: number; code: string } 
 
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
-  const { plane, req, res, url, method } = ctx;
+  const { plane, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
@@ -254,23 +255,33 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
-      let parsedBody: unknown;
-      try {
-        parsedBody = await readJson(req);
-      } catch {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-        });
-        return true;
-      }
+      const updateAudit = {
+        action: "repository:update",
+        resourceType: "repository",
+        resourceId: id,
+        repositoryId: id,
+      } as const;
+      const parsed = await readJsonBodyWithAudit(ctx, { ...updateAudit, outcome: "failed" });
+      if (!parsed.ok) return true;
+      const parsedBody = parsed.body;
       if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+        if (!(await writeRouteAudit(ctx, { ...updateAudit, outcome: "failed" }))) return true;
         sendRouteError(res, 400, "VALIDATION_ERROR", "repository update body must be an object");
         return true;
       }
       const body = parsedBody as Record<string, unknown>;
-      if (Object.hasOwn(body, "url") && typeof body.url !== "string") {
-        sendRouteError(res, 400, "VALIDATION_ERROR", "url must be a string");
-        return true;
+      for (const field of [
+        "name",
+        "url",
+        "defaultBranch",
+        "setupScript",
+        "terminalHookScript",
+      ] as const) {
+        if (Object.hasOwn(body, field) && typeof body[field] !== "string") {
+          if (!(await writeRouteAudit(ctx, { ...updateAudit, outcome: "failed" }))) return true;
+          sendRouteError(res, 400, "VALIDATION_ERROR", `${field} must be a string`);
+          return true;
+        }
       }
       try {
         const result = await plane.updateRepositoryDurable(id, {

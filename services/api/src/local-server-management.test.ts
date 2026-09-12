@@ -281,13 +281,21 @@ describe("createLocalApp operator management REST", () => {
         json: { name: "first", url: "https://example.test/first.git" },
       });
 
-      const invalidUrlType = await invoke(`/api/v1/repositories/${firstRepository.id}`, {
-        url: 42,
-      });
-      expect(invalidUrlType).toMatchObject({
-        status: 400,
-        json: { error: { code: "VALIDATION_ERROR", message: "url must be a string" } },
-      });
+      for (const field of [
+        "name",
+        "url",
+        "defaultBranch",
+        "setupScript",
+        "terminalHookScript",
+      ] as const) {
+        const invalidFieldType = await invoke(`/api/v1/repositories/${firstRepository.id}`, {
+          [field]: 42,
+        });
+        expect(invalidFieldType).toMatchObject({
+          status: 400,
+          json: { error: { code: "VALIDATION_ERROR", message: `${field} must be a string` } },
+        });
+      }
 
       const invalidBody = await invoke(`/api/v1/repositories/${firstRepository.id}`, null);
       expect(invalidBody).toMatchObject({
@@ -317,6 +325,9 @@ describe("createLocalApp operator management REST", () => {
         status: 404,
         json: { error: { code: "NOT_FOUND" } },
       });
+      expect(
+        (await plane.listAuditLogs({ action: "repository:update", outcome: "failed" })).items,
+      ).toHaveLength(9);
     },
   );
 });
