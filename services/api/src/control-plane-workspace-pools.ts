@@ -3,7 +3,11 @@ import { isActiveSessionStatus, isValidSlugName, SLUG_NAME_HINT } from "@auto-ha
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import type { WorkspacePoolRecord, WorkspaceSetupProfile } from "./db/plane-storage.ts";
+import type {
+  WorkspacePoolRecord,
+  WorkspacePoolSummary,
+  WorkspaceSetupProfile,
+} from "./db/plane-storage.ts";
 import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 import { refreshDeleteReferences } from "./control-plane-delete-guards.ts";
 
@@ -23,11 +27,23 @@ export type PublicWorkspacePool = Omit<WorkspacePoolRecord, "setupProfiles"> & {
   setupProfiles: Array<Pick<WorkspaceSetupProfile, "id" | "name">>;
 };
 
-function publicPool(pool: WorkspacePoolRecord): PublicWorkspacePool {
+function publicWorkspacePool(
+  pool: WorkspacePoolRecord | WorkspacePoolSummary,
+): PublicWorkspacePool {
+  const { setupProfileSummaries: _setupProfileSummaries, ...withoutProjection } = pool;
+  const setupProfiles =
+    pool.setupProfiles.length > 0 && "script" in pool.setupProfiles[0]!
+      ? pool.setupProfiles.map(({ id, name }) => ({ id, name }))
+      : pool.setupProfiles;
   return {
-    ...pool,
-    setupProfiles: pool.setupProfiles.map(({ id, name }) => ({ id, name })),
+    ...withoutProjection,
+    setupProfiles,
   };
+}
+
+function withoutProfileProjection(pool: WorkspacePoolRecord): WorkspacePoolRecord {
+  const { setupProfileSummaries: _setupProfileSummaries, ...withoutProjection } = pool;
+  return withoutProjection;
 }
 
 function validateProfiles(
@@ -83,6 +99,7 @@ function prepareWorkspacePool(
       id: existing?.id ?? input.id ?? state.workspacePoolIdFactory(),
       name: input.name,
       setupProfiles: profiles,
+      setupProfileSummaries: profiles.map(({ id, name }) => ({ id, name })),
       ...(defaultId ? { defaultSetupProfileId: defaultId } : {}),
       destroyWorkspaceAfter:
         input.destroyWorkspaceAfter ?? existing?.destroyWorkspaceAfter ?? false,
@@ -105,7 +122,7 @@ export function createWorkspacePool(state: ControlPlaneState, input: WorkspacePo
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putWorkspacePool(prepared.workspacePool));
   }
-  return { ok: true as const, workspacePool: { ...prepared.workspacePool } };
+  return { ok: true as const, workspacePool: withoutProfileProjection(prepared.workspacePool) };
 }
 
 export async function createWorkspacePoolDurable(
@@ -120,7 +137,7 @@ export async function createWorkspacePoolDurable(
     return { ok: false, error: "workspace pool already exists" };
   }
   state.workspacePools.set(prepared.workspacePool.id, prepared.workspacePool);
-  return { ok: true, workspacePool: { ...prepared.workspacePool } };
+  return { ok: true, workspacePool: withoutProfileProjection(prepared.workspacePool) };
 }
 
 export function listWorkspacePools(state: ControlPlaneState): WorkspacePoolRecord[] {
@@ -133,7 +150,7 @@ export function listWorkspacePools(state: ControlPlaneState): WorkspacePoolRecor
 }
 
 export function listWorkspacePoolsPublic(state: ControlPlaneState): PublicWorkspacePool[] {
-  return listWorkspacePools(state).map(publicPool);
+  return listWorkspacePools(state).map(publicWorkspacePool);
 }
 
 export async function listWorkspacePoolsDurable(state: ControlPlaneState) {
@@ -146,12 +163,53 @@ export async function listWorkspacePoolsDurable(state: ControlPlaneState) {
   return listWorkspacePools(state);
 }
 
+/** Refresh only the scheduler/public pool catalog; setup scripts stay out of memory. */
+export async function listWorkspacePoolSummariesDurable(state: ControlPlaneState) {
+  if (!state.storage || typeof state.storage.listWorkspacePoolSummaries !== "function") {
+    return listWorkspacePools(state);
+  }
+  const records = await state.storage.listWorkspacePoolSummaries();
+  state.workspacePools.clear();
+  for (const record of records) {
+    // The scheduler needs pool identity/defaults/profile IDs, while execution
+    // lazily point-reads the full record before it needs a script body.
+    state.workspacePools.set(record.id, record as unknown as WorkspacePoolRecord);
+  }
+  return records.toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+export async function listWorkspacePoolsPublicDurable(
+  state: ControlPlaneState,
+  fallbackRefresh?: () => Promise<unknown>,
+) {
+  if (state.storage && typeof state.storage.listWorkspacePoolSummaries === "function") {
+    return (await state.storage.listWorkspacePoolSummaries()).toSorted(
+      (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
+  }
+  if (fallbackRefresh) await fallbackRefresh();
+  return listWorkspacePoolsPublic(state);
+}
+
 export async function getWorkspacePoolDurable(state: ControlPlaneState, id: string) {
   if (!state.storage) return state.workspacePools.get(id) ?? null;
   const record = await state.storage.getWorkspacePool(id);
   if (record) state.workspacePools.set(id, record);
   else state.workspacePools.delete(id);
   return record;
+}
+
+/** A public point read never materializes setup-script bodies. */
+export async function getWorkspacePoolPublicDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<PublicWorkspacePool | null> {
+  if (!state.storage || typeof state.storage.getWorkspacePoolSummary !== "function") {
+    const pool = state.workspacePools.get(id);
+    return pool ? publicWorkspacePool(pool) : null;
+  }
+  const summary = await state.storage.getWorkspacePoolSummary(id);
+  return summary ? publicWorkspacePool(summary) : null;
 }
 
 export function updateWorkspacePool(
@@ -187,7 +245,7 @@ export async function updateWorkspacePoolDurable(
         : (await state.storage!.putWorkspacePool(prepared.workspacePool), true);
     if (!updated) return { ok: false as const, error: "workspace pool not found" };
     state.workspacePools.set(id, prepared.workspacePool);
-    return { ok: true as const, workspacePool: { ...prepared.workspacePool } };
+    return { ok: true as const, workspacePool: withoutProfileProjection(prepared.workspacePool) };
   });
 }
 

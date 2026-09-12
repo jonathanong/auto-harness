@@ -20,6 +20,7 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
 export type WorkspaceAssignment = {
   session: PublicSession;
@@ -158,12 +159,21 @@ export async function assignWorkspaceQueuedDurable(
   const now = state.now();
   const nowMs = Date.parse(now);
   const catalog = buildProviderCatalog(state);
+  const hydratedWorkspacePools = new Set<string>();
   for (const session of orderedQueuedSessions(
     state.sessions.values(),
     state.shardCount,
     "workspace",
   )) {
     if (sessionId && session.id !== sessionId) continue;
+    if (
+      state.storage &&
+      session.workspacePoolId &&
+      !hydratedWorkspacePools.has(session.workspacePoolId)
+    ) {
+      await getWorkspacePoolDurable(state, session.workspacePoolId);
+      hydratedWorkspacePools.add(session.workspacePoolId);
+    }
     if (state.storage && session.workspacePoolId) {
       await listWorkspaceSlotsDurable(state, session.workspacePoolId);
     }

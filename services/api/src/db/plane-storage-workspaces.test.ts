@@ -8,8 +8,10 @@ import {
   deleteWorkspaceSlotIfIdle,
   deleteRetiredWorkspaceSlotIfIdle,
   getWorkspacePool,
+  getWorkspacePoolSummary,
   getWorkspaceSlot,
   listWorkspacePools,
+  listWorkspacePoolSummaries,
   listWorkspaceSlots,
   listWorkspaceSlotsByHost,
   listWorkspaceSlotsByPool,
@@ -92,6 +94,80 @@ const assignment = {
 };
 
 describe("workspace storage", () => {
+  it("lists pool summaries without projecting trusted setup scripts", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        {
+          id: pool.id,
+          name: pool.name,
+          setupProfileSummaries: [{ id: "install", name: "Install" }],
+          defaultSetupProfileId: "install",
+          destroyWorkspaceAfter: false,
+          createdAt: pool.createdAt,
+          updatedAt: pool.updatedAt,
+          // A fake client returning this proves the caller never consumes it.
+          setupProfiles: [{ id: "install", name: "Install", script: "secret" }],
+        },
+      ],
+    });
+    const result = await listWorkspacePoolSummaries(ctx(send));
+    expect(result).toEqual([
+      {
+        id: pool.id,
+        name: pool.name,
+        setupProfiles: [{ id: "install", name: "Install" }],
+        defaultSetupProfileId: "install",
+        destroyWorkspaceAfter: false,
+        createdAt: pool.createdAt,
+        updatedAt: pool.updatedAt,
+      },
+    ]);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          ProjectionExpression: expect.not.stringContaining("setupProfiles,"),
+          ExpressionAttributeNames: { "#name": "name" },
+          Limit: 100,
+        }),
+      }),
+    );
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("point-reads public pool metadata without a script-bearing read or scan", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Item: {
+        id: pool.id,
+        name: pool.name,
+        setupProfileSummaries: [{ id: "install", name: "Install" }],
+        defaultSetupProfileId: "install",
+        destroyWorkspaceAfter: false,
+        createdAt: pool.createdAt,
+        updatedAt: pool.updatedAt,
+        setupProfiles: [{ id: "install", name: "Install", script: "secret" }],
+      },
+    });
+
+    await expect(getWorkspacePoolSummary(ctx(send), pool.id)).resolves.toEqual({
+      id: pool.id,
+      name: pool.name,
+      setupProfiles: [{ id: "install", name: "Install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: false,
+      createdAt: pool.createdAt,
+      updatedAt: pool.updatedAt,
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Key: { id: pool.id },
+          ProjectionExpression: expect.not.stringContaining("setupProfiles,"),
+        }),
+      }),
+    );
+  });
+
   it("reads, writes, lists, queries, and deletes pool and slot rows", async () => {
     const send = vi
       .fn()

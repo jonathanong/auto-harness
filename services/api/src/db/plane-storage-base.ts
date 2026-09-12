@@ -17,6 +17,7 @@ import {
   type PlaneStorageCtx,
   type RepositoryRecord,
   type WorkspacePoolRecord,
+  type WorkspacePoolSummary,
   type SessionDrainRecord,
   type ScheduleRecord,
   type ViewerTicketRecord,
@@ -267,8 +268,16 @@ export class DynamoPlaneStorageBase {
     return workspaces.getWorkspacePool(this.ctx, id);
   }
 
+  getWorkspacePoolSummary(id: string): Promise<WorkspacePoolSummary | null> {
+    return workspaces.getWorkspacePoolSummary(this.ctx, id);
+  }
+
   listWorkspacePools(): Promise<WorkspacePoolRecord[]> {
     return workspaces.listWorkspacePools(this.ctx);
+  }
+
+  listWorkspacePoolSummaries(): Promise<WorkspacePoolSummary[]> {
+    return workspaces.listWorkspacePoolSummaries(this.ctx);
   }
 
   deleteWorkspacePool(

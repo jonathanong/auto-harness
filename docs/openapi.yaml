@@ -85,6 +85,7 @@ paths:
     get:
       operationId: listWorkspacePools
       summary: List workspace pools
+      description: Returns at most 100 pools from a bounded, script-free storage projection.
       responses:
         "200":
           description: Workspace pools with public setup-profile metadata; scripts are not returned
@@ -96,6 +97,7 @@ paths:
                 properties:
                   items:
                     type: array
+                    maxItems: 100
                     items: { $ref: "#/components/schemas/WorkspacePool" }
         default: { $ref: "#/components/responses/Error" }
     post:
@@ -137,7 +139,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/WorkspacePoolInput" }
+            schema: { $ref: "#/components/schemas/WorkspacePoolPatch" }
       responses:
         "200":
           description: Workspace pool updated
@@ -662,6 +664,20 @@ components:
     WorkspacePoolInput:
       type: object
       required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        setupProfiles:
+          type: array
+          maxItems: 32
+          description: Serialized profile data is limited to 327,680 UTF-8 bytes in aggregate.
+          items: { $ref: "#/components/schemas/WorkspaceSetupProfileInput" }
+        defaultSetupProfileId: { type: [string, "null"] }
+        destroyWorkspaceAfter:
+          type: boolean
+          default: false
+      additionalProperties: false
+    WorkspacePoolPatch:
+      type: object
       properties:
         name: { type: string, minLength: 1 }
         setupProfiles:

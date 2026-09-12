@@ -368,6 +368,36 @@ describe("durable runtime read-through", () => {
     await expect(refreshSchedulerReadModel(state)).resolves.toBeUndefined();
   });
 
+  it("refreshes scheduler pool metadata from bounded script-free summaries", async () => {
+    const poolSummary = {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [{ id: "install", name: "Install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    const listWorkspacePoolSummaries = async () => [poolSummary];
+    const state = createControlPlaneState({
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listWorkspacePoolSummaries,
+        listWorkspacePools: async () => {
+          throw new Error("scheduler must not scan script-bearing pools");
+        },
+      } as never,
+    });
+
+    await expect(refreshSchedulerReadModel(state)).resolves.toBeUndefined();
+    expect(state.workspacePools.get("pool")).toEqual(poolSummary);
+  });
+
   it("replaces stale runtime rows from targeted durable reads", async () => {
     const worktreeReadModes: boolean[] = [];
     const state = createControlPlaneState({

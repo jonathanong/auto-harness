@@ -11,7 +11,7 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { hydrateRunningSessions } from "./control-plane-durable-read-hydration.ts";
-import { listWorkspacePoolsDurable } from "./control-plane-workspace-pools.ts";
+import { listWorkspacePoolSummariesDurable } from "./control-plane-workspace-pools.ts";
 
 export async function getSessionDurable(
   state: ControlPlaneState,
@@ -194,7 +194,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
       refreshTargetCatalogDurable(state),
       listHostInventoriesDurable(state),
       listRepositoriesDurable(state),
-      listWorkspacePoolsDurable(state),
+      listWorkspacePoolSummariesDurable(state),
       listWorkspaceSlotsDurable(state),
     ]);
     return;
@@ -205,7 +205,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
     refreshTargetCatalogDurable(state),
     listHostInventoriesDurable(state),
     listRepositoriesDurable(state),
-    listWorkspacePoolsDurable(state),
+    listWorkspacePoolSummariesDurable(state),
     listWorkspaceSlotsDurable(state),
   ]);
   state.connections.clear();

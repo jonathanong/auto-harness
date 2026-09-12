@@ -137,4 +137,30 @@ describe("WorkspacePoolForm", () => {
     });
     view.unmount();
   });
+
+  it("renames the selected default profile using its trimmed submitted ID", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "pool-1" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <WorkspacePoolForm
+        pool={{
+          id: "pool-1",
+          name: "browser-tests",
+          setupProfiles: [{ id: "install", name: "Install", script: "pnpm install" }],
+          defaultSetupProfileId: "install",
+          destroyWorkspaceAfter: false,
+        }}
+      />,
+    );
+
+    setValue(field(view.container, "workspace-pool-profile-id-0"), "  bootstrap  ");
+    submit(field(view.container, "form-workspace-pool-edit"));
+    await act(async () => Promise.resolve());
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      setupProfiles: [{ id: "bootstrap", name: "Install", script: "pnpm install" }],
+      defaultSetupProfileId: "bootstrap",
+    });
+    view.unmount();
+  });
 });

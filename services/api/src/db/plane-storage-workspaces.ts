@@ -18,12 +18,16 @@ import {
   type AssignmentWriteResult,
   type PlaneStorageCtx,
   type WorkspacePoolRecord,
+  type WorkspacePoolSummary,
 } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
 import { hostAssignmentAcquireItem } from "./plane-storage-host-assignment.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./types.ts";
 import { ownedDelete, type OwnedDeletionMarker } from "./plane-storage-deletion-markers.ts";
+
+/** Public pool options are intentionally capped until the endpoint grows a cursor. */
+const MAX_WORKSPACE_POOL_SUMMARIES = 100;
 
 export async function putWorkspacePool(
   ctx: PlaneStorageCtx,
@@ -81,6 +85,42 @@ export async function getWorkspacePool(
   return (result.Item as WorkspacePoolRecord | undefined) ?? null;
 }
 
+/**
+ * Read one pool's public metadata without bringing trusted setup scripts into
+ * a request or scheduler process. Script-bearing config is deliberately only
+ * read by {@link getWorkspacePool} for credentialed execution/config paths.
+ */
+export async function getWorkspacePoolSummary(
+  ctx: PlaneStorageCtx,
+  id: string,
+): Promise<WorkspacePoolSummary | null> {
+  const result = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.workspacePools,
+      Key: { id },
+      ProjectionExpression:
+        "id, #name, setupProfileSummaries, defaultSetupProfileId, destroyWorkspaceAfter, createdAt, updatedAt",
+      ExpressionAttributeNames: { "#name": "name" },
+      ConsistentRead: true,
+    }),
+  );
+  if (!result.Item) return null;
+  const record = result.Item as Omit<WorkspacePoolSummary, "setupProfiles"> & {
+    setupProfileSummaries?: WorkspacePoolSummary["setupProfiles"];
+  };
+  return {
+    id: record.id,
+    name: record.name,
+    setupProfiles: record.setupProfileSummaries ?? [],
+    ...(record.defaultSetupProfileId
+      ? { defaultSetupProfileId: record.defaultSetupProfileId }
+      : {}),
+    destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 export async function listWorkspacePools(ctx: PlaneStorageCtx): Promise<WorkspacePoolRecord[]> {
   const records: WorkspacePoolRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
@@ -96,6 +136,42 @@ export async function listWorkspacePools(ctx: PlaneStorageCtx): Promise<Workspac
     startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey);
   return records;
+}
+
+/**
+ * List pool metadata without reading trusted setup-script bodies. The summary
+ * projection is maintained on newly written rows; legacy rows intentionally
+ * return no profile names until their specific config is fetched.
+ */
+export async function listWorkspacePoolSummaries(
+  ctx: PlaneStorageCtx,
+): Promise<WorkspacePoolSummary[]> {
+  const result = await ctx.doc.send(
+    new ScanCommand({
+      TableName: ctx.tables.workspacePools,
+      ProjectionExpression:
+        "id, #name, setupProfileSummaries, defaultSetupProfileId, destroyWorkspaceAfter, createdAt, updatedAt",
+      ExpressionAttributeNames: { "#name": "name" },
+      Limit: MAX_WORKSPACE_POOL_SUMMARIES,
+      ConsistentRead: true,
+    }),
+  );
+  return (result.Items ?? []).map((item) => {
+    const record = item as Omit<WorkspacePoolSummary, "setupProfiles"> & {
+      setupProfileSummaries?: WorkspacePoolSummary["setupProfiles"];
+    };
+    return {
+      id: record.id,
+      name: record.name,
+      setupProfiles: record.setupProfileSummaries ?? [],
+      ...(record.defaultSetupProfileId
+        ? { defaultSetupProfileId: record.defaultSetupProfileId }
+        : {}),
+      destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+  });
 }
 
 export async function deleteWorkspacePool(

@@ -44,6 +44,9 @@ export function WorkspacePoolForm({ pool }: { pool?: WorkspacePoolConfig }) {
   const create = pool === undefined;
 
   const updateProfile = (index: number, field: keyof WorkspaceSetupProfile, value: string) => {
+    if (field === "id" && profiles[index]?.id === defaultProfileId) {
+      setDefaultProfileId(value);
+    }
     setProfiles((current) =>
       current.map((profile, candidate) =>
         candidate === index ? { ...profile, [field]: value } : profile,
@@ -65,7 +68,7 @@ export function WorkspacePoolForm({ pool }: { pool?: WorkspacePoolConfig }) {
             name: profile.name.trim(),
             script: profile.script,
           })),
-          defaultSetupProfileId: defaultProfileId || null,
+          defaultSetupProfileId: defaultProfileId.trim() || null,
           destroyWorkspaceAfter,
         };
         setPending(true);

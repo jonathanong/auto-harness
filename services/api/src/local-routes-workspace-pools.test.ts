@@ -152,7 +152,12 @@ describe("workspace-pool routes", () => {
     expect((await invoke(read, "GET", "/api/v1/workspace-pools/pool/exec-config")).status).toBe(
       500,
     );
-    expect((await invoke(read, "GET", "/api/v1/workspace-pools/pool")).status).toBe(500);
+
+    const publicRead = new ControlPlane();
+    publicRead.getWorkspacePoolPublicDurable = async () => {
+      throw failure;
+    };
+    expect((await invoke(publicRead, "GET", "/api/v1/workspace-pools/pool")).status).toBe(500);
 
     const update = new ControlPlane();
     update.updateWorkspacePoolDurable = async () => {

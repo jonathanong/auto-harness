@@ -1190,7 +1190,8 @@ names without script bodies.
 Each script is limited to 65,536 UTF-8 bytes, with at most 32 profiles and 327,680 UTF-8 bytes
 across the serialized profile list so the pool remains safely within the DynamoDB item limit.
 
-`GET /api/v1/workspace-pools` lists pools. `POST /api/v1/workspace-pools` creates one with
+`GET /api/v1/workspace-pools` lists at most 100 pools from a bounded, script-free storage
+projection. `POST /api/v1/workspace-pools` creates one with
 `name`, optional `setupProfiles: [{ id, name, script }]`, optional
 `defaultSetupProfileId`, and optional `destroyWorkspaceAfter`. `GET` and `PATCH`
 `/api/v1/workspace-pools/:workspacePoolId` read/update a pool; `DELETE` removes it only when no

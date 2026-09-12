@@ -23,8 +23,19 @@ export class ControlPlaneWorkspacesService {
   listWorkspacePoolsDurable() {
     return pools.listWorkspacePoolsDurable(this.state);
   }
+  listWorkspacePoolSummariesDurable() {
+    return pools.listWorkspacePoolSummariesDurable(this.state);
+  }
+  listWorkspacePoolsPublicDurable() {
+    return pools.listWorkspacePoolsPublicDurable(this.state, () =>
+      this.listWorkspacePoolsDurable(),
+    );
+  }
   getWorkspacePoolDurable(id: string) {
     return pools.getWorkspacePoolDurable(this.state, id);
+  }
+  getWorkspacePoolPublicDurable(id: string) {
+    return pools.getWorkspacePoolPublicDurable(this.state, id);
   }
   updateWorkspacePool(id: string, patch: Partial<Omit<pools.WorkspacePoolInput, "id">>) {
     return pools.updateWorkspacePool(this.state, id, patch);

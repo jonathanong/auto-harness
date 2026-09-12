@@ -158,6 +158,40 @@ it("covers local fallbacks, queued persistence, and durable conditional update o
   expect(updateWorkspacePool).toHaveBeenCalledWith(expect.objectContaining({ name: "new-name" }));
 });
 
+it("uses script-free pool summaries for public durable listings", async () => {
+  const listWorkspacePoolSummaries = vi.fn(async () => [
+    {
+      id: "pool-1",
+      name: "durable",
+      setupProfiles: [{ id: "install", name: "Install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    },
+  ]);
+  const listWorkspacePools = vi.fn(async () => {
+    throw new Error("full pool scan must not run for public listing");
+  });
+  const plane = new ControlPlane({
+    storage: { listWorkspacePoolSummaries, listWorkspacePools } as never,
+  });
+
+  await expect(plane.listWorkspacePoolsPublicDurable()).resolves.toEqual([
+    {
+      id: "pool-1",
+      name: "durable",
+      setupProfiles: [{ id: "install", name: "Install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    },
+  ]);
+  expect(listWorkspacePoolSummaries).toHaveBeenCalledOnce();
+  expect(listWorkspacePools).not.toHaveBeenCalled();
+});
+
 it("covers invalid durable pool preparation, tie sorting, and local persistence", async () => {
   const invalid = new ControlPlane({ workspacePoolIdFactory: () => "invalid" });
   const storage = {

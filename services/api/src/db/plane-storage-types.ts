@@ -210,14 +210,22 @@ export type WorkspaceSetupProfile = {
   script: string;
 };
 
+type WorkspaceSetupProfileSummary = Pick<WorkspaceSetupProfile, "id" | "name">;
+
 export type WorkspacePoolRecord = {
   id: string;
   name: string;
   setupProfiles: WorkspaceSetupProfile[];
+  /** Denormalized script-free listing projection; absent on legacy rows. */
+  setupProfileSummaries?: WorkspaceSetupProfileSummary[];
   defaultSetupProfileId?: string;
   destroyWorkspaceAfter: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WorkspacePoolSummary = Omit<WorkspacePoolRecord, "setupProfiles"> & {
+  setupProfiles: WorkspaceSetupProfileSummary[];
 };
 
 /** The durable form of a repository-list query. Storage continuation keys stay opaque. */

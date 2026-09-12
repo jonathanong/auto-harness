@@ -1,7 +1,7 @@
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { readJsonBody, sendHiddenNotFound, sendRouteError } from "./local-audited-route.ts";
 import { writeRouteAudit } from "./local-audit.ts";
-import type { WorkspacePoolInput } from "./control-plane-workspace-pools.ts";
+import { type WorkspacePoolInput } from "./control-plane-workspace-pools.ts";
 
 function auditPoolMutation(ctx: RouteCtx, action: string, resourceId: string): Promise<boolean> {
   return writeRouteAudit(ctx, { action, resourceType: "workspace-pool", resourceId });
@@ -89,8 +89,7 @@ export async function handleWorkspacePoolRoutes(ctx: RouteCtx): Promise<boolean>
   if (url.pathname === "/api/v1/workspace-pools") {
     if (method === "GET") {
       try {
-        await plane.listWorkspacePoolsDurable();
-        send(res, 200, { items: plane.listWorkspacePoolsPublic() });
+        send(res, 200, { items: await plane.listWorkspacePoolsPublicDurable() });
       } catch {
         sendInternalError(res);
       }
@@ -132,16 +131,9 @@ export async function handleWorkspacePoolRoutes(ctx: RouteCtx): Promise<boolean>
   const id = decodeURIComponent(match[1]!);
   if (method === "GET") {
     try {
-      const pool = await plane.getWorkspacePoolDurable(id);
+      const pool = await plane.getWorkspacePoolPublicDurable(id);
       if (!pool) sendRouteError(res, 404, "NOT_FOUND", "workspace pool not found");
-      else {
-        await plane.listWorkspacePoolsDurable();
-        send(
-          res,
-          200,
-          plane.listWorkspacePoolsPublic().find((item) => item.id === id),
-        );
-      }
+      else send(res, 200, pool);
     } catch {
       sendInternalError(res);
     }
