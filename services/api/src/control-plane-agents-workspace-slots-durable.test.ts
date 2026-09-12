@@ -104,6 +104,12 @@ it("rolls back durable registration when workspace-slot publication fails", asyn
     plane.registerHostDurable({
       hostId: "h",
       worktrees: [],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: slots.map(({ id, name, path }) => ({ id, name, path })),
+        },
+      ],
       commandProfiles: [],
       replaceExisting: true,
     }),
