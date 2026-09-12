@@ -137,6 +137,26 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
 
+  const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
+  if (method === "GET" && archiveMatch) {
+    try {
+      const session = await plane.getSessionDurable(archiveMatch[1]!);
+      if (
+        !session ||
+        !canAccess(ctx, session.repositoryId) ||
+        !mayAccessHost(ctx.principal, session.hostId)
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
+      } else {
+        res.setHeader("Cache-Control", "no-store");
+        send(res, 200, await plane.getArchiveDownloadDurable(archiveMatch[1]!));
+      }
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
+  }
+
   const priorContextMatch = /^\/api\/v1\/sessions\/([^/]+)\/prior-context$/.exec(url.pathname);
   if (method === "GET" && priorContextMatch) {
     try {

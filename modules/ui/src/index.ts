@@ -91,6 +91,7 @@ export {
   type SessionExecutionSummaryProps,
 } from "./components/session-execution-summary.tsx";
 export { SessionActions, type SessionActionsProps } from "./components/session-actions.tsx";
+export { SessionArchiveStatus } from "./components/session-archive-status.tsx";
 export { SessionTerminalViewer } from "./components/session-terminal-viewer.tsx";
 export { type TerminalLogEntry } from "./lib/session-terminal.ts";
 export { SessionFilters, type SessionFiltersProps } from "./components/session-filters.tsx";

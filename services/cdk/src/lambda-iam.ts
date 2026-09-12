@@ -48,6 +48,14 @@ export function grantRuntimeLambdaAccess(input: {
   }
   input.rest.role!.addManagedPolicy(archiveDataAccessPolicy);
   input.cron.role!.addManagedPolicy(archiveDataAccessPolicy);
+  // Archive uploads are a shared REST/Cron responsibility, but transcript reads are served only
+  // through the authorized REST route. Keep GetObject off Cron and WebSocket.
+  input.rest.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:GetObject"],
+      resources: [input.foundation.archiveBucket.arnForObjects("sessions/*")],
+    }),
+  );
 
   const keyArn = input.foundation.integrationKey.keyArn;
   input.rest.addToRolePolicy(

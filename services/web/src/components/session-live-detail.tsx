@@ -1,7 +1,13 @@
 "use client";
 
 import { isTerminalSessionStatus } from "@auto-harness/shared";
-import { Alert, SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
+import {
+  Alert,
+  SessionActions,
+  SessionArchiveStatus,
+  SessionDetail,
+  type SessionSummary,
+} from "@auto-harness/ui";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { apiFetch } from "../lib/client-api.ts";
@@ -65,6 +71,7 @@ export function SessionLiveDetail({
   const [session, setSession] = useState(initialSession);
   const [hosts, setHosts] = useState(initialHosts);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [archiveRefresh, setArchiveRefresh] = useState(0);
   const offline = assignedHostIsOffline(session, hosts);
 
   useEffect(() => {
@@ -110,6 +117,7 @@ export function SessionLiveDetail({
           canResume={canResume}
           canClone={canClone}
           canArchive={canArchive}
+          onArchiveSuccess={() => setArchiveRefresh((current) => current + 1)}
         />
       }
       repoHrefBase="/repositories"
@@ -119,6 +127,11 @@ export function SessionLiveDetail({
       defaultTab={defaultTab}
       notices={
         <>
+          <SessionArchiveStatus
+            sessionId={session.id}
+            terminal={isTerminalSessionStatus(session.status)}
+            refreshToken={archiveRefresh}
+          />
           {offline ? (
             <Alert variant="warning" className="p-4" data-pw="session-agent-offline" role="alert">
               <p className="font-medium">Agent disconnected — session may be stale.</p>

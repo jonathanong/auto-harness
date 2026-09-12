@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- archive retry fencing and direct archive reads share one lifecycle. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
+import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 
 async function rewriteWinningArchive(
   state: ControlPlaneState,
@@ -229,6 +230,33 @@ export function queueSessionArchive(state: ControlPlaneState, sessionId: string)
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {
   return state.archives.get(`${state.archivePrefix}${sessionId}/logs.jsonl`) ?? null;
+}
+
+/** Resolve durable archive state and mint a fresh verified download when one is available. */
+export async function getArchiveDownloadDurable(
+  state: ControlPlaneState,
+  sessionId: string,
+): Promise<SessionArchiveReadResponse> {
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
+  if (metadata) state.archives.set(key, metadata);
+  if (!metadata || metadata.status !== "complete") return { state: "dynamodb" };
+  if (!metadata.objectStored || !state.archiveReader) return { state: "unavailable" };
+  const result = await state.archiveReader.createDownload({
+    key,
+    contentType: metadata.contentType,
+    bodyBytes: metadata.bodyBytes,
+    now: state.now(),
+  });
+  return result.available
+    ? {
+        state: "archived",
+        downloadUrl: result.downloadUrl,
+        expiresAt: result.expiresAt,
+        contentType: metadata.contentType,
+        bodyBytes: metadata.bodyBytes,
+      }
+    : { state: "unavailable" };
 }
 
 export function listArchives(state: ControlPlaneState): ArchiveMetadata[] {

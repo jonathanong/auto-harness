@@ -1,5 +1,9 @@
 /* eslint-disable max-lines -- session create/list/assign/resume/cancel/log/usage reads share one facade. */
-import type { HostToServerMessage, SessionStatus } from "@auto-harness/shared";
+import type {
+  HostToServerMessage,
+  SessionArchiveReadResponse,
+  SessionStatus,
+} from "@auto-harness/shared";
 
 import type {
   ArchiveMetadata,
@@ -275,6 +279,10 @@ export class ControlPlaneSessionsService {
 
   getArchive(sessionId: string): ArchiveMetadata | null {
     return lifecycle.getArchive(this.state, sessionId);
+  }
+
+  getArchiveDownloadDurable(sessionId: string): Promise<SessionArchiveReadResponse> {
+    return lifecycle.getArchiveDownloadDurable(this.state, sessionId);
   }
 
   listArchives(): ArchiveMetadata[] {

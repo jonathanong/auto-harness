@@ -45,12 +45,16 @@ afterEach(() => {
 describe("SessionActions", () => {
   it("renders status-specific controls and refreshes after cancel and archive", async () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
+    const archiveSuccess = vi.fn();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(response(true))
       .mockResolvedValueOnce(response(true));
     vi.stubGlobal("fetch", fetchMock);
-    const view = mount(<SessionActions sessionId="a/b" status="running" />, router);
+    const view = mount(
+      <SessionActions sessionId="a/b" status="running" onArchiveSuccess={archiveSuccess} />,
+      router,
+    );
 
     expect(view.container.querySelector('[data-pw="session-cancel"]')).not.toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
@@ -71,6 +75,7 @@ describe("SessionActions", () => {
       method: "POST",
     });
     expect(router.refresh).toHaveBeenCalledTimes(2);
+    expect(archiveSuccess).toHaveBeenCalledOnce();
     view.unmount();
   });
 

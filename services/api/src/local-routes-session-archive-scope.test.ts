@@ -18,11 +18,22 @@ function admins(): string {
  * read of any session's logs rather than a failed lookup.
  */
 async function harness() {
+  const downloads: string[] = [];
   const plane = new ControlPlane({
     idFactory: (() => {
       let n = 0;
       return () => `session-${++n}`;
     })(),
+    archiveReader: {
+      createDownload: async ({ key }) => {
+        downloads.push(key);
+        return {
+          available: true,
+          downloadUrl: "https://archive.example.test/signed",
+          expiresAt: "2026-01-01T00:05:00.000Z",
+        };
+      },
+    },
   });
   plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
   plane.createRepository({ id: "repo-b", name: "repo-b", url: "https://example.test/b.git" });
@@ -48,6 +59,12 @@ async function harness() {
     role: "operator",
     allowedRepositoryIds: ["repo-a"],
   });
+  const { apiKey: hostApiKey } = await auth.createServiceAccount({
+    name: "host-agent",
+    role: "agent",
+    allowedRepositoryIds: ["repo-a"],
+    boundHostId: "host-a",
+  });
   const { handler } = createLocalApp({
     plane,
     authService: auth,
@@ -55,8 +72,10 @@ async function harness() {
   });
   const invoke = (method: string, path: string) =>
     invokeHandler(handler, method, path, undefined, { authorization: `Bearer ${apiKey}` });
+  const invokeAsHost = (method: string, path: string) =>
+    invokeHandler(handler, method, path, undefined, { authorization: `Bearer ${hostApiKey}` });
 
-  return { plane, invoke, own, other };
+  return { plane, invoke, invokeAsHost, own, other, downloads };
 }
 
 describe("POST /api/v1/sessions/:id/archive", () => {
@@ -122,5 +141,91 @@ describe("POST /api/v1/sessions/:id/archive", () => {
     expect((await invoke("POST", `/api/v1/sessions/${other.id}/cancel`)).status).toBe(500);
     expect((await invoke("POST", "/api/v1/sessions/missing/cancel")).status).toBe(500);
     expect((await invoke("POST", `/api/v1/sessions/${own.id}/archive`)).status).toBe(500);
+  });
+});
+
+describe("GET /api/v1/sessions/:id/archive", () => {
+  it("returns a verified download without caching the signed URL", async () => {
+    const { plane, invoke, own, downloads } = await harness();
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
+      key: `sessions/${own.id}/logs.jsonl`,
+      objectKey: "sessions/another-session/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const res = await invoke("GET", `/api/v1/sessions/${own.id}/archive`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.json).toEqual({
+      state: "archived",
+      downloadUrl: "https://archive.example.test/signed",
+      expiresAt: "2026-01-01T00:05:00.000Z",
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+    });
+    expect(downloads).toEqual([`sessions/${own.id}/logs.jsonl`]);
+  });
+
+  it("distinguishes recent and unavailable transcripts", async () => {
+    const { plane, invoke, own } = await harness();
+    const path = `/api/v1/sessions/${own.id}/archive`;
+    await expect(invoke("GET", path)).resolves.toMatchObject({
+      status: 200,
+      json: { state: "dynamodb" },
+    });
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
+      key: `sessions/${own.id}/logs.jsonl`,
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "complete",
+      objectStored: false,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(invoke("GET", path)).resolves.toMatchObject({
+      status: 200,
+      json: { state: "unavailable" },
+    });
+  });
+
+  it("does not probe S3 for unknown or out-of-scope sessions", async () => {
+    const { invoke, other, downloads } = await harness();
+
+    expect((await invoke("GET", `/api/v1/sessions/${other.id}/archive`)).status).toBe(404);
+    expect((await invoke("GET", "/api/v1/sessions/missing/archive")).status).toBe(404);
+    expect(downloads).toEqual([]);
+  });
+
+  it("applies host binding before probing S3", async () => {
+    const { plane, invokeAsHost, own, downloads } = await harness();
+    const record = plane.state.sessions.get(own.id)!;
+    plane.state.sessions.set(own.id, { ...record, hostId: "host-b" });
+    plane.state.archives.set(`sessions/${own.id}/logs.jsonl`, {
+      key: `sessions/${own.id}/logs.jsonl`,
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect((await invokeAsHost("GET", `/api/v1/sessions/${own.id}/archive`)).status).toBe(404);
+    expect(downloads).toEqual([]);
+  });
+
+  it("returns a structured 500 when durable archive metadata fails", async () => {
+    const { plane, invoke, own } = await harness();
+    plane.state.storage = {
+      getSession: async () => plane.state.sessions.get(own.id)!,
+      getArchive: async () => Promise.reject(new Error("storage unavailable")),
+    } as never;
+
+    const res = await invoke("GET", `/api/v1/sessions/${own.id}/archive`);
+    expect(res.status).toBe(500);
+    expect(res.json).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
   });
 });

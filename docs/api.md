@@ -961,7 +961,8 @@ Results are always ascending by the durable `timestampSeq` key (timestamp then
 agent sequence). Filters apply before `limit`. Invalid query parameters return
 `400 VALIDATION_ERROR`; a missing or inaccessible session returns `404 NOT_FOUND`.
 Storage failures return `500 INTERNAL_ERROR`. This endpoint is historical only:
-it neither opens a WebSocket live tail nor reads S3 archives in the current release.
+it neither opens a WebSocket live tail nor reads S3 archives. Use the archive endpoint below for
+the durable terminal transcript.
 
 **Response:** `200 OK`
 
@@ -981,6 +982,40 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
   ]
 }
 ```
+
+#### `GET /sessions/:id/archive`
+
+Resolve the durable terminal transcript's availability. Any authenticated principal may read an
+in-scope session, using the same repository and host scoping as `GET /sessions/:id/logs`. Missing
+and inaccessible sessions both return `404 NOT_FOUND`. Every successful response is
+`Cache-Control: no-store`.
+
+The response is one of:
+
+```json
+{ "state": "dynamodb" }
+```
+
+```json
+{
+  "state": "archived",
+  "downloadUrl": "https://…",
+  "expiresAt": "2026-08-01T12:05:00.000Z",
+  "contentType": "application/x-ndjson",
+  "bodyBytes": 12345
+}
+```
+
+```json
+{ "state": "unavailable" }
+```
+
+`dynamodb` means the transcript remains on the recent-log path or archival is still pending.
+`archived` means S3 metadata was verified against the durable archive record and `downloadUrl` is
+a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `unavailable` means an
+archive record exists but the object cannot currently be retrieved, including a cold Glacier
+object that has not been restored. The API does not initiate restores. Clients must request a new
+URL immediately before each download and must not persist or log it.
 
 ---
 

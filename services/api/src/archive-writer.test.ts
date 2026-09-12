@@ -50,6 +50,6 @@ describe("S3ArchiveWriter", () => {
         archivePrefix: "custom/",
         archiveWriter: { putArchive: async () => undefined },
       }),
-    ).toThrow("Archive writers require the sessions/ key prefix");
+    ).toThrow("Archive object storage requires the sessions/ key prefix");
   });
 });

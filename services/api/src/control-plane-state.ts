@@ -36,6 +36,7 @@ import type {
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
+import type { ArchiveReader } from "./archive-reader.ts";
 import { enqueueSlackSessionLifecycle } from "./slack-session-runtime.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
@@ -94,6 +95,7 @@ export type ControlPlaneState = {
   usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveMetadata>;
   archiveWriter: ArchiveWriter | undefined;
+  archiveReader: ArchiveReader | undefined;
   pendingAcks: Map<string, PendingAck>;
   /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
    * encoded with NUL, which repository IDs cannot contain on supported APIs. */
@@ -151,10 +153,10 @@ export type ControlPlaneState = {
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
   if (
-    options.archiveWriter &&
+    (options.archiveWriter || options.archiveReader) &&
     (options.archivePrefix ?? DEFAULT_ARCHIVE_PREFIX) !== DEFAULT_ARCHIVE_PREFIX
   ) {
-    throw new Error(`Archive writers require the ${DEFAULT_ARCHIVE_PREFIX} key prefix`);
+    throw new Error(`Archive object storage requires the ${DEFAULT_ARCHIVE_PREFIX} key prefix`);
   }
   return {
     storage: options.storage,
@@ -186,6 +188,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     usageRecords: new Map(),
     archives: new Map(),
     archiveWriter: options.archiveWriter,
+    archiveReader: options.archiveReader,
     pendingAcks: new Map(),
     mainCheckoutLeases: new Map(),
     providerAccountLeases: new Map(),

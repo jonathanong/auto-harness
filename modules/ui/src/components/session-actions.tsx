@@ -26,6 +26,7 @@ export type SessionActionsProps = {
   canResume?: boolean;
   canClone?: boolean;
   canArchive?: boolean;
+  onArchiveSuccess?: () => void;
 };
 
 /** Cancel/resume/archive — pure REST against the same-origin `/api/v1` proxy, no app wiring needed. */
@@ -39,6 +40,7 @@ export function SessionActions({
   canResume = true,
   canClone = true,
   canArchive = true,
+  onArchiveSuccess,
 }: SessionActionsProps) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -68,6 +70,7 @@ export function SessionActions({
         return;
       }
     }
+    if (which === "archive") onArchiveSuccess?.();
     router.refresh();
   };
 

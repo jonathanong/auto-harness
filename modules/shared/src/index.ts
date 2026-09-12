@@ -37,6 +37,7 @@ export type {
   SessionTerminalStatus,
 } from "./session.ts";
 export type { SessionResult } from "./session-result.ts";
+export type { SessionArchiveReadResponse } from "./session-archive.ts";
 export {
   SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_RESULT_BYTES,

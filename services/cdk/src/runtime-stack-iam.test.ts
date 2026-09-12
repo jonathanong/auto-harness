@@ -45,7 +45,7 @@ function policyActions(template: Template, handler: string): string[] {
 }
 
 describe("runtime Lambda IAM split", () => {
-  it("gives archive and integration KMS encrypt only to REST and Cron", () => {
+  it("gives archive writes to REST and Cron, archive reads to REST only, and KMS encrypt to REST", () => {
     const template = runtimeTemplate();
     const restRole = roleLogicalId(template, "index.rest");
     const cronRole = roleLogicalId(template, "index.cron");
@@ -60,9 +60,17 @@ describe("runtime Lambda IAM split", () => {
     const websocket = policyActions(template, "index.websocket");
     expect(rest).toContain("kms:Encrypt");
     expect(rest).toContain("kms:Decrypt");
+    expect(rest).toContain("s3:GetObject");
     expect(cron).toContain("kms:Decrypt");
     expect(cron).not.toContain("kms:Encrypt");
+    expect(cron).not.toContain("s3:GetObject");
     expect(websocket).not.toContain("kms:Encrypt");
+    expect(websocket).not.toContain("s3:GetObject");
+
+    const archiveRead = policyDocuments(template, "index.rest").find(
+      (statement) => (statement as { Action?: unknown }).Action === "s3:GetObject",
+    ) as { Resource?: unknown } | undefined;
+    expect(JSON.stringify(archiveRead?.Resource)).toContain("sessions/*");
 
     const websocketFn = functionByHandler(template, "index.websocket");
     expect(websocketFn?.Properties?.Environment?.Variables?.KMS_KEY_ID).toBeUndefined();
