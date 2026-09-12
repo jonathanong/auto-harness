@@ -332,10 +332,12 @@ function plannerContext(
   state: ControlPlaneState,
   source: SessionTransitionContext["source"],
   providerAccount?: SessionTransitionContext["providerAccount"],
+  protocolVersion?: number,
 ): SessionTransitionContext {
   return {
     now: state.now(),
     source,
+    ...(protocolVersion !== undefined ? { protocolVersion } : {}),
     ...(providerAccount !== undefined ? { providerAccount } : {}),
   };
 }
@@ -1319,7 +1321,7 @@ async function applySessionStatusDurable(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "durable", providerAccount),
+    plannerContext(state, "durable", providerAccount, protocolVersion),
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };

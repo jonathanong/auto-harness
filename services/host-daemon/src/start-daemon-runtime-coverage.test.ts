@@ -51,7 +51,7 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
-  it("settles a lost terminal disposition ACK before waiting for idle", async () => {
+  it("does not invent a terminal disposition when its ACK is lost during shutdown", async () => {
     const server = createServer();
     const wss = new WebSocketServer({ server, path: "/ws" });
     let peer: WebSocket | undefined;
@@ -86,8 +86,8 @@ describe("startDaemon runtime wiring", () => {
           );
         }
         // Deliberately drop session:status-acknowledged to model a lost durable
-        // disposition. Shutdown preparation must settle the deferred hook
-        // before the idle wait while leaving active work undisturbed.
+        // disposition. Shutdown must leave the deferred hook unexecuted while
+        // still completing its bounded local idle wait.
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -151,7 +151,7 @@ describe("startDaemon runtime wiring", () => {
           new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
         ]),
       ).resolves.toBe(true);
-      expect(dispositions).toEqual([true]);
+      expect(dispositions).toEqual([]);
     } finally {
       cleanup();
       await stopPromise;

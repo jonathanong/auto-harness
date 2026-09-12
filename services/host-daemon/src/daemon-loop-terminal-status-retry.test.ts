@@ -133,7 +133,7 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
-  it("keeps a deferred status indexed while shutdown settlement races its ACK", async () => {
+  it("waits for a terminal ACK before settling a deferred status during shutdown", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const completionSent = vi.fn();
@@ -145,12 +145,7 @@ describe("DaemonLoop terminal status retry", () => {
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
       transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
-      let finishSettlement!: () => void;
-      const settlementFinished = new Promise<void>((resolve) => {
-        finishSettlement = resolve;
-      });
       const settle = vi.fn(async () => {
-        await settlementFinished;
         return { summary: "settled during shutdown", summarySource: "harness" as const };
       });
       const pending = pendingTerminalStatusOf(loop);
@@ -170,9 +165,9 @@ describe("DaemonLoop terminal status retry", () => {
 
       loop.prepareForShutdown();
       expect(pending.size).toBe(1);
-      finishSettlement();
       await loop.waitForIdle();
       expect(pending.size).toBe(1);
+      expect(settle).not.toHaveBeenCalled();
 
       transport.deliver({
         type: "session:status-acknowledged",
@@ -744,7 +739,7 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
-  it("fails closed and settles deferred hooks when stopping", async () => {
+  it("does not infer a deferred hook disposition when stopping", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const loop = new DaemonLoop({
@@ -770,7 +765,7 @@ describe("DaemonLoop terminal status retry", () => {
 
       loop.stop();
       await flushMicrotasks();
-      expect(dispositions).toEqual([true]);
+      expect(dispositions).toEqual([]);
       expect(resolved).toBe(true);
       expect(controller.signal.aborted).toBe(true);
       expect(pendingTerminalStatusOf(loop).size).toBe(0);
@@ -779,7 +774,7 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
-  it("fails closed when active work becomes deferred after shutdown preparation", async () => {
+  it("waits for the durable retry disposition when active work becomes deferred during shutdown", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const sent: HostToServerMessage[] = [];
@@ -841,20 +836,28 @@ describe("DaemonLoop terminal status retry", () => {
       finish();
       await loop.waitForIdle();
 
-      expect(dispositions).toEqual([true]);
+      expect(dispositions).toEqual([]);
       expect(pendingTerminalStatusOf(loop).size).toBe(1);
       expect(sent).toContainEqual(
         expect.objectContaining({
           type: "session:status",
-          errorCode: "setup_failed",
-          result: { summary: "after shutdown hook", summarySource: "harness" },
+          errorCode: "checkout_fetch_failed",
         }),
       );
       const reported = sent.find(
         (message): message is Extract<HostToServerMessage, { type: "session:status" }> =>
           message.type === "session:status" && message.sessionId === "finishing-during-shutdown",
       );
-      expect(reported).not.toHaveProperty("deferTerminalHookResult");
+      expect(reported).toHaveProperty("deferTerminalHookResult", true);
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "finishing-during-shutdown",
+        attemptId: "attempt-1",
+        retryAccepted: true,
+      });
+      await flushMicrotasks();
+      expect(dispositions).toEqual([false]);
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
       loop.stop();
     } finally {
       cleanup();

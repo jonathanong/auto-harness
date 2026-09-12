@@ -229,6 +229,36 @@ describe("session-transition planner", () => {
     ).toEqual(["ignore"]);
   });
 
+  it("does not replay a checkout failure after a legacy peer already ran its hook", () => {
+    const plan = planSessionTransition(
+      session(),
+      status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+      ctx({ protocolVersion: 5 }),
+    );
+
+    expect(plan.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "finish",
+      "archive",
+    ]);
+    expect(transitionEffect(plan, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      errorMessage:
+        "checkout fetch failed; terminal hook already completed on legacy host protocol",
+    });
+  });
+
+  it("keeps checkout failure replay enabled for peers that can defer the hook", () => {
+    expect(
+      types(
+        status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+        session(),
+        ctx({ protocolVersion: 6 }),
+      ),
+    ).toEqual(["release_worktree", "requeue", "reschedule"]);
+  });
+
   it("usage_limit with no fallback stays queued until the original deadline", () => {
     const plan = planSessionTransition(
       session({

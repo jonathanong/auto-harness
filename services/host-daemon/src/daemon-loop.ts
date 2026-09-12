@@ -144,8 +144,6 @@ type PendingTerminalStatus = {
     | undefined;
   /** An acknowledged deferred status remains discoverable until its hook settles. */
   settlement?: Promise<void> | undefined;
-  /** Shutdown's fail-closed settlement has completed; retain the index for a late ACK. */
-  shutdownSettlementComplete?: boolean | undefined;
   /** The shared hook result for a same-process handoff that overlaps its status ACK. */
   settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
@@ -254,7 +252,7 @@ export class DaemonLoop {
   private inventoryPolicyDrainPublished = false;
   /** Set before a drain write so reconnect registration cannot reopen capacity. */
   private drainRequested = false;
-  /** Fail closed instead of waiting for retry dispositions while shutting down. */
+  /** Stop awaiting recoverable delivery while graceful shutdown is in progress. */
   private settleDeferredOnCompletion = false;
   private drainConfirmation: Promise<void> | undefined;
   private resolveDrainConfirmation: (() => void) | undefined;
@@ -571,11 +569,7 @@ export class DaemonLoop {
     while (true) {
       this.startPendingTerminalHookHandoffs();
       const activeWork = [
-        ...[...this.pendingTerminalStatus.values()].map(
-          (pending) =>
-            pending.settlement ??
-            (pending.shutdownSettlementComplete ? undefined : pending.settlementResult),
-        ),
+        ...[...this.pendingTerminalStatus.values()].map((pending) => pending.settlement),
         ...[...this.pendingTerminalHookHandoffs.values()].flatMap((pending) => [
           pending.work,
           // Completion delivery is not part of the shutdown fence. The
@@ -599,8 +593,10 @@ export class DaemonLoop {
   }
 
   /**
-   * Let active commands finish while ensuring a lost v6 retry-disposition ACK
-   * cannot keep the subsequent idle wait pending forever.
+   * Let active commands finish without treating shutdown as a terminal-hook
+   * disposition. A deferred hook requires the control plane's durable ACK:
+   * running it before that ACK can duplicate the retry's hook if the server
+   * had accepted the retry but its acknowledgement was lost.
    */
   prepareForShutdown(): void {
     this.settleDeferredOnCompletion = true;
@@ -616,30 +612,10 @@ export class DaemonLoop {
     for (const pending of this.pendingTerminalStatus.values()) {
       if (!pending.settleDeferredTerminalHook) continue;
       pending.controller.abort();
-      // Keep the status indexed until shutdown has finished settling it. An
-      // ACK can arrive while the hook is running; retaining this entry lets
-      // that ACK attach the durable handoff to the same settlement instead of
-      // starting a second hook (or losing the completion entirely).
-      if (pending.settlementResult) continue;
-      let settlementResult: ReturnType<
-        NonNullable<PendingTerminalStatus["settleDeferredTerminalHook"]>
-      >;
-      try {
-        settlementResult = pending.settleDeferredTerminalHook(true);
-      } catch (error) {
-        settlementResult = Promise.reject(error);
-      }
-      pending.settlementResult = settlementResult;
-      void settlementResult
-        .catch((error: unknown) => {
-          this.onLog?.(
-            `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
-          );
-        })
-        .finally(() => {
-          pending.shutdownSettlementComplete = true;
-          pending.resolveDeferredDisposition?.();
-        });
+      // Retain the status long enough for a concurrently delivered ACK to
+      // settle the hook with its durable disposition. Otherwise release only
+      // the local idle fence; recovery remains with the control plane.
+      pending.resolveDeferredDisposition?.();
     }
   }
 
@@ -672,22 +648,10 @@ export class DaemonLoop {
     for (const [key, pending] of this.pendingTerminalStatus) {
       this.pendingTerminalStatus.delete(key);
       pending.controller.abort();
-      if (pending.settleDeferredTerminalHook) {
-        if (pending.settlementResult) {
-          pending.resolveDeferredDisposition?.();
-          continue;
-        }
-        void pending
-          .settleDeferredTerminalHook(true)
-          .catch((error: unknown) => {
-            this.onLog?.(
-              `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
-            );
-          })
-          .finally(() => pending.resolveDeferredDisposition?.());
-      } else {
-        pending.resolveDeferredDisposition?.();
-      }
+      // No durable terminal disposition arrived before the process exited.
+      // The control plane owns recovery, so never infer local hook ownership
+      // from shutdown.
+      pending.resolveDeferredDisposition?.();
     }
     this.transport.close();
   }
@@ -1682,18 +1646,6 @@ export class DaemonLoop {
     });
     let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
     let terminalErrorCode = result.errorCode;
-    if (this.settleDeferredOnCompletion && settleDeferredTerminalHook) {
-      const settledResult = await settleDeferredTerminalHook(true).catch((error: unknown) => {
-        this.onLog?.(`deferred terminal hook failed for ${msg.sessionId}: ${thrownMessage(error)}`);
-        return undefined;
-      });
-      if (settledResult !== undefined) result.result = settledResult;
-      settleDeferredTerminalHook = undefined;
-      // A shutdown-completed hook can have made external terminal effects, so
-      // its checkout failure must enter the ordinary terminal path instead of
-      // consuming the automatic infrastructure retry after the marker clears.
-      if (terminalErrorCode === "checkout_fetch_failed") terminalErrorCode = "setup_failed";
-    }
 
     if (result.logs.length > 0) {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
@@ -1782,6 +1734,11 @@ export class DaemonLoop {
     if (deferredDisposition) {
       if (!this.pendingTerminalStatus.has(pendingKey)) {
         await settleDeferredTerminalHook!(true);
+        resolveDeferredDisposition?.();
+      } else if (this.settleDeferredOnCompletion) {
+        // Shutdown must not manufacture a terminal disposition. The retained
+        // status remains recoverable by the control plane, while this active
+        // assignment may now leave the local idle fence.
         resolveDeferredDisposition?.();
       }
       await deferredDisposition;

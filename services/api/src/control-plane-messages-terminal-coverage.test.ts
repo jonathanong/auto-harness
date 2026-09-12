@@ -819,14 +819,22 @@ describe("control-plane terminal message coverage", () => {
     state.sessions.set(session.id, session);
 
     await expect(
-      handleHostMessageDurable(state, {
-        type: "session:status",
-        sessionId: session.id,
-        worktreeId: null,
-        attemptId: "attempt",
-        status: "failed",
-        errorCode: "checkout_fetch_failed",
-      }),
+      handleHostMessageDurable(
+        state,
+        {
+          type: "session:status",
+          sessionId: session.id,
+          worktreeId: null,
+          attemptId: "attempt",
+          status: "failed",
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: true,
+        },
+        undefined,
+        false,
+        false,
+        6,
+      ),
     ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({

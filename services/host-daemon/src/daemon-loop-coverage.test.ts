@@ -393,38 +393,28 @@ describe("DaemonLoop coverage guards", () => {
         pendingTerminalStatus: Map<string, unknown>;
       };
       const pending = pendingTerminalStatusOf(loop);
-      const prepareError = new Error("prepare hook failed");
+      const prepareHook = vi.fn();
       pending.set("prepare\0attempt", {
         message: { ...terminalStatusFixture, sessionId: "prepare", attemptId: "attempt" },
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: () => {
-          throw prepareError;
-        },
+        settleDeferredTerminalHook: prepareHook,
       } as never);
       internals.prepareForShutdown();
-      // Synchronous adapter failures still settle the shutdown idle fence.
       await loop.waitForIdle();
-      await flushMacrotask();
-      expect(lines).toContain("deferred terminal hook failed for prepare: prepare hook failed");
+      expect(prepareHook).not.toHaveBeenCalled();
 
-      // stop() normally calls prepareForShutdown first. Replace that lifecycle
-      // seam so its independent cleanup branch is exercised as well.
-      const stopError = new Error("stop hook failed");
+      const stopHook = vi.fn();
       pending.set("stop\0attempt", {
         message: { ...terminalStatusFixture, sessionId: "stop", attemptId: "attempt" },
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: async () => {
-          throw stopError;
-        },
+        settleDeferredTerminalHook: stopHook,
       } as never);
-      (loop as unknown as { prepareForShutdown: () => void }).prepareForShutdown = () => undefined;
       loop.stop();
-      await flushMacrotask();
-      expect(lines).toContain("deferred terminal hook failed for stop: stop hook failed");
+      expect(stopHook).not.toHaveBeenCalled();
 
       const aborted = new AbortController();
       aborted.abort();
@@ -1011,8 +1001,8 @@ describe("DaemonLoop coverage guards", () => {
         expect.objectContaining({
           type: "session:status",
           sessionId: "shutdown-result",
-          errorCode: "setup_failed",
-          result: { summary: "shutdown result", summarySource: "harness" },
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: true,
         }),
       );
       loop.stop();
