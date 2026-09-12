@@ -235,6 +235,7 @@ export class SessionRunner {
             this.deps.githubApp,
             this.deps.nowMs,
             baseline,
+            isolatedGitHubConfigDir,
           );
         } catch (error) {
           const errorMessage = thrownMessage(error);
@@ -263,7 +264,11 @@ export class SessionRunner {
       }
     } finally {
       if (isolatedGitHubConfigDir) {
-        await rm(isolatedGitHubConfigDir, { force: true, recursive: true });
+        try {
+          await rm(isolatedGitHubConfigDir, { force: true, recursive: true });
+        } catch (error) {
+          console.error("failed to remove isolated GitHub config directory", error);
+        }
       }
     }
   }

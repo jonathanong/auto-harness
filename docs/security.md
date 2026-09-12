@@ -45,9 +45,11 @@ mints one installation token for each mapped session repository. The token is in
 `GH_TOKEN` into that assigned CLI and the repository's terminal hook, which needs the same scoped
 identity for the D3 failure-escalation flow. It is redacted from streamed output and errors, and
 the session ends before its GitHub expiry. Before minting succeeds, early terminal-hook paths stay
-scrubbed. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, so a hook cannot fall
-back to a stored `gh` login after unsetting `GH_TOKEN`. Git continues to use the existing SSH
-transport.
+scrubbed. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, preventing an ordinary
+hook from falling back to a stored `gh` login. This is not an OS boundary: a compromised session
+running as the same user can unset that variable or read other same-user credential stores. That
+remains the accepted risk documented below; selected-repository App installation limits its blast
+radius. Git continues to use the existing SSH transport.
 
 The App private key remains a host secret, but the daemon and its session CLIs run as the same OS
 user. A compromised session can therefore read it; mode `0600` prevents other local users, not the

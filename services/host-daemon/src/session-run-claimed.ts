@@ -26,6 +26,7 @@ import {
   githubBotEmail,
   mintInstallationToken,
   withoutAmbientGitHubTokens,
+  withIsolatedGitHubConfigDir,
   type GitHubAppConfig,
   type InstallationToken,
 } from "./github-app.ts";
@@ -134,6 +135,7 @@ export async function runClaimedSession(
   nowMs: () => number = Date.now,
   /** HEAD captured after checkout and before setup; used for post-session facts. */
   baseline?: string,
+  isolatedGitHubConfigDir?: string,
 ): Promise<SessionRunResult> {
   const mappedGitHubApp = githubApp?.repositories.has(assign.repositoryId) ?? false;
   const sessionChildEnv = mappedGitHubApp
@@ -243,6 +245,7 @@ export async function runClaimedSession(
     githubApp,
     nowMs,
     baseline,
+    isolatedGitHubConfigDir,
   );
 }
 
@@ -263,10 +266,14 @@ async function runProcessAndFinish(
   githubApp?: GitHubAppConfig,
   nowMs: () => number = Date.now,
   baseline?: string,
+  isolatedGitHubConfigDir?: string,
 ): Promise<SessionRunResult> {
-  const terminalEnvironment = githubApp?.repositories.has(assign.repositoryId)
+  const scrubbedTerminalEnvironment = githubApp?.repositories.has(assign.repositoryId)
     ? withoutAmbientGitHubTokens(environment)
     : environment;
+  const terminalEnvironment = isolatedGitHubConfigDir
+    ? withIsolatedGitHubConfigDir(scrubbedTerminalEnvironment, isolatedGitHubConfigDir)
+    : scrubbedTerminalEnvironment;
   streamer.write(
     "system",
     `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
@@ -298,6 +305,7 @@ async function runProcessAndFinish(
   const commandEnv = profile
     ? applyExecutionProfile(terminalEnvironment, profile)
     : { ...terminalEnvironment };
+  if (isolatedGitHubConfigDir) commandEnv.GH_CONFIG_DIR = isolatedGitHubConfigDir;
   delete commandEnv.HARNESS_API_KEY;
   delete commandEnv.HARNESS_SESSION_API_KEY;
   delete commandEnv.HARNESS_SESSION_ID;

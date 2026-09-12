@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseGitHubAppConfig } from "./github-app.ts";
 import type { ProcessRunner } from "./executor.ts";
+import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
@@ -276,6 +277,71 @@ describe("claimed session GitHub App credentials", () => {
     expect(commandEnv?.GITHUB_TOKEN).toBeUndefined();
     expect(commandEnv?.GH_ENTERPRISE_TOKEN).toBeUndefined();
     expect(commandEnv?.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();
+  });
+
+  it("preserves the isolated GitHub config directory through setup and profiles", async () => {
+    installTokenFetch();
+    const isolatedGitHubConfigDir = "/tmp/isolated-github-config";
+    let commandEnv: NodeJS.ProcessEnv | undefined;
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        return {
+          exitCode: 0,
+          timedOut: false,
+          signal: null,
+          environment: { ...options.env },
+        };
+      },
+    };
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        commandEnv = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const executionProfiles: ExecutionProfiles = {
+      maxConcurrentAssignments: 1,
+      profiles: new Map([
+        [
+          "acct-1",
+          { providerAccountId: "acct-1", home: "/tmp", env: { GH_CONFIG_DIR: "/profile-gh" } },
+        ],
+      ]),
+    };
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        systemRunner,
+        new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ providerAccountId: "acct-1", setupScript: "setup" }),
+        {
+          ...claimed,
+          currentHookTarget: async () => ({
+            cwd: claimed.cwd,
+            repository: { terminalHookScript: "/hook.sh" },
+          }),
+        },
+        undefined,
+        () => false,
+        () => 4_000_000,
+        commandRunner,
+        { PATH: process.env.PATH, GH_CONFIG_DIR: "/ambient-gh" },
+        executionProfiles,
+        undefined,
+        app(),
+        () => now,
+        undefined,
+        isolatedGitHubConfigDir,
+      ),
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(commandEnv?.GH_CONFIG_DIR).toBe(isolatedGitHubConfigDir);
+    expect(hookEnv?.GH_CONFIG_DIR).toBe(isolatedGitHubConfigDir);
   });
 
   it("mints a new token for a native resume and fails closed without exposing a response body", async () => {
