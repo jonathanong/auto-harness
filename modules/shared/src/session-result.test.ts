@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- normalization and strict-guard boundary cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -182,6 +183,58 @@ describe("session result normalization", () => {
         summary: "done",
         summarySource: "harness",
         filesChanged: [`${"x".repeat(4 * 1024 + 1)}`],
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects every bounded optional field that is malformed on a stored result", () => {
+    expect(isSessionResult(undefined)).toBe(false);
+    expect(isSessionResult(false)).toBe(false);
+    expect(isSessionResult([])).toBe(false);
+    expect(isSessionResult({ summary: "", summarySource: "harness" })).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        summaryTruncated: false,
+      }),
+    ).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        branch: "x".repeat(1_025),
+      }),
+    ).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        pullRequestUrl: "not a URL",
+      }),
+    ).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        filesChanged: Array.from(
+          { length: MAX_SESSION_RESULT_FILES + 1 },
+          (_, index) => `${index}`,
+        ),
+      }),
+    ).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        filesChanged: "not an array",
+      }),
+    ).toBe(false);
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        filesChangedTruncated: false,
       }),
     ).toBe(false);
   });

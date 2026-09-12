@@ -88,6 +88,66 @@ describe("durable worktree terminal branches", () => {
     expect(current.sessions.get("current")?.result).toEqual(result);
   });
 
+  it("uses the authenticated transport protocol before the cached connection row", async () => {
+    const connection = {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host" as const,
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      commandProfiles: [],
+      capabilities: [],
+      repositoryIds: ["repo"],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 2,
+      providerAccountReadiness: [],
+    };
+    const result = { summary: "done", summarySource: "agent" as const };
+
+    const current = run(row("authenticated-current"), { getHostLock: async () => "connection" });
+    current.connections.set("connection", { ...connection, protocolVersion: 2 });
+    await expect(
+      handleHostMessageDurable(
+        current,
+        terminal("authenticated-current", "completed", { result }),
+        "connection",
+        false,
+        false,
+        3,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("authenticated-current")?.result).toEqual(result);
+
+    const legacy = run(row("authenticated-legacy"), { getHostLock: async () => "connection" });
+    legacy.connections.set("connection", { ...connection, protocolVersion: 3 });
+    await expect(
+      handleHostMessageDurable(
+        legacy,
+        terminal("authenticated-legacy", "completed", { result }),
+        "connection",
+        false,
+        false,
+        2,
+      ),
+    ).resolves.toEqual({ ok: false, error: "session result requires host protocol 3" });
+    expect(legacy.sessions.get("authenticated-legacy")?.status).toBe("running");
+  });
+
+  it("rejects a result when the authenticated connection has no cached protocol row", async () => {
+    const uncached = run(row("uncached"));
+
+    await expect(
+      handleHostMessageDurable(
+        uncached,
+        terminal("uncached", "completed", {
+          result: { summary: "done", summarySource: "harness" },
+        }),
+        "missing-connection",
+      ),
+    ).resolves.toEqual({ ok: false, error: "session result requires host protocol 3" });
+    expect(uncached.sessions.get("uncached")?.status).toBe("running");
+  });
+
   it("finishes completion, usage-limit retry, and cancelled late release", async () => {
     const worktree: WorktreeRecord = {
       id: "w",
