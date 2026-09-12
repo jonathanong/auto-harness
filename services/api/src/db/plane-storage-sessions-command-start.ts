@@ -59,7 +59,7 @@ export async function authorizePrimaryCommandStart(
     return true;
   } catch (err) {
     if (!isConditionalTransactionFailed(err)) throw err;
-    const current = await getSession(ctx, opts.sessionId);
+    const current = await getSession(ctx, opts.sessionId, true);
     return Boolean(
       current?.status === "running" &&
       current.worktreeId === opts.worktreeId &&
