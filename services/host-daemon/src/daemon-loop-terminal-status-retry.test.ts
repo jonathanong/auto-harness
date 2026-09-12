@@ -58,6 +58,66 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("drops an older terminal report when its replacement assignment arrives before the status ACK", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      let start!: () => void;
+      const started = new Promise<void>((resolve) => {
+        start = resolve;
+      });
+      let finish!: () => void;
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      (
+        loop as unknown as {
+          runner: {
+            run(): Promise<{ status: "completed"; exitCode: number; logs: [] }>;
+          };
+        }
+      ).runner = {
+        async run() {
+          start();
+          await finished;
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
+      await loop.start();
+
+      const oldStatusController = new AbortController();
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-old", {
+        message: { ...statusMessage, attemptId: "attempt-old" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: oldStatusController,
+      });
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "done-session",
+        attemptId: "attempt-replacement",
+        repositoryId: "demo",
+        prompt: "hello",
+        resolvedArgv: ["printf", "%s", "hello"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+
+      await started;
+      expect(loop.inflightCount()).toBe(1);
+      expect(pendingTerminalStatusOf(loop).has("done-session\0attempt-old")).toBe(false);
+      expect(oldStatusController.signal.aborted).toBe(true);
+
+      finish();
+      await loop.waitForIdle();
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("does not duplicate a retry while a prior attempt is still undelivered, and never blocks the keepalive frame on it", async () => {
     const { config, cleanup } = await makeRepo();
     try {

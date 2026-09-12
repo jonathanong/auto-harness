@@ -553,6 +553,21 @@ export class DaemonLoop {
     }
   }
 
+  /**
+   * A fresh assignment is durable proof that any terminal report for an older
+   * attempt is obsolete. The control plane can dispatch that replacement while
+   * it is still writing the old report's status acknowledgement, so retaining
+   * the old report here would make the daemon own two attempts for one logical
+   * session in that delivery interval.
+   */
+  private discardSupersededTerminalStatuses(sessionId: string): void {
+    for (const [key, pending] of this.pendingTerminalStatus) {
+      if (pending.message.sessionId !== sessionId) continue;
+      pending.controller.abort();
+      this.pendingTerminalStatus.delete(key);
+    }
+  }
+
   private async waitForAbortedAttempts(sessionId: string, attemptId: string): Promise<void> {
     const pending = [...this.inflight.values()].filter(
       (entry) =>
@@ -834,6 +849,7 @@ export class DaemonLoop {
       acknowledged: false,
     };
     this.inflight.set(key, entry);
+    this.discardSupersededTerminalStatuses(msg.sessionId);
     const work = this.runAssign(msg, controller.signal);
     entry.work = work;
     try {
