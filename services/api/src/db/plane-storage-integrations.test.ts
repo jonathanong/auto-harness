@@ -28,6 +28,37 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
 }
 
 describe("Slack integration storage failures", () => {
+  it("adds the installation identity to the conditional update when supplied", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(putSlackIntegration(ctx(send), record, 1, "installation-1")).resolves.toBe(true);
+    const command = send.mock.calls[0]?.[0] as {
+      input: {
+        ConditionExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    };
+    expect(command.input.ConditionExpression).toContain("installationId = :expectedInstallationId");
+    expect(command.input.ExpressionAttributeValues).toMatchObject({
+      ":expectedInstallationId": "installation-1",
+    });
+  });
+
+  it("can fence an identity-less legacy row explicitly", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(putSlackIntegration(ctx(send), record, 1, null)).resolves.toBe(true);
+    const command = send.mock.calls[0]?.[0] as { input: { ConditionExpression?: string } };
+    expect(command.input.ConditionExpression).toContain("attribute_not_exists(installationId)");
+  });
+
+  it("keeps ordinary version fencing independent of installation identity", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(putSlackIntegration(ctx(send), record, 1)).resolves.toBe(true);
+    const command = send.mock.calls[0]?.[0] as { input: { ConditionExpression?: string } };
+    expect(command.input.ConditionExpression).toBe(
+      "attribute_exists(id) AND version = :expectedVersion",
+    );
+  });
+
   it("propagates non-conditional put and delete failures", async () => {
     const failure = new Error("integrations unavailable");
     await expect(

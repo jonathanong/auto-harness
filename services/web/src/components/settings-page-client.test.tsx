@@ -2,6 +2,7 @@
 
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { dismissToast } from "@auto-harness/ui";
 
 import {
   createRequestFake,
@@ -64,6 +65,35 @@ describe("SettingsPageClient", () => {
     const configured = mountForm(<SettingsPageClient />);
     await settle();
     expect(field(configured.container, "form-slack-replace")).toBeTruthy();
+  });
+
+  it("shows bounded OAuth results and strips unknown callback values", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    window.history.replaceState(null, "", "/settings/slack?slackOAuth=success");
+    const connected = mountForm(<SettingsPageClient />, { pathname: "/settings/slack" });
+    await settle();
+    expect(field(document, "slack-oauth-status").textContent).toContain("Slack connected");
+    expect(window.location.search).toBe("");
+    connected.unmount();
+    dismissToast();
+
+    window.history.replaceState(null, "", "/settings/slack?slackOAuth=unexpected");
+    const unknown = mountForm(<SettingsPageClient />, { pathname: "/settings/slack" });
+    await settle();
+    expect(window.location.search).toBe("");
+    expect(document.body.querySelector('[data-pw="slack-oauth-status"]')).toBeNull();
+    unknown.unmount();
+  });
+
+  it("preserves unrelated settings queries and renders OAuth failure status", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    window.history.replaceState(null, "", "/settings/slack?tab=slack&slackOAuth=error");
+    const failed = mountForm(<SettingsPageClient />, { pathname: "/settings/slack" });
+    await settle();
+    expect(field(document, "slack-oauth-status").textContent).toContain("could not complete");
+    expect(window.location.search).toBe("?tab=slack");
+    failed.unmount();
+    dismissToast();
   });
 
   it("renders forbidden and request-error states", async () => {

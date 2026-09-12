@@ -101,7 +101,8 @@ services/cdk/
 
 The CDK app emits a persistence foundation and separately deployable runtime and
 web stacks. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
-Lambda adapters, and a one-minute EventBridge scheduler rule. The lifecycle CLI
+application Lambda adapters, a separate CloudFront-ingress authorizer Lambda,
+and a one-minute EventBridge scheduler rule. The lifecycle CLI
 exposes deploy, update, and teardown commands; see [deploy-aws.md](deploy-aws.md).
 
 CloudFront cache behaviors on the web stack:
@@ -112,6 +113,14 @@ CloudFront cache behaviors on the web stack:
 | `*` (default)       | Next.js Lambda Function URL | `CACHING_DISABLED` — cookie-authenticated HTML/RSC                |
 | `/api/*`, `/health` | API Gateway HTTP            | `CACHING_DISABLED`                                                |
 | `/ws*`              | API Gateway WebSocket       | `CACHING_DISABLED`                                                |
+
+The HTTP API accepts CloudFront traffic through a generated custom origin header
+validated by a Lambda authorizer before the REST handler runs. The `/api/*` and
+`/health` behaviors use the API-Gateway-safe managed `AllViewerExceptHostHeader`
+origin request policy. It includes CloudFront's generated viewer-location headers,
+so the handler can use `CloudFront-Viewer-Address` for per-viewer rate limiting. This avoids trusting a
+caller-supplied forwarding header while keeping the ingress credential out of
+application-Lambda configuration and CloudFront Function source.
 
 Hashed filenames are new cache keys after a deploy, so the web stack does not
 invalidate CloudFront. The Next.js origin also sends
@@ -208,22 +217,22 @@ provision `SessionCancelRedeliveries` before an API/Cron deploy that calls
 
 ### Handler inventory
 
-| Group         | Triggers                                              | Responsibility                                                                                  |
-| ------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Auth          | REST `/auth/*`                                        | Login/logout, users, service accounts, password change, `/auth/me`                              |
-| Sessions      | REST `/sessions/*`                                    | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler                  |
-| Repositories  | REST `/repositories/*`                                | CRUD repos                                                                                      |
-| Worktrees     | REST `/worktrees/*`                                   | Read models (written by agents)                                                                 |
-| Hosts         | REST `/hosts`, `/hosts/drain`, `/hosts/:id/inventory` | Connected hosts, drain state, and durable inventory                                             |
-| Schedules     | REST `/schedules/*`                                   | CRUD + manual trigger                                                                           |
-| Integrations  | REST `/integrations/*`                                | Slack config (KMS encrypt). GET may decrypt to probe `deliveryAvailable`.                       |
-| Notifications | Local worker + cron Lambda outbox drain               | Reconcile bounded session snapshots; claim `NotificationDeliveries` via HTTP                    |
-| WS Connect    | `$connect`                                            | Validate token; store connection                                                                |
-| WS Disconnect | `$disconnect`                                         | Cleanup + agent offline handling                                                                |
-| WS Message    | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                                    |
-| Cron          | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox |
-| Scheduler     | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                                       |
-| Archival      | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                                 |
+| Group         | Triggers                                              | Responsibility                                                                                                                                |
+| ------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth          | REST `/auth/*`                                        | Login/logout, users, service accounts, password change, `/auth/me`                                                                            |
+| Sessions      | REST `/sessions/*`                                    | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler                                                                |
+| Repositories  | REST `/repositories/*`                                | CRUD repos                                                                                                                                    |
+| Worktrees     | REST `/worktrees/*`                                   | Read models (written by agents)                                                                                                               |
+| Hosts         | REST `/hosts`, `/hosts/drain`, `/hosts/:id/inventory` | Connected hosts, drain state, and durable inventory                                                                                           |
+| Schedules     | REST `/schedules/*`                                   | CRUD + manual trigger                                                                                                                         |
+| Integrations  | REST `/integrations/*`                                | Slack manual/OAuth config (KMS encrypt), OAuth callback, and signature-verified inbound events. GET may decrypt to probe `deliveryAvailable`. |
+| Notifications | Local worker + cron Lambda outbox drain               | Reconcile bounded session snapshots; claim `NotificationDeliveries` via HTTP                                                                  |
+| WS Connect    | `$connect`                                            | Validate token; store connection                                                                                                              |
+| WS Disconnect | `$disconnect`                                         | Cleanup + agent offline handling                                                                                                              |
+| WS Message    | `$default`                                            | Agent/client messages; log writes; status updates; subscribe                                                                                  |
+| Cron          | EventBridge rate(1 minute)                            | Due schedules → sessions; archive retry; stale-host/ack sweeps; queued assignment; Slack outbox                                               |
+| Scheduler     | Invoked in-process or as shared service from above    | Match queue → worktrees; `session:assign`                                                                                                     |
+| Archival      | On session terminal status plus bounded Cron retry    | DynamoDB SessionLogs → S3 JSONL                                                                                                               |
 
 Handlers share:
 
@@ -250,6 +259,7 @@ need a catalog page still Scan or Query at request time, not at init.
 | `HARNESS_ADMINS_SSM_PARAM`         | ✓         | SSM SecureString parameter _name_ holding the base64 JSON admin bootstrap list — never the value itself; fetched at cold start ([deploy-aws.md](deploy-aws.md)) |
 | `HARNESS_SESSION_SECRET_SSM_PARAM` | ✓         | SSM SecureString parameter _name_ holding the UI session-cookie JWT signing secret                                                                              |
 | `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable list cursors                                                                           |
+| `HARNESS_SLACK_APP_SSM_PARAM`      | optional  | SSM SecureString parameter _name_ holding OAuth app credentials JSON; readable only by REST, not required for manual Slack configuration                        |
 | `TABLE_*` or single table prefix   | ✓         | DynamoDB table names (from CDK)                                                                                                                                 |
 | `ARCHIVE_BUCKET`                   | REST/Cron | S3 bucket name. WebSocket omits this so it cannot write archives                                                                                                |
 | `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |

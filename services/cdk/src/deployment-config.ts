@@ -17,6 +17,7 @@ export type DeploymentConfig = {
   removalPolicy: "destroy" | "retain";
   runtimeStackName: string;
   sessionSecretSsmParam: string;
+  slackAppSsmParam: string;
   tablePrefix: string;
   teardownConfirmation?: string;
   webSentryDsnClient?: string;
@@ -79,6 +80,7 @@ export function deploymentConfig(
     runtimeStackName: `AutoHarness-${environment}-Runtime`,
     sessionSecretSsmParam:
       env.HARNESS_SESSION_SECRET_SSM_PARAM?.trim() || `${base}/harness-session-secret`,
+    slackAppSsmParam: env.HARNESS_SLACK_APP_SSM_PARAM?.trim() || `${base}/slack-app`,
     tablePrefix: `AutoHarness-${environment}`,
     webStackName: `AutoHarness-${environment}-Web`,
     ...(env.AWS_ACCOUNT_ID?.trim() ? { accountId: env.AWS_ACCOUNT_ID.trim() } : {}),

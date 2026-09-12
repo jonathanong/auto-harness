@@ -23,7 +23,11 @@ export function requiredCapability(
   pathname: string,
 ): Capability | "authenticated" | null {
   const write = !SAFE_METHODS.has(method);
-  if (pathname === "/api/v1/integrations/slack") return "integrations:write";
+  if (
+    pathname === "/api/v1/integrations/slack" ||
+    pathname === "/api/v1/integrations/slack/oauth/start"
+  )
+    return "integrations:write";
   if (
     matchesRoutePrefix(pathname, "/api/v1/auth/users") ||
     matchesRoutePrefix(pathname, "/api/v1/auth/service-accounts")

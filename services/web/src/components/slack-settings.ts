@@ -1,11 +1,31 @@
 import {
   normalizeSlackNotifications,
-  type PublicSlackIntegration,
+  type PublicSlackIntegration as SharedPublicSlackIntegration,
   type SlackNotifications,
 } from "@auto-harness/shared";
 
-export type { PublicSlackIntegration, SlackNotifications } from "@auto-harness/shared";
+export type { SlackNotifications } from "@auto-harness/shared";
 export { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
+
+/** Public installation metadata is deliberately optional for legacy records. */
+type SlackInstallationMetadata = {
+  installationMethod?: "manual" | "oauth";
+  workspaceId?: string;
+  workspaceName?: string;
+  appId?: string;
+  botUserId?: string;
+  grantedScopes?: string[];
+  inboundAvailable?: boolean;
+};
+
+export type SlackIntegration = Omit<
+  SharedPublicSlackIntegration,
+  "installationMethod" | "inboundAvailable" | "grantedScopes"
+> &
+  SlackInstallationMetadata;
+
+/** Web compatibility type: pre-OAuth API responses may omit new metadata. */
+export type PublicSlackIntegration = SlackIntegration;
 
 export type SlackFormValues = {
   botToken: string;
@@ -31,13 +51,21 @@ export function validateSlackForm(values: SlackFormValues): string | null {
   if (!/^xoxb-[A-Za-z0-9-]{10,}$/.test(botToken)) {
     return "Bot token must be a valid Slack bot token starting with xoxb-.";
   }
+  const secretError = validateSlackSettings(values);
+  if (secretError) return secretError;
+  if (values.signingSecret && !/^[\x21-\x7e]{16,128}$/.test(values.signingSecret)) {
+    return "Signing secret must contain 16 to 128 non-space visible characters.";
+  }
+  return null;
+}
+
+export function validateSlackSettings(
+  values: Pick<SlackFormValues, "defaultChannel">,
+): string | null {
   const channel = values.defaultChannel.trim();
   if (!channel) return "Default channel is required.";
   if (!/^#[a-z0-9][a-z0-9_-]{0,79}$/.test(channel) && !/^[CGD][A-Z0-9]{8,}$/.test(channel)) {
     return "Default channel must be a channel name such as #harness or a channel ID such as C0123ABCDE.";
-  }
-  if (values.signingSecret && !/^[a-fA-F0-9]{32,128}$/.test(values.signingSecret)) {
-    return "Signing secret must contain 32–128 hexadecimal characters.";
   }
   return null;
 }
@@ -52,7 +80,36 @@ export function buildSlackConfigBody(values: SlackFormValues): Record<string, un
   };
 }
 
-export function slackDeliveryWarning(config?: PublicSlackIntegration): string | null {
+export function buildSlackSettingsBody(
+  values: SlackFormValues,
+  expectedVersion: number,
+): Record<string, unknown> {
+  return {
+    expectedVersion,
+    defaultChannel: values.defaultChannel.trim(),
+    enabled: values.enabled,
+    notifications: { ...values.notifications },
+  };
+}
+
+export function slackInstallationMethod(config?: SlackIntegration): "manual" | "oauth" {
+  return config?.installationMethod === "oauth" ? "oauth" : "manual";
+}
+
+export function slackOAuthSettings(config?: SlackIntegration): Record<string, unknown> {
+  const values = initialSlackFormValues(config);
+  return {
+    expectedVersion: typeof config?.version === "number" ? config.version : null,
+    ...(typeof config?.installationId === "string"
+      ? { expectedInstallationId: config.installationId }
+      : {}),
+    defaultChannel: values.defaultChannel.trim(),
+    enabled: values.enabled,
+    notifications: { ...values.notifications },
+  };
+}
+
+export function slackDeliveryWarning(config?: SlackIntegration): string | null {
   if (!config) {
     return "Configuration is stored encrypted. Messages are sent only when outbound delivery is available in this environment.";
   }
@@ -63,7 +120,7 @@ export function slackDeliveryWarning(config?: PublicSlackIntegration): string | 
   return "Slack is configured but delivery is unavailable. Lifecycle messages are not sent until this environment can decrypt the bot token and run the outbound worker.";
 }
 
-export function slackSaveSuccessMessage(config: PublicSlackIntegration): string {
+export function slackSaveSuccessMessage(config: SlackIntegration): string {
   if (!config.enabled) {
     return "Slack configuration saved. The integration is disabled; lifecycle messages will not be delivered until it is enabled.";
   }
@@ -72,7 +129,7 @@ export function slackSaveSuccessMessage(config: PublicSlackIntegration): string 
     : "Slack configuration saved. Slack is configured but delivery is unavailable.";
 }
 
-export function initialSlackFormValues(config?: PublicSlackIntegration): SlackFormValues {
+export function initialSlackFormValues(config?: SlackIntegration): SlackFormValues {
   return {
     botToken: "",
     signingSecret: "",

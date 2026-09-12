@@ -55,6 +55,7 @@ export async function invokeHandler(
   path: string,
   body?: unknown,
   headers: Record<string, string> = {},
+  remoteAddress?: string,
 ): Promise<{
   status: number;
   json: unknown;
@@ -67,6 +68,7 @@ export async function invokeHandler(
     method,
     url: path,
     headers,
+    ...(remoteAddress === undefined ? {} : { socket: { remoteAddress } }),
     on(event: string, cb: (...args: unknown[]) => void) {
       if (event === "data" && body !== undefined) {
         cb(Buffer.from(JSON.stringify(body)));
@@ -74,6 +76,9 @@ export async function invokeHandler(
       if (event === "end") {
         cb();
       }
+      return req;
+    },
+    resume() {
       return req;
     },
   };

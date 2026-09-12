@@ -6,7 +6,7 @@ import {
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { GetParameterCommand, ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
 import {
   HOST_PROTOCOL_VERSION,
   principalHas,
@@ -20,6 +20,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
+import { ingressAuthorizer } from "./cloudfront-ingress-authorizer.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
 import {
   emitAssignmentFailure,
@@ -40,6 +41,10 @@ import {
   type HttpApiResponse,
 } from "./lambda-http-adapter.ts";
 import { captureSentryException, flushSentryIfCaptured, initApiSentry } from "./sentry.ts";
+import { parseSlackAppCredentials } from "./slack-app-config.ts";
+import type { SlackAppCredentials, SlackOAuthClient } from "./slack-oauth-types.ts";
+import type { SlackIdentityClient } from "./slack-oauth-types.ts";
+import { createSlackIdentityClient } from "./slack-identity-client.ts";
 
 type HeaderMap = Record<string, string | undefined>;
 
@@ -83,6 +88,9 @@ export type LambdaRuntimeDependencies = {
   management?: ManagementClient;
   refreshAuth?: () => Promise<void>;
   ssmClient?: SsmClient;
+  slackAppCredentials?: SlackAppCredentials;
+  slackOAuthClient?: SlackOAuthClient;
+  slackIdentityClient?: SlackIdentityClient;
   /** AWS REST uses Event-invoke of the cron function; tests inject a spy. */
   invokeAssignment?: () => Promise<void>;
 };
@@ -154,6 +162,31 @@ export async function fetchPublicBaseUrl(client?: SsmClient): Promise<string | u
     return response.Parameter?.Value;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Optional environment capability: a missing parameter or malformed app config disables
+ * inbound/OAuth only. A configured parameter that SSM/KMS cannot read rejects construction
+ * instead: the handler clears its failed runtime promise, so a later invocation retries rather
+ * than treating a transient infrastructure failure as absent Slack configuration for this
+ * container's lifetime.
+ */
+export async function loadSlackAppCredentials(
+  client?: SsmClient,
+): Promise<SlackAppCredentials | undefined> {
+  const local = parseSlackAppCredentials(process.env.HARNESS_SLACK_APP);
+  if (local) return local;
+  const name = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+  if (!name) return undefined;
+  try {
+    const response = await (client ?? new SSMClient({})).send(
+      new GetParameterCommand({ Name: name, WithDecryption: true }),
+    );
+    return parseSlackAppCredentials(response.Parameter?.Value);
+  } catch (error) {
+    if (error instanceof ParameterNotFound) return undefined;
+    throw error;
   }
 }
 
@@ -319,6 +352,13 @@ export async function createLambdaRuntime(
   const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
+  const slackAppCredentials =
+    dependencies.slackAppCredentials ??
+    (dependencies.created ? undefined : await loadSlackAppCredentials(dependencies.ssmClient));
+  const slackIdentityClient =
+    dependencies.slackIdentityClient ??
+    dependencies.created?.plane.state.slackIdentityClient ??
+    (dependencies.slackOAuthClient ? undefined : createSlackIdentityClient());
   /* v8 ignore next 9 -- @preserve production AWS client construction is an SDK boundary */
   const created =
     dependencies.created ??
@@ -381,6 +421,13 @@ export async function createLambdaRuntime(
       return resolved;
     },
   });
+  let slackOAuthPublicBaseUrl = fetchedPublicBaseUrl;
+  const resolveSlackOAuthPublicBaseUrl = async (): Promise<string | undefined> => {
+    if (slackOAuthPublicBaseUrl !== undefined) return slackOAuthPublicBaseUrl;
+    const resolved = await fetchPublicBaseUrl(dependencies.ssmClient);
+    if (resolved !== undefined) slackOAuthPublicBaseUrl = resolved;
+    return resolved;
+  };
   const flushPendingWrites = async (): Promise<void> => {
     try {
       await created.plane.settleStorage();
@@ -443,7 +490,15 @@ export async function createLambdaRuntime(
       }),
     );
   };
-  const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
+  const app = createLocalApp({
+    authService: auth,
+    plane: created.plane,
+    useDynamo: false,
+    ...(slackAppCredentials ? { slackAppCredentials } : {}),
+    ...(dependencies.created ? {} : { resolveSlackOAuthPublicBaseUrl }),
+    ...(dependencies.slackOAuthClient ? { slackOAuthClient: dependencies.slackOAuthClient } : {}),
+    ...(slackIdentityClient ? { slackIdentityClient } : {}),
+  });
   const slackWorker = createSlackLifecycleWorker(created.plane, {
     worker: {
       // 4 * 10s Slack timeout stays inside the 60s cron budget after scheduler work.
@@ -788,4 +843,5 @@ export function createLambdaHandlers(
   };
 }
 
+export { ingressAuthorizer };
 export const { cron, rest, websocket } = createLambdaHandlers();

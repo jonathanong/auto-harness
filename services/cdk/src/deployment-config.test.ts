@@ -13,6 +13,7 @@ describe("deploymentConfig", () => {
       adminsSsmParam: "/auto-harness/production/harness-admins",
       foundationStackName: "AutoHarness-production-Foundation",
       publicBaseUrlSsmParam: "/auto-harness/production/public-base-url",
+      slackAppSsmParam: "/auto-harness/production/slack-app",
       removalPolicy: "retain",
       runtimeStackName: "AutoHarness-production-Runtime",
       tablePrefix: "AutoHarness-production",
@@ -109,6 +110,7 @@ describe("deploymentConfig", () => {
         HARNESS_DEPLOY_ENVIRONMENT: "review",
         HARNESS_PUBLIC_BASE_URL_SSM_PARAM: "/custom/public-base-url",
         HARNESS_SESSION_SECRET_SSM_PARAM: "/custom/session",
+        HARNESS_SLACK_APP_SSM_PARAM: "/custom/slack-app",
       }),
     ).toMatchObject({
       accountId: "123456789012",
@@ -116,6 +118,7 @@ describe("deploymentConfig", () => {
       cursorSecretSsmParam: "/custom/cursor",
       publicBaseUrlSsmParam: "/custom/public-base-url",
       sessionSecretSsmParam: "/custom/session",
+      slackAppSsmParam: "/custom/slack-app",
       teardownConfirmation: "review",
     });
   });

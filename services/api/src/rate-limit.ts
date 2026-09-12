@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 
-export type RateLimitBucket = "login" | "read" | "mutation" | "scheduler" | "host";
+export type RateLimitBucket =
+  | "login"
+  | "read"
+  | "mutation"
+  | "scheduler"
+  | "host"
+  | "publicIngress";
 
 type RateLimitLimits = Record<RateLimitBucket, number>;
 
@@ -53,6 +59,8 @@ export const DEFAULT_RATE_LIMIT_CONFIG: RateLimitConfig = {
     // Host REST traffic is mostly inventory and control messages. WebSocket
     // frames have a separate per-connection limit in ws-hub.ts.
     host: 600,
+    // Public webhook and OAuth callback routes have no authenticated actor.
+    publicIngress: 60,
   },
   maxEntries: 10_000,
   failMode: "closed",
@@ -78,6 +86,10 @@ export function rateLimitConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Ra
       mutation: positiveInt(env.HARNESS_RATE_LIMIT_MUTATION, defaults.limits.mutation),
       scheduler: positiveInt(env.HARNESS_RATE_LIMIT_SCHEDULER, defaults.limits.scheduler),
       host: positiveInt(env.HARNESS_RATE_LIMIT_HOST, defaults.limits.host),
+      publicIngress: positiveInt(
+        env.HARNESS_RATE_LIMIT_PUBLIC_INGRESS,
+        defaults.limits.publicIngress,
+      ),
     },
     maxEntries: positiveInt(env.HARNESS_RATE_LIMIT_MAX_ENTRIES, defaults.maxEntries),
     failMode: env.HARNESS_RATE_LIMIT_FAIL_MODE === "open" ? "open" : "closed",

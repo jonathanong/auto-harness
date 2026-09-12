@@ -10,11 +10,15 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
+import { cloudFrontIngressSecret } from "./cloudfront-ingress-secret.ts";
 import type { FoundationResources } from "./foundation-stack.ts";
 import { grantRuntimeLambdaAccess } from "./lambda-iam.ts";
 import { grantPublicBaseUrlAccess, publicBaseUrlParam } from "./public-base-url-param.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
+import { addRuntimeIngressAuthorizer } from "./runtime-ingress-authorizer.ts";
 import { addRuntimeObservability } from "./runtime-observability.ts";
+import type { RuntimeResources } from "./runtime-resources.ts";
+import { grantSlackAppAccess, slackAppParam } from "./slack-app-param.ts";
 
 type RuntimeStackProps = StackProps & {
   foundation: FoundationResources;
@@ -24,19 +28,7 @@ type RuntimeStackProps = StackProps & {
   sentryDsn?: string;
 };
 
-type RuntimeResources = {
-  cronFunction: nodejs.NodejsFunction;
-  cronRule: events.Rule;
-  httpApi: apigatewayv2.CfnApi;
-  restFunction: nodejs.NodejsFunction;
-  websocketApi: apigatewayv2.CfnApi;
-  websocketFunction: nodejs.NodejsFunction;
-  restApiUrl: string;
-  websocketUrl: string;
-};
-
 const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
-
 /**
  * RETAINed, not DESTROYed, matching runtime-observability.ts's accessLogGroup: deleting or
  * renaming a Lambda function's construct would otherwise delete up to 14 days of retained
@@ -58,6 +50,8 @@ export class AutoHarnessRuntimeStack extends Stack {
 
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
     const publicBaseUrl = publicBaseUrlParam(this);
+    const slackApp = slackAppParam(this);
+    const ingressSecret = cloudFrontIngressSecret(this);
     const commonEnvironment = {
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
@@ -85,6 +79,7 @@ export class AutoHarnessRuntimeStack extends Stack {
         // GET /hosts/:id/inventory is a GetItem. Catalog Scans on REST cold start
         // 500 the daemon poll behind API Gateway's opaque envelope (#455).
         HARNESS_HYDRATE_CATALOGS: "false",
+        HARNESS_SLACK_APP_SSM_PARAM: slackApp.param.valueAsString,
       },
       handler: "rest",
       logGroup: functionLogGroup(this, "RestFunction"),
@@ -113,6 +108,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
       grantPublicBaseUrlAccess(fn, publicBaseUrl);
     }
+    grantSlackAppAccess(restFunction, slackApp);
     // Browser REST enqueues assignment on a separate invocation (Invariant 12).
     cronFunction.grantInvoke(restFunction);
     restFunction.addEnvironment("ASSIGNMENT_FUNCTION_NAME", cronFunction.functionName);
@@ -121,10 +117,18 @@ export class AutoHarnessRuntimeStack extends Stack {
       name: `${this.stackName}-http`,
       protocolType: "HTTP",
     });
+    const ingressAuthorizer = addRuntimeIngressAuthorizer({
+      api: httpApi,
+      functionLogGroup: functionLogGroup(this, "IngressAuthorizerFunction"),
+      functionProps,
+      ingressSecret,
+      scope: this,
+    });
     const restIntegration = addLambdaIntegration(this, "Rest", httpApi, restFunction, "2.0");
     const restRoute = new apigatewayv2.CfnRoute(this, "RestDefaultRoute", {
       apiId: httpApi.ref,
-      authorizationType: "NONE",
+      authorizationType: "CUSTOM",
+      authorizerId: ingressAuthorizer.ref,
       routeKey: "$default",
       target: Fn.join("/", ["integrations", restIntegration.ref]),
     });
@@ -202,14 +206,13 @@ export class AutoHarnessRuntimeStack extends Stack {
     const restApiUrl = httpApi.attrApiEndpoint;
     const websocketUrl = Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]);
     void new CfnOutput(this, "RestApiUrl", { value: restApiUrl });
-    void new CfnOutput(this, "WebSocketUrl", {
-      value: websocketUrl,
-    });
+    void new CfnOutput(this, "WebSocketUrl", { value: websocketUrl });
     void new CfnOutput(this, "IntegrationKeyArn", {
       value: props.foundation.integrationKey.keyArn,
     });
 
     this.resources = {
+      cloudFrontIngressSecret: ingressSecret.secretValue,
       cronFunction,
       cronRule,
       httpApi,

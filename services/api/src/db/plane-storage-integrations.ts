@@ -17,19 +17,38 @@ export async function putSlackIntegration(
   ctx: PlaneStorageCtx,
   record: SlackIntegrationRecord,
   expectedVersion: number | null,
+  expectedInstallationId?: string | null,
 ): Promise<boolean> {
   try {
+    const condition =
+      expectedVersion === null
+        ? "attribute_not_exists(id)"
+        : [
+            "attribute_exists(id)",
+            "version = :expectedVersion",
+            ...(expectedInstallationId === undefined
+              ? []
+              : [
+                  expectedInstallationId === null
+                    ? "attribute_not_exists(installationId)"
+                    : "installationId = :expectedInstallationId",
+                ]),
+          ].join(" AND ");
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.integrations,
         Item: record,
-        ConditionExpression:
-          expectedVersion === null
-            ? "attribute_not_exists(id)"
-            : "attribute_exists(id) AND version = :expectedVersion",
+        ConditionExpression: condition,
         ...(expectedVersion === null
           ? {}
-          : { ExpressionAttributeValues: { ":expectedVersion": expectedVersion } }),
+          : {
+              ExpressionAttributeValues: {
+                ":expectedVersion": expectedVersion,
+                ...(expectedInstallationId === undefined || expectedInstallationId === null
+                  ? {}
+                  : { ":expectedInstallationId": expectedInstallationId }),
+              },
+            }),
       }),
     );
     return true;

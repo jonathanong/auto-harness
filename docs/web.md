@@ -552,17 +552,23 @@ management chrome.
 
 ### Slack configuration
 
-Settings displays only redacted Slack state: whether each secret is configured,
-the default channel, enabled state, and notification toggles (session lifecycle
-plus Host Offline for stale/offline hosts). Bot tokens and
-signing secrets are write-only password inputs with no initial value and are
-cleared after successful create or complete replacement. Replacement always
-requires the bot token again; the UI cannot recover or preserve a prior secret.
+Settings displays only redacted Slack state: installation method and optional
+workspace/app/bot-user/scope metadata, whether each secret is configured, the default channel, enabled state, notification
+toggles (session lifecycle plus Host Offline), delivery availability, and inbound availability.
+Legacy rows without installation metadata are shown as manual. Bot tokens and signing secrets are
+write-only password inputs with no initial value and are cleared after successful create or
+replacement.
 
-The page supports create, complete replacement, and explicitly confirmed
-delete. A persistent warning explains that configuration alone does not send
-Slack messages; OAuth, delivery, inbound verification, and session threads are
-separate capabilities and are not enabled by this UI.
+The page presents equally visible **Connect/Reconnect with Slack** (OAuth) and manual bot-token
+configuration paths. OAuth-managed installations save ordinary channel, enabled, and notification
+changes with `PATCH`, so they do not require reinstalling. Manual configuration remains available
+for operators who manage credentials themselves; its complete replacement uses `PUT`. Both paths
+support explicitly confirmed delete. OAuth callback results are bounded, user-safe status toasts,
+and unknown result values are ignored and removed from the URL. OAuth redirects arrive at
+`/settings?slackOAuth=success|error`; the settings index forwards them to `/settings/slack` for
+display. A warning distinguishes stored
+configuration from actual outbound worker availability. Inbound Slack events are only accepted
+and durably held as pending; this UI does not create sessions from them.
 
 ### Service Accounts
 

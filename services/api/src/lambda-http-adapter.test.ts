@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
 import { ControlPlane } from "./control-plane.ts";
 import { queueWrite } from "./control-plane-state.ts";
@@ -43,6 +44,71 @@ describe("Lambda HTTP adapter", () => {
       management: { send: async () => ({}) },
     });
     await expect(runtime.rest({})).resolves.toMatchObject({ statusCode: 404 });
+  });
+
+  it("preserves decoded base64 Slack event bytes for signature verification", async () => {
+    const secret = "slack-signing_secret-123";
+    const now = "2026-09-12T00:00:00.000Z";
+    const plane = new ControlPlane({
+      now: () => now,
+      secretEncryptor: { encrypt: async (value) => value, decrypt: async (value) => value },
+    });
+    plane.state.slackIntegration = {
+      id: "slack",
+      type: "slack",
+      encryptedConfig: JSON.stringify({ botToken: "xoxb-1234567890-abcdefghij" }),
+      defaultChannel: "#harness",
+      enabled: true,
+      notifications: {
+        onSessionCreated: true,
+        onSessionStarted: true,
+        onSessionCompleted: true,
+        onSessionFailed: true,
+        onSessionCancelled: true,
+        onScheduleCompleted: false,
+        onHostOffline: true,
+      },
+      signingSecretConfigured: false,
+      installationMethod: "oauth",
+      workspaceId: "T1",
+      appId: "A1",
+      grantedScopes: [],
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    let markAuditStarted!: () => void;
+    const auditStarted = new Promise<void>((resolve) => {
+      markAuditStarted = resolve;
+    });
+    plane.appendAuditLog = async () => {
+      markAuditStarted();
+      return new Promise<never>(() => {});
+    };
+    const body = JSON.stringify({
+      type: "event_callback",
+      team_id: "T1",
+      api_app_id: "A1",
+      event_id: "Ev1",
+      event: { type: "app_mention", channel: "C1", user: "U1", text: "hello", ts: "1" },
+    });
+    const timestamp = String(Math.floor(Date.parse(now) / 1000));
+    const signature = `v0=${createHmac("sha256", secret).update(`v0:${timestamp}:${body}`).digest("hex")}`;
+    const runtime = await createLambdaRuntime({
+      auth: {} as never,
+      created: { plane, storage: {} } as never,
+      management: { send: async () => ({}) },
+      slackAppCredentials: { clientId: "client", clientSecret: "secret", signingSecret: secret },
+    });
+    const response = runtime.rest({
+      body: Buffer.from(body).toString("base64"),
+      isBase64Encoded: true,
+      rawPath: "/api/v1/integrations/slack/events",
+      headers: { "x-slack-request-timestamp": timestamp, "x-slack-signature": signature },
+      requestContext: { http: { method: "POST" } },
+    });
+    await auditStarted;
+    await expect(response).resolves.toMatchObject({ statusCode: 200 });
   });
 
   it("logs the adapter error and returns a generic REST 500", async () => {

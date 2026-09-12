@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- destructive purge cases share one command harness. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { DeploymentConfig } from "./deployment-config.ts";
@@ -19,6 +20,7 @@ const config: DeploymentConfig = {
   removalPolicy: "retain",
   runtimeStackName: "AutoHarness-review-Runtime",
   sessionSecretSsmParam: "/auto-harness/review/harness-session-secret",
+  slackAppSsmParam: "/auto-harness/review/slack-app",
   tablePrefix: "AutoHarness-review",
   webStackName: "AutoHarness-review-Web",
 };
@@ -185,18 +187,19 @@ describe("deleteSecretParameters", () => {
     }));
     const deps = dependencies(query);
     await deleteSecretParameters(config, deps);
-    expect(query).toHaveBeenCalledWith(
-      "aws",
-      expect.arrayContaining([
-        "ssm",
-        "delete-parameters",
-        "--names",
-        "/auto-harness/review/harness-admins",
-        "/auto-harness/review/harness-cursor-secret",
-        "/auto-harness/review/harness-session-secret",
-        "/auto-harness/review/public-base-url",
-      ]),
-    );
+    expect(query).toHaveBeenCalledWith("aws", [
+      "ssm",
+      "delete-parameters",
+      "--names",
+      "/auto-harness/review/harness-admins",
+      "/auto-harness/review/harness-session-secret",
+      "/auto-harness/review/harness-cursor-secret",
+      "/auto-harness/review/public-base-url",
+      "--output",
+      "json",
+      "--region",
+      "us-west-2",
+    ]);
     expect(deps.log).toHaveBeenCalledWith(
       "Deleted SSM parameters: /auto-harness/review/harness-admins, /auto-harness/review/harness-session-secret",
     );

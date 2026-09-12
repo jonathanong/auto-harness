@@ -34,6 +34,17 @@ export type PublicSlackIntegration = {
   notifications: SlackNotifications;
   botTokenConfigured: boolean;
   signingSecretConfigured: boolean;
+  /** Legacy rows are treated as manually configured. */
+  installationMethod: "manual" | "oauth";
+  /** Installation metadata; credentials never appear in this response. */
+  installationId?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  appId?: string;
+  botUserId?: string;
+  grantedScopes?: string[];
+  /** Whether this installation has credentials for signed inbound Slack events. */
+  inboundAvailable: boolean;
   /** False when config exists but this environment cannot actually send. */
   deliveryAvailable: boolean;
   version: number;

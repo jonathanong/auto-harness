@@ -6,11 +6,10 @@ Examples use a typical monorepo shape (`codex-*` workflow names, `docs/prompts/�
 
 API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost model: [why.md](why.md), [costs.md](costs.md).
 
-Slack session-lifecycle threads shown in the diagrams below are the **target** design; the outbox
-and lifecycle code exists, but production has no outbound transport yet
-([architecture.md](architecture.md), [integrations.md](integrations.md)). Until it ships, the API
-and the web UI are the durable status surface—treat every "watch Slack" line below as "watch Slack,
-once delivery ships, and GitHub/the UI today."
+Slack session-lifecycle threads shown in the diagrams below are available when a Slack integration
+is configured and the outbound worker is available ([architecture.md](architecture.md),
+[integrations.md](integrations.md)). No permanent production deployment is implied: the API and
+web UI remain durable status surfaces when Slack is unconfigured or unavailable.
 
 ## Packaged automation
 
@@ -62,17 +61,17 @@ remains supported; all dispatch forms return after acceptance and never wait for
 
 ### Auto Harness must provide
 
-| Requirement                                  | Notes                                                                                                                                        |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                                                              |
-| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                                                                     |
-| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                                                                      |
-| Native CLI execution                         | Non-interactive, no intermediary SDK or harness ([why.md](why.md))                                                                           |
-| Slack session lifecycle threads              | Target harness-side status for unattended runs; not yet live in production ([integrations.md](integrations.md))                              |
-| Terminal statuses including `usage_limit`    | Visible in the API always, and in Slack once delivery ships; account cooldown/fallback routing is automatic for provider-backed targets      |
-| Session id (API, and Slack once it ships)    | Resume, UI deep links                                                                                                                        |
-| Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh, including when the pinned Command has been deleted |
-| Cancel, timeout, agent drain-on-update       | Ops                                                                                                                                          |
+| Requirement                                  | Notes                                                                                                                                          |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                                                                                |
+| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                                                                                       |
+| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                                                                                        |
+| Native CLI execution                         | Non-interactive, no intermediary SDK or harness ([why.md](why.md))                                                                             |
+| Slack session lifecycle threads              | Configured harness-side status for unattended runs; delivery depends on the available outbound worker ([integrations.md](integrations.md))     |
+| Terminal statuses including `usage_limit`    | Visible in the API always, and in Slack when delivery is available; account cooldown/fallback routing is automatic for provider-backed targets |
+| Session id (API, and Slack when available)   | Resume, UI deep links                                                                                                                          |
+| Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh, including when the pinned Command has been deleted   |
+| Cancel, timeout, agent drain-on-update       | Ops                                                                                                                                            |
 
 ### Repo harness owns (out of scope for Auto Harness)
 

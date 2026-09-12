@@ -45,9 +45,9 @@ State it plainly, no hedging:
 - **Ingress.** Real Slack, GitHub, and Linear bots — @mention to start a session, auto-review on
   PR open, assign an agent to a Linear issue. Inbound webhooks with JSONPath filtering
   (`eq`/`neq`/`gt`/`contains`/`exists`), Sentry alerts, GitHub workflow-completion triggers,
-  `idempotencyKey` dedupe. Auto Harness has GitHub Actions dispatch and cron; Slack outbound
-  delivery is built but not yet live (see [integrations.md](integrations.md)), and there
-  is no inbound webhook receiver yet (tracked on the roadmap).
+  `idempotencyKey` dedupe. Auto Harness has GitHub Actions dispatch and cron plus configured Slack
+  outbound delivery and durable signature-verified mention/DM intake; inbound events are pending
+  until session routing and authorization are implemented (see [integrations.md](integrations.md)).
 - **Human-in-the-loop surface.** Multiplayer sessions with presence, commits attributed to the
   prompting user, code-server (VS Code in the browser), a ttyd web terminal, port tunneling for
   dev servers, Playwright verification, Slack image attachments. Auto Harness gives an xterm log

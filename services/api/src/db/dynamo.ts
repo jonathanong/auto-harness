@@ -38,6 +38,8 @@ export type DynamoTableNames = {
   notificationDeliveries: string;
   webhookDeliveries: string;
   sessionCancelRedeliveries: string;
+  slackOAuthStates: string;
+  slackInboundEvents: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -67,6 +69,8 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     notificationDeliveries: `${p}-NotificationDeliveries`,
     webhookDeliveries: `${p}-WebhookDeliveries`,
     sessionCancelRedeliveries: `${p}-SessionCancelRedeliveries`,
+    slackOAuthStates: `${p}-SlackOAuthStates`,
+    slackInboundEvents: `${p}-SlackInboundEvents`,
   };
 }
 

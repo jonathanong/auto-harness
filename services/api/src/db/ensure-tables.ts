@@ -363,6 +363,38 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, viewerTicketsTableDefinition(names.viewerTickets));
   await enableRateLimitTtl(ddb, names.viewerTickets);
   await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
+  await createIfMissing(ddb, {
+    TableName: names.slackOAuthStates,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "stateHash", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "stateHash", KeyType: KeyType.HASH }],
+  });
+  await enableTableTtl(ddb, names.slackOAuthStates, "expiresAt");
+  await createIfMissing(ddb, {
+    TableName: names.slackInboundEvents,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "workspaceId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "eventId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "status", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "dueOrder", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [
+      { AttributeName: "workspaceId", KeyType: KeyType.HASH },
+      { AttributeName: "eventId", KeyType: KeyType.RANGE },
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "status-dueOrder",
+        KeySchema: [
+          { AttributeName: "status", KeyType: KeyType.HASH },
+          { AttributeName: "dueOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
+  });
+  await enableTableTtl(ddb, names.slackInboundEvents, "ttl");
   await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
   await createIfMissing(ddb, webhookDeliveriesTableDefinition(names.webhookDeliveries));
   await createIfMissing(
