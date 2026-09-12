@@ -4,19 +4,19 @@ import { readJson, send } from "./local-http.ts";
 
 describe("local HTTP limits", () => {
   it("rejects oversized JSON bodies", async () => {
-    let destroyed = false;
+    let resumed = false;
     const req = {
       on(event: string, callback: (chunk?: Buffer) => void) {
         if (event === "data") callback(Buffer.alloc(1024 * 1024 + 1));
         if (event === "end") callback();
         return req;
       },
-      destroy() {
-        destroyed = true;
+      resume() {
+        resumed = true;
       },
     };
     await expect(readJson(req as never)).rejects.toThrow("exceeds 1 MiB");
-    expect(destroyed).toBe(true);
+    expect(resumed).toBe(true);
   });
 
   it("treats an empty body as an empty object", async () => {

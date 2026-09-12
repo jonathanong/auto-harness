@@ -113,7 +113,7 @@ describe("concurrent session admission conflicts", () => {
         return {};
       };
       await expect(
-        createSession(ctx(send), { ...session, concurrencyId: undefined }, [], {
+        createSession(ctx(send), { ...session, concurrencyId: undefined }, [], undefined, {
           id: "deploy",
           type: "custom-webhook",
           storageId: "custom-webhook:deploy",
@@ -134,6 +134,7 @@ describe("concurrent session admission conflicts", () => {
         }),
         { ...session, concurrencyId: undefined },
         [],
+        undefined,
         {
           id: "deploy",
           type: "custom-webhook",
@@ -168,6 +169,7 @@ describe("concurrent session admission conflicts", () => {
         }),
         session,
         [],
+        undefined,
         integrationFence,
       ),
     ).rejects.toMatchObject({ name: "IntegrationChangedError" });
@@ -197,6 +199,7 @@ describe("concurrent session admission conflicts", () => {
         }),
         session,
         [],
+        undefined,
         fence,
       ),
     ).resolves.toMatchObject({ created: true });
@@ -220,6 +223,7 @@ describe("concurrent session admission conflicts", () => {
         }),
         session,
         [],
+        undefined,
         fence,
       ),
     ).rejects.toMatchObject({ name: "CreateSessionRetryExhaustedError" });
