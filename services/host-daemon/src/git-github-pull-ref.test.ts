@@ -86,6 +86,9 @@ describe("isolated GitHub pull-ref fetch", () => {
       "base-sha",
     );
 
-    expect(destination).toMatch(/^refs\/worktree\/auto-harness\/pull-fetch\//);
+    expect(destination).toMatchObject({
+      ref: expect.stringMatching(/^refs\/worktree\/auto-harness\/pull-fetch\//),
+      sha: "pull-sha",
+    });
   });
 });

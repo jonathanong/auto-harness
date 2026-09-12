@@ -74,6 +74,17 @@ describe("GitHub pull-ref host policy", () => {
     });
   });
 
+  it("rejects repository paths that normalize to the same policy key", () => {
+    expect(() =>
+      load({
+        repositories: {
+          "/srv/repository": { remoteUrl: "https://github.example/first.git" },
+          "/srv/./repository": { remoteUrl: "https://github.example/second.git" },
+        },
+      }),
+    ).toThrow("must not normalize to the same key");
+  });
+
   it("retains only the individually configured safe transport settings", () => {
     for (const transport of [
       { credentialHelper: "manager-core" },

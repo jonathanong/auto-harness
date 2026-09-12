@@ -10,6 +10,11 @@ import type { GitHubPullRefConfig } from "./github-pull-ref-config.ts";
 
 const GITHUB_PULL_REQUEST_REF = /^refs\/pull\/([1-9]\d*)\/head$/;
 
+export type GitHubPullRequestFetch = Readonly<{
+  ref: string;
+  sha: string;
+}>;
+
 export function isGitHubPullRequestRef(ref: string): boolean {
   return GITHUB_PULL_REQUEST_REF.test(ref);
 }
@@ -55,7 +60,7 @@ export async function fetchGitHubPullRequestRef(
   objectDirectory?: string,
   baseCommit?: string,
   signal?: AbortSignal,
-): Promise<string | null> {
+): Promise<GitHubPullRequestFetch | null> {
   const configured = normalizedConfig(config);
   if (!isGitHubPullRequestRef(ref) || !configured) return null;
   // The URL and narrowly scoped transport options are loaded from an operator-owned file, never
@@ -128,7 +133,7 @@ export async function fetchGitHubPullRequestRef(
           signal,
           { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
         );
-        return recorded.exitCode === 0 ? destination : null;
+        return recorded.exitCode === 0 ? { ref: destination, sha } : null;
       }
       if (alreadyPresent.exitCode !== 1) return null;
     }
@@ -160,7 +165,7 @@ export async function fetchGitHubPullRequestRef(
       signal,
       { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
     );
-    return recorded.exitCode === 0 ? destination : null;
+    return recorded.exitCode === 0 ? { ref: destination, sha } : null;
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }

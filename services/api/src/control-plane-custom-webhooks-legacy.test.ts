@@ -7,6 +7,25 @@ import {
 } from "./control-plane-custom-webhooks.ts";
 
 describe("legacy custom webhook integrations", () => {
+  it("allows GitHub ingress comment concurrency ids without durable storage", async () => {
+    const plane = new ControlPlane();
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+    plane.createCommand({ id: "command", name: "command", argv: ["echo"], providerId: null });
+    const body = {
+      repositoryId: "repo",
+      prompt: "fix this",
+      target: { commandId: "command" },
+      timeout: 60,
+      concurrencyId: "github-comment:issue_comment:42:99",
+    };
+
+    await expect(plane.createSessionDurable(body)).resolves.toMatchObject({ ok: false });
+    await expect(plane.createGitHubIngressSessionDurable(body)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+    });
+  });
+
   it("assigns a generation on the next operator update", async () => {
     const plane = new ControlPlane({
       secretEncryptor: {

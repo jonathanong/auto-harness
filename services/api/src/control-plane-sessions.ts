@@ -28,7 +28,11 @@ export {
 export function createSession(
   state: ControlPlaneState,
   body: unknown,
-  options: { allowScheduleId?: boolean; allowCustomWebhookConcurrencyId?: boolean } = {},
+  options: {
+    allowScheduleId?: boolean;
+    allowCustomWebhookConcurrencyId?: boolean;
+    allowGitHubCommentConcurrencyId?: boolean;
+  } = {},
 ):
   | { ok: true; session: PublicSession; created: boolean }
   | { ok: false; error: string; code?: string } {
@@ -56,7 +60,10 @@ export function createSession(
       destroyWorkspaceAfter: record.destroyWorkspaceAfter,
       setupScript: record.setupScript,
     },
-    options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
+    {
+      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+    },
   );
   if (!validated.ok) {
     return validated;

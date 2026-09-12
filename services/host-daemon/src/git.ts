@@ -8,6 +8,7 @@ import {
   deleteGitHubPullRequestRef,
   fetchGitHubPullRequestRef,
   isGitHubPullRequestRef,
+  type GitHubPullRequestFetch,
 } from "./git-github-pull-ref.ts";
 import {
   claimedLinkedWorktreeCommonDir,
@@ -117,7 +118,7 @@ export function createGitClient(
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
       const isPullRequestRef = isGitHubPullRequestRef(ref);
-      let pullRequestRef: string | null = null;
+      let pullRequestFetch: GitHubPullRequestFetch | null = null;
       let sha = "";
       try {
         const objectDirectory =
@@ -134,7 +135,7 @@ export function createGitClient(
             ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
             : undefined;
         const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
-        pullRequestRef = isPullRequestRef
+        pullRequestFetch = isPullRequestRef
           ? await fetchGitHubPullRequestRef(
               runner,
               cwd,
@@ -145,30 +146,30 @@ export function createGitClient(
               signal,
             )
           : null;
-        if (isPullRequestRef && pullRequestRef === null) {
+        if (isPullRequestRef && pullRequestFetch === null) {
           throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
         }
-        let commitRef = `${pullRequestRef ?? ref}^{commit}`;
-        let resolved = await runGit(
-          runner,
-          cwd,
-          ["rev-parse", "--verify", "--end-of-options", commitRef],
-          signal,
-        );
-        if (resolved.exitCode !== 0 && !isPullRequestRef) {
+        let resolved = isPullRequestRef
+          ? undefined
+          : await runGit(
+              runner,
+              cwd,
+              ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+              signal,
+            );
+        if (resolved !== undefined && resolved.exitCode !== 0) {
           await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-          commitRef = `${ref}^{commit}`;
           resolved = await runGit(
             runner,
             cwd,
-            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
             signal,
           );
         }
-        if (resolved.exitCode !== 0) {
+        if (resolved !== undefined && resolved.exitCode !== 0) {
           throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
         }
-        sha = resolved.stdout.trim();
+        sha = pullRequestFetch?.sha ?? resolved?.stdout.trim() ?? "";
         let co = await checkoutDetached(runner, cwd, sha, signal);
         if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
           if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
@@ -208,12 +209,12 @@ export function createGitClient(
           throw new Error("Failed to verify detached checkout");
         }
       } finally {
-        if (pullRequestRef !== null) {
+        if (pullRequestFetch !== null) {
           // Cleanup must run even after the execution deadline aborts the checkout signal.
           await deleteGitHubPullRequestRef(
             runner,
             cwd,
-            pullRequestRef,
+            pullRequestFetch.ref,
             ref,
             AbortSignal.timeout(10_000),
           );

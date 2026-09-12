@@ -146,7 +146,11 @@ export function loadGitHubPullRefConfigs(
       ),
       `GitHub pull-ref config.repositories.${repositoryPath}.remoteUrl`,
     );
-    configs.set(resolve(repositoryPath), {
+    const canonicalRepositoryPath = resolve(repositoryPath);
+    if (configs.has(canonicalRepositoryPath)) {
+      throw new Error("GitHub pull-ref config repository paths must not normalize to the same key");
+    }
+    configs.set(canonicalRepositoryPath, {
       remoteUrl,
       transport: parseTransport(
         config.transport,

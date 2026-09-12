@@ -126,14 +126,6 @@ function fetchesGitHubPullRef(
   ];
 }
 
-function resolvesFetchedPullRef(sha = "pr-sha") {
-  return {
-    match: ["rev-parse", "--verify", "--end-of-options", "*"],
-    exitCode: 0,
-    stdout: `${sha}\n`,
-  };
-}
-
 function deletesFetchedPullRef(exitCode = 0) {
   return { match: ["update-ref", "--no-deref", "-d", "*"], exitCode };
 }
@@ -235,7 +227,6 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
-        resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
         syncsSubmodules(),
@@ -312,7 +303,6 @@ describe("createGitClient checkout and revParse", () => {
       },
       { match: ["bundle", "unbundle", "*"], exitCode: 0 },
       { match: ["update-ref", "--no-deref", "*", "pr-sha"], exitCode: 0 },
-      resolvesFetchedPullRef(),
       { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
       hardReset("pr-sha"),
       syncsSubmodules(),
@@ -376,7 +366,6 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 1 },
         { match: ["checkout", "--force", "--detach", "pr-sha"], exitCode: 1 },
         { match: ["fsck", "--connectivity-only", "pr-sha"], exitCode: 1 },
@@ -396,12 +385,11 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
-        resolvesFetchedPullRef("pinned-pr-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pinned-pr-sha"], exitCode: 0 },
-        hardReset("pinned-pr-sha"),
+        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
+        hardReset("pr-sha"),
         syncsSubmodules(),
         updatesSubmodules(),
-        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pinned-pr-sha\n" },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
@@ -410,7 +398,7 @@ describe("createGitClient checkout and revParse", () => {
 
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
-    ).resolves.toBe("pinned-pr-sha");
+    ).resolves.toBe("pr-sha");
   });
 
   it("uses a fresh per-worktree scratch ref rather than inspecting a shared predictable ref", async () => {
@@ -420,7 +408,6 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
         syncsSubmodules(),
@@ -540,7 +527,6 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
         syncsSubmodules(),
@@ -565,7 +551,6 @@ describe("createGitClient checkout and revParse", () => {
       ...resetsPriorState(),
       ...pullRefObjectReuse(),
       ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-      resolvesFetchedPullRef(),
       { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
       hardReset("pr-sha"),
       syncsSubmodules(),
