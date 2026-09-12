@@ -17,6 +17,7 @@ import {
   enqueueHostOfflineAlertCandidate,
   getConnection,
   getHostLock,
+  getHostLockState,
   heartbeatConnection,
   listConnections,
   listHostOfflineAlertCandidates,
@@ -110,6 +111,14 @@ describe("DynamoDB Local host lock adapters", () => {
     );
     expect(await markHostDraining(ctx, { hostId: "host", connectionId: "one" })).toBe(true);
     expect(await markHostDraining(ctx, { hostId: "host", connectionId: "wrong" })).toBe(false);
+    expect(await getHostLockState(ctx, "host")).toEqual({
+      connectionId: "one",
+      draining: true,
+    });
+    expect(await getHostLockState(ctx, "missing-lock")).toEqual({
+      connectionId: null,
+      draining: false,
+    });
     expect(
       await tryRegisterHost(ctx, {
         hostId: "host",
@@ -157,6 +166,11 @@ describe("DynamoDB Local host lock adapters", () => {
     );
     await deleteConnection(ctx, "standalone");
     expect(await getConnection(ctx, "standalone")).toBeNull();
+    await putConnection(ctx, connection("viewers#hidden", "viewer-host"));
+    expect((await listConnections(ctx)).map(({ connectionId }) => connectionId)).not.toContain(
+      "viewers#hidden",
+    );
+    await deleteConnection(ctx, "viewers#hidden");
   });
 
   it("durably records and conditionally clears offline-alert candidates", async () => {
@@ -250,6 +264,16 @@ describe("DynamoDB Local host lock adapters", () => {
       expect.objectContaining({ hostId: "malformed-alert-host" }),
     );
     expect(
+      await recordHostOfflineAlertCandidate(ctx, {
+        hostId: "second-alert-host",
+        reason: "agent heartbeat stale; requeued",
+        lastHeartbeatAt: at,
+      }),
+    ).toBe(true);
+    expect((await listHostOfflineAlertCandidates(ctx)).map(({ hostId }) => hostId)).toEqual(
+      expect.arrayContaining(["legacy-alert-host", "second-alert-host"]),
+    );
+    expect(
       await clearHostOfflineAlertCandidate(ctx, {
         hostId: "legacy-alert-host",
         reason: "agent heartbeat stale; requeued",
@@ -320,6 +344,16 @@ describe("DynamoDB Local host lock adapters", () => {
                 Items: [
                   {
                     hostId: "candidate",
+                    offlineAlertReason: "offline",
+                    offlineAlertLastHeartbeatAt: at,
+                  },
+                  {
+                    hostId: "bad-heartbeat",
+                    offlineAlertReason: "offline",
+                    offlineAlertLastHeartbeatAt: 1,
+                  },
+                  {
+                    hostId: 1,
                     offlineAlertReason: "offline",
                     offlineAlertLastHeartbeatAt: at,
                   },

@@ -1182,6 +1182,26 @@ describe("session log ttl", () => {
       }),
     ).rejects.toBe(missingName);
     expect(missingNameSend).toHaveBeenCalledOnce();
+
+    const primitiveSend = vi.fn().mockRejectedValue("unavailable");
+    await expect(
+      putLogFenced(logCtx(primitiveSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe("unavailable");
+    const nullSend = vi.fn().mockRejectedValue(null);
+    await expect(
+      putLogFenced(logCtx(nullSend), fencedRec, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toBeNull();
+    const otherName = { name: "ProvisionedThroughputExceededException" };
+    const otherNameSend = vi.fn().mockRejectedValue(otherName);
+    await expect(
+      putLogFenced(logCtx(otherNameSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe(otherName);
   });
 
   it("bounds repeated fenced-write transaction conflicts", async () => {
