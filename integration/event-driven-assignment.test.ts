@@ -101,7 +101,7 @@ async function startIsolatedStack(hostId: string) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       name: "event-assign-repo",
-      url: repositoryPath,
+      url: "https://example.test/event-assign-repo.git",
       defaultBranch: "main",
     }),
   });

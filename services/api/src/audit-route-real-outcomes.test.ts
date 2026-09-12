@@ -37,7 +37,7 @@ describe("audited real route outcomes", () => {
         "PATCH",
         "/api/v1/repositories/repository-a",
         { name: "not a slug" },
-        404,
+        400,
         "repository:update",
         "failed",
       ],

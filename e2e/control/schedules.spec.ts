@@ -11,7 +11,7 @@ test.describe("control plane schedules", () => {
     const repository = await request.post("/api/v1/repositories", {
       data: {
         name: `pw-run-now-repo-${suffix}`,
-        url: `/tmp/pw-run-now-repo-${suffix}`,
+        url: `https://example.test/pw-run-now-repo-${suffix}.git`,
         defaultBranch: "main",
       },
     });
@@ -42,7 +42,7 @@ test.describe("control plane schedules", () => {
     const repository = await request.post("/api/v1/repositories", {
       data: {
         name: repoId,
-        url: `/tmp/${repoId}`,
+        url: `https://example.test/${repoId}.git`,
         defaultBranch: "main",
       },
     });

@@ -24,8 +24,8 @@ async function harness() {
       return () => `session-${++n}`;
     })(),
   });
-  plane.createRepository({ id: "repo-a", name: "repo-a", url: "/a" });
-  plane.createRepository({ id: "repo-b", name: "repo-b", url: "/b" });
+  plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
+  plane.createRepository({ id: "repo-b", name: "repo-b", url: "https://example.test/b.git" });
   plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
   plane.createSession({
     repositoryId: "repo-a",

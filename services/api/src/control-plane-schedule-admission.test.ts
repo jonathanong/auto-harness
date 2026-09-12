@@ -7,7 +7,7 @@ describe("schedule repository admission", () => {
   it("rejects local durable schedule creation while admission is closed", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:05:00.000Z" });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     await plane.pauseRepositoryDurable("repo-1");
 
     await expect(

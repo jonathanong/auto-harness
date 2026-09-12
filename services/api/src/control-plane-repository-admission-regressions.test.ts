@@ -15,7 +15,7 @@ describe("repository admission regressions", () => {
       },
     });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     await plane.pauseRepositoryDurable("repo-1");
     expect(
       plane.putSchedule({
@@ -44,7 +44,7 @@ describe("repository admission regressions", () => {
       },
     });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     await plane.pauseRepositoryDurable("repo-1");
     expect(
       plane.putSchedule({
@@ -70,7 +70,7 @@ describe("repository admission regressions", () => {
 
   it("clears a completed timestamp when an in-memory drain is reopened", async () => {
     const plane = new ControlPlane();
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     await expect(plane.drainRepositoryDurable("repo-1")).resolves.toMatchObject({
       ok: true,
       repository: { admissionState: "paused", drainCompletedAt: expect.any(String) },

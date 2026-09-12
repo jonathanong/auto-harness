@@ -3,7 +3,7 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { writeRouteAudit } from "./local-audit.ts";
 import {
   commitMutationAudit,
-  readJsonBody,
+  readJsonBodyWithAudit,
   repositoryInScope,
   sendHiddenNotFound,
   sendRouteError,
@@ -66,9 +66,36 @@ function scheduleTriggerError(error: string): { status: number; code: string } {
   return { status: 400, code: "TRIGGER_ERROR" };
 }
 
+function repositoryUpdateError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/already (?:in use|exists)/i.test(error)) return { status: 409, code: "CONFLICT" };
+  return { status: 400, code: "VALIDATION_ERROR" };
+}
+
+const REPOSITORY_MUTATION_STRING_FIELDS = [
+  "name",
+  "url",
+  "defaultBranch",
+  "setupScript",
+  "terminalHookScript",
+] as const;
+
+function repositoryMutationBodyError(body: unknown, operation: "create" | "update"): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return `repository ${operation} body must be an object`;
+  }
+  const record = body as Record<string, unknown>;
+  for (const field of REPOSITORY_MUTATION_STRING_FIELDS) {
+    if (Object.hasOwn(record, field) && typeof record[field] !== "string") {
+      return `${field} must be a string`;
+    }
+  }
+  return null;
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
-  const { plane, req, res, url, method } = ctx;
+  const { plane, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
@@ -100,13 +127,24 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
-    const parsed = await readJsonBody(ctx);
+    const createAudit = {
+      action: "repository:create",
+      resourceType: "repository",
+      resourceId: "new",
+    } as const;
+    const parsed = await readJsonBodyWithAudit(ctx, { ...createAudit, outcome: "failed" });
     if (!parsed.ok) return true;
+    const bodyError = repositoryMutationBodyError(parsed.body, "create");
+    if (bodyError) {
+      if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
+      sendRouteError(res, 400, "VALIDATION_ERROR", bodyError);
+      return true;
+    }
     const body = parsed.body as Record<string, unknown>;
     try {
       const result = await plane.createRepositoryDurable({
-        name: String(body.name ?? ""),
-        url: String(body.url ?? ""),
+        name: typeof body.name === "string" ? body.name : "",
+        url: typeof body.url === "string" ? body.url : "",
         ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
         ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
         ...(typeof body.terminalHookScript === "string"
@@ -114,15 +152,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           : {}),
       });
       if (!result.ok) {
-        if (
-          !(await commitMutationAudit(ctx, {
-            action: "repository:create",
-            resourceType: "repository",
-            resourceId: "new",
-            outcome: "failed",
-          }))
-        )
-          return true;
+        if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
         sendRouteError(res, 400, "VALIDATION_ERROR", result.error);
         return true;
       }
@@ -138,15 +168,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 201, result.repository);
       return true;
     } catch {
-      if (
-        !(await commitMutationAudit(ctx, {
-          action: "repository:create",
-          resourceType: "repository",
-          resourceId: "new",
-          outcome: "failed",
-        }))
-      )
-        return true;
+      if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
       sendInternalError(res);
       return true;
     }
@@ -248,15 +270,21 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
-      let body: Record<string, unknown>;
-      try {
-        body = (await readJson(req)) as Record<string, unknown>;
-      } catch {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-        });
+      const updateAudit = {
+        action: "repository:update",
+        resourceType: "repository",
+        resourceId: id,
+        repositoryId: id,
+      } as const;
+      const parsed = await readJsonBodyWithAudit(ctx, { ...updateAudit, outcome: "failed" });
+      if (!parsed.ok) return true;
+      const bodyError = repositoryMutationBodyError(parsed.body, "update");
+      if (bodyError) {
+        if (!(await writeRouteAudit(ctx, { ...updateAudit, outcome: "failed" }))) return true;
+        sendRouteError(res, 400, "VALIDATION_ERROR", bodyError);
         return true;
       }
+      const body = parsed.body as Record<string, unknown>;
       try {
         const result = await plane.updateRepositoryDurable(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
@@ -278,7 +306,8 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
             }))
           )
             return true;
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const { status, code } = repositoryUpdateError(result.error);
+          send(res, status, { error: { code, message: result.error } });
           return true;
         }
         if (

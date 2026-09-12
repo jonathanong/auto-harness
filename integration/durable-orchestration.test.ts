@@ -104,7 +104,7 @@ describe("durable full-stack orchestration", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "durable-integration-repo",
-        url: repositoryPath,
+        url: "https://example.test/durable-integration-repo.git",
         defaultBranch: "main",
       }),
     });

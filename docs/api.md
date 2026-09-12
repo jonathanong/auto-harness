@@ -415,6 +415,10 @@ This endpoint does not implement Slack OAuth or incoming event verification.
 
 Add a repository. **Admin only.**
 
+`url` must be either a credential-free HTTPS URL or an SCP-style SSH remote of the form
+`git@host:path`. Userinfo, query parameters, fragments, filesystem paths, and other URL schemes are
+rejected so repository credentials cannot enter control-plane storage.
+
 **Request:**
 
 ```json
@@ -502,6 +506,9 @@ Get repository details.
 #### `PUT /repositories/:id`
 
 Update a repository. **Admin only.**
+The same Git URL validation as repository creation applies whenever `url` is supplied. Invalid
+fields return `400 VALIDATION_ERROR`, a conflicting repository name returns `409 CONFLICT`, and only
+an absent repository returns `404 NOT_FOUND`.
 
 #### `DELETE /repositories/:id`
 

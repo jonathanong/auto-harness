@@ -8,7 +8,7 @@ test("copies the exact session id from Session Detail", async ({ context, page, 
     await request.post(`${API}/api/v1/repositories`, {
       data: {
         name: `pw-copy-id-${suffix}`,
-        url: `/tmp/pw-copy-id-${suffix}`,
+        url: `https://example.test/pw-copy-id-${suffix}.git`,
         defaultBranch: "main",
       },
     })

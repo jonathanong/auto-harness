@@ -180,7 +180,7 @@ export type ArchiveMetadata = {
 export type RepositoryRecord = {
   id: string;
   name: string;
-  /** Git remote URL and/or local path identity for operators. */
+  /** Credential-free HTTPS or SCP-style SSH Git remote shown to operators. */
   url: string;
   defaultBranch: string;
   setupScript?: string;

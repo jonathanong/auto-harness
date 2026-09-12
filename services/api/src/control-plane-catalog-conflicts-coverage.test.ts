@@ -153,7 +153,11 @@ describe("catalog persistence conflict coverage", () => {
   it("rejects an invalid repository rename and accepts an empty patch", () => {
     const plane = new ControlPlane({ now: () => "t1" });
     expect(
-      plane.createRepository({ id: "repository", name: "repository", url: "/repository" }).ok,
+      plane.createRepository({
+        id: "repository",
+        name: "repository",
+        url: "https://example.test/repository.git",
+      }).ok,
     ).toBe(true);
     expect(plane.updateRepository("repository", { name: "NOT VALID" })).toMatchObject({
       ok: false,

@@ -10,7 +10,7 @@ const API = API_BASE;
 export async function createCatalogRepository(
   request: APIRequestContext,
   name: string,
-  url = `/tmp/${name}`,
+  url = `https://example.test/${name}.git`,
 ): Promise<string> {
   const response = await request.post(`${API}/api/v1/repositories`, {
     data: { name, url, defaultBranch: "main" },

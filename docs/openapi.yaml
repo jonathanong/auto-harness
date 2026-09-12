@@ -480,7 +480,9 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        url: { type: string }
+        url:
+          type: string
+          description: Credential-free HTTPS URL or SCP-style SSH Git remote (`git@host:path`); userinfo, query parameters, fragments, filesystem paths, and other schemes are rejected.
         defaultBranch: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

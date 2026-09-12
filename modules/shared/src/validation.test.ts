@@ -14,8 +14,71 @@ import {
   MAX_FALLBACKS,
   MAX_PROMPT_BYTES,
   promptByteLengthError,
+  repositoryUrlError,
   validateCreateSessionInput,
 } from "./validation.ts";
+
+describe("repositoryUrlError", () => {
+  it("accepts credential-free HTTPS and SCP-style SSH remotes", () => {
+    for (const url of [
+      "https://example.test/repository.git",
+      "https://example.test:8443/repository.git",
+      "git@example.test:repository.git",
+      "git@example.test:group/repository.git",
+    ]) {
+      expect(repositoryUrlError(url)).toBeNull();
+    }
+  });
+
+  it("rejects credentials before other URL errors", () => {
+    for (const url of [
+      "https://user:secret@example.test/repository.git",
+      "https://user@example.test/repository.git?token=secret",
+      "https://:secret@example.test/repository.git",
+      "https://%75ser:%73ecret@example.test/repository.git",
+      "https://@example.test/repository.git",
+    ]) {
+      expect(repositoryUrlError(url)).toBe("url must not include credentials");
+    }
+  });
+
+  it("rejects query parameters and fragments after credentials", () => {
+    expect(repositoryUrlError("https://example.test/repository.git?ref=main")).toBe(
+      "url must not include query parameters or fragments",
+    );
+    expect(repositoryUrlError("https://example.test/repository.git#readme")).toBe(
+      "url must not include query parameters or fragments",
+    );
+  });
+
+  it("rejects whitespace, controls, local paths, and unsupported schemes", () => {
+    for (const url of [
+      "https://example.test/repository.git\n",
+      "https://example.test/repository.git\u0000",
+      "https://example.test/a repository.git",
+      "/tmp/repository",
+      "repository.git",
+      "http://example.test/repository.git",
+      "git://example.test/repository.git",
+      "file:///tmp/repository",
+      "ssh://example.test/repository.git",
+      "https:example.test/repository.git",
+      "https:\\example.test\\repository.git",
+      "https:///example.test/repository.git",
+      "https://example.test\\repository.git",
+      "git@example.test:",
+      "git@:repository.git",
+      "git@token@example.test:repository.git",
+      "git@example.test/group:repository.git",
+      "git@example.test\\group:repository.git",
+      "git@[example.test/group]:repository.git",
+      "git@[example@test]:repository.git",
+      "git@[example\\test]:repository.git",
+    ]) {
+      expect(repositoryUrlError(url)).toBe("url must be an HTTPS or SCP-style SSH Git remote");
+    }
+  });
+});
 
 describe("isSessionStatus", () => {
   it("accepts known statuses", () => {

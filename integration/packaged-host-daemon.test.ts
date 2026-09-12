@@ -89,7 +89,7 @@ describe("packaged host daemon lifecycle", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "packaged-systemd-repository",
-        url: repositoryPath,
+        url: "https://example.test/packaged-systemd-repository.git",
         defaultBranch: "main",
       }),
     });

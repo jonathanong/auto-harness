@@ -11,7 +11,11 @@ test("creates and lists a prioritized, label-constrained session", async ({ page
 
   try {
     const repository = await request.post(`${API}/api/v1/repositories`, {
-      data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
+      data: {
+        name: repoId,
+        url: `https://example.test/${repoId}.git`,
+        defaultBranch: "main",
+      },
     });
     expect(repository.ok()).toBe(true);
     const repositoryId = ((await repository.json()) as { id: string }).id;

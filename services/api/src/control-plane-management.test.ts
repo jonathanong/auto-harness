@@ -11,6 +11,26 @@ import {
 } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane operator management", () => {
+  it("validates repository remotes before create and update mutations", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    expect(plane.createRepository({ name: "demo", url: "/tmp/demo" })).toEqual({
+      ok: false,
+      error: "url must be an HTTPS or SCP-style SSH Git remote",
+    });
+    expect(plane.listRepositories()).toEqual([]);
+
+    expect(
+      plane.createRepository({ id: "demo", name: "demo", url: "https://example.test/demo.git" }).ok,
+    ).toBe(true);
+    expect(
+      plane.updateRepository("demo", { url: "https://user:secret@example.test/demo.git" }),
+    ).toEqual({
+      ok: false,
+      error: "url must not include credentials",
+    });
+    expect(plane.getRepository("demo")?.url).toBe("https://example.test/demo.git");
+  });
+
   it("repository CRUD", () => {
     const plane = new ControlPlane({
       repositoryIdFactory: () => "repo-auto",
@@ -21,7 +41,7 @@ describe("ControlPlane operator management", () => {
     const created = plane.createRepository({
       id: "demo",
       name: "demo",
-      url: "/tmp/demo",
+      url: "https://example.test/demo.git",
       defaultBranch: "main",
       setupScript: "setup.sh",
       terminalHookScript: "hook.sh",
@@ -31,19 +51,21 @@ describe("ControlPlane operator management", () => {
       expect(created.repository).toMatchObject({
         id: "demo",
         name: "demo",
-        url: "/tmp/demo",
+        url: "https://example.test/demo.git",
         defaultBranch: "main",
         setupScript: "setup.sh",
         terminalHookScript: "hook.sh",
       });
     }
     expect(plane.createRepository({ id: "demo", name: "x", url: "y" }).ok).toBe(false);
-    expect(plane.createRepository({ name: "demo", url: "y" }).ok).toBe(false); // name already in use
+    expect(plane.createRepository({ name: "demo", url: "https://example.test/other.git" }).ok).toBe(
+      false,
+    ); // name already in use
     expect(plane.getRepository("demo")?.name).toBe("demo");
     expect(plane.getRepository("missing")).toBeNull();
     expect(plane.listRepositories().map((r) => r.id)).toContain("demo");
 
-    const auto = plane.createRepository({ name: "auto", url: "git://auto" });
+    const auto = plane.createRepository({ name: "auto", url: "git@example.test:auto.git" });
     expect(auto.ok).toBe(true);
     if (auto.ok) {
       expect(auto.repository.id).toBe("repo-auto");
@@ -51,7 +73,7 @@ describe("ControlPlane operator management", () => {
 
     // default repositoryIdFactory (UUIDv7)
     const defaultIds = new ControlPlane({ now: () => "t" });
-    const gen = defaultIds.createRepository({ name: "g", url: "u" });
+    const gen = defaultIds.createRepository({ name: "g", url: "https://example.test/g.git" });
     expect(gen.ok).toBe(true);
     if (gen.ok) {
       expect(gen.repository.id).toMatch(
@@ -61,7 +83,7 @@ describe("ControlPlane operator management", () => {
 
     const updated = plane.updateRepository("demo", {
       name: "demo2",
-      url: "/tmp/demo2",
+      url: "https://example.test/demo2.git",
       defaultBranch: "develop",
       setupScript: "s2",
       terminalHookScript: "h2",

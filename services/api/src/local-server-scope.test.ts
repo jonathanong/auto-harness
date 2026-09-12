@@ -19,8 +19,8 @@ describe("scoped control-plane REST resources", () => {
         return () => `session-${++n}`;
       })(),
     });
-    plane.createRepository({ id: "repo-a", name: "repo-a", url: "/a" });
-    plane.createRepository({ id: "repo-b", name: "repo-b", url: "/b" });
+    plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
+    plane.createRepository({ id: "repo-b", name: "repo-b", url: "https://example.test/b.git" });
     plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
     plane.putSchedule({
       id: "schedule-a",
@@ -260,7 +260,7 @@ describe("scoped control-plane REST resources", () => {
     expect((await invoke("POST", "/api/v1/schedules/schedule-b/trigger")).status).toBe(404);
     const repoC = {
       name: "repo-c",
-      url: "/c",
+      url: "https://example.test/c.git",
       defaultBranch: "main",
       setupScript: "setup",
       terminalHookScript: "hook",

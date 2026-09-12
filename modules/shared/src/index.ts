@@ -123,6 +123,7 @@ export {
   MAX_SESSION_PRIORITY,
   MAX_SESSION_TIMEOUT_SECONDS,
   promptByteLengthError,
+  repositoryUrlError,
   sessionPriorityError,
   sessionTimeoutError,
   validateCreateSessionInput,

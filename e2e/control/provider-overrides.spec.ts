@@ -18,7 +18,11 @@ test.describe("control plane provider account scope overrides", () => {
     // both sides refer to the same repository.
     const catalogRepo = await (
       await request.post(`${API}/api/v1/repositories`, {
-        data: { name: repoName, url: `/tmp/${repoName}`, defaultBranch: "main" },
+        data: {
+          name: repoName,
+          url: `https://example.test/${repoName}.git`,
+          defaultBranch: "main",
+        },
       })
     ).json();
     const repoId = catalogRepo.id as string;

@@ -50,17 +50,26 @@ describe("createLocalApp operator management REST", () => {
 
     expect((await invoke("POST", "/api/v1/repositories", { name: "", url: "" })).status).toBe(400);
     expect(
-      (await invoke("POST", "/api/v1/repositories", { name: "Demo", url: "/tmp/demo" })).status,
+      (
+        await invoke("POST", "/api/v1/repositories", {
+          name: "Demo",
+          url: "https://example.test/demo.git",
+        })
+      ).status,
     ).toBe(400); // name must be a lowercase slug
     const repo = await invoke("POST", "/api/v1/repositories", {
       name: "demo",
-      url: "/tmp/demo",
+      url: "https://example.test/demo.git",
       defaultBranch: "main",
       setupScript: "s.sh",
       terminalHookScript: "h.sh",
     });
     expect(repo.status).toBe(201);
-    expect(repo.json).toMatchObject({ id: "repo-1", name: "demo", url: "/tmp/demo" });
+    expect(repo.json).toMatchObject({
+      id: "repo-1",
+      name: "demo",
+      url: "https://example.test/demo.git",
+    });
     expect((await invoke("GET", "/api/v1/repositories")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ id: "repo-1" })]),
     });
@@ -72,7 +81,7 @@ describe("createLocalApp operator management REST", () => {
       (
         await invoke("PUT", "/api/v1/repositories/repo-1", {
           name: "demo2",
-          url: "/tmp/d2",
+          url: "https://example.test/demo2.git",
           defaultBranch: "dev",
           setupScript: "s2.sh",
           terminalHookScript: "h2.sh",
@@ -90,7 +99,7 @@ describe("createLocalApp operator management REST", () => {
 
     await invoke("POST", "/api/v1/repositories", {
       name: "demo",
-      url: "/tmp/demo",
+      url: "https://example.test/demo.git",
     });
 
     expect((await invoke("POST", "/api/v1/schedules", { name: "x" })).status).toBe(400);
@@ -232,5 +241,129 @@ describe("createLocalApp operator management REST", () => {
     expect(await invokeBadJson(handler, "POST", "/api/v1/repositories")).toBe(400);
     expect(await invokeBadJson(handler, "PUT", "/api/v1/repositories/repo-1")).toBe(400);
     expect(await invokeBadJson(handler, "POST", "/api/v1/schedules")).toBe(400);
+  });
+
+  it.each(["PUT", "PATCH"] as const)(
+    "classifies rejected repository %s requests without mutating the repository",
+    async (method) => {
+      let repositoryNumber = 0;
+      const plane = new ControlPlane({
+        repositoryIdFactory: () => `repo-${++repositoryNumber}`,
+      });
+      const { handler } = createLocalApp({ plane });
+      const invoke = (path: string, body: unknown) => invokeHandler(handler, method, path, body);
+      const getRepository = (id: string) =>
+        invokeHandler(handler, "GET", `/api/v1/repositories/${id}`);
+
+      const first = await invokeHandler(handler, "POST", "/api/v1/repositories", {
+        name: "first",
+        url: "https://example.test/first.git",
+      });
+      const second = await invokeHandler(handler, "POST", "/api/v1/repositories", {
+        name: "second",
+        url: "https://example.test/second.git",
+      });
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(201);
+      const firstRepository = first.json as { id: string };
+
+      const invalidUrl = "not-a-repository-url";
+      const invalid = await invoke(`/api/v1/repositories/${firstRepository.id}`, {
+        url: invalidUrl,
+      });
+      expect(invalid).toMatchObject({
+        status: 400,
+        json: { error: { code: "VALIDATION_ERROR" } },
+      });
+      expect(JSON.stringify(invalid.json)).not.toContain(invalidUrl);
+      expect(await getRepository(firstRepository.id)).toMatchObject({
+        status: 200,
+        json: { name: "first", url: "https://example.test/first.git" },
+      });
+
+      for (const field of [
+        "name",
+        "url",
+        "defaultBranch",
+        "setupScript",
+        "terminalHookScript",
+      ] as const) {
+        const invalidFieldType = await invoke(`/api/v1/repositories/${firstRepository.id}`, {
+          [field]: 42,
+        });
+        expect(invalidFieldType).toMatchObject({
+          status: 400,
+          json: { error: { code: "VALIDATION_ERROR", message: `${field} must be a string` } },
+        });
+      }
+
+      const invalidBody = await invoke(`/api/v1/repositories/${firstRepository.id}`, null);
+      expect(invalidBody).toMatchObject({
+        status: 400,
+        json: {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "repository update body must be an object",
+          },
+        },
+      });
+
+      const duplicate = await invoke(`/api/v1/repositories/${firstRepository.id}`, {
+        name: "second",
+      });
+      expect(duplicate).toMatchObject({
+        status: 409,
+        json: { error: { code: "CONFLICT" } },
+      });
+      expect(await getRepository(firstRepository.id)).toMatchObject({
+        status: 200,
+        json: { name: "first", url: "https://example.test/first.git" },
+      });
+
+      const missing = await invoke("/api/v1/repositories/missing", { name: "third" });
+      expect(missing).toMatchObject({
+        status: 404,
+        json: { error: { code: "NOT_FOUND" } },
+      });
+      expect(
+        (await plane.listAuditLogs({ action: "repository:update", outcome: "failed" })).items,
+      ).toHaveLength(9);
+    },
+  );
+
+  it("rejects and audits malformed repository create bodies", async () => {
+    const plane = new ControlPlane();
+    const { handler } = createLocalApp({ plane });
+    const create = (body: unknown) => invokeHandler(handler, "POST", "/api/v1/repositories", body);
+
+    for (const field of [
+      "name",
+      "url",
+      "defaultBranch",
+      "setupScript",
+      "terminalHookScript",
+    ] as const) {
+      const response = await create({
+        name: "demo",
+        url: "https://example.test/demo.git",
+        [field]: field === "url" ? ["https://example.test/demo.git"] : 42,
+      });
+      expect(response).toMatchObject({
+        status: 400,
+        json: { error: { code: "VALIDATION_ERROR", message: `${field} must be a string` } },
+      });
+    }
+    expect(await create(null)).toMatchObject({
+      status: 400,
+      json: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "repository create body must be an object",
+        },
+      },
+    });
+    expect(
+      (await plane.listAuditLogs({ action: "repository:create", outcome: "failed" })).items,
+    ).toHaveLength(6);
   });
 });
