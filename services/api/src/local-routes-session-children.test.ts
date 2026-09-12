@@ -421,6 +421,40 @@ describe("child session route", () => {
     ).toBe(500);
   });
 
+  it("links draining failures and preserves their operation in the audit", async () => {
+    const { handler, path, apiKey, plane } = await harness();
+    plane.createSessionChildDurable = async () => ({
+      ok: false,
+      code: "DRAINING",
+      error: "draining",
+      operationId: "operation/id",
+    });
+
+    const response = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "child", spawnKey: "draining" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.json).toMatchObject({
+      error: {
+        code: "DRAINING",
+        message: "draining",
+        operationId: "operation/id",
+        statusUrl: "/api/v1/repositories/repo/session-drains/operation%2Fid",
+      },
+    });
+    expect((await plane.listAuditLogs({ outcome: "failed" })).items).toContainEqual(
+      expect.objectContaining({
+        action: "session-drain:admission-rejected",
+        metadata: { operationId: "operation/id" },
+      }),
+    );
+  });
+
   it("allows ordinary child creation when authentication is disabled", async () => {
     const plane = new ControlPlane({
       idFactory: (() => {

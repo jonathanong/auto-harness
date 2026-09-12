@@ -57,8 +57,8 @@ describe("session command credential", () => {
     const credential = "hns_session_ephemeral";
     const commandRunner: ProcessRunner = {
       async run(options) {
-        options.onChunk?.({ stream: "stdout", data: "hns_session_" });
-        options.onChunk?.({ stream: "stderr", data: "ephemeral" });
+        options.onChunk?.({ stream: "stdout", data: "hns_" });
+        options.onChunk?.({ stream: "stderr", data: "session_ephemeral" });
         return { exitCode: 0, timedOut: false, signal: null };
       },
     };
@@ -151,8 +151,8 @@ describe("session command credential", () => {
     const credential = "hns_session_ephemeral";
     const commandRunner: ProcessRunner = {
       async run(options) {
-        options.onChunk?.({ stream: "stdout", data: "hns_" });
-        options.onChunk?.({ stream: "stdout", data: "session_" });
+        options.onChunk?.({ stream: "stdout", data: "hns_session_" });
+        options.onChunk?.({ stream: "stdout", data: "ephem" });
         options.onChunk?.({ stream: "stdout", data: "not-a-credential" });
         return { exitCode: 0, timedOut: false, signal: null };
       },
@@ -177,8 +177,42 @@ describe("session command credential", () => {
       { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
     );
     const transcript = logs.map((chunk) => chunk.content).join("");
-    expect(transcript).not.toContain("hns_session_");
+    expect(transcript).not.toContain("hns_session_ephem");
     expect(transcript).toContain("[session credential redacted]not-a-credential");
+  });
+
+  it("preserves low-entropy credential prefixes when output diverges or ends", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-credential-low-entropy-prefix-"));
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        options.onChunk?.({ stream: "stdout", data: "path" });
+        options.onChunk?.({ stream: "stdout", data: "-continued" });
+        options.onChunk?.({ stream: "stderr", data: "path" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs: Array<{ content: string }> = [];
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-low-entropy-prefix", "attempt-1", (chunk) => logs.push(chunk)),
+      logs as never,
+      baseAssign({ sessionApiKey: "hns_session_ephemeral" }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
+    );
+    const transcript = logs.map((chunk) => chunk.content).join("");
+    expect(transcript).toContain("path-continuedpath");
+    expect(transcript).not.toContain("[session credential redacted]");
   });
 
   it("does not reconstruct a credential whose final character overlaps its prefix", async () => {
@@ -259,6 +293,39 @@ describe("session command credential", () => {
     expect(seenEnv).not.toHaveProperty("HARNESS_API_KEY");
     expect(seenEnv).not.toHaveProperty("HARNESS_SESSION_API_KEY");
     expect(seenEnv).not.toHaveProperty("HARNESS_SESSION_ID");
+  });
+
+  it("normalizes a legacy WebSocket API URL before exposing it to the session command", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-command-api-url-"));
+    let seenEnv: NodeJS.ProcessEnv | undefined;
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        seenEnv = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-command-api-url", "attempt-1", () => undefined),
+      [] as never,
+      baseAssign({ sessionApiKey: "hns_session_ephemeral" }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "wss://control.example/ws/", apiKey: "host-secret" },
+    );
+    expect(seenEnv).toMatchObject({
+      HARNESS_API_URL: "https://control.example",
+      HARNESS_SESSION_API_KEY: "hns_session_ephemeral",
+    });
   });
 
   it.each([

@@ -3,6 +3,7 @@ import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessResult, ProcessRunner } from "./executor.ts";
+import { httpBaseFromApiUrl } from "./bootstrap.ts";
 import {
   applyExecutionProfile,
   emptyExecutionProfiles,
@@ -22,6 +23,10 @@ import {
 } from "./prior-context-file.ts";
 
 const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
+// A single character (or other tiny suffix) can naturally occur in ordinary
+// output. Once the credential's stable prefix is present, retaining it avoids
+// releasing a plausibly useful credential fragment across chunk boundaries.
+const MIN_REDACTED_CREDENTIAL_PREFIX_LENGTH = "hns_session_".length;
 
 class SessionCredentialRedactor {
   private pending = "";
@@ -42,9 +47,12 @@ class SessionCredentialRedactor {
         this.pendingStream = stream;
         return "";
       }
-      // Never release a previously matched credential prefix when the next
-      // chunk diverges; it contains enough entropy to make guessing practical.
-      prefixRedaction = SESSION_CREDENTIAL_REDACTION;
+      // Preserve harmless short overlaps from ordinary output, but never
+      // release a prefix long enough to identify the credential namespace.
+      prefixRedaction =
+        this.pending.length < MIN_REDACTED_CREDENTIAL_PREFIX_LENGTH
+          ? this.pending
+          : SESSION_CREDENTIAL_REDACTION;
       combined = content;
     }
     let heldLength = 0;
@@ -71,7 +79,15 @@ class SessionCredentialRedactor {
 
   drain(): Array<{ stream: string; content: string }> {
     const trailing = this.pending
-      ? [{ stream: this.pendingStream, content: SESSION_CREDENTIAL_REDACTION }]
+      ? [
+          {
+            stream: this.pendingStream,
+            content:
+              this.pending.length < MIN_REDACTED_CREDENTIAL_PREFIX_LENGTH
+                ? this.pending
+                : SESSION_CREDENTIAL_REDACTION,
+          },
+        ]
       : [];
     this.pending = "";
     return trailing;
@@ -283,7 +299,7 @@ async function runProcessAndFinish(
     identity && assign.sessionApiKey
       ? {
           ...commandEnv,
-          HARNESS_API_URL: identity.apiUrl,
+          HARNESS_API_URL: httpBaseFromApiUrl(identity.apiUrl),
           HARNESS_SESSION_ID: assign.sessionId,
           HARNESS_SESSION_API_KEY: assign.sessionApiKey,
         }

@@ -66,11 +66,12 @@ export async function handleSessionChildrenRoute(ctx: RouteCtx): Promise<boolean
     if (!result.ok) {
       if (
         !(await commitMutationAudit(ctx, {
-          action: "session:spawn",
+          action: result.code === "DRAINING" ? "session-drain:admission-rejected" : "session:spawn",
           resourceType: "session",
           resourceId: parentId,
           repositoryId: parent.repositoryId,
           outcome: "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         }))
       )
         return true;
@@ -85,6 +86,12 @@ export async function handleSessionChildrenRoute(ctx: RouteCtx): Promise<boolean
             : 400,
         result.code ?? "VALIDATION_ERROR",
         result.error,
+        result.operationId
+          ? {
+              operationId: result.operationId,
+              statusUrl: `/api/v1/repositories/${encodeURIComponent(parent.repositoryId ?? "")}/session-drains/${encodeURIComponent(result.operationId)}`,
+            }
+          : undefined,
       );
       return true;
     }
