@@ -134,4 +134,15 @@ describe("GitHubIngressSettings", () => {
     await settle();
     expect(document.body.textContent).toContain("Unable to load");
   });
+
+  it.each([
+    [403, "You do not have permission"],
+    [500, "Unable to load"],
+  ])("renders a load error for non-configuration response %s", async (status, message) => {
+    createApiFake(json({ error: { code: "NO" } }, status));
+    mountForm(<GitHubIngressSettingsPage />);
+    await settle();
+    expect(document.body.textContent).toContain(message);
+    expect(document.body.querySelector('[data-pw="github-ingress-settings-card"]')).toBeNull();
+  });
 });

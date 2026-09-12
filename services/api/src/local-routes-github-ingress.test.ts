@@ -289,6 +289,26 @@ describe("GitHub App webhook ingress", () => {
       ),
     ).toMatchObject({ status: 202, json: { accepted: false, reason: "unauthorized_author" } });
     expect(plane.listSessions()).toHaveLength(0);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ outcome: "denied", repositoryId: "repo" })],
+    });
+  });
+
+  it("returns repository admission fences as conflicts while preserving their code", async () => {
+    const { handler, plane } = await fixture();
+    vi.spyOn(plane, "createGitHubIngressSessionDurable").mockResolvedValueOnce({
+      ok: false,
+      error: "repository admission is paused",
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
+    const payload = body({ comment: { ...body().comment, id: 11 } });
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({
+      status: 409,
+      json: { error: { code: "REPOSITORY_ADMISSION_CLOSED" } },
+    });
+    vi.restoreAllMocks();
   });
 
   it("uses the durable comment concurrency identity for duplicate GitHub delivery", async () => {

@@ -56,6 +56,23 @@ describe("GitHub ingress config", () => {
     await expect(plane.getGitHubIngressConfig()).resolves.toMatchObject({ secretConfigured: true });
   });
 
+  it("validates bindings while repository admission is paused or draining", async () => {
+    const paused = createPlane();
+    paused.state.repositories.get("repo")!.admissionState = "paused";
+    await expect(
+      paused.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+
+    const draining = createPlane();
+    await expect(
+      draining.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+    draining.state.repositories.get("repo")!.admissionState = "draining";
+    await expect(
+      draining.updateGitHubIngressConfig({ bindings: [binding] }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("rejects duplicate repository bindings and missing create secrets", async () => {
     const plane = createPlane();
     await expect(plane.createGitHubIngressConfig({ bindings: [binding] })).resolves.toMatchObject({

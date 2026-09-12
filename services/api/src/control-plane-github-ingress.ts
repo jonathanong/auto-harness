@@ -7,7 +7,7 @@ import {
 } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { validateSessionCreate } from "./control-plane-session-create.ts";
+import { validateSessionTargetCatalog } from "./control-plane-session-create.ts";
 import {
   getRepositoryDurable,
   refreshTargetCatalogDurable,
@@ -278,19 +278,7 @@ async function validateConfiguredBindings(
   for (const binding of input.bindings) {
     const repository = await getRepositoryDurable(state, binding.repositoryId);
     if (!repository) return { ok: false, error: "repository not found" };
-    const candidate = validateSessionCreate(state, {
-      repositoryId: binding.repositoryId,
-      prompt: "GitHub ingress configuration validation",
-      target: binding.target,
-      fallbacks: binding.fallbacks,
-      queueTtlSeconds: binding.queueTtlSeconds,
-      timeout: binding.timeout,
-      priority: binding.priority,
-      requiredLabels: binding.requiredLabels,
-      ref: binding.defaultRef,
-      source: "webhook",
-      type: "prompt",
-    });
+    const candidate = validateSessionTargetCatalog(state, binding.target, binding.fallbacks ?? []);
     if (!candidate.ok) return { ok: false, error: candidate.error };
   }
   return { ok: true };

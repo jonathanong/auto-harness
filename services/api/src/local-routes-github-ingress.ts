@@ -54,7 +54,8 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
     });
     if (parsed.kind === "ignored") {
       // A verified but irrelevant GitHub delivery is acknowledged to avoid retries.
-      if (!(await audit(ctx, "denied", { reason: parsed.reason, delivery }))) return true;
+      if (!(await audit(ctx, "denied", { reason: parsed.reason, delivery }, parsed.repositoryId)))
+        return true;
       send(ctx.res, 202, { accepted: false, reason: parsed.reason });
       return true;
     }
@@ -92,9 +93,11 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
         ))
       )
         return true;
-      send(ctx.res, result.code === "CONFLICT" ? 409 : 400, {
-        error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
-      });
+      send(
+        ctx.res,
+        result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
+        { error: { code: result.code ?? "VALIDATION_ERROR", message: result.error } },
+      );
       return true;
     }
     if (!(await audit(ctx, "success", { delivery, created: result.created }, session.repositoryId)))

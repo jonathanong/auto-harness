@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- parser edge cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { MAX_FALLBACKS, MAX_PROMPT_BYTES } from "@auto-harness/shared";
@@ -195,7 +196,15 @@ describe("parseGitHubWebhookIngress", () => {
       ["issues", issueComment(), "unsupported_event"],
       ["issue_comment", issueComment({ action: "edited" }), "unsupported_action"],
       ["issue_comment", issueComment({ repository: { id: 43 } }), "unconfigured_repository"],
-      [
+      ["issue_comment", issueComment({ comment: { id: "99" } }), "invalid_payload"],
+    ]) {
+      expectIgnored(event, payload, reason);
+    }
+  });
+
+  it("retains the resolved repository scope for denied configured comments", () => {
+    expect(
+      ingress(
         "issue_comment",
         issueComment({
           comment: {
@@ -205,11 +214,13 @@ describe("parseGitHubWebhookIngress", () => {
             user: { login: "stranger" },
           },
         }),
-        "unauthorized_author",
-      ],
-      ["issue_comment", issueComment({ comment: { id: "99" } }), "invalid_payload"],
-    ]) {
-      expectIgnored(event, payload, reason);
-    }
+      ),
+    ).toEqual({ kind: "ignored", reason: "unauthorized_author", repositoryId: "auto-harness" });
+    expect(
+      ingress(
+        "issue_comment",
+        issueComment({ comment: { ...issueComment().comment, body: "please help" } }),
+      ),
+    ).toEqual({ kind: "ignored", reason: "missing_mention", repositoryId: "auto-harness" });
   });
 });

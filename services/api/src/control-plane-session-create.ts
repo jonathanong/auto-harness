@@ -247,7 +247,7 @@ export function validateSessionCreate(
       return { ok: false, error: "workspace setup profile not found", code: "NOT_FOUND" };
     }
   }
-  const targets = resolveTargetDisplayNames(
+  const targets = validateSessionTargetCatalog(
     state,
     validated.value.target,
     validated.value.fallbacks,
@@ -266,6 +266,15 @@ export function validateSessionCreate(
       ? { scheduleId: record.scheduleId }
       : {}),
   };
+}
+
+/** Validate target catalog references independently of live repository admission state. */
+export function validateSessionTargetCatalog(
+  state: ControlPlaneState,
+  target: Parameters<typeof resolveTargetDisplayNames>[1],
+  fallbacks: Parameters<typeof resolveTargetDisplayNames>[2],
+): ReturnType<typeof resolveTargetDisplayNames> {
+  return resolveTargetDisplayNames(state, target, fallbacks);
 }
 
 export function buildSessionRecord(

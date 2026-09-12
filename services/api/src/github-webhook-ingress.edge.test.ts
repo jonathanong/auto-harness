@@ -35,10 +35,12 @@ function expectIgnored(
   payload: unknown,
   reason: string,
   repositories: readonly GitHubWebhookRepositoryBinding[] = [binding],
+  repositoryId?: string,
 ) {
   expect(parseGitHubWebhookIngress({ event, payload, repositories })).toEqual({
     kind: "ignored",
     reason,
+    ...(repositoryId ? { repositoryId } : {}),
   });
 }
 
@@ -110,6 +112,8 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         },
       }),
       "unauthorized_author",
+      [binding],
+      "auto-harness",
     );
   });
 
@@ -146,6 +150,8 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         "issue_comment",
         issueComment({ comment: { ...issueComment().comment, body } }),
         "missing_mention",
+        [binding],
+        "auto-harness",
       );
     }
   });

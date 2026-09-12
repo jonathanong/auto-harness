@@ -50,6 +50,7 @@ export type GitHubWebhookIngressResult =
         | "unauthorized_author"
         | "missing_mention"
         | "invalid_payload";
+      repositoryId?: string;
     };
 
 type SupportedEvent = "issue_comment" | "pull_request_review_comment";
@@ -106,10 +107,10 @@ export function parseGitHubWebhookIngress(input: {
     return ignored("invalid_payload");
   }
   if (!isAuthorized(authorAssociation, githubAuthorLogin, binding.allowedLogins)) {
-    return ignored("unauthorized_author");
+    return ignored("unauthorized_author", binding.repositoryId);
   }
   const prompt = promptAfterMention(body);
-  if (prompt === undefined) return ignored("missing_mention");
+  if (prompt === undefined) return ignored("missing_mention", binding.repositoryId);
   if (promptByteLengthError(prompt) !== null) return ignored("invalid_payload");
 
   const thread = threadFor(input.event, payload, binding.defaultRef);
@@ -138,8 +139,11 @@ export function parseGitHubWebhookIngress(input: {
   };
 }
 
-function ignored(reason: Extract<GitHubWebhookIngressResult, { kind: "ignored" }>["reason"]) {
-  return { kind: "ignored", reason } as const;
+function ignored(
+  reason: Extract<GitHubWebhookIngressResult, { kind: "ignored" }>["reason"],
+  repositoryId?: string,
+) {
+  return { kind: "ignored", reason, ...(repositoryId ? { repositoryId } : {}) } as const;
 }
 
 function isSupportedEvent(value: string): value is SupportedEvent {

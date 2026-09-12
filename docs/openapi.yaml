@@ -157,7 +157,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/GitHubIngressConfigInput" }
+            schema: { $ref: "#/components/schemas/GitHubIngressConfigCreateInput" }
       responses:
         "201":
           description: Created redacted configuration
@@ -877,6 +877,11 @@ components:
           minItems: 1
           maxItems: 100
           items: { $ref: "#/components/schemas/GitHubIngressBinding" }
+    GitHubIngressConfigCreateInput:
+      allOf:
+        - $ref: "#/components/schemas/GitHubIngressConfigInput"
+        - type: object
+          required: [secret]
     GitHubIngressConfig:
       type: object
       required: [id, type, enabled, bindings, secretConfigured, version, createdAt, updatedAt]

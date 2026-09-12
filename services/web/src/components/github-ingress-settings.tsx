@@ -64,6 +64,9 @@ function parseFallbackTargets(
 /** Structured singleton editor; webhook secret stays empty on load and is retained on PUT. */
 export function GitHubIngressSettings() {
   const [pending, start] = useTransition();
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "forbidden" | "error">(
+    "loading",
+  );
   const [configured, setConfigured] = useState(false);
   const [secret, setSecret] = useState("");
   const [enabled, setEnabled] = useState(true);
@@ -71,7 +74,18 @@ export function GitHubIngressSettings() {
   useEffect(() => {
     void apiFetch("/api/v1/integrations/github-ingress", { cache: "no-store" })
       .then(async (response) => {
-        if (!response.ok) return;
+        if (response.status === 404) {
+          setLoadState("ready");
+          return;
+        }
+        if (response.status === 401 || response.status === 403) {
+          setLoadState("forbidden");
+          return;
+        }
+        if (!response.ok) {
+          setLoadState("error");
+          return;
+        }
         const value = (await response.json()) as {
           enabled: boolean;
           bindings: Array<{
@@ -88,6 +102,7 @@ export function GitHubIngressSettings() {
           }>;
         };
         setConfigured(true);
+        setLoadState("ready");
         setEnabled(value.enabled);
         setBindings(
           value.bindings.map((binding) => ({
@@ -112,12 +127,7 @@ export function GitHubIngressSettings() {
           })),
         );
       })
-      .catch(() =>
-        showToast("Unable to load GitHub ingress configuration.", {
-          variant: "destructive",
-          pw: "github-ingress-error",
-        }),
-      );
+      .catch(() => setLoadState("error"));
   }, []);
   const change = (index: number, field: keyof Binding, value: string | boolean) =>
     setBindings((current) =>
@@ -202,6 +212,29 @@ export function GitHubIngressSettings() {
       setBindings([blank()]);
       showToast("GitHub ingress configuration deleted.", { pw: "github-ingress-success" });
     });
+  if (loadState === "loading") {
+    return <div aria-busy="true" data-pw="github-ingress-loading" />;
+  }
+  if (loadState === "forbidden") {
+    return (
+      <div data-pw="github-ingress-forbidden">
+        <h3 className="text-lg font-medium">GitHub App ingress</h3>
+        <p className="text-sm text-red-700" role="alert">
+          You do not have permission to manage GitHub App ingress settings.
+        </p>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div data-pw="github-ingress-error-state">
+        <h3 className="text-lg font-medium">GitHub App ingress</h3>
+        <p className="text-sm text-red-700" role="alert">
+          Unable to load GitHub ingress configuration. Try again later.
+        </p>
+      </div>
+    );
+  }
   return (
     <Card data-pw="github-ingress-settings-card">
       <CardHeader>
