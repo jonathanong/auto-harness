@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- admission conflict matrix shares one transaction fixture. */
 import { DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
@@ -143,6 +144,35 @@ describe("concurrent session admission conflicts", () => {
         },
       ),
     ).rejects.toMatchObject({ name: "IntegrationChangedError" });
+  });
+
+  it("applies the integration fence to concurrent session admission", async () => {
+    const fence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+          expect(
+            items.some(
+              (item) =>
+                "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+            ),
+          ).toBe(true);
+          return {};
+        }),
+        session,
+        [],
+        fence,
+      ),
+    ).resolves.toMatchObject({ created: true });
   });
 
   it("distinguishes lock retries, active duplicates, and stale lock collisions", async () => {

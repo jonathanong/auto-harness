@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  DEFAULT_QUEUE_TTL_SECONDS,
   validateTargetRouting,
   sessionPriorityError,
   sessionTimeoutError,
@@ -21,6 +20,10 @@ import type { CustomWebhookIntegrationRecord } from "./db/plane-storage-types.ts
 import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 
 type Failure = { ok: false; error: string; conflict?: true; unavailable?: true };
+type NormalizedCustomWebhookConfigInput = CustomWebhookConfigInput & {
+  fallbacks: NonNullable<CustomWebhookConfigInput["fallbacks"]>;
+  queueTtlSeconds: number;
+};
 
 export async function getCustomWebhookIntegration(
   state: ControlPlaneState,
@@ -187,7 +190,7 @@ export async function decryptCustomWebhookSecret(
 
 async function makeRecord(
   state: ControlPlaneState,
-  input: CustomWebhookConfigInput,
+  input: NormalizedCustomWebhookConfigInput,
   createdAt: string,
   version: number,
   updatedAt: string,
@@ -206,8 +209,8 @@ async function makeRecord(
       )),
     repositoryId: input.repositoryId,
     target: input.target,
-    fallbacks: input.fallbacks ?? [],
-    queueTtlSeconds: input.queueTtlSeconds ?? DEFAULT_QUEUE_TTL_SECONDS,
+    fallbacks: input.fallbacks,
+    queueTtlSeconds: input.queueTtlSeconds,
     timeout: input.timeout,
     priority: input.priority ?? 0,
     requiredLabels: input.requiredLabels ?? [],
@@ -221,7 +224,7 @@ async function makeRecord(
 function validateInput(
   input: CustomWebhookConfigInput,
   requireSecret: boolean,
-): { ok: true; input: CustomWebhookConfigInput } | Failure {
+): { ok: true; input: NormalizedCustomWebhookConfigInput } | Failure {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.id)) {
     return {
       ok: false,
@@ -350,7 +353,7 @@ function conflict(): Failure {
 /** Keep configuration and catalog deletes on the same durable ownership fences. */
 async function withCustomWebhookReferenceFence<T extends { ok: boolean }>(
   state: ControlPlaneState,
-  input: CustomWebhookConfigInput,
+  input: NormalizedCustomWebhookConfigInput,
   operation: (
     markers:
       | readonly import("./db/plane-storage-deletion-markers.ts").OwnedDeletionMarker[]
@@ -363,9 +366,9 @@ async function withCustomWebhookReferenceFence<T extends { ok: boolean }>(
   );
 }
 
-function customWebhookReferenceKeys(input: CustomWebhookConfigInput): string[] {
+function customWebhookReferenceKeys(input: NormalizedCustomWebhookConfigInput): string[] {
   const keys = new Set<string>([`repository:${input.repositoryId}`]);
-  for (const route of [input.target, ...(input.fallbacks ?? [])]) {
+  for (const route of [input.target, ...input.fallbacks]) {
     keys.add("providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`);
   }
   return [...keys];

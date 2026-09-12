@@ -189,4 +189,15 @@ describe("webhook outbox processor", () => {
       { id: "second", now: "2026-08-15T12:00:10.000Z", leaseExpiresAt: "2026-08-15T12:00:40.000Z" },
     ]);
   });
+
+  it("reports a lease loss when retry settlement no longer owns the delivery", async () => {
+    const store = webhookProcessStore({ failWebhookDelivery: vi.fn(async () => null) });
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: false, failureCode: "transient-failure" }) },
+        { now: () => webhookTestNow },
+      ),
+    ).resolves.toBe("lease-lost");
+  });
 });

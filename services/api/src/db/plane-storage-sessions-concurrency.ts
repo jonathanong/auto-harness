@@ -1,5 +1,10 @@
 /* eslint-disable max-lines -- admission, parent, integration, lock, and session transaction indexes stay co-located. */
-import { DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  GetCommand,
+  TransactWriteCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 
 import {
   markerConditions,
@@ -12,7 +17,6 @@ import {
   isConditionalTransactionFailed,
   isConditionalTransactionFailureAt,
   sessionToItem,
-  type IntegrationSessionFence,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 import {
@@ -40,7 +44,7 @@ type CreateSessionAdmissionParts = {
   activityPut: ReturnType<typeof sessionDrainActivityPut>;
   principalCheck: ReturnType<typeof principalExistsCheck>;
   parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string };
-  integrationCheck?: ReturnType<typeof integrationSessionFenceCheck>;
+  integrationCheck?: NonNullable<TransactWriteCommandInput["TransactItems"]>[number] | undefined;
 };
 
 /** Conservative root-wide bound for direct and indirect child sessions. */
@@ -61,35 +65,6 @@ function parentFenceIsValid(
     );
   }
   return ["running", "completed", "failed", "cancelled", "timed_out"].includes(parent.status);
-}
-
-function integrationSessionFenceCheck(
-  ctx: PlaneStorageCtx,
-  fence: IntegrationSessionFence | undefined,
-) {
-  if (!fence) return undefined;
-  return {
-    ConditionCheck: {
-      TableName: ctx.tables.integrations,
-      Key: { id: fence.storageId },
-      ConditionExpression:
-        fence.generation === undefined
-          ? "attribute_exists(id) AND #type = :type AND attribute_not_exists(#generation) AND #version = :version AND #enabled = :enabled"
-          : "attribute_exists(id) AND #type = :type AND #generation = :generation AND #version = :version AND #enabled = :enabled",
-      ExpressionAttributeNames: {
-        "#type": "type",
-        "#generation": "generation",
-        "#version": "version",
-        "#enabled": "enabled",
-      },
-      ExpressionAttributeValues: {
-        ":type": fence.type,
-        ...(fence.generation === undefined ? {} : { ":generation": fence.generation }),
-        ":version": fence.version,
-        ":enabled": fence.enabled,
-      },
-    },
-  };
 }
 
 async function throwIfCreateAdmissionConflict(

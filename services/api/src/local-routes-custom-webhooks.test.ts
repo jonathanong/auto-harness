@@ -428,6 +428,73 @@ describe("custom webhook receiver", () => {
     }
   });
 
+  it("keeps delete failures fail-closed when audit persistence fails", async () => {
+    const { plane } = await fixture();
+    const generation = (await plane.getCustomWebhookIntegration("deploy"))!.generation!;
+    plane.appendAuditLog = auditFailure;
+    (
+      plane as unknown as {
+        deleteCustomWebhookIntegration: () => Promise<unknown>;
+      }
+    ).deleteCustomWebhookIntegration = async () => ({
+      ok: false,
+      error: "changed",
+      conflict: true,
+    });
+    const conflict = directRoute(plane, "/api/v1/integrations/custom/deploy", "DELETE", undefined, {
+      "if-match": "1",
+      "if-match-generation": generation,
+    });
+    await expect(handleCustomWebhookConfigRoutes(conflict.ctx as never)).resolves.toBe(true);
+    expect(conflict.status()).toBe(500);
+
+    (
+      plane as unknown as {
+        deleteCustomWebhookIntegration: () => Promise<never>;
+      }
+    ).deleteCustomWebhookIntegration = async () => {
+      throw new Error("storage unavailable");
+    };
+    const failure = directRoute(plane, "/api/v1/integrations/custom/deploy", "DELETE", undefined, {
+      "if-match": "1",
+      "if-match-generation": generation,
+    });
+    await expect(handleCustomWebhookConfigRoutes(failure.ctx as never)).resolves.toBe(true);
+    expect(failure.status()).toBe(500);
+  });
+
+  it("accepts legacy generation fences during update and delete parsing", async () => {
+    const { handler } = await fixture();
+    const body = {
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      timeout: 60,
+      version: 1,
+      generation: "legacy",
+    };
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", body),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "1",
+        "if-match-generation": "legacy",
+      }),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+        ...body,
+        generation: "",
+      }),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "1",
+        "if-match-generation": "",
+      }),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+  });
+
   it("verifies the raw body, applies operator routing, and asynchronously acknowledges", async () => {
     const { plane, handler } = await fixture();
     const body = { prompt: "run deploy", idempotencyKey: "delivery-1", ref: "main" };
@@ -589,6 +656,50 @@ describe("custom webhook receiver", () => {
       ),
     );
     log.mockRestore();
+  });
+
+  it("handles legacy generation rows and unmatched receiver paths", async () => {
+    const { plane } = await fixture();
+    const unmatched = directRoute(plane, "/api/v1/webhooks/other", "POST");
+    await expect(handleCustomWebhookRoute(unmatched.ctx as never)).resolves.toBe(false);
+    const record = await plane.getCustomWebhookIntegrationRecord("deploy");
+    expect(record).not.toBeNull();
+    const legacyRecord = { ...record, generation: undefined };
+    plane.state.customWebhookIntegrations.set("deploy", legacyRecord);
+    (
+      plane as unknown as {
+        getCustomWebhookIntegrationRecord: () => Promise<unknown>;
+      }
+    ).getCustomWebhookIntegrationRecord = async () => legacyRecord;
+    const body = { prompt: "legacy", idempotencyKey: "legacy-generation" };
+    const route = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/deploy",
+      "POST",
+      Buffer.from(JSON.stringify(body)),
+      { "x-auto-harness-signature-256": signature(body) },
+    );
+    await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+    expect(route.status()).toBe(202);
+    expect(plane.listSessions()[0]?.concurrencyId).toBe("webhook:deploy:legacy:legacy-generation");
+  });
+
+  it("fails closed when an ingress exception cannot be audited", async () => {
+    const { plane } = await fixture();
+    (
+      plane as unknown as {
+        getCustomWebhookIntegrationRecord: () => Promise<never>;
+      }
+    ).getCustomWebhookIntegrationRecord = async () => {
+      throw new Error("storage unavailable");
+    };
+    plane.appendAuditLog = auditFailure;
+    const body = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-exception" }));
+    const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, {
+      "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+    });
+    await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+    expect(route.status()).toBe(500);
   });
 
   it("maps durable session conflicts and fails closed when ingress auditing fails", async () => {
