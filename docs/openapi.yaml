@@ -658,7 +658,11 @@ components:
         requiredLabels:
           type: array
           maxItems: 16
-          items: { type: string, minLength: 1, maxLength: 64 }
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+            description: At most 64 UTF-8 bytes.
         enabled: { type: boolean }
     CustomWebhookUpdateConfig:
       type: object
@@ -675,7 +679,11 @@ components:
         requiredLabels:
           type: array
           maxItems: 16
-          items: { type: string, minLength: 1, maxLength: 64 }
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+            description: At most 64 UTF-8 bytes.
         enabled: { type: boolean }
         version: { type: integer, minimum: 1 }
         generation:
@@ -717,7 +725,11 @@ components:
         requiredLabels:
           type: array
           maxItems: 16
-          items: { type: string, minLength: 1, maxLength: 64 }
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+            description: At most 64 UTF-8 bytes.
         enabled: { type: boolean }
         secretConfigured: { type: boolean, const: true }
         version: { type: integer, minimum: 1 }
@@ -778,7 +790,11 @@ components:
         requiredLabels:
           type: array
           maxItems: 16
-          items: { type: string, minLength: 1, maxLength: 64 }
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+            description: At most 64 UTF-8 bytes.
         metadata:
           type: object
           additionalProperties:

@@ -129,6 +129,7 @@ export function CustomWebhookSettings() {
       const submittedId = config.id;
       const submittedEndpoint = endpoint;
       const submittedConfigured = configured;
+      const submittedSecret = secret;
       try {
         const { id: _id, generation, ...settings } = config;
         const body: Record<string, unknown> = { ...settings };
@@ -155,7 +156,7 @@ export function CustomWebhookSettings() {
           generation: saved.generation,
         }));
         setConfigured(true);
-        setSecret("");
+        setSecret((current) => (current === submittedSecret ? "" : current));
         showToast("Custom webhook configuration saved.", { pw: "custom-webhook-success" });
       } catch {
         showToast("Unable to save custom webhook configuration.", {

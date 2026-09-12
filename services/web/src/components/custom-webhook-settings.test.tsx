@@ -142,6 +142,27 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
   });
 
+  it("keeps a secret edited while the save is in flight", async () => {
+    let resolveSave!: (response: Response) => void;
+    createApiFake(
+      json(existing),
+      () => new Promise<Response>((resolve) => (resolveSave = resolve)),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-secret"), "old-secret");
+    submit(view.container.querySelector("form")!);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-secret"), "new-secret");
+    resolveSave(json({ ...existing, version: 3 }));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-secret").value).toBe(
+      "new-secret",
+    );
+    view.unmount();
+  });
+
   it("does not clear a different configuration when a delete finishes late", async () => {
     let resolveDelete!: (response: Response) => void;
     createApiFake(

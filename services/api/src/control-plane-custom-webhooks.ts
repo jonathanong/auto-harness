@@ -268,10 +268,14 @@ function validateInput(
       error: `requiredLabels must have at most ${MAX_REQUIRED_LABELS} entries`,
     };
   }
-  if (input.requiredLabels?.some((label) => label.length > MAX_REQUIRED_LABEL_LENGTH)) {
+  if (
+    input.requiredLabels?.some(
+      (label) => new TextEncoder().encode(label).length > MAX_REQUIRED_LABEL_LENGTH,
+    )
+  ) {
     return {
       ok: false,
-      error: `requiredLabels entries must be at most ${MAX_REQUIRED_LABEL_LENGTH} characters`,
+      error: `requiredLabels entries must be at most ${MAX_REQUIRED_LABEL_LENGTH} UTF-8 bytes`,
     };
   }
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") {

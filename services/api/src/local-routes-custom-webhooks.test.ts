@@ -194,6 +194,7 @@ describe("custom webhook receiver", () => {
       ["bad-labels", { ...complete, requiredLabels: {} }],
       ["empty-label", { ...complete, requiredLabels: [""] }],
       ["post-version", { ...complete, version: 1 }],
+      ["post-generation", { ...complete, generation: "client-supplied" }],
     ]) {
       expect(
         await invokeHandler(handler, "POST", `/api/v1/integrations/custom/${id}`, body),
@@ -292,6 +293,11 @@ describe("custom webhook receiver", () => {
         "if-match-generation": generation,
       }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ action: "integration:custom-webhook:delete", outcome: "failed" }),
+      ]),
+    });
     mutable.createCustomWebhookIntegration = async () => {
       throw new Error("storage unavailable");
     };

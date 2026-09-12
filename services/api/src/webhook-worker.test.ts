@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- processor timing and lease outcomes share one focused fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { WebhookTransportRequest } from "./webhook-delivery-types.ts";
@@ -123,6 +124,22 @@ describe("webhook outbox processor", () => {
     await expect(
       processWebhookOutboxOnce(skipped, { deliver: vi.fn() }, { now: () => webhookTestNow }),
     ).resolves.toBe("idle");
+  });
+
+  it("uses settlement time when permanently rejecting a slow delivery", async () => {
+    const terminal = vi.fn(async () => true);
+    const store = webhookProcessStore({ deadLetterWebhookDelivery: terminal });
+    const nowValues = [webhookTestNow, "2026-08-15T12:00:10.000Z"];
+    await expect(
+      processWebhookOutboxOnce(
+        store,
+        { deliver: async () => ({ ok: false, failureCode: "delivery-rejected" }) },
+        { now: () => nowValues.shift()! },
+      ),
+    ).resolves.toBe("dead");
+    expect(terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ now: "2026-08-15T12:00:10.000Z" }),
+    );
   });
 
   it("dead-letters exhausted due rows before claiming and validates bounds", async () => {

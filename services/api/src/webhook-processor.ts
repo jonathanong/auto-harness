@@ -85,7 +85,14 @@ async function processCandidate(
     return (await store.completeWebhookDelivery(fence)) ? "sent" : "lease-lost";
   }
   if (result.failureCode === "delivery-rejected") {
-    return (await store.deadLetterWebhookDelivery({ ...fence, failureCode: result.failureCode }))
+    // A transport rejection may arrive after most of the lease has elapsed. Re-sample the
+    // clock so settlement cannot use the claim timestamp to renew an already-expired lease.
+    const settlementNow = (options.now ?? (() => new Date().toISOString()))();
+    return (await store.deadLetterWebhookDelivery({
+      ...fence,
+      now: settlementNow,
+      failureCode: result.failureCode,
+    }))
       ? "dead"
       : "lease-lost";
   }

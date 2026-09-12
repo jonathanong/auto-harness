@@ -35,6 +35,9 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   if (ctx.method === "DELETE") {
     let expectedVersion: number;
     let expectedGeneration: string | null;
+    let currentForAudit:
+      | Awaited<ReturnType<RouteCtx["plane"]["getCustomWebhookIntegration"]>>
+      | undefined;
     try {
       expectedVersion = parseExpectedVersion(ctx.req.headers["if-match"]);
       expectedGeneration = parseExpectedGeneration(ctx.req.headers["if-match-generation"]);
@@ -49,20 +52,21 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
       return true;
     }
     try {
-      const current = await ctx.plane.getCustomWebhookIntegration(id);
+      currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
       const result = await ctx.plane.deleteCustomWebhookIntegration(
         id,
         expectedVersion,
         expectedGeneration,
       );
       if (!result.ok) {
-        if (!(await audit(ctx, id, "failed", current?.repositoryId))) return true;
+        if (!(await audit(ctx, id, "failed", currentForAudit?.repositoryId))) return true;
         send(ctx.res, result.conflict ? 409 : 404, {
           error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
         });
-      } else if (await audit(ctx, id, "success", current?.repositoryId)) send(ctx.res, 204, null);
+      } else if (await audit(ctx, id, "success", currentForAudit?.repositoryId))
+        send(ctx.res, 204, null);
     } catch {
-      if (!(await audit(ctx, id, "failed"))) return true;
+      if (!(await audit(ctx, id, "failed", currentForAudit?.repositoryId))) return true;
       sendInternalError(ctx.res);
     }
     return true;
@@ -168,6 +172,8 @@ function parseConfig(value: unknown, id: string, requireSecret: boolean): Custom
   if (Object.keys(body).some((key) => !allowed.has(key)))
     throw new Error("configuration contains an unsupported field");
   if (requireSecret && body.version !== undefined)
+    throw new Error("configuration contains an unsupported field");
+  if (requireSecret && body.generation !== undefined)
     throw new Error("configuration contains an unsupported field");
   if (requireSecret && typeof body.secret !== "string") throw new Error("secret is required");
   if (!requireSecret && body.secret !== undefined && typeof body.secret !== "string")
