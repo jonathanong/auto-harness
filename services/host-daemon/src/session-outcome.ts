@@ -39,6 +39,8 @@ export type SessionRunResult = {
 type SessionOutcome = {
   status: SessionTerminalStatus;
   exitCode: number | null;
+  /** Do not run the terminal hook when cancellation wins before command start. */
+  suppressTerminalHook?: boolean;
   deferTerminalHook?: boolean;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
@@ -108,7 +110,7 @@ async function finishSession(
   environmentIsChild = false,
 ): Promise<SessionRunResult> {
   streamer.flush();
-  if (hookScript) {
+  if (hookScript && !outcome.suppressTerminalHook) {
     await runTerminalHook(processRunner, {
       scriptPath: hookScript,
       cwd: worktreePath,

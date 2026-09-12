@@ -133,6 +133,70 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("keeps a deferred status indexed while shutdown settlement races its ACK", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const completionSent = vi.fn();
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:terminal-hook-complete") completionSent();
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      let finishSettlement!: () => void;
+      const settlementFinished = new Promise<void>((resolve) => {
+        finishSettlement = resolve;
+      });
+      const settle = vi.fn(async () => {
+        await settlementFinished;
+        return { summary: "settled during shutdown", summarySource: "harness" as const };
+      });
+      const pending = pendingTerminalStatusOf(loop);
+      pending.set("shutdown-race\0attempt-1", {
+        message: {
+          ...statusMessage,
+          sessionId: "shutdown-race",
+          attemptId: "attempt-1",
+          deferTerminalHookResult: true,
+          errorCode: "checkout_fetch_failed",
+        },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: settle,
+      });
+
+      loop.prepareForShutdown();
+      expect(pending.size).toBe(1);
+      finishSettlement();
+      await loop.waitForIdle();
+      expect(pending.size).toBe(1);
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "shutdown-race",
+        attemptId: "attempt-1",
+        retryAccepted: false,
+        terminalHookHandoffId: "shutdown-race-handoff",
+        terminalHookHandoffExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await flushMicrotasks();
+      expect(settle).toHaveBeenCalledTimes(1);
+      await loop.waitForIdle();
+      expect(completionSent).toHaveBeenCalledTimes(1);
+      expect(pending.size).toBe(0);
+      transport.deliver({
+        type: "session:terminal-hook-acknowledged",
+        handoffId: "shutdown-race-handoff",
+      });
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it.each([
     ["missing", {}],
     ["invalid", { terminalHookHandoffExpiresAt: "not-a-date" }],

@@ -445,7 +445,7 @@ describe("control-plane terminal message coverage", () => {
     state.sessions.set(session.id, session);
 
     await expect(
-      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
+      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 7),
     ).resolves.toEqual({ ok: true });
     expect(finishSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -453,6 +453,34 @@ describe("control-plane terminal message coverage", () => {
       }),
     );
     expect(state.sessions.get(session.id)).toEqual(session);
+  });
+
+  it("does not persist a deferred terminal-hook handoff for a pre-v7 peer", async () => {
+    const idFactory = vi.fn(() => "handoff");
+    const state = createControlPlaneState({ now: () => NOW, idFactory });
+    const session = running({ infrastructureRetryCount: 1 });
+    const finishSession = vi.fn(async () => true);
+    const putArchive = vi.fn(async () => undefined);
+    setDurableReadStorage(state, {
+      getSession: async () => session,
+      finishSession,
+      listLogs: async () => [],
+      putArchive,
+    });
+    state.sessions.set(session.id, session);
+
+    await expect(
+      handleHostMessageDurable(state, failedCheckoutStatus(), undefined, false, false, 6),
+    ).resolves.toMatchObject({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "session", attemptId: "attempt" },
+    });
+    expect(idFactory).not.toHaveBeenCalled();
+    expect(finishSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({ terminalHookHandoff: expect.anything() }),
+    );
+    expect(state.sessions.get(session.id)).not.toHaveProperty("terminalHookHandoff");
+    expect(putArchive).toHaveBeenCalledOnce();
   });
 
   it("finishes a hostless deferred failure without fabricating a terminal hook handoff", async () => {
@@ -516,7 +544,7 @@ describe("control-plane terminal message coverage", () => {
         undefined,
         false,
         false,
-        6,
+        7,
       ),
     ).resolves.toMatchObject({
       sessionStatusAcknowledged: { terminalHookHandoffId: "proposed", retryAccepted: false },
@@ -555,7 +583,7 @@ describe("control-plane terminal message coverage", () => {
         undefined,
         false,
         false,
-        6,
+        7,
       ),
     ).resolves.toEqual({ ok: true });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(

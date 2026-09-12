@@ -142,6 +142,8 @@ type PendingTerminalStatus = {
     | undefined;
   /** An acknowledged deferred status remains discoverable until its hook settles. */
   settlement?: Promise<void> | undefined;
+  /** Shutdown's fail-closed settlement has completed; retain the index for a late ACK. */
+  shutdownSettlementComplete?: boolean | undefined;
   /** The shared hook result for a same-process handoff that overlaps its status ACK. */
   settlementResult?: Promise<import("@auto-harness/shared").SessionResult | undefined> | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
@@ -562,8 +564,13 @@ export class DaemonLoop {
     // for the server's 24-hour retention window.
     while (true) {
       this.startPendingTerminalHookHandoffs();
-      const activeWork = [...this.pendingTerminalHookHandoffs.values()]
-        .flatMap((pending) => [
+      const activeWork = [
+        ...[...this.pendingTerminalStatus.values()].map(
+          (pending) =>
+            pending.settlement ??
+            (pending.shutdownSettlementComplete ? undefined : pending.settlementResult),
+        ),
+        ...[...this.pendingTerminalHookHandoffs.values()].flatMap((pending) => [
           pending.work,
           // Completion delivery is not part of the shutdown fence. The
           // durable control-plane handoff remains recoverable after this
@@ -571,10 +578,17 @@ export class DaemonLoop {
           // create a cycle: daemonStop closes that transport only after this
           // idle wait. Outside shutdown, retain the ordinary delivery fence.
           ...(this.settleDeferredOnCompletion ? [] : [pending.completionSend]),
-        ])
-        .filter((work): work is Promise<void> => work !== undefined);
+        ]),
+      ].filter((work): work is Promise<void> => work !== undefined);
       if (activeWork.length === 0) return;
-      await Promise.all(activeWork);
+      await Promise.all(
+        activeWork.map((work) =>
+          work.then(
+            () => undefined,
+            () => undefined,
+          ),
+        ),
+      );
     }
   }
 
@@ -593,18 +607,33 @@ export class DaemonLoop {
     for (const key of this.pendingCommandStarts.keys()) {
       this.finishCommandStart(key, false);
     }
-    for (const [key, pending] of this.pendingTerminalStatus) {
+    for (const pending of this.pendingTerminalStatus.values()) {
       if (!pending.settleDeferredTerminalHook) continue;
-      this.pendingTerminalStatus.delete(key);
       pending.controller.abort();
-      void pending
-        .settleDeferredTerminalHook(true)
+      // Keep the status indexed until shutdown has finished settling it. An
+      // ACK can arrive while the hook is running; retaining this entry lets
+      // that ACK attach the durable handoff to the same settlement instead of
+      // starting a second hook (or losing the completion entirely).
+      if (pending.settlementResult) continue;
+      let settlementResult: ReturnType<
+        NonNullable<PendingTerminalStatus["settleDeferredTerminalHook"]>
+      >;
+      try {
+        settlementResult = pending.settleDeferredTerminalHook(true);
+      } catch (error) {
+        settlementResult = Promise.reject(error);
+      }
+      pending.settlementResult = settlementResult;
+      void settlementResult
         .catch((error: unknown) => {
           this.onLog?.(
             `deferred terminal hook failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
           );
         })
-        .finally(() => pending.resolveDeferredDisposition?.());
+        .finally(() => {
+          pending.shutdownSettlementComplete = true;
+          pending.resolveDeferredDisposition?.();
+        });
     }
   }
 
@@ -638,6 +667,10 @@ export class DaemonLoop {
       this.pendingTerminalStatus.delete(key);
       pending.controller.abort();
       if (pending.settleDeferredTerminalHook) {
+        if (pending.settlementResult) {
+          pending.resolveDeferredDisposition?.();
+          continue;
+        }
         void pending
           .settleDeferredTerminalHook(true)
           .catch((error: unknown) => {
@@ -1002,10 +1035,12 @@ export class DaemonLoop {
       // Keep the entry indexed during settlement: an overlapping durable
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) return pending.settlement;
-      const settlementResult = pending.settleDeferredTerminalHook(
-        msg.retryAccepted !== true,
-        syntheticV7Handoff ? validHandoffExpiresAtMs : undefined,
-      );
+      const settlementResult =
+        pending.settlementResult ??
+        pending.settleDeferredTerminalHook(
+          msg.retryAccepted !== true,
+          syntheticV7Handoff ? validHandoffExpiresAtMs : undefined,
+        );
       pending.settlementResult = settlementResult;
       const settlement = settlementResult
         .then((result) => {
@@ -1249,7 +1284,6 @@ export class DaemonLoop {
 
   private sendTerminalHookHandoffCompletion(pending: PendingTerminalHookHandoff): void {
     if (
-      this.settleDeferredOnCompletion ||
       pending.sending ||
       !pending.complete ||
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending

@@ -5,7 +5,6 @@ import {
   normalizeSessionResult,
   SESSION_RESULT_PROTOCOL_VERSION,
   TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
-  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
 
@@ -1665,7 +1664,7 @@ async function applySessionStatusDurable(
     const terminalErrorMessage = finish?.errorMessage ?? msg.errorMessage;
     const deferredHandoff =
       msg.deferTerminalHookResult === true &&
-      protocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
       msg.status === "failed" &&
       msg.errorCode === "checkout_fetch_failed" &&
       finish !== undefined
@@ -1887,7 +1886,7 @@ async function applySessionStatusDurable(
   }
   const deferredHandoff =
     msg.deferTerminalHookResult === true &&
-    protocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+    protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
     msg.status === "failed" &&
     msg.errorCode === "checkout_fetch_failed" &&
     finish !== undefined

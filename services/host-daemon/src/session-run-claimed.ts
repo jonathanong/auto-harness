@@ -331,6 +331,7 @@ async function runProcessAndFinish(
         return await finish({
           status: timedOut() ? "timed_out" : "cancelled",
           exitCode: null,
+          ...(signal?.aborted ? { suppressTerminalHook: true } : {}),
         });
       }
     } catch (error) {
