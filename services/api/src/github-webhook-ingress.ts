@@ -12,7 +12,7 @@ export type GitHubWebhookRepositoryBinding = Readonly<{
   allowedLogins?: readonly string[];
 }>;
 
-export type GitHubWebhookSessionIntent = Readonly<{
+type GitHubWebhookSessionIntent = Readonly<{
   repositoryId: string;
   target: TargetRef;
   fallbacks?: TargetRef[];
