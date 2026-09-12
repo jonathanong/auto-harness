@@ -346,6 +346,31 @@ needs an explicit non-production development/test escape), redirects are disable
 plus request work is bounded by the delivery lease with time reserved for settlement. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
 responses are permanent failures and are dead-lettered immediately under the worker's exact lease.
 
+### GitHub App comment ingress
+
+Use a dedicated GitHub App for inbound comments; do not reuse the host credential App. Configure:
+
+- Webhook URL: `https://<control-plane>/api/v1/webhooks/github`
+- Webhook secret: a high-entropy value also entered in **Settings → GitHub ingress**
+- Repository permissions: **Issues: Read-only** and **Pull requests: Read-only**
+- Subscribe to **Issue comment** and **Pull request review comment** events
+
+No private key is needed for the ingress App. Install it only on repositories that should send
+triggers, then create a binding using GitHub's numeric repository ID, the admitted Auto Harness
+repository ID, a fixed target/fallback policy, and a default branch ref. The webhook receiver
+accepts only `created` events and only when the first token is `@auto-harness`. Repository OWNER,
+MEMBER, and COLLABORATOR associations are accepted; extra bot or service logins must be explicitly
+allowlisted per binding.
+
+Inline review comments run against `refs/pull/<number>/head`. Issue comments on pull requests use
+the same pull ref; issue comments on ordinary issues use the configured default ref. Redelivery is
+deduplicated by numeric repository and comment ID. Secret rotation, disablement, and deletion are
+version-fenced against session creation.
+
+The separate credential App described in [host daemon deployment](deploy-host-daemon.md#github-app-credentials-optional)
+has broader per-session API duties and keeps its private key exclusively on the host. Its key and
+installation tokens must never be copied into the control plane.
+
 ### Custom Webhooks (Outbound)
 
 **Safe local pre-transport runtime:** optional machine-to-machine callbacks remain a target if

@@ -17,6 +17,7 @@ import type {
   ProviderAccountRecord,
   ProviderRecord,
   CustomWebhookIntegrationRecord,
+  GitHubIngressConfigRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
 } from "./db/plane-storage.ts";
@@ -87,6 +88,7 @@ export type ControlPlaneState = {
   slackInboundEvents: Map<string, SlackInboundEventRecord>;
   /** Ciphertext-only cache for operator-owned generic webhook integrations. */
   customWebhookIntegrations: Map<string, CustomWebhookIntegrationRecord>;
+  githubIngressConfig: GitHubIngressConfigRecord | undefined;
   /** True when this process (or its deployed sibling cron) can run the Slack outbox. */
   slackOutboundEnabled: boolean;
   /** OAuth signing credentials were injected into this REST runtime. */
@@ -189,6 +191,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     slackOAuthStates: new Map(),
     slackInboundEvents: new Map(),
     customWebhookIntegrations: new Map(),
+    githubIngressConfig: undefined,
     slackOutboundEnabled: false,
     slackInboundEnabled: false,
     slackOAuthClient: options.slackOAuthClient,

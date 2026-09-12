@@ -60,10 +60,35 @@ export type CustomWebhookIntegrationRecord = {
   updatedAt: string;
 };
 
+/** Singleton configuration for the GitHub App ingress receiver. */
+export type GitHubIngressBindingRecord = {
+  githubRepositoryId: number;
+  repositoryId: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  queueTtlSeconds: number;
+  timeout: number;
+  priority: number;
+  requiredLabels: string[];
+  defaultRef: string;
+  allowedLogins: string[];
+};
+
+export type GitHubIngressConfigRecord = {
+  id: "github-ingress";
+  type: "github-ingress";
+  encryptedSecret: string;
+  enabled: boolean;
+  bindings: GitHubIngressBindingRecord[];
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** Version fence included in the same session transaction as an inbound integration. */
 export type IntegrationSessionFence = {
   id: string;
-  type: "custom-webhook";
+  type: "custom-webhook" | "github-ingress";
   storageId: string;
   /** Undefined fences a legacy row and requires the attribute to remain absent. */
   generation?: string;

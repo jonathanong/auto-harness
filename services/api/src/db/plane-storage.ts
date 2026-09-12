@@ -5,6 +5,7 @@ import {
   type ProviderAccountRecord,
   type ProviderRecord,
   type CustomWebhookIntegrationRecord,
+  type GitHubIngressConfigRecord,
 } from "./plane-storage-types.ts";
 import * as catalog from "./plane-storage-catalog-providers.ts";
 import * as providerAccounts from "./plane-storage-provider-accounts.ts";
@@ -13,6 +14,7 @@ import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
 import * as slackInbound from "./plane-storage-slack-inbound.ts";
+import * as githubIngress from "./plane-storage-github-ingress.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as cancelRedeliveries from "./plane-storage-cancel-redeliveries.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
@@ -28,6 +30,7 @@ export type {
   ProviderAccountRecord,
   ProviderRecord,
   CustomWebhookIntegrationRecord,
+  GitHubIngressConfigRecord,
   RepositoryRecord,
   WorkspacePoolRecord,
   WorkspacePoolSummary,
@@ -232,6 +235,21 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
       expectedVersion,
       expectedGeneration,
     );
+  }
+
+  getGitHubIngressConfig(): Promise<GitHubIngressConfigRecord | null> {
+    return githubIngress.getGitHubIngressConfig(this.ctx);
+  }
+
+  putGitHubIngressConfig(
+    record: GitHubIngressConfigRecord,
+    expectedVersion: number | null,
+  ): Promise<boolean> {
+    return githubIngress.putGitHubIngressConfig(this.ctx, record, expectedVersion);
+  }
+
+  deleteGitHubIngressConfig(expectedVersion: number): Promise<boolean> {
+    return githubIngress.deleteGitHubIngressConfig(this.ctx, expectedVersion);
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

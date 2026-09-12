@@ -121,6 +121,12 @@ const NAV: NavGroup[] = [
         pw: "nav-custom-webhooks",
         tip: "Admin-only HMAC inbound webhook configuration",
       },
+      {
+        href: "/settings/github-ingress",
+        label: "GitHub ingress",
+        pw: "nav-github-ingress",
+        tip: "Admin-only GitHub App comment-trigger configuration",
+      },
     ],
   },
 ];

@@ -431,6 +431,9 @@ describe("control-plane authentication security", () => {
     expect(mayAccessHost({ ...operator, boundHostId: "host-a" }, "host-b")).toBe(false);
     expect(mayAccessHost({ ...operator, boundHostId: "host-a" }, "host-a")).toBe(true);
     expect(requiredCapability("GET", "/api/v1/integrations/slack")).toBe("integrations:write");
+    expect(requiredCapability("GET", "/api/v1/integrations/github-ingress")).toBe(
+      "integrations:write",
+    );
     expect(requiredCapability("GET", "/api/v1/auth/users")).toBe("accounts:write");
     expect(requiredCapability("GET", "/api/v1/audit-logs")).toBe("audit:read");
     expect(requiredCapability("POST", "/api/v1/scheduler/assign")).toBe("scheduler:run");

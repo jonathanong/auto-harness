@@ -109,6 +109,81 @@ paths:
       responses:
         "204": { description: Deleted }
         default: { $ref: "#/components/responses/Error" }
+  /webhooks/github:
+    post:
+      operationId: receiveGitHubIngressWebhook
+      summary: Create or deduplicate a session from an eligible GitHub App comment event
+      security: []
+      parameters:
+        - { name: x-github-event, in: header, required: true, schema: { type: string } }
+        - {
+            name: x-github-delivery,
+            in: header,
+            required: true,
+            schema: { type: string, minLength: 1, maxLength: 128 },
+          }
+        - {
+            name: x-hub-signature-256,
+            in: header,
+            required: true,
+            schema: { type: string, pattern: "^sha256=[0-9a-f]{64}$" },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "202":
+          description: Event verified and either accepted or safely ignored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GitHubIngressAcknowledgement" }
+        "401": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /integrations/github-ingress:
+    get:
+      operationId: getGitHubIngressConfig
+      responses:
+        "200":
+          description: Redacted GitHub ingress configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GitHubIngressConfig" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createGitHubIngressConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GitHubIngressConfigInput" }
+      responses:
+        "201":
+          description: Created redacted configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GitHubIngressConfig" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateGitHubIngressConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GitHubIngressConfigInput" }
+      responses:
+        "200":
+          description: Updated redacted configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GitHubIngressConfig" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteGitHubIngressConfig
+      responses:
+        "204": { description: Deleted }
+        default: { $ref: "#/components/responses/Error" }
   /sessions:
     post:
       operationId: createSession
@@ -764,6 +839,65 @@ components:
         accepted: { type: boolean, const: true }
         sessionId: { type: string }
         created: { type: boolean }
+    GitHubIngressBinding:
+      type: object
+      required: [githubRepositoryId, repositoryId, target, timeout, defaultRef]
+      additionalProperties: false
+      properties:
+        githubRepositoryId: { type: integer, minimum: 1 }
+        repositoryId: { type: string, minLength: 1, maxLength: 256 }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }
+        queueTtlSeconds: { type: number, minimum: 1 }
+        timeout: { type: number, minimum: 1 }
+        priority: { type: integer }
+        requiredLabels:
+          type: array
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 64 }
+        defaultRef: { type: string, minLength: 1, maxLength: 512 }
+        allowedLogins:
+          type: array
+          maxItems: 100
+          items: { type: string, minLength: 1, maxLength: 39 }
+    GitHubIngressConfigInput:
+      type: object
+      required: [bindings]
+      additionalProperties: false
+      properties:
+        secret:
+          type: string
+          minLength: 16
+          maxLength: 512
+          writeOnly: true
+          description: Required on create; omit on update to retain the encrypted secret.
+        enabled: { type: boolean }
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/GitHubIngressBinding" }
+    GitHubIngressConfig:
+      allOf:
+        - $ref: "#/components/schemas/GitHubIngressConfigInput"
+        - type: object
+          required: [id, type, enabled, secretConfigured, version, createdAt, updatedAt]
+          properties:
+            id: { type: string, const: github-ingress }
+            type: { type: string, const: github-ingress }
+            secretConfigured: { type: boolean, const: true }
+            version: { type: integer, minimum: 1 }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    GitHubIngressAcknowledgement:
+      type: object
+      required: [accepted]
+      properties:
+        accepted: { type: boolean }
+        sessionId: { type: string }
+        created: { type: boolean }
+        reason: { type: string }
+      additionalProperties: false
     CreateSession:
       description: Repository-backed or host-scoped workspace session input. Raw setupScript is intentionally not accepted.
       oneOf:

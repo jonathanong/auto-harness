@@ -151,6 +151,16 @@ function matchesIntegrationFence(
   state: ControlPlaneState,
   fence: IntegrationSessionFence,
 ): boolean {
+  if (fence.type === "github-ingress") {
+    const current = state.githubIngressConfig;
+    return (
+      !!current &&
+      current.id === fence.id &&
+      current.type === fence.type &&
+      current.version === fence.version &&
+      current.enabled === fence.enabled
+    );
+  }
   const current = state.customWebhookIntegrations.get(fence.id);
   return (
     !!current &&
