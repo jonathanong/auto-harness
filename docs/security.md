@@ -25,18 +25,36 @@ SCP-style SSH Git remotes; embedded userinfo, query parameters, and fragments ar
 
 Session **prompts are attacker-influenced input**: they may originate from issue comments, CI failure text, or other untrusted sources. Design consequences (see also [plan.md](plan.md) D1/D4/D7):
 
-| Control                                    | What it does                                                                                                                                                           |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Named Provider Account / Command only (D4) | Operators cannot run arbitrary shell strings via the API — a session targets a catalog entry, resolved control-plane-side into fixed argv                              |
-| Fine-grained GitHub token (D7)             | Compromised session write access is scoped to one repo’s contents/PRs/issues                                                                                           |
-| Agent-held credentials                     | Control plane never becomes a second vault for git/AI secrets                                                                                                          |
-| No control-plane “publisher”               | Agent opens PRs/comments itself — trust the agent host, not a second hop                                                                                               |
-| Parent-scoped child credential             | A running session can request independent follow-up work without receiving a general session-write credential; the parent and repository scope are checked server-side |
+| Control                                                  | What it does                                                                                                                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Named Provider Account / Command only (D4)               | Operators cannot run arbitrary shell strings via the API — a session targets a catalog entry, resolved control-plane-side into fixed argv                              |
+| Fine-grained GitHub token or App installation token (D7) | Compromised session write access is scoped to one repo’s contents/PRs/issues; App tokens expire with the clamped run                                                   |
+| Agent-held credentials                                   | Control plane never becomes a second vault for git/AI secrets                                                                                                          |
+| No control-plane “publisher”                             | Agent opens PRs/comments itself — trust the agent host, not a second hop                                                                                               |
+| Parent-scoped child credential                           | A running session can request independent follow-up work without receiving a general session-write credential; the parent and repository scope are checked server-side |
 
 This does **not** protect against a fully compromised agent host, a malicious Command definition in the catalog, or exfiltration through whatever the AI CLI can reach with its own credentials.
 The per-assignment child credential is intentionally usable by the assigned CLI; a compromised
 session process can therefore spawn bounded child work within that parent’s authorized repository
 and route policy until the credential is invalidated.
+
+### Optional host-side GitHub App credentials
+
+When `HARNESS_GITHUB_APP_CONFIG` is configured, the daemon signs a short-lived JWT locally and
+mints one installation token for each mapped session repository. The token is injected directly as
+`GH_TOKEN` into that assigned CLI and the repository's terminal hook, which needs the same scoped
+identity for the D3 failure-escalation flow. It is redacted from streamed output and errors, and
+the session ends before its GitHub expiry. Before minting succeeds, early terminal-hook paths stay
+scrubbed. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, preventing an ordinary
+hook from falling back to a stored `gh` login. This is not an OS boundary: a compromised session
+running as the same user can unset that variable or read other same-user credential stores. That
+remains the accepted risk documented below; selected-repository App installation limits its blast
+radius. Git continues to use the existing SSH transport.
+
+The App private key remains a host secret, but the daemon and its session CLIs run as the same OS
+user. A compromised session can therefore read it; mode `0600` prevents other local users, not the
+session itself. Mitigate this accepted risk by installing the App only on the repositories served by
+that host. Do not install it organization-wide, put it in prompts, or move it to the control plane.
 
 ## Transport security
 

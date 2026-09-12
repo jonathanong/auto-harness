@@ -15,6 +15,7 @@ function updatePersistedDaemonEnv(contents: string, env: NodeJS.ProcessEnv): str
   const updates = new Map<string, string>();
   const updaterKeys = new Set([
     "HARNESS_HOST_SENTRY_DSN",
+    "HARNESS_GITHUB_APP_CONFIG",
     "HARNESS_UPDATE_MANIFEST_URL",
     "HARNESS_UPDATE_PUBLIC_KEY",
     "HARNESS_UPDATE_INSTALL_DIR",
@@ -100,10 +101,13 @@ export function preparePersistedEnv(opts: {
   }
   contents = updatePersistedDaemonEnv(contents, opts.env);
   const errors = validatePersistedEnvFile(contents);
-  // Keep an existing valid service file intact when a new relative profile
-  // path is rejected. Callers already avoid writes on errors, and returning
-  // the original contents makes that no-write guarantee explicit to them.
-  if (errors.includes("HARNESS_EXECUTION_PROFILES")) {
+  // Keep an existing valid service file intact when a new relative secret
+  // configuration path is rejected. Callers already avoid writes on errors,
+  // and returning the original contents makes that no-write guarantee explicit.
+  if (
+    errors.includes("HARNESS_EXECUTION_PROFILES") ||
+    errors.includes("HARNESS_GITHUB_APP_CONFIG")
+  ) {
     return { contents: opts.existing ?? "", errors };
   }
   return { contents, errors };

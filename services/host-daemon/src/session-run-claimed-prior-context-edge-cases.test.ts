@@ -87,7 +87,11 @@ describe("prior-session context edge cases", () => {
         undefined,
         identity,
       ),
-    ).rejects.toThrow("spawn exploded");
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "spawn exploded",
+    });
     await expect(stat(join(cwd, ".auto-harness", "prior-session.md"))).rejects.toThrow();
   });
 });

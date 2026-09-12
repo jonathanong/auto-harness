@@ -12,6 +12,7 @@ import { WorktreeManager } from "./worktree-manager.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 import { WorkspaceManager } from "./workspace-manager.ts";
+import { loadGitHubAppConfig } from "./github-app.ts";
 
 export async function ensureDaemonReady(
   config: DaemonConfig,
@@ -50,6 +51,7 @@ export async function runAssignedSession(
   }
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
+  const githubApp = loadGitHubAppConfig(childEnvSource);
   const sessionRunner = new SessionRunner({
     worktrees,
     workspaces: new WorkspaceManager(config),
@@ -57,6 +59,7 @@ export async function runAssignedSession(
     commandRunner,
     childEnvSource,
     executionProfiles: loadExecutionProfiles(childEnvSource),
+    ...(githubApp ? { githubApp } : {}),
     onLog: (c) => {
       onLog(`[${c.stream}#${c.seq}] ${c.content}`);
     },
