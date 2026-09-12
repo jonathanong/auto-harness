@@ -158,7 +158,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, conflict ? 409 : 500, {
           error: {
             code: conflict ? "CONFLICT" : "INTERNAL_ERROR",
-            message: thrownMessage(error),
+            message: conflict ? "username already exists" : "unable to persist control-plane state",
           },
         });
       }
@@ -260,7 +260,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 500, {
           error: {
             code: "INTERNAL_ERROR",
-            message: thrownMessage(error),
+            message: "unable to persist control-plane state",
           },
         });
       }

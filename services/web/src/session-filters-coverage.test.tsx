@@ -104,13 +104,12 @@ describe("SessionFilters", () => {
     expect(router.push).toHaveBeenLastCalledWith(
       "/runs?status=failed&q=next&concurrencyId=old&sort=priority_desc",
     );
+    const pushesBeforeTab = router.push.mock.calls.length;
     keyDown(
       view.container.querySelector('[data-pw="session-filter-concurrency-id"]') as HTMLInputElement,
       "Tab",
     );
-    expect(router.push).toHaveBeenLastCalledWith(
-      "/runs?status=failed&q=next&concurrencyId=old&sort=priority_desc",
-    );
+    expect(router.push).toHaveBeenCalledTimes(pushesBeforeTab);
 
     view.unmount();
     const cleared = mount("status=running&q=needle&concurrencyId=old", router);
