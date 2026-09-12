@@ -129,4 +129,43 @@ describe("HostWorkspacePoolsSection", () => {
     });
     view.unmount();
   });
+
+  it("adds a new pool attachment and disables additions when no pools are configured", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ ...inventory, version: 10 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[{ id: "pool-2", name: "Second pool" }]}
+        canWriteExecConfig
+      />,
+    );
+    setValue(field(view.container, "host-workspace-slot-id"), "second");
+    setValue(field(view.container, "host-workspace-slot-name"), "Second");
+    setValue(field(view.container, "host-workspace-slot-path"), "/workspaces/second");
+    submit(field(view.container, "host-workspace-slot-add"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).workspacePools).toContainEqual({
+      workspacePoolId: "pool-2",
+      slots: [{ id: "second", name: "Second", path: "/workspaces/second" }],
+    });
+    view.unmount();
+
+    const empty = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[]}
+        canWriteExecConfig
+      />,
+    );
+    expect(
+      field<HTMLButtonElement>(empty.container, "host-workspace-slot-add-submit").disabled,
+    ).toBe(true);
+    empty.unmount();
+  });
 });

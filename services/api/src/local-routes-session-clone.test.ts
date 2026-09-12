@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- clone route outcomes share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -5,6 +6,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { createWorkspaceSession, workspacePlane } from "./test-helpers/workspace-session.ts";
 
 describe("session clone route", () => {
   it("validates every clone body shape and returns structured route errors", async () => {
@@ -200,5 +202,41 @@ describe("session clone route", () => {
       ).status,
     ).toBe(409);
     expect(conflictPlane.state.commands.get(concurrentCommand.id)).toEqual(concurrentCommand);
+  });
+
+  it("clones workspace policy while keeping raw setup scripts out of clone input", async () => {
+    const { plane } = workspacePlane();
+    const source = createWorkspaceSession(plane);
+    const { handler } = createLocalApp({ plane });
+
+    expect(
+      await invokeHandler(handler, "POST", `/api/v1/sessions/${source.id}/clone`, {
+        setupScript: "echo attacker",
+      }),
+    ).toMatchObject({
+      status: 400,
+      json: { error: { message: "invalid clone overrides" } },
+    });
+    expect(
+      await invokeHandler(handler, "POST", `/api/v1/sessions/${source.id}/clone`, {
+        destroyWorkspaceAfter: true,
+      }),
+    ).toMatchObject({
+      status: 404,
+      json: { error: { message: "resource not found" } },
+    });
+
+    const cloned = await invokeHandler(handler, "POST", `/api/v1/sessions/${source.id}/clone`, {
+      prompt: "cloned",
+    });
+    expect(cloned).toMatchObject({
+      status: 201,
+      json: {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        prompt: "cloned",
+        type: "workspace",
+      },
+    });
   });
 });

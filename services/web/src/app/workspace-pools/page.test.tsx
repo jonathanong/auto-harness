@@ -23,4 +23,11 @@ describe("workspace pools page", () => {
     expect(html).toContain("Install dependencies");
     expect(html).toContain('data-pw="form-workspace-pool-create"');
   });
+
+  it("renders an empty catalog and reports an API failure", async () => {
+    stubApi({ "/api/v1/workspace-pools": "__throw_string__" });
+    const html = await renderPage(WorkspacePoolsPage());
+    expect(html).toContain("offline");
+    expect(html).toContain("No workspace pools configured.");
+  });
 });

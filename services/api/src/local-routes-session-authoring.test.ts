@@ -197,6 +197,50 @@ describe("session authoring is closed to host-bound credentials", () => {
     expect(webhook.json).toMatchObject({ type: "prompt", source: "webhook" });
   });
 
+  it("creates workspace sessions without accepting raw setup or unprivileged cleanup overrides", async () => {
+    const plane = new ControlPlane({ idFactory: () => "workspace-session" });
+    plane.createCommand({
+      id: "workspace-command",
+      name: "echo",
+      argv: ["echo"],
+      providerId: null,
+    });
+    plane.createWorkspacePool({
+      id: "workspace-pool",
+      name: "workspace",
+      setupProfiles: [{ id: "default", name: "Default", script: "echo setup" }],
+      defaultSetupProfileId: "default",
+    });
+    const { handler } = createLocalApp({ plane, rateLimitConfig: { enabled: false } });
+    const invoke = (body: unknown) => invokeHandler(handler, "POST", "/api/v1/sessions", body);
+    const baseWorkspace = {
+      repositoryId: null,
+      workspacePoolId: "workspace-pool",
+      prompt: "inspect",
+      target: { commandId: "workspace-command" },
+      timeout: 30,
+    };
+
+    const raw = await invoke({ ...baseWorkspace, setupScript: "echo unsafe" });
+    expect(raw).toMatchObject({
+      status: 400,
+      json: { error: { message: "setupScript is not accepted; use setupProfileId" } },
+    });
+    expect(await invoke({ ...baseWorkspace, destroyWorkspaceAfter: true })).toMatchObject({
+      status: 404,
+      json: { error: { message: "resource not found" } },
+    });
+    const created = await invoke(baseWorkspace);
+    expect(created).toMatchObject({
+      status: 201,
+      json: {
+        repositoryId: null,
+        workspacePoolId: "workspace-pool",
+        type: "workspace",
+      },
+    });
+  });
+
   it("leaves the agent's own reporting path open", async () => {
     const { invoke, hostKey } = await harness();
 

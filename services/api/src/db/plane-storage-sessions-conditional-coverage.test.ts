@@ -26,6 +26,7 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
       worktrees: "Worktrees",
       concurrencyLocks: "ConcurrencyLocks",
       hostLocks: "HostLocks",
+      workspaceSlots: "WorkspaceSlots",
       sessionDrainActivity: "SessionDrainActivity",
     } as never,
   } as PlaneStorageCtx;
@@ -401,4 +402,44 @@ describe("session storage conditional outcomes", () => {
       }),
     );
   });
+
+  it.each([
+    [undefined, "idle", " REMOVE errorMessage", "running"],
+    ["cleanup failed", "error", ", errorMessage = :errorMessage", "cancelled"],
+  ])(
+    "releases a workspace slot with error %s",
+    async (workspaceSlotError, status, expression, expectedStatus) => {
+      const send = vi.fn().mockResolvedValue({});
+      await expect(
+        finishSession(ctx(send), {
+          sessionId: "session",
+          workspaceSlotId: "slot",
+          workspaceSlotError,
+          attemptId: "attempt",
+          status: "completed",
+          expectedStatus,
+          queueShard: 0,
+        }),
+      ).resolves.toBe(true);
+      const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
+      expect(request.input.TransactItems).toContainEqual(
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            UpdateExpression: expect.stringContaining(expression),
+            ExpressionAttributeValues: expect.objectContaining({ ":status": status }),
+          }),
+        }),
+      );
+      expect(request.input.TransactItems[0]).toEqual(
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            ExpressionAttributeValues: expect.objectContaining({
+              ":expectedStatus": expectedStatus,
+            }),
+          }),
+        }),
+      );
+    },
+  );
 });

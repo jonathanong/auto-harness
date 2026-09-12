@@ -82,4 +82,52 @@ describe("session creation preparation", () => {
       metadata: { source: "test" },
     });
   });
+
+  it("validates workspace pool and setup profile references and copies workspace defaults", () => {
+    const state = createControlPlaneState({
+      idFactory: () => "workspace-session",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    state.commands.set("command-1", {
+      id: "command-1",
+      name: "command",
+      argv: ["command"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    state.workspacePools.set("pool-1", {
+      id: "pool-1",
+      name: "workspace",
+      setupProfiles: [{ id: "install", name: "Install", script: "pnpm install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: true,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    const base = {
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      prompt: "inspect",
+      target: { commandId: "command-1" },
+      timeout: 30,
+      type: "workspace",
+      source: "api",
+    };
+    expect(validateSessionCreate(state, { ...base, workspacePoolId: "missing" })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(validateSessionCreate(state, { ...base, setupProfileId: "missing" })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const prepared = validateSessionCreate(state, base);
+    if (!prepared.ok) throw new Error(prepared.error);
+    expect(buildSessionRecord(state, prepared)).toMatchObject({
+      repositoryId: "",
+      workspacePoolId: "pool-1",
+      destroyWorkspaceAfter: true,
+      type: "workspace",
+    });
+  });
 });

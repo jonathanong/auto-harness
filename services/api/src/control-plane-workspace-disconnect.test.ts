@@ -65,3 +65,87 @@ it("requeues a running workspace slot and takes the slot offline on durable disc
   expect(writes).toEqual([expect.objectContaining({ id: slot.id, online: false })]);
   expect(state.workspaceSlots.get(slot.id)).toMatchObject({ online: false });
 });
+
+it("ignores workspace slots when durable slot storage is unavailable", async () => {
+  for (const storage of [
+    {},
+    { listWorkspaceSlotsByHost: async () => [] },
+    { listWorkspaceSlotsByHost: async () => [], getWorkspaceSlot: async () => null },
+  ]) {
+    const state = createControlPlaneState();
+    state.storage = { listWorktreesByHost: async () => [], ...storage } as never;
+    await expect(
+      offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []),
+    ).resolves.toEqual([]);
+  }
+});
+
+it("fences stale slots and preserves or releases each durable session state", async () => {
+  const state = createControlPlaneState();
+  const baseSlot: WorkspaceSlotRecord = {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "host",
+    workspacePoolId: "pool",
+    status: "busy",
+    online: true,
+  };
+  const baseSession: SessionRecord = {
+    id: "session",
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    prompt: "inspect",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: [],
+    queueTtlSeconds: 300,
+    queueExpiresAt: "later",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "cancelled",
+    queueShard: 0,
+    createdAt: "now",
+    worktreeId: null,
+    hostId: "host",
+    attemptId: "attempt",
+    concurrencyId: "concurrency",
+  };
+  const slots = [
+    { ...baseSlot, id: "stale", connectionId: "other" },
+    { ...baseSlot, id: "empty", status: "idle" as const },
+    { ...baseSlot, id: "completed", currentSessionId: "completed" },
+    { ...baseSlot, id: "lost", currentSessionId: "lost" },
+    { ...baseSlot, id: "cancelled", currentSessionId: "cancelled", connectionId: "connection" },
+  ];
+  const sessions = new Map<string, SessionRecord>([
+    ["completed", { ...baseSession, id: "completed", status: "completed" }],
+    ["lost", { ...baseSession, id: "lost", status: "running" }],
+    ["cancelled", { ...baseSession, id: "cancelled" }],
+  ]);
+  const writes: WorkspaceSlotRecord[] = [];
+  state.storage = {
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => slots,
+    getSession: async (id: string) => sessions.get(id) ?? null,
+    getWorkspaceSlot: async (id: string) =>
+      id === "empty" ? null : slots.find((x) => x.id === id),
+    finishSession: async ({ sessionId }: { sessionId: string }) => sessionId !== "lost",
+    putWorkspaceSlot: async (slot: WorkspaceSlotRecord) => {
+      writes.push(slot);
+    },
+  } as never;
+
+  await expect(
+    offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []),
+  ).resolves.toEqual([]);
+  expect(writes.map((slot) => slot.id)).toEqual(["empty", "completed", "cancelled"]);
+  expect(state.sessions.get("cancelled")).toMatchObject({
+    status: "cancelled",
+    workspaceSlotId: null,
+    hostId: null,
+  });
+});

@@ -278,6 +278,60 @@ describe("validateCreateSessionInput", () => {
     });
   });
 
+  it("rejects workspace-only fields on repository sessions and invalid workspace types", () => {
+    expect(validateCreateSessionInput({ ...base, workspacePoolId: "pool" })).toEqual({
+      ok: false,
+      error: "workspacePoolId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, setupProfileId: "profile" })).toEqual({
+      ok: false,
+      error: "setupProfileId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, destroyWorkspaceAfter: false })).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter is only valid for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        type: "prompt",
+      }),
+    ).toEqual({ ok: false, error: "workspace sessions must have type workspace" });
+    expect(validateCreateSessionInput({ ...base, type: "workspace" })).toEqual({
+      ok: false,
+      error: "workspace type requires repositoryId null",
+    });
+  });
+
+  it("rejects blank workspace prompts and workspace refs after common validation", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        prompt: "",
+      }),
+    ).toEqual({ ok: false, error: "prompt is required" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "",
+      }),
+    ).toEqual({ ok: false, error: "ref must be a non-empty string when set" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
+  });
+
   it("rejects missing repositoryId", () => {
     const result = validateCreateSessionInput({ ...base, repositoryId: "" });
     expect(result).toEqual({ ok: false, error: "repositoryId is required" });

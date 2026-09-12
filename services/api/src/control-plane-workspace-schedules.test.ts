@@ -95,4 +95,38 @@ describe("workspace schedules", () => {
       schedule: { repositoryId: "", workspacePoolId: "pool-1" },
     });
   });
+
+  it("validates workspace pool profiles and carries cleanup overrides into fired sessions", () => {
+    const plane = workspacePlane();
+    const base = {
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      name: "workspace cleanup",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 30,
+    };
+    expect(plane.putSchedule({ ...base, workspacePoolId: "missing" })).toEqual({
+      ok: false,
+      error: "workspace pool not found",
+    });
+    expect(plane.putSchedule({ ...base, setupProfileId: "missing" })).toEqual({
+      ok: false,
+      error: "workspace setup profile not found",
+    });
+    const schedule = putScheduleOrThrow(plane, {
+      ...base,
+      destroyWorkspaceAfter: true,
+    });
+    expect(plane.triggerSchedule(schedule.id)).toMatchObject({
+      ok: true,
+      session: { type: "workspace", destroyWorkspaceAfter: true, workspacePoolId: "pool-1" },
+    });
+    const updated = plane.updateSchedule(schedule.id, {
+      repositoryId: "repo-1",
+      workspacePoolId: undefined,
+    });
+    expect(updated).toMatchObject({ ok: true, schedule: { repositoryId: "repo-1" } });
+    if (updated.ok) expect(updated.schedule).not.toHaveProperty("workspacePoolId");
+  });
 });

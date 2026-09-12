@@ -77,4 +77,79 @@ describe("workspace assignment matrix", () => {
     ).rejects.toThrow("assignment unavailable");
     expect(failing.plane.getSession(failingSession.id)).toMatchObject({ status: "queued" });
   });
+
+  it("uses durable claims and expires queued sessions through storage", async () => {
+    const assigned = workspacePlane();
+    const session = createWorkspaceSession(assigned.plane);
+    assigned.plane.state.storage = { tryAssignWorkspaceSession: async () => true } as never;
+    await expect(
+      assignWorkspaceQueuedDurable(assigned.plane.state, undefined, { readModelLoaded: true }),
+    ).resolves.toHaveLength(1);
+    expect(assigned.plane.getSession(session.id)).toMatchObject({
+      status: "running",
+      workspaceSlotId: "slot-1",
+    });
+
+    const expired = workspacePlane();
+    const expiredSession = createWorkspaceSession(expired.plane);
+    expired.plane.state.sessions.get(expiredSession.id)!.queueExpiresAt =
+      "2026-09-11T23:59:59.000Z";
+    expired.plane.state.storage = {
+      expireQueuedSession: async () => true,
+    } as never;
+    await expect(
+      assignWorkspaceQueuedDurable(expired.plane.state, undefined, { readModelLoaded: true }),
+    ).resolves.toEqual([]);
+    expect(expired.plane.getSession(expiredSession.id)).toMatchObject({
+      status: "failed",
+      errorCode: "queue_expired",
+    });
+  });
+
+  it("dispatches provider-account workspace routes and updates account recency", async () => {
+    const { plane, messages } = workspacePlane();
+    expect(plane.createProvider({ id: "provider", name: "provider" }).ok).toBe(true);
+    expect(
+      plane.createCommand({
+        id: "provider-command",
+        name: "provider-command",
+        argv: ["provider"],
+        appendPrompt: true,
+        providerId: "provider",
+      }).ok,
+    ).toBe(true);
+    expect(
+      plane.createProviderAccount({ id: "account", providerId: "provider", label: "one" }).ok,
+    ).toBe(true);
+    plane.updateProvider("provider", { defaultCommandId: "provider-command" });
+    const inventory = plane.getHostInventory("host-1");
+    if (!inventory) throw new Error("workspace inventory missing");
+    expect(
+      plane.putHostInventory("host-1", {
+        ...inventory,
+        providerAccounts: [{ providerAccountId: "account" }],
+      }).ok,
+    ).toBe(true);
+    plane.state.connections.get("connection-1")!.providerAccountReadiness = [
+      { providerAccountId: "account", ready: true, fingerprint: "a".repeat(64) },
+    ];
+    const session = plane.createSession({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      prompt: "use provider",
+      target: { providerId: "provider" },
+      timeout: 60,
+      type: "workspace",
+      source: "api",
+    });
+    if (!session.ok) throw new Error(session.error);
+    await expect(assignWorkspaceQueuedDurable(plane.state)).resolves.toHaveLength(1);
+    expect(messages.at(-1)).toMatchObject({
+      providerAccountId: "account",
+      commandId: "provider-command",
+    });
+    expect(plane.state.providerAccounts.get("account")).toMatchObject({
+      lastAssignedAt: "2026-09-12T00:00:00.000Z",
+    });
+  });
 });
