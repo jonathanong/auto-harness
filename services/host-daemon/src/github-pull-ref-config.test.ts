@@ -152,6 +152,7 @@ describe("GitHub pull-ref host policy", () => {
       { credentialHelper: 1 },
       { httpProxy: "not-a-url" },
       { httpProxy: "ftp://proxy.example" },
+      { httpProxy: "https://username:password@proxy.example" },
       { httpProxy: "" },
       { httpProxy: 1 },
       { sslCAInfo: "private-ca.pem" },

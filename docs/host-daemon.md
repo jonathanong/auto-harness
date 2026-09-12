@@ -549,10 +549,10 @@ GitHub pull-request heads use the special exact form `refs/pull/<positive-number
 not resolved through the ordinary `fetch --all` fallback because a repository's configured
 refspec commonly does not advertise them. They require a host-local, absolute
 `HARNESS_GITHUB_PULL_REF_CONFIG` file. It maps each canonical repository path to its immutable
-remote URL and, where HTTPS needs it, an explicit `credentialHelper`, `httpProxy`, or absolute
-`sslCAInfo`. Repository, global, and system Git configuration are never the source of that policy,
-so a session cannot replace it before or after a daemon restart. URL rewrite settings and shell
-credential helpers are not supported. The policy file and every ancestor must be root-owned,
+remote URL and, where HTTPS needs it, an explicit `credentialHelper`, credential-free `httpProxy`,
+or absolute `sslCAInfo`. Repository, global, and system Git configuration are never the source of
+that policy, so a session cannot replace it before or after a daemon restart. URL rewrite settings
+and shell credential helpers are not supported. The policy file and every ancestor must be root-owned,
 non-group/world-writable, and not a symlink; each remote URL is credential-free HTTPS.
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.

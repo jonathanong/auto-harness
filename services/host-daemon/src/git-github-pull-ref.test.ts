@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { parse } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { fetchGitHubPullRequestRef, nullGlobalGitConfigPath } from "./git-github-pull-ref.ts";
+import {
+  deleteGitHubPullRequestRef,
+  fetchGitHubPullRequestRef,
+  nullGlobalGitConfigPath,
+} from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const cwd = "/tmp/auto-harness-github-pull-ref-test";
@@ -133,6 +137,82 @@ describe("isolated GitHub pull-ref fetch", () => {
 
     await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).resolves.toBeNull();
     expect(lsRemoteCwd).toBe(parse(tmpdir()).root);
+  });
+
+  it("encodes a colon in an alternate object directory as one Git path", async () => {
+    let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        const args = options.argv.slice(1);
+        if (args[0] === "ls-remote") {
+          options.onChunk({ stream: "stdout", data: `${pullSha}\t${ref}\n` });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        if (args[0] === "init") return { exitCode: 0, timedOut: false, signal: null };
+        if (args.includes("fetch")) {
+          fetchEnvironment = options.env;
+          return { exitCode: 1, timedOut: false, signal: null };
+        }
+        throw new Error(`unexpected git ${args.join(" ")}`);
+      },
+    };
+
+    await expect(
+      fetchGitHubPullRequestRef(
+        runner,
+        cwd,
+        ref,
+        remoteUrl,
+        "/srv/repos/team:project/.git/objects",
+      ),
+    ).resolves.toBeNull();
+    expect(fetchEnvironment?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(
+      '"/srv/repos/team:project/.git/objects"',
+    );
+  });
+
+  it("disables repository hooks while deleting the scratch ref", async () => {
+    let cleanupEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        cleanupEnvironment = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    await deleteGitHubPullRequestRef(runner, cwd, "refs/worktree/auto-harness/pull-fetch/id", ref);
+    expect(cleanupEnvironment).toMatchObject({
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: "/dev/null",
+      GIT_NO_REPLACE_OBJECTS: "1",
+    });
+  });
+
+  it("disables repository hooks while creating the scratch ref", async () => {
+    let scratchRefEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = scripted([
+      advertised,
+      initialized,
+      fetched,
+      resolved,
+      bundled,
+      imported,
+      { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).includes("update-ref")) scratchRefEnvironment = options.env;
+      return originalRun(options);
+    };
+
+    await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).resolves.toMatchObject({
+      sha: pullSha,
+    });
+    expect(scratchRefEnvironment).toMatchObject({
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: "/dev/null",
+    });
   });
 
   it("re-advertises once when the pull head moves during fetch", async () => {

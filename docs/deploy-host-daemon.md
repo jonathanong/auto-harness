@@ -405,7 +405,8 @@ To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file
 `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
 non-group/world-writable, and free of symlinks.
 Keys are canonical repository paths. Each `remoteUrl` must be credential-free HTTPS. The optional
-transport fields preserve only the explicit HTTPS settings needed by that host; URL rewrites and
+transport fields preserve only the explicit HTTPS settings needed by that host. `httpProxy` must
+also be credential-free so proxy secrets are never exposed in a Git command line; URL rewrites and
 shell helpers are deliberately unsupported.
 
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying

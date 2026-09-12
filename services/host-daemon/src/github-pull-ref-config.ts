@@ -98,7 +98,11 @@ function parseTransport(value: unknown, context: string): GitHubPullRefTransport
     } catch {
       throw new Error(`${context}.httpProxy must be an http(s) URL`);
     }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username.length > 0 ||
+      parsed.password.length > 0
+    ) {
       throw new Error(`${context}.httpProxy must be an http(s) URL`);
     }
   }

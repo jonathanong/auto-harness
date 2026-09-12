@@ -40,7 +40,31 @@ function isolatedFetchEnvironment(objectDirectory: string | undefined): NodeJS.P
     GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_NO_REPLACE_OBJECTS: "1",
-    ...(objectDirectory === undefined ? {} : { GIT_ALTERNATE_OBJECT_DIRECTORIES: objectDirectory }),
+    ...(objectDirectory === undefined
+      ? {}
+      : { GIT_ALTERNATE_OBJECT_DIRECTORIES: gitAlternateObjectDirectory(objectDirectory) }),
+  };
+}
+
+function gitAlternateObjectDirectory(path: string): string {
+  // Git separates alternate directories with `:` on POSIX. Its documented C-style quoting keeps
+  // a literal colon in one pathname instead of treating it as a second alternate directory.
+  if (!path.includes(":")) return path;
+  return `"${path
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t")}"`;
+}
+
+function scratchRefEnvironment(): NodeJS.ProcessEnv {
+  return {
+    ...createChildEnv(),
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.hooksPath",
+    GIT_CONFIG_VALUE_0: nullGlobalGitConfigPath(),
+    GIT_NO_REPLACE_OBJECTS: "1",
   };
 }
 
@@ -181,7 +205,7 @@ export async function fetchGitHubPullRequestRef(
             cwd,
             ["update-ref", "--no-deref", destination, sha],
             signal,
-            { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
+            scratchRefEnvironment(),
           );
           return recorded.exitCode === 0 ? { ref: destination, sha } : null;
         }
@@ -217,7 +241,7 @@ export async function fetchGitHubPullRequestRef(
         cwd,
         ["update-ref", "--no-deref", destination, sha],
         signal,
-        { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
+        scratchRefEnvironment(),
       );
       return recorded.exitCode === 0 ? { ref: destination, sha } : null;
     }
@@ -239,7 +263,7 @@ export async function deleteGitHubPullRequestRef(
     cwd,
     ["update-ref", "--no-deref", "-d", destination],
     signal,
-    { ...createChildEnv(), GIT_NO_REPLACE_OBJECTS: "1" },
+    scratchRefEnvironment(),
   );
   if (cleaned.exitCode !== 0) {
     throw new Error(`Failed to clean up GitHub pull-request ref ${sourceRef}`);
