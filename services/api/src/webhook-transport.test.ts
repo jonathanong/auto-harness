@@ -119,6 +119,76 @@ describe("signed webhook transport", () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it("rejects an already-expired lease before resolving its destination", async () => {
+    const resolveDestination = vi.fn(async () => ({
+      url: "https://example.test/hook",
+      secret: "secret",
+    }));
+    const transport = createSignedWebhookTransport({
+      resolveDestination,
+      fetch: vi.fn(),
+    });
+    await expect(
+      transport.deliver({
+        ...request,
+        leaseExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+      }),
+    ).resolves.toEqual({ ok: false, failureCode: "transient-failure" });
+    expect(resolveDestination).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a lease expires during destination resolution", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-09-12T00:00:00.000Z");
+    vi.setSystemTime(start);
+    try {
+      const transport = createSignedWebhookTransport({
+        resolveDestination: async () => {
+          vi.setSystemTime(new Date(start.getTime() + 2_000));
+          return { url: "https://example.test/hook", secret: "secret" };
+        },
+        fetch: vi.fn(),
+      });
+      await expect(
+        transport.deliver({
+          ...request,
+          leaseExpiresAt: new Date(start.getTime() + 1_500).toISOString(),
+        }),
+      ).resolves.toEqual({ ok: false, failureCode: "transient-failure" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("classifies response-body cancellation failures as transient", async () => {
+    const transport = createSignedWebhookTransport({
+      resolveDestination: async () => ({ url: "https://example.test/hook", secret: "secret" }),
+      fetch: async () =>
+        ({
+          status: 204,
+          ok: true,
+          body: { cancel: async () => Promise.reject(new Error("body unavailable")) },
+        }) as unknown as Response,
+    });
+    await expect(transport.deliver(request)).resolves.toEqual({
+      ok: false,
+      failureCode: "transient-failure",
+    });
+  });
+
+  it("rejects malformed destination URLs before fetching", async () => {
+    const fetch = vi.fn();
+    const transport = createSignedWebhookTransport({
+      resolveDestination: async () => ({ url: "not a URL", secret: "secret" }),
+      fetch,
+    });
+    await expect(transport.deliver(request)).resolves.toEqual({
+      ok: false,
+      failureCode: "configuration-unavailable",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid or lease-exceeding timeout overrides before sending", async () => {
     for (const timeoutMs of [0, -1, 0.5, Number.NaN, DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS + 1]) {
       let called = false;

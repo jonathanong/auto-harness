@@ -146,6 +146,33 @@ describe("concurrent session admission conflicts", () => {
     ).rejects.toMatchObject({ name: "IntegrationChangedError" });
   });
 
+  it("maps the exact integration condition loss when transaction positions shift", async () => {
+    const integrationFence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          const items = (command as TransactWriteCommand).input.TransactItems ?? [];
+          const integrationIndex = items.findIndex(
+            (item) => "ConditionCheck" in item && item.ConditionCheck?.TableName === "Integrations",
+          );
+          expect(integrationIndex).toBeGreaterThanOrEqual(0);
+          throw cancelled(integrationIndex);
+        }),
+        session,
+        [],
+        integrationFence,
+      ),
+    ).rejects.toMatchObject({ name: "IntegrationChangedError" });
+  });
+
   it("applies the integration fence to concurrent session admission", async () => {
     const fence = {
       id: "deploy",

@@ -68,6 +68,8 @@ describe("custom webhook integration lifecycle", () => {
     await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
       ok: true,
     });
+    const createdRecord = await value.getCustomWebhookIntegrationRecord("deploy");
+    await expect(value.decryptCustomWebhookSecret("deploy", createdRecord!)).resolves.toBe(secret);
     await expect(
       value.updateCustomWebhookIntegration(config({ secret: "short" })),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
