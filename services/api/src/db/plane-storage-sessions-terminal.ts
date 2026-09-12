@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- terminal transition fencing and cleanup form one atomic storage operation. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { SessionResult } from "@auto-harness/shared";
 
