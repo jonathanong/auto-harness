@@ -26,8 +26,13 @@ type DeferredTerminalHookOptions = {
 
 /** Revalidate the retained claim, run its hook, then collect the observable post-hook result. */
 export function createDeferredTerminalHookSettlement(options: DeferredTerminalHookOptions) {
-  return async (runHook: boolean) => {
+  return async (runHook: boolean, deadlineAtMs?: number) => {
     if (!runHook) return undefined;
+    if (
+      deadlineAtMs !== undefined &&
+      (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= Date.now())
+    )
+      return undefined;
     let current: Awaited<ReturnType<typeof options.claimed.currentHookTarget>> | undefined;
     try {
       current = await options.claimed.currentHookTarget();
@@ -39,8 +44,11 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
       return undefined;
     }
     if (!current) return undefined;
+    if (deadlineAtMs !== undefined && deadlineAtMs <= Date.now()) return undefined;
     const scriptPath = current.repository.terminalHookScript;
     if (scriptPath) {
+      const remainingMs = deadlineAtMs === undefined ? undefined : deadlineAtMs - Date.now();
+      if (remainingMs !== undefined && remainingMs <= 0) return undefined;
       await runTerminalHook(options.processRunner, {
         scriptPath,
         cwd: current.cwd,
@@ -48,6 +56,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
         status: options.status as SessionStatus,
         worktreePath: current.cwd,
         childEnvSource: options.childEnvSource,
+        ...(remainingMs !== undefined ? { timeoutMs: Math.min(60_000, remainingMs) } : {}),
         ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
         ...(options.errorCode !== undefined ? { errorCode: options.errorCode } : {}),
         ...(options.assign.ref !== undefined ? { ref: options.assign.ref } : {}),
@@ -61,6 +70,7 @@ export function createDeferredTerminalHookSettlement(options: DeferredTerminalHo
       ...(options.baseline !== undefined ? { baseline: options.baseline } : {}),
       environment: options.childEnvSource,
       ...(options.environmentIsChild ? { environmentIsChild: true } : {}),
+      ...(deadlineAtMs !== undefined ? { deadlineAtMs } : {}),
     });
   };
 }
@@ -70,6 +80,7 @@ export function retainClaimForDeferredTerminalHook(
   result: SessionRunResult & {
     settleDeferredTerminalHook: (
       runHook: boolean,
+      deadlineAtMs?: number,
     ) => Promise<import("@auto-harness/shared").SessionResult | undefined>;
   },
   release: () => void,
@@ -78,7 +89,7 @@ export function retainClaimForDeferredTerminalHook(
   let settlement: ReturnType<typeof result.settleDeferredTerminalHook> | undefined;
   return {
     ...result,
-    settleDeferredTerminalHook: (runHook) => {
+    settleDeferredTerminalHook: (runHook, deadlineAtMs) => {
       // Shutdown and the retry disposition can arrive while the hook is still
       // running. They must wait for, and report, the same terminal result.
       if (settlement) return settlement;
@@ -86,7 +97,7 @@ export function retainClaimForDeferredTerminalHook(
       settled = true;
       let pending: ReturnType<typeof result.settleDeferredTerminalHook>;
       try {
-        pending = result.settleDeferredTerminalHook(runHook);
+        pending = result.settleDeferredTerminalHook(runHook, deadlineAtMs);
       } catch (error) {
         pending = Promise.reject(error);
       }

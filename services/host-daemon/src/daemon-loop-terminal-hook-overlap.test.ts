@@ -55,6 +55,7 @@ describe("DaemonLoop terminal-hook overlap", () => {
           return { summary: "after hook", summarySource: "harness" as const };
         },
       } as never);
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
       transport.deliver({
         type: "session:status-acknowledged",
@@ -62,6 +63,7 @@ describe("DaemonLoop terminal-hook overlap", () => {
         attemptId: "attempt",
         retryAccepted: false,
         terminalHookHandoffId: "replacement",
+        terminalHookHandoffExpiresAt: expiresAt,
       });
       await started;
       transport.deliver({
@@ -71,7 +73,7 @@ describe("DaemonLoop terminal-hook overlap", () => {
         repositoryId: "demo",
         worktreeId: "wt-1",
         status: "failed",
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt,
         errorCode: "checkout_fetch_failed",
       });
       await flushMacrotask();

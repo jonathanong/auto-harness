@@ -28,6 +28,55 @@ describe("retainClaimForDeferredTerminalHook", () => {
     expect(run).toHaveBeenCalled();
   });
 
+  it("does not start a hook or result probe after a recovery deadline", async () => {
+    const run = vi.fn();
+    const settle = createDeferredTerminalHookSettlement({
+      processRunner: { run },
+      streamer: { write: vi.fn() } as never,
+      assign: { sessionId: "session" } as never,
+      claimed: {
+        currentHookTarget: async () => ({
+          cwd: process.cwd(),
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      status: "failed",
+      errorCode: undefined,
+      childEnvSource: process.env,
+      environmentIsChild: true,
+    });
+
+    await expect(settle(true, Date.now() - 1)).resolves.toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("bounds hook execution and result collection by the recovery deadline", async () => {
+    const run = vi.fn(async () => ({ exitCode: 1, timedOut: false, signal: null }));
+    const settle = createDeferredTerminalHookSettlement({
+      processRunner: { run },
+      streamer: { write: vi.fn() } as never,
+      assign: { sessionId: "session" } as never,
+      claimed: {
+        currentHookTarget: async () => ({
+          cwd: process.cwd(),
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      status: "failed",
+      errorCode: undefined,
+      childEnvSource: process.env,
+      environmentIsChild: true,
+    });
+    const deadlineAtMs = Date.now() + 10_000;
+
+    await expect(settle(true, deadlineAtMs)).resolves.toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: expect.any(Number) }));
+    expect(run.mock.calls[0]?.[0].timeoutMs).toBeLessThanOrEqual(10_000);
+  });
+
   it("returns the post-hook result before releasing the retained checkout", async () => {
     const release = vi.fn();
     const settle = vi.fn(async () => ({

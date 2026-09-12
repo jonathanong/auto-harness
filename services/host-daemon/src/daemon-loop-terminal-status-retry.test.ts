@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- keepalive retry, ack, and primitive-failure cases share one loop fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
 
@@ -90,8 +90,10 @@ describe("DaemonLoop terminal status retry", () => {
       const transport = createLoopbackTransport({ sendToServer: () => undefined });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       const pending = pendingTerminalStatusOf(loop);
       const expiresAt = new Date(Date.now() + 60_000).toISOString();
+      const settle = vi.fn(async () => undefined);
       pending.set("done-session\0attempt-1", {
         message: {
           ...statusMessage,
@@ -101,7 +103,7 @@ describe("DaemonLoop terminal status retry", () => {
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: async () => undefined,
+        settleDeferredTerminalHook: settle,
       });
 
       transport.deliver({
@@ -124,6 +126,7 @@ describe("DaemonLoop terminal status retry", () => {
       ).pendingTerminalHookHandoffs.get("handoff");
       expect(handoff?.message.expiresAt).toBe(expiresAt);
       expect(handoff?.expiresAtMs).toBe(Date.parse(expiresAt));
+      expect(settle).toHaveBeenCalledWith(true, Date.parse(expiresAt));
       loop.stop();
     } finally {
       cleanup();
@@ -141,6 +144,7 @@ describe("DaemonLoop terminal status retry", () => {
       await loop.start();
       transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
       const pending = pendingTerminalStatusOf(loop);
+      const settle = vi.fn(async () => undefined);
       pending.set("done-session\0attempt-1", {
         message: {
           ...statusMessage,
@@ -150,7 +154,7 @@ describe("DaemonLoop terminal status retry", () => {
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: async () => undefined,
+        settleDeferredTerminalHook: settle,
       });
 
       transport.deliver({
@@ -171,6 +175,7 @@ describe("DaemonLoop terminal status retry", () => {
         ).pendingTerminalHookHandoffs.size,
       ).toBe(0);
       expect(pending.size).toBe(0);
+      expect(settle).not.toHaveBeenCalled();
       loop.stop();
     } finally {
       cleanup();

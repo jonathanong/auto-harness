@@ -129,4 +129,60 @@ describe("DaemonLoop terminal-hook shutdown", () => {
       cleanup();
     }
   });
+
+  it("does not wait for a buffered completion after the transport disconnects", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      let connected = true;
+      let finishCompletionSend!: () => void;
+      const completionSent = vi.fn();
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type !== "session:terminal-hook-complete") return;
+          completionSent();
+          return new Promise<void>((resolve) => {
+            finishCompletionSend = resolve;
+          });
+        },
+      });
+      transport.isRegistered = () => connected;
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      (
+        loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
+      ).processRunner = {
+        run: async () => ({ exitCode: 0 }),
+      };
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 7 });
+      transport.deliver({
+        type: "session:terminal-hook",
+        handoffId: "disconnected-completion",
+        sessionId: "lost",
+        repositoryId: "demo",
+        worktreeId: "wt-1",
+        status: "failed",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await waitFor(() => completionSent.mock.calls.length === 1);
+
+      connected = false;
+      loop.prepareForShutdown();
+      const waiting = loop.waitForIdle();
+      let timeout!: ReturnType<typeof setTimeout>;
+      const idle = await Promise.race([
+        waiting.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timeout = setTimeout(() => resolve(false), 100);
+        }),
+      ]);
+      clearTimeout(timeout);
+      expect(idle).toBe(true);
+
+      finishCompletionSend();
+      await waiting;
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
 });

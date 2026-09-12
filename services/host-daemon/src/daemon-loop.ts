@@ -135,7 +135,10 @@ type PendingTerminalStatus = {
   controller: AbortController;
   /** Set only for a v6 checkout failure awaiting durable retry/hook settlement. */
   settleDeferredTerminalHook?:
-    | ((runHook: boolean) => Promise<import("@auto-harness/shared").SessionResult | undefined>)
+    | ((
+        runHook: boolean,
+        deadlineAtMs?: number,
+      ) => Promise<import("@auto-harness/shared").SessionResult | undefined>)
     | undefined;
   /** An acknowledged deferred status remains discoverable until its hook settles. */
   settlement?: Promise<void> | undefined;
@@ -170,6 +173,8 @@ type PendingTerminalHookHandoff = {
   work?: Promise<void> | undefined;
   /** A completion write in progress; successful local delivery is the shutdown fence. */
   completionSend?: Promise<void> | undefined;
+  /** Cancels a completion buffered behind a disconnected transport during shutdown. */
+  completionController?: AbortController | undefined;
   result?: import("@auto-harness/shared").SessionResult;
 };
 
@@ -558,7 +563,15 @@ export class DaemonLoop {
     while (true) {
       this.startPendingTerminalHookHandoffs();
       const activeWork = [...this.pendingTerminalHookHandoffs.values()]
-        .flatMap((pending) => [pending.work, pending.completionSend])
+        .flatMap((pending) => [
+          pending.work,
+          // Completion delivery is not part of the shutdown fence. The
+          // durable control-plane handoff remains recoverable after this
+          // process exits, while awaiting a transport-buffered write would
+          // create a cycle: daemonStop closes that transport only after this
+          // idle wait. Outside shutdown, retain the ordinary delivery fence.
+          ...(this.settleDeferredOnCompletion ? [] : [pending.completionSend]),
+        ])
         .filter((work): work is Promise<void> => work !== undefined);
       if (activeWork.length === 0) return;
       await Promise.all(activeWork);
@@ -571,6 +584,9 @@ export class DaemonLoop {
    */
   prepareForShutdown(): void {
     this.settleDeferredOnCompletion = true;
+    for (const pending of this.pendingTerminalHookHandoffs.values()) {
+      pending.completionController?.abort();
+    }
     // A command-start acknowledgement can be lost after the control plane
     // commits it. Fail closed before waitForIdle() awaits the assignment; the
     // later stop() call repeats this idempotently for direct callers.
@@ -957,10 +973,39 @@ export class DaemonLoop {
         pending.resolveDeferredDisposition?.();
         return undefined;
       }
+      const handoffExpiresAtMs =
+        msg.terminalHookHandoffExpiresAt === undefined
+          ? undefined
+          : Date.parse(msg.terminalHookHandoffExpiresAt);
+      const validHandoffExpiresAtMs = Number.isFinite(handoffExpiresAtMs)
+        ? handoffExpiresAtMs
+        : undefined;
+      const syntheticV7Handoff =
+        this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+        msg.terminalHookHandoffId !== undefined &&
+        msg.retryAccepted !== true;
+      // A v7 status acknowledgement is the control plane's durable handoff
+      // lease. Validate it before retaining the checkout or starting its hook:
+      // an expired/malformed lease cannot authorize new local side effects.
+      if (
+        syntheticV7Handoff &&
+        (validHandoffExpiresAtMs === undefined || validHandoffExpiresAtMs <= Date.now())
+      ) {
+        this.pendingTerminalStatus.delete(key);
+        pending.resolveDeferredDisposition?.();
+        this.onLog?.(
+          `terminal hook handoff ${msg.terminalHookHandoffId} has no usable control-plane expiry; ` +
+            "refusing deferred settlement",
+        );
+        return undefined;
+      }
       // Keep the entry indexed during settlement: an overlapping durable
       // handoff must find this exact promise rather than run the hook again.
       if (pending.settlement) return pending.settlement;
-      const settlementResult = pending.settleDeferredTerminalHook(msg.retryAccepted !== true);
+      const settlementResult = pending.settleDeferredTerminalHook(
+        msg.retryAccepted !== true,
+        syntheticV7Handoff ? validHandoffExpiresAtMs : undefined,
+      );
       pending.settlementResult = settlementResult;
       const settlement = settlementResult
         .then((result) => {
@@ -974,22 +1019,6 @@ export class DaemonLoop {
               // duplicate that completion before its acknowledgement arrives.
               return;
             }
-            const handoffExpiresAtMs =
-              msg.terminalHookHandoffExpiresAt === undefined
-                ? undefined
-                : Date.parse(msg.terminalHookHandoffExpiresAt);
-            if (
-              this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-              (msg.terminalHookHandoffExpiresAt === undefined ||
-                !Number.isFinite(handoffExpiresAtMs))
-            ) {
-              this.onLog?.(
-                `terminal hook handoff ${msg.terminalHookHandoffId} has no valid control-plane expiry; ` +
-                  "refusing synthetic completion",
-              );
-              return;
-            }
-            if (handoffExpiresAtMs !== undefined && handoffExpiresAtMs <= Date.now()) return;
             const handoff: PendingTerminalHookHandoff = {
               ...(handoffExpiresAtMs !== undefined && Number.isFinite(handoffExpiresAtMs)
                 ? { expiresAtMs: handoffExpiresAtMs }
@@ -1220,22 +1249,28 @@ export class DaemonLoop {
 
   private sendTerminalHookHandoffCompletion(pending: PendingTerminalHookHandoff): void {
     if (
+      this.settleDeferredOnCompletion ||
       pending.sending ||
       !pending.complete ||
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending
     )
       return;
     pending.sending = true;
+    const completionController = new AbortController();
+    pending.completionController = completionController;
     const completionSend = this.outbound
-      .send({
-        type: "session:terminal-hook-complete",
-        sessionId: pending.message.sessionId,
-        handoffId: pending.message.handoffId,
-        ...(this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
-        pending.result !== undefined
-          ? { result: pending.result }
-          : {}),
-      })
+      .send(
+        {
+          type: "session:terminal-hook-complete",
+          sessionId: pending.message.sessionId,
+          handoffId: pending.message.handoffId,
+          ...(this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+          pending.result !== undefined
+            ? { result: pending.result }
+            : {}),
+        },
+        { signal: completionController.signal },
+      )
       .catch((error: unknown) => {
         this.onLog?.(
           `terminal hook handoff completion send failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
@@ -1244,6 +1279,7 @@ export class DaemonLoop {
       .finally(() => {
         pending.sending = false;
         pending.completionSend = undefined;
+        pending.completionController = undefined;
       });
     pending.completionSend = completionSend;
     void completionSend;

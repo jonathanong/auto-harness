@@ -576,6 +576,7 @@ describe("DaemonLoop coverage guards", () => {
         attemptId: "attempt",
         retryAccepted: false,
         terminalHookHandoffId: "existing-handoff",
+        terminalHookHandoffExpiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
       expect(internals.pendingTerminalHookHandoffs.get("existing-handoff")?.result).toEqual(result);
 
@@ -598,6 +599,7 @@ describe("DaemonLoop coverage guards", () => {
         attemptId: "attempt",
         retryAccepted: false,
         terminalHookHandoffId: "existing-empty-handoff",
+        terminalHookHandoffExpiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
 
       await internals.handleServerMessage({
