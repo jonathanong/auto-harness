@@ -151,6 +151,42 @@ describe("CreateSessionForm", () => {
     view.unmount();
   });
 
+  it("keeps workspace clone priority editable while omitting worktree-label controls", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "workspace-clone" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <CreateSessionForm
+        targets={[{ kind: "command", id: "workspace-command", label: "Workspace command" }]}
+        repositories={[]}
+        availableLabels={["gpu"]}
+        workspacePools={[{ id: "workspace-pool", name: "Workspace pool", setupProfiles: [] }]}
+        initialValues={{
+          repositoryId: null,
+          workspacePoolId: "workspace-pool",
+          prompt: "clone this workspace run",
+          target: { commandId: "workspace-command" },
+          fallbacks: [],
+          queueTtlSeconds: 60,
+          timeout: 30,
+          priority: 17,
+          requiredLabels: [],
+        }}
+      />,
+    );
+    expect(field<HTMLInputElement>(view.container, "create-session-priority").value).toBe("17");
+    expect(view.container.querySelector('[data-pw="create-session-labels"]')).toBeNull();
+
+    submit(field(view.container, "form-create-session"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "workspace-pool",
+      priority: 17,
+      requiredLabels: [],
+    });
+    view.unmount();
+  });
+
   it("defaults missing create-session fields to empty strings and zeros", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "session/empty" }));
     vi.stubGlobal("fetch", fetch);

@@ -22,7 +22,7 @@ operator configuration only; Auto Harness does not fetch vendor prices or implem
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
-**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Workspace sessions run in a host-attached non-git workspace pool, advertise the `workspace-sessions` capability, and never accept `ref`, non-empty `requiredLabels`, or raw `setupScript`; they select trusted setup with `setupProfileId`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
 Queued assignment is globally ordered by priority (descending) then `createdAt`/`id` FIFO across all queue shards — a later shard's higher-priority session is never starved by draining shard 0 first. Prompt and scheduled assignment share one availability evaluator; fully hydrated in-process target hints use that evaluator too, while the bounded UI `GET /session-targets` catalog omits availability rather than scanning live fleet state. DynamoDB conditional writes remain the final claim. Prompt and scheduled queued sessions both fail `queue_expired` at their original `queueExpiresAt` and release their `concurrencyId` lock. A providerless `usage_limit` suppresses the failed target, immediately tries the next fallback, and waits only until that original queue deadline.
 
@@ -594,6 +594,39 @@ one unbound (for anything that creates sessions).
 
 Unknown target/fallback IDs, duplicate route references, or malformed target objects are rejected `400` at create time.
 
+#### Workspace session shape
+
+To run against a plain host directory, send `repositoryId: null` and a `workspacePoolId`:
+
+```json
+{
+  "repositoryId": null,
+  "workspacePoolId": "pool-research",
+  "setupProfileId": "python-tools",
+  "destroyWorkspaceAfter": false,
+  "type": "workspace",
+  "prompt": "Investigate the input dataset and summarize anomalies.",
+  "target": { "commandId": "cmd-codex" },
+  "timeout": 1800
+}
+```
+
+`workspacePoolId` must identify an existing pool attached to at least one host. The scheduler
+selects an idle slot from a host advertising `workspace-sessions`; a workspace assignment has
+`repositoryId: null`, `worktreeId: null`, `workspacePoolId`, and `workspaceSlotId`. Workspace
+sessions skip all Git checkout/ref handling and do not use worktree labels. `ref` is rejected,
+and `requiredLabels` is accepted only when omitted or empty. `setupProfileId` selects a trusted
+profile from the pool; raw `setupScript` is rejected on session and schedule inputs. The pool's
+`destroyWorkspaceAfter` default is `false`, and a request may explicitly override it with a
+boolean. Cleanup failures are terminal with `errorCode: "workspace_cleanup_failed"`.
+
+Workspace sessions cannot be resumed: they have no repository checkout or CLI resume pin. They
+can be cloned; cloning preserves the workspace pool/profile/cleanup inputs, creates a fresh
+session, and selects a new eligible host slot. A pool cannot be deleted while attached to a host,
+referenced by a schedule, or used by a queued/running session. Retire host slots first, then delete
+and recreate a pool when replacing its definition; active sessions retain their admitted profile
+and cleanup policy.
+
 > **Note:** The Web UI uses this same endpoint to create sessions directly from the browser. The UI provides repo/prompt controls, a primary target picker, ordered fallback controls, queue TTL, timeout, priority, labels, and route/queue status in session details.
 
 **Response:** `201 Created` for a new session (`created: true`), or `200 OK` when an active matching `concurrencyId` returns the existing session (`created: false`).
@@ -771,11 +804,14 @@ Clone a session as a clean, independent rerun. The response always
 contains a **new** session id and is `201 Created`. Assignment uses normal
 **label match + round-robin** (any eligible worktree). **Operator or admin.**
 
-The clone snapshots only replayable session inputs: `repositoryId`, `prompt`,
-the target/fallback chain, `queueTtlSeconds`, `timeout`, `priority`,
-`requiredLabels`, and `ref`. It starts as `queued`, with a fresh queue deadline,
-`type: "prompt"`, and `source: "api"`. `concurrencyId` is deliberately not
-copied, so a clone never deduplicates against or replaces its source.
+The clone snapshots only replayable session inputs: repository sessions copy
+`repositoryId`, `prompt`, the target/fallback chain, `queueTtlSeconds`, `timeout`,
+`priority`, `requiredLabels`, and `ref`; workspace sessions copy
+`repositoryId: null`, `workspacePoolId`, `setupProfileId`,
+`destroyWorkspaceAfter`, `prompt`, the target/fallback chain, queue TTL, timeout,
+and priority. It starts as `queued` with a fresh queue deadline and `source: "api"`.
+The cloned type remains `prompt` or `workspace`; `concurrencyId` is deliberately
+not copied, so a clone never deduplicates against or replaces its source.
 
 Runtime state is never copied: host/worktree placement or leases, assignment
 fences, resolved argv/route, resume pins or CLI references, status timestamps,
@@ -883,12 +919,12 @@ Deleting the pinned Command is a second, implicit lever for the same repoint pro
 
 **Clone vs resume:**
 
-|                | Clone                               | Resume                                                                          |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
-| New session id | ✓                                   | ✓                                                                               |
-| Placement      | Any matching worktree (round-robin) | Source host for native resume; any eligible worktree there, then fresh routing  |
-| Workspace      | Fresh setup script (typical reset)  | Re-check out `ref`; use native CLI resume only while its route remains eligible |
-| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented                                                  |
+|                | Clone                                                           | Resume                                                                         |
+| -------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| New session id | ✓                                                               | ✓                                                                              |
+| Placement      | Any matching worktree (round-robin)                             | Source host for native resume; any eligible worktree there, then fresh routing |
+| Workspace      | Fresh slot assignment; selected setup profile; optional cleanup | Not supported — workspace sessions have no Git checkout or CLI resume pin      |
+| Prompt         | Copy or override as full new prompt                             | Continuation / resume-oriented                                                 |
 
 Resume pin and provenance fields are server-managed. The supported product path is
 **`POST /sessions/:id/resume`**; `POST /sessions` does not accept placement pins.
@@ -1025,7 +1061,11 @@ Get worktree details.
 
 ### Schedules
 
-Schedules run recurring maintenance tasks on the main repository checkout (not worktrees). Useful for dependency updates, linting, formatting, and other automated maintenance. A schedule `ref`, when set, is a **branch name** (not a tag or SHA) and must exist on an eligible host when the job runs.
+Schedules run recurring maintenance tasks on the main repository checkout (not worktrees), or on
+an attached non-git workspace pool when `repositoryId` is null. Useful for dependency updates,
+linting, formatting, research, and other automated maintenance. A repository schedule `ref`, when
+set, is a **branch name** (not a tag or SHA) and must exist on an eligible host when the job runs;
+workspace schedules never accept `ref` or non-empty `requiredLabels`.
 
 Scheduled sessions are capability-gated (`scheduled-main-checkout`), always carry
 `worktreeId: null`, and use one durable main-checkout lease per `(host, repository)`.
@@ -1049,23 +1089,35 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field             | Type     | Required | Description                                                                                                                                        |
-| ----------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `repositoryId`    | string   | ✓        | Target repository                                                                                                                                  |
-| `name`            | string   | ✓        | Human-readable name for the schedule                                                                                                               |
-| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                                 |
-| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                               |
-| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                              |
-| `cron`            | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).                         |
-| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                                  |
-| `enabled`         | boolean  | ✗        | Default: `true`                                                                                                                                    |
-| `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                              |
-| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire, at most 2,048 UTF-8 bytes. Defaults to `schedule-${scheduleId}`; the final derived value is validated.  |
-| `prompt`          | string   | ✗        | Prompt passed to the CLI when this schedule fires. Trimmed on write. Missing or blank stays empty — the server does not invent `scheduled:<name>`. |
+| Field                   | Type     | Required | Description                                                                                                                                        |
+| ----------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryId`          | string   | ✓        | Target repository                                                                                                                                  |
+| `name`                  | string   | ✓        | Human-readable name for the schedule                                                                                                               |
+| `target`                | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                                 |
+| `fallbacks`             | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                               |
+| `queueTtlSeconds`       | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                              |
+| `cron`                  | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).                         |
+| `timeout`               | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                                  |
+| `enabled`               | boolean  | ✗        | Default: `true`                                                                                                                                    |
+| `ref`                   | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                              |
+| `concurrencyId`         | string   | ✗        | Global exact-match identity for each fire, at most 2,048 UTF-8 bytes. Defaults to `schedule-${scheduleId}`; the final derived value is validated.  |
+| `prompt`                | string   | ✗        | Prompt passed to the CLI when this schedule fires. Trimmed on write. Missing or blank stays empty — the server does not invent `scheduled:<name>`. |
+| `workspacePoolId`       | string   | ✗        | Required with `repositoryId: null`; selects the host-attached non-git pool.                                                                        |
+| `setupProfileId`        | string   | ✗        | Trusted pool profile id for workspace fires. Raw `setupScript` is never accepted.                                                                  |
+| `destroyWorkspaceAfter` | boolean  | ✗        | Workspace cleanup policy; defaults to the pool's setting, which defaults to `false`.                                                               |
 
 The server derives `nextRunAt` from `cron` and its UTC clock; clients cannot choose the
 cursor. A create or update resets the cursor to the first matching minute strictly after the
 server's current time. Invalid cron expressions and supplied timestamps are rejected.
+
+For a workspace schedule, set `repositoryId: null`, `workspacePoolId`, and optionally
+`setupProfileId`/`destroyWorkspaceAfter`. Each fire creates a `type: "workspace"` session and
+requires a host advertising `workspace-sessions`; placement is host/slot-based and performs no
+Git checkout. Workspace schedules cannot be resumed, but their sessions can be cloned. The same
+pool deletion dependency applies: delete is blocked while a schedule references the pool.
+When updating a workspace schedule, send `setupProfileId: null` to return to the pool's default
+profile and `destroyWorkspaceAfter: null` to return to the pool's cleanup policy. Omitting either
+field leaves the schedule's current selection unchanged.
 
 **Response:** `201 Created`
 
@@ -1127,6 +1179,47 @@ Automatic cron fires use `schedule-${scheduleId}` unless the schedule supplies a
 ---
 
 ### Hosts
+
+### Workspace Pools
+
+Workspace pools are global control-plane configuration for non-git sessions. **Admin only.** A
+pool contains trusted setup profiles and a default `destroyWorkspaceAfter` policy (default
+`false`). Profile `script` bodies are accepted only by the workspace-pool create/update APIs;
+they are never accepted in session or schedule inputs and public pool reads return profile ids and
+names without script bodies.
+Each script is limited to 65,536 UTF-8 bytes, with at most 32 profiles and 327,680 UTF-8 bytes
+across the serialized profile list so the pool remains safely within the DynamoDB item limit.
+
+`GET /api/v1/workspace-pools` lists at most 100 pools from a bounded, script-free storage
+projection. `POST /api/v1/workspace-pools` creates one with
+`name`, optional `setupProfiles: [{ id, name, script }]`, optional
+`defaultSetupProfileId`, and optional `destroyWorkspaceAfter`. `GET` and `PATCH`
+`/api/v1/workspace-pools/:workspacePoolId` read/update a pool; `DELETE` removes it only when no
+host attachment, schedule, or queued/running session references it. Updating active pool settings
+does not rewrite an already admitted session's selected profile, frozen setup content, or cleanup policy. Callers with
+`fleet:exec-config` may read the full configured scripts from
+`GET /api/v1/workspace-pools/:workspacePoolId/exec-config`; ordinary reads remain redacted.
+
+Each host's inventory may attach a pool with path-only slots:
+
+```json
+{
+  "workspacePools": [
+    {
+      "workspacePoolId": "pool-research",
+      "slots": [{ "id": "slot-1", "name": "research-1", "path": "/srv/research-1" }]
+    }
+  ]
+}
+```
+
+`path` must be an absolute path under the host's configured non-empty `allowedRoots`; the daemon
+validates it with the same `realpath` boundary used for repository/worktree paths and hooks.
+Slots are host-local and path-only: labels and setup scripts do not belong on a slot. A busy slot's
+path cannot be changed. To retire a slot, remove the host attachment after its session is idle;
+then delete/recreate the pool if the pool definition itself must be replaced. The control plane
+quarantines stale/busy slot rows until the owning session releases them rather than reassigning
+their path mid-run.
 
 #### `GET /api/v1/hosts`
 

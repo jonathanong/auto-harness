@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- paired worktree/workspace transactions share release semantics. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -24,6 +25,31 @@ function idleClaimedWorktreeUpdate(
       ConditionExpression: "currentSessionId = :sid",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+    },
+  };
+}
+
+function idleClaimedWorkspaceSlotUpdate(
+  ctx: PlaneStorageCtx,
+  opts: { workspaceSlotId: string; sessionId: string; workspaceSlotError?: string },
+) {
+  const failed = opts.workspaceSlotError !== undefined;
+  return {
+    Update: {
+      TableName: ctx.tables.workspaceSlots,
+      Key: { id: opts.workspaceSlotId },
+      UpdateExpression: failed
+        ? "SET #s = :error, currentSessionId = :null, errorMessage = :errorMessage"
+        : "SET #s = :idle, currentSessionId = :null REMOVE errorMessage",
+      ConditionExpression: "currentSessionId = :sid",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: {
+        ":null": null,
+        ":sid": opts.sessionId,
+        ...(failed
+          ? { ":error": "error", ":errorMessage": opts.workspaceSlotError }
+          : { ":idle": "idle" }),
+      },
     },
   };
 }
@@ -63,6 +89,48 @@ function usageLimitRequeueSessionUpdate(
         ":worktreeId": opts.worktreeId,
         ":attemptId": opts.attemptId,
         ...opts.extraValues,
+      },
+    },
+  };
+}
+
+function usageLimitRequeueWorkspaceSessionUpdate(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    queueShard: number;
+    queueOrder: unknown;
+    errorMessage: string;
+    targetIndex: number;
+    workspaceSlotError?: string;
+  },
+) {
+  return {
+    Update: {
+      TableName: ctx.tables.sessions,
+      Key: { id: opts.sessionId },
+      UpdateExpression:
+        "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
+        ", worktreeId = :null, workspaceSlotId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
+        ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)" +
+        " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, assignmentSentAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, workspaceSlotLease, #result",
+      ConditionExpression:
+        "#s = :running AND workspaceSlotId = :workspaceSlotId AND attemptId = :attemptId",
+      ExpressionAttributeNames: { "#s": "status", "#result": "result" },
+      ExpressionAttributeValues: {
+        ":queued": "queued",
+        ":running": "running",
+        ":statusShard": statusShardAttr("queued", opts.queueShard),
+        ":queueOrder": opts.queueOrder,
+        ":null": null,
+        ":code": "usage_limit",
+        ":message": opts.errorMessage,
+        ":workspaceSlotId": opts.workspaceSlotId,
+        ":attemptId": opts.attemptId,
+        ":empty": [],
+        ":index": [opts.targetIndex],
       },
     },
   };
@@ -127,6 +195,70 @@ export async function requeueUsageLimitedSession(
   ]);
 }
 
+/** Atomically pause the account, free its owned workspace slot, and requeue. */
+export async function requeueUsageLimitedWorkspaceSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+    /** A daemon cleanup report quarantines the slot even while the session retries. */
+    workspaceSlotError?: string;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+  },
+): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
+  return commitUsageLimitRequeue(ctx, [
+    {
+      Update: {
+        TableName: ctx.tables.providerAccounts,
+        Key: { id: opts.providerAccountId },
+        UpdateExpression:
+          "SET usageLimitedUntil = :until, lastUsageLimitedAt = :now, updatedAt = :now",
+        ConditionExpression: "attribute_exists(id)",
+        ExpressionAttributeValues: { ":until": opts.usageLimitedUntil, ":now": opts.now },
+      },
+    },
+    idleClaimedWorkspaceSlotUpdate(ctx, opts),
+    {
+      Update: {
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
+          ", worktreeId = :null, workspaceSlotId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
+          " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, assignmentSentAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, workspaceSlotLease",
+        ConditionExpression:
+          "#s = :running AND workspaceSlotId = :workspaceSlotId AND attemptId = :attemptId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":queued": "queued",
+          ":running": "running",
+          ":statusShard": statusShardAttr("queued", opts.queueShard),
+          ":queueOrder": queueOrder,
+          ":null": null,
+          ":code": "usage_limit",
+          ":message": opts.errorMessage ?? "provider usage limit; requeued",
+          ":workspaceSlotId": opts.workspaceSlotId,
+          ":attemptId": opts.attemptId,
+        },
+      },
+    },
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
+  ]);
+}
+
 /** Requeue a providerless command and remember that this target is exhausted for this session. */
 export async function suppressProviderlessUsageLimit(
   ctx: PlaneStorageCtx,
@@ -154,6 +286,45 @@ export async function suppressProviderlessUsageLimit(
       extraSet:
         ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)",
       extraValues: { ":empty": [], ":index": [opts.targetIndex] },
+    }),
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
+  ]);
+}
+
+/** Requeue a providerless workspace command and remember that this target is exhausted. */
+export async function suppressProviderlessUsageLimitWorkspace(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    queueShard: number;
+    targetIndex: number;
+    errorMessage?: string;
+    workspaceSlotError?: string;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+  },
+): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
+  return commitUsageLimitRequeue(ctx, [
+    idleClaimedWorkspaceSlotUpdate(ctx, opts),
+    usageLimitRequeueWorkspaceSessionUpdate(ctx, {
+      sessionId: opts.sessionId,
+      workspaceSlotId: opts.workspaceSlotId,
+      attemptId: opts.attemptId,
+      queueShard: opts.queueShard,
+      queueOrder,
+      targetIndex: opts.targetIndex,
+      errorMessage: opts.errorMessage ?? "providerless usage limit; trying fallback",
+      ...(opts.workspaceSlotError !== undefined
+        ? { workspaceSlotError: opts.workspaceSlotError }
+        : {}),
     }),
     ...providerAccountLeaseDeleteItems(
       ctx.tables.concurrencyLocks,

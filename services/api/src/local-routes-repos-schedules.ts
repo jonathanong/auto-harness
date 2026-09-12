@@ -9,6 +9,7 @@ import {
   sendRouteError,
 } from "./local-audited-route.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
+import { may, mayAccessRepository } from "./auth-policy.ts";
 import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import {
   InvalidRepositoryCursorError,
@@ -16,8 +17,58 @@ import {
 } from "./control-plane-repositories-page.ts";
 import { sendListPage } from "./local-list-page.ts";
 
-function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
+function scoped(ctx: RouteCtx, repositoryId: string | null | undefined): boolean {
+  if (repositoryId === "" || repositoryId === null) {
+    return !ctx.principal || mayAccessRepository(ctx.principal, null);
+  }
   return repositoryInScope(ctx, repositoryId);
+}
+
+function publicSchedule<T extends { repositoryId: string }>(
+  schedule: T,
+): Omit<T, "repositoryId"> & {
+  repositoryId: string | null;
+} {
+  return { ...schedule, repositoryId: schedule.repositoryId || null };
+}
+
+function cleanupOverrideAllowed(ctx: RouteCtx, body: Record<string, unknown>): boolean {
+  return (
+    body.destroyWorkspaceAfter === undefined ||
+    body.destroyWorkspaceAfter === null ||
+    !ctx.principal ||
+    may(ctx.principal, "fleet:exec-config")
+  );
+}
+
+function workspaceScheduleBodyInvalid(body: Record<string, unknown>): string | undefined {
+  if (body.repositoryId !== null) return undefined;
+  if (typeof body.workspacePoolId !== "string" || !body.workspacePoolId.trim()) {
+    return "workspacePoolId is required for workspace schedules";
+  }
+  if (body.ref !== undefined) return "ref is not supported for workspace schedules";
+  if (body.requiredLabels !== undefined && !Array.isArray(body.requiredLabels)) {
+    return "requiredLabels must be an array";
+  }
+  if (Array.isArray(body.requiredLabels) && body.requiredLabels.length > 0) {
+    return "requiredLabels are not supported for workspace schedules";
+  }
+  if (body.setupScript !== undefined) return "setupScript is not supported for workspace schedules";
+  if (
+    body.setupProfileId !== undefined &&
+    body.setupProfileId !== null &&
+    (typeof body.setupProfileId !== "string" || !body.setupProfileId.trim())
+  ) {
+    return "setupProfileId must be a non-empty string";
+  }
+  if (
+    body.destroyWorkspaceAfter !== undefined &&
+    body.destroyWorkspaceAfter !== null &&
+    typeof body.destroyWorkspaceAfter !== "boolean"
+  ) {
+    return "destroyWorkspaceAfter must be a boolean";
+  }
+  return undefined;
 }
 
 function hidden(res: RouteCtx["res"]): void {
@@ -411,9 +462,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       sendListPage(
         ctx,
-        (await plane.listSchedulesDurable()).filter((schedule) =>
-          scoped(ctx, schedule.repositoryId),
-        ),
+        (await plane.listSchedulesDurable())
+          .filter((schedule) => scoped(ctx, schedule.repositoryId))
+          .map(publicSchedule),
         (schedule) => schedule.id,
       );
     } catch {
@@ -426,7 +477,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       body = (await readJson(req)) as Record<string, unknown>;
       if (
-        typeof body.repositoryId !== "string" ||
+        (typeof body.repositoryId !== "string" && body.repositoryId !== null) ||
         typeof body.name !== "string" ||
         typeof body.target !== "object" ||
         body.target === null ||
@@ -436,7 +487,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: "repositoryId, name, target, cron, and timeout are required",
+            message: "repositoryId (or null), name, target, cron, and timeout are required",
           },
         });
         return true;
@@ -462,18 +513,32 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
-      if (!canAuthorSessions(ctx) || !scoped(ctx, body.repositoryId)) {
+      const workspaceError = workspaceScheduleBodyInvalid(body);
+      if (workspaceError) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: workspaceError } });
+        return true;
+      }
+      if (
+        !canAuthorSessions(ctx) ||
+        !scoped(ctx, body.repositoryId === null ? "" : body.repositoryId)
+      ) {
         if (
           !(await writeRouteAudit(ctx, {
             action: "schedule:create",
             resourceType: "schedule",
             resourceId: "new",
-            repositoryId: body.repositoryId,
+            ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
             outcome: "denied",
           }))
         )
           return true;
         hidden(res);
+        return true;
+      }
+      if (!cleanupOverrideAllowed(ctx, body)) {
+        send(res, 403, {
+          error: { code: "FORBIDDEN", message: "fleet:exec-config capability is required" },
+        });
         return true;
       }
     } catch {
@@ -484,7 +549,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     try {
       const result = await plane.putScheduleDurable({
-        repositoryId: body.repositoryId,
+        repositoryId: body.repositoryId as string | null,
         principalId: ctx.principal?.id ?? SYSTEM_AUDIT_ACTOR.id,
         name: body.name,
         target: body.target,
@@ -497,6 +562,17 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
+        ...(typeof body.workspacePoolId === "string"
+          ? { workspacePoolId: body.workspacePoolId }
+          : {}),
+        ...(typeof body.setupProfileId === "string" || body.setupProfileId === null
+          ? { setupProfileId: body.setupProfileId }
+          : {}),
+        ...(typeof body.destroyWorkspaceAfter === "boolean" || body.destroyWorkspaceAfter === null
+          ? { destroyWorkspaceAfter: body.destroyWorkspaceAfter }
+          : {}),
+        ...(body.requiredLabels !== undefined ? { requiredLabels: body.requiredLabels } : {}),
+        ...(body.setupScript !== undefined ? { setupScript: body.setupScript } : {}),
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
@@ -507,7 +583,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
             action: "schedule:create",
             resourceType: "schedule",
             resourceId: "new",
-            repositoryId: body.repositoryId,
+            ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
             outcome: "failed",
           }))
         )
@@ -526,11 +602,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           action: "schedule:create",
           resourceType: "schedule",
           resourceId: result.schedule.id,
-          repositoryId: result.schedule.repositoryId,
+          ...(result.schedule.repositoryId ? { repositoryId: result.schedule.repositoryId } : {}),
         }))
       )
         return true;
-      send(res, 201, result.schedule);
+      send(res, 201, publicSchedule(result.schedule));
       return true;
     } catch {
       if (
@@ -695,7 +771,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 404, { error: { code: "NOT_FOUND", message: "schedule not found" } });
         return true;
       }
-      send(res, 200, s);
+      send(res, 200, publicSchedule(s));
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
@@ -730,8 +806,43 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           });
           return true;
         }
-        if (typeof body.repositoryId === "string" && !scoped(ctx, body.repositoryId)) {
+        if (
+          body.repositoryId !== undefined &&
+          body.repositoryId !== null &&
+          typeof body.repositoryId !== "string"
+        ) {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: "repositoryId must be a string or null" },
+          });
+          return true;
+        }
+        // A repository schedule can carry a branch ref.  Converting it to a
+        // workspace schedule deliberately drops that inherited repository-only
+        // field; an explicitly supplied ref still receives the normal
+        // workspace validation error below.
+        const workspacePatch = {
+          ...existing,
+          ...body,
+          repositoryId: body.repositoryId !== undefined ? body.repositoryId : existing.repositoryId,
+          ...(body.repositoryId === null && body.ref === undefined ? { ref: undefined } : {}),
+        };
+        const workspaceError = workspaceScheduleBodyInvalid(workspacePatch);
+        if (workspaceError) {
+          send(res, 400, { error: { code: "VALIDATION_ERROR", message: workspaceError } });
+          return true;
+        }
+        const destinationRepositoryId =
+          workspacePatch.repositoryId === null || workspacePatch.repositoryId === ""
+            ? ""
+            : workspacePatch.repositoryId;
+        if (!scoped(ctx, destinationRepositoryId)) {
           hidden(res);
+          return true;
+        }
+        if (!cleanupOverrideAllowed(ctx, body)) {
+          send(res, 403, {
+            error: { code: "FORBIDDEN", message: "fleet:exec-config capability is required" },
+          });
           return true;
         }
       } catch {
@@ -753,7 +864,22 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
           ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
           ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
-          ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
+          ...(body.repositoryId === null
+            ? { repositoryId: null }
+            : typeof body.repositoryId === "string"
+              ? { repositoryId: body.repositoryId }
+              : {}),
+          ...(typeof body.workspacePoolId === "string"
+            ? { workspacePoolId: body.workspacePoolId }
+            : {}),
+          ...(typeof body.setupProfileId === "string" || body.setupProfileId === null
+            ? { setupProfileId: body.setupProfileId }
+            : {}),
+          ...(typeof body.destroyWorkspaceAfter === "boolean" || body.destroyWorkspaceAfter === null
+            ? { destroyWorkspaceAfter: body.destroyWorkspaceAfter }
+            : {}),
+          ...(body.requiredLabels !== undefined ? { requiredLabels: body.requiredLabels } : {}),
+          ...(body.setupScript !== undefined ? { setupScript: body.setupScript } : {}),
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
           ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
           ...(!existing?.principalId
@@ -779,11 +905,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
             action: "schedule:update",
             resourceType: "schedule",
             resourceId: id,
-            repositoryId: result.schedule.repositoryId,
+            ...(result.schedule.repositoryId ? { repositoryId: result.schedule.repositoryId } : {}),
           }))
         )
           return true;
-        send(res, 200, result.schedule);
+        send(res, 200, publicSchedule(result.schedule));
         return true;
       } catch {
         if (

@@ -11,7 +11,11 @@ export function webhookLifecycleSnapshot(session: SessionRecord): WebhookLifecyc
   if (!isTerminalSessionStatus(session.status) || !session.completedAt) return null;
   return {
     sessionId: session.id,
-    repositoryId: session.repositoryId,
+    repositoryId: session.repositoryId || null,
+    workspacePoolId: session.workspacePoolId ?? null,
+    // Terminal transitions release the live slot, while resolvedRoute retains
+    // the placement that actually ran the attempt.
+    workspaceSlotId: session.resolvedRoute?.workspaceSlotId ?? session.workspaceSlotId ?? null,
     attemptId: session.attemptId ?? null,
     status: session.status,
     occurredAt: session.completedAt,
@@ -32,6 +36,8 @@ export async function reconcileWebhookSession(input: {
     const result = await input.store.enqueueWebhookDelivery({
       sessionId: snapshot.sessionId,
       repositoryId: snapshot.repositoryId,
+      workspacePoolId: snapshot.workspacePoolId,
+      workspaceSlotId: snapshot.workspaceSlotId,
       attemptId: snapshot.attemptId,
       status: snapshot.status,
       occurredAt: snapshot.occurredAt,

@@ -101,6 +101,9 @@ export function prepareResumedSession(
 ): { ok: true; session: SessionRecord; created: boolean } | { ok: false; error: string } {
   const source = state.sessions.get(sessionId);
   if (!source) return { ok: false, error: "session not found" };
+  if (source.type === "workspace" || source.workspacePoolId) {
+    return { ok: false, error: "workspace sessions do not support native resume" };
+  }
   const admissionFailure = repositoryAdmissionFailure(state, source.repositoryId);
   if (admissionFailure) return admissionFailure;
   if (!isTerminalSessionStatus(source.status)) {

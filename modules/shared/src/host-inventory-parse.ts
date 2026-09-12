@@ -1,10 +1,18 @@
+/* eslint-disable max-lines -- strict inventory parsing stays colocated with its field rules. */
 import {
   HOST_CAPABILITIES,
   isHostCapability,
   normalizeHostCapabilities,
   type HostCapability,
 } from "./host-capabilities.ts";
+import { HOST_PROTOCOL_VERSION } from "./constants.ts";
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
+import { MAX_HOST_REGISTRATION_BYTES } from "./host-registration.ts";
+import {
+  workspaceSlotIdByteLengthError,
+  type WorkspacePoolAttachment,
+  type WorkspaceSlot,
+} from "./workspace.ts";
 import { parseProviderAccountOverrides, parseProviderAccounts } from "./provider-account-parse.ts";
 import { isValidSlugName, SLUG_NAME_HINT } from "./slug.ts";
 import {
@@ -13,6 +21,11 @@ import {
 } from "./environment-requirements.ts";
 import { parseAllowedRoots, parseTerminalHookScript } from "./host-exec-config.ts";
 import { parseHostUpdateConfig } from "./host-update-config.ts";
+
+// Registration also carries daemon identity/runtime and reconnect metadata that is not part of
+// the persisted inventory. Keep a conservative cushion so an inventory near the frame limit
+// cannot become oversized when those bounded fields are added by the daemon.
+const HOST_REGISTRATION_INVENTORY_HEADROOM_BYTES = 8 * 1_024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -138,6 +151,99 @@ function parseCapabilities(value: unknown): HostCapability[] {
   return normalizeHostCapabilities(value as HostCapability[] | undefined);
 }
 
+function parseWorkspacePools(value: unknown): WorkspacePoolAttachment[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new TypeError("workspacePools must be an array");
+  const pools = value.map((rawPool, poolIndex): WorkspacePoolAttachment => {
+    if (!isRecord(rawPool)) throw new TypeError(`workspacePools[${poolIndex}] invalid`);
+    const workspacePoolId = requireString(
+      rawPool,
+      "workspacePoolId",
+      `workspacePools[${poolIndex}]`,
+    );
+    if (!Array.isArray(rawPool.slots)) {
+      throw new TypeError(`workspacePools.${workspacePoolId}.slots must be an array`);
+    }
+    const slots = rawPool.slots.map((rawSlot, slotIndex): WorkspaceSlot => {
+      if (!isRecord(rawSlot)) {
+        throw new TypeError(`workspacePools.${workspacePoolId}.slots[${slotIndex}] invalid`);
+      }
+      const id = requireString(
+        rawSlot,
+        "id",
+        `workspacePools.${workspacePoolId}.slots[${slotIndex}]`,
+      );
+      const idByteLengthError = workspaceSlotIdByteLengthError(id);
+      if (idByteLengthError) throw new TypeError(idByteLengthError);
+      return {
+        id,
+        name: requireString(
+          rawSlot,
+          "name",
+          `workspacePools.${workspacePoolId}.slots[${slotIndex}]`,
+        ),
+        path: requireString(
+          rawSlot,
+          "path",
+          `workspacePools.${workspacePoolId}.slots[${slotIndex}]`,
+        ),
+      };
+    });
+    if (new Set(slots.map((slot) => slot.id)).size !== slots.length) {
+      throw new TypeError(`workspacePools.${workspacePoolId}.slots ids must be unique`);
+    }
+    return { workspacePoolId, slots };
+  });
+  if (new Set(pools.map((pool) => pool.workspacePoolId)).size !== pools.length) {
+    throw new TypeError("workspacePools ids must be unique");
+  }
+  const slotIds = new Set<string>();
+  for (const pool of pools) {
+    for (const slot of pool.slots) {
+      if (slotIds.has(slot.id)) {
+        throw new TypeError(`workspace slot ids must be unique: ${slot.id}`);
+      }
+      slotIds.add(slot.id);
+    }
+  }
+  return pools;
+}
+
+/**
+ * Estimate the daemon's serialized registration from operator-owned inventory fields.
+ * Runtime advertisements add only bounded protocol metadata; applying the shared frame cap
+ * here prevents an accepted inventory from being impossible for the daemon to advertise.
+ */
+function hostRegistrationByteLength(inventory: HostInventory): number {
+  const registration = {
+    type: "host:register",
+    hostId: "host",
+    worktrees: inventory.repositories.flatMap((repository) =>
+      repository.worktrees.map((worktree) => ({
+        id: worktree.id,
+        name: worktree.name,
+        repositoryId: repository.id,
+        path: worktree.path,
+        labels: worktree.labels,
+      })),
+    ),
+    repositories: inventory.repositories.map(({ id, path, defaultBranch }) => ({
+      id,
+      path,
+      defaultBranch,
+    })),
+    ...(inventory.workspacePools !== undefined ? { workspacePools: inventory.workspacePools } : {}),
+    capabilities: {
+      features: ["scheduled-main-checkout", "workspace-sessions"],
+    },
+    providerAccountReadiness: [],
+    protocolVersion: HOST_PROTOCOL_VERSION,
+    runningSessions: [],
+    runningAttempts: [],
+  };
+  return new TextEncoder().encode(JSON.stringify(registration)).length;
+}
+
 /** Strictly parse the operator-editable host inventory document. */
 export function parseHostInventory(
   value: unknown,
@@ -151,6 +257,7 @@ export function parseHostInventory(
   const requiredEnvironment = parseRequiredEnvironment(value.requiredEnvironment);
   const updateConfig =
     value.updateConfig === undefined ? undefined : parseHostUpdateConfig(value.updateConfig);
+  const workspacePools = parseWorkspacePools(value.workspacePools);
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
   }
@@ -165,13 +272,23 @@ export function parseHostInventory(
     );
   }
 
-  return {
+  const inventory: HostInventory = {
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),
+    ...(workspacePools !== undefined ? { workspacePools } : {}),
     repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),
   };
+  if (
+    hostRegistrationByteLength(inventory) >
+    MAX_HOST_REGISTRATION_BYTES - HOST_REGISTRATION_INVENTORY_HEADROOM_BYTES
+  ) {
+    throw new TypeError(
+      `host registration must be at most ${MAX_HOST_REGISTRATION_BYTES} serialized bytes`,
+    );
+  }
+  return inventory;
 }

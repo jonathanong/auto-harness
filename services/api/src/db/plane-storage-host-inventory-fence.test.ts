@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- transaction cancellation and marker index cases share one fixture. */
 import { DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
@@ -123,6 +124,86 @@ describe("fenced host inventory publication", () => {
         },
       ],
     });
+  });
+
+  it("fences advertised catalog references in the same registration transaction", async () => {
+    const commands: TransactWriteCommand[] = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          commands.push(command as TransactWriteCommand);
+          if (commands.length === 2) {
+            throw {
+              name: "TransactionCanceledException",
+              CancellationReasons: [
+                { Code: "None" },
+                { Code: "ConditionalCheckFailed" },
+                { Code: "None" },
+              ],
+            };
+          }
+          return {};
+        },
+      } as never,
+      tables: {
+        concurrencyLocks: "ConcurrencyLocks",
+        hostInventories: "HostInventories",
+        hostLocks: "HostLocks",
+      } as never,
+    };
+    const inventory = {
+      hostId: "host-1",
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+      updatedAt: "2026-08-15T00:00:00.000Z",
+    };
+    const marker = { key: "workspace-pool:pool-1", now: "2026-08-15T00:00:00.000Z" };
+
+    await expect(
+      putHostInventoryFenced(
+        ctx,
+        inventory,
+        { hostId: "host-1", connectionId: "connection-1" },
+        undefined,
+        [marker],
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(commands[0]?.input).toMatchObject({
+      TransactItems: [
+        { ConditionCheck: { TableName: "HostLocks" } },
+        {
+          ConditionCheck: {
+            TableName: "ConcurrencyLocks",
+            Key: { concurrencyId: "catalog-delete:workspace-pool:pool-1" },
+            ExpressionAttributeValues: { ":now": marker.now },
+          },
+        },
+        { Put: { TableName: "HostInventories", Item: inventory } },
+      ],
+    });
+    await expect(
+      putHostInventoryFenced(
+        ctx,
+        inventory,
+        { hostId: "host-1", connectionId: "connection-1" },
+        undefined,
+        [marker],
+      ),
+    ).resolves.toEqual({ ok: false, reason: "reference" });
+    await expect(
+      putHostInventoryFenced(
+        ctx,
+        inventory,
+        { hostId: "host-1", connectionId: "connection-1" },
+        undefined,
+        Array.from({ length: 99 }, (_, index) => ({
+          key: `workspace-pool:pool-${index}`,
+          now: marker.now,
+        })),
+      ),
+    ).rejects.toThrow("100 transaction action limit");
+    expect(commands).toHaveLength(2);
   });
 
   it("rethrows an error that is not a recognized conditional failure", async () => {

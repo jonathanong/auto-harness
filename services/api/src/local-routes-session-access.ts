@@ -1,7 +1,7 @@
 import { may, mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { send, type RouteCtx } from "./local-http.ts";
 
-export function canAccessSession(ctx: RouteCtx, repositoryId: string | undefined): boolean {
+export function canAccessSession(ctx: RouteCtx, repositoryId: string | null | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
 }
 

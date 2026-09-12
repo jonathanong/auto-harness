@@ -18,12 +18,14 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import {
   repositoryAdmissionFailure,
   repositoryAdmissionOpen,
 } from "./control-plane-repository-admission-state.ts";
 import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
+import { workspaceAssignmentPayloadError } from "./control-plane-session-create.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -50,7 +52,9 @@ export function triggerSchedule(
   if (!target.ok) {
     return target;
   }
-  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
+  const result = createSession(state, scheduledSessionInput(state, schedule), {
+    allowScheduleId: true,
+  });
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
@@ -112,8 +116,22 @@ export async function triggerScheduleDurable(
   if (!schedule.principalId) {
     return { ok: false, error: "schedule must be claimed by an authenticated principal" };
   }
-  const repository = await getRepositoryDurable(state, schedule.repositoryId);
-  if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
+  if (
+    schedule.workspacePoolId &&
+    !(await getWorkspacePoolDurable(state, schedule.workspacePoolId))
+  ) {
+    return { ok: false, error: "workspace pool not found" };
+  }
+  if (!workspaceScheduleSetupProfileAvailable(state, schedule)) {
+    return { ok: false, error: "workspace setup profile not found" };
+  }
+  const repository = schedule.repositoryId
+    ? await getRepositoryDurable(state, schedule.repositoryId)
+    : null;
+  if (
+    schedule.repositoryId &&
+    (!repository || repositoryAdmissionFailure(state, schedule.repositoryId))
+  ) {
     return { ok: false, error: "repository admission is closed" };
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
@@ -123,12 +141,21 @@ export async function triggerScheduleDurable(
     return target;
   }
   const session = createScheduledSession(state, schedule);
+  if (session.workspacePoolId) {
+    const payloadError = workspaceAssignmentPayloadError(state, {
+      ...session,
+      workspacePoolId: session.workspacePoolId,
+    });
+    if (payloadError) return { ok: false, error: payloadError };
+  }
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
     expectedNextRunAt: schedule.nextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
-    ...(repository.activationCutoffAt ? { activationCutoffAt: repository.activationCutoffAt } : {}),
+    ...(repository?.activationCutoffAt
+      ? { activationCutoffAt: repository.activationCutoffAt }
+      : {}),
     session,
   });
   if (outcome.kind === "duplicate") {
@@ -205,7 +232,9 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  const activationCutoffAt = state.repositories.get(schedule.repositoryId)?.activationCutoffAt;
+  const activationCutoffAt = schedule.repositoryId
+    ? state.repositories.get(schedule.repositoryId)?.activationCutoffAt
+    : undefined;
   if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
     schedule.nextRunAt = newNextRunAt;
     return null;
@@ -214,7 +243,9 @@ export function tryClaimScheduleFire(
   if (!target.ok) {
     return null;
   }
-  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
+  const result = createSession(state, scheduledSessionInput(state, schedule), {
+    allowScheduleId: true,
+  });
   if (!result.ok) {
     if (result.code === "REPOSITORY_ADMISSION_CLOSED") schedule.nextRunAt = newNextRunAt;
     return null;
@@ -281,9 +312,11 @@ export async function tryClaimScheduleFireDurable(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  const repository = await getRepositoryDurable(state, schedule.repositoryId);
-  if (!repository) return null;
-  const activationCutoffAt = repository.activationCutoffAt;
+  const repository = schedule.repositoryId
+    ? await getRepositoryDurable(state, schedule.repositoryId)
+    : null;
+  if (schedule.repositoryId && !repository) return null;
+  const activationCutoffAt = repository?.activationCutoffAt;
   if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
     let skipped = false;
     if (repositoryAdmissionOpen(repository.admissionState)) {
@@ -328,11 +361,29 @@ export async function tryClaimScheduleFireDurable(
     }
     return null;
   }
+  if (
+    schedule.workspacePoolId &&
+    !(await getWorkspacePoolDurable(state, schedule.workspacePoolId))
+  ) {
+    return null;
+  }
+  if (!workspaceScheduleSetupProfileAvailable(state, schedule)) {
+    return null;
+  }
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return null;
   }
   const session = createScheduledSession(state, schedule);
+  if (
+    session.workspacePoolId &&
+    workspaceAssignmentPayloadError(state, {
+      ...session,
+      workspacePoolId: session.workspacePoolId,
+    })
+  ) {
+    return null;
+  }
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
     expectedNextRunAt,
@@ -500,9 +551,27 @@ function isValidPersistedCursor(value: string): boolean {
 function createScheduledSession(state: ControlPlaneState, schedule: ScheduleRecord): SessionRecord {
   const id = state.idFactory();
   const createdAt = state.now();
+  const workspacePool = schedule.workspacePoolId
+    ? state.workspacePools.get(schedule.workspacePoolId)
+    : undefined;
+  const setupProfileId = schedule.workspacePoolId
+    ? (schedule.setupProfileId ?? workspacePool?.defaultSetupProfileId)
+    : undefined;
+  const workspaceSetupScript = setupProfileId
+    ? workspacePool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
+    : undefined;
   return {
     id,
     repositoryId: schedule.repositoryId,
+    ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
+    ...(setupProfileId ? { setupProfileId } : {}),
+    ...(workspaceSetupScript ? { workspaceSetupScript } : {}),
+    ...(schedule.workspacePoolId
+      ? {
+          destroyWorkspaceAfter:
+            schedule.destroyWorkspaceAfter ?? workspacePool?.destroyWorkspaceAfter ?? false,
+        }
+      : {}),
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: [...schedule.fallbacks],
@@ -515,13 +584,22 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt,
-    type: "scheduled",
+    type: schedule.workspacePoolId ? "workspace" : "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
     ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   };
+}
+
+function workspaceScheduleSetupProfileAvailable(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+): boolean {
+  if (!schedule.workspacePoolId || !schedule.setupProfileId) return true;
+  const pool = state.workspacePools.get(schedule.workspacePoolId);
+  return Boolean(pool?.setupProfiles.some((profile) => profile.id === schedule.setupProfileId));
 }
 
 function resolveScheduledTarget(
@@ -531,8 +609,11 @@ function resolveScheduledTarget(
   return resolveTargetDisplayNames(state, schedule.target, schedule.fallbacks);
 }
 
-function scheduledSessionInput(schedule: ScheduleRecord): {
-  repositoryId: string;
+function scheduledSessionInput(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+): {
+  repositoryId: string | null;
   prompt: string;
   target: import("@auto-harness/shared").TargetRef;
   fallbacks: import("@auto-harness/shared").TargetRef[];
@@ -543,20 +624,33 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
   ref?: string;
   concurrencyId?: string;
   scheduleId?: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   metadata?: Record<string, unknown>;
 } {
   return {
-    repositoryId: schedule.repositoryId,
+    repositoryId: schedule.workspacePoolId ? null : schedule.repositoryId,
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: schedule.fallbacks,
     timeout: schedule.timeout,
     queueTtlSeconds: schedule.queueTtlSeconds,
-    type: "scheduled",
+    type: schedule.workspacePoolId ? "workspace" : "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
+    ...(schedule.setupProfileId ? { setupProfileId: schedule.setupProfileId } : {}),
+    ...(schedule.workspacePoolId
+      ? {
+          destroyWorkspaceAfter:
+            schedule.destroyWorkspaceAfter ??
+            state.workspacePools.get(schedule.workspacePoolId)?.destroyWorkspaceAfter ??
+            false,
+        }
+      : {}),
     ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
   };
 }

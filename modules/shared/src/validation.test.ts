@@ -23,6 +23,7 @@ describe("repositoryUrlError", () => {
     for (const url of [
       "https://example.test/repository.git",
       "https://example.test:8443/repository.git",
+      "https://example.test",
       "git@example.test:repository.git",
       "git@example.test:group/repository.git",
     ]) {
@@ -207,6 +208,137 @@ describe("validateCreateSessionInput", () => {
       expect(result.value.concurrencyId).toBe("pr-12");
       expect(result.value.ref).toBe("feature/x");
     }
+  });
+
+  it("accepts a workspace session without resolving a repository", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "profile-1",
+      destroyWorkspaceAfter: false,
+      requiredLabels: [],
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        repositoryId: null,
+        type: "workspace",
+        workspacePoolId: "pool-1",
+        setupProfileId: "profile-1",
+        destroyWorkspaceAfter: false,
+      }),
+    });
+  });
+
+  it("rejects repository refs, labels, and raw setup scripts for workspace sessions", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        requiredLabels: ["linux"],
+      }),
+    ).toEqual({ ok: false, error: "requiredLabels are not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupScript: "echo unsafe",
+      }),
+    ).toEqual({ ok: false, error: "setupScript is not accepted; use setupProfileId" });
+  });
+
+  it("requires a pool and boolean cleanup policy for workspace sessions", () => {
+    expect(validateCreateSessionInput({ ...base, repositoryId: null })).toEqual({
+      ok: false,
+      error: "workspacePoolId is required for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({ ...base, repositoryId: null, workspacePoolId: "pool" }),
+    ).toMatchObject({ ok: true, value: { type: "workspace", workspacePoolId: "pool" } });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        destroyWorkspaceAfter: "yes",
+      }),
+    ).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter must be a boolean when set",
+    });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupProfileId: "",
+      }),
+    ).toEqual({ ok: false, error: "setupProfileId must be a non-empty string when set" });
+  });
+
+  it("rejects workspace-only fields on repository sessions and invalid workspace types", () => {
+    expect(validateCreateSessionInput({ ...base, workspacePoolId: "pool" })).toEqual({
+      ok: false,
+      error: "workspacePoolId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, setupProfileId: "profile" })).toEqual({
+      ok: false,
+      error: "setupProfileId is only valid for workspace sessions",
+    });
+    expect(validateCreateSessionInput({ ...base, destroyWorkspaceAfter: false })).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter is only valid for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        type: "prompt",
+      }),
+    ).toEqual({ ok: false, error: "workspace sessions must have type workspace" });
+    expect(validateCreateSessionInput({ ...base, type: "workspace" })).toEqual({
+      ok: false,
+      error: "workspace type requires repositoryId null",
+    });
+  });
+
+  it("rejects blank workspace prompts and workspace refs after common validation", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        prompt: "",
+      }),
+    ).toEqual({ ok: false, error: "prompt is required" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "",
+      }),
+    ).toEqual({ ok: false, error: "ref must be a non-empty string when set" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
   });
 
   it("rejects missing repositoryId", () => {

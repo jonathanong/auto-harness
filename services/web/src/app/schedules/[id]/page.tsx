@@ -18,6 +18,7 @@ import {
 import { ApiError, apiGet, apiGetAllPages, apiGetFirstPageWithItems } from "../../../lib/api.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
+import type { WorkspacePoolOption } from "../../../components/workspace-session-fields.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,12 @@ type SessionHistory = {
 
 export default async function ScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
+  const principal = await loadPrincipal();
+  const canWriteSchedules = can(principal, "schedules:write");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
   let schedule: EditableSchedule | undefined;
   let targets: SessionTarget[] = [];
+  let workspacePools: WorkspacePoolOption[] = [];
   let history: SessionHistory[] = [];
   try {
     schedule = await apiGet<EditableSchedule>(`/api/v1/schedules/${encodeURIComponent(id)}`);
@@ -62,6 +66,12 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
     targets = await apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100");
   } catch {
     targets = [];
+  }
+  try {
+    workspacePools =
+      (await apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")).items ?? [];
+  } catch {
+    workspacePools = [];
   }
   try {
     const query = new URLSearchParams({ scheduleId: schedule.id, limit: "100" });
@@ -100,7 +110,12 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
         <section className="space-y-3">
           <h3 className="text-lg font-medium">Edit schedule</h3>
           {canWriteSchedules ? (
-            <ScheduleEditForm schedule={schedule} targets={targets} />
+            <ScheduleEditForm
+              schedule={schedule}
+              targets={targets}
+              workspacePools={workspacePools}
+              canWriteExecConfig={canWriteExecConfig}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">This account cannot edit schedules.</p>
           )}

@@ -11,20 +11,36 @@ import { SessionPromptField } from "./session-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 import type { SessionCloneDraft } from "../session-clone-draft.ts";
 import { SessionCreateDetailFields } from "./session-create-detail-fields.tsx";
+import { SessionExecutionMode } from "./session-execution-mode.tsx";
+import { WorkspaceSessionFields, type WorkspacePoolOption } from "./workspace-session-fields.tsx";
+export type { WorkspacePoolOption } from "./workspace-session-fields.tsx";
 
 export function CreateSessionForm({
   targets,
   repositories,
+  workspacePools = [],
   availableLabels = [],
   initialValues,
+  canWriteExecConfig = false,
 }: {
   targets: SessionTarget[];
   repositories: Array<{ id: string; name: string }>;
+  workspacePools?: WorkspacePoolOption[];
   availableLabels?: string[];
   initialValues?: SessionCloneDraft | null;
+  canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [mode, setMode] = useState<"repository" | "workspace">(
+    initialValues?.workspacePoolId ? "workspace" : "repository",
+  );
+  const [workspacePoolId, setWorkspacePoolId] = useState(initialValues?.workspacePoolId ?? "");
+  const canSubmit =
+    targets.length > 0 &&
+    (mode === "repository"
+      ? repositories.length > 0
+      : workspacePools.length > 0 && workspacePoolId);
 
   return (
     <form
@@ -34,18 +50,31 @@ export function CreateSessionForm({
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
+        const destroyWorkspaceAfter = String(fd.get("destroyWorkspaceAfter") ?? "inherit");
         const body = {
-          repositoryId: String(fd.get("repositoryId") ?? ""),
+          repositoryId: mode === "workspace" ? null : String(fd.get("repositoryId") ?? ""),
           prompt: String(fd.get("prompt") ?? ""),
           target,
           fallbacks,
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           timeout: Number(fd.get("timeout") ?? 600),
           priority: Number(fd.get("priority") ?? 0),
-          requiredLabels: fd.getAll("requiredLabels").map(String),
-          ref: String(fd.get("ref") ?? "") || undefined,
+          requiredLabels: mode === "workspace" ? [] : fd.getAll("requiredLabels").map(String),
+          ref: mode === "workspace" ? undefined : String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
           source: "ui",
+          ...(mode === "workspace"
+            ? {
+                type: "workspace",
+                workspacePoolId,
+                ...(String(fd.get("setupProfileId") ?? "")
+                  ? { setupProfileId: String(fd.get("setupProfileId")) }
+                  : {}),
+                ...(canWriteExecConfig && destroyWorkspaceAfter !== "inherit"
+                  ? { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }
+                  : {}),
+              }
+            : {}),
         };
         setPending(true);
         void (async () => {
@@ -91,33 +120,47 @@ export function CreateSessionForm({
         })();
       }}
     >
-      <div className="space-y-1">
-        <Label
-          htmlFor="repositoryId"
-          tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
-        >
-          Repository ID
-        </Label>
-        <select
-          id="repositoryId"
-          name="repositoryId"
-          required
-          data-pw="create-session-repository-id"
-          defaultValue={initialValues?.repositoryId ?? repositories[0]?.id ?? ""}
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-        >
-          {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
-          {repositories.map((repository) => (
-            <option key={repository.id} value={repository.id}>
-              {repository.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <SessionExecutionMode mode={mode} onModeChange={setMode} />
+      {mode === "repository" ? (
+        <div className="space-y-1">
+          <Label
+            htmlFor="repositoryId"
+            tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
+          >
+            Repository ID
+          </Label>
+          <select
+            id="repositoryId"
+            name="repositoryId"
+            required
+            data-pw="create-session-repository-id"
+            defaultValue={initialValues?.repositoryId ?? repositories[0]?.id ?? ""}
+            className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          >
+            {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
+            {repositories.map((repository) => (
+              <option key={repository.id} value={repository.id}>
+                {repository.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <WorkspaceSessionFields
+          pools={workspacePools}
+          poolId={workspacePoolId}
+          onPoolIdChange={setWorkspacePoolId}
+          initialPoolId={initialValues?.workspacePoolId}
+          initialProfileId={initialValues?.setupProfileId}
+          initialDestroyWorkspaceAfter={initialValues?.destroyWorkspaceAfter}
+          canWriteExecConfig={canWriteExecConfig}
+        />
+      )}
       <SessionPriorityLabelFields
         availableLabels={availableLabels}
         initialPriority={initialValues?.priority}
         initialRequiredLabels={initialValues?.requiredLabels}
+        showLabels={mode === "repository"}
       />
       <div className="space-y-1">
         <SessionRoutingFields
@@ -128,21 +171,19 @@ export function CreateSessionForm({
         />
       </div>
       <SessionPromptField initialValue={initialValues?.prompt} />
-      <SessionCreateDetailFields initialValues={initialValues} />
+      <SessionCreateDetailFields initialValues={initialValues} includeRef={mode === "repository"} />
       <WithTooltip
         tip={
-          repositories.length === 0
+          mode === "repository" && repositories.length === 0
             ? "Add a repository first"
-            : targets.length === 0
-              ? "Add a provider or command first"
-              : "Queue a session for assignment to an online agent worktree"
+            : mode === "workspace" && workspacePools.length === 0
+              ? "Create a workspace pool first"
+              : targets.length === 0
+                ? "Add a provider or command first"
+                : "Queue a session for assignment to an online agent worktree"
         }
       >
-        <Button
-          type="submit"
-          disabled={pending || targets.length === 0 || repositories.length === 0}
-          data-pw="create-session-submit"
-        >
+        <Button type="submit" disabled={pending || !canSubmit} data-pw="create-session-submit">
           {pending ? "Creating…" : "Create session"}
         </Button>
       </WithTooltip>

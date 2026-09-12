@@ -1,6 +1,8 @@
 # Trusted setup scripts: do's and don'ts
 
-Setup scripts are optional operator configuration for preparing a worktree before a fresh session.
+Setup scripts are trusted operator configuration for preparing a worktree or a host-attached
+non-git workspace before a fresh session. Repository/worktree/host scripts remain host exec
+configuration; workspace sessions select a pool-owned setup profile by `setupProfileId`.
 Auto Harness does not inspect repository manifests or lockfiles, choose a package manager, or install
 dependencies on its own. If no setup script is configured, the daemon checks out the assigned ref
 and launches the assigned command without an additional preparation step.
@@ -22,7 +24,7 @@ checked-out ref control that part of execution.
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | When setup runs   | Fresh sessions only. Native resumes skip every setup script.                                                                                                                              |
 | Order             | The host script runs first, followed by one scoped script using `session assignment > worktree > repository attachment` precedence.                                                       |
-| Working directory | The claimed session worktree, or the locked main checkout for a scheduled session.                                                                                                        |
+| Working directory | The claimed session worktree, locked main checkout for a scheduled session, or claimed workspace slot.                                                                                    |
 | Shell             | On POSIX hosts, an available absolute compatible `$SHELL` named `sh`, `bash`, `dash`, `ksh`, or `zsh`; otherwise `/bin/sh`. Configured setup is not currently supported on Windows hosts. |
 | Environment       | Successful exports flow to the next setup script and form the assigned command's base environment, except reserved `HARNESS_*` values.                                                    |
 | Output            | Every stdout/stderr chunk from setup is streamed into the live and retained session log. The private environment snapshot does not redact printed values.                                 |
@@ -34,6 +36,19 @@ command can read the resulting final values, not necessarily every value setup o
 
 Setup shares the session deadline and has a ten-minute cap. It may run again for another fresh
 assignment, so it must tolerate repetition and partially prepared state.
+
+### Workspace profile boundary
+
+Workspace profile script bodies are accepted only by the admin workspace-pool configuration APIs.
+`POST`/`PUT`/`PATCH /workspace-pools` may create or update a trusted profile; `POST /sessions` and
+schedule create/update/trigger inputs accept only `setupProfileId`. A raw `setupScript` in a
+session or schedule is rejected. Profile scripts run after the host setup script, in the claimed
+slot path, and before the resolved command. The pool's cleanup policy defaults to `false`; when
+`destroyWorkspaceAfter` is true, cleanup runs after the command and a failure reports
+`workspace_cleanup_failed` while the slot is quarantined from new placement.
+
+Workspace sessions have no Git checkout, `ref`, worktree labels, or resume setup path. They can be
+cloned, which reapplies the selected profile in a newly claimed slot, but cannot be resumed.
 
 ## Do
 

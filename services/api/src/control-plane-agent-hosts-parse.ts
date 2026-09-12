@@ -18,9 +18,11 @@ export function parseHostBody(
     throw new Error("body.hostId must match path hostId");
   }
   const inventory = parseHostInventory(body, options);
+  const { workspacePools, ...rest } = inventory;
 
   return {
     hostId,
-    ...inventory,
+    ...rest,
+    ...(workspacePools ? { workspacePools } : {}),
   };
 }

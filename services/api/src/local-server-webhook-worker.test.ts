@@ -45,6 +45,8 @@ it("starts the webhook worker only with durable storage and both injected bounda
     expect(selectDestinations).toHaveBeenCalledWith({
       sessionId: "session-1",
       repositoryId: "repository-1",
+      workspacePoolId: null,
+      workspaceSlotId: null,
       attemptId: null,
       status: "cancelled",
       occurredAt: now,
@@ -67,6 +69,74 @@ it("starts the webhook worker only with durable storage and both injected bounda
     expect(missingTransport.webhookWorker).toBeUndefined();
   } finally {
     await missingTransport.close();
+  }
+});
+
+it("reconciles terminal workspace sessions through the opt-in local worker", async () => {
+  if (!dynamo.storage) return;
+  const plane = new ControlPlane({ storage: dynamo.storage });
+  plane.state.sessions.set("workspace-session", {
+    id: "workspace-session",
+    repositoryId: "",
+    workspacePoolId: "workspace-pool-1",
+    prompt: "must not be transported",
+    target: { commandId: "command-1" },
+    fallbacks: [],
+    targetDisplayNames: ["Codex"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: now,
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "completed",
+    queueShard: 0,
+    createdAt: now,
+    completedAt: now,
+    attemptId: "workspace-attempt-1",
+    resolvedRoute: {
+      targetIndex: 0,
+      commandId: "command-1",
+      hostId: "host-1",
+      worktreeId: null,
+      workspacePoolId: "workspace-pool-1",
+      workspaceSlotId: "workspace-slot-1",
+      attemptId: "workspace-attempt-1",
+    },
+  });
+  const deliver = vi.fn(async () => ({ ok: true }) as const);
+  const selectDestinations = vi.fn(async () => [
+    { configurationId: "operations", configurationVersion: 4 },
+  ]);
+  const server = await startLocalServer({
+    port: 24_000 + Math.floor(Math.random() * 1_000),
+    plane,
+    enableWs: false,
+    webhookDestinationSelector: selectDestinations,
+    webhookTransport: { deliver },
+    webhookWorker: { intervalMs: 5, now: () => now, leaseId: () => "workspace-lease-1" },
+  });
+  try {
+    await eventually(() => deliver.mock.calls.length === 1);
+    expect(selectDestinations).toHaveBeenCalledWith({
+      sessionId: "workspace-session",
+      repositoryId: null,
+      workspacePoolId: "workspace-pool-1",
+      workspaceSlotId: "workspace-slot-1",
+      attemptId: "workspace-attempt-1",
+      status: "completed",
+      occurredAt: now,
+    });
+    expect(deliver.mock.calls[0]![0]).toMatchObject({
+      event: {
+        data: {
+          repositoryId: null,
+          workspacePoolId: "workspace-pool-1",
+          workspaceSlotId: "workspace-slot-1",
+        },
+      },
+    });
+  } finally {
+    await server.close();
   }
 });
 

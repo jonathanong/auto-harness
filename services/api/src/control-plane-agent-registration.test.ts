@@ -44,6 +44,39 @@ describe("host registration repository inventory", () => {
     });
   });
 
+  it("projects workspace slots from an initial daemon registration snapshot", () => {
+    const plane = new ControlPlane({
+      connectionIdFactory: () => "connection",
+      workspacePoolIdFactory: () => "pool",
+    });
+    expect(plane.createWorkspacePool({ name: "pool" })).toMatchObject({ ok: true });
+    expect(
+      plane.handleHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: "/srv/workspace" }],
+          },
+        ],
+      }),
+    ).toEqual({ ok: true });
+    expect(plane.getHostInventory("host")?.workspacePools).toEqual([
+      {
+        workspacePoolId: "pool",
+        slots: [{ id: "slot", name: "slot", path: "/srv/workspace" }],
+      },
+    ]);
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      hostId: "host",
+      workspacePoolId: "pool",
+      path: "/srv/workspace",
+      online: true,
+    });
+  });
+
   it("preserves configured root-level exec policy across daemon registration", () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
     expect(
@@ -74,6 +107,39 @@ describe("host registration repository inventory", () => {
     expect(plane.getHostInventory("host")?.requiredEnvironment).toEqual(["GLOBAL_TOKEN"]);
     expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([
       "REPO_TOKEN",
+    ]);
+  });
+
+  it("preserves attached workspace pools across daemon registration", () => {
+    const plane = new ControlPlane({
+      connectionIdFactory: () => "connection",
+      workspacePoolIdFactory: () => "pool",
+    });
+    expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
+    expect(
+      plane.putHostInventory("host", {
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "research", path: "/srv/research" }],
+          },
+        ],
+        repositories: [],
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [],
+        worktrees: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")?.workspacePools).toEqual([
+      {
+        workspacePoolId: "pool",
+        slots: [{ id: "slot", name: "research", path: "/srv/research" }],
+      },
     ]);
   });
 

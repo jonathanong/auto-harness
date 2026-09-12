@@ -56,6 +56,21 @@ describe("session priority list keys", () => {
     expect(itemToSession(item)).not.toHaveProperty("createdOrder");
     expect(itemToSession(item)).not.toHaveProperty("repositoryPriorityOrder");
   });
+
+  it("omits the repository GSI key for workspace sessions and restores its sentinel", () => {
+    const session = {
+      id: "workspace",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      status: "queued" as const,
+      queueShard: 0,
+      priority: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    } as never;
+    const item = sessionToItem(session);
+    expect(item).not.toHaveProperty("repositoryId");
+    expect(itemToSession(item).repositoryId).toBe("");
+  });
 });
 
 describe("abandoned usage-limit retry attributes", () => {

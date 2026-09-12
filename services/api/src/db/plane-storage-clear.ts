@@ -24,6 +24,8 @@ const SESSION_DRAIN_LEDGER_RECORD_KEY = "ACTIVITY-V1";
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   await clearSessionDrains(ctx);
+  await clearByKey(ctx, ctx.tables.workspaceSlots, "id");
+  await clearByKey(ctx, ctx.tables.workspacePools, "id");
   await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
   await clearByKey(ctx, ctx.tables.sessionCancelRedeliveries, "sessionId");
   await clearByKey(ctx, ctx.tables.slackOAuthStates, "stateHash");

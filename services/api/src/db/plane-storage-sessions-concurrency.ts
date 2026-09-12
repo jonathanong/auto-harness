@@ -57,11 +57,12 @@ async function throwIfCreateAdmissionConflict(
   if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
     throw new CatalogDeletionInProgressError();
   }
-  const repositoryIndex = principalIndex + Number(!!principalCheck);
-  if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
-    throw new RepositoryAdmissionClosedError();
+  const resourceIndex = principalIndex + Number(!!principalCheck);
+  if (isConditionalTransactionFailureAt(err, resourceIndex)) {
+    if (session.repositoryId) throw new RepositoryAdmissionClosedError();
+    throw new CatalogDeletionInProgressError();
   }
-  const drainIndex = repositoryIndex + 1;
+  const drainIndex = resourceIndex + 1;
   if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
     throw await activeSessionDrainError(ctx, session);
   }
@@ -147,15 +148,23 @@ export async function createSessionWithConcurrency(
           TransactItems: [
             ...withMarkerTable(ctx, markerConditions([...markers])),
             ...(principalCheck ? [principalCheck] : []),
-            {
-              ConditionCheck: {
-                TableName: ctx.tables.repositories,
-                Key: { id: session.repositoryId },
-                ConditionExpression:
-                  "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
-                ExpressionAttributeValues: { ":active": "active" },
-              },
-            },
+            session.repositoryId
+              ? {
+                  ConditionCheck: {
+                    TableName: ctx.tables.repositories,
+                    Key: { id: session.repositoryId },
+                    ConditionExpression:
+                      "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+                    ExpressionAttributeValues: { ":active": "active" },
+                  },
+                }
+              : {
+                  ConditionCheck: {
+                    TableName: ctx.tables.workspacePools,
+                    Key: { id: session.workspacePoolId },
+                    ConditionExpression: "attribute_exists(id)",
+                  },
+                },
             ...(drainCheck ? [drainCheck] : []),
             {
               Put: {

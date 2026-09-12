@@ -20,13 +20,14 @@ import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 import { describeCron, routeLabel } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
+import type { WorkspacePoolOption } from "../../components/workspace-session-fields.tsx";
 
 export const dynamic = "force-dynamic";
 
 type Schedule = {
   id: string;
   name: string;
-  repositoryId: string;
+  repositoryId: string | null;
   targetDisplayNames: string[];
   target: { providerId: string } | { commandId: string };
   fallbacks: Array<{ providerId: string } | { commandId: string }>;
@@ -40,6 +41,9 @@ type Schedule = {
   concurrencyId?: string | null;
   activeSessionId?: string | null;
   prompt?: string;
+  workspacePoolId?: string | null;
+  setupProfileId?: string | null;
+  destroyWorkspaceAfter?: boolean | null;
 };
 
 export default async function SchedulesPage({
@@ -50,11 +54,14 @@ export default async function SchedulesPage({
   const rawSearchParams = await searchParams;
   const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
   const cursor = typeof rawSearchParams.cursor === "string" ? rawSearchParams.cursor : null;
-  const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
+  const principal = await loadPrincipal();
+  const canWriteSchedules = can(principal, "schedules:write");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
   let items: Schedule[] = [];
   let schedulesNextCursor: string | null = null;
   let targets: SessionTarget[] = [];
   let repositories: Array<{ id: string; name: string }> = [];
+  let workspacePools: WorkspacePoolOption[] = [];
   let error: string | null = null;
   const schedulesPath = `/api/v1/schedules?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   try {
@@ -71,6 +78,12 @@ export default async function SchedulesPage({
     );
   } catch (e) {
     error = thrownMessage(e);
+  }
+  try {
+    workspacePools =
+      (await apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")).items ?? [];
+  } catch {
+    workspacePools = [];
   }
 
   const requestedEditId = editId;
@@ -90,7 +103,10 @@ export default async function SchedulesPage({
   // A schedule can reference a repository since removed from the catalog — keep it selectable
   // rather than letting the <select> silently fall back to the first real option and rewrite
   // the schedule's repositoryId out from under the user on save.
-  if (editing && !repositories.some((repository) => repository.id === editing.repositoryId)) {
+  if (
+    editing?.repositoryId &&
+    !repositories.some((repository) => repository.id === editing.repositoryId)
+  ) {
     repositories = [{ id: editing.repositoryId, name: editing.repositoryId }, ...repositories];
   }
 
@@ -107,7 +123,7 @@ export default async function SchedulesPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Repo</TableHead>
+                <TableHead>Workspace / repo</TableHead>
                 <TableHead>Route</TableHead>
                 <TableHead>Queue TTL</TableHead>
                 <TableHead>Cron</TableHead>
@@ -131,12 +147,19 @@ export default async function SchedulesPage({
                     </Link>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    <Link
-                      href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
-                      className="hover:underline"
-                    >
-                      {s.repositoryId}
-                    </Link>
+                    {s.workspacePoolId ? (
+                      (workspacePools.find((pool) => pool.id === s.workspacePoolId)?.name ??
+                      s.workspacePoolId)
+                    ) : s.repositoryId ? (
+                      <Link
+                        href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
+                        className="hover:underline"
+                      >
+                        {s.repositoryId}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     <div data-pw={`schedule-route-${s.id}`}>
@@ -241,7 +264,11 @@ export default async function SchedulesPage({
               <ScheduleCreateForm
                 targets={targets}
                 repositories={repositories}
-                schedule={editing}
+                workspacePools={workspacePools}
+                canWriteExecConfig={canWriteExecConfig}
+                schedule={
+                  editing ? { ...editing, repositoryId: editing.repositoryId ?? "" } : undefined
+                }
               />
             </div>
           ) : null}

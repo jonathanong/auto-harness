@@ -138,7 +138,15 @@ export function catalogPageItems<T>(items: T[] | undefined): T[] {
 export function scheduleAttributes(
   attributes: Record<string, unknown> | undefined,
 ): ScheduleRecord | null {
-  return attributes ? (normalizeTargetDisplayNames(attributes) as ScheduleRecord) : null;
+  if (!attributes) return null;
+  const normalized = normalizeTargetDisplayNames(attributes);
+  // Workspace schedules deliberately omit the repository GSI key because
+  // DynamoDB rejects empty strings. Restore the in-memory sentinel used by
+  // the control plane and public conversion (which exposes null).
+  if (!("repositoryId" in normalized) && typeof normalized.workspacePoolId === "string") {
+    normalized.repositoryId = "";
+  }
+  return normalized as ScheduleRecord;
 }
 
 export function isActiveSession(session: SessionRecord | null): session is SessionRecord {
@@ -332,7 +340,13 @@ export async function putSchedule(
   rec: ScheduleRecord,
   markers?: readonly DeletionMarker[],
 ): Promise<void> {
-  const write = { Put: { TableName: ctx.tables.schedules, Item: { ...rec } } };
+  const { repositoryId, ...recordWithoutRepository } = rec;
+  const write = {
+    Put: {
+      TableName: ctx.tables.schedules,
+      Item: repositoryId ? { ...recordWithoutRepository, repositoryId } : recordWithoutRepository,
+    },
+  };
   const principalCheck = principalExistsCheck(ctx, rec.principalId);
   await guardedWrite(
     ctx,
@@ -359,7 +373,6 @@ export async function updateScheduleManagement(
 ): Promise<ScheduleRecord | null> {
   try {
     const set = [
-      "repositoryId = :repositoryId",
       "#name = :name",
       "target = :target",
       "fallbacks = :fallbacks",
@@ -372,6 +385,14 @@ export async function updateScheduleManagement(
       "createdAt = :createdAt",
     ];
     const remove = ["targetLabels"];
+    if (rec.repositoryId) set.unshift("repositoryId = :repositoryId");
+    else remove.unshift("repositoryId");
+    if (rec.workspacePoolId === undefined) remove.push("workspacePoolId");
+    else set.push("workspacePoolId = :workspacePoolId");
+    if (rec.setupProfileId === undefined) remove.push("setupProfileId");
+    else set.push("setupProfileId = :setupProfileId");
+    if (rec.destroyWorkspaceAfter === undefined) remove.push("destroyWorkspaceAfter");
+    else set.push("destroyWorkspaceAfter = :destroyWorkspaceAfter");
     if (rec.ref === undefined) remove.push("#ref");
     else set.push("#ref = :ref");
     if (rec.concurrencyId === undefined) remove.push("concurrencyId");
@@ -391,7 +412,7 @@ export async function updateScheduleManagement(
           : "(attribute_not_exists(principalId) OR principalId = :principalId)"),
       ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
       ExpressionAttributeValues: {
-        ":repositoryId": rec.repositoryId,
+        ...(rec.repositoryId ? { ":repositoryId": rec.repositoryId } : {}),
         ":name": rec.name,
         ":target": rec.target,
         ":fallbacks": rec.fallbacks,
@@ -403,6 +424,11 @@ export async function updateScheduleManagement(
         ":nextRunAt": rec.nextRunAt,
         ":expectedNextRunAt": expectedNextRunAt,
         ":createdAt": rec.createdAt,
+        ...(rec.workspacePoolId === undefined ? {} : { ":workspacePoolId": rec.workspacePoolId }),
+        ...(rec.setupProfileId === undefined ? {} : { ":setupProfileId": rec.setupProfileId }),
+        ...(rec.destroyWorkspaceAfter === undefined
+          ? {}
+          : { ":destroyWorkspaceAfter": rec.destroyWorkspaceAfter }),
         ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
         ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
         ...(rec.principalId === undefined ? {} : { ":principalId": rec.principalId }),
@@ -937,9 +963,34 @@ export async function tryClaimScheduleAndCreateSession(
     (typeof opts.session.metadata?.createdBy === "string"
       ? opts.session.metadata.createdBy
       : undefined);
-  const drainCheck = sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId);
+  const drainCheck = opts.session.repositoryId
+    ? sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId)
+    : null;
   const principalCheck = principalExistsCheck(ctx, principalId);
-  const activityPut = sessionDrainActivityPut(ctx, opts.session);
+  const activityPut = opts.session.repositoryId ? sessionDrainActivityPut(ctx, opts.session) : null;
+  const repositoryCheck = opts.session.repositoryId
+    ? {
+        ConditionCheck: {
+          TableName: ctx.tables.repositories,
+          Key: { id: opts.session.repositoryId },
+          ConditionExpression:
+            "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)" +
+            (opts.activationCutoffAt
+              ? " AND activationCutoffAt = :activationCutoffAt"
+              : " AND attribute_not_exists(activationCutoffAt)"),
+          ExpressionAttributeValues: {
+            ":active": "active",
+            ...(opts.activationCutoffAt ? { ":activationCutoffAt": opts.activationCutoffAt } : {}),
+          },
+        },
+      }
+    : {
+        ConditionCheck: {
+          TableName: ctx.tables.workspacePools,
+          Key: { id: opts.session.workspacePoolId },
+          ConditionExpression: "attribute_exists(id)",
+        },
+      };
   const markerChecks = withMarkerTable(
     ctx,
     markerConditions(scheduleClaimMarkers(opts.lastRunAt, opts.session)),
@@ -980,23 +1031,7 @@ export async function tryClaimScheduleAndCreateSession(
           },
           ...(drainCheck ? [drainCheck] : []),
           ...(principalCheck ? [principalCheck] : []),
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.repositories,
-              Key: { id: opts.session.repositoryId },
-              ConditionExpression:
-                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)" +
-                (opts.activationCutoffAt
-                  ? " AND activationCutoffAt = :activationCutoffAt"
-                  : " AND attribute_not_exists(activationCutoffAt)"),
-              ExpressionAttributeValues: {
-                ":active": "active",
-                ...(opts.activationCutoffAt
-                  ? { ":activationCutoffAt": opts.activationCutoffAt }
-                  : {}),
-              },
-            },
-          },
+          repositoryCheck,
           ...markerChecks,
           {
             Put: {
@@ -1069,7 +1104,13 @@ function scheduleClaimMarkers(
     "repositoryId" | "principalId" | "metadata" | "target" | "fallbacks"
   >,
 ): DeletionMarker[] {
-  const keys = new Set<string>([`repository:${session.repositoryId}`]);
+  const keys = new Set<string>(
+    session.repositoryId
+      ? [`repository:${session.repositoryId}`]
+      : typeof (session as SessionRecord).workspacePoolId === "string"
+        ? [`workspace-pool:${(session as SessionRecord).workspacePoolId}`]
+        : [],
+  );
   const principalId =
     session.principalId ??
     (typeof session.metadata?.createdBy === "string" ? session.metadata.createdBy : undefined);
@@ -1611,7 +1652,14 @@ export async function putHostInventoryFenced(
   rec: HostInventoryRecord,
   fence: { hostId: string; connectionId: string },
   expectedVersion?: number,
-): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
+  markers?: readonly DeletionMarker[],
+): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" | "reference" }> {
+  const markerChecks = markers ? withMarkerTable(ctx, markerConditions([...markers])) : [];
+  // The lease and inventory write consume two transaction slots. Keep the
+  // same DynamoDB action bound as guarded catalog writes.
+  if (markerChecks.length > 98) {
+    throw new Error("catalog reference write exceeds DynamoDB's 100 transaction action limit");
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1624,6 +1672,7 @@ export async function putHostInventoryFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
+          ...markerChecks,
           {
             Put: {
               TableName: ctx.tables.hostInventories,
@@ -1637,7 +1686,14 @@ export async function putHostInventoryFenced(
     return { ok: true };
   } catch (err) {
     if (!isConditionalTransactionFailed(err)) throw err;
-    return { ok: false, reason: isConditionalTransactionFailureAt(err, 1) ? "version" : "lease" };
+    const inventoryWriteIndex = markerChecks.length + 1;
+    if (isConditionalTransactionFailureAt(err, inventoryWriteIndex)) {
+      return { ok: false, reason: "version" };
+    }
+    return {
+      ok: false,
+      reason: isConditionalTransactionFailureAt(err, 0) ? "lease" : "reference",
+    };
   }
 }
 

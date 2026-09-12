@@ -4,7 +4,7 @@ import type { SessionResult, SessionStatus } from "@auto-harness/shared";
 import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
-import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
+import type { SessionRecord, UsageRecord, WorkspaceSlotRecord, WorktreeRecord } from "./types.ts";
 import {
   type AssignmentWriteResult,
   type HostInventoryRecord,
@@ -16,6 +16,8 @@ import {
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
+  type WorkspacePoolRecord,
+  type WorkspacePoolSummary,
   type SessionDrainRecord,
   type ScheduleRecord,
   type ViewerTicketRecord,
@@ -34,6 +36,7 @@ import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
+import * as workspaces from "./plane-storage-workspaces.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
 import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
@@ -249,6 +252,91 @@ export class DynamoPlaneStorageBase {
     return sessions.putWorktree(this.ctx, wt);
   }
 
+  putWorkspacePool(record: WorkspacePoolRecord): Promise<void> {
+    return workspaces.putWorkspacePool(this.ctx, record);
+  }
+
+  updateWorkspacePool(record: WorkspacePoolRecord): Promise<boolean> {
+    return workspaces.updateWorkspacePool(this.ctx, record);
+  }
+
+  createWorkspacePool(record: WorkspacePoolRecord): Promise<boolean> {
+    return workspaces.createWorkspacePool(this.ctx, record);
+  }
+
+  getWorkspacePool(id: string): Promise<WorkspacePoolRecord | null> {
+    return workspaces.getWorkspacePool(this.ctx, id);
+  }
+
+  getWorkspacePoolSummary(id: string): Promise<WorkspacePoolSummary | null> {
+    return workspaces.getWorkspacePoolSummary(this.ctx, id);
+  }
+
+  listWorkspacePools(): Promise<WorkspacePoolRecord[]> {
+    return workspaces.listWorkspacePools(this.ctx);
+  }
+
+  listWorkspacePoolSummaries(): Promise<WorkspacePoolSummary[]> {
+    return workspaces.listWorkspacePoolSummaries(this.ctx);
+  }
+
+  deleteWorkspacePool(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return workspaces.deleteWorkspacePool(this.ctx, id, markers);
+  }
+
+  putWorkspaceSlot(slot: WorkspaceSlotRecord): Promise<void> {
+    return workspaces.putWorkspaceSlot(this.ctx, slot);
+  }
+
+  retireWorkspaceSlot(id: string, sessionId: string): Promise<boolean> {
+    return workspaces.retireWorkspaceSlot(this.ctx, id, sessionId);
+  }
+
+  putWorkspaceSlotFenced(
+    slot: WorkspaceSlotRecord,
+    connectionId: string,
+    expectedConnectionId?: string,
+  ): Promise<boolean> {
+    return workspaces.putWorkspaceSlotFenced(this.ctx, slot, connectionId, expectedConnectionId);
+  }
+
+  deleteWorkspaceSlot(id: string): Promise<void> {
+    return workspaces.deleteWorkspaceSlot(this.ctx, id);
+  }
+
+  deleteWorkspaceSlotIfIdle(id: string): Promise<boolean> {
+    return workspaces.deleteWorkspaceSlotIfIdle(this.ctx, id);
+  }
+
+  deleteRetiredWorkspaceSlotIfIdle(id: string): Promise<boolean> {
+    return workspaces.deleteRetiredWorkspaceSlotIfIdle(this.ctx, id);
+  }
+
+  getWorkspaceSlot(id: string): Promise<WorkspaceSlotRecord | null> {
+    return workspaces.getWorkspaceSlot(this.ctx, id);
+  }
+
+  listWorkspaceSlots(): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlots(this.ctx);
+  }
+
+  listWorkspaceSlotsByPool(workspacePoolId: string): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlotsByPool(this.ctx, workspacePoolId);
+  }
+
+  listWorkspaceSlotsByHost(hostId: string): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlotsByHost(this.ctx, hostId);
+  }
+
+  tryAssignWorkspaceSession(
+    opts: Parameters<typeof workspaces.tryAssignWorkspaceSession>[1],
+  ): ReturnType<typeof workspaces.tryAssignWorkspaceSession> {
+    return workspaces.tryAssignWorkspaceSession(this.ctx, opts);
+  }
+
   deleteWorktree(id: string): Promise<void> {
     return sessions.deleteWorktree(this.ctx, id);
   }
@@ -459,6 +547,7 @@ export class DynamoPlaneStorageBase {
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
     preserveHostAssignmentLease?: boolean;
+    preserveReconnectDeadlineAt?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
@@ -604,6 +693,17 @@ export class DynamoPlaneStorageBase {
     return reconnect.markReconnectPending(this.ctx, opts);
   }
 
+  markWorkspaceReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    workspaceSlotId: string;
+    deadlineAt: string;
+    connectionId: string;
+    expectedStatus?: "running" | "cancelled";
+  }): Promise<boolean> {
+    return reconnect.markWorkspaceReconnectPending(this.ctx, opts);
+  }
+
   confirmReconnect(opts: {
     sessionId: string;
     hostId: string;
@@ -612,6 +712,17 @@ export class DynamoPlaneStorageBase {
     connectionId: string;
   }): Promise<boolean> {
     return reconnect.confirmReconnect(this.ctx, opts);
+  }
+
+  confirmWorkspaceReconnect(opts: {
+    sessionId: string;
+    hostId: string;
+    workspaceSlotId: string;
+    deadlineAt?: string;
+    connectionId: string;
+    expectedStatus?: "running" | "cancelled";
+  }): Promise<boolean> {
+    return reconnect.confirmWorkspaceReconnect(this.ctx, opts);
   }
 
   restoreReconnectPending(opts: {
@@ -624,6 +735,19 @@ export class DynamoPlaneStorageBase {
     previousWorktreeConnectionId?: string;
   }): Promise<boolean> {
     return reconnectRollback.restoreReconnectPending(this.ctx, opts);
+  }
+
+  restoreWorkspaceReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    workspaceSlotId: string;
+    connectionId: string;
+    expectedStatus?: "running" | "cancelled";
+    previousDeadlineAt?: string;
+    previousAssignmentConnectionId?: string;
+    previousWorkspaceSlotConnectionId?: string;
+  }): Promise<boolean> {
+    return reconnectRollback.restoreWorkspaceReconnectPending(this.ctx, opts);
   }
 
   requeueUsageLimitedSession(opts: {
@@ -641,6 +765,22 @@ export class DynamoPlaneStorageBase {
     return sessions.requeueUsageLimitedSession(this.ctx, opts);
   }
 
+  requeueUsageLimitedWorkspaceSession(opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+    workspaceSlotError?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+  }): Promise<boolean> {
+    return sessions.requeueUsageLimitedWorkspaceSession(this.ctx, opts);
+  }
+
   suppressProviderlessUsageLimit(opts: {
     sessionId: string;
     worktreeId: string;
@@ -652,6 +792,20 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
+  }
+
+  suppressProviderlessUsageLimitWorkspace(opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    queueShard: number;
+    targetIndex: number;
+    errorMessage?: string;
+    workspaceSlotError?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+  }): Promise<boolean> {
+    return sessions.suppressProviderlessUsageLimitWorkspace(this.ctx, opts);
   }
 
   acknowledgeSession(
@@ -688,6 +842,8 @@ export class DynamoPlaneStorageBase {
   finishSession(opts: {
     sessionId: string;
     worktreeId?: string | null;
+    workspaceSlotId?: string | null;
+    workspaceSlotError?: string;
     attemptId: string;
     status: string;
     queueShard: number;
@@ -705,6 +861,8 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    expectedStatus?: string;
+    expectedReconnectDeadlineAt?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }
@@ -1077,8 +1235,9 @@ export class DynamoPlaneStorageBase {
     rec: HostInventoryRecord,
     fence: { hostId: string; connectionId: string },
     expectedVersion?: number,
-  ): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
-    return catalog.putHostInventoryFenced(this.ctx, rec, fence, expectedVersion);
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" | "reference" }> {
+    return catalog.putHostInventoryFenced(this.ctx, rec, fence, expectedVersion, markers);
   }
 
   getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {

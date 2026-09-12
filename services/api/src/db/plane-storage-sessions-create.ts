@@ -51,8 +51,8 @@ async function throwCreateSessionTransactionFailure(
 ): Promise<never> {
   if (!isConditionalTransactionFailed(err)) throw err;
   const principalIndex = markers.length;
-  const repositoryIndex = principalIndex + Number(!!principalCheck);
-  const drainIndex = repositoryIndex + 1;
+  const resourceIndex = principalIndex + Number(!!principalCheck);
+  const drainIndex = resourceIndex + 1;
   const sessionIndex = drainIndex + Number(!!drainCheck);
   const markerFailed =
     markers.length > 0 &&
@@ -62,8 +62,9 @@ async function throwCreateSessionTransactionFailure(
   if ((principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) || markerFailed) {
     throw new CatalogDeletionInProgressError();
   }
-  if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
-    throw new RepositoryAdmissionClosedError();
+  if (isConditionalTransactionFailureAt(err, resourceIndex)) {
+    if (session.repositoryId) throw new RepositoryAdmissionClosedError();
+    throw new CatalogDeletionInProgressError();
   }
   if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
     throw await activeSessionDrainError(ctx, session);
@@ -79,12 +80,10 @@ export async function createSession(
   session: SessionRecord,
   markers: readonly DeletionMarker[] = [],
 ): Promise<CreateSessionResult> {
-  const drainCheck = sessionDrainAdmissionCheck(
-    ctx,
-    session.repositoryId,
-    sessionPrincipalId(session),
-  );
-  const activityPut = sessionDrainActivityPut(ctx, session);
+  const drainCheck = session.repositoryId
+    ? sessionDrainAdmissionCheck(ctx, session.repositoryId, sessionPrincipalId(session))
+    : null;
+  const activityPut = session.repositoryId ? sessionDrainActivityPut(ctx, session) : null;
   const principalCheck = principalExistsCheck(ctx, sessionPrincipalId(session));
   if (session.concurrencyId) {
     return createSessionWithConcurrency(ctx, session, markers, {
@@ -99,15 +98,23 @@ export async function createSession(
         TransactItems: [
           ...withMarkerTable(ctx, markerConditions([...markers])),
           ...(principalCheck ? [principalCheck] : []),
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.repositories,
-              Key: { id: session.repositoryId },
-              ConditionExpression:
-                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
-              ExpressionAttributeValues: { ":active": "active" },
-            },
-          },
+          session.repositoryId
+            ? {
+                ConditionCheck: {
+                  TableName: ctx.tables.repositories,
+                  Key: { id: session.repositoryId },
+                  ConditionExpression:
+                    "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+                  ExpressionAttributeValues: { ":active": "active" },
+                },
+              }
+            : {
+                ConditionCheck: {
+                  TableName: ctx.tables.workspacePools,
+                  Key: { id: session.workspacePoolId },
+                  ConditionExpression: "attribute_exists(id)",
+                },
+              },
           ...(drainCheck ? [drainCheck] : []),
           {
             Put: {

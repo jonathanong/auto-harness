@@ -231,6 +231,40 @@ export async function ensureControlPlaneTables(opts: {
     ],
   });
   await createIfMissing(ddb, {
+    TableName: names.workspacePools,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+  });
+  await createIfMissing(ddb, {
+    TableName: names.workspaceSlots,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "id", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "workspacePoolId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "hostId", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "workspacePoolId-id",
+        KeySchema: [
+          { AttributeName: "workspacePoolId", KeyType: KeyType.HASH },
+          { AttributeName: "id", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "hostId-id",
+        KeySchema: [
+          { AttributeName: "hostId", KeyType: KeyType.HASH },
+          { AttributeName: "id", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
+  });
+  await createIfMissing(ddb, {
     TableName: names.connections,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [{ AttributeName: "connectionId", AttributeType: ScalarAttributeType.S }],

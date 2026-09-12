@@ -79,6 +79,12 @@ const NAV: NavGroup[] = [
         pw: "nav-hosts",
         tip: "Add host slots, view online/offline fleet, drain hosts",
       },
+      {
+        href: "/workspace-pools",
+        label: "Workspace pools",
+        pw: "nav-workspace-pools",
+        tip: "Admin configuration for non-git workspace sessions and trusted setup profiles",
+      },
     ],
   },
   {

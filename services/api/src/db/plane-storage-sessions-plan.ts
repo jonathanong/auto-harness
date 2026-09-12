@@ -3,6 +3,7 @@ import type { SessionRecord } from "./types.ts";
 import { finishSession } from "./plane-storage-sessions-terminal.ts";
 import {
   requeueUsageLimitedSession,
+  requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
 } from "./plane-storage-sessions-usage-limit.ts";
 
@@ -71,13 +72,19 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
 export function finishSessionOptsFromPlan(
   session: SessionRecord,
   plan: SessionTransitionPlan,
-  extras: { attemptId: string; fence?: { hostId: string; connectionId: string } },
+  extras: {
+    attemptId: string;
+    fence?: { hostId: string; connectionId: string };
+    workspaceSlotError?: string;
+  },
 ): Parameters<typeof finishSession>[1] {
   const finish = transitionEffect(plan, "finish");
   const queued = transitionEffect(plan, "requeue") !== undefined && finish === undefined;
   return {
     sessionId: session.id,
     worktreeId: session.worktreeId ?? null,
+    ...(session.workspaceSlotId ? { workspaceSlotId: session.workspaceSlotId } : {}),
+    ...(extras.workspaceSlotError ? { workspaceSlotError: extras.workspaceSlotError } : {}),
     attemptId: extras.attemptId,
     status: finish?.status ?? "queued",
     queueShard: session.queueShard,
@@ -107,6 +114,31 @@ export function requeueUsageLimitedSessionOptsFromPlan(
     now: extras.now,
     usageLimitedUntil: cooldown.usageLimitedUntil,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
+  };
+}
+
+/** Map planner cooldown+requeue effects onto the usage-limit workspace write. */
+export function requeueUsageLimitedWorkspaceSessionOptsFromPlan(
+  session: SessionRecord,
+  plan: SessionTransitionPlan,
+  extras: { now: string; attemptId: string; workspaceSlotError?: string },
+): Parameters<typeof requeueUsageLimitedWorkspaceSession>[1] {
+  const cooldown = transitionEffect(plan, "cooldown")!;
+  const requeue = transitionEffect(plan, "requeue");
+  return {
+    sessionId: session.id,
+    workspaceSlotId: session.workspaceSlotId!,
+    attemptId: extras.attemptId,
+    providerAccountId: cooldown.providerAccountId,
+    queueShard: session.queueShard,
+    now: extras.now,
+    usageLimitedUntil: cooldown.usageLimitedUntil,
+    ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(extras.workspaceSlotError !== undefined
+      ? { workspaceSlotError: extras.workspaceSlotError }
+      : {}),
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
     ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };

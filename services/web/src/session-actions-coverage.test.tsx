@@ -151,6 +151,23 @@ describe("SessionActions", () => {
     view.unmount();
   });
 
+  it("omits Resume for a workspace session while retaining clone actions", () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    const view = mount(
+      <SessionActions
+        sessionId="workspace"
+        status="failed"
+        sessionType="workspace"
+        cloneEditHref="/sessions/new?cloneFrom=workspace"
+      />,
+      router,
+    );
+    expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="session-clone"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="session-clone-edit"]')).not.toBeNull();
+    view.unmount();
+  });
+
   it("omits cancel and resume for unrelated statuses", () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     const view = mount(<SessionActions sessionId="sess" status="unknown" />, router);

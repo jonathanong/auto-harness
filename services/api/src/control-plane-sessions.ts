@@ -11,6 +11,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
+import { workspaceCreatePayloadError } from "./control-plane-session-create.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 export { resumeSession, type ResumeOptions } from "./control-plane-session-resume.ts";
@@ -48,17 +49,36 @@ export function createSession(
     metadata: record.metadata,
     type: record.type,
     source: record.source,
+    workspacePoolId: record.workspacePoolId,
+    setupProfileId: record.setupProfileId,
+    destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+    setupScript: record.setupScript,
   });
   if (!validated.ok) {
     return validated;
   }
 
   const v = validated.value;
-  const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
-  if (admissionFailure) return admissionFailure;
+  if (v.repositoryId) {
+    const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
+    if (admissionFailure) return admissionFailure;
+  } else {
+    const pool = state.workspacePools.get(v.workspacePoolId!);
+    if (!pool) return { ok: false, error: "workspace pool not found", code: "NOT_FOUND" };
+    if (
+      v.setupProfileId &&
+      !pool.setupProfiles.some((profile) => profile.id === v.setupProfileId)
+    ) {
+      return { ok: false, error: "workspace setup profile not found", code: "NOT_FOUND" };
+    }
+  }
   const targets = resolveTargetDisplayNames(state, v.target, v.fallbacks);
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
+  }
+  const workspacePayloadError = workspaceCreatePayloadError(state, v);
+  if (workspacePayloadError) {
+    return { ok: false, error: workspacePayloadError, code: "VALIDATION_ERROR" };
   }
   if (v.concurrencyId) {
     const active = [...state.sessions.values()].filter(
@@ -72,9 +92,27 @@ export function createSession(
   const id = state.idFactory();
   const createdAt = state.now();
   const queueShard = Math.abs(hashString(id)) % state.shardCount;
+  const workspacePool = v.workspacePoolId ? state.workspacePools.get(v.workspacePoolId) : undefined;
+  const setupProfileId = v.workspacePoolId
+    ? (v.setupProfileId ?? workspacePool?.defaultSetupProfileId)
+    : undefined;
+  const workspaceSetupScript = setupProfileId
+    ? workspacePool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
+    : undefined;
   const session: SessionRecord = {
     id,
-    repositoryId: v.repositoryId,
+    repositoryId: v.repositoryId ?? "",
+    ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
+    ...(setupProfileId ? { setupProfileId } : {}),
+    ...(workspaceSetupScript ? { workspaceSetupScript } : {}),
+    ...(v.workspacePoolId
+      ? {
+          destroyWorkspaceAfter:
+            v.destroyWorkspaceAfter ??
+            state.workspacePools.get(v.workspacePoolId)?.destroyWorkspaceAfter ??
+            false,
+        }
+      : {}),
     prompt: v.prompt,
     target: v.target,
     fallbacks: v.fallbacks,

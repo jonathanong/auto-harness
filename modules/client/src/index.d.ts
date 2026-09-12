@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- public client declarations share one compatibility surface. */
 import type { Command, Provider } from "./catalog-types.js";
 export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-types.js";
 
@@ -41,7 +42,7 @@ export type RepositoryRef =
 export type SessionMetadataValue = string | number | boolean | null;
 
 /** Whether a session was created directly or fired by a schedule. */
-export type SessionType = "prompt" | "scheduled";
+export type SessionType = "prompt" | "scheduled" | "workspace";
 
 /** Origin that requested the session. */
 export type SessionSource = "api" | "ui" | "webhook" | "schedule";
@@ -49,7 +50,7 @@ export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 /** `source` values `POST /sessions` honors; anything else collapses to `"api"`. */
 export type CreatableSessionSource = "api" | "ui" | "webhook";
 
-export type CreateSessionInput = RepositoryRef & {
+type CreateSessionOptions = {
   prompt: string;
   target: TargetSpec;
   fallbacks?: TargetSpec[];
@@ -62,11 +63,33 @@ export type CreateSessionInput = RepositoryRef & {
   metadata?: Record<string, SessionMetadataValue>;
   /** Defaults to `"api"`; `"ui"`/`"webhook"` pass through, anything else becomes `"api"`. */
   source?: CreatableSessionSource;
+  /** Raw setup scripts are not a session input; select a trusted profile by id. */
+  setupScript?: never;
 };
+
+/** Host-scoped, non-git create-session input. */
+export type WorkspaceSessionInput = CreateSessionOptions & {
+  repositoryId: null;
+  workspacePoolId: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
+  type?: "workspace";
+  ref?: never;
+  requiredLabels?: [];
+};
+
+/** Existing repository-backed create-session input, retained unchanged. */
+export type CreateSessionInput =
+  | (RepositoryRef & CreateSessionOptions & { type?: "prompt" | "scheduled" })
+  | WorkspaceSessionInput;
 
 export type Session = {
   id: string;
-  repositoryId: string;
+  repositoryId: string | null;
+  workspacePoolId?: string;
+  workspaceSlotId?: string | null;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   prompt: string;
   target: TargetRef;
   fallbacks?: TargetRef[];

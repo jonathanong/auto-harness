@@ -130,7 +130,9 @@ erDiagram
     Worktree {
         string id PK
         string hostId FK
-        string repositoryId FK
+        string repositoryId FK "nullable for workspace sessions"
+        string workspacePoolId FK "required when repositoryId is null"
+        string workspaceSlotId FK "nullable until workspace placement"
         string path
         string[] labels "e.g. codex, claude"
         string status "idle | busy | error"
@@ -147,13 +149,15 @@ erDiagram
         string hostId FK "nullable until assigned"
         string userId FK
         string prompt
-        string ref "nullable — branch/tag/SHA to check out; default branch if omitted"
+        string ref "nullable — branch/tag/SHA for repository sessions; forbidden for workspace sessions"
         string status "queued | running | completed | failed | cancelled | timed_out"
-        string type "prompt | scheduled"
+        string type "prompt | scheduled | workspace"
         string source "api | ui | webhook | schedule"
         number timeout "seconds, required"
         number priority
-        string[] requiredLabels
+        string[] requiredLabels "empty for workspace sessions"
+        string setupProfileId "nullable — trusted workspace-pool profile"
+        boolean destroyWorkspaceAfter "workspace cleanup policy; default false"
         string concurrencyId "nullable — global exact-match concurrency/idempotency identity"
         string scheduleId "nullable — exact schedule provenance for scheduled sessions"
         string queueShard "assigned at create; spreads the queued-status GSI (see Access patterns)"
@@ -175,7 +179,10 @@ erDiagram
 
     Schedule {
         string id PK
-        string repositoryId FK
+        string repositoryId FK "nullable for workspace schedules"
+        string workspacePoolId FK "required when repositoryId is null"
+        string setupProfileId "nullable — trusted workspace-pool profile"
+        boolean destroyWorkspaceAfter "workspace cleanup policy; default false"
         string name
         object target "primary { providerId } or { commandId }"
         object[] fallbacks "ordered additional targets"
@@ -579,6 +586,13 @@ archive writer. The local store is DynamoDB Local via `pnpm local:dynamodb` (off
 - Non-worktree (`scheduled`) session execution on main repo checkout; main-checkout lock, serial
   per repository. A scheduled `ref` is a branch name only (never a tag/SHA) and must exist on an
   eligible host; generic prompt-session `ref` remains branch/tag/SHA (D6).
+- Host-scoped workspace sessions (`repositoryId: null`) use attached path-only workspace slots on
+  hosts advertising `workspace-sessions`; they skip Git checkout and label matching, reject `ref`,
+  non-empty `requiredLabels`, raw `setupScript`, and resume, but support clone and schedules.
+  `setupProfileId` selects trusted pool configuration, cleanup defaults false, and cleanup failure
+  reports `workspace_cleanup_failed` while quarantining the slot. Slot paths use the existing
+  non-empty `allowedRoots` realpath boundary; pool replacement is delete/recreate after attachments
+  and active leases settle.
 - **Testing:** E2E test — create session (with `ref`) → agent picks up → runs → completes, using
   DynamoDB Local + mock WS; dedicated tests for Invariants 2, 6, 7, 9; a resume test that resumes
   onto a **different** worktree path after the original was reused by an intervening session,

@@ -20,7 +20,7 @@ export type AuditLogRecord = {
   resourceId: string;
   // `| undefined` since callers commonly forward an already-optional value verbatim
   // (e.g. a possibly-null resource's repositoryId, or a parsed query-string param).
-  repositoryId?: string | undefined;
+  repositoryId?: string | null | undefined;
   outcome: AuditOutcome;
   metadata: AuditMetadata;
 };

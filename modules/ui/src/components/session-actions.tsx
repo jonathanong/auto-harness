@@ -9,6 +9,7 @@ import { Button } from "./button.tsx";
 import { ConfirmButton } from "./confirm-button.tsx";
 import { ResumeSessionDialog, type ResumeOverrides } from "./resume-session-dialog.tsx";
 import { WithTooltip } from "./tooltip.tsx";
+import type { SessionSummary } from "./session-detail-types.ts";
 
 const ACTIVE_STATUSES = new Set(["queued", "running"]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "timed_out"]);
@@ -24,6 +25,8 @@ export type SessionActionsProps = {
   assignedHostOffline?: boolean;
   canCancel?: boolean;
   canResume?: boolean;
+  /** Workspace sessions have no Git-based resume operation. */
+  sessionType?: SessionSummary["type"];
   canClone?: boolean;
   canArchive?: boolean;
 };
@@ -37,6 +40,7 @@ export function SessionActions({
   assignedHostOffline = false,
   canCancel = true,
   canResume = true,
+  sessionType,
   canClone = true,
   canArchive = true,
 }: SessionActionsProps) {
@@ -118,7 +122,7 @@ export function SessionActions({
         ) : null}
         {TERMINAL_STATUSES.has(status) ? (
           <>
-            {canResume ? (
+            {canResume && sessionType !== "workspace" ? (
               <WithTooltip tip="Create a new session pinned to the same host, with optional overrides">
                 <ResumeSessionDialog
                   disabled={pending}

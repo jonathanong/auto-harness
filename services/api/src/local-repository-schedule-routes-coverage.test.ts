@@ -55,6 +55,85 @@ function seededPlane(storage?: object): ControlPlane {
 }
 
 describe("repository and schedule route coverage", () => {
+  it("audits malformed and scoped repository mutations, including schedule script rejection", async () => {
+    const principal: Principal = {
+      id: "scoped",
+      kind: "service-account",
+      role: "operator",
+      allowedRepositoryIds: ["elsewhere"],
+    };
+    const plane = seededPlane();
+    expect((await invoke(plane, "POST", "/api/v1/repositories", { name: 1 })).status).toBe(400);
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          plane,
+          "POST",
+          "/api/v1/repositories/repository/pause",
+          {},
+          principal,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          plane,
+          "PATCH",
+          "/api/v1/repositories/repository",
+          { name: 1 },
+          principal,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invokeDirect(
+          handleRepositoryRoutes,
+          plane,
+          "DELETE",
+          "/api/v1/repositories/repository",
+          undefined,
+          principal,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invoke(plane, "POST", "/api/v1/schedules", {
+          repositoryId: "repository",
+          name: "bad-script",
+          target: { commandId: "command" },
+          cron: "* * * * *",
+          timeout: 30,
+          setupScript: "not permitted",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/schedules/schedule", { setupScript: "not permitted" }))
+        .status,
+    ).toBe(400);
+  });
+
+  it("returns a documented not-found result when updating a schedule with no cached repository", async () => {
+    const response = await invoke(seededPlane(), "PATCH", "/api/v1/schedules/missing", {
+      name: "changed",
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("omits optional update fields and audits a failed deletion against the existing repository", async () => {
+    const plane = seededPlane();
+    expect(
+      (await invoke(plane, "PATCH", "/api/v1/schedules/schedule", { name: "changed" })).status,
+    ).toBe(200);
+    plane.deleteScheduleDurable = async () => ({ ok: false, error: "schedule not found" });
+    expect((await invoke(plane, "DELETE", "/api/v1/schedules/schedule")).status).toBe(404);
+  });
+
   it("fails closed for scoped repository denials when their audits cannot be stored", async () => {
     const plane = seededPlane();
     plane.appendAuditLog = async () => {
@@ -129,6 +208,13 @@ describe("repository and schedule route coverage", () => {
 
   it("passes every optional repository and schedule field through the routes", async () => {
     const plane = seededPlane();
+    expect(
+      plane.createWorkspacePool({
+        id: "workspace",
+        name: "workspace",
+        setupProfiles: [{ id: "setup", name: "Setup", script: "pnpm install" }],
+      }).ok,
+    ).toBe(true);
     expect((await invoke(plane, "POST", "/api/v1/repositories", {})).status).toBe(400);
     expect(
       (
@@ -181,6 +267,66 @@ describe("repository and schedule route coverage", () => {
       status: 201,
       json: { prompt: "lint the tree", type: "scheduled", source: "schedule" },
     });
+
+    const admin: Principal = { id: "admin", username: "admin", kind: "admin", role: "admin" };
+    expect(
+      await invokeDirect(
+        handleScheduleRoutes,
+        plane,
+        "POST",
+        "/api/v1/schedules",
+        {
+          id: "workspace-schedule",
+          repositoryId: null,
+          workspacePoolId: "workspace",
+          setupProfileId: "setup",
+          destroyWorkspaceAfter: true,
+          requiredLabels: [],
+          name: "workspace",
+          target: { commandId: "command" },
+          cron: "*/5 * * * *",
+          timeout: 30,
+        },
+        admin,
+      ),
+    ).toMatchObject({ status: 201, json: { workspacePoolId: "workspace" } });
+    expect(
+      await invoke(plane, "POST", "/api/v1/schedules", {
+        id: "workspace-schedule-auth-disabled",
+        repositoryId: null,
+        workspacePoolId: "workspace",
+        destroyWorkspaceAfter: true,
+        name: "workspace auth disabled",
+        target: { commandId: "command" },
+        cron: "*/5 * * * *",
+        timeout: 30,
+      }),
+    ).toMatchObject({ status: 201, json: { destroyWorkspaceAfter: true } });
+    expect(
+      await invokeDirect(
+        handleScheduleRoutes,
+        plane,
+        "PATCH",
+        "/api/v1/schedules/workspace-schedule",
+        {
+          workspacePoolId: "workspace",
+          setupProfileId: "setup",
+          destroyWorkspaceAfter: false,
+          requiredLabels: [],
+        },
+        admin,
+      ),
+    ).toMatchObject({ status: 200, json: { destroyWorkspaceAfter: false } });
+    expect(
+      await invoke(plane, "POST", "/api/v1/schedules", {
+        repositoryId: "repository",
+        name: "not-a-script",
+        target: { commandId: "command" },
+        cron: "* * * * *",
+        timeout: 30,
+        setupScript: "echo attacker",
+      }),
+    ).toMatchObject({ status: 400 });
   });
 
   it("maps an otherwise valid trigger failure to TRIGGER_ERROR", async () => {
