@@ -2,7 +2,7 @@ import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isAbsolute, win32 } from "node:path";
 
-export const GITHUB_APP_CONFIG_ENV = "HARNESS_GITHUB_APP_CONFIG";
+const GITHUB_APP_CONFIG_ENV = "HARNESS_GITHUB_APP_CONFIG";
 export const GITHUB_APP_TOKEN_MARGIN_MS = 5 * 60_000;
 
 type RepositoryMapping = {
