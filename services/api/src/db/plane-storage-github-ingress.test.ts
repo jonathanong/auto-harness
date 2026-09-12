@@ -13,6 +13,7 @@ const githubRecord = {
   type: "github-ingress" as const,
   encryptedSecret: "ciphertext",
   enabled: true,
+  generation: "generation-1",
   bindings: [],
   version: 1,
   createdAt: "2026-09-12T00:00:00.000Z",
@@ -38,10 +39,38 @@ describe("GitHub ingress integration storage", () => {
     );
     await expect(getGitHubIngressConfig(storage)).resolves.toEqual(githubRecord);
     await expect(putGitHubIngressConfig(storage, githubRecord, null)).resolves.toBe(true);
-    await expect(putGitHubIngressConfig(storage, githubRecord, 1)).resolves.toBe(true);
-    await expect(deleteGitHubIngressConfig(storage, 1)).resolves.toBe(true);
+    await expect(
+      putGitHubIngressConfig(storage, githubRecord, 1, undefined, "generation-1"),
+    ).resolves.toBe(true);
+    await expect(deleteGitHubIngressConfig(storage, 1, "generation-1")).resolves.toBe(true);
     expect(sends).toHaveLength(4);
     expect(sends[0]).toEqual(expect.objectContaining({ ConsistentRead: true }));
+    expect(sends[2]).toEqual(
+      expect.objectContaining({
+        ConditionExpression: expect.stringContaining("#generation = :expectedGeneration"),
+        ExpressionAttributeValues: expect.objectContaining({
+          ":expectedGeneration": "generation-1",
+        }),
+      }),
+    );
+    expect(sends[3]).toEqual(
+      expect.objectContaining({
+        ConditionExpression: expect.stringContaining("#generation = :expectedGeneration"),
+      }),
+    );
+  });
+
+  it("fences legacy records by requiring generation to remain absent", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(putGitHubIngressConfig(ctx(send), githubRecord, 1, undefined, null)).resolves.toBe(
+      true,
+    );
+    await expect(deleteGitHubIngressConfig(ctx(send), 1, null)).resolves.toBe(true);
+    for (const call of send.mock.calls) {
+      expect(
+        (call[0] as { input: { ConditionExpression: string } }).input.ConditionExpression,
+      ).toContain("attribute_not_exists(#generation)");
+    }
   });
 
   it("exposes the singleton operations through the storage facade", async () => {

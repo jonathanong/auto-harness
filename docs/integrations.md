@@ -368,7 +368,9 @@ repository and comment IDs form the existing session concurrency identity, so co
 active-session redelivery is deduplicated. Terminal sessions release that identity and a later
 redelivery can start a new run; ingress adds no second receipt store and does not promise
 exactly-once execution. Secret rotation, disablement, and deletion are version-fenced against
-session creation.
+session creation with an immutable creation generation. Configuration updates carry the operator's
+observed version and generation, while deletes carry the same fences in `If-Match` and
+`If-Match-Generation`, so stale tabs cannot mutate a delete-and-recreated singleton.
 
 The separate credential App described in [host daemon deployment](deploy-host-daemon.md#github-app-credentials-optional)
 has broader per-session API duties and keeps its private key exclusively on the host. Its key and

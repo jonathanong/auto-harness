@@ -410,8 +410,10 @@ small `202` ignored response; eligible events receive a small `202` session ackn
 Admin `GET`/`POST`/`PUT`/`DELETE` configuration is at
 `/api/v1/integrations/github-ingress`. The singleton config contains an encrypted webhook secret
 and one or more numeric GitHub repository ID bindings to admitted Auto Harness repositories and
-fixed routing. `PUT` may omit `secret` to retain it. A binding's default ref is used for issue
-comments; pull-request comments use `refs/pull/<number>/head`.
+fixed routing. `PUT` may omit `secret` to retain it and requires the last observed positive integer
+`version` plus opaque `generation`. `DELETE` requires those fences in `If-Match` and
+`If-Match-Generation`; stale mutations, including across delete/recreate, return `409`. A binding's
+default ref is used for issue comments; pull-request comments use `refs/pull/<number>/head`.
 
 The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
 active-session redelivery returns the existing session, while terminal sessions release the

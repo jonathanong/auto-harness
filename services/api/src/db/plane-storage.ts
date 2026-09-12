@@ -245,12 +245,22 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     record: GitHubIngressConfigRecord,
     expectedVersion: number | null,
     markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+    expectedGeneration?: string | null,
   ): Promise<boolean> {
-    return githubIngress.putGitHubIngressConfig(this.ctx, record, expectedVersion, markers);
+    return githubIngress.putGitHubIngressConfig(
+      this.ctx,
+      record,
+      expectedVersion,
+      markers,
+      expectedGeneration,
+    );
   }
 
-  deleteGitHubIngressConfig(expectedVersion: number): Promise<boolean> {
-    return githubIngress.deleteGitHubIngressConfig(this.ctx, expectedVersion);
+  deleteGitHubIngressConfig(
+    expectedVersion: number,
+    expectedGeneration?: string | null,
+  ): Promise<boolean> {
+    return githubIngress.deleteGitHubIngressConfig(this.ctx, expectedVersion, expectedGeneration);
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

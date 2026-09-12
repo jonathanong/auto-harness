@@ -128,12 +128,22 @@ export class ControlPlaneIntegrationsService {
 
   updateGitHubIngressConfig(
     input: GitHubIngressConfigInput,
+    expectedVersion?: number,
+    expectedGeneration?: string | null,
   ): ReturnType<typeof githubIngress.updateGitHubIngressConfig> {
-    return githubIngress.updateGitHubIngressConfig(this.state, input);
+    return githubIngress.updateGitHubIngressConfig(
+      this.state,
+      input,
+      expectedVersion,
+      expectedGeneration,
+    );
   }
 
-  deleteGitHubIngressConfig(): ReturnType<typeof githubIngress.deleteGitHubIngressConfig> {
-    return githubIngress.deleteGitHubIngressConfig(this.state);
+  deleteGitHubIngressConfig(
+    expectedVersion?: number,
+    expectedGeneration?: string | null,
+  ): ReturnType<typeof githubIngress.deleteGitHubIngressConfig> {
+    return githubIngress.deleteGitHubIngressConfig(this.state, expectedVersion, expectedGeneration);
   }
 
   decryptGitHubIngressSecret(

@@ -80,6 +80,8 @@ export type GitHubIngressConfigRecord = {
   encryptedSecret: string;
   enabled: boolean;
   bindings: GitHubIngressBindingRecord[];
+  /** Immutable creation nonce; absent only on legacy rows. */
+  generation?: string;
   version: number;
   createdAt: string;
   updatedAt: string;

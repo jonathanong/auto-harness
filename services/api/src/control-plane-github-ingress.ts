@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- singleton ingress config validation and encrypted lifecycle are one boundary. */
+import { randomUUID } from "node:crypto";
+
 import {
   DEFAULT_QUEUE_TTL_SECONDS,
   sessionPriorityError,
@@ -67,9 +69,10 @@ export async function createGitHubIngressConfig(
         conflict: true as const,
       };
     const now = state.now();
-    const record = await makeRecord(state, input, 1, now, now);
+    const record = await makeRecord(state, input, randomUUID(), 1, now, now);
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
+    if (!state.storage && state.githubIngressConfig) return conflict();
     if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
       return conflict();
     state.githubIngressConfig = record;
@@ -80,6 +83,8 @@ export async function createGitHubIngressConfig(
 export async function updateGitHubIngressConfig(
   state: ControlPlaneState,
   input: GitHubIngressConfigInput,
+  expectedVersion?: number,
+  expectedGeneration?: string | null,
 ): Promise<{ ok: true; integration: PublicGitHubIngressConfig } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
@@ -89,9 +94,17 @@ export async function updateGitHubIngressConfig(
     if (!catalog.ok) return catalog;
     const current = await getGitHubIngressConfigRecord(state);
     if (!current) return { ok: false, error: "GitHub ingress integration not found" };
+    if (
+      (expectedVersion !== undefined && current.version !== expectedVersion) ||
+      (expectedGeneration === null
+        ? current.generation !== undefined
+        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+    )
+      return conflict();
     const record = await makeRecord(
       state,
       input,
+      current.generation ?? randomUUID(),
       current.version + 1,
       current.createdAt,
       state.now(),
@@ -100,8 +113,19 @@ export async function updateGitHubIngressConfig(
     const size = configSizeError(record);
     if (size) return { ok: false, error: size };
     if (
+      !state.storage &&
+      (state.githubIngressConfig?.version !== current.version ||
+        state.githubIngressConfig.generation !== current.generation)
+    )
+      return conflict();
+    if (
       state.storage &&
-      !(await state.storage.putGitHubIngressConfig(record, current.version, markers))
+      !(await state.storage.putGitHubIngressConfig(
+        record,
+        current.version,
+        markers,
+        current.generation ?? null,
+      ))
     ) {
       return conflict();
     }
@@ -112,10 +136,22 @@ export async function updateGitHubIngressConfig(
 
 export async function deleteGitHubIngressConfig(
   state: ControlPlaneState,
+  expectedVersion?: number,
+  expectedGeneration?: string | null,
 ): Promise<{ ok: true } | Failure> {
   const current = await getGitHubIngressConfigRecord(state);
   if (!current) return { ok: false, error: "GitHub ingress integration not found" };
-  if (state.storage && !(await state.storage.deleteGitHubIngressConfig(current.version)))
+  if (
+    (expectedVersion !== undefined && current.version !== expectedVersion) ||
+    (expectedGeneration === null
+      ? current.generation !== undefined
+      : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+  )
+    return conflict();
+  if (
+    state.storage &&
+    !(await state.storage.deleteGitHubIngressConfig(current.version, current.generation ?? null))
+  )
     return conflict();
   state.githubIngressConfig = undefined;
   return { ok: true };
@@ -145,6 +181,7 @@ export async function decryptGitHubIngressSecret(
 async function makeRecord(
   state: ControlPlaneState,
   input: GitHubIngressConfigInput,
+  generation: string,
   version: number,
   createdAt: string,
   updatedAt: string,
@@ -160,6 +197,7 @@ async function makeRecord(
         githubIngressEncryptionContext(),
       )),
     enabled: input.enabled ?? true,
+    generation,
     bindings: input.bindings.map((binding) => ({
       githubRepositoryId: binding.githubRepositoryId,
       repositoryId: binding.repositoryId,

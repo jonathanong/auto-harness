@@ -23,6 +23,7 @@ export async function putGitHubIngressConfig(
   record: GitHubIngressConfigRecord,
   expectedVersion: number | null,
   markers?: readonly OwnedDeletionMarker[],
+  expectedGeneration?: string | null,
 ): Promise<boolean> {
   try {
     const put = {
@@ -31,10 +32,26 @@ export async function putGitHubIngressConfig(
       ConditionExpression:
         expectedVersion === null
           ? "attribute_not_exists(id)"
-          : "attribute_exists(id) AND version = :expectedVersion",
+          : `attribute_exists(id) AND version = :expectedVersion${
+              expectedGeneration === undefined
+                ? ""
+                : expectedGeneration === null
+                  ? " AND attribute_not_exists(#generation)"
+                  : " AND #generation = :expectedGeneration"
+            }`,
       ...(expectedVersion === null
         ? {}
-        : { ExpressionAttributeValues: { ":expectedVersion": expectedVersion } }),
+        : {
+            ExpressionAttributeValues: {
+              ":expectedVersion": expectedVersion,
+              ...(typeof expectedGeneration === "string"
+                ? { ":expectedGeneration": expectedGeneration }
+                : {}),
+            },
+            ...(expectedGeneration === undefined
+              ? {}
+              : { ExpressionAttributeNames: { "#generation": "generation" } }),
+          }),
     };
     if (markers?.length) await ownedWrite(ctx, markers, { Put: put });
     else await ctx.doc.send(new PutCommand(put));
@@ -48,14 +65,29 @@ export async function putGitHubIngressConfig(
 export async function deleteGitHubIngressConfig(
   ctx: PlaneStorageCtx,
   expectedVersion: number,
+  expectedGeneration?: string | null,
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new DeleteCommand({
         TableName: ctx.tables.integrations,
         Key: { id: "github-ingress" },
-        ConditionExpression: "attribute_exists(id) AND version = :expectedVersion",
-        ExpressionAttributeValues: { ":expectedVersion": expectedVersion },
+        ConditionExpression: `attribute_exists(id) AND version = :expectedVersion${
+          expectedGeneration === undefined
+            ? ""
+            : expectedGeneration === null
+              ? " AND attribute_not_exists(#generation)"
+              : " AND #generation = :expectedGeneration"
+        }`,
+        ExpressionAttributeValues: {
+          ":expectedVersion": expectedVersion,
+          ...(typeof expectedGeneration === "string"
+            ? { ":expectedGeneration": expectedGeneration }
+            : {}),
+        },
+        ...(expectedGeneration === undefined
+          ? {}
+          : { ExpressionAttributeNames: { "#generation": "generation" } }),
       }),
     );
     return true;

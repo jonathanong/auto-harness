@@ -193,6 +193,7 @@ describe("GitHub App webhook ingress", () => {
     vi.restoreAllMocks();
 
     const enqueueFailure = await fixture();
+    const enqueueLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(enqueueFailure.plane, "enqueueAssignment").mockRejectedValueOnce(new Error("queue"));
     const enqueuePayload = body({ comment: { ...body().comment, id: 13 } });
     expect(
@@ -203,12 +204,37 @@ describe("GitHub App webhook ingress", () => {
         enqueuePayload,
         headers(enqueuePayload),
       ),
+    ).toMatchObject({ status: 202, json: { accepted: true } });
+    await vi.waitFor(() =>
+      expect(enqueueLog).toHaveBeenCalledWith(
+        "failed to enqueue GitHub ingress assignment",
+        expect.any(Error),
+      ),
+    );
+    vi.restoreAllMocks();
+
+    const successAuditFailure = await fixture();
+    const enqueue = vi.spyOn(successAuditFailure.plane, "enqueueAssignment");
+    successAuditFailure.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const accepted = body({ comment: { ...body().comment, id: 14 } });
+    expect(
+      await invokeHandler(
+        successAuditFailure.handler,
+        "POST",
+        "/api/v1/webhooks/github",
+        accepted,
+        headers(accepted),
+      ),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    expect(enqueue).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
   });
 
   it("verifies GitHub HMAC, persists the configured intent, and acknowledges without host assignment", async () => {
     const { plane, handler } = await fixture();
+    const create = vi.spyOn(plane, "createGitHubIngressSessionDurable");
     const payload = body();
     const response = await invokeHandler(
       handler,
@@ -221,6 +247,12 @@ describe("GitHub App webhook ingress", () => {
       status: 202,
       json: { accepted: true, sessionId: "session-github", created: true },
     });
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        integrationFence: expect.objectContaining({ generation: expect.any(String) }),
+      }),
+    );
     expect(plane.getSession("session-github")).toMatchObject({
       repositoryId: "repo",
       source: "webhook",
@@ -366,6 +398,7 @@ describe("GitHub App ingress configuration routes", () => {
       { secret, bindings: [{ ...configBody().bindings[0], priority: "bad" }] },
       { secret, bindings: [{ ...configBody().bindings[0], defaultRef: 42 }] },
       { secret, bindings: [{ ...configBody().bindings[0], target: { providerId: 42 } }] },
+      configBody({ version: 1 }),
     ]) {
       expect(
         await invokeHandler(empty.handler, "POST", "/api/v1/integrations/github-ingress", invalid),
@@ -378,9 +411,34 @@ describe("GitHub App ingress configuration routes", () => {
         "/api/v1/integrations/github-ingress",
         configBody(),
       ),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    expect(
+      await invokeHandler(
+        empty.handler,
+        "PUT",
+        "/api/v1/integrations/github-ingress",
+        configBody({ version: 1 }),
+      ),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    expect(
+      await invokeHandler(
+        empty.handler,
+        "PUT",
+        "/api/v1/integrations/github-ingress",
+        configBody({ version: 1, generation: "legacy" }),
+      ),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     expect(
       await invokeHandler(empty.handler, "DELETE", "/api/v1/integrations/github-ingress"),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    expect(
+      await invokeHandler(
+        empty.handler,
+        "DELETE",
+        "/api/v1/integrations/github-ingress",
+        undefined,
+        { "if-match": "1", "if-match-generation": "legacy" },
+      ),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     expect(
       await invokeHandler(empty.handler, "GET", "/api/v1/integrations/not-github"),
@@ -420,11 +478,14 @@ describe("GitHub App ingress configuration routes", () => {
     );
     expect(created).toMatchObject({ status: 201, json: { secretConfigured: true, version: 1 } });
     expect(JSON.stringify(created.json)).not.toContain(secret);
+    const generation = (created.json as { generation: string }).generation;
     expect(
       await invokeHandler(handler, "GET", "/api/v1/integrations/github-ingress"),
     ).toMatchObject({ status: 200, json: { enabled: true } });
     const update = configBody({
       enabled: false,
+      version: 1,
+      generation,
       bindings: [{ ...configBody().bindings[0], target: { commandId: "command" } }],
     });
     delete (update as { secret?: string }).secret;
@@ -432,9 +493,50 @@ describe("GitHub App ingress configuration routes", () => {
       await invokeHandler(handler, "PUT", "/api/v1/integrations/github-ingress", update),
     ).toMatchObject({ status: 200, json: { enabled: false, version: 2 } });
     expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress"),
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/github-ingress", update),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress", undefined, {
+        "if-match": "2",
+        "if-match-generation": generation,
+      }),
     ).toMatchObject({ status: 204 });
     await expect(plane.getGitHubIngressConfig()).resolves.toBeNull();
+  });
+
+  it("rejects stale mutation fences after delete and recreate", async () => {
+    const { handler } = await fixture(false);
+    const original = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/integrations/github-ingress",
+      configBody(),
+    );
+    const oldGeneration = (original.json as { generation: string }).generation;
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress", undefined, {
+        "if-match": "1",
+        "if-match-generation": oldGeneration,
+      }),
+    ).toMatchObject({ status: 204 });
+    const recreated = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/integrations/github-ingress",
+      configBody(),
+    );
+    expect((recreated.json as { generation: string }).generation).not.toBe(oldGeneration);
+    const staleUpdate = configBody({ version: 1, generation: oldGeneration });
+    delete (staleUpdate as { secret?: string }).secret;
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/github-ingress", staleUpdate),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress", undefined, {
+        "if-match": "1",
+        "if-match-generation": oldGeneration,
+      }),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
   });
 
   it("rejects unknown nested target fields and invalid enabled types", async () => {
@@ -462,9 +564,13 @@ describe("GitHub App ingress configuration routes", () => {
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     vi.restoreAllMocks();
     await plane.createGitHubIngressConfig(configBody());
+    const current = await plane.getGitHubIngressConfig();
     vi.spyOn(plane, "deleteGitHubIngressConfig").mockRejectedValueOnce(new Error("storage"));
     expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress"),
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/github-ingress", undefined, {
+        "if-match": String(current!.version),
+        "if-match-generation": current!.generation ?? "legacy",
+      }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });
 });

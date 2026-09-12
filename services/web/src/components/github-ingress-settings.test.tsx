@@ -20,6 +20,7 @@ const existing = {
   enabled: true,
   secretConfigured: true,
   version: 2,
+  generation: "generation-1",
   createdAt: "2026-09-12T00:00:00.000Z",
   updatedAt: "2026-09-12T00:00:00.000Z",
   bindings: [
@@ -79,11 +80,17 @@ describe("GitHubIngressSettings", () => {
     const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as Record<string, unknown>;
     expect(saved).not.toHaveProperty("secret");
     expect(saved).toMatchObject({
+      version: 2,
+      generation: "generation-1",
       bindings: [{ fallbacks: [{ providerId: "backup" }, { commandId: "fallback" }] }],
     });
     press(field(view.container, "github-ingress-delete"));
     await settle();
     expect(fake.requests[2]?.[1]?.method).toBe("DELETE");
+    expect(fake.requests[2]?.[1]?.headers).toMatchObject({
+      "if-match": "3",
+      "if-match-generation": "generation-1",
+    });
   });
 
   it("validates required values and rejects malformed fallback prefixes", async () => {
@@ -133,6 +140,19 @@ describe("GitHubIngressSettings", () => {
     mountForm(<GitHubIngressSettingsPage />);
     await settle();
     expect(document.body.textContent).toContain("Unable to load");
+  });
+
+  it("reports a rejected save request", async () => {
+    createApiFake(json({}, 404), () => Promise.reject(new Error("offline")));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(field(view.container, "github-ingress-secret"), "s".repeat(32));
+    setValue(labelled(view.container, "GitHub repository id"), "42");
+    setValue(labelled(view.container, "Auto Harness repository id"), "repo");
+    setValue(labelled(view.container, "Target id"), "provider");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    expect(document.body.textContent).toContain("Unable to save");
   });
 
   it.each([

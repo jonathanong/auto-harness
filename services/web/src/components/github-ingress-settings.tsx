@@ -70,6 +70,8 @@ export function GitHubIngressSettings() {
   const [configured, setConfigured] = useState(false);
   const [secret, setSecret] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [version, setVersion] = useState<number>();
+  const [generation, setGeneration] = useState<string | null>();
   const [bindings, setBindings] = useState<Binding[]>([blank()]);
   useEffect(() => {
     void apiFetch("/api/v1/integrations/github-ingress", { cache: "no-store" })
@@ -88,6 +90,8 @@ export function GitHubIngressSettings() {
         }
         const value = (await response.json()) as {
           enabled: boolean;
+          version: number;
+          generation?: string;
           bindings: Array<{
             githubRepositoryId: number;
             repositoryId: string;
@@ -102,6 +106,8 @@ export function GitHubIngressSettings() {
           }>;
         };
         setConfigured(true);
+        setVersion(value.version);
+        setGeneration(value.generation ?? null);
         setLoadState("ready");
         setEnabled(value.enabled);
         setBindings(
@@ -163,6 +169,7 @@ export function GitHubIngressSettings() {
       }
       const body = {
         ...(secret ? { secret } : {}),
+        ...(configured ? { version, generation: generation ?? "legacy" } : {}),
         enabled,
         bindings: bindings.map((binding, index) => ({
           githubRepositoryId: Number(binding.githubRepositoryId),
@@ -183,41 +190,57 @@ export function GitHubIngressSettings() {
             .filter(Boolean),
         })),
       };
-      const response = await apiFetch("/api/v1/integrations/github-ingress", {
-        method: configured ? "PUT" : "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
+      try {
+        const response = await apiFetch("/api/v1/integrations/github-ingress", {
+          method: configured ? "PUT" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error("save failed");
+        const saved = (await response.json()) as { version?: number; generation?: string };
+        setVersion(saved.version);
+        setGeneration(saved.generation ?? null);
+        setConfigured(true);
+        setSecret("");
+        showToast("GitHub ingress configuration saved.", { pw: "github-ingress-success" });
+      } catch {
         showToast("Unable to save GitHub ingress configuration.", {
+          variant: "destructive",
+          pw: "github-ingress-error",
+        });
+      }
+    });
+  const remove = () =>
+    start(async () => {
+      try {
+        const response = await apiFetch("/api/v1/integrations/github-ingress", {
+          method: "DELETE",
+          headers: {
+            "if-match": String(version),
+            "if-match-generation": generation ?? "legacy",
+          },
+        });
+        if (!response.ok) throw new Error("delete failed");
+      } catch {
+        showToast("Unable to delete GitHub ingress configuration.", {
           variant: "destructive",
           pw: "github-ingress-error",
         });
         return;
       }
-      setConfigured(true);
-      setSecret("");
-      showToast("GitHub ingress configuration saved.", { pw: "github-ingress-success" });
-    });
-  const remove = () =>
-    start(async () => {
-      const response = await apiFetch("/api/v1/integrations/github-ingress", { method: "DELETE" });
-      if (!response.ok)
-        return showToast("Unable to delete GitHub ingress configuration.", {
-          variant: "destructive",
-          pw: "github-ingress-error",
-        });
       setConfigured(false);
+      setVersion(undefined);
+      setGeneration(undefined);
       setSecret("");
       setBindings([blank()]);
       showToast("GitHub ingress configuration deleted.", { pw: "github-ingress-success" });
     });
   if (loadState === "loading") {
-    return <div aria-busy="true" data-pw="github-ingress-loading" />;
+    return <div aria-busy="true" />;
   }
   if (loadState === "forbidden") {
     return (
-      <div data-pw="github-ingress-forbidden">
+      <div>
         <h3 className="text-lg font-medium">GitHub App ingress</h3>
         <p className="text-sm text-red-700" role="alert">
           You do not have permission to manage GitHub App ingress settings.
@@ -227,7 +250,7 @@ export function GitHubIngressSettings() {
   }
   if (loadState === "error") {
     return (
-      <div data-pw="github-ingress-error-state">
+      <div>
         <h3 className="text-lg font-medium">GitHub App ingress</h3>
         <p className="text-sm text-red-700" role="alert">
           Unable to load GitHub ingress configuration. Try again later.

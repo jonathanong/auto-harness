@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- singleton config parsing, version fencing, and audited outcomes stay co-located. */
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import type { GitHubIngressConfigInput } from "./github-ingress-types.ts";
@@ -21,8 +22,18 @@ export async function handleGitHubIngressConfigRoutes(ctx: RouteCtx): Promise<bo
     return true;
   }
   if (ctx.method === "DELETE") {
+    let expectedVersion: number;
+    let expectedGeneration: string | null;
     try {
-      const result = await ctx.plane.deleteGitHubIngressConfig();
+      expectedVersion = parseExpectedVersion(ctx.req.headers["if-match"]);
+      expectedGeneration = parseExpectedGeneration(ctx.req.headers["if-match-generation"]);
+    } catch (error) {
+      if (await failed(ctx, "delete"))
+        send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: message(error) } });
+      return true;
+    }
+    try {
+      const result = await ctx.plane.deleteGitHubIngressConfig(expectedVersion, expectedGeneration);
       if (!result.ok) return respond(ctx, result, "delete");
       if (await audit(ctx, "delete", "success")) send(ctx.res, 204, null);
     } catch {
@@ -33,8 +44,15 @@ export async function handleGitHubIngressConfigRoutes(ctx: RouteCtx): Promise<bo
   if (ctx.method !== "POST" && ctx.method !== "PUT") return false;
   const action = ctx.method === "POST" ? "create" : "update";
   let input: GitHubIngressConfigInput;
+  let expectedVersion: number | undefined;
+  let expectedGeneration: string | null | undefined;
   try {
-    input = parseConfig(await readJson(ctx.req), ctx.method === "POST");
+    const body = await readJson(ctx.req);
+    input = parseConfig(body, ctx.method === "POST");
+    if (ctx.method === "PUT") {
+      expectedVersion = parseVersion(body);
+      expectedGeneration = parseGeneration(body);
+    }
   } catch (error) {
     if (!(await failed(ctx, action))) return true;
     send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: message(error) } });
@@ -44,7 +62,7 @@ export async function handleGitHubIngressConfigRoutes(ctx: RouteCtx): Promise<bo
     const result =
       ctx.method === "POST"
         ? await ctx.plane.createGitHubIngressConfig(input)
-        : await ctx.plane.updateGitHubIngressConfig(input);
+        : await ctx.plane.updateGitHubIngressConfig(input, expectedVersion, expectedGeneration);
     if (!result.ok) return respond(ctx, result, action);
     if (await audit(ctx, action, "success"))
       send(ctx.res, ctx.method === "POST" ? 201 : 200, result.integration);
@@ -58,7 +76,10 @@ function parseConfig(value: unknown, requireSecret: boolean): GitHubIngressConfi
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("configuration must be an object");
   const body = value as Record<string, unknown>;
-  if (Object.keys(body).some((key) => !["secret", "enabled", "bindings"].includes(key))) {
+  const allowed = requireSecret
+    ? ["secret", "enabled", "bindings"]
+    : ["secret", "enabled", "bindings", "version", "generation"];
+  if (Object.keys(body).some((key) => !allowed.includes(key))) {
     throw new Error("configuration contains an unsupported field");
   }
   if (requireSecret && typeof body.secret !== "string") throw new Error("secret is required");
@@ -72,6 +93,37 @@ function parseConfig(value: unknown, requireSecret: boolean): GitHubIngressConfi
     ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
     bindings: body.bindings.map(parseBinding),
   };
+}
+
+function parseVersion(value: unknown): number {
+  const version = (value as { version?: unknown }).version;
+  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+    throw new Error("version must contain the observed positive integer version");
+  }
+  return version;
+}
+
+function parseGeneration(value: unknown): string | null {
+  const generation = (value as { generation?: unknown }).generation;
+  if (generation === "legacy") return null;
+  if (typeof generation !== "string" || generation.length === 0)
+    throw new Error("generation must contain the observed integration generation");
+  return generation;
+}
+
+function parseExpectedVersion(value: string | string[] | undefined): number {
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value))
+    throw new Error("If-Match must contain the observed positive integer version");
+  const version = Number(value);
+  if (!Number.isSafeInteger(version)) throw new Error("If-Match version is too large");
+  return version;
+}
+
+function parseExpectedGeneration(value: string | string[] | undefined): string | null {
+  if (value === "legacy") return null;
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error("If-Match-Generation must contain the observed integration generation");
+  return value;
 }
 
 function parseBinding(value: unknown): GitHubIngressConfigInput["bindings"][number] {

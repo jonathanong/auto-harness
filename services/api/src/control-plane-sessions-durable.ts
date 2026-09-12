@@ -157,6 +157,7 @@ function matchesIntegrationFence(
       !!current &&
       current.id === fence.id &&
       current.type === fence.type &&
+      current.generation === fence.generation &&
       current.version === fence.version &&
       current.enabled === fence.enabled
     );

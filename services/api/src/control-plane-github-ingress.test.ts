@@ -56,6 +56,116 @@ describe("GitHub ingress config", () => {
     await expect(plane.getGitHubIngressConfig()).resolves.toMatchObject({ secretConfigured: true });
   });
 
+  it("fences an in-flight delivery across delete and recreate", async () => {
+    const plane = createPlane();
+    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const original = await plane.getGitHubIngressConfigRecord();
+    if (!original?.generation) throw new Error("expected creation generation");
+    await plane.deleteGitHubIngressConfig();
+    await plane.createGitHubIngressConfig({ secret: "y".repeat(16), bindings: [binding] });
+    await expect(
+      plane.createGitHubIngressSessionDurable(
+        {
+          repositoryId: "repo",
+          prompt: "stale delivery",
+          target: { commandId: "command" },
+          timeout: 60,
+          concurrencyId: "github-comment:issue_comment:42:99",
+        },
+        {
+          integrationFence: {
+            id: original.id,
+            type: original.type,
+            storageId: original.id,
+            generation: original.generation,
+            version: original.version,
+            enabled: original.enabled,
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it("does not overwrite a recreated in-memory config after delayed encryption", async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    let delay = false;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const encrypting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const plane = new ControlPlane({
+      secretEncryptor: {
+        encrypt: async (value) => {
+          if (delay) {
+            entered();
+            await delayed;
+          }
+          return `cipher:${value}`;
+        },
+        decrypt: encryptor.decrypt,
+      },
+    });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+    plane.createCommand({ id: "command", name: "command", argv: ["echo"] });
+    await plane.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const original = await plane.getGitHubIngressConfig();
+    delay = true;
+    const staleUpdate = plane.updateGitHubIngressConfig(
+      { secret: "z".repeat(16), bindings: [binding] },
+      original!.version,
+      original!.generation,
+    );
+    await encrypting;
+    await plane.deleteGitHubIngressConfig(original!.version, original!.generation);
+    delay = false;
+    await plane.createGitHubIngressConfig({ secret: "y".repeat(16), bindings: [binding] });
+    const recreated = await plane.getGitHubIngressConfig();
+    release();
+    await expect(staleUpdate).resolves.toMatchObject({ ok: false, conflict: true });
+    await expect(plane.getGitHubIngressConfig()).resolves.toEqual(recreated);
+  });
+
+  it("allows only one concurrent in-memory create after delayed encryption", async () => {
+    let release!: () => void;
+    let ready!: () => void;
+    let entered = 0;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const bothEncrypting = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const plane = new ControlPlane({
+      secretEncryptor: {
+        encrypt: async (value) => {
+          entered += 1;
+          if (entered === 2) ready();
+          await delayed;
+          return `cipher:${value}`;
+        },
+        decrypt: encryptor.decrypt,
+      },
+    });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+    plane.createCommand({ id: "command", name: "command", argv: ["echo"] });
+    const first = plane.createGitHubIngressConfig({
+      secret: "x".repeat(16),
+      bindings: [binding],
+    });
+    const second = plane.createGitHubIngressConfig({
+      secret: "y".repeat(16),
+      bindings: [binding],
+    });
+    await bothEncrypting;
+    release();
+    const results = await Promise.all([first, second]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok && result.conflict)).toHaveLength(1);
+  });
+
   it("validates bindings while repository admission is paused or draining", async () => {
     const paused = createPlane();
     paused.state.repositories.get("repo")!.admissionState = "paused";

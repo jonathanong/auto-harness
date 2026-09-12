@@ -78,6 +78,7 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
           id: "github-ingress",
           type: "github-ingress",
           storageId: "github-ingress",
+          ...(record.generation ? { generation: record.generation } : {}),
           version: record.version,
           enabled: record.enabled,
         },
@@ -100,9 +101,13 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
       );
       return true;
     }
+    void ctx.plane
+      .enqueueAssignment()
+      .catch((error: unknown) =>
+        console.error("failed to enqueue GitHub ingress assignment", error),
+      );
     if (!(await audit(ctx, "success", { delivery, created: result.created }, session.repositoryId)))
       return true;
-    await ctx.plane.enqueueAssignment();
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
     if (!(await audit(ctx, "failed"))) return true;

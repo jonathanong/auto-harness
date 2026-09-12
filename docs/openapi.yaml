@@ -171,7 +171,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/GitHubIngressConfigInput" }
+            schema: { $ref: "#/components/schemas/GitHubIngressConfigUpdateInput" }
       responses:
         "200":
           description: Updated redacted configuration
@@ -181,6 +181,15 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteGitHubIngressConfig
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: If-Match-Generation
+          in: header
+          required: true
+          schema: { type: string, minLength: 1 }
       responses:
         "204": { description: Deleted }
         default: { $ref: "#/components/responses/Error" }
@@ -882,6 +891,31 @@ components:
         - $ref: "#/components/schemas/GitHubIngressConfigInput"
         - type: object
           required: [secret]
+    GitHubIngressConfigUpdateInput:
+      type: object
+      required: [bindings, version, generation]
+      additionalProperties: false
+      properties:
+        secret:
+          type: string
+          minLength: 16
+          maxLength: 512
+          writeOnly: true
+          description: Omit on update to retain the encrypted secret.
+        enabled: { type: boolean }
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/GitHubIngressBinding" }
+        version:
+          type: integer
+          minimum: 1
+          description: Version observed by the client.
+        generation:
+          type: string
+          minLength: 1
+          description: Opaque observed-generation fence; use `legacy` only for records without one.
     GitHubIngressConfig:
       type: object
       required: [id, type, enabled, bindings, secretConfigured, version, createdAt, updatedAt]
@@ -890,6 +924,9 @@ components:
         id: { type: string, const: github-ingress }
         type: { type: string, const: github-ingress }
         enabled: { type: boolean }
+        generation:
+          type: string
+          description: Immutable creation nonce used to fence in-flight deliveries.
         bindings:
           type: array
           minItems: 1
