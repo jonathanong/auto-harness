@@ -191,12 +191,9 @@ async function activeGitHubIngressSession(
     if (!current || !matchesIntegrationFence(state, fence)) return null;
   }
   const concurrencyId = (body as { concurrencyId: string }).concurrencyId;
-  const cached = [...state.sessions.values()].find(
-    (session) =>
-      session.concurrencyId === concurrencyId &&
-      (session.status === "queued" || session.status === "running"),
-  );
-  if (cached) return cached;
+  // The process-local session cache is only an observation. Another Lambda can
+  // settle the session and release its concurrency lock, so durable ingress
+  // deduplication must always consult the storage-owned active lock.
   const active = await state.storage!.getActiveSessionByConcurrencyId(concurrencyId);
   if (active && fence?.type === "github-ingress") {
     const current = await state.storage!.getGitHubIngressConfig();

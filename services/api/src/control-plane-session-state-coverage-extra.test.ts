@@ -8,6 +8,7 @@ import { buildSessionRecord, validateSessionCreate } from "./control-plane-sessi
 import {
   cloneSessionDurable,
   createSessionDurable,
+  createGitHubIngressSessionDurable,
   resumeSessionDurable,
 } from "./control-plane-sessions-durable.ts";
 import { createSession, supersedeSession } from "./control-plane-sessions.ts";
@@ -101,6 +102,39 @@ describe("session state-machine residual coverage", () => {
       ok: false,
       error: "session not found",
     });
+  });
+
+  it("does not deduplicate GitHub ingress from a stale process-local session", async () => {
+    const state = commandState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const concurrencyId = "github-comment:issue_comment:42:99";
+    state.sessions.set("stale", row({ id: "stale", concurrencyId }));
+    let durableLookup = 0;
+    setDurableReadStorage(state, {
+      getActiveSessionByConcurrencyId: async () => {
+        durableLookup += 1;
+        return null;
+      },
+      createSession: async (session: SessionRecord) => ({ created: true, session }),
+    });
+
+    await expect(
+      createGitHubIngressSessionDurable(state, {
+        repositoryId: "repo",
+        prompt: "rerun terminal delivery",
+        target: { commandId: "cmd" },
+        timeout: 30,
+        concurrencyId,
+      }),
+    ).resolves.toMatchObject({ ok: true, created: true, session: { id: "new" } });
+    expect(durableLookup).toBe(1);
   });
 
   it("persists an ordinary queued supersession without a concurrency lock", () => {
