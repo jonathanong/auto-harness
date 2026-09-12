@@ -3,10 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { flushSync } from "react-dom";
-import { emptyHostInventory } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage, emptyHostInventory, thrownMessage } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
-
-import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 function showAddHostError(message: string): void {
   showToast(message, { variant: "destructive", pw: "add-host-error" });
@@ -82,7 +80,7 @@ export function AddHostForm() {
               withToast(`/hosts/${encodeURIComponent(hostId)}`, `Host slot ${hostId} created.`),
             );
           } catch (reason) {
-            showAddHostError(reason instanceof Error ? reason.message : String(reason));
+            showAddHostError(thrownMessage(reason));
             setPending(false);
           }
         })();

@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
+import { thrownMessage } from "@auto-harness/shared";
 import type { DynamoPlaneStorage, HostInventoryRecord } from "./db/plane-storage.ts";
 import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -158,7 +159,7 @@ function prepareHostInventory(
       },
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: thrownMessage(err) };
   }
 }
 
@@ -232,9 +233,9 @@ export async function putHostInventoryDurable(
       return {
         ok: false,
         committed: true,
-        error: `host inventory committed but worktree projection failed: ${
-          projectionError instanceof Error ? projectionError.message : String(projectionError)
-        }`,
+        error: `host inventory committed but worktree projection failed: ${thrownMessage(
+          projectionError,
+        )}`,
       };
     }
   }

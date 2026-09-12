@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
-import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
+import {
+  thrownMessage,
+  type Command,
+  type Provider,
+  type ProviderAccount,
+} from "@auto-harness/shared";
 
 import { AddProviderDialog } from "../../components/add-provider-dialog.tsx";
 import { apiGetAllPages } from "../../lib/api.ts";
@@ -24,7 +29,7 @@ export default async function ProvidersPage() {
     accounts = a;
     commands = c;
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
 
   const commandById = new Map(commands.map((c) => [c.id, c]));

@@ -5,6 +5,7 @@ import {
   MAX_PRIOR_CONTEXT_BYTES,
   PRIOR_CONTEXT_DIR,
   PRIOR_CONTEXT_FILENAME,
+  thrownMessage,
 } from "@auto-harness/shared";
 
 import { assertPathWithinAllowedRoots } from "./allowed-roots.ts";
@@ -54,9 +55,7 @@ export async function writePriorContextFile(input: {
     await writeFile(file, content, "utf8");
     return file;
   } catch (error) {
-    input.onLog?.(
-      `prior-session context unavailable: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    input.onLog?.(`prior-session context unavailable: ${thrownMessage(error)}`);
     return null;
   }
 }

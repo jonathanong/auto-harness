@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { RepositoryPageClient } from "../../components/repository-page-client.tsx";
@@ -89,7 +90,7 @@ export default async function RepositoriesPage({
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
 
   return (

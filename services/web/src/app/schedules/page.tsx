@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- list, empty state, and capability-gated write controls. */
+import { thrownMessage } from "@auto-harness/shared";
 import Link from "next/link";
 import {
   CursorPagination,
@@ -69,7 +70,7 @@ export default async function SchedulesPage({
       (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
     );
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
 
   const requestedEditId = editId;

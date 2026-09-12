@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { createHash, verify } from "node:crypto";
 
 export type UpdateManifest = {
@@ -131,19 +132,19 @@ export class AgentUpdater {
       // old process must never declare the update complete on its behalf.
       return this.getState();
     } catch (error) {
-      let failure = error instanceof Error ? error.message : String(error);
+      let failure = thrownMessage(error);
       if (activated) {
         try {
           await this.options.installer.rollback();
         } catch (rollbackError) {
-          failure += `; rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`;
+          failure += `; rollback failed: ${thrownMessage(rollbackError)}`;
         }
       }
       if (drained) {
         try {
           await this.options.lifecycle.resume();
         } catch (resumeError) {
-          failure += `; resume failed: ${resumeError instanceof Error ? resumeError.message : String(resumeError)}`;
+          failure += `; resume failed: ${thrownMessage(resumeError)}`;
         }
       }
       return this.transition({

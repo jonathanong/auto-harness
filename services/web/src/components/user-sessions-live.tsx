@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { USER_ROLE_LABELS, type UserRole } from "@auto-harness/shared";
+import { thrownMessage, USER_ROLE_LABELS, type UserRole } from "@auto-harness/shared";
 import {
   RelativeTime,
   Table,
@@ -124,7 +124,7 @@ export function UserSessionsLive({
           setError(null);
         }
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+        if (active) setError(thrownMessage(reason));
       }
       if (active) timer = setTimeout(() => void poll(), pollMs);
     };

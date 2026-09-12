@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import type { DaemonTransport, SendOptions } from "./daemon-transport-types.ts";
@@ -22,9 +23,7 @@ export class OutboundQueue {
     this.pending.add(delivery);
     void delivery
       .catch((error: unknown) => {
-        this.report(
-          `outbound ${message.type} failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        this.report(`outbound ${message.type} failed: ${thrownMessage(error)}`);
       })
       .finally(() => this.pending.delete(delivery));
     return delivery;

@@ -12,7 +12,7 @@ import {
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
 import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import type { DaemonLoop } from "./daemon-loop.ts";
-import type { HostUpdateConfig } from "@auto-harness/shared";
+import { thrownMessage, type HostUpdateConfig } from "@auto-harness/shared";
 
 const DEFAULT_POLL_MS = 60 * 60_000;
 export const MAX_UPDATE_POLL_MS = 2_147_483_647;
@@ -196,7 +196,7 @@ export function startUpdatePoll(
       .run()
       .then(() => undefined)
       .catch((error: unknown) => {
-        options.error(`updater failed: ${error instanceof Error ? error.message : String(error)}`);
+        options.error(`updater failed: ${thrownMessage(error)}`);
       })
       .finally(() => {
         if (active === pending) active = undefined;

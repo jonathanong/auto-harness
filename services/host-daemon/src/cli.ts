@@ -7,6 +7,7 @@ import {
   MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH,
   MAX_RUNTIME_ENVIRONMENT_NAMES,
   onShutdownSignal,
+  thrownMessage,
   type LifecycleLogger,
   type SessionAssign,
 } from "@auto-harness/shared";
@@ -48,11 +49,7 @@ export function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
  */
 export function shutdownLoggerFor(error: (msg: string) => void): LifecycleLogger {
   return (message, err) => {
-    error(
-      err === undefined
-        ? message
-        : `${message}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    error(err === undefined ? message : `${message}: ${thrownMessage(err)}`);
   };
 }
 
@@ -248,7 +245,7 @@ export async function runCli(
   try {
     resolvedEnv = loadEnvFileIfPresent(env, deps.readFile);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = thrownMessage(err);
     deps.error(`Cannot read HARNESS_ENV_FILE: ${detail}`);
     return 1;
   }
@@ -263,7 +260,7 @@ export async function runCli(
       await prepareStableDaemonUpdateBoot({ env: resolvedEnv });
       return 0;
     } catch (err) {
-      deps.error(err instanceof Error ? err.message : String(err));
+      deps.error(thrownMessage(err));
       return 1;
     }
   }
@@ -276,7 +273,7 @@ export async function runCli(
       await prepareDaemonUpdateBoot({ env: resolvedEnv, log: deps.log, error: deps.error });
       updateBootPrepared = true;
     } catch (err) {
-      deps.error(err instanceof Error ? err.message : String(err));
+      deps.error(thrownMessage(err));
       return 1;
     }
   }
@@ -298,9 +295,9 @@ export async function runCli(
       // control plane is unavailable. It will retain the existing persisted
       // update configuration rather than partially applying a remote edit.
       deps.error(
-        `Could not load host update settings; keeping local service settings: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Could not load host update settings; keeping local service settings: ${thrownMessage(
+          error,
+        )}`,
       );
     }
     return deps.installService({ env: serviceEnv, log: deps.log, error: deps.error, apiUrl });
@@ -476,7 +473,7 @@ export async function runCli(
       });
       return 0;
     } catch (err) {
-      deps.error(err instanceof Error ? err.message : String(err));
+      deps.error(thrownMessage(err));
       return 1;
     }
   }

@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { TipText } from "@auto-harness/ui";
 
 import {
@@ -48,7 +49,7 @@ export default async function DashboardPage() {
     initial.running = running;
     initial.queued = queued;
   } catch (reason) {
-    error = reason instanceof Error ? reason.message : String(reason);
+    error = thrownMessage(reason);
   }
 
   return (

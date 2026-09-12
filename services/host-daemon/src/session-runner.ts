@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
@@ -102,13 +103,7 @@ export class SessionRunner {
         streamer.writeTimestampedSystem(`Session ${status}`);
         return { status, exitCode: null, logs };
       }
-      return failSession(
-        streamer,
-        logs,
-        "setup_failed",
-        err instanceof Error ? err.message : String(err),
-        null,
-      );
+      return failSession(streamer, logs, "setup_failed", thrownMessage(err), null);
     }
 
     try {
@@ -169,7 +164,7 @@ export class SessionRunner {
             status: "failed",
             exitCode: null,
             errorCode: "setup_failed",
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: thrownMessage(err),
           },
           this.deps.childEnvSource ?? process.env,
         );
@@ -195,7 +190,7 @@ export class SessionRunner {
           this.deps.identity,
         );
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = thrownMessage(error);
         // A runner error can include the original argv. Keep the transcript
         // useful without copying prompts or other opaque arguments into logs.
         streamer.write("system", "Process execution failed.");

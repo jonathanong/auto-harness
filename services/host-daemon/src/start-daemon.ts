@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- startup, updater, and orderly shutdown share one lifecycle. */
+import { thrownMessage } from "@auto-harness/shared";
 import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -197,16 +198,10 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
           try {
             await options.blockAssignments?.(err.allowedRoots);
           } catch (blockError) {
-            options.error(
-              `inventory policy drain failed: ${
-                blockError instanceof Error ? blockError.message : String(blockError)
-              }`,
-            );
+            options.error(`inventory policy drain failed: ${thrownMessage(blockError)}`);
           }
         }
-        const message = failureLog.next(
-          `inventory poll failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        const message = failureLog.next(`inventory poll failed: ${thrownMessage(err)}`);
         if (message !== undefined) options.error(message);
       } finally {
         inFlight = false;
@@ -320,9 +315,8 @@ async function acknowledgeDaemonUpdateBoot(
     try {
       await prepareDaemonUpdateBoot({ env: update.env, log, error, service: update.service });
     } catch (rollbackError) {
-      const failure = reason instanceof Error ? reason.message : String(reason);
-      const rollback =
-        rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      const failure = thrownMessage(reason);
+      const rollback = thrownMessage(rollbackError);
       throw new Error(`updater health acknowledgement failed: ${failure}; ${rollback}`, {
         cause: rollbackError,
       });
@@ -370,7 +364,7 @@ function startDaemonKeepalive(
         if (sent) onSent(nowMs());
       })
       .catch((err: unknown) => {
-        error(`keepalive failed: ${err instanceof Error ? err.message : String(err)}`);
+        error(`keepalive failed: ${thrownMessage(err)}`);
       });
   }, 20_000);
 }
@@ -397,7 +391,7 @@ function startOptionalUpdatePoll(
         })
       : noopUpdatePoll;
   } catch (err) {
-    error(`updater disabled: ${err instanceof Error ? err.message : String(err)}`);
+    error(`updater disabled: ${thrownMessage(err)}`);
     return noopUpdatePoll;
   }
 }

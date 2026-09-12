@@ -254,7 +254,7 @@ export class DaemonLoop {
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
-        this.onLog?.(`server message failed: ${err instanceof Error ? err.message : String(err)}`);
+        this.onLog?.(`server message failed: ${thrownMessage(err)}`);
       });
     });
     this.connectionEvents = configureConnectionEvents({
