@@ -23,6 +23,29 @@ export type InstallationToken = {
   expiresAtMs: number;
 };
 
+const GITHUB_TOKEN_ENV_NAMES = new Set([
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "GH_ENTERPRISE_TOKEN",
+  "GITHUB_ENTERPRISE_TOKEN",
+]);
+
+/** Remove ambient GitHub credentials before a mapped App session can run any repository hook. */
+export function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scoped = { ...environment };
+  for (const name of GITHUB_TOKEN_ENV_NAMES) delete scoped[name];
+  const allowlist = scoped.HARNESS_CHILD_ENV_ALLOWLIST;
+  if (allowlist) {
+    const remaining = allowlist
+      .split(",")
+      .filter((name) => !GITHUB_TOKEN_ENV_NAMES.has(name.trim()))
+      .join(",");
+    if (remaining) scoped.HARNESS_CHILD_ENV_ALLOWLIST = remaining;
+    else delete scoped.HARNESS_CHILD_ENV_ALLOWLIST;
+  }
+  return scoped;
+}
+
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${context} must be an object`);

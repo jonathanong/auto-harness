@@ -113,6 +113,37 @@ describe("GitHub App credentials", () => {
     );
   });
 
+  it("rejects non-writing required permissions and failed token requests", async () => {
+    for (const permission of ["contents", "pull_requests", "issues"] as const) {
+      const permissions = { contents: "write", pull_requests: "write", issues: "write" };
+      permissions[permission] = "read";
+      const fetchFn = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              token: "ghs_exact-token",
+              expires_at: "2026-09-12T01:00:00.000Z",
+              permissions,
+              repositories: [{ id: 101_112 }],
+            }),
+            { status: 201 },
+          ),
+      );
+      await expect(mintInstallationToken(config(), "repo-1", undefined, fetchFn)).rejects.toThrow(
+        `lacks ${permission} write permission`,
+      );
+    }
+    await expect(
+      mintInstallationToken(
+        config(),
+        "repo-1",
+        undefined,
+        async () => new Response(null, { status: 403 }),
+      ),
+    ).rejects.toThrow("token request failed (HTTP 403)");
+    await expect(mintInstallationToken(config(), "unmapped", undefined)).resolves.toBeUndefined();
+  });
+
   it("rejects malformed or non-absolute host configuration without echoing key data", () => {
     expect(() =>
       parseGitHubAppConfig(
@@ -135,5 +166,31 @@ describe("GitHub App credentials", () => {
         () => pem,
       ),
     ).toThrow("appId must be numeric");
+    expect(() =>
+      parseGitHubAppConfig(
+        {
+          appId: "1",
+          privateKeyPath: "/keys/app.pem",
+          botLogin: "bot",
+          botUserId: 0,
+          repositories: {},
+        },
+        () => pem,
+      ),
+    ).toThrow("botUserId must be a positive safe integer");
+    expect(() =>
+      parseGitHubAppConfig(
+        {
+          appId: "1",
+          privateKeyPath: "/keys/app.pem",
+          botLogin: "bot",
+          botUserId: 1,
+          repositories: {},
+        },
+        () => {
+          throw new Error("read failed: /keys/app.pem");
+        },
+      ),
+    ).toThrow("GitHub App private key could not be loaded");
   });
 });

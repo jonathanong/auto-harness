@@ -13,7 +13,7 @@ import {
 } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { PriorContextIdentity } from "./prior-context-file.ts";
-import type { GitHubAppConfig } from "./github-app.ts";
+import { withoutAmbientGitHubTokens, type GitHubAppConfig } from "./github-app.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { WorkspaceManager, type ClaimedWorkspace } from "./workspace-manager.ts";
 
@@ -56,6 +56,10 @@ export class SessionRunner {
 
   async run(assign: SessionAssign, options: SessionRunOptions = {}): Promise<SessionRunResult> {
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
+    const childEnvSource = this.deps.childEnvSource ?? process.env;
+    const sessionChildEnv = this.deps.githubApp?.repositories.has(assign.repositoryId)
+      ? withoutAmbientGitHubTokens(childEnvSource)
+      : childEnvSource;
     const logs: SessionLogChunk[] = [];
     const streamer = new LogStreamer(
       assign.sessionId,
@@ -152,7 +156,7 @@ export class SessionRunner {
               ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
               : {}),
           },
-          this.deps.childEnvSource ?? process.env,
+          sessionChildEnv,
           baseline,
         );
       streamer.write("system", `Checking out ref ${checkoutRef}...`);
@@ -190,7 +194,7 @@ export class SessionRunner {
             errorCode: "setup_failed",
             errorMessage: thrownMessage(err),
           },
-          this.deps.childEnvSource ?? process.env,
+          sessionChildEnv,
         );
       }
 
@@ -209,7 +213,7 @@ export class SessionRunner {
           () => expired,
           () => Math.max(1, deadlineMs - Date.now()),
           this.deps.commandRunner ?? this.deps.processRunner,
-          this.deps.childEnvSource ?? process.env,
+          sessionChildEnv,
           this.deps.executionProfiles,
           this.deps.identity,
           this.deps.githubApp,
@@ -228,7 +232,7 @@ export class SessionRunner {
           assign,
           claimed,
           { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
-          this.deps.childEnvSource ?? process.env,
+          sessionChildEnv,
           baseline,
         );
       }

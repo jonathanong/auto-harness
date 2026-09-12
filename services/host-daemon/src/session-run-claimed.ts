@@ -25,6 +25,7 @@ import {
   GITHUB_APP_TOKEN_MARGIN_MS,
   githubBotEmail,
   mintInstallationToken,
+  withoutAmbientGitHubTokens,
   type GitHubAppConfig,
   type InstallationToken,
 } from "./github-app.ts";
@@ -525,27 +526,4 @@ async function runProcessAndFinish(
       ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
       : {}),
   });
-}
-
-function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const scoped = { ...environment };
-  const tokenNames = new Set([
-    "GH_TOKEN",
-    "GITHUB_TOKEN",
-    "GH_ENTERPRISE_TOKEN",
-    "GITHUB_ENTERPRISE_TOKEN",
-  ]);
-  for (const name of tokenNames) {
-    delete scoped[name];
-  }
-  const allowlist = scoped.HARNESS_CHILD_ENV_ALLOWLIST;
-  if (allowlist) {
-    const remaining = allowlist
-      .split(",")
-      .filter((name) => !tokenNames.has(name.trim()))
-      .join(",");
-    if (remaining) scoped.HARNESS_CHILD_ENV_ALLOWLIST = remaining;
-    else delete scoped.HARNESS_CHILD_ENV_ALLOWLIST;
-  }
-  return scoped;
 }
