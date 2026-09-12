@@ -70,13 +70,14 @@ describe("durable deferred terminal results", () => {
     state.sessions.set(session.id, session);
 
     await expect(
-      handleHostMessageDurable(state, deferredStatus("worktree"), undefined, false, false, 6),
+      handleHostMessageDurable(state, deferredStatus("worktree"), undefined, false, false, 7),
     ).resolves.toMatchObject({
       sessionStatusAcknowledged: {
         sessionId: "session",
         attemptId: "attempt",
         retryAccepted: false,
         terminalHookHandoffId: "handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
     expect(finishSession).toHaveBeenCalledWith(
@@ -128,11 +129,12 @@ describe("durable deferred terminal results", () => {
     });
 
     await expect(
-      handleHostMessageDurable(state, deferredStatus(null), undefined, false, false, 6),
+      handleHostMessageDurable(state, deferredStatus(null), undefined, false, false, 7),
     ).resolves.toMatchObject({
       sessionStatusAcknowledged: {
         retryAccepted: false,
         terminalHookHandoffId: "main-handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
@@ -182,11 +184,12 @@ describe("durable deferred terminal results", () => {
     state.sessions.set(session.id, session);
 
     await expect(
-      handleHostMessageDurable(state, deferredStatus("worktree"), undefined, false, false, 6),
+      handleHostMessageDurable(state, deferredStatus("worktree"), undefined, false, false, 7),
     ).resolves.toMatchObject({
       sessionStatusAcknowledged: {
         retryAccepted: false,
         terminalHookHandoffId: "committed-handoff",
+        terminalHookHandoffExpiresAt: "2026-01-02T00:00:00.000Z",
       },
     });
     expect(state.sessions.get(session.id)?.terminalHookHandoff?.handoffId).toBe(

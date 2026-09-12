@@ -158,7 +158,7 @@ describe("control-plane authentication security", () => {
     expect(await second.authenticateApiKey(`${created.apiKey}x`)).toBeNull();
     expect(await second.authenticateApiKey("anything")).toBeNull();
     await second.deleteUser("persisted-user", storage);
-    await second.deleteServiceAccount(plain.account.id, storage);
+    await second.deleteServiceAccount(plain.account.id);
   });
 
   it("preserves colons in Basic passwords and revokes deleted users' cookies", async () => {
@@ -450,6 +450,8 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("POST", "/api/v1/sessions/s/archive")).toBe("sessions:archive");
     expect(requiredCapability("POST", "/api/v1/sessions/s/cancel")).toBe("sessions:write");
     expect(requiredCapability("GET", "/api/v1/provider-accounts")).toBe("authenticated");
+    expect(requiredCapability("GET", "/api/v1/workspace-pools")).toBe("authenticated");
+    expect(requiredCapability("POST", "/api/v1/workspace-pools")).toBe("fleet:exec-config");
     expect(requiredCapability("GET", "/api/v1/provider-accounts/account/leases")).toBe(
       "providers:leases",
     );
