@@ -66,6 +66,12 @@ describe("rate limit policy", () => {
         true,
       ),
     ).toBe("ip:198.51.100.3");
+    expect(
+      clientSourceKey(
+        { headers: { "x-forwarded-for": "   " }, socket: { remoteAddress: "10.0.0.9" } },
+        true,
+      ),
+    ).toBe("ip:10.0.0.9");
   });
 
   it("parses safe environment overrides and retry boundaries", () => {

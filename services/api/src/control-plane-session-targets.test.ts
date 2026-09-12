@@ -82,6 +82,12 @@ describe("listSessionTargets", () => {
       updatedAt: "t",
     });
 
+    expect(
+      listSessionTargets(state, { includeAvailability: false }).every(
+        (target) => target.available === undefined,
+      ),
+    ).toBe(true);
+
     const targets = listSessionTargets(state);
     expect(targets).toEqual([
       {

@@ -38,6 +38,19 @@ function stateWithStorage(methods: Record<string, unknown> = {}) {
 }
 
 describe("scheduled registration rollback branch coverage", () => {
+  it("falls back to the in-memory session map when storage has no host query", async () => {
+    const state = createControlPlaneState({ now: () => NOW, reconnectGraceMs: 100 });
+    const row = session();
+    state.sessions.set(row.id, row);
+    state.storage = {
+      markMainCheckoutReconnectPending: async () => true,
+    } as never;
+    await protectScheduledRunsForFailedRegistration(state, "host");
+    expect(state.sessions.get(row.id)).toMatchObject({
+      reconnectDeadlineAt: "2026-01-01T00:00:00.100Z",
+    });
+  });
+
   it("skips non-running, unleased, and unassigned sessions", async () => {
     const state = stateWithStorage({ listActiveSessionsByHost: async () => [] });
     const rows = [

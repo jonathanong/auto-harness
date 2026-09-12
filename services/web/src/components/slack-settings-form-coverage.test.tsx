@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- save, delete, and unmount races share one form fixture. */
 
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
@@ -163,5 +164,72 @@ describe("SlackSettingsForm", () => {
     expect(deleteView.container.childElementCount).toBe(0);
     resolveDelete(json({}, 204));
     await settle();
+  });
+
+  it("does not toast a late error after the Slack form unmounts", async () => {
+    let resolveSave!: (response: Response) => void;
+    createApiFake(() => new Promise<Response>((resolve) => (resolveSave = resolve)));
+    const view = mountForm(<SlackSettingsForm />);
+    fillCreate(view);
+    submit(field(view.container, "form-slack-create"));
+    view.unmount();
+    resolveSave(json({ error: { message: "late" } }, 503));
+    await settle();
+    expect(document.body.textContent ?? "").not.toContain("late");
+  });
+
+  it("toasts a thrown save failure while the form is still mounted", async () => {
+    createApiFake(() => Promise.reject("slack-offline"));
+    const view = mountForm(<SlackSettingsForm />);
+    fillCreate(view);
+    submit(field(view.container, "form-slack-create"));
+    await settle();
+    expect(field(document.body, "slack-error").textContent).toContain(
+      "Unable to save Slack configuration",
+    );
+    view.unmount();
+  });
+
+  it("toasts a thrown delete failure while the form is still mounted", async () => {
+    createApiFake(() => Promise.reject("slack-offline"));
+    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(view.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    await settle();
+    expect(field(document.body, "slack-error").textContent).toContain(
+      "Unable to delete Slack configuration",
+    );
+    view.unmount();
+  });
+
+  it("does not toast thrown save or delete failures after unmount", async () => {
+    let rejectSave!: (reason: unknown) => void;
+    let rejectDelete!: (reason: unknown) => void;
+    createApiFake(
+      () => new Promise((_, reject) => (rejectSave = reject)),
+      () => new Promise((_, reject) => (rejectDelete = reject)),
+    );
+    const saveView = mountForm(<SlackSettingsForm />);
+    fillCreate(saveView);
+    submit(field(saveView.container, "form-slack-create"));
+    saveView.unmount();
+    rejectSave("slack-offline");
+    await settle();
+
+    const deleteView = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(deleteView.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    deleteView.unmount();
+    rejectDelete("slack-offline");
+    await settle();
+    expect(document.body.querySelector('[data-pw="slack-error"]')).toBeNull();
+  });
+
+  it("uses the create form key when a configured integration has no version", () => {
+    const view = mountForm(
+      <SlackSettingsForm initial={{ ...configured, version: undefined as never }} />,
+    );
+    expect(field(view.container, "form-slack-replace")).toBeTruthy();
+    view.unmount();
   });
 });

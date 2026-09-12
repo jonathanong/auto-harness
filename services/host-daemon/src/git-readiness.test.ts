@@ -7,6 +7,7 @@ function runner(result: { exitCode?: number; stdout?: string; throws?: boolean }
   return {
     async run(options) {
       if (result.throws) throw new Error("not on PATH: /secret/path");
+      options.onChunk({ stream: "stderr", data: "git: ignored diagnostic\n" });
       if (result.stdout) options.onChunk({ stream: "stdout", data: result.stdout });
       return { exitCode: result.exitCode ?? 0, timedOut: false, signal: null };
     },

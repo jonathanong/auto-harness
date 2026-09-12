@@ -61,6 +61,12 @@ describe("user session listing", () => {
       }),
       expect.objectContaining({ id: "viewer-b", username: "bob" }),
     ]);
+    expect(
+      presentUserSessions([
+        { ...alice, connectionId: "viewer-z" },
+        { ...alice, connectionId: "viewer-a" },
+      ]).map((session) => session.id),
+    ).toEqual(["viewer-a", "viewer-z"]);
   });
 
   it("reads durable viewer sockets from storage instead of the host connection cache", async () => {

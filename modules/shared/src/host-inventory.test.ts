@@ -36,6 +36,25 @@ describe("host-inventory", () => {
     expect(inv.setupScript).toBe("source ~/.zshrc");
   });
 
+  it("clones a host-wide update config through unrelated mutations", () => {
+    const seeded = updateHostSetupScript(
+      {
+        repositories: [],
+        providerAccounts: [],
+        updateConfig: { enabled: true, manifestUrl: "https://example.test/m", publicKey: "k" },
+      },
+      "source ~/.zshrc",
+    );
+    expect(seeded.updateConfig).toEqual({
+      enabled: true,
+      manifestUrl: "https://example.test/m",
+      publicKey: "k",
+    });
+    const next = updateHostAllowedRoots(seeded, ["/opt/harness"]);
+    expect(next.updateConfig).toEqual(seeded.updateConfig);
+    expect(next.updateConfig).not.toBe(seeded.updateConfig);
+  });
+
   it("updates and clears host-local allowed roots", () => {
     let inv = updateHostAllowedRoots(null, ["/opt/harness"]);
     expect(inv.allowedRoots).toEqual(["/opt/harness"]);

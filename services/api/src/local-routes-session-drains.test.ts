@@ -10,6 +10,7 @@ import {
   type SessionDrainRecord,
 } from "./db/plane-storage-session-drains.ts";
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
@@ -325,5 +326,98 @@ describe("session drain route outcomes", () => {
     expect((await invoke("POST", `${operation}/release`, author.apiKey)).status).toBe(200);
     expect((await invoke("POST", operation, author.apiKey)).status).toBe(404);
     expect(storage!.standaloneAudits).toEqual([]);
+  });
+
+  it("rejects anonymous and read-only drain requests", async () => {
+    const plane = new ControlPlane();
+    await expect(
+      invokeHandler(
+        (req, res) =>
+          handleSessionDrainRoutes({
+            plane,
+            req,
+            res,
+            url: new URL("/api/v1/repositories/repo/session-drains", "http://localhost"),
+            method: "POST",
+          }),
+        "POST",
+        "/api/v1/repositories/repo/session-drains",
+      ),
+    ).resolves.toMatchObject({
+      status: 401,
+      json: { error: { code: "UNAUTHORIZED" } },
+    });
+    await expect(
+      invokeHandler(
+        (req, res) =>
+          handleSessionDrainRoutes({
+            plane,
+            req,
+            res,
+            url: new URL("/api/v1/repositories/repo/session-drains", "http://localhost"),
+            method: "POST",
+            principal: {
+              id: "user:viewer",
+              username: "viewer",
+              kind: "user",
+              role: "read-only",
+            },
+          }),
+        "POST",
+        "/api/v1/repositories/repo/session-drains",
+      ),
+    ).resolves.toMatchObject({
+      status: 404,
+      json: { error: { code: "NOT_FOUND" } },
+    });
+  });
+
+  it("includes completed, released, and failure fields on a drain status", async () => {
+    const plane = new ControlPlane();
+    plane.getSessionDrainDurable = async () =>
+      ({
+        operationId: "drain-1",
+        repositoryId: "repo",
+        principalId: "user:author",
+        status: "failed",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:01:00.000Z",
+        deadlineAt: "2026-01-01T00:05:00.000Z",
+        queuedCount: 0,
+        runningCount: 0,
+        cancelledCount: 1,
+        completedAt: "2026-01-01T00:01:00.000Z",
+        releasedAt: "2026-01-01T00:02:00.000Z",
+        failureCode: "TIMEOUT",
+      }) as never;
+    await expect(
+      invokeHandler(
+        (req, res) =>
+          handleSessionDrainRoutes({
+            plane,
+            req,
+            res,
+            url: new URL("/api/v1/repositories/repo/session-drains/drain-1", "http://localhost"),
+            method: "GET",
+            principal: {
+              id: "user:author",
+              username: "author",
+              kind: "user",
+              role: "author",
+              allowedRepositoryIds: ["repo"],
+            },
+          }),
+        "GET",
+        "/api/v1/repositories/repo/session-drains/drain-1",
+      ),
+    ).resolves.toMatchObject({
+      status: 200,
+      json: {
+        operationId: "drain-1",
+        completedAt: "2026-01-01T00:01:00.000Z",
+        releasedAt: "2026-01-01T00:02:00.000Z",
+        failureCode: "TIMEOUT",
+      },
+    });
   });
 });

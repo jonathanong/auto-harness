@@ -33,6 +33,21 @@ describe("primary list page states", () => {
     expect(html).not.toContain('data-pw="sessions-table"');
   });
 
+  it("maps repository and host catalogs onto the sessions filter controls", async () => {
+    stubApi({
+      "/api/v1/sessions?limit=50": {
+        items: [{ id: "session-1", status: "queued", repositoryId: "repo-1" }],
+        nextCursor: null,
+      },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Alpha" }] },
+      "/api/v1/hosts?limit=100": { items: [{ hostId: "host-z" }, { hostId: "host-a" }] },
+    });
+    const html = await renderPage(SessionsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="session-row-session-1"');
+    expect(html).toContain('href="/repositories/repo-1"');
+    expect(html).toContain("Alpha");
+  });
+
   it("keeps session rows with repository id fallback when the catalog is unavailable", async () => {
     stubApi({
       "/api/v1/sessions?limit=50": {

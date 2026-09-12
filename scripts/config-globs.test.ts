@@ -46,9 +46,11 @@ describe("config file globs", () => {
       /thresholds:[\s\S]*?\? undefined\s*:\s*\{([\s\S]*?)"services\/host-daemon/,
     )?.[1];
     expect(aggregateThresholds).toBeDefined();
-    for (const metric of ["lines", "branches", "functions", "statements"]) {
+    for (const metric of ["lines", "functions", "statements"]) {
       expect(aggregateThresholds).toMatch(new RegExp(`\\b${metric}: 99,`));
     }
+    // Vitest 4 remapping: 98 until the Vitest 5 follow-up restores 99.
+    expect(aggregateThresholds).toMatch(/\bbranches: 98,/);
   });
 
   it("uses a scripts/*.mts glob for knip root entries", () => {

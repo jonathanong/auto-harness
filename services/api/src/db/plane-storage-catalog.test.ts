@@ -692,6 +692,73 @@ describe("durable schedule creation", () => {
     expect(calls).toBe(1);
   });
 
+  it("returns a live concurrency holder and releases a stale lock", async () => {
+    const lockFailure = {
+      name: "TransactionCanceledException",
+      CancellationReasons: [
+        { Code: "None" },
+        { Code: "None" },
+        { Code: "None" },
+        { Code: "None" },
+        { Code: "None" },
+        { Code: "ConditionalCheckFailed" },
+      ],
+    };
+    const queued = {
+      id: "holder",
+      repositoryId: "repo-1",
+      prompt: "scheduled",
+      target: { commandId: "command-1" },
+      fallbacks: [],
+      targetDisplayNames: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "later",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "queued" as const,
+      queueShard: 0,
+      createdAt: "now",
+      concurrencyId: "schedule-1",
+    };
+    const fire = async (lockItem: Record<string, unknown> | undefined, status: string) => {
+      const ctx: PlaneStorageCtx = {
+        doc: {
+          send: async (command: unknown) => {
+            if (command instanceof GetCommand) {
+              if (command.input.TableName === "Locks") {
+                return lockItem ? { Item: lockItem } : {};
+              }
+              return { Item: { ...queued, status } };
+            }
+            if (command instanceof TransactWriteCommand) throw lockFailure;
+            return {};
+          },
+        } as never,
+        tables: {
+          schedules: "Schedules",
+          concurrencyLocks: "Locks",
+          repositories: "Repositories",
+          sessions: "Sessions",
+        } as never,
+      };
+      return await tryClaimScheduleAndCreateSession(ctx, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "2026-01-01T00:00:00.000Z",
+        newNextRunAt: "2026-01-01T00:01:00.000Z",
+        lastRunAt: "2026-01-01T00:00:00.000Z",
+        session: queued,
+      });
+    };
+
+    await expect(fire({ sessionId: "holder" }, "queued")).resolves.toEqual({
+      kind: "duplicate",
+      session: expect.objectContaining({ id: "holder", status: "queued" }),
+    });
+    await expect(fire({ sessionId: "holder" }, "completed")).resolves.toEqual({ kind: "lost" });
+    await expect(fire(undefined, "queued")).resolves.toEqual({ kind: "lost" });
+  });
+
   it("reports a repository admission fence loss", async () => {
     const ctx = scheduleCtx(async () => {
       throw {
@@ -1182,6 +1249,26 @@ describe("session log ttl", () => {
       }),
     ).rejects.toBe(missingName);
     expect(missingNameSend).toHaveBeenCalledOnce();
+
+    const primitiveSend = vi.fn().mockRejectedValue("unavailable");
+    await expect(
+      putLogFenced(logCtx(primitiveSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe("unavailable");
+    const nullSend = vi.fn().mockRejectedValue(null);
+    await expect(
+      putLogFenced(logCtx(nullSend), fencedRec, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toBeNull();
+    const otherName = { name: "ProvisionedThroughputExceededException" };
+    const otherNameSend = vi.fn().mockRejectedValue(otherName);
+    await expect(
+      putLogFenced(logCtx(otherNameSend), fencedRec, {
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).rejects.toBe(otherName);
   });
 
   it("bounds repeated fenced-write transaction conflicts", async () => {

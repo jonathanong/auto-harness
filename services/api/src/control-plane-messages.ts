@@ -454,8 +454,6 @@ export function handleHostMessage(
         { type: "ack", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
         plannerContext(state, "local"),
       );
-      const rejected = transitionEffect(plan, "reject");
-      if (rejected) return { ok: false, error: rejected.error };
       if (!transitionEffect(plan, "ack")) return { ok: true };
       session.ackReceivedAt = state.now();
       state.pendingAcks.delete(msg.sessionId);
@@ -740,8 +738,6 @@ export async function handleHostMessageDurable(
       { type: "ack", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
       plannerContext(state, "durable"),
     );
-    const rejected = transitionEffect(plan, "reject");
-    if (rejected) return { ok: false, error: rejected.error };
     state.sessions.set(msg.sessionId, session);
     if (!transitionEffect(plan, "ack")) return { ok: true };
     const acknowledgedAt = state.now();

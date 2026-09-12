@@ -114,6 +114,18 @@ describe("host detail route", () => {
     expect(html).not.toContain('data-pw="host-detail-lookup-error"');
   });
 
+  it("stringifies a non-Error catalog rejection on the host detail page", async () => {
+    stubApi({ ...catalogOk, "/api/v1/repositories": "__throw_string__" });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "repositories" }),
+      }),
+    );
+    expect(html).toContain('data-pw="host-repositories-catalog-error"');
+    expect(html).toContain("offline");
+  });
+
   it("surfaces a live-worktree-status failure alongside the attached hierarchy", async () => {
     stubApi({ ...catalogOk, "/api/v1/worktrees": jsonResponse({}, 500) });
     const html = await renderPage(

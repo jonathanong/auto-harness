@@ -1,12 +1,20 @@
 /* eslint-disable max-lines -- startup runtime coverage shares one daemon harness. */
 import { createServer } from "node:http";
+import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawnSync: vi.fn(() => ({ status: 0, stderr: "" })) };
+});
+
 import { emptyDaemonConfig } from "./bootstrap.ts";
+import { DaemonLoop } from "./daemon-loop.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
 import { startDaemon } from "./start-daemon.ts";
+import * as updaterRuntime from "./agent-updater-runtime.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -143,6 +151,35 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 
+  it("records a successful keepalive send timestamp", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const keepalive = vi.spyOn(DaemonLoop.prototype, "keepalive").mockResolvedValue(true);
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-keepalive-sent",
+      apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+    });
+    const daemon = await startDaemon({ config, log: (line) => lines.push(line) });
+    try {
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(keepalive).toHaveBeenCalled();
+      expect(
+        lines.some(
+          (line) =>
+            line.startsWith("daemon liveness:") &&
+            line.includes("last keepalive sent=") &&
+            !line.includes("none yet"),
+        ),
+      ).toBe(true);
+    } finally {
+      keepalive.mockRestore();
+      daemon.loop.stop();
+      await harness.close();
+    }
+  });
+
   it("keeps the legacy install root when host update config moves its staging root", async () => {
     const harness = await acceptingServer();
     const { config, cleanup } = await makeRepo();
@@ -200,6 +237,100 @@ describe("startDaemon runtime wiring", () => {
       await daemon.stop();
     } finally {
       cleanup();
+      await harness.close();
+    }
+  });
+
+  it("selects the Windows restart handoff from process.platform", async () => {
+    const harness = await acceptingServer();
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const daemon = await startDaemon({
+        config: emptyDaemonConfig({
+          hostId: "host-win32",
+          apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+        }),
+        runUntil: Promise.resolve(),
+      });
+      expect(daemon.loop.inflightCount()).toBe(0);
+    } finally {
+      if (descriptor) Object.defineProperty(process, "platform", descriptor);
+      await harness.close();
+    }
+  });
+
+  it("acknowledges systemd registration readiness on a privileged Linux service", async () => {
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as never);
+    try {
+      await startDaemon({
+        config: emptyDaemonConfig({
+          hostId: "host-systemd",
+          apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+        }),
+        childEnvSource: { NOTIFY_SOCKET: "/run/systemd/notify" },
+        updateService: {
+          env: { NOTIFY_SOCKET: "/run/systemd/notify" },
+          platform: "linux",
+          log: () => undefined,
+          error: () => undefined,
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        },
+        log: (line) => lines.push(line),
+        runUntil: Promise.resolve(),
+      });
+      expect(lines).toContain("systemd registration readiness acknowledged");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("stringifies primitive updater health and rollback failures", async () => {
+    const harness = await acceptingServer();
+    const notify = vi.spyOn(updaterRuntime, "notifySystemdReady").mockImplementation(() => {
+      throw "ack-offline";
+    });
+    const recover = vi
+      .spyOn(updaterRuntime, "recoverDaemonUpdateBoot")
+      .mockRejectedValue("rollback-offline");
+    try {
+      await expect(
+        startDaemon({
+          config: emptyDaemonConfig({
+            hostId: "host-ack-string",
+            apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+          }),
+          updateBootPrepared: true,
+        }),
+      ).rejects.toThrow("updater health acknowledgement failed: ack-offline; rollback-offline");
+    } finally {
+      notify.mockRestore();
+      recover.mockRestore();
+      await harness.close();
+    }
+  });
+
+  it("stringifies a primitive updater construction failure", async () => {
+    const harness = await acceptingServer();
+    const errors: string[] = [];
+    const create = vi.spyOn(updaterRuntime, "createDaemonUpdater").mockImplementation(() => {
+      throw "updater-offline";
+    });
+    try {
+      const daemon = await startDaemon({
+        config: emptyDaemonConfig({
+          hostId: "host-updater-string",
+          apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+        }),
+        error: (line) => errors.push(line),
+        runUntil: Promise.resolve(),
+      });
+      expect(errors).toContain("updater disabled: updater-offline");
+      await daemon.stop();
+    } finally {
+      create.mockRestore();
       await harness.close();
     }
   });

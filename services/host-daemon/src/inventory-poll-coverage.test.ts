@@ -128,4 +128,29 @@ describe("inventory poll boundary coverage", () => {
     ]);
     await stop();
   });
+
+  it("stringifies a non-Error policy drain failure", async () => {
+    vi.useFakeTimers();
+    const errors: string[] = [];
+    const stop = startInventoryPoll({
+      config: emptyDaemonConfig(identity),
+      identity,
+      applyInventory: async () => undefined,
+      pollMs: 10,
+      fetchFn: async () => {
+        throw new HostInventoryPolicyError(new Error("outside root"), ["/safe/root"]);
+      },
+      blockAssignments: async () => {
+        throw "drain-offline";
+      },
+      log: () => undefined,
+      error: (line) => errors.push(line),
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(errors).toEqual([
+      "inventory policy drain failed: drain-offline",
+      "inventory poll failed: host inventory violates its allowed-roots policy: outside root",
+    ]);
+    await stop();
+  });
 });

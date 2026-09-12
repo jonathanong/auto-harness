@@ -99,6 +99,10 @@ describe("host session live detail", () => {
       view.container.querySelector('[data-pw="session-live-state-error"]')?.textContent,
     ).toContain("refresh paused");
     expect(vi.getTimerCount()).toBeGreaterThan(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     view.unmount();
   });
 

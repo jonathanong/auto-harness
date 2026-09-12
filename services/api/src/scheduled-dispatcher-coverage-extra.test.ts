@@ -160,4 +160,28 @@ describe("scheduled dispatcher coverage edges", () => {
       items: [{ sessionId: "run", worktreeId: null, hostId: "host" }],
     });
   });
+
+  it("maps both worktree and scheduled assignments from the assign route", async () => {
+    const plane = new ControlPlane();
+    plane.assignQueuedDurable = async () =>
+      [
+        {
+          session: { id: "queued" },
+          worktree: { id: "wt-1", hostId: "host-a" },
+        },
+      ] as never;
+    plane.assignScheduledQueuedDurable = async () =>
+      [{ session: { id: "scheduled" }, hostId: "host-b" }] as never;
+    const { handler } = createLocalApp({ plane });
+    const response = await invokeHandler(handler, "POST", "/api/v1/scheduler/assign");
+    expect(response).toMatchObject({
+      status: 200,
+      json: {
+        items: [
+          { sessionId: "queued", worktreeId: "wt-1", hostId: "host-a" },
+          { sessionId: "scheduled", worktreeId: null, hostId: "host-b" },
+        ],
+      },
+    });
+  });
 });

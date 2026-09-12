@@ -74,6 +74,14 @@ describe("WorktreeManager", () => {
     expect(git.ensureWorktree).toHaveBeenCalled();
   });
 
+  it("restores an inactive allowed-roots policy without retaining previous roots", () => {
+    const mgr = new WorktreeManager(config, fakeGit());
+    mgr.restoreAllowedRootsPolicy({ active: true, roots: ["/safe"] });
+    expect(mgr.getAllowedRootsPolicy()).toEqual({ active: true, roots: ["/safe"] });
+    mgr.restoreAllowedRootsPolicy({ active: false, roots: ["/ignored"] });
+    expect(mgr.getAllowedRootsPolicy()).toEqual({ active: false, roots: [] });
+  });
+
   it("validates a candidate that explicitly clears retained allowed roots", async () => {
     const root = join(tmpdir(), `ah-candidate-clear-roots-${String(Date.now())}`);
     fixtures.push(root);
@@ -525,5 +533,228 @@ describe("WorktreeManager", () => {
       "host inventory changed after this checkout was claimed",
     );
     expect(git.checkoutRef).not.toHaveBeenCalled();
+  });
+
+  it("retries a claim when inventory generation changes during path validation", async () => {
+    const root = join(tmpdir(), `ah-claim-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) manager.noteInventoryChange();
+      return original(row, cwd);
+    };
+    const claimed = await manager.claim("repo-1", "wt-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(worktree));
+    manager.release("wt-1");
+  });
+
+  it("retries mainClaim after a path-validation error races with inventory refresh", async () => {
+    const root = join(tmpdir(), `ah-main-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    await mkdir(repository, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [{ id: "repo-1", path: repository, defaultBranch: "main", worktrees: [] }],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) {
+        manager.noteInventoryChange();
+        throw new Error("stale path");
+      }
+      return original(row, cwd);
+    };
+    const claimed = await manager.mainClaim("repo-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(repository));
+  });
+
+  it("revalidates a main checkout after inventory generation changes", async () => {
+    const mgr = new WorktreeManager(structuredClone(config), fakeGit());
+    const claimed = await mgr.mainClaim("repo-1");
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+  });
+
+  it("rejects an execution target whose claimed paths moved after inventory refresh", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    cfg.repositories[0]!.worktrees[0]!.path = "/repo/wt-moved";
+    mgr.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "host inventory changed after this checkout was claimed",
+    );
+  });
+
+  it("returns no hook target when the claimed repository disappears", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    cfg.repositories = [];
+    await expect(claimed.currentHookTarget()).resolves.toBeNull();
+  });
+
+  it("retries claim when the live inventory loses the worktree during a generation bump", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const actual = cfg.repositories;
+    let reads = 0;
+    Object.defineProperty(cfg, "repositories", {
+      configurable: true,
+      get() {
+        reads += 1;
+        if (reads === 2) {
+          mgr.noteInventoryChange();
+          return [];
+        }
+        return actual;
+      },
+    });
+    const claimed = await mgr.claim("repo-1", "wt-1");
+    expect(claimed.cwd).toBe("/repo/wt-1");
+    mgr.release("wt-1");
+  });
+
+  it("throws unknown worktree when inventory drops it without a generation bump", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const actual = cfg.repositories;
+    let reads = 0;
+    Object.defineProperty(cfg, "repositories", {
+      configurable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? actual : [{ ...actual[0]!, worktrees: [] }];
+      },
+    });
+    await expect(mgr.claim("repo-1", "wt-1")).rejects.toThrow(/Unknown worktree/);
+  });
+
+  it("retries claim after a path-validation error races with inventory refresh", async () => {
+    const root = join(tmpdir(), `ah-claim-error-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    const worktree = join(repository, "worktree");
+    await mkdir(worktree, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [
+        {
+          id: "repo-1",
+          path: repository,
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: worktree, labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) {
+        manager.noteInventoryChange();
+        throw new Error("stale path");
+      }
+      return original(row, cwd);
+    };
+    const claimed = await manager.claim("repo-1", "wt-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(worktree));
+    manager.release("wt-1");
+  });
+
+  it("retries mainClaim when the repository disappears during a generation bump", async () => {
+    const cfg = structuredClone(config);
+    const mgr = new WorktreeManager(cfg, fakeGit());
+    const actual = cfg.repositories;
+    let reads = 0;
+    Object.defineProperty(cfg, "repositories", {
+      configurable: true,
+      get() {
+        reads += 1;
+        if (reads === 1) {
+          mgr.noteInventoryChange();
+          return [];
+        }
+        return actual;
+      },
+    });
+    expect((await mgr.mainClaim("repo-1")).cwd).toBe("/repo");
+  });
+
+  it("retries mainClaim when inventory generation changes after path validation", async () => {
+    const root = join(tmpdir(), `ah-main-success-generation-${String(Date.now())}`);
+    fixtures.push(root);
+    const repository = join(root, "repository");
+    await mkdir(repository, { recursive: true });
+    const cfg = parseDaemonConfig({
+      hostId: "a1",
+      allowedRoots: [root],
+      repositories: [{ id: "repo-1", path: repository, defaultBranch: "main", worktrees: [] }],
+    });
+    const manager = new WorktreeManager(cfg, fakeGit());
+    const internals = manager as unknown as {
+      assertClaimPaths: (repository: { path: string }, cwd: string) => Promise<unknown>;
+    };
+    const original = internals.assertClaimPaths.bind(manager);
+    let calls = 0;
+    internals.assertClaimPaths = async (row, cwd) => {
+      calls += 1;
+      if (calls === 1) manager.noteInventoryChange();
+      return original(row, cwd);
+    };
+    const claimed = await manager.mainClaim("repo-1");
+    expect(calls).toBeGreaterThan(1);
+    expect(claimed.cwd).toBe(await realpath(repository));
+  });
+
+  it("keeps remaining main waiters when the first queued waiter is aborted", async () => {
+    const mgr = new WorktreeManager(config, fakeGit());
+    expect(await mgr.acquireMain("repo-1")).toBe(true);
+    const first = new AbortController();
+    const second = new AbortController();
+    const canceled = mgr.acquireMain("repo-1", first.signal);
+    const waiting = mgr.acquireMain("repo-1", second.signal);
+    first.abort();
+    await expect(canceled).resolves.toBe(false);
+    mgr.releaseMain("repo-1");
+    await expect(waiting).resolves.toBe(true);
+    mgr.releaseMain("repo-1");
   });
 });

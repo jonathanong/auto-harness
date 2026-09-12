@@ -28,6 +28,7 @@ describe("session log records", () => {
     expect(droppedPrefixLineCount("gone\nkeep\n", "keep\n")).toBe(1);
     expect(droppedPrefixLineCount("one\ntwo\n", "two\nthree\n")).toBe(1);
     expect(droppedPrefixLineCount("alpha", "beta")).toBe(0);
+    expect(droppedPrefixLineCount("gone\n", "")).toBe(1);
     expect(
       droppedItemLineCount(
         [

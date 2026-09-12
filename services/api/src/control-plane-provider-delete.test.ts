@@ -39,6 +39,16 @@ describe("provider deletion", () => {
     expect(deleteProvider(state, provider.id)).toEqual({ ok: true });
     await Promise.all(state.pendingPersists);
     expect(state.providers.get(provider.id)).toEqual(provider);
+
+    const lost = createControlPlaneState();
+    lost.providers.set(provider.id, provider);
+    lost.storage = {
+      deleteProvider: async () => false,
+      getProvider: async () => null,
+    } as never;
+    expect(deleteProvider(lost, provider.id)).toEqual({ ok: true });
+    await Promise.all(lost.pendingPersists);
+    expect(lost.providers.has(provider.id)).toBe(false);
   });
 
   it("guards a durable delete with its owned marker and drops the cache only after storage wins", async () => {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- reconnect, status, and cursor cases share one fake socket. */
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
@@ -153,6 +154,57 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("ignores malformed payloads and merges valid live log lines", async () => {
+    const { view, socket } = await mountLive("session-log", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() => socket.emit("message", { data: "not-json" }));
+    act(() => socket.emit("message", { data: JSON.stringify(["nope"]) }));
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({
+          type: "session:log",
+          timestampSeq: "ts-1",
+          seq: 1,
+          stream: "stdout",
+          content: "hello from pty",
+          timestamp: "2026-01-01T00:00:00.000Z",
+        }),
+      }),
+    );
+    expect(view.container.textContent).toContain("hello from pty");
+    view.unmount();
+  });
+
+  it("stops reconnecting after a terminal viewer error", async () => {
+    const { view, socket } = await mountLive("session-missing", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "NOT_FOUND" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain(
+      "unavailable for this session",
+    );
+    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
+    act(() => socket.emit("close", { code: 1000 }));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    view.unmount();
+  });
+
+  it("pauses and reconnects after a non-terminal viewer error", async () => {
+    const { view, socket } = await mountLive("session-busy", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "UNAVAILABLE" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain("reconnecting");
+    expect(socket.close).toHaveBeenCalledWith(1011, "viewer error");
+    view.unmount();
+  });
+
   it("ignores a stale queued status after the session has finished", async () => {
     const { view, socket } = await mountLive("session-stale", "failed");
     emitStatus(socket, "session:subscribed", "failed");
@@ -160,5 +212,65 @@ describe("SessionLiveLogs status display", () => {
     expect(field(view.container, "session-logs-live-state").textContent).toBe("failed");
     expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
     view.unmount();
+  });
+
+  it("resumes from the last live cursor and ignores subscribe frames without a status", async () => {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const view = mountForm(
+      <SessionLiveLogs
+        sessionId="session-cursor"
+        initialItems={[
+          {
+            timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+            seq: 1,
+            stream: "stdout",
+            content: "seed",
+            timestamp: "2026-01-01T00:00:00.000Z",
+          },
+        ]}
+        initialStatus="running"
+      />,
+    );
+    await settle();
+    const socket = FakeWebSocket.instances[0]!;
+    act(() => socket.emit("open"));
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "session:subscribe",
+        sessionId: "session-cursor",
+        after: "2026-01-01T00:00:00.000Z#0000000001",
+      }),
+    );
+    act(() => socket.emit("message", { data: JSON.stringify({ type: "session:subscribed" }) }));
+    expect(field(view.container, "session-logs-live-state").textContent).toContain("Live");
+    view.unmount();
+  });
+
+  it("does not connect after unmount while a viewer ticket is in flight", async () => {
+    let resolveTicket:
+      | ((value: { ok: true; json: () => Promise<{ ticket: string }> }) => void)
+      | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          await new Promise((resolve) => {
+            resolveTicket = resolve;
+          }),
+      ),
+    );
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const view = mountForm(
+      <SessionLiveLogs sessionId="session-unmount" initialItems={[]} initialStatus="running" />,
+    );
+    await settle();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    view.unmount();
+    await act(async () =>
+      resolveTicket?.({ ok: true, json: async () => ({ ticket: "late-ticket" }) }),
+    );
+    expect(FakeWebSocket.instances).toHaveLength(0);
   });
 });

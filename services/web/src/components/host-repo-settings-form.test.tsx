@@ -222,12 +222,38 @@ describe("HostRepoSettingsForm", () => {
     expect(field(document, "repo-settings-error-repo-1").textContent).toContain("denied");
     view.unmount();
 
+    const thrown: Mutation = vi.fn(async () => {
+      throw "repo-offline";
+    }) as Mutation;
+    const thrownView = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={thrown} />,
+    );
+    press(field(thrownView.container, "repo-settings-open-repo-1"));
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain("repo-offline");
+    thrownView.unmount();
+
     const hidden = mountForm(
       <HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig={false} />,
     );
     press(field(hidden.container, "repo-settings-open-repo-1"));
     expect(document.querySelector('[data-pw="repo-settings-setup-repo-1"]')).toBeNull();
     hidden.unmount();
+  });
+
+  it("treats a missing required-environment control as an empty list", async () => {
+    const persistence = inMemoryInventory(inventory);
+    const view = mountForm(
+      <HostRepoSettingsForm hostId="host" repo={repo} mutate={persistence.mutate} />,
+    );
+    press(field(view.container, "repo-settings-open-repo-1"));
+    field(document, "repo-settings-required-environment-repo-1")?.removeAttribute("name");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(persistence.mutate).toHaveBeenCalled();
+    view.unmount();
   });
 
   it("rejects invalid required environment names before saving", () => {

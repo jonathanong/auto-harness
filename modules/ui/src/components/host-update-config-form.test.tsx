@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type HostUpdateConfig, type mutateHostUpdateConfig } from "@auto-harness/shared";
 
@@ -152,5 +152,58 @@ describe("HostUpdateConfigForm", () => {
     await submit(field(thrown.container, "form-host-update-config"));
     expect(field(document.body, "host-update-config-error").textContent).toBe("network down");
     thrown.unmount();
+
+    const thrownValue = mount(
+      <HostUpdateConfigForm
+        hostId="host"
+        updateConfig={updateConfig}
+        mutateUpdate={async () => {
+          throw "network-string";
+        }}
+        canWriteExecConfig
+      />,
+    );
+    await submit(field(thrownValue.container, "form-host-update-config"));
+    expect(field(document.body, "host-update-config-error").textContent).toBe("network-string");
+    thrownValue.unmount();
+  });
+
+  it("omits a blank daemon version and ignores prop refreshes while dirty", async () => {
+    let saved: HostUpdateConfig | undefined;
+    function Harness() {
+      const [config, setConfig] = useState(updateConfig);
+      return (
+        <>
+          <button
+            type="button"
+            data-pw="refresh-config"
+            onClick={() => setConfig({ ...updateConfig, daemonVersion: "9.9.9" })}
+          >
+            Refresh
+          </button>
+          <HostUpdateConfigForm
+            hostId="host"
+            updateConfig={config}
+            mutateUpdate={async (_hostId, next) => {
+              saved = next;
+              return { ok: true };
+            }}
+            canWriteExecConfig
+          />
+        </>
+      );
+    }
+    const view = mount(<Harness />);
+    setValue(field(view.container, "host-update-daemon-version"), "");
+    await submit(field(view.container, "form-host-update-config"));
+    expect(saved).toMatchObject({ enabled: true });
+    expect(saved).not.toHaveProperty("daemonVersion");
+
+    setValue(field(view.container, "host-update-daemon-version"), "typed");
+    press(field(view.container, "refresh-config"));
+    expect(field<HTMLInputElement>(view.container, "host-update-daemon-version").value).toBe(
+      "typed",
+    );
+    view.unmount();
   });
 });

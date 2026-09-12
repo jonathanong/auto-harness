@@ -118,4 +118,20 @@ describe("ScheduleCreateForm", () => {
     );
     view.unmount();
   });
+
+  it("defaults missing schedule fields to empty strings", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "schedule/empty" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<ScheduleCreateForm targets={targets} repositories={repositories} />);
+    fill(view);
+    field(view.container, "schedule-repository-id").removeAttribute("name");
+    field(view.container, "schedule-prompt").removeAttribute("name");
+    submit(field(view.container, "form-create-schedule"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      repositoryId: "",
+      prompt: "",
+    });
+    view.unmount();
+  });
 });

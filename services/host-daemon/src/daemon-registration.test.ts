@@ -28,6 +28,12 @@ describe("daemon registration", () => {
         hostId: "h",
         repositories: [
           {
+            id: "r2",
+            path: "/repo-2",
+            defaultBranch: "main",
+            worktrees: [],
+          },
+          {
             id: "r",
             path: "/repo",
             defaultBranch: "main",
@@ -59,7 +65,10 @@ describe("daemon registration", () => {
           maxConcurrentAssignments: 64,
         },
         providerAccountReadiness: [],
-        repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
+        repositories: [
+          { id: "r", path: "/repo", defaultBranch: "main" },
+          { id: "r2", path: "/repo-2", defaultBranch: "main" },
+        ],
         protocolVersion: HOST_PROTOCOL_VERSION,
         runningSessions: ["a", "z"],
         runningAttempts: [

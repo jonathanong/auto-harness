@@ -89,4 +89,43 @@ describe("ProviderUsageRatesForm", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     view.unmount();
   });
+
+  it("uses the clear-rates fallback when fetch rejects a non-Error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
+    const view = mountForm(<ProviderUsageRatesForm provider={provider} />);
+    await act(async () => {
+      field(document, "provider-usage-rates-clear").click();
+      await Promise.resolve();
+    });
+    expect(field(document, "provider-usage-rates-error").textContent).toBe(
+      "Could not clear provider usage rates",
+    );
+    view.unmount();
+  });
+
+  it("treats unnamed usage-rate controls as empty strings", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ProviderUsageRatesForm provider={{ ...provider, usageRates: undefined }} />,
+    );
+    field(document, "provider-usage-rates-currency").removeAttribute("name");
+    for (const key of [
+      "inputTokenMicros",
+      "outputTokenMicros",
+      "cachedInputTokenMicros",
+      "reasoningTokenMicros",
+    ]) {
+      field(document, `provider-usage-rates-${key}`).removeAttribute("name");
+    }
+    submit(field(document, "form-provider-usage-rates"));
+    await act(async () => Promise.resolve());
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/providers/provider%2Fone",
+      expect.objectContaining({
+        body: JSON.stringify({ usageRates: null }),
+      }),
+    );
+    view.unmount();
+  });
 });

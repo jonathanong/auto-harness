@@ -26,6 +26,15 @@ describe("withTimeout", () => {
     }
   });
 
+  it("still settles when the injected setTimeout never yields a handle", async () => {
+    const timers = {
+      setTimeout: (() => undefined) as unknown as typeof setTimeout,
+      clearTimeout: vi.fn() as typeof clearTimeout,
+    };
+    await expect(withTimeout(Promise.resolve("ok"), 1_000, "too slow", timers)).resolves.toBe("ok");
+    expect(timers.clearTimeout).not.toHaveBeenCalled();
+  });
+
   it("clears its timer once the promise settles, using an injected timers seam", async () => {
     let cleared = false;
     const fakeTimer = { unref: () => undefined } as unknown as ReturnType<typeof setTimeout>;

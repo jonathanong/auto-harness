@@ -56,6 +56,8 @@ describe("schedule pages", () => {
         items: [
           { id: "repo-2", name: "Zebra" },
           { id: "repo-1", name: "Harness" },
+          { id: "repo-b", name: "Same" },
+          { id: "repo-a", name: "Same" },
         ],
       },
     });
@@ -76,6 +78,7 @@ describe("schedule pages", () => {
     expect(html).toContain("edit=schedule%2Fone");
     expect(html).toContain("cursor=page%2Ftwo");
     expect(html.indexOf("Harness")).toBeLessThan(html.indexOf("Zebra"));
+    expect(html.indexOf("repo-a")).toBeLessThan(html.indexOf("repo-b"));
   });
 
   it("loads an explicitly requested edit when the schedules list is briefly stale", async () => {
@@ -197,6 +200,19 @@ describe("schedule pages", () => {
     expect(html).not.toContain('data-pw="schedule-edit-schedule-2"');
   });
 
+  it("hides the empty-state create link without schedule write access", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "required");
+    stubApi({
+      "/api/v1/auth/me": readonlyPrincipal,
+      "/api/v1/schedules": { items: [] },
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
+    });
+    const html = await renderPage(SchedulesPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="schedules-empty"');
+    expect(html).not.toContain('data-pw="schedules-empty-create"');
+  });
+
   it("renders the writable empty state when authentication is disabled", async () => {
     vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
     stubApi({
@@ -208,6 +224,37 @@ describe("schedule pages", () => {
     expect(html).toContain("No schedules configured.");
     expect(html).toContain('data-pw="schedules-empty-create"');
     expect(html).toContain("Add schedule");
+  });
+
+  it("ignores array cursors and omits edit from the next-page link when none is selected", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": {
+        nextCursor: "page/two",
+        items: [
+          {
+            id: "schedule/one",
+            name: "Nightly",
+            repositoryId: "repo-1",
+            targetDisplayNames: ["Claude"],
+            target: { commandId: "cmd" },
+            fallbacks: [],
+            cron: "0 2 * * *",
+            enabled: true,
+            timeout: 900,
+            nextRunAt: "2026-08-24T02:00:00.000Z",
+            lastRunAt: null,
+          },
+        ],
+      },
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Harness" }] },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ cursor: ["page/two"] }) }),
+    );
+    expect(html).toContain('data-pw="pagination-next"');
+    expect(html).toContain('href="/schedules?cursor=page%2Ftwo"');
   });
 
   it("renders schedule detail, history, and writable controls", async () => {

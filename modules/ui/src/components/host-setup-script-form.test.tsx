@@ -381,4 +381,97 @@ describe("HostSetupScriptForm", () => {
     );
     view.unmount();
   });
+
+  it("strips carriage returns from allowed-root lines and skips an unchanged exec form", async () => {
+    let execPatch: HostExecConfigPatch | undefined;
+    const mutateExec: typeof mutateExecConfig = async (_hostId, patch) => {
+      execPatch = patch(current);
+      return { ok: true };
+    };
+    const crlf = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        allowedRoots={[]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(crlf.container, "host-allowed-roots"), "/opt/root\r\n/usr/local");
+    await submit(field(crlf.container, "form-host-setup-script"));
+    expect(execPatch).toEqual({ allowedRoots: ["/opt/root", "/usr/local"] });
+    crlf.unmount();
+
+    execPatch = { setupScript: "should not write" };
+    const unchanged = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupScript="old"
+        allowedRoots={["/opt/harness"]}
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    await submit(field(unchanged.container, "form-host-setup-script"));
+    expect(execPatch).toEqual({ setupScript: "should not write" });
+    unchanged.unmount();
+  });
+
+  it("stringifies thrown non-Error exec and inventory failures", async () => {
+    const exec = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        mutateExec={async () => {
+          throw "exec-offline";
+        }}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(exec.container, "host-setup-script"), "change");
+    await submit(field(exec.container, "form-host-setup-script"));
+    expect(field(document.body, "host-setup-script-error").textContent).toBe("exec-offline");
+    exec.unmount();
+
+    const env = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        requiredEnvironment={["TOKEN"]}
+        mutateInv={async () => {
+          throw "env-offline";
+        }}
+        canWriteExecConfig={false}
+      />,
+    );
+    await submit(field(env.container, "form-host-required-environment"));
+    expect(field(document.body, "host-required-environment-error").textContent).toBe("env-offline");
+    env.unmount();
+  });
+
+  it("keeps a script dirty when it changes during an in-flight save", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateExec: typeof mutateExecConfig = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        setupScript="old"
+        mutateExec={mutateExec}
+        canWriteExecConfig
+        canWriteInventory={false}
+      />,
+    );
+    setValue(field(view.container, "host-setup-script"), "submitted");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(resolveSave).toBeDefined();
+    setValue(field(view.container, "host-setup-script"), "typed-while-pending");
+    await act(async () => resolveSave?.({ ok: true }));
+    expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe(
+      "typed-while-pending",
+    );
+    view.unmount();
+  });
 });

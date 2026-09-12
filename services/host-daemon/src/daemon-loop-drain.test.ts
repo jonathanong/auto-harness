@@ -24,6 +24,8 @@ describe("DaemonLoop drain", () => {
       await loop.start();
       const draining = loop.beginDrain();
       expect(loop.isDraining()).toBe(false);
+      transport.deliver({ type: "host:draining", hostId: "other-host" });
+      expect(loop.isDraining()).toBe(false);
       transport.deliver({ type: "host:draining", hostId: config.hostId });
       await draining;
       expect(loop.isDraining()).toBe(true);
@@ -48,6 +50,11 @@ describe("DaemonLoop drain", () => {
       });
       expect(logs.some((l) => l.includes("cancel"))).toBe(true);
       await loop.resumeFromDrain();
+      expect(loop.isDraining()).toBe(false);
+      const pendingDrain = loop.beginDrain();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await loop.resumeFromDrain();
+      await pendingDrain;
       expect(loop.isDraining()).toBe(false);
       // unknown wire type ignored
       transport.deliver({ type: "ping" } as never);

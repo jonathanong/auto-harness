@@ -47,6 +47,60 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getHeartbeatStaleMs()).toBeLessThan(3600 * 1000);
   });
 
+  it("dedupes a session reclaimed from two stale worktrees on the same host", () => {
+    const plane = new ControlPlane({
+      heartbeatStaleMs: 1,
+      now: () => "2026-01-01T00:00:00.000Z",
+      connectionIdFactory: () => "conn-dup",
+    });
+    plane.state.connections.set("conn-dup", {
+      connectionId: "conn-dup",
+      type: "host",
+      hostId: "host-dup",
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+      capabilities: [],
+      commandProfiles: [],
+      repositoryIds: ["repo-1"],
+    });
+    plane.state.hostConnection.set("host-dup", "conn-dup");
+    plane.state.sessions.set("sess-dup", {
+      id: "sess-dup",
+      repositoryId: "repo-1",
+      prompt: "p",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-01-01T01:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      hostId: "host-dup",
+      worktreeId: "wt-a",
+    } as never);
+    for (const id of ["wt-a", "wt-b"]) {
+      plane.state.worktrees.set(id, {
+        id,
+        name: id,
+        hostId: "host-dup",
+        repositoryId: "repo-1",
+        path: `/${id}`,
+        labels: [],
+        status: "busy",
+        online: true,
+        currentSessionId: "sess-dup",
+      });
+    }
+    expect(plane.reclaimStaleHosts(Date.parse("2026-01-01T00:00:00.000Z") + 2)).toEqual([
+      "sess-dup",
+    ]);
+  });
+
   it("dispatches the next local session after a terminal host report", async () => {
     let nextId = 0;
     const plane = new ControlPlane({

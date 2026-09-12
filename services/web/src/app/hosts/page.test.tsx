@@ -137,6 +137,13 @@ describe("hosts fleet route", () => {
     });
     const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("fleet unavailable");
+
+    stubApi({
+      "/api/v1/hosts": "__throw_string__",
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    expect(await renderPage(HostsPage({ searchParams: Promise.resolve({}) }))).toContain("offline");
   });
 
   it("keeps host management available when worktree details fail", async () => {

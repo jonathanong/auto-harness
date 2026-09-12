@@ -143,12 +143,18 @@ describe("getInventory / putInventory", () => {
       return new Response("", { status: 200 });
     }) as typeof fetch;
     try {
+      const updateConfig = {
+        enabled: true,
+        manifestUrl: "https://example.test/manifest.json",
+        publicKey: "key",
+      };
       await expect(
         putExecConfig(
           "host-1",
           {
             setupScript: "echo",
             allowedRoots: ["/opt/harness"],
+            updateConfig,
             repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
           },
           3,
@@ -158,6 +164,7 @@ describe("getInventory / putInventory", () => {
       expect(sent.body).toEqual({
         setupScript: "echo",
         allowedRoots: ["/opt/harness"],
+        updateConfig,
         repositories: [{ id: "repo", terminalHookScript: "/opt/harness/hook.sh" }],
         version: 3,
       });

@@ -134,4 +134,37 @@ describe("bounded assignment readiness", () => {
       { providerAccountId: "fallback", ready: true },
     ]);
   });
+
+  it("ignores viewer, unregistered, and missing sockets while hydrating an assignment connection", async () => {
+    const state = createControlPlaneState({ shardCount: 1 });
+    state.storage = {
+      getConnection: async (connectionId: string) => {
+        if (connectionId === "viewer") {
+          return {
+            connectionId: "viewer",
+            type: "client",
+            hostId: "viewer",
+            connectedAt: "now",
+            lastHeartbeatAt: "now",
+          };
+        }
+        if (connectionId === "pending") {
+          return {
+            connectionId: "pending",
+            type: "host",
+            hostId: "pending-host",
+            connectedAt: "now",
+            lastHeartbeatAt: "now",
+            registered: false,
+          };
+        }
+        return null;
+      },
+    } as never;
+    await hydrateAssignmentConnectionDurable(state, "viewer");
+    await hydrateAssignmentConnectionDurable(state, "pending");
+    await hydrateAssignmentConnectionDurable(state, "missing");
+    expect(state.connections.size).toBe(0);
+    expect(state.hostConnection.size).toBe(0);
+  });
 });

@@ -1662,4 +1662,67 @@ describe("provider account execution-profile leases", () => {
       "matching",
     ]);
   });
+
+  it("falls back to the in-memory session map when durable host listing is unavailable", async () => {
+    const state = createControlPlaneState();
+    state.storage = {} as never;
+    state.sessions.set("matching", {
+      id: "matching",
+      status: "timed_out",
+      timedOutHostId: "host",
+    } as never);
+    state.sessions.set("running", {
+      id: "running",
+      status: "running",
+      timedOutHostId: "host",
+    } as never);
+    await expect(releaseTimedOutProviderAccountLeasesForHost(state, "host")).resolves.toEqual([
+      "matching",
+    ]);
+  });
+
+  it("records an empty host id when a leftover durable lease has no session host", async () => {
+    const account = {
+      id: "acct",
+      providerId: "provider",
+      label: "acct",
+      maxConcurrentSessions: 1,
+    };
+    const state = createControlPlaneState();
+    state.providerAccounts.set("acct", account as never);
+    const terminal = {
+      id: "terminal",
+      repositoryId: "repo",
+      status: "failed",
+      attemptId: "attempt",
+      providerAccountLease: {
+        concurrencyId: "provider-lease:acct:0",
+        providerAccountId: "acct",
+        slot: 0,
+        attemptId: "attempt",
+      },
+    };
+    state.sessions.set("terminal", terminal as never);
+    const leftover = {
+      sessionId: "terminal",
+      attemptId: "attempt",
+      slot: 0,
+      providerAccountId: "acct",
+      concurrencyId: "provider-lease:acct:0",
+    };
+    const getLock = vi.fn().mockResolvedValueOnce(leftover).mockResolvedValueOnce(leftover);
+    state.storage = {
+      getProviderAccount: async () => account,
+      getProviderAccountLeaseLock: getLock,
+      getSession: async () => ({ ...terminal, hostId: undefined }),
+      forceReleaseProviderAccountLease: async () => true,
+    } as never;
+    await expect(forceReleaseProviderAccountLease(state, "acct", 0)).resolves.toMatchObject({
+      ok: true,
+      result: { released: true },
+    });
+    expect(state.providerAccountLeases.get("provider-lease:acct:0")).toMatchObject({
+      hostId: "",
+    });
+  });
 });

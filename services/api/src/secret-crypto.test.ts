@@ -12,6 +12,9 @@ describe("KMS integration secrets", () => {
   it("requires a key and sends its stable encryption context on encryption and decryption", async () => {
     vi.stubEnv("KMS_KEY_ID", "");
     expect(() => new KmsSecretEncryptor()).toThrow("KMS_KEY_ID");
+    vi.unstubAllEnvs();
+    delete process.env.KMS_KEY_ID;
+    expect(() => new KmsSecretEncryptor()).toThrow("KMS_KEY_ID");
     let calls = 0;
     const client = {
       send: async () =>

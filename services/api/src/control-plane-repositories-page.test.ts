@@ -39,6 +39,12 @@ describe("listRepositoriesPage", () => {
   it("exposes in-memory repository pages through the control-plane facade", () => {
     const plane = makePlane();
 
+    expect(plane.listRepositoriesPage().items.map(({ id }) => id)).toEqual([
+      "repository-a",
+      "repository-b",
+      "repository-c",
+      "repository-d",
+    ]);
     expect(plane.listRepositoriesPage({ limit: 1 })).toMatchObject({
       items: [{ id: "repository-a" }],
       nextCursor: expect.any(String),
@@ -117,8 +123,12 @@ describe("listRepositoriesPage", () => {
       items: [{ id: "repository-a" }],
       nextCursor: expect.any(String),
     });
+    await expect(plane.listRepositoriesPageDurable()).resolves.toMatchObject({
+      items: [{ id: "repository-a" }],
+    });
     expect(listRepositories).not.toHaveBeenCalled();
     expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 1 });
+    expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 50 });
   });
 
   it("binds scoped storage continuations and omits malformed durable rows", async () => {

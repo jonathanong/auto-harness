@@ -134,6 +134,16 @@ describe("ServiceAccountSettings", () => {
     );
     unknown.unmount();
 
+    let rejectLoad!: (reason: unknown) => void;
+    api.loadServiceAccountData.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectLoad = reject;
+      }),
+    );
+    const pendingError = mountForm(<ServiceAccountSettings canManage />);
+    pendingError.unmount();
+    await act(async () => rejectLoad("offline"));
+
     api.loadServiceAccountData.mockResolvedValueOnce({ kind: "unauthorized" });
     const unauthorized = mountForm(<ServiceAccountSettings canManage />);
     await settle();

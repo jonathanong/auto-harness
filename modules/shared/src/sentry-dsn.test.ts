@@ -56,6 +56,7 @@ describe("parseSentryDsn / sentryIngestEnvelopeUrl", () => {
       "http://sentry.example.test/foo/api/9/envelope/",
     );
     expect(parseSentryDsn("https://o1.ingest.sentry.io/450")).toBeUndefined();
+    expect(sentryIngestEnvelopeUrl("not-a-dsn")).toBeUndefined();
   });
 });
 

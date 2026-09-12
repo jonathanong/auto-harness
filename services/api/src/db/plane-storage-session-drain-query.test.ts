@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- drain cursor, occupancy, and mismatch cases share one ledger fixture. */
 import { describe, expect, it } from "vitest";
 
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
@@ -150,6 +151,81 @@ describe("DynamoDB session drain activity ledger", () => {
         }),
       }),
     );
+  });
+
+  it("keeps occupying cancelled leases, drops mismatches, and returns a drain cursor", async () => {
+    const sessionsById: Record<string, Record<string, unknown> | undefined> = {
+      running: {
+        id: "running",
+        repositoryId: "repo",
+        principalId: "principal",
+        status: "running",
+      },
+      leased: {
+        id: "leased",
+        repositoryId: "repo",
+        principalId: "principal",
+        status: "cancelled",
+        mainCheckoutLease: true,
+      },
+      parked: {
+        id: "parked",
+        repositoryId: "repo",
+        principalId: "principal",
+        status: "cancelled",
+        worktreeId: "wt",
+      },
+      foreign: {
+        id: "foreign",
+        repositoryId: "other",
+        principalId: "principal",
+        status: "completed",
+      },
+      visitor: {
+        id: "visitor",
+        repositoryId: "repo",
+        principalId: "other",
+        status: "completed",
+      },
+    };
+    const storage = new DynamoPlaneStorageBase(
+      {
+        send: async (command: { input: Record<string, unknown> }) => {
+          if (command.input.TableName === "SessionDrains" && command.input.KeyConditionExpression) {
+            return {
+              Items: ["running", "leased", "parked", "foreign", "visitor", "missing"].map(
+                (sessionId) => ({
+                  scopeKey: "repo#principal",
+                  recordKey: `ACT#${sessionId}`,
+                  recordType: "activity",
+                  sessionId,
+                  repositoryId: "repo",
+                  principalId: "principal",
+                }),
+              ),
+              LastEvaluatedKey: { scopeKey: "repo#principal", recordKey: "ACT#missing" },
+            };
+          }
+          if (command.input.TableName === "Sessions") {
+            const item = sessionsById[command.input.Key?.id as string];
+            return item ? { Item: item } : {};
+          }
+          return {};
+        },
+      } as never,
+      { sessions: "Sessions", sessionDrains: "SessionDrains" } as never,
+    );
+
+    await expect(
+      storage.listSessionsForDrain("repo", "principal", "operation", 1),
+    ).resolves.toEqual({
+      sessions: [
+        expect.objectContaining({ id: "running" }),
+        expect.objectContaining({ id: "leased" }),
+        expect.objectContaining({ id: "parked" }),
+      ],
+      nextKey: { scopeKey: "repo#principal", recordKey: "ACT#missing" },
+    });
   });
 
   it("uses a bounded durable cursor to give later drains a turn", async () => {

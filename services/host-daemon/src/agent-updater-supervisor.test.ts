@@ -25,6 +25,7 @@ describe("supervisor restart installer", () => {
     );
     await installer.stage({ version: "1.2.0", artifact: new Uint8Array() });
     await installer.activate("1.2.0");
+    await installer.rollback();
     await installer.restart();
     expect(handoffs).toBe(1);
     expect(spawn.calls).toEqual([]);

@@ -42,6 +42,28 @@ describe("recycleRuntimeLambdas", () => {
     );
   });
 
+  it("fails when listing stack resources returns a non-zero status", async () => {
+    const deps = dependencies([]);
+    deps.query = vi.fn(async () => ({
+      status: 1,
+      stderr: "AccessDenied",
+      stdout: "",
+    }));
+    await expect(recycleRuntimeLambdas(config(), deps)).rejects.toThrow(
+      "aws cloudformation list-stack-resources failed: AccessDenied",
+    );
+    expect(deps.runs).toEqual([]);
+
+    deps.query = vi.fn(async () => ({
+      status: 1,
+      stderr: "",
+      stdout: "timed out",
+    }));
+    await expect(recycleRuntimeLambdas(config(), deps)).rejects.toThrow(
+      "aws cloudformation list-stack-resources failed: timed out",
+    );
+  });
+
   it("does not touch Lambda when the runtime stack lists no functions", async () => {
     const deps = dependencies([]);
     await recycleRuntimeLambdas(config(), deps);

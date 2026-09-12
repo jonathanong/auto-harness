@@ -564,4 +564,30 @@ describe("durable host disconnect", () => {
     expect((await plane.assignQueuedDurable()).map((item) => item.session.id)).toEqual(["s"]);
     expect(assigns).toEqual([expect.objectContaining({ connectionId: "B" })]);
   });
+
+  it("keeps a replacement host connection after a matching durable disconnect", async () => {
+    const plane = new ControlPlane();
+    plane.state.connections.set("stale", {
+      connectionId: "stale",
+      type: "host",
+      hostId: "h",
+      connectedAt: "old",
+      lastHeartbeatAt: "old",
+      commandProfiles: [],
+    });
+    plane.state.hostConnection.set("h", "live");
+    plane.state.drainingHosts.add("h");
+    setDurableReadStorage(plane.state, {
+      getHostLock: async () => "stale",
+      offlineHostAndRequeue: async () => [],
+      releaseTimedOutProviderAccountLeasesForHost: async () => [],
+      releaseHostConnection: async () => true,
+      deleteConnection: async () => undefined,
+      listWorktreesByHost: async () => [],
+      listActiveSessionsByHost: async () => [],
+    });
+    expect(await disconnectHostDurable(plane.state, "stale")).toEqual([]);
+    expect(plane.state.hostConnection.get("h")).toBe("live");
+    expect(plane.state.drainingHosts.has("h")).toBe(true);
+  });
 });

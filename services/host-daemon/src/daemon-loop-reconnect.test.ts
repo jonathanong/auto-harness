@@ -342,6 +342,8 @@ describe("DaemonLoop reconnect", () => {
       );
       await loop.blockAssignmentsForInvalidInventory();
       expect(registrations).toBe(3);
+      await loop.blockAssignmentsForInvalidInventory();
+      expect(registrations).toBe(3);
       loop.stop();
     } finally {
       cleanup();

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- poll, retry, and overlap cases share one dashboard fixture. */
 
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -170,5 +171,33 @@ describe("DashboardLive", () => {
     });
     await act(async () => vi.advanceTimersByTimeAsync(10));
     expect(request.requests).toHaveLength(10);
+  });
+
+  it("stringifies a non-Error poll rejection", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", async () => {
+      throw "dashboard-offline";
+    });
+    const view = mountForm(<DashboardLive initial={emptySnapshot} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(field(view.container, "live-updates-paused").textContent).toContain("dashboard-offline");
+  });
+
+  it("ignores a second retry while a dashboard refresh is already in flight", async () => {
+    let fetches = 0;
+    vi.stubGlobal("fetch", async () => {
+      fetches += 1;
+      return await new Promise<Response>(() => undefined);
+    });
+    const view = mountForm(
+      <DashboardLive initial={emptySnapshot} initialError="paused" pollMs={60_000} />,
+    );
+    const retryButton = field(view.container, "live-updates-paused").querySelector("button")!;
+    await act(async () => press(retryButton));
+    expect(fetches).toBeGreaterThan(0);
+    const inFlight = fetches;
+    await act(async () => press(retryButton));
+    expect(fetches).toBe(inFlight);
+    view.unmount();
   });
 });

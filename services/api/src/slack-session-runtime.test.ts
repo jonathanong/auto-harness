@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 import type { SessionRecord } from "./db/types.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
-import { reconcileSlackSession, slackSessionSnapshot } from "./slack-session-runtime.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
+import {
+  enqueueSlackSessionLifecycle,
+  reconcileSlackSession,
+  slackSessionSnapshot,
+} from "./slack-session-runtime.ts";
 
 const now = "2026-08-12T10:00:00.000Z";
 
@@ -206,5 +211,31 @@ describe("Slack session lifecycle reconciliation", () => {
         now,
       }),
     ).resolves.toEqual({ created: 0, existing: 0 });
+  });
+
+  it("skips lifecycle enqueue when memory slack config is absent or disabled", async () => {
+    const row = session("queued");
+    const store = new InsertStore();
+    const absent = createControlPlaneState({
+      storage: { enqueue: store.enqueue.bind(store) } as never,
+    });
+    await enqueueSlackSessionLifecycle(absent, row);
+    expect(store.items.size).toBe(0);
+
+    const disabled = createControlPlaneState({
+      storage: { enqueue: store.enqueue.bind(store) } as never,
+    });
+    disabled.slackIntegration = {
+      id: "slack",
+      type: "slack",
+      defaultChannel: "#ops",
+      enabled: false,
+      notifications: DEFAULT_SLACK_NOTIFICATIONS,
+      botToken: "xoxb-test",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await enqueueSlackSessionLifecycle(disabled, row);
+    expect(store.items.size).toBe(0);
   });
 });

@@ -221,6 +221,18 @@ describe("DynamoPlaneStorageBase", () => {
         audit: { ...audit, id: "base-principal-audit" },
       }),
     ).toBe(false);
+    expect(await storage.listWorktreesByHost("base-host")).toEqual([]);
+    await storage.acknowledgeSession("missing-ack", markerAt);
+    await storage.acknowledgeSession({
+      sessionId: "missing-ack",
+      worktreeId: null,
+      attemptId: "attempt",
+      acknowledgedAt: markerAt,
+    });
+    expect(await storage.getHostLockState("base-host")).toEqual({
+      connectionId: "base-connection",
+      draining: false,
+    });
   });
 
   it("rejects fenced log writes when the session attempt does not match", async () => {

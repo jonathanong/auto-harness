@@ -60,6 +60,7 @@ describe("AddProviderAccountForm", () => {
     const form = field<HTMLFormElement>(view.container, "form-add-provider-account");
     field(view.container, "provider-account-label").remove();
     field(view.container, "provider-account-cooldown-seconds").remove();
+    field(view.container, "provider-account-max-concurrent-sessions").remove();
     submit(form);
     await act(async () => Promise.resolve());
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({

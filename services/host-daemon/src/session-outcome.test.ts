@@ -31,4 +31,27 @@ describe("finishClaimedSession", () => {
       "terminal hook revalidation failed for session sess-1: path is outside allowed roots",
     );
   });
+
+  it("stringifies a primitive terminal-hook revalidation failure", async () => {
+    const logs = [];
+    const result = await finishClaimedSession(
+      { run: vi.fn() },
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      {
+        worktree: { id: "wt-1" },
+        cwd: "/repo/wt-1",
+        repository: { terminalHookScript: "/repo/hook.sh" },
+        currentHookTarget: async () => {
+          throw "hook-offline";
+        },
+      },
+      { status: "failed", exitCode: 1, errorCode: "setup_failed" },
+    );
+    expect(result).toMatchObject({ status: "failed" });
+    expect(logs.map((chunk) => chunk.content)).toContain(
+      "terminal hook revalidation failed for session sess-1: hook-offline",
+    );
+  });
 });
