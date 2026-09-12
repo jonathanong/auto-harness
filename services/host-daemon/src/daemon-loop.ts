@@ -1729,6 +1729,8 @@ export class DaemonLoop {
       initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
       deferCheckoutFetchFailureHook:
         this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
+      deferPreCommandFailureHook:
+        this.serverProtocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION,
     });
     let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
     let terminalErrorCode = result.errorCode;

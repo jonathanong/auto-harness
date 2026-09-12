@@ -59,6 +59,8 @@ type SessionRunOptions = {
   initialLogSeq?: number;
   /** A v6 peer durably coordinates retry disposition, terminal hook, and post-hook result. */
   deferCheckoutFetchFailureHook?: boolean;
+  /** A v7 peer durably owns every pre-command terminal hook. */
+  deferPreCommandFailureHook?: boolean;
 };
 
 export class SessionRunner {
@@ -200,7 +202,7 @@ export class SessionRunner {
               ...(expired
                 ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
                 : {}),
-              ...(options.deferCheckoutFetchFailureHook ? { deferTerminalHook: true } : {}),
+              ...(options.deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
             },
             sessionChildEnv,
             baseline,
@@ -241,9 +243,10 @@ export class SessionRunner {
               exitCode: null,
               errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
               errorMessage: thrownMessage(err),
-              deferTerminalHook:
-                options.deferCheckoutFetchFailureHook === true &&
-                (!isCheckoutFetchFailure(err) || assign.infrastructureRetryCount === 0),
+              deferTerminalHook: isCheckoutFetchFailure(err)
+                ? assign.infrastructureRetryCount === 0 &&
+                  options.deferCheckoutFetchFailureHook === true
+                : options.deferPreCommandFailureHook === true,
             },
             sessionChildEnv,
             undefined,
@@ -277,7 +280,7 @@ export class SessionRunner {
             baseline,
             isolatedGitHubConfigDir,
             this.deps.authorizeCommandStart,
-            options.deferCheckoutFetchFailureHook === true,
+            options.deferPreCommandFailureHook === true,
           );
           return retainDeferredTerminalHook(result);
         } catch (error) {
@@ -297,7 +300,7 @@ export class SessionRunner {
                 exitCode: null,
                 errorCode: "setup_failed",
                 errorMessage,
-                ...(options.deferCheckoutFetchFailureHook ? { deferTerminalHook: true } : {}),
+                ...(options.deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
               },
               sessionChildEnv,
               baseline,
