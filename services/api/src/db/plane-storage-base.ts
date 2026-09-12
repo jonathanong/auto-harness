@@ -732,6 +732,7 @@ export class DynamoPlaneStorageBase {
     hostId: string;
     connectionId: string;
     result?: SessionResult;
+    worktreeId?: string | null;
   }): Promise<boolean> {
     return sessions.settleTerminalHookHandoff(this.ctx, opts);
   }
@@ -740,6 +741,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     handoffId: string;
     expiresAt: string;
+    worktreeId?: string | null;
   }): Promise<boolean> {
     return sessions.expireTerminalHookHandoff(this.ctx, opts);
   }

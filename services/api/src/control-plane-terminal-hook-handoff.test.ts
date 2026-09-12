@@ -56,6 +56,13 @@ describe("terminal hook handoff", () => {
     const state = connectedState(5);
     const finished = finishHostLostSession(state, running());
     state.sessions.set(finished.id, finished);
+    state.worktrees.set("worktree", {
+      id: "worktree",
+      hostId: "host",
+      repositoryId: "repo",
+      status: "busy",
+      currentSessionId: "session",
+    } as never);
 
     await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([
       expect.objectContaining({
@@ -77,6 +84,10 @@ describe("terminal hook handoff", () => {
     expect(state.sessions.get("session")).toEqual(
       expect.not.objectContaining({ terminalHookHandoff: expect.anything(), activeHostId: "host" }),
     );
+    expect(state.worktrees.get("worktree")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
   });
 
   it("withholds a handoff from v4 and expires it before a later v5 registration", async () => {
@@ -86,6 +97,13 @@ describe("terminal hook handoff", () => {
       running(),
     );
     state.sessions.set(finished.id, finished);
+    state.worktrees.set("worktree", {
+      id: "worktree",
+      hostId: "host",
+      repositoryId: "repo",
+      status: "busy",
+      currentSessionId: "session",
+    } as never);
 
     await expect(pendingTerminalHookHandoffs(state, "host")).resolves.toEqual([]);
     state.connections.get("connection")!.protocolVersion = 5;
@@ -93,6 +111,10 @@ describe("terminal hook handoff", () => {
     expect(state.sessions.get("session")?.terminalHookHandoffExpiredAt).toBe(
       "2026-01-02T00:00:00.000Z",
     );
+    expect(state.worktrees.get("worktree")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
   });
 
   it("fences settlement to the replacement connection and acknowledges an idempotent duplicate", async () => {

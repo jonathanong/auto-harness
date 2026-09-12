@@ -115,6 +115,10 @@ describe("reconcileHostOwnedSessions", () => {
       status: "failed",
       errorCode: "host_lost",
     });
+    expect(state.worktrees.get("wt")).toMatchObject({
+      status: "busy",
+      currentSessionId: "authorized",
+    });
   });
 
   it("covers durable omitted terminal, losing, and missing-worktree outcomes", async () => {
@@ -193,7 +197,10 @@ describe("reconcileHostOwnedSessions", () => {
       fence: { hostId: "host", connectionId: "connection" },
     });
     expect(finished.sessions.get(base.id)).toMatchObject({ status: "failed" });
-    expect(finished.worktrees.get(wt.id)).toMatchObject({ status: "idle" });
+    expect(finished.worktrees.get(wt.id)).toMatchObject({
+      status: "busy",
+      currentSessionId: base.id,
+    });
 
     const finishLosing = createControlPlaneState();
     finishLosing.storage = {

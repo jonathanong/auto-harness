@@ -641,9 +641,15 @@ describe("DaemonLoop terminal status retry", () => {
       expect(sent).toContainEqual(
         expect.objectContaining({
           type: "session:status",
+          errorCode: "setup_failed",
           result: { summary: "after shutdown hook", summarySource: "harness" },
         }),
       );
+      const reported = sent.find(
+        (message): message is Extract<HostToServerMessage, { type: "session:status" }> =>
+          message.type === "session:status" && message.sessionId === "finishing-during-shutdown",
+      );
+      expect(reported).not.toHaveProperty("deferTerminalHookResult");
       loop.stop();
     } finally {
       cleanup();

@@ -2,8 +2,27 @@ import { TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION, type HostWireMessage } from "@a
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { releaseWorktree } from "./control-plane-worktrees.ts";
 
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
+
+/** Release a target reservation only after its exact handoff is terminally disposed. */
+function releaseReservedWorktree(
+  state: ControlPlaneState,
+  sessionId: string,
+  worktreeId: string | null,
+): void {
+  if (!worktreeId) return;
+  const worktree = state.worktrees.get(worktreeId);
+  if (!worktree || worktree.currentSessionId !== sessionId) return;
+  if (!state.storage) {
+    releaseWorktree(state, worktreeId);
+    return;
+  }
+  // The durable settle/expiry transaction has already released the row. Keep
+  // this process cache coherent without issuing a second, unfenced write.
+  state.worktrees.set(worktreeId, { ...worktree, status: "idle", currentSessionId: null });
+}
 
 /**
  * Handoffs are indexed with the original host's active-claim key. This keeps
@@ -99,11 +118,13 @@ export async function settleTerminalHookHandoff(
         handoffId: input.handoffId,
         hostId: input.hostId,
         connectionId: input.connectionId,
+        worktreeId: handoff.worktreeId,
         ...(input.result ? { result: input.result } : {}),
       }))
     : input.connectionId !== undefined &&
       state.hostConnection.get(input.hostId) === input.connectionId;
   if (!settled) return false;
+  releaseReservedWorktree(state, session.id, handoff.worktreeId);
   const next = { ...session, ...(input.result ? { result: input.result } : {}) };
   delete next.terminalHookHandoff;
   delete next.activeHostId;
@@ -127,9 +148,11 @@ export async function expireTerminalHookHandoffIfNeeded(
         sessionId: session.id,
         handoffId: handoff.handoffId,
         expiresAt: handoff.expiresAt,
+        worktreeId: handoff.worktreeId,
       })
     : true;
   if (!expired) return false;
+  releaseReservedWorktree(state, session.id, handoff.worktreeId);
   const next = { ...session, terminalHookHandoffExpiredAt: handoff.expiresAt };
   delete next.terminalHookHandoff;
   delete next.activeHostId;

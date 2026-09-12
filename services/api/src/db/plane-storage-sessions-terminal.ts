@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- terminal transition fencing and cleanup form one atomic storage operation. */
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { SessionResult } from "@auto-harness/shared";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -160,7 +160,10 @@ function finishSessionItems(
       },
     },
   ];
-  if (opts.worktreeId) {
+  // A terminal hook still needs the failed checkout's files. Keep its
+  // worktree assignment fenced until the handoff settles or expires so a
+  // concurrent scheduler cannot reset those files with a new checkout first.
+  if (opts.worktreeId && opts.terminalHookHandoff?.worktreeId !== opts.worktreeId) {
     items.push({
       Update: {
         TableName: ctx.tables.worktrees,
@@ -194,6 +197,23 @@ function finishSessionItems(
     ...cleanup,
   );
   return items;
+}
+
+function reservedWorktreeReleaseItem(
+  ctx: PlaneStorageCtx,
+  worktreeId: string,
+  sessionId: string,
+): Record<string, unknown> {
+  return {
+    Update: {
+      TableName: ctx.tables.worktrees,
+      Key: { id: worktreeId },
+      UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+      ConditionExpression: "currentSessionId = :sid",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": sessionId },
+    },
+  };
 }
 
 async function finishSessionConflict(
@@ -241,6 +261,8 @@ export async function settleTerminalHookHandoff(
     hostId: string;
     connectionId: string;
     result?: import("@auto-harness/shared").SessionResult;
+    /** Worktree reserved by the matching terminal handoff, if any. */
+    worktreeId?: string | null;
   },
 ): Promise<boolean> {
   try {
@@ -271,6 +293,9 @@ export async function settleTerminalHookHandoff(
               },
             },
           },
+          ...(opts.worktreeId
+            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId)]
+            : []),
         ],
       }),
     );
@@ -288,22 +313,31 @@ export async function settleTerminalHookHandoff(
 /** Expire an unreachable replacement-daemon handoff without leaving its host index forever. */
 export async function expireTerminalHookHandoff(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; handoffId: string; expiresAt: string },
+  opts: { sessionId: string; handoffId: string; expiresAt: string; worktreeId?: string | null },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.sessions,
-        Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET terminalHookHandoffExpiredAt = :expiredAt REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
-        ConditionExpression:
-          "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.expiresAt = :expiresAt",
-        ExpressionAttributeValues: {
-          ":handoffId": opts.handoffId,
-          ":expiresAt": opts.expiresAt,
-          ":expiredAt": opts.expiresAt,
-        },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET terminalHookHandoffExpiredAt = :expiredAt REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
+              ConditionExpression:
+                "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.expiresAt = :expiresAt",
+              ExpressionAttributeValues: {
+                ":handoffId": opts.handoffId,
+                ":expiresAt": opts.expiresAt,
+                ":expiredAt": opts.expiresAt,
+              },
+            },
+          },
+          ...(opts.worktreeId
+            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId)]
+            : []),
+        ],
       }),
     );
     return true;

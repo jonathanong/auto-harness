@@ -1490,6 +1490,7 @@ export class DaemonLoop {
         this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
     });
     let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
+    let terminalErrorCode = result.errorCode;
     if (this.settleDeferredOnCompletion && settleDeferredTerminalHook) {
       const settledResult = await settleDeferredTerminalHook(true).catch((error: unknown) => {
         this.onLog?.(`deferred terminal hook failed for ${msg.sessionId}: ${thrownMessage(error)}`);
@@ -1497,6 +1498,10 @@ export class DaemonLoop {
       });
       if (settledResult !== undefined) result.result = settledResult;
       settleDeferredTerminalHook = undefined;
+      // A shutdown-completed hook can have made external terminal effects, so
+      // its checkout failure must enter the ordinary terminal path instead of
+      // consuming the automatic infrastructure retry after the marker clears.
+      if (terminalErrorCode === "checkout_fetch_failed") terminalErrorCode = "setup_failed";
     }
 
     if (result.logs.length > 0) {
@@ -1509,7 +1514,7 @@ export class DaemonLoop {
       attemptId: msg.attemptId,
       status: result.status,
       exitCode: result.exitCode,
-      ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
+      ...(terminalErrorCode !== undefined ? { errorCode: terminalErrorCode } : {}),
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),

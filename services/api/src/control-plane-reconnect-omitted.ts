@@ -62,7 +62,7 @@ async function requeueOmittedWorktreeSessions(
             ? finishHostLostSession(state, session, handoff)
             : queueReconnectSession(session, reason),
       );
-      releaseWorktree(state, worktree.id);
+      if (!handoff) releaseWorktree(state, worktree.id);
       state.pendingAcks.delete(session.id);
       if (handoff) terminalHookHandoffSessionIds?.push(session.id);
       if (!terminalHostLoss) requeued.push(session.id);
@@ -118,12 +118,23 @@ async function requeueOmittedWorktreeSessions(
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
       if (handoff) terminalHookHandoffSessionIds?.push(session.id);
-      state.worktrees.set(worktree.id, {
-        ...worktree,
-        status: "idle",
-        currentSessionId: null,
-        online: true,
-      });
+      if (handoff) {
+        // finishSession leaves the matching target reservation in place until
+        // its hook settles or expires; retain the same view in this worker.
+        state.worktrees.set(worktree.id, {
+          ...worktree,
+          status: "busy",
+          currentSessionId: session.id,
+          online: true,
+        });
+      } else {
+        state.worktrees.set(worktree.id, {
+          ...worktree,
+          status: "idle",
+          currentSessionId: null,
+          online: true,
+        });
+      }
       state.pendingAcks.delete(session.id);
     } else if (
       await state.storage.tryRequeueSession({
