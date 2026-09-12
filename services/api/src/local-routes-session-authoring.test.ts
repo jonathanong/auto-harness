@@ -176,6 +176,28 @@ describe("session authoring is closed to host-bound credentials", () => {
     expect(created.status).toBe(201);
   });
 
+  it("does not let an operator opt into workspace cleanup", async () => {
+    const { invoke, operatorKey } = await harness();
+
+    const response = await invoke(
+      "POST",
+      "/api/v1/sessions",
+      {
+        repositoryId: "repo-a",
+        prompt: "p",
+        target: { commandId: "cmd-a" },
+        timeout: 10,
+        destroyWorkspaceAfter: true,
+      },
+      operatorKey,
+    );
+
+    expect(response).toMatchObject({
+      status: 404,
+      json: { error: { code: "NOT_FOUND" } },
+    });
+  });
+
   it("ignores caller type and schedule source on the public create path", async () => {
     const { invoke, operatorKey } = await harness();
 

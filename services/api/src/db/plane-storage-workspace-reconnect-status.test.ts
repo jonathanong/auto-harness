@@ -64,3 +64,79 @@ it("fences cancelled workspace reconnect grace with the cancelled status", async
     ":expectedStatus": "cancelled",
   });
 });
+
+it("restores previous workspace reconnect fields and fences unexpected storage failures", async () => {
+  const send = vi.fn(async () => ({}));
+  const ctx = {
+    doc: { send } as never,
+    tables: {
+      hostLocks: "HostLocks",
+      sessions: "Sessions",
+      workspaceSlots: "WorkspaceSlots",
+    } as never,
+  };
+
+  await expect(
+    restoreWorkspaceReconnectPending(ctx, {
+      sessionId: "restored",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      connectionId: "replacement",
+      previousDeadlineAt: "2026-09-12T00:00:10.000Z",
+      previousAssignmentConnectionId: "original",
+      previousWorkspaceSlotConnectionId: "original",
+    }),
+  ).resolves.toBe(true);
+  const restored = send.mock.calls[0]![0] as TransactWriteCommand;
+  expect(restored.input.TransactItems?.[1]?.Update?.ExpressionAttributeValues).toMatchObject({
+    ":previousDeadline": "2026-09-12T00:00:10.000Z",
+    ":previousAssignmentConnectionId": "original",
+  });
+  expect(restored.input.TransactItems?.[2]?.Update?.ExpressionAttributeValues).toMatchObject({
+    ":previousWorkspaceSlotConnectionId": "original",
+  });
+
+  const failure = new Error("storage unavailable");
+  const failing = {
+    ...ctx,
+    doc: { send: vi.fn(async () => Promise.reject(failure)) } as never,
+  };
+  await expect(
+    restoreWorkspaceReconnectPending(failing, {
+      sessionId: "failed-restore",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      connectionId: "connection",
+    }),
+  ).rejects.toBe(failure);
+});
+
+it("rethrows unexpected workspace reconnect storage failures", async () => {
+  const failure = new Error("storage unavailable");
+  const ctx = {
+    doc: { send: vi.fn(async () => Promise.reject(failure)) } as never,
+    tables: {
+      hostLocks: "HostLocks",
+      sessions: "Sessions",
+      workspaceSlots: "WorkspaceSlots",
+    } as never,
+  };
+
+  await expect(
+    markWorkspaceReconnectPending(ctx, {
+      sessionId: "mark-failure",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      deadlineAt: "2026-09-12T00:00:10.000Z",
+      connectionId: "connection",
+    }),
+  ).rejects.toBe(failure);
+  await expect(
+    confirmWorkspaceReconnect(ctx, {
+      sessionId: "confirm-failure",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      connectionId: "connection",
+    }),
+  ).rejects.toBe(failure);
+});
