@@ -927,6 +927,7 @@ describe("control-plane terminal message coverage", () => {
       worktreeId: null,
       terminalHookHandoff: {
         handoffId: "settled-handoff",
+        attemptId: "attempt",
         hostId: "host",
         repositoryId: "repo",
         worktreeId: "worktree",
@@ -958,6 +959,7 @@ describe("control-plane terminal message coverage", () => {
       worktreeId: null,
       terminalHookHandoff: {
         handoffId: "legacy-handoff",
+        attemptId: "attempt",
         hostId: "host",
         repositoryId: "repo",
         worktreeId: "worktree",
@@ -981,9 +983,10 @@ describe("control-plane terminal message coverage", () => {
     });
   });
 
-  it("returns the stored handoff deadline when fencing deferred status replays", async () => {
-    const handoff = {
-      handoffId: "fenced-handoff",
+  it("fences deferred status handoff replays to their originating assignment attempt", async () => {
+    const replacementHandoff = {
+      handoffId: "replacement-handoff",
+      attemptId: "replacement-attempt",
       hostId: "host",
       repositoryId: "repo",
       worktreeId: "worktree",
@@ -993,7 +996,10 @@ describe("control-plane terminal message coverage", () => {
     };
 
     const staleAttemptState = createControlPlaneState({ now: () => NOW });
-    const replacement = running({ attemptId: "replacement-attempt", terminalHookHandoff: handoff });
+    const replacement = running({
+      attemptId: "replacement-attempt",
+      terminalHookHandoff: replacementHandoff,
+    });
     setDurableReadStorage(staleAttemptState, {
       getSession: async () => replacement,
       getHostLock: async () => "replacement-connection",
@@ -1007,16 +1013,26 @@ describe("control-plane terminal message coverage", () => {
         false,
         7,
       ),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       ok: true,
       sessionStatusAcknowledged: {
-        terminalHookHandoffId: "fenced-handoff",
-        terminalHookHandoffExpiresAt: handoff.expiresAt,
+        sessionId: "session",
+        attemptId: "attempt",
+        retryAccepted: false,
       },
     });
 
     const clearedOwnerState = createControlPlaneState({ now: () => NOW });
-    const resolved = running({ status: "failed", hostId: undefined, terminalHookHandoff: handoff });
+    const sameAttemptHandoff = {
+      ...replacementHandoff,
+      handoffId: "same-attempt-handoff",
+      attemptId: "attempt",
+    };
+    const resolved = running({
+      status: "failed",
+      hostId: undefined,
+      terminalHookHandoff: sameAttemptHandoff,
+    });
     setDurableReadStorage(clearedOwnerState, { getSession: async () => resolved });
     await expect(
       handleHostMessageDurable(
@@ -1030,8 +1046,8 @@ describe("control-plane terminal message coverage", () => {
     ).resolves.toMatchObject({
       ok: true,
       sessionStatusAcknowledged: {
-        terminalHookHandoffId: "fenced-handoff",
-        terminalHookHandoffExpiresAt: handoff.expiresAt,
+        terminalHookHandoffId: "same-attempt-handoff",
+        terminalHookHandoffExpiresAt: sameAttemptHandoff.expiresAt,
       },
     });
   });

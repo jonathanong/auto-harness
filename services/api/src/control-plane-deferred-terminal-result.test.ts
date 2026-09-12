@@ -85,6 +85,7 @@ describe("durable deferred terminal results", () => {
         status: "failed",
         terminalHookHandoff: expect.objectContaining({
           handoffId: "handoff",
+          attemptId: "attempt",
           worktreeId: "worktree",
           errorCode: "checkout_fetch_failed",
         }),
@@ -142,6 +143,7 @@ describe("durable deferred terminal results", () => {
         status: "failed",
         terminalHookHandoff: expect.objectContaining({
           handoffId: "main-handoff",
+          attemptId: "attempt",
           worktreeId: null,
         }),
       }),
@@ -154,6 +156,7 @@ describe("durable deferred terminal results", () => {
     const session = running();
     const committedHandoff = {
       handoffId: "committed-handoff",
+      attemptId: "attempt",
       hostId: "host",
       repositoryId: "repo",
       worktreeId: "worktree",

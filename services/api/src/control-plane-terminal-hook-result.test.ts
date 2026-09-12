@@ -52,6 +52,7 @@ describe("terminal hook results", () => {
     const state = connectedState();
     const finished = finishHostLostSession(state, running());
     state.sessions.set(finished.id, finished);
+    expect(finished.terminalHookHandoff).toMatchObject({ attemptId: "attempt" });
 
     expect(
       handleHostMessage(
@@ -91,6 +92,7 @@ describe("terminal hook results", () => {
       completedAt: NOW,
       terminalHookHandoff: {
         handoffId: "handoff",
+        attemptId: "attempt",
         hostId: "host",
         repositoryId: "repo",
         worktreeId: "worktree",

@@ -254,6 +254,7 @@ function deferredTerminalHookHandoff(
   if (!session.hostId) return undefined;
   return {
     handoffId: state.idFactory(),
+    attemptId: msg.attemptId,
     hostId: session.hostId,
     repositoryId: session.repositoryId,
     worktreeId: session.worktreeId ?? null,
@@ -285,6 +286,7 @@ async function committedDeferredCheckoutFailureHandoff(
   const current = await state.storage?.getSession(sessionId, true);
   const handoff = current?.terminalHookHandoff;
   return current?.status === proposed.status &&
+    handoff?.attemptId === proposed.attemptId &&
     handoff?.hostId === proposed.hostId &&
     handoff.status === proposed.status
     ? handoff
@@ -310,8 +312,9 @@ function deferredTerminalHookHandoffId(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   session: SessionRecord | null | undefined,
 ): string | undefined {
-  return msg.deferTerminalHookResult === true && session?.terminalHookHandoff
-    ? session.terminalHookHandoff.handoffId
+  const handoff = session?.terminalHookHandoff;
+  return msg.deferTerminalHookResult === true && handoff?.attemptId === msg.attemptId
+    ? handoff.handoffId
     : undefined;
 }
 
@@ -1352,13 +1355,18 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       ...(retryAccepted !== undefined ? { retryAccepted } : {}),
-      ...(msg.deferTerminalHookResult === true && session.terminalHookHandoff
-        ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
+      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
         : {}),
       ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-      msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff
-        ? { terminalHookHandoffExpiresAt: session.terminalHookHandoff.expiresAt }
+      deferredTerminalHookHandoffExpiresAt(msg, session, protocolVersion) !== undefined
+        ? {
+            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+              msg,
+              session,
+              protocolVersion,
+            ),
+          }
         : {}),
     };
   }
@@ -1499,14 +1507,18 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
-      ...(session.terminalHookHandoff && msg.deferTerminalHookResult === true
-        ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
+      ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+        ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
         : {}),
-      ...(session.terminalHookHandoff &&
-      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-      msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff
-        ? { terminalHookHandoffExpiresAt: session.terminalHookHandoff.expiresAt }
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      deferredTerminalHookHandoffExpiresAt(msg, session, protocolVersion) !== undefined
+        ? {
+            terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
+              msg,
+              session,
+              protocolVersion,
+            ),
+          }
         : {}),
     };
   }

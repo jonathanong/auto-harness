@@ -168,6 +168,7 @@ describe("durable host-message fencing", () => {
       infrastructureRetryAttemptId: "previous-attempt",
       terminalHookHandoff: {
         handoffId: "handoff",
+        attemptId: "a",
         hostId: "h",
         repositoryId: "r",
         worktreeId: "w",

@@ -87,6 +87,7 @@ export function hostLostTerminalHookHandoff(
   if (!session.hostId) return undefined;
   return {
     handoffId: state.idFactory(),
+    ...(session.attemptId ? { attemptId: session.attemptId } : {}),
     hostId: session.hostId,
     repositoryId: session.repositoryId,
     worktreeId: session.worktreeId ?? null,

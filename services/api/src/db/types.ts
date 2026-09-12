@@ -139,6 +139,8 @@ export type SessionRecord = {
    */
   terminalHookHandoff?: {
     handoffId: string;
+    /** Assignment attempt whose deferred status created this handoff. */
+    attemptId?: string;
     hostId: string;
     repositoryId: string;
     worktreeId: string | null;
