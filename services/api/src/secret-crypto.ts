@@ -1,4 +1,10 @@
 import { DecryptCommand, EncryptCommand, KMSClient } from "@aws-sdk/client-kms";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+
+// Public custom-webhook verification decrypts a secret before it can reject a request. Bound
+// the SDK transport so a half-open KMS connection cannot hold an API socket until Lambda ends.
+const KMS_CONNECTION_TIMEOUT_MS = 3_000;
+const KMS_REQUEST_TIMEOUT_MS = 5_000;
 
 /** Small boundary so all secret-bearing code is explicit and easily faked in tests. */
 export type SecretEncryptor = {
@@ -19,7 +25,15 @@ export class KmsSecretEncryptor implements SecretEncryptor {
   constructor(options: { keyId?: string; client?: KMSClient } = {}) {
     this.keyId = options.keyId ?? process.env.KMS_KEY_ID ?? "";
     if (!this.keyId) throw new Error("KMS_KEY_ID is required for integration secrets");
-    this.client = options.client ?? new KMSClient({});
+    this.client =
+      options.client ??
+      new KMSClient({
+        requestHandler: new NodeHttpHandler({
+          connectionTimeout: KMS_CONNECTION_TIMEOUT_MS,
+          requestTimeout: KMS_REQUEST_TIMEOUT_MS,
+          throwOnRequestTimeout: true,
+        }),
+      });
   }
 
   async encrypt(plaintext: string, context: Record<string, string>): Promise<string> {

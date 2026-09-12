@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- the structured operator form keeps all webhook routing controls together. */
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import {
   Button,
   Card,
@@ -50,6 +50,7 @@ export function CustomWebhookSettings() {
   const [config, setConfig] = useState<Config>(emptyConfig);
   const [secret, setSecret] = useState("");
   const [configured, setConfigured] = useState(false);
+  const latestId = useRef(config.id);
   const endpoint = config.id
     ? `/api/v1/integrations/custom/${encodeURIComponent(config.id)}`
     : undefined;
@@ -119,12 +120,15 @@ export function CustomWebhookSettings() {
       return;
     }
     start(async () => {
+      const submittedId = config.id;
+      const submittedEndpoint = endpoint;
+      const submittedConfigured = configured;
       try {
         const { id: _id, ...settings } = config;
         const body: Record<string, unknown> = { ...settings };
         if (secret) body.secret = secret;
-        const response = await apiFetch(endpoint!, {
-          method: configured ? "PUT" : "POST",
+        const response = await apiFetch(submittedEndpoint!, {
+          method: submittedConfigured ? "PUT" : "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
           cache: "no-store",
@@ -137,6 +141,7 @@ export function CustomWebhookSettings() {
           return;
         }
         const saved = (await response.json()) as { version: number };
+        if (latestId.current !== submittedId) return;
         setConfig((current) => ({ ...current, version: saved.version }));
         setConfigured(true);
         setSecret("");
@@ -204,6 +209,7 @@ export function CustomWebhookSettings() {
                 id="custom-webhook-id"
                 value={config.id}
                 onChange={(event) => {
+                  latestId.current = event.target.value;
                   setConfig((current) => ({
                     ...current,
                     id: event.target.value,

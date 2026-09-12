@@ -649,6 +649,18 @@ describe("custom webhook receiver", () => {
     expect(invalidId.status()).toBe(404);
   });
 
+  it("rejects malformed UTF-8 before attempting JSON parsing", async () => {
+    const { plane } = await fixture();
+    const body = Buffer.from([
+      0x7b, 0x22, 0x70, 0x72, 0x6f, 0x6d, 0x70, 0x74, 0x22, 0x3a, 0xc3, 0x28, 0x7d,
+    ]);
+    const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, {
+      "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+    });
+    await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+    expect(route.status()).toBe(400);
+  });
+
   it("rejects oversized raw requests and does not create work when audit response persistence fails", async () => {
     const { plane } = await fixture();
     const oversized = directRoute(

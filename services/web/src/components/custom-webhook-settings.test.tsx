@@ -113,6 +113,26 @@ describe("CustomWebhookSettings", () => {
     expect(JSON.parse(String(fake.requests[1]?.[1]?.body))).not.toHaveProperty("version");
   });
 
+  it("does not restore configuration when a save finishes after its id changes", async () => {
+    let resolveSave!: (response: Response) => void;
+    const fake = createApiFake(
+      json(existing),
+      () => new Promise<Response>((resolve) => (resolveSave = resolve)),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    submit(view.container.querySelector("form")!);
+    expect(fake.requests[1]?.[0]).toBe("/api/v1/integrations/custom/deploy");
+    expect(fake.requests[1]?.[1]?.method).toBe("PUT");
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "other");
+    resolveSave(json({ ...existing, version: 3 }));
+    await settle();
+    expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
+    view.unmount();
+  });
+
   it("normalizes optional loaded routing fields and updates later dynamic rows", async () => {
     createApiFake(
       json({

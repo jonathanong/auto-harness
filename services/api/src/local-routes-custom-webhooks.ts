@@ -132,9 +132,15 @@ function parseCallerBody(
 ):
   | { ok: true; prompt: string; idempotencyKey: string; ref?: string }
   | { ok: false; error: string } {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    return { ok: false, error: "body must be valid UTF-8" };
+  }
   let value: unknown;
   try {
-    value = JSON.parse(body.toString("utf8"));
+    value = JSON.parse(text);
   } catch {
     return { ok: false, error: "body must be valid JSON" };
   }
