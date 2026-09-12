@@ -17,7 +17,10 @@ test.describe("control plane GitHub ingress settings", () => {
       if (method === "POST") {
         configured = true;
         submitted = route.request().postDataJSON() as Record<string, unknown>;
-        await route.fulfill({ status: 201, json: { ok: true } });
+        await route.fulfill({
+          status: 201,
+          json: { version: 1, generation: "generation-1" },
+        });
         return;
       }
       configured = false;
@@ -47,6 +50,11 @@ test.describe("control plane GitHub ingress settings", () => {
       ],
     });
     await page.getByTestId("github-ingress-delete").click();
+    await expect(page.getByTestId("github-ingress-delete-confirm")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId("github-ingress-delete-confirm")).toBeHidden();
+    await page.getByTestId("github-ingress-delete").click();
+    await page.getByTestId("github-ingress-delete-confirm-submit").click();
     await expect(page.getByTestId("github-ingress-success")).toContainText("deleted");
   });
 });

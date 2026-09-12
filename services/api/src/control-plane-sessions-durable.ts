@@ -83,13 +83,6 @@ export async function createSessionDurable(
     ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
   });
   if (!prepared.ok) return prepared;
-  if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
-    return {
-      ok: false,
-      error: "integration changed concurrently",
-      code: "CONFLICT",
-    };
-  }
   let result;
   try {
     const session = buildSessionRecord(state, prepared, options.principalId);

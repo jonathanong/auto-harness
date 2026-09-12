@@ -278,9 +278,9 @@ function validateInput(
     if (
       binding.requiredLabels !== undefined &&
       (!Array.isArray(binding.requiredLabels) ||
-        binding.requiredLabels.some((label) => typeof label !== "string"))
+        binding.requiredLabels.some((label) => typeof label !== "string" || label.length === 0))
     ) {
-      return { ok: false, error: "requiredLabels must be an array of strings" };
+      return { ok: false, error: "requiredLabels must be an array of non-empty strings" };
     }
     if (binding.requiredLabels && binding.requiredLabels.length > MAX_REQUIRED_LABELS) {
       return {

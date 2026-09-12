@@ -45,8 +45,13 @@ function expectIgnored(
   payload: unknown,
   reason: string,
   repositories?: readonly GitHubWebhookRepositoryBinding[],
+  repositoryId?: string,
 ) {
-  expect(ingress(event, payload, repositories)).toEqual({ kind: "ignored", reason });
+  expect(ingress(event, payload, repositories)).toEqual({
+    kind: "ignored",
+    reason,
+    ...(repositoryId ? { repositoryId } : {}),
+  });
 }
 
 describe("parseGitHubWebhookIngress", () => {
@@ -134,6 +139,8 @@ describe("parseGitHubWebhookIngress", () => {
         comment: { ...issueComment().comment, body: `@auto-harness ${asciiPrompt}` },
       }),
       "invalid_payload",
+      undefined,
+      "auto-harness",
     );
 
     const unicodePrompt = "é".repeat(Math.floor(MAX_PROMPT_BYTES / 2));
@@ -143,6 +150,8 @@ describe("parseGitHubWebhookIngress", () => {
         comment: { ...issueComment().comment, body: `@auto-harness ${unicodePrompt}` },
       }),
       "invalid_payload",
+      undefined,
+      "auto-harness",
     );
   });
 
@@ -155,7 +164,13 @@ describe("parseGitHubWebhookIngress", () => {
       { ...binding, fallbacks: [{ commandId: "same" }, { commandId: "same" }] },
       { ...binding, fallbacks: tooManyFallbacks },
     ]) {
-      expectIgnored("issue_comment", issueComment(), "invalid_payload", [candidate]);
+      expectIgnored(
+        "issue_comment",
+        issueComment(),
+        "invalid_payload",
+        [candidate],
+        "auto-harness",
+      );
     }
   });
 
@@ -166,7 +181,13 @@ describe("parseGitHubWebhookIngress", () => {
       { ...binding, timeout: 0 },
       { ...binding, timeout: Number.POSITIVE_INFINITY },
     ]) {
-      expectIgnored("issue_comment", issueComment(), "invalid_payload", [candidate]);
+      expectIgnored(
+        "issue_comment",
+        issueComment(),
+        "invalid_payload",
+        [candidate],
+        "auto-harness",
+      );
     }
   });
 
@@ -192,13 +213,18 @@ describe("parseGitHubWebhookIngress", () => {
   });
 
   it("fails closed for unsupported, unconfigured, unauthorized, and malformed deliveries", () => {
-    for (const [event, payload, reason] of [
-      ["issues", issueComment(), "unsupported_event"],
-      ["issue_comment", issueComment({ action: "edited" }), "unsupported_action"],
-      ["issue_comment", issueComment({ repository: { id: 43 } }), "unconfigured_repository"],
-      ["issue_comment", issueComment({ comment: { id: "99" } }), "invalid_payload"],
-    ]) {
-      expectIgnored(event, payload, reason);
+    for (const [event, payload, reason, repositoryId] of [
+      ["issues", issueComment(), "unsupported_event", undefined],
+      ["issue_comment", issueComment({ action: "edited" }), "unsupported_action", undefined],
+      [
+        "issue_comment",
+        issueComment({ repository: { id: 43 } }),
+        "unconfigured_repository",
+        undefined,
+      ],
+      ["issue_comment", issueComment({ comment: { id: "99" } }), "invalid_payload", "auto-harness"],
+    ] as const) {
+      expectIgnored(event, payload, reason, undefined, repositoryId);
     }
   });
 

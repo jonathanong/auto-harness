@@ -85,6 +85,15 @@ describe("GitHubIngressSettings", () => {
       bindings: [{ fallbacks: [{ providerId: "backup" }, { commandId: "fallback" }] }],
     });
     press(field(view.container, "github-ingress-delete"));
+    expect(fake.requests).toHaveLength(2);
+    press(
+      [...field(view.container, "github-ingress-delete-confirm").querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      )!,
+    );
+    expect(document.querySelector('[data-pw="github-ingress-delete-confirm"]')).toBeNull();
+    press(field(view.container, "github-ingress-delete"));
+    press(field(view.container, "github-ingress-delete-confirm-submit"));
     await settle();
     expect(fake.requests[2]?.[1]?.method).toBe("DELETE");
     expect(fake.requests[2]?.[1]?.headers).toMatchObject({
@@ -131,6 +140,7 @@ describe("GitHubIngressSettings", () => {
     await settle();
     expect(fake.requests[2]?.[1]?.method).toBe("POST");
     press(field(view.container, "github-ingress-delete"));
+    press(field(view.container, "github-ingress-delete-confirm-submit"));
     await settle();
     expect(document.body.textContent).toContain("Unable to delete");
   });

@@ -268,6 +268,7 @@ describe("GitHub ingress config", () => {
       { defaultRef: "x".repeat(256) },
       { requiredLabels: Array.from({ length: 17 }, () => "label") },
       { requiredLabels: ["x".repeat(65)] },
+      { requiredLabels: [""] },
       { allowedLogins: [""] },
       { allowedLogins: ["x".repeat(40)] },
       { allowedLogins: Array.from({ length: 101 }, () => "login") },

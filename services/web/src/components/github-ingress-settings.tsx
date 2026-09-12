@@ -72,6 +72,7 @@ export function GitHubIngressSettings() {
   const [enabled, setEnabled] = useState(true);
   const [version, setVersion] = useState<number>();
   const [generation, setGeneration] = useState<string | null>();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bindings, setBindings] = useState<Binding[]>([blank()]);
   useEffect(() => {
     void apiFetch("/api/v1/integrations/github-ingress", { cache: "no-store" })
@@ -231,6 +232,7 @@ export function GitHubIngressSettings() {
       setConfigured(false);
       setVersion(undefined);
       setGeneration(undefined);
+      setConfirmingDelete(false);
       setSecret("");
       setBindings([blank()]);
       showToast("GitHub ingress configuration deleted.", { pw: "github-ingress-success" });
@@ -386,11 +388,11 @@ export function GitHubIngressSettings() {
           <Button type="button" onClick={save} disabled={pending} data-pw="github-ingress-save">
             Save
           </Button>
-          {configured && (
+          {configured && !confirmingDelete && (
             <Button
               type="button"
               variant="destructive"
-              onClick={remove}
+              onClick={() => setConfirmingDelete(true)}
               disabled={pending}
               data-pw="github-ingress-delete"
             >
@@ -398,6 +400,30 @@ export function GitHubIngressSettings() {
             </Button>
           )}
         </div>
+        {confirmingDelete && (
+          <div
+            className="grid gap-2 rounded-md border border-dashed border-border p-3"
+            data-pw="github-ingress-delete-confirm"
+          >
+            <p className="text-sm text-red-700">
+              Delete every GitHub ingress binding and the retained webhook secret?
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={remove}
+                disabled={pending}
+                data-pw="github-ingress-delete-confirm-submit"
+              >
+                {pending ? "Deleting…" : "Confirm delete"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setConfirmingDelete(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

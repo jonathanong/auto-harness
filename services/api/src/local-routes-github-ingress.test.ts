@@ -271,6 +271,30 @@ describe("GitHub App webhook ingress", () => {
     });
   });
 
+  it("audits a deduplicated session under the repository returned by concurrency", async () => {
+    const { plane, handler } = await fixture();
+    const payload = body({ comment: { ...body().comment, id: 31 } });
+    await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload));
+    plane.createRepository({ id: "repo-alt", name: "repo-alt", url: "https://example.test/alt" });
+    await plane.updateGitHubIngressConfig(
+      configBody({
+        bindings: [{ ...configBody().bindings[0]!, repositoryId: "repo-alt" }],
+      }),
+    );
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({ status: 202, json: { accepted: true, created: false } });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ outcome: "success" }),
+        expect.objectContaining({ outcome: "success" }),
+      ],
+    });
+    await expect(plane.listAuditLogs({ repositoryId: "repo-alt" })).resolves.toMatchObject({
+      items: [],
+    });
+  });
+
   it("reserves GitHub comment concurrency ids from the ordinary session API", async () => {
     const { handler } = await fixture();
     expect(

@@ -106,7 +106,14 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
       .catch((error: unknown) =>
         console.error("failed to enqueue GitHub ingress assignment", error),
       );
-    if (!(await audit(ctx, "success", { delivery, created: result.created }, session.repositoryId)))
+    if (
+      !(await audit(
+        ctx,
+        "success",
+        { delivery, created: result.created },
+        result.session.repositoryId,
+      ))
+    )
       return true;
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
