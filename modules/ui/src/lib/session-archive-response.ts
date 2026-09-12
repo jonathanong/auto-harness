@@ -1,5 +1,14 @@
 import type { SessionArchiveReadResponse } from "@auto-harness/shared";
 
+function isHttpsUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** Validate the untrusted archive status response before exposing a signed URL to the DOM. */
 export function isSessionArchiveReadResponse(value: unknown): value is SessionArchiveReadResponse {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -30,7 +39,7 @@ export function isSessionArchiveReadResponse(value: unknown): value is SessionAr
   }
   return (
     candidate.state === "archived" &&
-    typeof candidate.downloadUrl === "string" &&
+    isHttpsUrl(candidate.downloadUrl) &&
     typeof candidate.expiresAt === "string" &&
     typeof candidate.contentType === "string" &&
     typeof candidate.bodyBytes === "number" &&
