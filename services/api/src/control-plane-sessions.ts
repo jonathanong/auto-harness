@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session creation and lifecycle transitions share validation state. */
 import {
   isActiveSessionStatus,
   isTerminalSessionStatus,
