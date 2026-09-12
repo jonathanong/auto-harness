@@ -5,6 +5,7 @@ import {
   normalizeSessionResult,
   SESSION_RESULT_PROTOCOL_VERSION,
   TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
+  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
 
@@ -237,6 +238,28 @@ function isFirstCheckoutFetchFailure(
     msg.errorCode === "checkout_fetch_failed" &&
     (session?.infrastructureRetryCount ?? 0) === 0
   );
+}
+
+function deferredCheckoutFailureHandoff(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+): SessionRecord["terminalHookHandoff"] | undefined {
+  if (!session.hostId) return undefined;
+  return {
+    handoffId: state.idFactory(),
+    hostId: session.hostId,
+    repositoryId: session.repositoryId,
+    worktreeId: session.worktreeId ?? null,
+    status: msg.status as Extract<
+      SessionRecord["status"],
+      "completed" | "failed" | "cancelled" | "timed_out"
+    >,
+    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+    expiresAt: new Date(Date.parse(state.now()) + 24 * 60 * 60 * 1000).toISOString(),
+    ...(session.ref !== undefined ? { ref: session.ref } : {}),
+    ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+  };
 }
 
 /** Keep a deferred hook's retry decision stable across a resent moot report. */
@@ -493,7 +516,7 @@ export function handleHostMessage(
           repositoryId: handoff.repositoryId,
           worktreeId: handoff.worktreeId,
           status: handoff.status,
-          errorCode: handoff.errorCode,
+          ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
           ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
           ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),
         });
@@ -567,11 +590,17 @@ export function handleHostMessage(
     case "session:terminal-hook-complete": {
       const handoff = state.sessions.get(msg.sessionId)?.terminalHookHandoff;
       if (!handoff) return { ok: false, error: "terminal hook handoff not found" };
+      const completedResult =
+        msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
+      if (msg.result !== undefined && completedResult === undefined) {
+        return { ok: false, error: "invalid session result" };
+      }
       void settleTerminalHookHandoff(state, {
         sessionId: msg.sessionId,
         handoffId: msg.handoffId,
         hostId: handoff.hostId,
         ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
+        ...(completedResult ? { result: completedResult } : {}),
       }).then((settled) => {
         if (settled) {
           state.onHostMessage?.(handoff.hostId, {
@@ -645,6 +674,7 @@ export async function handleHostMessageDurable(
     sessionId: string;
     attemptId: string;
     retryAccepted?: boolean | undefined;
+    terminalHookHandoffId?: string | undefined;
   };
   /** Present only after a replacement daemon durably settles its hook handoff. */
   sessionTerminalHookAcknowledged?: { sessionId: string; handoffId: string };
@@ -890,11 +920,17 @@ export async function handleHostMessageDurable(
     if (handoff.handoffId !== msg.handoffId || handoff.hostId !== fence?.hostId) {
       return { ok: false, error: "terminal hook handoff not found" };
     }
+    const completedResult =
+      msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
+    if (msg.result !== undefined && completedResult === undefined) {
+      return { ok: false, error: "invalid session result" };
+    }
     const settled = await settleTerminalHookHandoff(state, {
       sessionId: msg.sessionId,
       handoffId: msg.handoffId,
       hostId: handoff.hostId,
       ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      ...(completedResult ? { result: completedResult } : {}),
     });
     return settled
       ? {
@@ -965,7 +1001,13 @@ export async function handleHostMessageDurable(
     };
   }
   if (msg.type === "session:status") {
-    const { applied, ...result } = await applySessionStatusDurable(state, msg, storage, fence);
+    const { applied, ...result } = await applySessionStatusDurable(
+      state,
+      msg,
+      storage,
+      fence,
+      sourceProtocolVersion,
+    );
     // The daemon retries an unacknowledged terminal status on every keepalive; this
     // is the signal it stops. `ok: true` alone is not enough: several branches inside
     // applySessionStatusDurable return it even when their own conditional write lost a
@@ -980,6 +1022,9 @@ export async function handleHostMessageDurable(
             sessionId: msg.sessionId,
             attemptId: msg.attemptId,
             ...(result.retryAccepted !== undefined ? { retryAccepted: result.retryAccepted } : {}),
+            ...(result.terminalHookHandoffId !== undefined
+              ? { terminalHookHandoffId: result.terminalHookHandoffId }
+              : {}),
           },
         }
       : result;
@@ -995,6 +1040,7 @@ async function applySessionStatusDurable(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   storage: NonNullable<ControlPlaneState["storage"]>,
   fence?: { hostId: string; connectionId: string },
+  sourceProtocolVersion?: number,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -1007,7 +1053,12 @@ async function applySessionStatusDurable(
   applied?: boolean;
   /** The durable disposition for a first checkout-fetch failure's deferred hook. */
   retryAccepted?: boolean | undefined;
+  terminalHookHandoffId?: string | undefined;
 }> {
+  const protocolVersion =
+    sourceProtocolVersion ??
+    (fence ? state.connections.get(fence.connectionId)?.protocolVersion : 0) ??
+    0;
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = await ingestUsageDurable(
@@ -1086,7 +1137,17 @@ async function applySessionStatusDurable(
     // again — either it no longer owns the current attempt, or the durable
     // path never retries non-terminal reports in the first place. Safe to stop
     // the daemon's retry loop.
-    return { ok: true, applied: true };
+    const retryAccepted = settledCheckoutFetchRetryDisposition(msg, session);
+    return {
+      ok: true,
+      applied: true,
+      ...(retryAccepted !== undefined ? { retryAccepted } : {}),
+      ...(retryAccepted === false &&
+      msg.deferTerminalHookResult === true &&
+      session.terminalHookHandoff?.errorCode === "checkout_fetch_failed"
+        ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
+        : {}),
+    };
   }
   if (
     session.status === "cancelled" &&
@@ -1189,6 +1250,11 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+      ...(session.terminalHookHandoff &&
+      msg.deferTerminalHookResult === true &&
+      session.terminalHookHandoff.errorCode === "checkout_fetch_failed"
+        ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
+        : {}),
     };
   }
   const cooldown = transitionEffect(plan, "cooldown");
@@ -1352,6 +1418,14 @@ async function applySessionStatusDurable(
     const terminalStatus = finish?.status ?? msg.status;
     const terminalErrorCode = finish?.errorCode ?? msg.errorCode;
     const terminalErrorMessage = finish?.errorMessage ?? msg.errorMessage;
+    const deferredHandoff =
+      msg.deferTerminalHookResult === true &&
+      protocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+      msg.status === "failed" &&
+      msg.errorCode === "checkout_fetch_failed" &&
+      finish !== undefined
+        ? deferredCheckoutFailureHandoff(state, session, msg)
+        : undefined;
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
@@ -1368,6 +1442,7 @@ async function applySessionStatusDurable(
       ...(terminalErrorMessage ? { reason: terminalErrorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       ...providerAccountLeaseWriteOpts(session),
+      ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
     });
     if (!committed) return { ok: true };
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
@@ -1389,6 +1464,7 @@ async function applySessionStatusDurable(
       ...(terminalErrorMessage ? { errorMessage: terminalErrorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
+      ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
     };
     delete next.assignmentConnectionId;
     delete next.assignmentSentAt;
@@ -1396,12 +1472,15 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    await archiveSessionLogs(state, session.id, undefined, true);
+    if (!deferredHandoff) await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return {
       ok: true,
       applied: true,
-      ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+      ...(isFirstCheckoutFetchFailure(msg, session) || deferredHandoff
+        ? { retryAccepted: false }
+        : {}),
+      ...(deferredHandoff ? { terminalHookHandoffId: deferredHandoff.handoffId } : {}),
     };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -1491,12 +1570,21 @@ async function applySessionStatusDurable(
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
   }
-  const committed = await storage.finishSession(
-    finishSessionOptsFromPlan(session, plan, {
+  const deferredHandoff =
+    msg.deferTerminalHookResult === true &&
+    protocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+    msg.status === "failed" &&
+    msg.errorCode === "checkout_fetch_failed" &&
+    finish !== undefined
+      ? deferredCheckoutFailureHandoff(state, session, msg)
+      : undefined;
+  const committed = await storage.finishSession({
+    ...finishSessionOptsFromPlan(session, plan, {
       attemptId: msg.attemptId,
       ...(fence ? { fence } : {}),
     }),
-  );
+    ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
+  });
   if (!committed) {
     return { ok: true };
   }
@@ -1535,6 +1623,7 @@ async function applySessionStatusDurable(
       : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(reportedResult !== undefined && !shouldSuppressTarget ? { result: reportedResult } : {}),
+    ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
     ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
@@ -1546,7 +1635,7 @@ async function applySessionStatusDurable(
   };
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
-  if (!shouldSuppressTarget) {
+  if (!shouldSuppressTarget && !deferredHandoff) {
     await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
@@ -1554,7 +1643,10 @@ async function applySessionStatusDurable(
   return {
     ok: true,
     applied: true,
-    ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
+    ...(isFirstCheckoutFetchFailure(msg, session) || deferredHandoff
+      ? { retryAccepted: false }
+      : {}),
+    ...(deferredHandoff ? { terminalHookHandoffId: deferredHandoff.handoffId } : {}),
   };
 }
 

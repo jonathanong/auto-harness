@@ -100,6 +100,7 @@ describe("terminal hook handoff", () => {
     const finished = finishHostLostSession(state, running());
     state.sessions.set(finished.id, finished);
     let settled = 0;
+    const archivedResults: unknown[] = [];
     state.storage = {
       getSession: async () => state.sessions.get("session") ?? null,
       getHostLock: async () => "current",
@@ -112,13 +113,23 @@ describe("terminal hook handoff", () => {
         current.terminalHookHandoffSettled = { handoffId: "handoff", hostId: "host" };
         return true;
       },
+      putArchive: async () => void archivedResults.push(state.sessions.get("session")?.result),
+      listLogs: async () => [],
     } as never;
 
     const completion = {
       type: "session:terminal-hook-complete" as const,
       sessionId: "session",
       handoffId: "handoff",
+      result: { summary: "post-hook", summarySource: "harness" as const },
     };
+    await expect(
+      handleHostMessageDurable(
+        state,
+        { ...completion, result: { summary: "", summarySource: "harness" } },
+        "current",
+      ),
+    ).resolves.toEqual({ ok: false, error: "invalid session result" });
     await expect(handleHostMessageDurable(state, completion, "stale")).resolves.toMatchObject({
       ok: false,
       error: "stale host connection",
@@ -127,6 +138,12 @@ describe("terminal hook handoff", () => {
       ok: true,
       sessionTerminalHookAcknowledged: { sessionId: "session", handoffId: "handoff" },
     });
+    await Promise.all(state.pendingPersists);
+    expect(state.sessions.get("session")?.result).toEqual({
+      summary: "post-hook",
+      summarySource: "harness",
+    });
+    expect(archivedResults).toEqual([{ summary: "post-hook", summarySource: "harness" }]);
     await expect(
       handleHostMessageDurable(state, { ...completion, handoffId: "other" }, "current"),
     ).resolves.toMatchObject({ ok: false, error: "terminal hook handoff not found" });

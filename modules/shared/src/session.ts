@@ -9,6 +9,7 @@ import type {
   TerminalHookAcknowledgedMessage,
   TerminalHookCompleteMessage,
   TerminalHookHandoffMessage,
+  TerminalStatusAcknowledgedMessage,
 } from "./terminal-hook-handoff.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
@@ -150,16 +151,7 @@ export type HostWireMessage =
   | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
   /** Sent only after the control plane durably authorizes the primary CLI to launch. */
   | { type: "session:command-start-acknowledged"; sessionId: string; attemptId: string }
-  /** Sent only after the control plane durably applies a `session:status`
-   * report. A successful WebSocket write is not delivery: the daemon retains
-   * and retries an unacknowledged terminal status until this arrives. */
-  | {
-      type: "session:status-acknowledged";
-      sessionId: string;
-      attemptId?: string | undefined;
-      /** Present for a v4 first checkout-fetch failure after its durable retry decision. */
-      retryAccepted?: boolean | undefined;
-    }
+  | TerminalStatusAcknowledgedMessage
   | TerminalHookHandoffMessage
   | TerminalHookAcknowledgedMessage
   | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
@@ -235,6 +227,7 @@ export type HostToServerMessage =
       cliResumeRef?: string;
       usage?: SessionUsage;
       result?: SessionResult;
+      deferTerminalHookResult?: true;
     }
   | {
       type: "session:usage";

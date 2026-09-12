@@ -79,6 +79,27 @@ describe("createPlaneWsBridge", () => {
         attemptId: "attempt-1",
       }),
     ).toMatchObject({ type: "session:status", attemptId: "attempt-1" });
+    const deferredStatus = {
+      type: "session:status",
+      sessionId: "s",
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      worktreeId: "wt-1",
+      attemptId: "attempt-1",
+      deferTerminalHookResult: true,
+    };
+    expect(parseHostMessage(deferredStatus, { protocolVersion: 5 })).toBe(null);
+    expect(parseHostMessage(deferredStatus, { protocolVersion: 6 })).toMatchObject(deferredStatus);
+    const handoffCompletion = {
+      type: "session:terminal-hook-complete",
+      sessionId: "s",
+      handoffId: "handoff",
+      result: { summary: "post-hook", summarySource: "harness" },
+    };
+    expect(parseHostMessage(handoffCompletion, { protocolVersion: 5 })).toBe(null);
+    expect(parseHostMessage(handoffCompletion, { protocolVersion: 6 })).toMatchObject(
+      handoffCompletion,
+    );
     expect(
       parseHostMessage({
         type: "session:status",

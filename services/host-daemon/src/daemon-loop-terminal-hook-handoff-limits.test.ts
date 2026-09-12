@@ -96,10 +96,12 @@ describe("DaemonLoop terminal-hook handoff limits", () => {
       (
         loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
       ).processRunner = {
-        run: () =>
-          new Promise((resolve) => {
-            finishHook = resolve;
-          }),
+        run: (options: { argv: string[] }) =>
+          options.argv[0] === "/bin/sh"
+            ? new Promise((resolve) => {
+                finishHook = resolve;
+              })
+            : Promise.resolve({ exitCode: 0 }),
       };
       const assignmentStarted = vi.fn();
       (loop as unknown as { runAssign(): Promise<void> }).runAssign = async () => {

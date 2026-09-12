@@ -731,6 +731,7 @@ export class DynamoPlaneStorageBase {
     handoffId: string;
     hostId: string;
     connectionId: string;
+    result?: SessionResult;
   }): Promise<boolean> {
     return sessions.settleTerminalHookHandoff(this.ctx, opts);
   }

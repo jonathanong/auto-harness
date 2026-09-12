@@ -268,6 +268,24 @@ describe("createWsTransport", () => {
               type: "session:status-acknowledged",
               sessionId: "s1",
               attemptId: "attempt-s1",
+              retryAccepted: false,
+              terminalHookHandoffId: 42,
+            }),
+          );
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
+              retryAccepted: false,
+              terminalHookHandoffId: "handoff",
+            }),
+          );
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
             }),
           );
         });
@@ -281,9 +299,14 @@ describe("createWsTransport", () => {
       await transport.send(register());
       await transport.registered;
       sendAcknowledgements();
-      await vi.waitFor(() => expect(received).toHaveLength(2));
+      await vi.waitFor(() => expect(received).toHaveLength(3));
       expect(received).toEqual([
         expect.objectContaining({ type: "session:status-acknowledged", retryAccepted: true }),
+        expect.objectContaining({
+          type: "session:status-acknowledged",
+          retryAccepted: false,
+          terminalHookHandoffId: "handoff",
+        }),
         expect.objectContaining({ type: "session:status-acknowledged" }),
       ]);
     } finally {

@@ -104,10 +104,12 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         handoffId: handoff.handoffId,
         hostId: handoff.hostId,
         connectionId: "current-connection",
+        result: { summary: "post-hook", summarySource: "harness" },
       }),
     ).toBe(true);
     await expect(getSession(ctx, "finish-handoff")).resolves.toMatchObject({
       terminalHookHandoffSettled: { handoffId: handoff.handoffId, hostId: handoff.hostId },
+      result: { summary: "post-hook", summarySource: "harness" },
     });
     const settled = await getSession(ctx, "finish-handoff");
     expect(settled?.terminalHookHandoff).toBeUndefined();

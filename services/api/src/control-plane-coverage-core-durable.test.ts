@@ -126,7 +126,7 @@ describe("durable control-plane core edge coverage", () => {
           },
         ],
       }),
-    ).resolves.toEqual({ ok: true, connectionId: "connection" });
+    ).resolves.toEqual({ ok: true, connectionId: "connection", terminalHookHandoffs: [] });
     await expect(ctx.storage.getHostLock("host")).resolves.toBe("connection");
     await expect(
       handleHostMessageDurable(

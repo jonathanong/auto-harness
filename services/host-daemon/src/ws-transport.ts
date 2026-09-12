@@ -339,7 +339,12 @@ export function createWsTransport(options: Options): DaemonTransport & {
                 message.attemptId.length <= 512)) &&
             (message.type !== "session:status-acknowledged" ||
               !("retryAccepted" in message) ||
-              typeof message.retryAccepted === "boolean")) ||
+              typeof message.retryAccepted === "boolean") &&
+            (message.type !== "session:status-acknowledged" ||
+              !("terminalHookHandoffId" in message) ||
+              (typeof message.terminalHookHandoffId === "string" &&
+                message.terminalHookHandoffId.length > 0 &&
+                message.terminalHookHandoffId.length <= 512))) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||

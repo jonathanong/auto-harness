@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import {
   COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
+  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   KEEPALIVE_ACK_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
   TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
@@ -41,6 +42,7 @@ import { WorktreeManager, type ClaimedWorktree } from "./worktree-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
+import { collectSessionResult } from "./session-result.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -130,8 +132,10 @@ type PendingTerminalStatus = {
    * abandoned.
    */
   controller: AbortController;
-  /** Set only for a v4 checkout failure awaiting the durable retry disposition. */
-  settleDeferredTerminalHook?: ((runHook: boolean) => Promise<void>) | undefined;
+  /** Set only for a v6 checkout failure awaiting durable retry/hook settlement. */
+  settleDeferredTerminalHook?:
+    | ((runHook: boolean) => Promise<import("@auto-harness/shared").SessionResult | undefined>)
+    | undefined;
   resolveDeferredDisposition?: (() => void) | undefined;
 };
 
@@ -149,6 +153,7 @@ type PendingTerminalHookHandoff = {
   complete: boolean;
   executing: boolean;
   sending: boolean;
+  result?: import("@auto-harness/shared").SessionResult;
 };
 
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -514,7 +519,7 @@ export class DaemonLoop {
   }
 
   /**
-   * Let active commands finish while ensuring a lost v4 retry-disposition ACK
+   * Let active commands finish while ensuring a lost v6 retry-disposition ACK
    * cannot keep the subsequent idle wait pending forever.
    */
   prepareForShutdown(): void {
@@ -673,6 +678,7 @@ export class DaemonLoop {
         settlements.push(
           pending
             .settleDeferredTerminalHook(false)
+            .then(() => undefined)
             .finally(() => pending.resolveDeferredDisposition?.()),
         );
       } else {
@@ -902,6 +908,33 @@ export class DaemonLoop {
       }
       return pending
         .settleDeferredTerminalHook(msg.retryAccepted !== true)
+        .then((result) => {
+          if (msg.terminalHookHandoffId && msg.retryAccepted !== true) {
+            const handoff: PendingTerminalHookHandoff = {
+              message: {
+                type: "session:terminal-hook",
+                handoffId: msg.terminalHookHandoffId,
+                sessionId: pending.message.sessionId,
+                repositoryId: "",
+                worktreeId: pending.message.worktreeId,
+                status: pending.message.status as Extract<
+                  import("@auto-harness/shared").SessionStatus,
+                  "completed" | "failed" | "cancelled" | "timed_out"
+                >,
+                ...(pending.message.errorCode !== undefined
+                  ? { errorCode: pending.message.errorCode }
+                  : {}),
+              },
+              firstAttemptedAtMs: Date.now(),
+              complete: true,
+              executing: false,
+              sending: false,
+              ...(result !== undefined ? { result } : {}),
+            };
+            this.pendingTerminalHookHandoffs.set(msg.terminalHookHandoffId, handoff);
+            this.sendTerminalHookHandoffCompletion(handoff);
+          }
+        })
         .finally(() => pending.resolveDeferredDisposition?.());
     };
     if (msg.attemptId) {
@@ -954,7 +987,9 @@ export class DaemonLoop {
     // process still owns the original terminal status. That status's retained
     // checkout tail waits for its hook disposition; let it finish its one
     // hook first and merely settle the replacement handoff, never duplicate it.
-    if (await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId)) {
+    const reconciled = await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId);
+    if (reconciled.matched) {
+      if (reconciled.result) pending.result = reconciled.result;
       pending.complete = true;
       this.sendTerminalHookHandoffCompletion(pending);
       return;
@@ -1006,14 +1041,19 @@ export class DaemonLoop {
           throw new Error(`main checkout unavailable for terminal hook ${msg.sessionId}`);
         }
         try {
-          await this.runTerminalHookForClaim(msg, await this.worktrees.mainClaim(msg.repositoryId));
+          const result = await this.runTerminalHookForClaim(
+            msg,
+            await this.worktrees.mainClaim(msg.repositoryId),
+          );
+          if (result) pending.result = result;
         } finally {
           this.worktrees.releaseMain(msg.repositoryId);
         }
       } else {
         const claim = await this.worktrees.claim(msg.repositoryId, msg.worktreeId);
         try {
-          await this.runTerminalHookForClaim(msg, claim);
+          const result = await this.runTerminalHookForClaim(msg, claim);
+          if (result) pending.result = result;
         } finally {
           this.worktrees.release(msg.worktreeId);
         }
@@ -1036,21 +1076,29 @@ export class DaemonLoop {
   private async runTerminalHookForClaim(
     msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
     claim: ClaimedWorktree,
-  ): Promise<void> {
+  ): Promise<import("@auto-harness/shared").SessionResult | undefined> {
     const current = await claim.currentHookTarget();
     const scriptPath = current?.repository.terminalHookScript;
-    if (!current || !scriptPath) return;
-    await runTerminalHook(this.processRunner, {
-      scriptPath,
+    if (!current) return undefined;
+    if (scriptPath) {
+      await runTerminalHook(this.processRunner, {
+        scriptPath,
+        cwd: current.cwd,
+        sessionId: msg.sessionId,
+        status: msg.status,
+        worktreePath: current.cwd,
+        childEnvSource: this.childEnvSource,
+        ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
+        ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+        ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
+        ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
+      });
+    }
+    return await collectSessionResult({
+      runner: this.processRunner,
       cwd: current.cwd,
-      sessionId: msg.sessionId,
       status: msg.status,
-      worktreePath: current.cwd,
-      childEnvSource: this.childEnvSource,
-      ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
-      ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
-      ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
-      ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
+      environment: this.childEnvSource,
     });
   }
 
@@ -1067,6 +1115,10 @@ export class DaemonLoop {
         type: "session:terminal-hook-complete",
         sessionId: pending.message.sessionId,
         handoffId: pending.message.handoffId,
+        ...(this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+        pending.result !== undefined
+          ? { result: pending.result }
+          : {}),
       })
       .catch((error: unknown) => {
         this.onLog?.(
@@ -1103,23 +1155,28 @@ export class DaemonLoop {
    * their hook has run; ordinary statuses already ran it. Keep the status for
    * its own ACK retry, but settle the handoff without executing a second hook.
    */
-  private async reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<boolean> {
+  private async reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<{
+    matched: boolean;
+    result?: import("@auto-harness/shared").SessionResult;
+  }> {
     const matching = [...this.pendingTerminalStatus.values()].filter(
       (pending) => pending.message.sessionId === sessionId,
     );
-    if (matching.length === 0) return false;
-    await Promise.all(
+    if (matching.length === 0) return { matched: false };
+    const results = await Promise.all(
       matching.map(async (pending) => {
         if (pending.settleDeferredTerminalHook) {
-          await pending
+          return await pending
             .settleDeferredTerminalHook(true)
             .finally(() => pending.resolveDeferredDisposition?.());
         } else {
           pending.resolveDeferredDisposition?.();
+          return undefined;
         }
       }),
     );
-    return true;
+    const result = results.find((candidate) => candidate !== undefined);
+    return { matched: true, ...(result ? { result } : {}) };
   }
 
   /**
@@ -1223,7 +1280,7 @@ export class DaemonLoop {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
       return;
     }
-    // Protocol-v4 checkout failures must retain their terminal status even
+    // Protocol-v6 checkout failures must retain their terminal status even
     // when the ordinary retry buffer is full, because its durable disposition
     // decides whether the terminal hook runs. Reserve at most one exceptional
     // slot per execution slot so those mandatory entries remain bounded. A
@@ -1398,13 +1455,15 @@ export class DaemonLoop {
       signal,
       initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
       deferCheckoutFetchFailureHook:
-        this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
+        this.serverProtocolVersion >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
     });
     let settleDeferredTerminalHook = result.settleDeferredTerminalHook;
     if (this.settleDeferredOnCompletion && settleDeferredTerminalHook) {
-      await settleDeferredTerminalHook(true).catch((error: unknown) => {
+      const settledResult = await settleDeferredTerminalHook(true).catch((error: unknown) => {
         this.onLog?.(`deferred terminal hook failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+        return undefined;
       });
+      if (settledResult !== undefined) result.result = settledResult;
       settleDeferredTerminalHook = undefined;
     }
 
@@ -1422,9 +1481,10 @@ export class DaemonLoop {
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(this.supportsSessionResult && result.result !== undefined
+      ...(this.supportsSessionResult && result.result !== undefined && !settleDeferredTerminalHook
         ? { result: result.result }
         : {}),
+      ...(settleDeferredTerminalHook ? { deferTerminalHookResult: true } : {}),
     };
     // Record the completed result before waiting for the output queue. A
     // disconnected retained log can keep flush() pending beyond reconnect
@@ -1450,7 +1510,7 @@ export class DaemonLoop {
       // upgraded to support it) would otherwise grow this set without bound until a
       // keepalive/registration is rejected as invalid for exceeding the wire limit.
       // Degrade ordinary terminal delivery to the old fire-once behavior
-      // instead of retaining this one. A v4 checkout failure is always
+      // instead of retaining this one. A v6 checkout failure is always
       // retained even beyond this cap because its durable retry disposition
       // owns whether the terminal hook runs. Those exceptional entries stay
       // bounded by the admission reservation in handleAssign.

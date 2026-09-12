@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 
 import {
   ATTEMPT_FENCED_PROTOCOL_VERSION,
+  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   HOST_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
   MAX_SESSION_LOG_DROPPED,
@@ -220,6 +221,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 attemptId: result.sessionStatusAcknowledged.attemptId,
                 ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
                   ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
+                  : {}),
+                ...(result.sessionStatusAcknowledged.terminalHookHandoffId !== undefined
+                  ? {
+                      terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId,
+                    }
                   : {}),
               }),
             );
@@ -563,7 +569,10 @@ export function parseHostMessage(
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&
             (options?.protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION &&
-            normalizeSessionResult(message.result) !== undefined))
+            normalizeSessionResult(message.result) !== undefined)) &&
+        (message.deferTerminalHookResult === undefined ||
+          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+            message.deferTerminalHookResult === true))
         ? (message as HostToServerMessage)
         : null;
     }
@@ -608,7 +617,11 @@ export function parseHostMessage(
         : null;
     }
     if (message.type === "session:terminal-hook-complete") {
-      return boundedText(message.sessionId) && boundedText(message.handoffId)
+      return boundedText(message.sessionId) &&
+        boundedText(message.handoffId) &&
+        (message.result === undefined ||
+          ((options?.protocolVersion ?? 0) >= DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION &&
+            normalizeSessionResult(message.result) !== undefined))
         ? (message as HostToServerMessage)
         : null;
     }

@@ -577,7 +577,10 @@ describe("DaemonLoop terminal status retry", () => {
   it("fails closed when active work becomes deferred after shutdown preparation", async () => {
     const { config, cleanup } = await makeRepo();
     try {
-      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
       const loop = new DaemonLoop({ config, transport });
       const dispositions: boolean[] = [];
       let finish!: () => void;
@@ -592,7 +595,10 @@ describe("DaemonLoop terminal status retry", () => {
               exitCode: null;
               logs: [];
               errorCode: "checkout_fetch_failed";
-              settleDeferredTerminalHook: (runHook: boolean) => Promise<void>;
+              settleDeferredTerminalHook: (runHook: boolean) => Promise<{
+                summary: string;
+                summarySource: "harness";
+              }>;
             }>;
           };
         }
@@ -606,12 +612,13 @@ describe("DaemonLoop terminal status retry", () => {
             errorCode: "checkout_fetch_failed",
             settleDeferredTerminalHook: async (runHook) => {
               dispositions.push(runHook);
+              return { summary: "after shutdown hook", summarySource: "harness" };
             },
           };
         },
       };
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
       transport.deliver({
         type: "session:assign",
         sessionId: "finishing-during-shutdown",
@@ -631,6 +638,12 @@ describe("DaemonLoop terminal status retry", () => {
 
       expect(dispositions).toEqual([true]);
       expect(pendingTerminalStatusOf(loop).size).toBe(1);
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          type: "session:status",
+          result: { summary: "after shutdown hook", summarySource: "harness" },
+        }),
+      );
       loop.stop();
     } finally {
       cleanup();

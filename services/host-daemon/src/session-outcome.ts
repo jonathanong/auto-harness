@@ -11,6 +11,7 @@ import type { SessionResult } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
+import { createDeferredTerminalHookSettlement } from "./deferred-terminal-hook.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
 
@@ -23,7 +24,7 @@ export type SessionRunResult = {
   usage?: SessionUsage;
   result?: SessionResult;
   /** Settles a retained first-fetch-failure hook before its worktree claim releases. */
-  settleDeferredTerminalHook?: (runHook: boolean) => Promise<void>;
+  settleDeferredTerminalHook?: (runHook: boolean) => Promise<SessionResult | undefined>;
   logs: SessionLogChunk[];
 };
 
@@ -175,38 +176,26 @@ export async function finishClaimedSession(
     childEnvSource,
     target?.allowedRoots ?? [],
     baseline,
-    target !== null && target !== undefined,
+    // The first checkout failure must not publish pre-hook facts: a v6 peer
+    // turns the terminal disposition into a durable hook handoff and archives
+    // only its post-hook completion result.
+    !outcome.deferTerminalHook && target !== null && target !== undefined,
     environmentIsChild,
   );
   if (!outcome.deferTerminalHook) return finish;
+  const { result: _result, ...deferredFinish } = finish;
   return {
-    ...finish,
-    settleDeferredTerminalHook: async (runHook) => {
-      if (!runHook) return;
-      let current: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
-      try {
-        current = await claimed.currentHookTarget();
-      } catch (error) {
-        streamer.write(
-          "system",
-          `terminal hook revalidation failed for session ${assign.sessionId}: ${thrownMessage(error)}`,
-        );
-        return;
-      }
-      const scriptPath = current?.repository.terminalHookScript;
-      if (!current || !scriptPath) return;
-      await runTerminalHook(processRunner, {
-        scriptPath,
-        cwd: current.cwd,
-        sessionId: assign.sessionId,
-        status: outcome.status as SessionStatus,
-        worktreePath: current.cwd,
-        childEnvSource,
-        ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
-        ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
-        ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
-        ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
-      });
-    },
+    ...deferredFinish,
+    settleDeferredTerminalHook: createDeferredTerminalHookSettlement({
+      processRunner,
+      streamer,
+      assign,
+      claimed,
+      status: outcome.status,
+      errorCode: outcome.errorCode,
+      childEnvSource,
+      ...(baseline !== undefined ? { baseline } : {}),
+      environmentIsChild,
+    }),
   };
 }

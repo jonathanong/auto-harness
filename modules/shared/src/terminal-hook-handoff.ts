@@ -1,4 +1,14 @@
 import type { SessionErrorCode, SessionStatus } from "./types.ts";
+import type { SessionResult } from "./session-result.ts";
+
+/** Durable disposition for a terminal status whose local hook may still be retained. */
+export type TerminalStatusAcknowledgedMessage = {
+  type: "session:status-acknowledged";
+  sessionId: string;
+  attemptId?: string | undefined;
+  retryAccepted?: boolean | undefined;
+  terminalHookHandoffId?: string | undefined;
+};
 
 /** Server-owned recovery work for an agent-local terminal hook after host loss. */
 export type TerminalHookHandoffMessage = {
@@ -18,6 +28,8 @@ export type TerminalHookCompleteMessage = {
   type: "session:terminal-hook-complete";
   handoffId: string;
   sessionId: string;
+  /** Collected only after the terminal hook has completed. */
+  result?: SessionResult;
 };
 
 export type TerminalHookAcknowledgedMessage = {

@@ -119,8 +119,11 @@ export type SessionRecord = {
     hostId: string;
     repositoryId: string;
     worktreeId: string | null;
-    status: "failed";
-    errorCode: "host_lost";
+    status: Extract<
+      import("@auto-harness/shared").SessionStatus,
+      "completed" | "failed" | "cancelled" | "timed_out"
+    >;
+    errorCode?: import("@auto-harness/shared").SessionErrorCode;
     /** Bounded recovery retention; expiry records a fail-closed no-op. */
     expiresAt: string;
     ref?: string;

@@ -49,7 +49,13 @@ describe("DaemonLoop terminal-hook handoff", () => {
         () =>
           sent.filter((message) => message.type === "session:terminal-hook-complete").length === 1,
       );
-      expect(run).toHaveBeenCalledOnce();
+      expect(sent).toContainEqual({
+        type: "session:terminal-hook-complete",
+        sessionId: "lost",
+        handoffId: "handoff",
+      });
+      const hookCalls = run.mock.calls.filter(([options]) => options.argv[0] === "/bin/sh");
+      expect(hookCalls).toHaveLength(1);
       expect(run).toHaveBeenCalledWith(
         expect.objectContaining({
           argv: ["/bin/sh", config.repositories[0]!.terminalHookScript],
@@ -91,14 +97,17 @@ describe("DaemonLoop terminal-hook handoff", () => {
       });
       const loop = new DaemonLoop({ config, transport });
       await loop.start();
-      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 5 });
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 6 });
       const dispositions: boolean[] = [];
       pendingTerminalStatusOf(loop).set("lost\\0attempt", {
         message: { ...terminalStatusFixture, sessionId: "lost", attemptId: "attempt" },
         firstAttemptedAtMs: Date.now(),
         sending: false,
         controller: new AbortController(),
-        settleDeferredTerminalHook: async (runHook: boolean) => void dispositions.push(runHook),
+        settleDeferredTerminalHook: async (runHook: boolean) => {
+          dispositions.push(runHook);
+          return { summary: "after hook", summarySource: "harness" as const };
+        },
       } as never);
 
       transport.deliver({
@@ -118,6 +127,12 @@ describe("DaemonLoop terminal-hook handoff", () => {
         ),
       );
       expect(dispositions).toEqual([true]);
+      expect(sent).toContainEqual({
+        type: "session:terminal-hook-complete",
+        sessionId: "lost",
+        handoffId: "replacement",
+        result: { summary: "after hook", summarySource: "harness" },
+      });
       // The original status remains until its independent durable ACK arrives.
       expect(pendingTerminalStatusOf(loop).has("lost\\0attempt")).toBe(true);
       loop.stop();
@@ -148,11 +163,14 @@ describe("DaemonLoop terminal-hook handoff", () => {
       (
         loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
       ).processRunner = {
-        run: () => {
-          hookStarted();
-          return new Promise((resolve) => {
-            finishHook = resolve;
-          });
+        run: (options: { argv: string[] }) => {
+          if (options.argv[0] === "/bin/sh") {
+            hookStarted();
+            return new Promise((resolve) => {
+              finishHook = resolve;
+            });
+          }
+          return Promise.resolve({ exitCode: 0 });
         },
       };
       const assignmentStarted = vi.fn();

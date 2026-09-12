@@ -40,7 +40,7 @@ export async function pendingTerminalHookHandoffs(
       repositoryId: handoff.repositoryId,
       worktreeId: handoff.worktreeId,
       status: handoff.status,
-      errorCode: handoff.errorCode,
+      ...(handoff.errorCode !== undefined ? { errorCode: handoff.errorCode } : {}),
       ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
       ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),
     });
@@ -52,7 +52,13 @@ export async function pendingTerminalHookHandoffs(
 /** Clear a handoff only after the same host's current connection confirms it. */
 export async function settleTerminalHookHandoff(
   state: ControlPlaneState,
-  input: { sessionId: string; handoffId: string; hostId: string; connectionId?: string },
+  input: {
+    sessionId: string;
+    handoffId: string;
+    hostId: string;
+    connectionId?: string;
+    result?: import("@auto-harness/shared").SessionResult;
+  },
 ): Promise<boolean> {
   const cached = state.sessions.get(input.sessionId);
   const session = state.storage ? await state.storage.getSession(input.sessionId, true) : cached;
@@ -76,11 +82,12 @@ export async function settleTerminalHookHandoff(
         handoffId: input.handoffId,
         hostId: input.hostId,
         connectionId: input.connectionId,
+        ...(input.result ? { result: input.result } : {}),
       }))
     : input.connectionId !== undefined &&
       state.hostConnection.get(input.hostId) === input.connectionId;
   if (!settled) return false;
-  const next = { ...session };
+  const next = { ...session, ...(input.result ? { result: input.result } : {}) };
   delete next.terminalHookHandoff;
   delete next.activeHostId;
   delete next.activeHostOrder;

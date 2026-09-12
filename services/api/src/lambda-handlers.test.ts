@@ -1380,7 +1380,7 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
-  it("forwards a durable retry disposition with session:status-acknowledged", async () => {
+  it("forwards a durable terminal-hook disposition with session:status-acknowledged", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);
     fixture.management.send.mockClear();
@@ -1389,7 +1389,8 @@ describe("Lambda runtime adapters", () => {
       sessionStatusAcknowledged: {
         sessionId: "retry-session",
         attemptId: "retry-attempt",
-        retryAccepted: true,
+        retryAccepted: false,
+        terminalHookHandoffId: "handoff",
       },
     });
 
@@ -1413,7 +1414,8 @@ describe("Lambda runtime adapters", () => {
       type: "session:status-acknowledged",
       sessionId: "retry-session",
       attemptId: "retry-attempt",
-      retryAccepted: true,
+      retryAccepted: false,
+      terminalHookHandoffId: "handoff",
     });
   });
 

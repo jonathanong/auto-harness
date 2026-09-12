@@ -240,6 +240,7 @@ export async function settleTerminalHookHandoff(
     handoffId: string;
     hostId: string;
     connectionId: string;
+    result?: import("@auto-harness/shared").SessionResult;
   },
 ): Promise<boolean> {
   try {
@@ -258,14 +259,15 @@ export async function settleTerminalHookHandoff(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "SET terminalHookHandoffSettled = :settled REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
+              UpdateExpression: `SET terminalHookHandoffSettled = :settled${opts.result ? ", #result = :result" : ""} REMOVE terminalHookHandoff, activeHostId, activeHostOrder`,
               ConditionExpression:
                 "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.hostId = :hostId",
+              ExpressionAttributeNames: opts.result ? { "#result": "result" } : undefined,
               ExpressionAttributeValues: {
                 ":handoffId": opts.handoffId,
                 ":hostId": opts.hostId,
                 ":settled": { handoffId: opts.handoffId, hostId: opts.hostId },
+                ...(opts.result ? { ":result": opts.result } : {}),
               },
             },
           },

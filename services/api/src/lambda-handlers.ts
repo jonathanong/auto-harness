@@ -682,6 +682,9 @@ export async function createLambdaRuntime(
               ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
                 ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
                 : {}),
+              ...(result.sessionStatusAcknowledged.terminalHookHandoffId !== undefined
+                ? { terminalHookHandoffId: result.sessionStatusAcknowledged.terminalHookHandoffId }
+                : {}),
             }).catch(() => undefined),
           );
         } else if (

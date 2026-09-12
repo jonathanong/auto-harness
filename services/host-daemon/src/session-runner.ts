@@ -42,7 +42,7 @@ type SessionRunOptions = {
   signal?: AbortSignal;
   /** Sequence after the latest persisted log for a reassigned session. */
   initialLogSeq?: number;
-  /** A v4 peer sends a durable retry disposition with the terminal-status acknowledgement. */
+  /** A v6 peer durably coordinates retry disposition, terminal hook, and post-hook result. */
   deferCheckoutFetchFailureHook?: boolean;
 };
 

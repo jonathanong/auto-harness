@@ -374,7 +374,11 @@ describe("finishClaimedSession", () => {
     expect(runner.run).not.toHaveBeenCalled();
 
     mode = "hook";
-    await result.settleDeferredTerminalHook?.(true);
+    const postHookResult = await result.settleDeferredTerminalHook?.(true);
+    expect(postHookResult).toEqual({
+      summary: "Session failed",
+      summarySource: "harness",
+    });
     expect(runner.run).toHaveBeenCalledWith(
       expect.objectContaining({
         argv: ["/bin/sh", `${process.cwd()}/AGENTS.md`],
