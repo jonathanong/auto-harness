@@ -174,9 +174,11 @@ export function CustomWebhookSettings() {
               <Input
                 id="custom-webhook-id"
                 value={config.id}
-                onChange={(event) =>
-                  setConfig((current) => ({ ...current, id: event.target.value }))
-                }
+                onChange={(event) => {
+                  setConfig((current) => ({ ...current, id: event.target.value }));
+                  // A loaded configuration only authorizes PUT/DELETE for its exact ID.
+                  setConfigured(false);
+                }}
                 placeholder="deploy"
                 data-pw="custom-webhook-id"
               />

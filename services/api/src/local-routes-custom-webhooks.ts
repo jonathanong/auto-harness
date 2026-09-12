@@ -36,6 +36,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
     send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid request body" } });
     return true;
   }
+  let repositoryId: string | undefined;
   try {
     const record = await ctx.plane.getCustomWebhookIntegrationRecord(integrationId);
     if (!record) {
@@ -43,14 +44,15 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
       send(ctx.res, 404, { error: { code: "NOT_FOUND", message: "webhook not found" } });
       return true;
     }
+    repositoryId = record.repositoryId;
     if (!record.enabled) {
-      if (!(await audit(ctx, integrationId, "denied"))) return true;
+      if (!(await audit(ctx, integrationId, "denied", undefined, repositoryId))) return true;
       send(ctx.res, 409, { error: { code: "DISABLED", message: "webhook is disabled" } });
       return true;
     }
     const secret = await decryptCustomWebhookSecret(ctx.plane.state, integrationId, record);
     if (!validSignature(ctx.req.headers[WEBHOOK_SIGNATURE_256_HEADER], body, secret)) {
-      if (!(await audit(ctx, integrationId, "denied"))) return true;
+      if (!(await audit(ctx, integrationId, "denied", undefined, repositoryId))) return true;
       send(ctx.res, 401, {
         error: { code: "UNAUTHENTICATED", message: "invalid webhook signature" },
       });
@@ -58,7 +60,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
     }
     const parsed = parseCallerBody(body);
     if (!parsed.ok) {
-      if (!(await audit(ctx, integrationId, "failed"))) return true;
+      if (!(await audit(ctx, integrationId, "failed", undefined, repositoryId))) return true;
       send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: parsed.error } });
       return true;
     }
@@ -89,7 +91,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
       },
     );
     if (!result.ok) {
-      if (!(await audit(ctx, integrationId, "failed"))) return true;
+      if (!(await audit(ctx, integrationId, "failed", undefined, repositoryId))) return true;
       send(
         ctx.res,
         result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
@@ -99,13 +101,15 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
       );
       return true;
     }
-    if (!(await audit(ctx, integrationId, "success", { created: result.created }))) return true;
+    if (!(await audit(ctx, integrationId, "success", { created: result.created }, repositoryId))) {
+      return true;
+    }
     // Assignment is deliberately detached from the public ingress response. The durable session
     // and concurrency claim are the acknowledgment; a retry can safely observe the same claim.
     await ctx.plane.enqueueAssignment();
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
-    if (!(await audit(ctx, integrationId, "failed"))) return true;
+    if (!(await audit(ctx, integrationId, "failed", undefined, repositoryId))) return true;
     sendInternalError(ctx.res);
   }
   return true;
@@ -166,6 +170,7 @@ async function audit(
   integrationId: string,
   outcome: "success" | "failed" | "denied",
   metadata?: Record<string, unknown>,
+  repositoryId?: string,
 ): Promise<boolean> {
   try {
     return await writeRouteAudit(ctx, {
@@ -173,6 +178,7 @@ async function audit(
       resourceType: "integration",
       resourceId: integrationId,
       outcome,
+      ...(repositoryId ? { repositoryId } : {}),
       ...(metadata ? { metadata } : {}),
     });
   } catch {

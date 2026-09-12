@@ -644,30 +644,44 @@ components:
           items: { type: string, minLength: 1, maxLength: 64 }
         enabled: { type: boolean }
     CustomWebhookIntegration:
-      allOf:
-        - $ref: "#/components/schemas/CustomWebhookConfig"
-        - type: object
-          required:
-            [
-              id,
-              type,
-              fallbacks,
-              queueTtlSeconds,
-              priority,
-              requiredLabels,
-              enabled,
-              version,
-              createdAt,
-              updatedAt,
-              secretConfigured,
-            ]
-          properties:
-            id: { type: string }
-            type: { type: string, const: custom-webhook }
-            secretConfigured: { type: boolean, const: true }
-            version: { type: integer, minimum: 1 }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
+      type: object
+      required:
+        [
+          id,
+          type,
+          repositoryId,
+          target,
+          fallbacks,
+          queueTtlSeconds,
+          timeout,
+          priority,
+          requiredLabels,
+          enabled,
+          version,
+          createdAt,
+          updatedAt,
+          secretConfigured,
+        ]
+      additionalProperties: false
+      properties:
+        secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
+        id: { type: string }
+        type: { type: string, const: custom-webhook }
+        repositoryId: { type: string, minLength: 1 }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }
+        queueTtlSeconds: { type: number, minimum: 1 }
+        timeout: { type: number, minimum: 1 }
+        priority: { type: integer }
+        requiredLabels:
+          type: array
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 64 }
+        enabled: { type: boolean }
+        secretConfigured: { type: boolean, const: true }
+        version: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     CustomWebhookRequest:
       type: object
       required: [prompt, idempotencyKey]

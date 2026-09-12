@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   acquireDeletionMarker,
+  ownedWrite,
   principalExistsCheck,
   renewDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
@@ -72,5 +73,26 @@ describe("Dynamo catalog deletion markers", () => {
         ConditionExpression: "attribute_exists(id)",
       },
     });
+  });
+
+  it("commits an owner-fenced write and rejects an overlarge fence set", async () => {
+    const commands: unknown[] = [];
+    const storage = ctx(async (command) => {
+      commands.push(command);
+      return {};
+    });
+    await ownedWrite(storage, [{ key: "repository:repo", owner: "owner", now }], {
+      Put: { TableName: "Integrations", Item: { id: "custom-webhook:deploy" } },
+    });
+    expect(
+      (commands[0] as { input: { TransactItems: unknown[] } }).input.TransactItems,
+    ).toHaveLength(2);
+    await expect(
+      ownedWrite(
+        storage,
+        Array.from({ length: 100 }, (_, index) => ({ key: `key:${index}`, owner: "owner", now })),
+        { Put: { TableName: "Integrations", Item: { id: "custom-webhook:deploy" } } },
+      ),
+    ).rejects.toThrow("100 transaction");
   });
 });

@@ -59,6 +59,8 @@ export type WebhookTransport = {
 export const WEBHOOK_SIGNATURE_256_HEADER = "x-auto-harness-signature-256";
 export const WEBHOOK_EVENT_HEADER = "x-auto-harness-event";
 export const WEBHOOK_DELIVERY_HEADER = "x-auto-harness-delivery";
+/** Leave time to record the outcome before the worker's 30-second delivery lease expires. */
+export const DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS = 25_000;
 
 export function signWebhookBody(secret: string, body: string): string {
   return `sha256=${createHmac("sha256", secret).update(body, "utf8").digest("hex")}`;
@@ -86,6 +88,14 @@ export function createSignedWebhookTransport(options: {
       if (process.env.NODE_ENV === "production" && !destination.url.startsWith("https://")) {
         return { ok: false, failureCode: "configuration-unavailable" };
       }
+      if (
+        destination.timeoutMs !== undefined &&
+        (!Number.isFinite(destination.timeoutMs) ||
+          destination.timeoutMs <= 0 ||
+          destination.timeoutMs > DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS)
+      ) {
+        return { ok: false, failureCode: "configuration-unavailable" };
+      }
       try {
         response = await fetcher(destination.url, {
           method: "POST",
@@ -97,9 +107,7 @@ export function createSignedWebhookTransport(options: {
           },
           body: request.body,
           redirect: "error",
-          ...(destination.timeoutMs !== undefined
-            ? { signal: AbortSignal.timeout(destination.timeoutMs) }
-            : {}),
+          signal: AbortSignal.timeout(destination.timeoutMs ?? DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS),
         });
       } catch {
         return { ok: false, failureCode: "transient-failure" };

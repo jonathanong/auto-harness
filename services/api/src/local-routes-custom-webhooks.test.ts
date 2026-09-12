@@ -206,10 +206,13 @@ describe("custom webhook receiver", () => {
       concurrencyId: "webhook:deploy:delivery-1",
       target: { providerId: "provider" },
     });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ action: "webhook:custom:receive", outcome: "success" })],
+    });
   });
 
   it("rejects bad signatures and caller routing/metadata fields", async () => {
-    const { handler } = await fixture();
+    const { plane, handler } = await fixture();
     const bad = await invokeHandler(
       handler,
       "POST",
@@ -218,6 +221,9 @@ describe("custom webhook receiver", () => {
       { "x-auto-harness-signature-256": "sha256=" + "0".repeat(64) },
     );
     expect(bad.status).toBe(401);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ action: "webhook:custom:receive", outcome: "denied" })],
+    });
     const body = { prompt: "x", idempotencyKey: "one", repositoryId: "attacker" };
     const extra = await invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", body, {
       "x-auto-harness-signature-256": signature(body),

@@ -4,6 +4,7 @@ import {
   deleteCustomWebhookIntegration,
   deleteSlackIntegration,
   getCustomWebhookIntegration,
+  listCustomWebhookIntegrations,
   putCustomWebhookIntegration,
   putSlackIntegration,
 } from "./plane-storage-integrations.ts";
@@ -30,7 +31,10 @@ const record = {
 };
 
 function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
-  return { doc: { send } as never, tables: { integrations: "Integrations" } as never };
+  return {
+    doc: { send } as never,
+    tables: { integrations: "Integrations", concurrencyLocks: "Locks" } as never,
+  };
 }
 
 describe("Slack integration storage failures", () => {
@@ -110,5 +114,82 @@ describe("custom webhook integration storage", () => {
       expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
       expect.objectContaining({ Key: { id: "custom-webhook:slack" } }),
     ]);
+  });
+
+  it("lists every namespaced custom integration across scan pages", async () => {
+    const first = {
+      id: "custom-webhook:first",
+      type: "custom-webhook" as const,
+      encryptedSecret: "ciphertext",
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      fallbacks: [],
+      queueTtlSeconds: 60,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      enabled: true,
+      version: 1,
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    };
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [first, { id: "slack", type: "slack" }, { ...first, id: "not-namespaced" }],
+        LastEvaluatedKey: { id: "next" },
+      })
+      .mockResolvedValueOnce({ Items: [{ ...first, id: "custom-webhook:second" }] });
+    await expect(listCustomWebhookIntegrations(ctx(send))).resolves.toMatchObject([
+      { id: "first" },
+      { id: "second" },
+    ]);
+    expect(send.mock.calls.map(([command]) => command.input)).toEqual([
+      expect.objectContaining({ TableName: "Integrations", ConsistentRead: true }),
+      expect.objectContaining({
+        TableName: "Integrations",
+        ConsistentRead: true,
+        ExclusiveStartKey: { id: "next" },
+      }),
+    ]);
+  });
+
+  it("returns a conflict when a fenced write loses its transaction", async () => {
+    const customRecord = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      encryptedSecret: "ciphertext",
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      fallbacks: [],
+      queueTtlSeconds: 60,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      enabled: true,
+      version: 1,
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    };
+    const committed = vi.fn().mockResolvedValue({});
+    await expect(
+      putCustomWebhookIntegration(ctx(committed), customRecord, null, [
+        { key: "repository:repo", owner: "owner", now: "2026-08-10T00:00:00.000Z" },
+      ]),
+    ).resolves.toBe(true);
+    expect(committed.mock.calls[0]?.[0].input.TransactItems).toHaveLength(2);
+    await expect(
+      putCustomWebhookIntegration(
+        ctx(
+          vi.fn().mockRejectedValue({
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+          }),
+        ),
+        customRecord,
+        null,
+        [{ key: "repository:repo", owner: "owner", now: "2026-08-10T00:00:00.000Z" }],
+      ),
+    ).resolves.toBe(false);
   });
 });

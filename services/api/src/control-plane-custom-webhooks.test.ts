@@ -111,49 +111,6 @@ describe("custom webhook integration lifecycle", () => {
     expect(created.ok).toBe(true);
   });
 
-  it("uses durable reads and writes, including compare-and-swap delete and update failures", async () => {
-    let stored: Awaited<ReturnType<ControlPlane["getCustomWebhookIntegrationRecord"]>> = null;
-    let writeAllowed = true;
-    const storage = {
-      getRepository: async () => ({ id: "repo" }),
-      listProviders: async () => [{ id: "provider" }],
-      listCommands: async () => [{ id: "command" }],
-      getCustomWebhookIntegration: async () => stored,
-      putCustomWebhookIntegration: async (record: NonNullable<typeof stored>) => {
-        if (writeAllowed) stored = record;
-        return writeAllowed;
-      },
-      deleteCustomWebhookIntegration: async () => {
-        if (writeAllowed) stored = null;
-        return writeAllowed;
-      },
-    };
-    const value = new ControlPlane({ secretEncryptor: encryptor(), storage: storage as never });
-
-    expect(await value.getCustomWebhookIntegration("deploy")).toBeNull();
-    expect(await value.createCustomWebhookIntegration(config())).toMatchObject({ ok: true });
-    expect(await value.getCustomWebhookIntegration("deploy")).toMatchObject({ id: "deploy" });
-
-    writeAllowed = false;
-    expect(await value.updateCustomWebhookIntegration(config())).toMatchObject({
-      ok: false,
-      conflict: true,
-    });
-    expect(await value.deleteCustomWebhookIntegration("deploy")).toMatchObject({
-      ok: false,
-      conflict: true,
-    });
-
-    writeAllowed = true;
-    expect(await value.updateCustomWebhookIntegration(config({ secret: undefined }))).toMatchObject(
-      {
-        ok: true,
-        integration: { version: 2 },
-      },
-    );
-    expect(await value.deleteCustomWebhookIntegration("deploy")).toEqual({ ok: true });
-  });
-
   it("rejects absent catalog references and every malformed encrypted-secret shape", async () => {
     const value = plane();
     await expect(

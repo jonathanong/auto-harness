@@ -194,11 +194,16 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return integrations.getCustomWebhookIntegration(this.ctx, id);
   }
 
+  listCustomWebhookIntegrations(): Promise<CustomWebhookIntegrationRecord[]> {
+    return integrations.listCustomWebhookIntegrations(this.ctx);
+  }
+
   putCustomWebhookIntegration(
     record: CustomWebhookIntegrationRecord,
     expectedVersion: number | null,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
   ): Promise<boolean> {
-    return integrations.putCustomWebhookIntegration(this.ctx, record, expectedVersion);
+    return integrations.putCustomWebhookIntegration(this.ctx, record, expectedVersion, markers);
   }
 
   deleteCustomWebhookIntegration(id: string, expectedVersion: number): Promise<boolean> {

@@ -88,6 +88,21 @@ describe("CustomWebhookSettings", () => {
     await settle();
   });
 
+  it("does not reuse a loaded integration when its id changes", async () => {
+    const fake = createApiFake(json(existing), json({ ...existing, id: "other" }, 201));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "other");
+    expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-secret"), "s".repeat(32));
+    submit(view.container.querySelector("form")!);
+    await settle();
+    expect(fake.requests[1]?.[0]).toBe("/api/v1/integrations/custom/other");
+    expect(fake.requests[1]?.[1]?.method).toBe("POST");
+  });
+
   it("reports load, save, and delete failures", async () => {
     const fake = createApiFake(
       json({}, 404),

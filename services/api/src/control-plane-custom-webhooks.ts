@@ -16,6 +16,7 @@ import {
   type PublicCustomWebhookIntegration,
 } from "./custom-webhook-types.ts";
 import type { CustomWebhookIntegrationRecord } from "./db/plane-storage-types.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 
 type Failure = { ok: false; error: string; conflict?: true; unavailable?: true };
 
@@ -48,21 +49,30 @@ export async function createCustomWebhookIntegration(
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, true);
   if (!valid.ok) return valid;
-  const references = await validateConfiguredReferences(state, input);
-  if (!references.ok) return references;
   if (!state.secretEncryptor) return unavailable();
-  const current = state.storage
-    ? await state.storage.getCustomWebhookIntegration(input.id)
-    : state.customWebhookIntegrations.get(input.id);
-  if (current)
-    return { ok: false, error: "custom webhook integration already exists", conflict: true };
-  const now = state.now();
-  const record = await makeRecord(state, input, now, 1, now);
-  if (state.storage) {
-    if (!(await state.storage.putCustomWebhookIntegration(record, null))) return conflict();
-  }
-  state.customWebhookIntegrations.set(input.id, record);
-  return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+  return withCustomWebhookReferenceFence(state, input, async (markers) => {
+    const references = await validateConfiguredReferences(state, input);
+    if (!references.ok) return references;
+    const current = state.storage
+      ? await state.storage.getCustomWebhookIntegration(input.id)
+      : state.customWebhookIntegrations.get(input.id);
+    if (current)
+      return {
+        ok: false as const,
+        error: "custom webhook integration already exists",
+        conflict: true as const,
+      };
+    const now = state.now();
+    const record = await makeRecord(state, input, now, 1, now);
+    if (
+      state.storage &&
+      !(await state.storage.putCustomWebhookIntegration(record, null, markers))
+    ) {
+      return conflict();
+    }
+    state.customWebhookIntegrations.set(input.id, record);
+    return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+  });
 }
 
 export async function updateCustomWebhookIntegration(
@@ -71,27 +81,31 @@ export async function updateCustomWebhookIntegration(
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
-  const references = await validateConfiguredReferences(state, input);
-  if (!references.ok) return references;
   if (!state.secretEncryptor) return unavailable();
-  const current = state.storage
-    ? await state.storage.getCustomWebhookIntegration(input.id)
-    : state.customWebhookIntegrations.get(input.id);
-  if (!current) return { ok: false, error: "custom webhook integration not found" };
-  const record = await makeRecord(
-    state,
-    input,
-    current.createdAt,
-    current.version + 1,
-    state.now(),
-    input.secret === undefined ? current.encryptedSecret : undefined,
-  );
-  if (state.storage) {
-    if (!(await state.storage.putCustomWebhookIntegration(record, current.version)))
+  return withCustomWebhookReferenceFence(state, input, async (markers) => {
+    const references = await validateConfiguredReferences(state, input);
+    if (!references.ok) return references;
+    const current = state.storage
+      ? await state.storage.getCustomWebhookIntegration(input.id)
+      : state.customWebhookIntegrations.get(input.id);
+    if (!current) return { ok: false, error: "custom webhook integration not found" };
+    const record = await makeRecord(
+      state,
+      input,
+      current.createdAt,
+      current.version + 1,
+      state.now(),
+      input.secret === undefined ? current.encryptedSecret : undefined,
+    );
+    if (
+      state.storage &&
+      !(await state.storage.putCustomWebhookIntegration(record, current.version, markers))
+    ) {
       return conflict();
-  }
-  state.customWebhookIntegrations.set(input.id, record);
-  return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+    }
+    state.customWebhookIntegrations.set(input.id, record);
+    return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
+  });
 }
 
 export async function deleteCustomWebhookIntegration(
@@ -286,4 +300,28 @@ function conflict(): Failure {
     error: "custom webhook integration changed concurrently; retry",
     conflict: true,
   };
+}
+
+/** Keep configuration and catalog deletes on the same durable ownership fences. */
+async function withCustomWebhookReferenceFence<T extends { ok: boolean }>(
+  state: ControlPlaneState,
+  input: CustomWebhookConfigInput,
+  operation: (
+    markers:
+      | readonly import("./db/plane-storage-deletion-markers.ts").OwnedDeletionMarker[]
+      | undefined,
+  ) => Promise<T>,
+): Promise<T | Failure> {
+  const keys = customWebhookReferenceKeys(input);
+  return withDeletionMarkers(state, keys, async (owner) =>
+    operation(owner ? keys.map((key) => ({ key, owner, now: state.now() })) : undefined),
+  );
+}
+
+function customWebhookReferenceKeys(input: CustomWebhookConfigInput): string[] {
+  const keys = new Set<string>([`repository:${input.repositoryId}`]);
+  for (const route of [input.target, ...(input.fallbacks ?? [])]) {
+    keys.add("providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`);
+  }
+  return [...keys];
 }

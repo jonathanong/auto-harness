@@ -184,3 +184,19 @@ export async function ownedDelete(
     }),
   );
 }
+
+/** Commit a dependent write only while this operation still owns every catalog fence. */
+export async function ownedWrite(
+  ctx: PlaneStorageCtx,
+  markers: readonly OwnedDeletionMarker[],
+  write: TransactionItem,
+): Promise<void> {
+  if (markers.length > 99) {
+    throw new Error("catalog reference write exceeds DynamoDB's 100 transaction action limit");
+  }
+  await ctx.doc.send(
+    new TransactWriteCommand({
+      TransactItems: [...withMarkerTable(ctx, ownedMarkerConditions([...markers])), write],
+    }),
+  );
+}
