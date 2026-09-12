@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 
 export const GITHUB_PULL_REF_CONFIG_ENV = "HARNESS_GITHUB_PULL_REF_CONFIG";
 
-export type GitHubPullRefTransport = Readonly<{
+type GitHubPullRefTransport = Readonly<{
   credentialHelper?: string;
   httpProxy?: string;
   sslCAInfo?: string;
