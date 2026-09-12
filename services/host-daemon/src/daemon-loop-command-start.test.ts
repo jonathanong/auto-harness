@@ -300,6 +300,78 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
+  it("refuses a pending v3 launch when its assignment is cancelled", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    try {
+      transport.negotiate(3);
+      const controller = new AbortController();
+      const pending = authorize(loop, controller.signal);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+
+      controller.abort();
+
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      loop.stop();
+    }
+  });
+
+  it("refuses every pending v3 launch when the daemon stops", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    transport.negotiate(3);
+    const pending = authorize(loop);
+    expect(
+      transport.sent.filter((message) => message.type === "session:command-start"),
+    ).toHaveLength(1);
+
+    loop.stop();
+
+    await expect(pending).resolves.toBe(false);
+  });
+
+  it("logs a rejected command-start send while retaining its authorization gate", async () => {
+    const lines: string[] = [];
+    const loop = new DaemonLoop({
+      config: { hostId: "host-1", repositories: [], providerAccounts: [] },
+      transport: {
+        async send(message) {
+          if (message.type === "session:command-start") throw new Error("connection lost");
+        },
+        onMessage() {},
+        onRegistered() {},
+        close() {},
+      },
+      onLog: (line) => lines.push(line),
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_unavailable",
+      },
+    });
+    await loop.start();
+    try {
+      (
+        loop as unknown as {
+          handleRegistered(protocolVersion?: number): void;
+        }
+      ).handleRegistered(3);
+      const pending = authorize(loop);
+
+      await expect
+        .poll(() => lines)
+        .toContain("session:command-start send failed for session-1: connection lost");
+      loop.stop();
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      loop.stop();
+    }
+  });
+
   it("does not enqueue a duplicate command-start while the first send is still pending", async () => {
     const transport = new ProtocolTransport();
     transport.deferCommandStarts = true;

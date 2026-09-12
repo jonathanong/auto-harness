@@ -1176,6 +1176,15 @@ describe("Lambda runtime adapters", () => {
     const runtime = await registerGatewayHost(fixture);
     fixture.plane.state.hostConnection.delete("host-1");
     fixture.management.send.mockClear();
+    const commandStart = {
+      body: JSON.stringify({
+        type: "session:command-start",
+        sessionId: "session-command-start-cache-miss",
+        worktreeId: null,
+        attemptId: "attempt-command-start-cache-miss",
+      }),
+      requestContext: { connectionId: "gateway-1" as const, routeKey: "$default" as const },
+    };
     fixture.sessions.set("session-command-start-cache-miss", {
       id: "session-command-start-cache-miss",
       repositoryId: "repository-1",
@@ -1197,17 +1206,7 @@ describe("Lambda runtime adapters", () => {
       primaryCommandStartState: "pending",
     });
 
-    await expect(
-      runtime.websocket({
-        body: JSON.stringify({
-          type: "session:command-start",
-          sessionId: "session-command-start-cache-miss",
-          worktreeId: null,
-          attemptId: "attempt-command-start-cache-miss",
-        }),
-        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
-      }),
-    ).resolves.toEqual({ statusCode: 200 });
+    await expect(runtime.websocket(commandStart)).resolves.toEqual({ statusCode: 200 });
 
     expect(fixture.management.send.mock.calls[0]?.[0].input.ConnectionId).toBe("gateway-1");
     expect(
@@ -1217,6 +1216,19 @@ describe("Lambda runtime adapters", () => {
       sessionId: "session-command-start-cache-miss",
       attemptId: "attempt-command-start-cache-miss",
     });
+
+    fixture.sessions.set("session-command-start-cache-miss", {
+      ...fixture.sessions.get("session-command-start-cache-miss"),
+      primaryCommandStartState: "pending",
+    });
+    fixture.management.send.mockRejectedValueOnce(new Error("command-start delivery failed"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(runtime.websocket(commandStart)).resolves.toEqual({ statusCode: 200 });
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("postToHost failure"));
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("replies with session:status-acknowledged after a durable terminal report commits", async () => {
