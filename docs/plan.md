@@ -12,8 +12,9 @@ that first, since phases below assume the amended API/data model, not the one cu
 in those files.
 
 **Driving constraint, restated:** Auto Harness exists to spend **subscription plan capacity**
-(Codex, Claude Code, etc.) on unattended coding work by driving **non-interactive CLIs**, not
-Agent SDKs or pay-per-token APIs. See [why.md](why.md) and [costs.md](costs.md). Every design
+(Codex, Claude Code, etc.) on unattended coding work by driving each vendor's **non-interactive
+CLI natively**—no intermediary Agent SDK or universal harness, and not a pay-per-token API. See
+[why.md](why.md) and [costs.md](costs.md). Every design
 choice below is in service of that — cheap coordination, not a second AI vendor account, not a
 generic multi-tenant agent platform.
 
@@ -60,6 +61,8 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 - **Per-session containerization** (see D9).
 - **A general outbound-webhook / callback framework as a required path** (see D2) — an optional
   version may land in Phase 5 for callers who want it, but no phase before that depends on it.
+- **Multiplayer sessions, presence, or an in-browser IDE/terminal.** Auto Harness is autonomous by
+  design — a human dispatches work and reads the result; they do not co-drive a session live.
 
 ---
 

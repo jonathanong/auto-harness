@@ -12,7 +12,7 @@ You keep control of secrets and machines. Auto Harness coordinates the work.
 
 Engineering orgs drown in the same loops: red builds, nitpick reviews, dependency churn, “someone should fix that.” Humans should set direction—not babysit every failed check or routine update.
 
-Most teams already pay for **coding-agent subscriptions**. Those plans generally **do not include Agent SDKs**, so factory automation has to drive the same tools through **non-interactive CLI** mode—queued, logged, and concurrent—on machines you control. That is what Auto Harness is for: **subscription capacity → unattended software work**, not a new pay-per-token API bill.
+Most teams already pay for **coding-agent subscriptions**. Auto Harness drives those same tools **natively**—the vendor's own CLI, non-interactive, no intermediary SDK or universal harness—queued, logged, and concurrent, on machines you control. That is what Auto Harness is for: **subscription capacity → unattended software work**, not a new pay-per-token API bill.
 
 Auto Harness is for teams that want:
 
@@ -34,8 +34,8 @@ The win is **time and throughput**. Cloud coordination is cheap; the scarce inpu
 | **Work was interrupted mid-flight** | Resume the same CLI context on its agent while re-establishing the ref in an eligible worktree                                     |
 | **PRs stall in review**             | Shepherd changes forward—address comments, re-run checks, keep momentum                                                            |
 | **The repo needs steady care**      | Schedules for updates, lint, security patches—maintenance without calendar babysitting                                             |
-| **CI / bots fire and forget**       | GitHub Actions (or anything) calls the API and exits; humans watch **Slack** and/or **GitHub** (PRs, comments)—not the trigger job |
-| **The team lives in Slack**         | One thread per session for harness status alongside GitHub activity                                                                |
+| **CI / bots fire and forget**       | GitHub Actions (or anything) calls the API and exits; humans watch the web UI and/or **GitHub** (PRs, comments)—not the trigger job |
+| **The team lives in Slack**         | Session-lifecycle Slack threads are built but not yet live in production—see [docs/integrations.md](docs/integrations.md)          |
 
 Anything you can trigger programmatically is fair game. Auto Harness doesn’t care _why_ you started a session—only that you did, with a prompt and a target.
 
@@ -45,7 +45,7 @@ Anything you can trigger programmatically is fair game. Auto Harness doesn’t c
 
 1. Something needs doing (a broken build, a written prompt, a schedule firing).
 2. A session lands in the queue and runs on your capacity.
-3. You watch progress live—or only look when Slack or the UI says it’s done.
+3. You watch progress live—or only check the UI when it says it’s done.
 4. You review the PR or result like any other change.
 
 Operators use the web UI. Pipelines and bots use the API. Your agents run on machines you control.
