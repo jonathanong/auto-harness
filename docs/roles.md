@@ -72,7 +72,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                                                                                         |
 | `providers:leases`     | Inspect held Provider Account leases and force-release a lease only after its holder session is terminal and its host assignment is detached. Repository scope applies to holders. This is an operational recovery action, not Provider Account catalog configuration.                                |
 | `catalog:write`        | Create/update/delete Commands, Providers, and Repositories. Command `argv` is **arbitrary execution on the fleet** ([plan.md](plan.md) D4). Repository setup/hook fields are persisted but not assigned. Admin only.                                                                                  |
-| `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                                                                                                |
+| `accounts:write`       | User and service-account CRUD, including manual service-account credential rotation: create a new key, update consumers, then delete the old key ([auth.md](auth.md#service-accounts-api-keys)). `GET` of those lists too.                                                                            |
 | `integrations:write`   | Slack integration CRUD (`/integrations/slack`), including `GET`.                                                                                                                                                                                                                                      |
 | `audit:read`           | `GET /audit-logs`.                                                                                                                                                                                                                                                                                    |
 | `scheduler:run`        | `POST /scheduler/*` (assign, ack-deadlines, reclaim-stale). Internal.                                                                                                                                                                                                                                 |
@@ -180,14 +180,14 @@ allow (local loopback).
 are rewritten to the named role and stored; remaining illegal combinations
 return `400 VALIDATION_ERROR`:
 
-| Combination                                                    | Result                                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `admin` + `allowedRepositoryIds` or `boundHostId`              | Remapped: scoped admin → `maintainer`, bound admin → `agent`.          |
-| `agent` without `boundHostId`                                  | Rejected.                                                              |
-| any non-`agent` except `read-only` + `boundHostId`             | Remapped to `agent` so pre-migration daemon keys can still be rotated. |
-| `read-only` + `boundHostId`                                    | Rejected (no escalation).                                              |
-| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered).                      |
-| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                                               |
+| Combination                                                    | Result                                                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `admin` + `allowedRepositoryIds` or `boundHostId`              | Remapped: scoped admin → `maintainer`, bound admin → `agent`.                                  |
+| `agent` without `boundHostId`                                  | Rejected.                                                                                      |
+| any non-`agent` except `read-only` + `boundHostId`             | Remapped to `agent` so pre-migration daemon keys can still be replaced during manual rotation. |
+| `read-only` + `boundHostId`                                    | Rejected (no escalation).                                                                      |
+| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered).                                              |
+| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                                                                       |
 
 Users accept optional `allowedRepositoryIds` the same way service accounts do.
 
@@ -197,8 +197,8 @@ Users accept optional `allowedRepositoryIds` the same way service accounts do.
 
 Older rows stored `operator` or `admin` plus a bind or repo list. Those still
 authenticate. `effectiveRole()` maps them **at request time** (the stored role
-is not rewritten on read). Create and rotate apply the same mapping **before**
-grant validation so a deployed daemon key can be replaced:
+is not rewritten on read). Creation and replacement during manual rotation apply
+the same mapping **before** grant validation so a deployed daemon key can be replaced:
 
 | Stored                                              | Effective                   |
 | --------------------------------------------------- | --------------------------- |
