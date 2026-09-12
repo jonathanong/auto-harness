@@ -166,17 +166,20 @@ export async function runClaimedSession(
   baseline?: string,
   isolatedGitHubConfigDir?: string,
 ): Promise<SessionRunResult> {
-  const mappedGitHubApp = githubApp?.repositories.has(assign.repositoryId) ?? false;
+  const repositoryId = assign.repositoryId;
+  const mappedGitHubApp = repositoryId
+    ? (githubApp?.repositories.has(repositoryId) ?? false)
+    : false;
   const sessionChildEnv = mappedGitHubApp
     ? withoutAmbientGitHubTokens(childEnvSource)
     : childEnvSource;
   let installationToken: InstallationToken | undefined;
   let authenticatedTerminalEnvironment = sessionChildEnv;
-  if (mappedGitHubApp) {
+  if (mappedGitHubApp && repositoryId) {
     try {
       installationToken = await mintInstallationToken(
         githubApp!,
-        assign.repositoryId,
+        repositoryId,
         signal,
         fetch,
         nowMs,
@@ -368,9 +371,10 @@ async function runProcessAndFinish(
   isolatedGitHubConfigDir?: string,
   installationToken?: InstallationToken,
 ): Promise<SessionRunResult> {
-  const scrubbedTerminalEnvironment = githubApp?.repositories.has(assign.repositoryId)
-    ? withoutAmbientGitHubTokens(environment)
-    : environment;
+  const scrubbedTerminalEnvironment =
+    assign.repositoryId && githubApp?.repositories.has(assign.repositoryId)
+      ? withoutAmbientGitHubTokens(environment)
+      : environment;
   const terminalEnvironment = isolatedGitHubConfigDir
     ? withIsolatedGitHubConfigDir(scrubbedTerminalEnvironment, isolatedGitHubConfigDir)
     : scrubbedTerminalEnvironment;

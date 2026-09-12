@@ -65,7 +65,9 @@ export class SessionRunner {
   async run(assign: SessionAssign, options: SessionRunOptions = {}): Promise<SessionRunResult> {
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
     const childEnvSource = this.deps.childEnvSource ?? process.env;
-    const mappedGitHubApp = this.deps.githubApp?.repositories.has(assign.repositoryId) ?? false;
+    const mappedGitHubApp = assign.repositoryId
+      ? (this.deps.githubApp?.repositories.has(assign.repositoryId) ?? false)
+      : false;
     const baseSessionChildEnv = mappedGitHubApp
       ? withoutAmbientGitHubTokens(childEnvSource)
       : childEnvSource;
