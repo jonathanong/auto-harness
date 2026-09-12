@@ -35,6 +35,13 @@ export class RepositoryAdmissionClosedError extends Error {
   }
 }
 
+export class ParentSessionAttemptEndedError extends Error {
+  constructor() {
+    super("parent session attempt is no longer running");
+    this.name = "ParentSessionAttemptEndedError";
+  }
+}
+
 class SessionDrainActiveError extends Error {
   readonly operationId: string;
 
@@ -68,5 +75,6 @@ export function isCreateSessionConflict(err: unknown): boolean {
     "SessionIdCollisionError",
     "CreateSessionRetryExhaustedError",
     "CatalogDeletionInProgressError",
+    "ParentSessionAttemptEndedError",
   ].includes(err.name);
 }

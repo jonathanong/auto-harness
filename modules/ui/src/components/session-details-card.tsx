@@ -40,6 +40,26 @@ export function SessionDetailsCard({
             </dd>
           </div>
         </DetailGroup>
+        {s.parentSessionId || s.rootSessionId ? (
+          <DetailGroup title="Lineage">
+            {s.parentSessionId ? (
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Parent session</dt>
+                <dd className="font-mono text-sm" data-pw="session-detail-parent-session">
+                  <LineageLink id={s.parentSessionId} hrefBase={"/sessions"} />
+                </dd>
+              </div>
+            ) : null}
+            {s.rootSessionId ? (
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Root session</dt>
+                <dd className="font-mono text-sm" data-pw="session-detail-root-session">
+                  <LineageLink id={s.rootSessionId} hrefBase={"/sessions"} />
+                </dd>
+              </div>
+            ) : null}
+          </DetailGroup>
+        ) : null}
         <DetailGroup title="Where">
           {s.type === "workspace" || s.workspacePoolId ? (
             <WorkspaceWhere session={s} hostHrefBase={hostHrefBase} />
@@ -145,6 +165,14 @@ function WorkspaceWhere({
         </dd>
       </div>
     </>
+  );
+}
+
+function LineageLink({ id, hrefBase }: { id: string; hrefBase: string }) {
+  return (
+    <Link href={`${hrefBase}/${encodeURIComponent(id)}`} className="hover:underline">
+      {id}
+    </Link>
   );
 }
 

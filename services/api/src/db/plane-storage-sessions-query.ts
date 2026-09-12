@@ -4,6 +4,32 @@ import type { SessionRecord } from "./types.ts";
 import { itemToSession, nextPageKey, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
+const SESSIONS_PARENT_INDEX = "parentSessionId-createdOrder";
+
+/** Children are ordered by their immutable creation-order tie breaker. */
+export async function listSessionChildren(
+  ctx: PlaneStorageCtx,
+  parentSessionId: string,
+  limit: number,
+  startKey?: Record<string, unknown>,
+): Promise<{ items: SessionRecord[]; nextKey?: Record<string, unknown> }> {
+  const res = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.sessions,
+      IndexName: SESSIONS_PARENT_INDEX,
+      KeyConditionExpression: "parentSessionId = :parentSessionId",
+      ExpressionAttributeValues: { ":parentSessionId": parentSessionId },
+      ScanIndexForward: false,
+      Limit: limit,
+      ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+    }),
+  );
+  const nextKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  return {
+    items: (res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
+    ...(nextKey ? { nextKey } : {}),
+  };
+}
 
 export async function getSession(
   ctx: PlaneStorageCtx,

@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- session create/list/assign/resume/cancel/log/usage reads share one facade. */
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { HostToServerMessage, SessionStatus } from "@auto-harness/shared";
 
 import type {
@@ -19,6 +20,7 @@ import * as runningTimeout from "./control-plane-running-timeout.ts";
 import * as clone from "./control-plane-session-clone.ts";
 import * as sessions from "./control-plane-sessions.ts";
 import * as durableSessions from "./control-plane-sessions-durable.ts";
+import * as children from "./control-plane-session-children.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as priorContext from "./control-plane-prior-context.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
@@ -68,6 +70,39 @@ export class ControlPlaneSessionsService {
   async getSessionDurable(id: string): Promise<PublicSession | null> {
     const session = await durableRuntime.getSessionDurable(this.state, id);
     return session ? toPublic(this.state, session) : null;
+  }
+
+  createSessionChildDurable(
+    parentId: string,
+    body: unknown,
+    options: { principalId?: string; sessionCredentialHash?: string } = {},
+  ): ReturnType<typeof children.createSessionChildDurable> {
+    return children.createSessionChildDurable(this.state, parentId, body, options);
+  }
+
+  async listSessionChildrenDurable(
+    parentId: string,
+    query: { limit: number; cursor: string | null },
+  ): Promise<{ items: PublicSession[]; nextCursor: string | null }> {
+    const page = await children.listSessionChildrenDurable(this.state, parentId, query);
+    return {
+      items: page.items.map((session) => toPublic(this.state, session)),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  /** Validate the ephemeral hns_session credential against the current run only. */
+  async authenticateSessionApiKey(parentId: string, key: string): Promise<boolean> {
+    if (!key.startsWith("hns_session_")) return false;
+    const session = this.state.storage
+      ? await durableRuntime.getSessionDurable(this.state, parentId)
+      : this.state.sessions.get(parentId);
+    if (!session || session.status !== "running" || !session.sessionApiKeyHash) return false;
+    const actual = createHash("sha256").update(key).digest("hex");
+    return (
+      actual.length === session.sessionApiKeyHash.length &&
+      timingSafeEqual(Buffer.from(actual), Buffer.from(session.sessionApiKeyHash))
+    );
   }
 
   forceStatus(id: string, status: SessionStatus): PublicSession | null {

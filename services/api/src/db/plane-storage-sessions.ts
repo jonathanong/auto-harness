@@ -11,6 +11,7 @@ export {
 } from "./plane-storage-sessions-concurrency.ts";
 export {
   getSession,
+  listSessionChildren,
   listAllSessions,
   listSessionsByRepository,
   countSessionsByRepository,

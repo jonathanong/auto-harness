@@ -77,8 +77,9 @@ export class DynamoPlaneStorageBase {
   createSession(
     session: SessionRecord,
     markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+    parentFence?: { id: string; sessionApiKeyHash?: string },
   ): Promise<sessions.CreateSessionResult> {
-    return sessions.createSession(this.ctx, session, markers);
+    return sessions.createSession(this.ctx, session, markers, parentFence);
   }
 
   releaseConcurrencyLock(concurrencyId: string, sessionId: string): Promise<void> {
@@ -681,6 +682,14 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
+  }
+
+  listSessionChildren(
+    parentSessionId: string,
+    limit: number,
+    startKey?: Record<string, unknown>,
+  ): Promise<{ items: SessionRecord[]; nextKey?: Record<string, unknown> }> {
+    return sessions.listSessionChildren(this.ctx, parentSessionId, limit, startKey);
   }
 
   markReconnectPending(opts: {

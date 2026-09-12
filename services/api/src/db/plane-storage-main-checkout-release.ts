@@ -185,7 +185,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, sessionApiKeyHash" +
     (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +

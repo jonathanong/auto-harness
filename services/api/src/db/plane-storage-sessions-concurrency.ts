@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- admission, parent, lock, and session transaction indexes stay co-located. */
 import { DeleteCommand, GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import {
@@ -23,6 +24,7 @@ import {
   activeSessionDrainError,
   CatalogDeletionInProgressError,
   CreateSessionRetryExhaustedError,
+  ParentSessionAttemptEndedError,
   type CreateSessionResult,
   RepositoryAdmissionClosedError,
   SessionIdCollisionError,
@@ -34,6 +36,7 @@ type CreateSessionAdmissionParts = {
   drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>;
   activityPut: ReturnType<typeof sessionDrainActivityPut>;
   principalCheck: ReturnType<typeof principalExistsCheck>;
+  parentFence?: { id: string; sessionApiKeyHash?: string };
 };
 
 async function throwIfCreateAdmissionConflict(
@@ -65,6 +68,10 @@ async function throwIfCreateAdmissionConflict(
   const drainIndex = resourceIndex + 1;
   if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
     throw await activeSessionDrainError(ctx, session);
+  }
+  const parentIndex = drainIndex + Number(!!drainCheck);
+  if (parts.parentFence && isConditionalTransactionFailureAt(err, parentIndex)) {
+    throw new ParentSessionAttemptEndedError();
   }
 }
 
@@ -140,7 +147,7 @@ export async function createSessionWithConcurrency(
   parts: CreateSessionAdmissionParts,
 ): Promise<CreateSessionResult> {
   const concurrencyId = session.concurrencyId!;
-  const { drainCheck, activityPut, principalCheck } = parts;
+  const { drainCheck, activityPut, principalCheck, parentFence } = parts;
   for (let attempt = 0; attempt < MAX_CREATE_SESSION_ATTEMPTS; attempt += 1) {
     try {
       await ctx.doc.send(
@@ -166,6 +173,31 @@ export async function createSessionWithConcurrency(
                   },
                 },
             ...(drainCheck ? [drainCheck] : []),
+            ...(parentFence
+              ? [
+                  {
+                    ConditionCheck: {
+                      TableName: ctx.tables.sessions,
+                      Key: { id: parentFence.id },
+                      ConditionExpression: parentFence.sessionApiKeyHash
+                        ? "#status = :running AND sessionApiKeyHash = :sessionApiKeyHash"
+                        : "#status IN (:running, :completed, :failed, :cancelled, :timedOut)",
+                      ExpressionAttributeNames: { "#status": "status" },
+                      ExpressionAttributeValues: {
+                        ":running": "running",
+                        ...(parentFence.sessionApiKeyHash
+                          ? { ":sessionApiKeyHash": parentFence.sessionApiKeyHash }
+                          : {
+                              ":completed": "completed",
+                              ":failed": "failed",
+                              ":cancelled": "cancelled",
+                              ":timedOut": "timed_out",
+                            }),
+                      },
+                    },
+                  },
+                ]
+              : []),
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,
@@ -191,7 +223,11 @@ export async function createSessionWithConcurrency(
         ctx,
         err,
         session,
-        markers.length + Number(!!principalCheck) + 1 + Number(!!drainCheck),
+        markers.length +
+          Number(!!principalCheck) +
+          1 +
+          Number(!!drainCheck) +
+          Number(!!parentFence),
       );
       if (resolved !== "retry") return resolved;
       if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) {

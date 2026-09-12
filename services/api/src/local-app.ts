@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- login, logout, and actor rate-limit paths share one handler. */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 
 import { AuthService } from "./auth.ts";
 import { auditActor } from "./audit.ts";
@@ -82,6 +83,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
+    const childRoute = /^\/api\/v1\/sessions\/([^/]+)\/children$/.exec(url.pathname);
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
     if (
       isPublicSlackIngressRoute(method, url.pathname) &&
@@ -129,23 +131,42 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
     const authorizationHeader = req.headers?.authorization;
     const authorization = typeof authorizationHeader === "string" ? authorizationHeader : "";
+    const sessionKey = authorization.startsWith("Bearer hns_session_")
+      ? authorization.slice("Bearer ".length)
+      : undefined;
+    // A session token is deliberately not an AuthService principal: it cannot
+    // reach any route other than its own children collection.
+    if (
+      method === "POST" &&
+      childRoute &&
+      sessionKey &&
+      (await plane.authenticateSessionApiKey(childRoute[1]!, sessionKey))
+    ) {
+      ctx.sessionParentId = childRoute[1]!;
+      ctx.sessionCredentialHash = createHash("sha256").update(sessionKey).digest("hex");
+    }
     const basicGuess = authorization.startsWith("Basic ") && !hasSessionCookie(req.headers?.cookie);
     if (auth.mode === "required") {
       // Password guesses must consume the spray budget before bcrypt.
       if (basicGuess && (await enforceRateLimit(loginLimit))) return;
-      const principal = await auth.authenticate(req);
-      if (!principal) {
+      const principal = ctx.sessionParentId ? null : await auth.authenticate(req);
+      if (!ctx.sessionParentId && !principal) {
         if (!basicGuess && (await enforceRateLimit(loginLimit))) return;
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
       }
-      ctx.principal = principal;
-      if (!selfServiceAuthRoute && !logoutRoute && !authorize(principal, method, url.pathname)) {
+      if (principal) ctx.principal = principal;
+      if (
+        !ctx.sessionParentId &&
+        !selfServiceAuthRoute &&
+        !logoutRoute &&
+        !authorize(principal!, method, url.pathname)
+      ) {
         const deniedBucket = classifyRateLimitBucket(method, url.pathname);
         if (
           deniedBucket &&
           (await enforceRateLimit({
             ...loginLimit,
-            principal,
+            principal: principal!,
             bucket: deniedBucket,
           }))
         )

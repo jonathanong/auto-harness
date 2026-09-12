@@ -35,6 +35,7 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
+import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -75,6 +76,9 @@ export function assignQueued(
       const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
       if (!won) continue;
       const attemptId = state.attemptIdFactory();
+      const apiKey = hostAdvertisesSessionSpawn(state, candidate.hostId)
+        ? createSessionApiKey()
+        : undefined;
       const lease = tryAcquireProviderAccountLeaseLocal(
         state,
         session,
@@ -104,6 +108,8 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
+      if (apiKey) session.sessionApiKeyHash = apiKey.hash;
+      else delete session.sessionApiKeyHash;
       if (lease) session.providerAccountLease = lease;
       else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
@@ -122,6 +128,7 @@ export function assignQueued(
         sessionType: "prompt",
         repositoryId: session.repositoryId,
         prompt: session.prompt,
+        ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
@@ -221,6 +228,12 @@ export async function assignQueuedDurable(
         continue;
       }
       const attemptId = state.attemptIdFactory();
+      const apiKey = hasHostCapability(
+        state.connections.get(connectionId)?.capabilities,
+        "session-spawn",
+      )
+        ? createSessionApiKey()
+        : undefined;
       const occupiedSlots = new Set<number>();
       let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
       let won: AssignmentWriteResult = false;
@@ -272,6 +285,7 @@ export async function assignQueuedDurable(
               }
             : {}),
           queueShard: session.queueShard,
+          ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         });
         if (won === true || !lease) break;
         state.providerAccountLeases.delete(lease.concurrencyId);
@@ -298,6 +312,7 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
+        ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
       };
@@ -323,6 +338,7 @@ export async function assignQueuedDurable(
         sessionType: "prompt",
         repositoryId: session.repositoryId,
         prompt: session.prompt,
+        ...(apiKey ? { sessionApiKey: apiKey.key } : {}),
         resolvedArgv: route.resolvedArgv,
         timeout: session.timeout,
         worktreeId: candidate.id,
@@ -388,6 +404,12 @@ function hostAdvertisesPriorContext(state: ControlPlaneState, hostId: string): b
   const connectionId = state.hostConnection.get(hostId);
   const connection = connectionId ? state.connections.get(connectionId) : undefined;
   return hasHostCapability(connection?.capabilities, "prior-session-context");
+}
+
+function hostAdvertisesSessionSpawn(state: ControlPlaneState, hostId: string): boolean {
+  const connectionId = state.hostConnection.get(hostId);
+  const connection = connectionId ? state.connections.get(connectionId) : undefined;
+  return hasHostCapability(connection?.capabilities, "session-spawn");
 }
 
 function resumeWireFields(
@@ -478,6 +500,7 @@ export function enforceAckDeadlines(
       session.worktreeId = null;
       session.hostId = null;
       delete session.startedAt;
+      delete session.sessionApiKeyHash;
     }
     state.pendingAcks.delete(sessionId);
     requeued.push(sessionId);
@@ -580,6 +603,7 @@ export async function enforceAckDeadlinesDurable(
     delete queued.providerAccountLease;
     delete queued.activeHostId;
     delete queued.activeHostOrder;
+    delete queued.sessionApiKeyHash;
     state.sessions.set(sessionId, queued);
     if (!pending.worktreeId) releaseScheduledLeaseLocal(state, session);
     state.pendingAcks.delete(sessionId);

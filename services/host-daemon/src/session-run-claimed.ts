@@ -21,6 +21,39 @@ import {
   type PriorContextIdentity,
 } from "./prior-context-file.ts";
 
+const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
+
+class SessionCredentialRedactor {
+  private readonly pending = new Map<string, string>();
+  private readonly credential: string | undefined;
+
+  constructor(credential?: string) {
+    this.credential = credential;
+  }
+
+  push(stream: string, content: string): string {
+    if (!this.credential) return content;
+    const combined = (this.pending.get(stream) ?? "") + content;
+    let heldLength = 0;
+    const maximum = Math.min(combined.length, this.credential.length - 1);
+    for (let length = maximum; length > 0; length -= 1) {
+      if (combined.endsWith(this.credential.slice(0, length))) {
+        heldLength = length;
+        break;
+      }
+    }
+    const safe = heldLength === 0 ? combined : combined.slice(0, -heldLength);
+    this.pending.set(stream, heldLength === 0 ? "" : combined.slice(-heldLength));
+    return safe.split(this.credential).join(SESSION_CREDENTIAL_REDACTION);
+  }
+
+  drain(): Array<{ stream: string; content: string }> {
+    const trailing = [...this.pending].map(([stream, content]) => ({ stream, content }));
+    this.pending.clear();
+    return trailing;
+  }
+}
+
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
  * argv is resolved control-plane-side (cascade walk + prompt append); the daemon
@@ -175,6 +208,7 @@ async function runProcessAndFinish(
       ? { ...assign.resumeRefCapture, stream: "either" as const }
       : assign.resumeRefCapture;
   const resumeRef = new ResumeRefCaptureReader(capturePolicy);
+  const credentialRedactor = new SessionCredentialRedactor(assign.sessionApiKey);
   const profile = resolveExecutionProfile(executionProfiles, assign.providerAccountId);
   if (assign.providerAccountId && (!profile || !executionProfileReady(profile))) {
     return await finishClaimedSession(
@@ -209,9 +243,21 @@ async function runProcessAndFinish(
         })
       : null;
   if (priorContextPath) streamer.write("system", "Wrote prior-session context for this run");
+  // The daemon's host credential must never reach an agent command. Give the
+  // primary command only its one-attempt child-session credential instead;
+  // setup, checkout, and terminal hooks retain their existing environment.
+  const sessionEnv =
+    identity && assign.sessionApiKey
+      ? {
+          ...commandEnv,
+          HARNESS_API_URL: identity.apiUrl,
+          HARNESS_SESSION_ID: assign.sessionId,
+          HARNESS_SESSION_API_KEY: assign.sessionApiKey,
+        }
+      : commandEnv;
   const spawnEnv = priorContextPath
-    ? { ...commandEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
-    : commandEnv;
+    ? { ...sessionEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
+    : sessionEnv;
   let result: ProcessResult;
   try {
     result = await commandRunner.run({
@@ -221,7 +267,8 @@ async function runProcessAndFinish(
       timeoutMs: remainingMs(),
       ...(signal ? { signal } : {}),
       onChunk: (c) => {
-        const safeContent = resumeRef.push(c.stream, c.data);
+        const redacted = credentialRedactor.push(c.stream, c.data);
+        const safeContent = resumeRef.push(c.stream, redacted);
         if (safeContent) streamer.write(c.stream, safeContent);
       },
     });
@@ -229,6 +276,10 @@ async function runProcessAndFinish(
     // Must run even if the process rejects — otherwise the transcript of a
     // *different* session lingers in this (likely reused) worktree.
     await removePriorContextFile(priorContextPath);
+  }
+  for (const trailing of credentialRedactor.drain()) {
+    const safeContent = resumeRef.push(trailing.stream as "stdout" | "stderr", trailing.content);
+    if (safeContent) streamer.write(trailing.stream as "stdout" | "stderr", safeContent);
   }
   const cliResumeRef = resumeRef.finish();
   for (const trailing of resumeRef.drainTrailing()) {

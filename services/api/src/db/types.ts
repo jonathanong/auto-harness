@@ -67,6 +67,12 @@ export type SessionRecord = {
   metadata?: Record<string, unknown>;
   /** Authenticated principal that admitted this work; never accepted as a public selector. */
   principalId?: string;
+  /** Direct parent for a child session; absent on a root session. */
+  parentSessionId?: string;
+  /** Stable lineage root; absent on a top-level session. */
+  rootSessionId?: string;
+  /** SHA-256 of the current assignment's hns_session credential. Never public. */
+  sessionApiKeyHash?: string;
   /** Durable proof that this drain operation performed the cancellation. */
   cancelledByDrainOperationId?: string;
   errorCode?: string | undefined;

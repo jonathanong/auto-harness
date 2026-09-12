@@ -97,6 +97,28 @@ function providerState() {
 }
 
 describe("assignment optional-field coverage", () => {
+  it("only issues session credentials to capability-advertising daemons", () => {
+    const legacy = providerState();
+    const legacyMessages: Array<{ sessionApiKey?: string }> = [];
+    legacy.onHostMessage = (_hostId, message) => legacyMessages.push(message as never);
+    expect(assignQueued(legacy)).toHaveLength(1);
+    expect(legacyMessages[0]?.sessionApiKey).toBeUndefined();
+    expect(legacy.sessions.get("s")?.sessionApiKeyHash).toBeUndefined();
+
+    const capable = providerState();
+    for (const connection of capable.connections.values()) {
+      connection.capabilities = ["session-spawn"];
+    }
+    const capableMessages: Array<{ sessionApiKey?: string }> = [];
+    capable.onHostMessage = (_hostId, message) => capableMessages.push(message as never);
+    expect(assignQueued(capable)).toHaveLength(1);
+    expect(capableMessages[0]?.sessionApiKey).toMatch(/^hns_session_/);
+    expect(capable.sessions.get("s")?.sessionApiKeyHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(capable.sessions.get("s")?.sessionApiKeyHash).not.toBe(
+      capableMessages[0]?.sessionApiKey,
+    );
+  });
+
   it("orders provider routes with a live cached account", () => {
     expect(assignQueued(providerState())).toHaveLength(1);
   });

@@ -44,4 +44,6 @@ export type SessionSummary = {
   errorCode?: string | null;
   errorMessage?: string | null;
   metadata?: { createdBy?: unknown } | null;
+  parentSessionId?: string | null;
+  rootSessionId?: string | null;
 };

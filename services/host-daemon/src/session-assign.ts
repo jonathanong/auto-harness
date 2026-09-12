@@ -24,6 +24,7 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
     attemptId: message.attemptId,
     repositoryId: message.repositoryId,
     prompt: message.prompt,
+    ...(message.sessionApiKey !== undefined ? { sessionApiKey: message.sessionApiKey } : {}),
     resolvedArgv: message.resolvedArgv,
     timeout: message.timeout,
     worktreeId: message.worktreeId,

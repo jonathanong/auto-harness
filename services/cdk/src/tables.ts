@@ -99,6 +99,12 @@ export const DYNAMO_TABLES: TableDef[] = [
         sortKey: { name: "createdAt", type: "S" },
       },
       {
+        // Direct child-session history, oldest first.
+        name: "parentSessionId-createdOrder",
+        partitionKey: { name: "parentSessionId", type: "S" },
+        sortKey: { name: "createdOrder", type: "S" },
+      },
+      {
         // Sparse: only assignments whose host-owned lease still needs reconciliation.
         name: "activeHostId-activeHostOrder",
         partitionKey: { name: "activeHostId", type: "S" },

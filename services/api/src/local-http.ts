@@ -7,6 +7,7 @@ import type { MemorySessionStore } from "./memory-store.ts";
 import type { AuthMode } from "./auth.ts";
 import type { AuthService } from "./auth.ts";
 import type { Principal } from "./auth.ts";
+import type { AuditActor } from "./audit-types.ts";
 import type { LocalSchedulerOptions } from "./local-scheduler.ts";
 import type { RateLimitConfigOverrides, RateLimitEvent } from "./rate-limit.ts";
 import type { SlackTransport } from "./slack-delivery-types.ts";
@@ -93,6 +94,11 @@ export type RouteCtx = {
   url: URL;
   method: string;
   principal?: Principal;
+  /** Verified ephemeral credential for exactly this parent session route. */
+  sessionParentId?: string;
+  /** SHA-256 credential proof used to fence child creation to this running attempt. */
+  sessionCredentialHash?: string;
+  auditActorOverride?: AuditActor;
 };
 
 export function readJson(req: IncomingMessage): Promise<unknown> {

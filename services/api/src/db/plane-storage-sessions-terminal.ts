@@ -116,6 +116,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
       ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
+      "sessionApiKeyHash",
     ],
   };
 }

@@ -37,9 +37,10 @@ describe("role capability table", () => {
   it("grants each named role the documented writes", () => {
     const expected: Record<UserRole, Capability[]> = {
       "read-only": [],
-      author: ["sessions:write", "sessions:archive"],
+      author: ["sessions:write", "sessions:spawn", "sessions:archive"],
       operator: [
         "sessions:write",
+        "sessions:spawn",
         "sessions:archive",
         "sessions:cancel-any",
         "schedules:write",
@@ -49,6 +50,7 @@ describe("role capability table", () => {
       ],
       maintainer: [
         "sessions:write",
+        "sessions:spawn",
         "sessions:archive",
         "sessions:cancel-any",
         "schedules:write",
