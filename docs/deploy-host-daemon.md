@@ -403,9 +403,10 @@ only that repository and the three listed write permissions, injects bot author/
 only into that session's process environment, and limits its command to the token expiry less five
 minutes. It never writes the shared repository config. A native resume receives a new token; there
 is no refresh service. Mapped sessions strip ambient GitHub credential variables before setup and
-terminal hooks; the minted token is injected only into the assigned command. A host without this
-setting, or a repository omitted from the mapping,
-retains its current ambient GitHub behavior.
+terminal hooks, inject the scoped token and bot identity into the assigned command and terminal hook,
+and use a fresh private empty `GH_CONFIG_DIR` for the session so stored `gh auth login` credentials
+cannot be used as a fallback. The temporary directory is removed after the session. A host without
+this setting, or a repository omitted from the mapping, retains its current ambient GitHub behavior.
 
 The verifier reads the root-only environment file without echoing its API key, tolerates a
 `ws(s)://…/ws`-shaped value even though `HARNESS_API_URL` is expected to be the plain

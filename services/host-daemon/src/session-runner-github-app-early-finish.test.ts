@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { existsSync, readdirSync } from "node:fs";
 
 import type { ProcessRunner } from "./executor.ts";
 import { withoutAmbientGitHubTokens, type GitHubAppConfig } from "./github-app.ts";
@@ -20,6 +21,7 @@ const childEnvSource = {
   GITHUB_TOKEN: "ambient-github",
   GH_ENTERPRISE_TOKEN: "ambient-ghes",
   GITHUB_ENTERPRISE_TOKEN: "ambient-github-enterprise",
+  GH_CONFIG_DIR: "/home/harness/.config/gh",
 };
 
 const githubApp = {
@@ -33,12 +35,15 @@ const githubApp = {
 function runner(prepareCheckout: (signal: AbortSignal) => Promise<void>): {
   value: SessionRunner;
   hookEnvironments: NodeJS.ProcessEnv[];
+  hookConfigDirWasEmpty: boolean;
 } {
   const hookEnvironments: NodeJS.ProcessEnv[] = [];
+  let hookConfigDirWasEmpty = false;
   const processRunner: ProcessRunner = {
     async run(options) {
       if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
         hookEnvironments.push(options.env ?? {});
+        hookConfigDirWasEmpty = readdirSync(options.env?.GH_CONFIG_DIR ?? "").length === 0;
       }
       return { exitCode: 0, timedOut: false, signal: null };
     },
@@ -65,6 +70,9 @@ function runner(prepareCheckout: (signal: AbortSignal) => Promise<void>): {
   } as unknown as WorktreeManager;
   return {
     hookEnvironments,
+    get hookConfigDirWasEmpty() {
+      return hookConfigDirWasEmpty;
+    },
     value: new SessionRunner({ worktrees, processRunner, childEnvSource, githubApp }),
   };
 }
@@ -94,6 +102,9 @@ describe("SessionRunner mapped GitHub App early finishes", () => {
       test.value.run(baseAssign(), { signal: controller.signal }),
     ).resolves.toMatchObject({ status: "cancelled" });
     expectScrubbed(test.hookEnvironments);
+    expect(test.hookEnvironments[0]?.GH_CONFIG_DIR).not.toBe(childEnvSource.GH_CONFIG_DIR);
+    expect(test.hookConfigDirWasEmpty).toBe(true);
+    expect(existsSync(test.hookEnvironments[0]?.GH_CONFIG_DIR ?? "")).toBe(false);
   });
 
   it("scrubs terminal hooks after a checkout failure", async () => {
@@ -105,6 +116,9 @@ describe("SessionRunner mapped GitHub App early finishes", () => {
       errorCode: "setup_failed",
     });
     expectScrubbed(test.hookEnvironments);
+    expect(test.hookEnvironments[0]?.GH_CONFIG_DIR).not.toBe(childEnvSource.GH_CONFIG_DIR);
+    expect(test.hookConfigDirWasEmpty).toBe(true);
+    expect(existsSync(test.hookEnvironments[0]?.GH_CONFIG_DIR ?? "")).toBe(false);
   });
 
   it("scrubs terminal hooks after claimed-session execution rejects", async () => {

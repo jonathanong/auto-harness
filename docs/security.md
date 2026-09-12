@@ -42,9 +42,12 @@ and route policy until the credential is invalidated.
 
 When `HARNESS_GITHUB_APP_CONFIG` is configured, the daemon signs a short-lived JWT locally and
 mints one installation token for each mapped session repository. The token is injected directly as
-`GH_TOKEN` only into that assigned CLI, is never sent to the control plane or terminal hook, is
-redacted from streamed session output, and ends before its GitHub expiry. Git continues to use the
-existing SSH transport.
+`GH_TOKEN` into that assigned CLI and the repository's terminal hook, which needs the same scoped
+identity for the D3 failure-escalation flow. It is redacted from streamed output and errors, and
+the session ends before its GitHub expiry. Before minting succeeds, early terminal-hook paths stay
+scrubbed. Mapped sessions also use a fresh private empty `GH_CONFIG_DIR`, so a hook cannot fall
+back to a stored `gh` login after unsetting `GH_TOKEN`. Git continues to use the existing SSH
+transport.
 
 The App private key remains a host secret, but the daemon and its session CLIs run as the same OS
 user. A compromised session can therefore read it; mode `0600` prevents other local users, not the

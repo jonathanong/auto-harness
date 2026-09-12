@@ -316,18 +316,6 @@ async function runProcessAndFinish(
         })
       : null;
   if (priorContextPath) streamer.write("system", "Wrote prior-session context for this run");
-  // The daemon's host credential must never reach an agent command. Give the
-  // primary command only its one-attempt child-session credential instead;
-  // setup, checkout, and terminal hooks retain their existing environment.
-  const sessionEnv =
-    identity && assign.sessionApiKey
-      ? {
-          ...commandEnv,
-          HARNESS_API_URL: httpBaseFromApiUrl(identity.apiUrl),
-          HARNESS_SESSION_ID: assign.sessionId,
-          HARNESS_SESSION_API_KEY: assign.sessionApiKey,
-        }
-      : commandEnv;
   let installationToken: InstallationToken | undefined;
   if (githubApp?.repositories.has(assign.repositoryId)) {
     try {
@@ -438,7 +426,21 @@ async function runProcessAndFinish(
   const effectiveTerminalRunner = installationToken
     ? new SecretRedactingProcessRunner(processRunner, installationToken.token)
     : processRunner;
-  let result: ProcessResult;
+  const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
+    finishClaimedSession(
+      effectiveTerminalRunner,
+      streamer,
+      logs,
+      assign,
+      claimed,
+      outcome,
+      authenticatedTerminalEnvironment,
+      baseline,
+      true,
+    );
+  let result: ProcessResult | undefined;
+  let runnerRejected = false;
+  let runnerError: unknown;
   try {
     result = await effectiveCommandRunner.run({
       argv,
@@ -452,6 +454,9 @@ async function runProcessAndFinish(
         if (safeContent) streamer.write(c.stream, safeContent);
       },
     });
+  } catch (error) {
+    runnerRejected = true;
+    runnerError = error;
   } finally {
     // Must run even if the process rejects — otherwise the transcript of a
     // *different* session lingers in this (likely reused) worktree.
@@ -461,6 +466,21 @@ async function runProcessAndFinish(
     const safeContent = resumeRef.push(trailing.stream as "stdout" | "stderr", trailing.content);
     if (safeContent) streamer.write(trailing.stream as "stdout" | "stderr", safeContent);
   }
+  if (runnerRejected) {
+    const cliResumeRef = resumeRef.finish();
+    for (const trailing of resumeRef.drainTrailing()) {
+      streamer.write(trailing.stream, trailing.content);
+    }
+    streamer.write("system", "Process execution failed.");
+    return await finish({
+      status: "failed",
+      exitCode: null,
+      errorCode: "setup_failed",
+      errorMessage: thrownMessage(runnerError),
+      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    });
+  }
+  const completedResult = result!;
   const cliResumeRef = resumeRef.finish();
   for (const trailing of resumeRef.drainTrailing()) {
     streamer.write(trailing.stream, trailing.content);
@@ -468,56 +488,43 @@ async function runProcessAndFinish(
   if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
   streamer.write(
     "system",
-    result.exitCode === null
+    completedResult.exitCode === null
       ? "Process exited without an exit code"
-      : `Process exited with code ${String(result.exitCode)}`,
+      : `Process exited with code ${String(completedResult.exitCode)}`,
   );
 
-  const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
-    finishClaimedSession(
-      effectiveTerminalRunner,
-      streamer,
-      logs,
-      assign,
-      claimed,
-      outcome,
-      authenticatedTerminalEnvironment,
-      baseline,
-      true,
-    );
-
-  if (result.timedOut || timedOut()) {
+  if (completedResult.timedOut || timedOut()) {
     return await finish({
       status: "timed_out",
-      exitCode: result.exitCode,
+      exitCode: completedResult.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+      ...(completedResult.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
         : {}),
     });
   }
 
-  if (result.cancelled || signal?.aborted) {
+  if (completedResult.cancelled || signal?.aborted) {
     return await finish({
       status: "cancelled",
-      exitCode: result.exitCode,
+      exitCode: completedResult.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+      ...(completedResult.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
         : {}),
     });
   }
 
-  if (result.exitCode === 0) {
+  if (completedResult.exitCode === 0) {
     return await finish({
       status: "completed",
       exitCode: 0,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+      ...(completedResult.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
         : {}),
     });
   }
@@ -526,30 +533,30 @@ async function runProcessAndFinish(
     argv,
     failed: true,
     ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
-    ...(result.usageLimit === true ? { adapterUsageLimit: true } : {}),
+    ...(completedResult.usageLimit === true ? { adapterUsageLimit: true } : {}),
   });
   if (usageLimit) {
     return await finish({
       status: "failed",
-      exitCode: result.exitCode,
+      exitCode: completedResult.exitCode,
       errorCode: "usage_limit",
       errorMessage: "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined
-        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+      ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+      ...(completedResult.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
         : {}),
     });
   }
 
   return await finish({
     status: "failed",
-    exitCode: result.exitCode,
-    errorMessage: `process exited with code ${String(result.exitCode)}`,
+    exitCode: completedResult.exitCode,
+    errorMessage: `process exited with code ${String(completedResult.exitCode)}`,
     ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-    ...(result.usage !== undefined ? { usage: result.usage } : {}),
-    ...(result.agentSummary !== undefined
-      ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+    ...(completedResult.usage !== undefined ? { usage: completedResult.usage } : {}),
+    ...(completedResult.agentSummary !== undefined
+      ? { agentSummary: credentialRedactor.redact(completedResult.agentSummary) }
       : {}),
   });
 }

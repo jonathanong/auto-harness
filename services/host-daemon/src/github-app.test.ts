@@ -220,6 +220,52 @@ describe("GitHub App credentials", () => {
     ).toThrow("GitHub App private key could not be loaded");
   });
 
+  it("rejects unknown config keys and empty repository ids", () => {
+    expect(() =>
+      parseGitHubAppConfig(
+        {
+          appId: "1",
+          privateKeyPath: "/keys/app.pem",
+          botLogin: "bot",
+          botUserId: 1,
+          repositories: {},
+          extra: "unexpected",
+        },
+        () => pem,
+      ),
+    ).toThrow("GitHub App config has unknown key: extra");
+    expect(() =>
+      parseGitHubAppConfig(
+        {
+          appId: "1",
+          privateKeyPath: "/keys/app.pem",
+          botLogin: "bot",
+          botUserId: 1,
+          repositories: { "": { installationId: 2, repositoryId: 3 } },
+        },
+        () => pem,
+      ),
+    ).toThrow("repository id must be non-empty");
+  });
+
+  it("rejects an invalid installation-token expiry", async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            token: "ghs_exact-token",
+            expires_at: "not-a-date",
+            permissions: { contents: "write", pull_requests: "write", issues: "write" },
+            repositories: [{ id: 101_112 }],
+          }),
+          { status: 201 },
+        ),
+    );
+    await expect(mintInstallationToken(config(), "repo-1", undefined, fetchFn)).rejects.toThrow(
+      "expiry is invalid",
+    );
+  });
+
   it("scrubs ambient GitHub token names case-insensitively", () => {
     expect(
       withoutAmbientGitHubTokens({

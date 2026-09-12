@@ -114,6 +114,51 @@ describe("claimed session GitHub App credentials", () => {
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
 
+  it("uses the scoped token for terminal hooks when the command runner rejects", async () => {
+    installTokenFetch();
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const commandRunner: ProcessRunner = {
+      async run() {
+        throw new Error("pty failed with ghs_exact-token");
+      },
+    };
+    const logs = [];
+    const result = await runClaimedSession(
+      systemRunner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      {
+        ...claimed,
+        currentHookTarget: async () => ({
+          cwd: claimed.cwd,
+          repository: { terminalHookScript: "/hook.sh" },
+        }),
+      },
+      undefined,
+      () => false,
+      () => 4_000_000,
+      commandRunner,
+      { PATH: process.env.PATH, HOME: "/home/harness" },
+      undefined,
+      undefined,
+      app(),
+      () => now,
+    );
+    expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(hookEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(hookEnv?.GIT_AUTHOR_NAME).toBe("auto-harness[bot]");
+    expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
+  });
+
   it.each([
     { timeout: false, status: "cancelled" },
     { timeout: true, status: "timed_out" },
@@ -202,6 +247,7 @@ describe("claimed session GitHub App credentials", () => {
         commandRunner,
         {
           PATH: process.env.PATH,
+          HOME: "/home/harness",
           HARNESS_CHILD_ENV_ALLOWLIST:
             "GH_TOKEN,GITHUB_TOKEN,GH_ENTERPRISE_TOKEN,GITHUB_ENTERPRISE_TOKEN",
           GH_TOKEN: "ambient-gh",

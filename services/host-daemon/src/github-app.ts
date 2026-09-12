@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- App configuration, token validation, and session credential scoping share one boundary. */
 import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -46,6 +47,22 @@ export function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): Node
     else delete scoped.HARNESS_CHILD_ENV_ALLOWLIST;
   }
   return scoped;
+}
+
+/** Keep mapped commands and hooks away from credentials stored in the daemon user's gh config. */
+export function withIsolatedGitHubConfigDir(
+  environment: NodeJS.ProcessEnv,
+  configDir: string,
+): NodeJS.ProcessEnv {
+  const allowlist = (environment.HARNESS_CHILD_ENV_ALLOWLIST ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name && name.toUpperCase() !== "GH_CONFIG_DIR");
+  return {
+    ...environment,
+    GH_CONFIG_DIR: configDir,
+    HARNESS_CHILD_ENV_ALLOWLIST: [...allowlist, "GH_CONFIG_DIR"].join(","),
+  };
 }
 
 function record(value: unknown, context: string): Record<string, unknown> {
