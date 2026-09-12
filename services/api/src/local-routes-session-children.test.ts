@@ -69,6 +69,84 @@ describe("child session route", () => {
     expect(second.json).toMatchObject({ id: (first.json as { id: string }).id, created: false });
   });
 
+  it("enforces one root-wide budget across grandchildren while retaining dedupe", async () => {
+    const { handler, path, apiKey, plane } = await harness();
+    const first = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "first", spawnKey: "first" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(first.status).toBe(201);
+    const childId = (first.json as { id: string }).id;
+    plane.forceStatus(childId, "running");
+    const grandchild = await invokeHandler(
+      handler,
+      "POST",
+      `/api/v1/sessions/${childId}/children`,
+      { prompt: "grandchild", spawnKey: "grandchild" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(grandchild.status).toBe(201);
+
+    const remaining = 62;
+    for (let index = 0; index < remaining; index += 1) {
+      expect(
+        (
+          await invokeHandler(
+            handler,
+            "POST",
+            path,
+            { prompt: `child-${index}`, spawnKey: `child-${index}` },
+            { authorization: `Bearer ${apiKey}` },
+          )
+        ).status,
+      ).toBe(201);
+    }
+    const exhausted = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "over budget", spawnKey: "over-budget" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(exhausted.status).toBe(409);
+    expect(exhausted.json).toMatchObject({ error: { code: "CONFLICT" } });
+    const duplicate = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "first retry", spawnKey: "first" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.json).toMatchObject({ id: childId, created: false });
+  });
+
+  it("fails closed when the in-memory lineage root is unavailable", async () => {
+    const { handler, path, apiKey, plane, parent } = await harness();
+    const first = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "first", spawnKey: "first" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    const childId = (first.json as { id: string }).id;
+    plane.forceStatus(childId, "running");
+    plane.state.sessions.delete(parent.id);
+    const response = await invokeHandler(
+      handler,
+      "POST",
+      `/api/v1/sessions/${childId}/children`,
+      { prompt: "grandchild", spawnKey: "grandchild" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(response.status).toBe(409);
+    expect(response.json).toMatchObject({ error: { code: "CONFLICT" } });
+  });
+
   it("accepts a matching current-attempt session token for POST only", async () => {
     const { handler, path, sessionKey } = await harness();
     const created = await invokeHandler(
@@ -280,7 +358,7 @@ describe("child session route", () => {
     const cases = [
       [{ code: "NOT_FOUND", error: "gone" }, 404],
       [{ code: "DRAINING", error: "draining" }, 409],
-      [{ code: "REPOSITORY_ADMISSION_CLOSED", error: "closed" }, 400],
+      [{ code: "REPOSITORY_ADMISSION_CLOSED", error: "closed" }, 409],
     ] as const;
 
     for (const [failure, status] of cases) {
@@ -310,6 +388,34 @@ describe("child session route", () => {
         })
       ).status,
     ).toBe(500);
+  });
+
+  it("allows ordinary child creation when authentication is disabled", async () => {
+    const plane = new ControlPlane({
+      idFactory: (() => {
+        let n = 0;
+        return () => `local-${++n}`;
+      })(),
+    });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
+    plane.createCommand({ id: "command", name: "echo", argv: ["echo"], providerId: null });
+    const parent = plane.createSession({
+      repositoryId: "repo",
+      prompt: "parent",
+      target: { commandId: "command" },
+      timeout: 60,
+    });
+    if (!parent.ok) throw new Error(parent.error);
+    plane.forceStatus(parent.session.id, "running");
+    const handler = createLocalApp({ plane, rateLimitConfig: { enabled: false } }).handler;
+    expect(
+      (
+        await invokeHandler(handler, "POST", `/api/v1/sessions/${parent.session.id}/children`, {
+          prompt: "child",
+          spawnKey: "local",
+        })
+      ).status,
+    ).toBe(201);
   });
 
   it("fails closed when the mutation audit cannot be persisted", async () => {

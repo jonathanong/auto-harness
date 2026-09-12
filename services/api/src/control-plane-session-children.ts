@@ -10,9 +10,14 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { noteSlackSessionLifecycle, toPublic } from "./control-plane-state.ts";
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
 import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
+import {
+  getRepositoryDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import {
   isCreateSessionConflict,
+  MAX_SESSION_DESCENDANTS,
   isRepositoryAdmissionClosed,
   sessionDrainOperationId,
 } from "./db/plane-storage-sessions.ts";
@@ -102,7 +107,7 @@ function prepareChild(
   }
   const input = childInput(parent, body);
   if (!input.ok) return input;
-  const prepared = validateSessionCreate(state, input.input);
+  const prepared = validateSessionCreate(state, input.input, { allowReservedConcurrencyId: true });
   if (!prepared.ok) return prepared;
   const child = buildSessionRecord(state, prepared, parent.principalId);
   child.parentSessionId = parent.id;
@@ -120,8 +125,15 @@ export async function createSessionChildDurable(
     ? await getSessionDurable(state, parentId)
     : state.sessions.get(parentId);
   if (!parent) return { ok: false, error: "parent session not found", code: "NOT_FOUND" };
+  if (state.storage) {
+    await Promise.all([
+      getRepositoryDurable(state, parent.repositoryId),
+      refreshTargetCatalogDurable(state),
+    ]);
+  }
   const prepared = prepareChild(state, parent, body);
   if (!prepared.ok) return prepared;
+  const rootId = prepared.child.rootSessionId ?? parent.id;
   const owner = options.principalId ?? parent.principalId ?? parent.metadata?.createdBy;
   if (typeof owner === "string" && owner) {
     prepared.child.principalId = owner;
@@ -134,7 +146,35 @@ export async function createSessionChildDurable(
         isActiveSessionStatus(session.status),
     );
     if (duplicate) return { ok: true, session: toPublic(state, duplicate), created: false };
+    const root = state.sessions.get(rootId);
+    const descendantCount = root?.descendantCount ?? 0;
+    if (!root || descendantCount >= MAX_SESSION_DESCENDANTS) {
+      return {
+        ok: false,
+        error: "root session descendant budget is exhausted",
+        code: "CONFLICT",
+      };
+    }
+    // A session credential is only valid for the exact active attempt which
+    // received it. Re-read immediately before the local insert so a terminal
+    // transition between request authentication and admission cannot mint a
+    // child after the parent has exited.
+    if (options.sessionCredentialHash) {
+      const current = state.sessions.get(parentId);
+      if (
+        !current ||
+        current.status !== "running" ||
+        current.sessionApiKeyHash !== options.sessionCredentialHash
+      ) {
+        return {
+          ok: false,
+          error: "parent session attempt is no longer running",
+          code: "CONFLICT",
+        };
+      }
+    }
     state.sessions.set(prepared.child.id, { ...prepared.child });
+    root.descendantCount = descendantCount + 1;
     return { ok: true, session: toPublic(state, prepared.child), created: true };
   }
   try {
@@ -143,6 +183,7 @@ export async function createSessionChildDurable(
       referenceMarkers(state.now(), prepared.child),
       {
         id: parentId,
+        rootSessionId: rootId,
         ...(options.sessionCredentialHash
           ? { sessionApiKeyHash: options.sessionCredentialHash }
           : {}),

@@ -832,6 +832,11 @@ instead of creating a duplicate. A spawn key may be reused after that child reac
 state. Children are assigned and completed independently; a child never extends the parent's
 liveness or terminal status.
 
+Each lineage has a durable root-wide descendant budget of 64 direct or indirect children. The
+budget is reserved atomically with child admission, so concurrent branches cannot exceed it;
+exhaustion returns `409 CONFLICT`. Repeating an active `spawnKey` returns its existing child and
+does not consume another budget slot.
+
 **Response:** `201 Created` for a new child or `200 OK` for an active deduplicated child, using the
 same `SessionCreateResult` shape as `POST /sessions`. The response includes `parentSessionId` and
 `rootSessionId`.

@@ -93,11 +93,11 @@ const MAX_REQUIRED_LABEL_LENGTH = 64;
 const MAX_METADATA_KEYS = 32;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
-// Scheduled claims combine reference-marker checks for every route with the
-// cursor, repository, drain, session, activity, and concurrency-lock actions.
-// 90 fallbacks keeps the authenticated worst case within DynamoDB's 100-action
-// limit even when the principal marker is present.
-export const MAX_FALLBACKS = 90;
+// Child admission combines reference-marker checks for every route with the
+// principal, repository, drain, parent, root-budget, session, activity, and
+// concurrency-lock actions. 89 fallbacks keeps that authenticated descendant
+// worst case within DynamoDB's 100-action limit.
+export const MAX_FALLBACKS = 89;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -167,7 +167,8 @@ export function isReservedConcurrencyId(value: string): boolean {
   return (
     value.startsWith("catalog-delete:") ||
     value.startsWith("provider-account:") ||
-    value.startsWith("provider-lease:")
+    value.startsWith("provider-lease:") ||
+    value.startsWith("session-spawn:")
   );
 }
 
@@ -191,6 +192,8 @@ export function validateCreateSessionInput(input: {
   destroyWorkspaceAfter?: unknown;
   /** Rejected deliberately: setup is selected by trusted profile id. */
   setupScript?: unknown;
+  /** Internal scheduler/session derivations may use reserved lock namespaces. */
+  allowReservedConcurrencyId?: boolean;
 }): ValidationResult<{
   repositoryId: string | null;
   prompt: string;
@@ -318,7 +321,7 @@ export function validateCreateSessionInput(input: {
     if (!isNonEmptyString(input.concurrencyId)) {
       return { ok: false, error: "concurrencyId must be a non-empty string when set" };
     }
-    if (isReservedConcurrencyId(input.concurrencyId)) {
+    if (!input.allowReservedConcurrencyId && isReservedConcurrencyId(input.concurrencyId)) {
       return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
     }
     const concurrencyIdBytes = concurrencyIdByteLengthError(input.concurrencyId);

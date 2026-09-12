@@ -77,7 +77,7 @@ export class DynamoPlaneStorageBase {
   createSession(
     session: SessionRecord,
     markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
-    parentFence?: { id: string; sessionApiKeyHash?: string },
+    parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string },
   ): Promise<sessions.CreateSessionResult> {
     return sessions.createSession(this.ctx, session, markers, parentFence);
   }

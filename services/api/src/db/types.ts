@@ -71,6 +71,8 @@ export type SessionRecord = {
   parentSessionId?: string;
   /** Stable lineage root; absent on a top-level session. */
   rootSessionId?: string;
+  /** Internal root-wide count of direct and indirect descendants. Never public. */
+  descendantCount?: number;
   /** SHA-256 of the current assignment's hns_session credential. Never public. */
   sessionApiKeyHash?: string;
   /** Durable proof that this drain operation performed the cancellation. */

@@ -25,6 +25,7 @@ import {
   CatalogDeletionInProgressError,
   CreateSessionRetryExhaustedError,
   ParentSessionAttemptEndedError,
+  SessionDescendantBudgetExceededError,
   type CreateSessionResult,
   RepositoryAdmissionClosedError,
   SessionIdCollisionError,
@@ -36,8 +37,28 @@ type CreateSessionAdmissionParts = {
   drainCheck: ReturnType<typeof sessionDrainAdmissionCheck>;
   activityPut: ReturnType<typeof sessionDrainActivityPut>;
   principalCheck: ReturnType<typeof principalExistsCheck>;
-  parentFence?: { id: string; sessionApiKeyHash?: string };
+  parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string };
 };
+
+/** Conservative root-wide bound for direct and indirect child sessions. */
+export const MAX_SESSION_DESCENDANTS = 64;
+
+function hasSeparateParentCheck(parentFence: CreateSessionAdmissionParts["parentFence"]): boolean {
+  return !!parentFence && parentFence.rootSessionId !== parentFence.id;
+}
+
+function parentFenceIsValid(
+  parent: SessionRecord | null,
+  parentFence: NonNullable<CreateSessionAdmissionParts["parentFence"]>,
+): boolean {
+  if (!parent) return false;
+  if (parentFence.sessionApiKeyHash) {
+    return (
+      parent.status === "running" && parent.sessionApiKeyHash === parentFence.sessionApiKeyHash
+    );
+  }
+  return ["running", "completed", "failed", "cancelled", "timed_out"].includes(parent.status);
+}
 
 async function throwIfCreateAdmissionConflict(
   ctx: PlaneStorageCtx,
@@ -70,7 +91,10 @@ async function throwIfCreateAdmissionConflict(
     throw await activeSessionDrainError(ctx, session);
   }
   const parentIndex = drainIndex + Number(!!drainCheck);
-  if (parts.parentFence && isConditionalTransactionFailureAt(err, parentIndex)) {
+  if (
+    hasSeparateParentCheck(parts.parentFence) &&
+    isConditionalTransactionFailureAt(err, parentIndex)
+  ) {
     throw new ParentSessionAttemptEndedError();
   }
 }
@@ -148,12 +172,96 @@ export async function createSessionWithConcurrency(
 ): Promise<CreateSessionResult> {
   const concurrencyId = session.concurrencyId!;
   const { drainCheck, activityPut, principalCheck, parentFence } = parts;
+  const separateParentCheck = hasSeparateParentCheck(parentFence);
+  const markerChecks = withMarkerTable(ctx, markerConditions([...markers]));
+  const parentCheck =
+    parentFence && separateParentCheck
+      ? {
+          ConditionCheck: {
+            TableName: ctx.tables.sessions,
+            Key: { id: parentFence.id },
+            ConditionExpression: parentFence.sessionApiKeyHash
+              ? "#status = :running AND sessionApiKeyHash = :sessionApiKeyHash"
+              : "#status IN (:running, :completed, :failed, :cancelled, :timedOut)",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: {
+              ":running": "running",
+              ...(parentFence.sessionApiKeyHash
+                ? { ":sessionApiKeyHash": parentFence.sessionApiKeyHash }
+                : {
+                    ":completed": "completed",
+                    ":failed": "failed",
+                    ":cancelled": "cancelled",
+                    ":timedOut": "timed_out",
+                  }),
+            },
+          },
+        }
+      : null;
+  const rootBudgetUpdate = parentFence?.rootSessionId
+    ? {
+        Update: {
+          TableName: ctx.tables.sessions,
+          Key: { id: parentFence.rootSessionId },
+          UpdateExpression: "SET descendantCount = if_not_exists(descendantCount, :zero) + :one",
+          ConditionExpression: [
+            "attribute_exists(id)",
+            ...(parentFence && !separateParentCheck
+              ? [
+                  parentFence.sessionApiKeyHash
+                    ? "#status = :running AND sessionApiKeyHash = :sessionApiKeyHash"
+                    : "#status IN (:running, :completed, :failed, :cancelled, :timedOut)",
+                ]
+              : []),
+            "(attribute_not_exists(descendantCount) OR descendantCount < :max)",
+          ].join(" AND "),
+          ...(parentFence && !separateParentCheck
+            ? { ExpressionAttributeNames: { "#status": "status" } }
+            : {}),
+          ExpressionAttributeValues: {
+            ":zero": 0,
+            ":one": 1,
+            ":max": MAX_SESSION_DESCENDANTS,
+            ...(parentFence && !separateParentCheck
+              ? parentFence.sessionApiKeyHash
+                ? { ":running": "running", ":sessionApiKeyHash": parentFence.sessionApiKeyHash }
+                : {
+                    ":running": "running",
+                    ":completed": "completed",
+                    ":failed": "failed",
+                    ":cancelled": "cancelled",
+                    ":timedOut": "timed_out",
+                  }
+              : {}),
+          },
+        },
+      }
+    : null;
+  const fixedActionCount =
+    markerChecks.length +
+    Number(!!principalCheck) +
+    1 +
+    Number(!!drainCheck) +
+    Number(!!parentCheck) +
+    2 +
+    Number(!!activityPut) +
+    Number(!!rootBudgetUpdate);
+  if (fixedActionCount > 100) {
+    throw new Error("child session admission exceeds DynamoDB's 100 transaction action limit");
+  }
+  const rootBudgetIndex = fixedActionCount - Number(!!rootBudgetUpdate);
+  const lockIndex =
+    markerChecks.length +
+    Number(!!principalCheck) +
+    1 +
+    Number(!!drainCheck) +
+    Number(!!parentCheck);
   for (let attempt = 0; attempt < MAX_CREATE_SESSION_ATTEMPTS; attempt += 1) {
     try {
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
-            ...withMarkerTable(ctx, markerConditions([...markers])),
+            ...markerChecks,
             ...(principalCheck ? [principalCheck] : []),
             session.repositoryId
               ? {
@@ -173,31 +281,7 @@ export async function createSessionWithConcurrency(
                   },
                 },
             ...(drainCheck ? [drainCheck] : []),
-            ...(parentFence
-              ? [
-                  {
-                    ConditionCheck: {
-                      TableName: ctx.tables.sessions,
-                      Key: { id: parentFence.id },
-                      ConditionExpression: parentFence.sessionApiKeyHash
-                        ? "#status = :running AND sessionApiKeyHash = :sessionApiKeyHash"
-                        : "#status IN (:running, :completed, :failed, :cancelled, :timedOut)",
-                      ExpressionAttributeNames: { "#status": "status" },
-                      ExpressionAttributeValues: {
-                        ":running": "running",
-                        ...(parentFence.sessionApiKeyHash
-                          ? { ":sessionApiKeyHash": parentFence.sessionApiKeyHash }
-                          : {
-                              ":completed": "completed",
-                              ":failed": "failed",
-                              ":cancelled": "cancelled",
-                              ":timedOut": "timed_out",
-                            }),
-                      },
-                    },
-                  },
-                ]
-              : []),
+            ...(parentCheck ? [parentCheck] : []),
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,
@@ -213,22 +297,25 @@ export async function createSessionWithConcurrency(
               },
             },
             ...(activityPut ? [activityPut] : []),
+            ...(rootBudgetUpdate ? [rootBudgetUpdate] : []),
           ],
         }),
       );
       return { created: true, session };
     } catch (err) {
       await throwIfCreateAdmissionConflict(ctx, err, session, markers, parts);
-      const resolved = await resolveConcurrencyLockConflict(
-        ctx,
-        err,
-        session,
-        markers.length +
-          Number(!!principalCheck) +
-          1 +
-          Number(!!drainCheck) +
-          Number(!!parentFence),
-      );
+      if (rootBudgetUpdate && isConditionalTransactionFailureAt(err, rootBudgetIndex)) {
+        if (parentFence && !separateParentCheck) {
+          const currentParent = await getSession(ctx, parentFence.id, true);
+          if (!parentFenceIsValid(currentParent, parentFence)) {
+            throw new ParentSessionAttemptEndedError();
+          }
+        }
+        const resolved = await resolveConcurrencyLockConflict(ctx, err, session, lockIndex);
+        if (resolved !== "retry") return resolved;
+        throw new SessionDescendantBudgetExceededError();
+      }
+      const resolved = await resolveConcurrencyLockConflict(ctx, err, session, lockIndex);
       if (resolved !== "retry") return resolved;
       if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, 2 ** attempt));

@@ -22,6 +22,7 @@ import {
   CatalogDeletionInProgressError,
   RepositoryAdmissionClosedError,
 } from "./db/plane-storage-sessions-errors.ts";
+import { MAX_SESSION_DESCENDANTS } from "./db/plane-storage-sessions.ts";
 
 function parent(over: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -48,7 +49,19 @@ function parent(over: Partial<SessionRecord> = {}): SessionRecord {
 
 function planeWithStorage(storage: Record<string, unknown>, source = parent()): ControlPlane {
   const plane = new ControlPlane({
-    storage: storage as never,
+    storage: {
+      getRepository: async () => ({
+        id: "repo",
+        name: "repo",
+        url: "https://example.test/repo.git",
+      }),
+      listCommands: async () => [
+        { id: "command", name: "command", argv: ["echo"], providerId: null },
+      ],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+      ...storage,
+    } as never,
     idFactory: () => "child",
     now: () => "2026-01-01T00:00:01.000Z",
     sessionCursorSecret: "test-secret",
@@ -60,6 +73,20 @@ function planeWithStorage(storage: Record<string, unknown>, source = parent()): 
 }
 
 describe("durable child session branches", () => {
+  it("revalidates an in-memory session credential against the current running parent", async () => {
+    const plane = planeWithStorage({}, parent({ sessionApiKeyHash: "new-hash" }));
+    plane.state.storage = undefined;
+    await expect(
+      createSessionChildDurable(
+        plane.state,
+        "parent",
+        { prompt: "child", spawnKey: "key" },
+        { sessionCredentialHash: "old-hash" },
+      ),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(plane.state.sessions.has("child")).toBe(false);
+  });
+
   it("creates and dedupes through storage while inheriting owner, ref, and root", async () => {
     const source = parent({ metadata: { ignored: "never inherited" } });
     const createSession = vi.fn(async (child: SessionRecord) => ({
@@ -67,6 +94,8 @@ describe("durable child session branches", () => {
       session: child,
     }));
     const plane = planeWithStorage({ getSession: async () => source, createSession }, source);
+    plane.state.commands.clear();
+    plane.state.repositories.clear();
     const created = await createSessionChildDurable(
       plane.state,
       "parent",
@@ -93,6 +122,7 @@ describe("durable child session branches", () => {
     expect(createSession.mock.calls[0]![0]).toMatchObject({ principalId: "parent-owner" });
     expect(createSession.mock.calls[0]![2]).toEqual({
       id: "parent",
+      rootSessionId: "root",
       sessionApiKeyHash: "credential-hash",
     });
     const duplicate = { ...(createSession.mock.calls[0]![0] as SessionRecord), id: "existing" };
@@ -172,9 +202,8 @@ describe("durable child session branches", () => {
   });
 
   it("returns inherited create validation failures", async () => {
-    const source = parent();
+    const source = parent({ requiredLabels: ["x".repeat(65)] });
     const plane = planeWithStorage({ getSession: async () => source }, source);
-    plane.state.commands.delete("command");
 
     await expect(
       createSessionChildDurable(plane.state, "parent", { prompt: "child", spawnKey: "key" }),
@@ -227,5 +256,39 @@ describe("durable child session branches", () => {
     await expect(plane.authenticateSessionApiKey("parent", "ordinary-key")).resolves.toBe(false);
     await expect(plane.authenticateSessionApiKey("parent", key)).resolves.toBe(true);
     await expect(plane.authenticateSessionApiKey("parent", `${key}-wrong`)).resolves.toBe(false);
+  });
+
+  it("shares a bounded in-memory budget across the root lineage without charging duplicates", async () => {
+    const source = parent({ rootSessionId: "root" });
+    const plane = planeWithStorage({}, source);
+    plane.state.storage = undefined;
+    plane.state.sessions.set(
+      "root",
+      parent({
+        id: "root",
+        rootSessionId: undefined,
+        descendantCount: MAX_SESSION_DESCENDANTS - 1,
+      }),
+    );
+    const body = { prompt: "grandchild", spawnKey: "last-slot" };
+
+    await expect(createSessionChildDurable(plane.state, "parent", body)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+      session: { rootSessionId: "root" },
+    });
+    expect(plane.state.sessions.get("root")?.descendantCount).toBe(MAX_SESSION_DESCENDANTS);
+    expect(plane.getSession("root")).not.toHaveProperty("descendantCount");
+    await expect(createSessionChildDurable(plane.state, "parent", body)).resolves.toMatchObject({
+      ok: true,
+      created: false,
+    });
+    expect(plane.state.sessions.get("root")?.descendantCount).toBe(MAX_SESSION_DESCENDANTS);
+    await expect(
+      createSessionChildDurable(plane.state, "parent", {
+        prompt: "over budget",
+        spawnKey: "one-too-many",
+      }),
+    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
   });
 });

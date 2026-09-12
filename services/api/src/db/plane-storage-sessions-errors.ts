@@ -42,6 +42,13 @@ export class ParentSessionAttemptEndedError extends Error {
   }
 }
 
+export class SessionDescendantBudgetExceededError extends Error {
+  constructor() {
+    super("root session descendant budget is exhausted");
+    this.name = "SessionDescendantBudgetExceededError";
+  }
+}
+
 class SessionDrainActiveError extends Error {
   readonly operationId: string;
 
@@ -76,5 +83,6 @@ export function isCreateSessionConflict(err: unknown): boolean {
     "CreateSessionRetryExhaustedError",
     "CatalogDeletionInProgressError",
     "ParentSessionAttemptEndedError",
+    "SessionDescendantBudgetExceededError",
   ].includes(err.name);
 }

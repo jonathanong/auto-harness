@@ -427,10 +427,10 @@ describe("validateCreateSessionInput", () => {
   });
 
   it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
-    // 91 route markers (target + 90 fallbacks) + repository/principal markers +
-    // cursor/repository/drain/principal checks + session/activity/concurrency
-    // writes = DynamoDB's 100-action maximum.
-    expect(MAX_FALLBACKS).toBe(90);
+    // 90 route markers (target + 89 fallbacks) + repository/principal markers +
+    // repository/drain/principal/parent checks + root-budget/session/activity/
+    // concurrency writes = DynamoDB's 100-action maximum.
+    expect(MAX_FALLBACKS).toBe(89);
     const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
       commandId: `fallback-${index}`,
     }));
@@ -574,6 +574,9 @@ describe("validateCreateSessionInput", () => {
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({ ...base, concurrencyId: "provider-lease:acct:0" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "session-spawn:parent:digest" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({

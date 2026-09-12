@@ -33,7 +33,8 @@ export async function handleSessionChildrenRoute(ctx: RouteCtx): Promise<boolean
       !sessionToken &&
       (!mayAccessRepository(ctx.principal, parent.repositoryId) ||
         (ctx.method === "POST" &&
-          (!ctx.principal || ctx.principal.boundHostId || !may(ctx.principal, "sessions:spawn"))))
+          ctx.principal &&
+          (ctx.principal.boundHostId || !may(ctx.principal, "sessions:spawn"))))
     ) {
       sendSessionForbidden(ctx.res);
       return true;
@@ -77,7 +78,9 @@ export async function handleSessionChildrenRoute(ctx: RouteCtx): Promise<boolean
         ctx.res,
         result.code === "NOT_FOUND"
           ? 404
-          : result.code === "CONFLICT" || result.code === "DRAINING"
+          : result.code === "CONFLICT" ||
+              result.code === "DRAINING" ||
+              result.code === "REPOSITORY_ADMISSION_CLOSED"
             ? 409
             : 400,
         result.code ?? "VALIDATION_ERROR",
