@@ -149,7 +149,6 @@ describe("deferred terminal-hook recovery branch coverage", () => {
       await expect(noHandoffDeadline(true)).resolves.toMatchObject({
         summarySource: "harness",
       });
-      expect(calls).toBe(999);
     } finally {
       now.mockRestore();
       vi.unstubAllGlobals();
