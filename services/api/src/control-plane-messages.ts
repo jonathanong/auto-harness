@@ -786,13 +786,16 @@ export async function handleHostMessageDurable(
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
       ...(consumePendingConnection ? { consumePendingConnection: true } : {}),
     });
-    return result.ok
-      ? {
-          ok: true,
-          connectionId: result.connectionId,
-          terminalHookHandoffs: await pendingTerminalHookHandoffs(state, msg.hostId),
-        }
-      : { ok: false, error: result.error };
+    if (!result.ok) return { ok: false, error: result.error };
+    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+      connectionId: result.connectionId,
+      ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
+    });
+    return {
+      ok: true,
+      connectionId: result.connectionId,
+      ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}),
+    };
   }
   if (
     msg.type === "session:status" &&
@@ -1591,6 +1594,7 @@ async function applySessionStatusDurable(
       delete next.reconnectDeadlineAt;
       delete next.startedAt;
       delete next.result;
+      delete next.sessionApiKeyHash;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);

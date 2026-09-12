@@ -110,6 +110,8 @@ export type PublicSession = Omit<
   | "activeHostId"
   | "activeHostOrder"
   | "primaryCommandStartState"
+  | "sessionApiKeyHash"
+  | "descendantCount"
 > & {
   repositoryId: string | null;
   url: string;

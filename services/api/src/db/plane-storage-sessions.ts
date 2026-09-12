@@ -8,9 +8,11 @@ export type { CreateSessionResult } from "./plane-storage-sessions-errors.ts";
 export {
   getConcurrencyLock,
   releaseConcurrencyLock,
+  MAX_SESSION_DESCENDANTS,
 } from "./plane-storage-sessions-concurrency.ts";
 export {
   getSession,
+  listSessionChildren,
   listAllSessions,
   listSessionsByRepository,
   countSessionsByRepository,

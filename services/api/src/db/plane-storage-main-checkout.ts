@@ -68,6 +68,7 @@ export async function tryAssignMainCheckoutSession(
     primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     attemptId: string;
+    sessionApiKeyHash?: string;
   },
 ): Promise<AssignmentWriteResult> {
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
@@ -150,8 +151,10 @@ export async function tryAssignMainCheckoutSession(
           "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId, primaryCommandStartState = :primaryCommandStartState" +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
+          (opts.sessionApiKeyHash ? ", sessionApiKeyHash = :sessionApiKeyHash" : "") +
           ", hostAssignmentLease = :hostAssignmentLease" +
-          " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount",
+          " REMOVE ackReceivedAt, reconnectDeadlineAt, completedAt, exitCode, errorCode, errorMessage, retryAfter, retryCount" +
+          (opts.sessionApiKeyHash ? "" : ", sessionApiKeyHash"),
         ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
@@ -170,6 +173,7 @@ export async function tryAssignMainCheckoutSession(
           ":attemptId": opts.attemptId,
           ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
           ":hostAssignmentLease": hostAssignmentLease,
+          ...(opts.sessionApiKeyHash ? { ":sessionApiKeyHash": opts.sessionApiKeyHash } : {}),
           ...(opts.resumeSpec ? { ":resumeSpec": opts.resumeSpec } : {}),
           ...(opts.providerAccountLease
             ? { ":providerAccountLease": opts.providerAccountLease }

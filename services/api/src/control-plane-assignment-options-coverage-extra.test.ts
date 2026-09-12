@@ -97,6 +97,61 @@ function providerState() {
 }
 
 describe("assignment optional-field coverage", () => {
+  it("only issues session credentials to capability-advertising daemons", () => {
+    const legacy = providerState();
+    const legacyMessages: Array<{ sessionApiKey?: string }> = [];
+    legacy.onHostMessage = (_hostId, message) => legacyMessages.push(message as never);
+    expect(assignQueued(legacy)).toHaveLength(1);
+    expect(legacyMessages[0]?.sessionApiKey).toBeUndefined();
+    expect(legacy.sessions.get("s")?.sessionApiKeyHash).toBeUndefined();
+
+    const capable = providerState();
+    for (const connection of capable.connections.values()) {
+      connection.capabilities = ["session-spawn"];
+    }
+    const capableMessages: Array<{ sessionApiKey?: string }> = [];
+    capable.onHostMessage = (_hostId, message) => capableMessages.push(message as never);
+    expect(assignQueued(capable)).toHaveLength(1);
+    expect(capableMessages[0]?.sessionApiKey).toMatch(/^hns_session_/);
+    expect(capable.sessions.get("s")?.sessionApiKeyHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(capable.sessions.get("s")?.sessionApiKeyHash).not.toBe(
+      capableMessages[0]?.sessionApiKey,
+    );
+  });
+
+  it("persists and publishes durable session credentials only for capable daemons", async () => {
+    for (const advertisesSessionSpawn of [false, true]) {
+      const state = providerState();
+      for (const connection of state.connections.values()) {
+        connection.capabilities = advertisesSessionSpawn ? ["session-spawn"] : [];
+      }
+      const messages: Array<{ sessionApiKey?: string }> = [];
+      const assignmentInputs: Array<{ sessionApiKeyHash?: string }> = [];
+      state.onHostMessage = (_hostId, message) => messages.push(message as never);
+      setDurableReadStorage(state, {
+        tryAssignSession: async (input: { sessionApiKeyHash?: string }) => {
+          assignmentInputs.push(input);
+          return true;
+        },
+        expireQueuedSession: async () => false,
+        clearResumePin: async () => true,
+      });
+
+      await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+      if (advertisesSessionSpawn) {
+        expect(assignmentInputs[0]?.sessionApiKeyHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(messages[0]?.sessionApiKey).toMatch(/^hns_session_/);
+        expect(state.sessions.get("s")?.sessionApiKeyHash).toBe(
+          assignmentInputs[0]?.sessionApiKeyHash,
+        );
+      } else {
+        expect(assignmentInputs[0]?.sessionApiKeyHash).toBeUndefined();
+        expect(messages[0]?.sessionApiKey).toBeUndefined();
+        expect(state.sessions.get("s")?.sessionApiKeyHash).toBeUndefined();
+      }
+    }
+  });
+
   it("orders provider routes with a live cached account", () => {
     expect(assignQueued(providerState())).toHaveLength(1);
   });

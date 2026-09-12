@@ -215,6 +215,7 @@ export async function offlineHostAndRequeueDurableImpl(
       };
       delete queued.activeHostId;
       delete queued.activeHostOrder;
+      delete queued.sessionApiKeyHash;
       state.sessions.set(sessionId, queued);
       state.pendingAcks.delete(sessionId);
       state.worktrees.set(wt.id, {

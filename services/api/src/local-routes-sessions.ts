@@ -1,6 +1,7 @@
 import type { RouteCtx } from "./local-http.ts";
 import { handleSessionCloneRoute } from "./local-routes-session-clone.ts";
 import { handleSessionCreateRoute } from "./local-routes-session-create.ts";
+import { handleSessionChildrenRoute } from "./local-routes-session-children.ts";
 import { handleSessionLifecycleRoutes } from "./local-routes-session-lifecycle.ts";
 import { handleSessionReadRoutes } from "./local-routes-session-reads.ts";
 import { handleSessionResumeRoute } from "./local-routes-session-resume.ts";
@@ -9,6 +10,7 @@ import { handleSessionResumeRoute } from "./local-routes-session-resume.ts";
 export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   return (
     (await handleSessionCloneRoute(ctx)) ||
+    (await handleSessionChildrenRoute(ctx)) ||
     (await handleSessionCreateRoute(ctx)) ||
     (await handleSessionReadRoutes(ctx)) ||
     (await handleSessionLifecycleRoutes(ctx)) ||

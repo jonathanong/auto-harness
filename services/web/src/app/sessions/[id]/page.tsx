@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { resolveSessionDetailTab, type SessionSummary } from "@auto-harness/ui";
+import { resolveSessionDetailTab, type SessionRow, type SessionSummary } from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
+import { SessionChildrenLive } from "../../../components/session-children-live.tsx";
 import { apiGet } from "../../../lib/api.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 import { MAX_LIVE_LOG_ENTRIES } from "../../../lib/live-session-logs.ts";
@@ -66,6 +67,18 @@ export default async function SessionDetailPage({
   } catch {
     /* usage is optional for older hosts and sessions */
   }
+  let children: SessionRow[] = [];
+  let childrenNextCursor: string | null = null;
+  let childrenError: string | null = null;
+  try {
+    const page = await apiGet<{ items?: SessionRow[]; nextCursor?: string | null }>(
+      `/api/v1/sessions/${encodeURIComponent(id)}/children?limit=50`,
+    );
+    children = page.items ?? [];
+    childrenNextCursor = page.nextCursor ?? null;
+  } catch (error) {
+    childrenError = String(error);
+  }
   let hosts: Array<{ hostId: string; online: boolean }> = [];
   if (session.status === "running" && session.hostId) {
     try {
@@ -98,30 +111,38 @@ export default async function SessionDetailPage({
         canArchive={canArchive}
         defaultTab={tab}
         detailsExtra={
-          <div className="rounded-md border p-4" data-pw="session-usage-summary">
-            <h3 className="text-sm font-medium">Session usage</h3>
-            {hasReportedUsage(usage) ? (
-              <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                <div>
-                  <dt className="text-muted-foreground">Input tokens</dt>
-                  <dd data-pw="session-usage-input">{usage.inputTokens}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Output tokens</dt>
-                  <dd data-pw="session-usage-output">{usage.outputTokens}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Total tokens</dt>
-                  <dd data-pw="session-usage-total">{usage.totalTokens}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Configured cost</dt>
-                  <dd data-pw="session-usage-cost">{configuredCost(usage)}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">No CLI usage reported.</p>
-            )}
+          <div className="space-y-4">
+            <div className="rounded-md border p-4" data-pw="session-usage-summary">
+              <h3 className="text-sm font-medium">Session usage</h3>
+              {hasReportedUsage(usage) ? (
+                <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                  <div>
+                    <dt className="text-muted-foreground">Input tokens</dt>
+                    <dd data-pw="session-usage-input">{usage.inputTokens}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Output tokens</dt>
+                    <dd data-pw="session-usage-output">{usage.outputTokens}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Total tokens</dt>
+                    <dd data-pw="session-usage-total">{usage.totalTokens}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Configured cost</dt>
+                    <dd data-pw="session-usage-cost">{configuredCost(usage)}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">No CLI usage reported.</p>
+              )}
+            </div>
+            <SessionChildrenLive
+              parentSessionId={session.id}
+              initialItems={children}
+              initialNextCursor={childrenNextCursor}
+              initialError={childrenError}
+            />
           </div>
         }
       >

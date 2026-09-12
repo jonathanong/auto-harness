@@ -13,7 +13,7 @@ export async function writeRouteAudit(ctx: RouteCtx, event: RouteAudit): Promise
   try {
     await ctx.plane.appendAuditLog({
       ...event,
-      actor: auditActor(ctx.principal),
+      actor: ctx.auditActorOverride ?? auditActor(ctx.principal),
       outcome: event.outcome ?? "success",
     });
     return true;

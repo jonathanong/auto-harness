@@ -28,7 +28,7 @@ export async function cancelRunningMainCheckoutSession(
     {
       TableName: ctx.tables.sessions,
       Key: { id: opts.sessionId },
-      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)}`,
+      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)} REMOVE sessionApiKeyHash`,
       ConditionExpression:
         "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId AND worktreeId = :null AND mainCheckoutLease = :true",
       ExpressionAttributeNames: { "#s": "status" },

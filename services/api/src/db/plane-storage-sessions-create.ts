@@ -79,6 +79,7 @@ export async function createSession(
   ctx: PlaneStorageCtx,
   session: SessionRecord,
   markers: readonly DeletionMarker[] = [],
+  parentFence?: { id: string; rootSessionId?: string; sessionApiKeyHash?: string },
 ): Promise<CreateSessionResult> {
   const drainCheck = session.repositoryId
     ? sessionDrainAdmissionCheck(ctx, session.repositoryId, sessionPrincipalId(session))
@@ -90,6 +91,7 @@ export async function createSession(
       drainCheck,
       activityPut,
       principalCheck,
+      ...(parentFence ? { parentFence } : {}),
     });
   }
   try {

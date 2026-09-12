@@ -36,6 +36,36 @@ function claimedAt(dir: string) {
 }
 
 describe("prior-session context on a fallback resume assignment", () => {
+  it("injects the ephemeral child-session identity into the primary command only", async () => {
+    let seenEnv: NodeJS.ProcessEnv = {};
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        seenEnv = options.env ?? {};
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs: unknown[] = [];
+    await runClaimedSession(
+      okRunner,
+      new LogStreamer("sess-2", "attempt-1", (chunk) => logs.push(chunk)),
+      logs as never,
+      baseAssign({ sessionApiKey: "hns_session_ephemeral" }),
+      claimedAt(cwd),
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      identity,
+    );
+    expect(seenEnv).toMatchObject({
+      HARNESS_API_URL: identity.apiUrl,
+      HARNESS_SESSION_ID: "sess-1",
+      HARNESS_SESSION_API_KEY: "hns_session_ephemeral",
+    });
+  });
+
   it("writes the file after setup and before spawn, then removes it after exit", async () => {
     const order: string[] = [];
     vi.stubGlobal(

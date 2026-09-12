@@ -48,4 +48,6 @@ export type SessionSummary = {
   /** Most recent infrastructure failure that caused an automatic retry. */
   lastInfrastructureErrorCode?: "checkout_fetch_failed" | "host_lost" | string | null;
   metadata?: { createdBy?: unknown } | null;
+  parentSessionId?: string | null;
+  rootSessionId?: string | null;
 };

@@ -710,7 +710,7 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
-  it("delivers v5 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
+  it("delivers v7 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
     const fixture = runtimeFixture();
     fixture.sessions.set("lost", {
       ...schedulerSession("lost", "prompt"),
@@ -727,7 +727,7 @@ describe("Lambda runtime adapters", () => {
         expiresAt: "2026-08-13T00:00:00.000Z",
       },
     });
-    await registerGatewayHost(fixture, "gateway-1", 5);
+    await registerGatewayHost(fixture, "gateway-1", 7);
     const messages = fixture.management.send.mock.calls
       .map((call) => call[0].input)
       .filter((input) => input.Data !== undefined)

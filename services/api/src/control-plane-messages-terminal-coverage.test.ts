@@ -57,6 +57,7 @@ describe("control-plane terminal message coverage", () => {
   it("replays a pending terminal hook with its optional context on a modern registration", () => {
     const deliveries: unknown[] = [];
     const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:00.000Z",
       onHostMessage: (_hostId, message) => deliveries.push(message),
     });
     state.sessions.set(
@@ -83,7 +84,7 @@ describe("control-plane terminal message coverage", () => {
         type: "host:register",
         hostId: "host",
         worktrees: [],
-        protocolVersion: 6,
+        protocolVersion: 7,
       }),
     ).toEqual({ ok: true });
     expect(deliveries).toEqual([
@@ -94,6 +95,7 @@ describe("control-plane terminal message coverage", () => {
         repositoryId: "repo",
         worktreeId: "worktree",
         status: "failed",
+        expiresAt: "2026-01-02T00:00:00.000Z",
         errorCode: "checkout_fetch_failed",
         ref: "feature/terminal-hook",
         metadata: { createdBy: "operator" },
@@ -104,6 +106,7 @@ describe("control-plane terminal message coverage", () => {
   it("replays a pending terminal hook without optional context on a modern registration", () => {
     const deliveries: unknown[] = [];
     const state = createControlPlaneState({
+      now: () => "2026-01-01T00:00:00.000Z",
       onHostMessage: (_hostId, message) => deliveries.push(message),
     });
     state.sessions.set(
@@ -127,7 +130,7 @@ describe("control-plane terminal message coverage", () => {
         type: "host:register",
         hostId: "host",
         worktrees: [],
-        protocolVersion: 6,
+        protocolVersion: 7,
       }),
     ).toEqual({ ok: true });
     expect(deliveries).toEqual([
@@ -138,6 +141,7 @@ describe("control-plane terminal message coverage", () => {
         repositoryId: "repo",
         worktreeId: null,
         status: "failed",
+        expiresAt: "2026-01-02T00:00:00.000Z",
       },
     ]);
   });

@@ -155,6 +155,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
       ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
       ...(opts.infrastructureErrorCode ? ["primaryCommandStartState"] : []),
+      "sessionApiKeyHash",
     ],
   };
 }

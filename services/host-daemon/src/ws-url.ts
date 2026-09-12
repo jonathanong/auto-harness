@@ -29,6 +29,18 @@ export function resolveWsUrl(
   } else if (url.protocol === "https:") {
     url.protocol = "wss:";
   }
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    throw new Error(`unsupported control-plane URL protocol: ${url.protocol}`);
+  }
+  const hostname = url.hostname.toLowerCase();
+  const loopback =
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/u.test(hostname);
+  if (url.protocol === "ws:" && !loopback) {
+    throw new Error("unencrypted WebSocket transport is allowed only for loopback development");
+  }
   if (
     !options.allowApiGatewayEndpoint &&
     /\.execute-api\.[^.]+\.amazonaws\.com$/u.test(url.hostname)

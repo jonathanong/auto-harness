@@ -15,8 +15,26 @@ describe("resolveWsUrl", () => {
     expect(resolveWsUrl("ws://127.0.0.1:7420/ws")).toBe("ws://127.0.0.1:7420/ws");
   });
 
+  it.each(["localhost", "worker.localhost", "127.0.0.2", "[::1]"])(
+    "allows unencrypted WebSockets for loopback host %s",
+    (host) => {
+      expect(resolveWsUrl(`ws://${host}:7420/ws`)).toBe(`ws://${host}:7420/ws`);
+    },
+  );
+
   it("converts an https CloudFront base with no path to wss and appends /ws", () => {
     expect(resolveWsUrl("https://d111.cloudfront.net")).toBe("wss://d111.cloudfront.net/ws");
+  });
+
+  it.each(["ws://example.test/ws", "http://example.test"])(
+    "rejects unencrypted non-loopback target %s",
+    (url) => {
+      expect(() => resolveWsUrl(url)).toThrowError(/encrypted WebSocket transport/u);
+    },
+  );
+
+  it("rejects protocols that cannot carry WebSockets", () => {
+    expect(() => resolveWsUrl("ftp://example.test/ws")).toThrowError(/unsupported.*ftp:/u);
   });
 
   it("appends /ws for a host whose name happens to start with ws (defect-2 regression)", () => {

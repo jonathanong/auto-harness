@@ -2,6 +2,7 @@ import type { UserRole } from "./types.ts";
 
 export type Capability =
   | "sessions:write"
+  | "sessions:spawn"
   | "sessions:cancel-any"
   | "sessions:archive"
   | "schedules:write"
@@ -20,6 +21,7 @@ export type Capability =
 
 export const CAPABILITIES = [
   "sessions:write",
+  "sessions:spawn",
   "sessions:cancel-any",
   "sessions:archive",
   "schedules:write",
@@ -39,6 +41,7 @@ export const CAPABILITIES = [
 
 const AUTHOR_CAPABILITIES = [
   "sessions:write",
+  "sessions:spawn",
   "sessions:archive",
 ] as const satisfies readonly Capability[];
 

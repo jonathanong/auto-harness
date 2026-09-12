@@ -301,6 +301,9 @@ export function sessionForPersistence(session: SessionRecord): SessionRecord {
     delete stored.activeHostId;
     delete stored.activeHostOrder;
   }
+  // This credential authorizes exactly the current running attempt.  Never
+  // retain it after a requeue or terminal/cancel transition.
+  if (stored.status !== "running") delete stored.sessionApiKeyHash;
   return stored;
 }
 
@@ -336,10 +339,12 @@ export function toPublic(
   const {
     principalId: _principalId,
     workspaceSetupScript: _workspaceSetupScript,
+    sessionApiKeyHash: _sessionApiKeyHash,
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
     activeHostId: _activeHostId,
     activeHostOrder: _activeHostOrder,
     primaryCommandStartState: _primaryCommandStartState,
+    descendantCount: _descendantCount,
     ...publicSession
   } = session;
   if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;

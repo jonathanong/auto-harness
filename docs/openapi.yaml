@@ -42,6 +42,46 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Session" }
         default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/children:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: createChildSession
+      summary: Create or deduplicate a direct child session from a running or terminal session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateChildSession" }
+      responses:
+        "200":
+          description: Existing active child with the same parent-scoped spawn key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "201":
+          description: Child session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    get:
+      operationId: listChildSessions
+      summary: List direct children visible to the caller
+      parameters:
+        - $ref: "#/components/parameters/ChildSessionLimit"
+        - $ref: "#/components/parameters/ChildSessionCursor"
+      responses:
+        "200":
+          description: Bounded page of direct children
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionPage" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
   /sessions/{sessionId}/cancel:
     parameters:
       - $ref: "#/components/parameters/SessionId"
@@ -469,6 +509,18 @@ components:
       required: false
       description: Opaque continuation cursor returned by a previous response.
       schema: { type: string }
+    ChildSessionLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of direct children to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    ChildSessionCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
   responses:
     Conflict:
       description: Conflict, including closed repository admission
@@ -588,6 +640,21 @@ components:
           items: { $ref: "#/components/schemas/Target" }
           description: Ordered fallback targets for the override. Valid only together with target; omitted it defaults to an empty list rather than inheriting the source session's fallbacks.
       additionalProperties: false
+    CreateChildSession:
+      type: object
+      required: [prompt, spawnKey]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: Follow-up instruction. At most 65,536 UTF-8 bytes.
+        spawnKey:
+          type: string
+          minLength: 1
+          description: Idempotency key scoped to the parent session. At most 256 UTF-8 bytes.
+        priority: { type: integer, minimum: -10000, maximum: 10000 }
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+      additionalProperties: false
     Session:
       type: object
       required: [id, repositoryId, prompt, target, status, createdAt, url]
@@ -606,6 +673,12 @@ components:
         status: { type: string }
         createdAt: { type: string, format: date-time }
         url: { type: string }
+        parentSessionId:
+          type: string
+          description: Direct parent session; absent on root sessions.
+        rootSessionId:
+          type: string
+          description: Stable root session for this lineage; absent on root sessions.
         result: { $ref: "#/components/schemas/SessionResult" }
         errorCode:
           type: string
@@ -626,6 +699,17 @@ components:
           nullable: true
           description: Most recent bounded infrastructure retry cause, if any.
       additionalProperties: true
+    SessionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Session" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
     SessionResult:
       type: object
       required: [summary, summarySource]

@@ -187,6 +187,7 @@ describe("WebSocket durable ACK replies", () => {
       try {
         const socket =
           mode === "registration" ? await openSocket(run.origin) : await registered(run.origin);
+        const closed = waitForClose(socket);
         if (mode === "registration") socket.send(JSON.stringify(registrationMessage()));
         else {
           socket.send(
@@ -197,7 +198,7 @@ describe("WebSocket durable ACK replies", () => {
             }),
           );
         }
-        await waitForClose(socket);
+        await closed;
       } finally {
         await run.close();
       }
@@ -423,11 +424,11 @@ class ClosingHandoffPlane extends ControlPlane {
   }
 
   private handoffs() {
-    const socket = this.hostSockets?.get("ack-host");
+    const closeSocket = () => this.hostSockets?.get("ack-host")?.close();
     return {
       *[Symbol.iterator]() {
         yield { type: "session:terminal-hook", handoffId: "first", sessionId: "first" };
-        socket?.close();
+        closeSocket();
         yield { type: "session:terminal-hook", handoffId: "second", sessionId: "second" };
       },
     };

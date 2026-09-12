@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
+import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-app.ts";
 import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import { MemorySessionStore } from "./memory-store.ts";
@@ -116,6 +117,62 @@ describe("local API rate limits", () => {
     expect((await invokeHandler(handler, "GET", "/api/v1/repositories")).status).toBe(401);
     expect((await invokeHandler(handler, "GET", "/api/v1/repositories")).status).toBe(429);
     expect(events).toContain("login:denied");
+  });
+
+  it("limits session credential lookup before the parent read without double-counting", async () => {
+    const plane = new ControlPlane();
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo.git" });
+    plane.createCommand({ id: "command", name: "echo", argv: ["echo"], providerId: null });
+    const parent = plane.createSession({
+      repositoryId: "repo",
+      prompt: "parent",
+      target: { commandId: "command" },
+      timeout: 60,
+    });
+    if (!parent.ok) throw new Error(parent.error);
+    plane.forceStatus(parent.session.id, "running");
+    const lookups: string[] = [];
+    const authenticateSessionApiKey = plane.authenticateSessionApiKey.bind(plane);
+    plane.authenticateSessionApiKey = async (parentId, key) => {
+      lookups.push(parentId);
+      return authenticateSessionApiKey(parentId, key);
+    };
+    const events: string[] = [];
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64",
+      ),
+    });
+    const { handler } = createLocalApp({
+      plane,
+      authService: auth,
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { mutation: 1, login: 1 } },
+      onRateLimitEvent: (event) => events.push(`${event.bucket}:${event.outcome}`),
+    });
+    const path = `/api/v1/sessions/${parent.session.id}/children`;
+    const headers = { authorization: "Bearer hns_session_invalid" };
+    const first = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "child", spawnKey: "one" },
+      headers,
+    );
+    const second = await invokeHandler(
+      handler,
+      "POST",
+      path,
+      { prompt: "child", spawnKey: "two" },
+      headers,
+    );
+
+    expect(first.status).toBe(401);
+    expect(second.status).toBe(429);
+    expect(lookups).toEqual([parent.session.id]);
+    expect(events).toEqual(["mutation:allowed", "mutation:denied"]);
   });
 
   it("meters logout to the authenticated actor and Basic guesses before bcrypt", async () => {
