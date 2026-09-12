@@ -93,12 +93,34 @@ describe("durable child session branches", () => {
     expect(plane.state.sessions.has("child")).toBe(false);
   });
 
+  it("revalidates an in-memory session credential before returning a duplicate", async () => {
+    const source = parent({ rootSessionId: undefined, sessionApiKeyHash: "old-hash" });
+    const plane = planeWithStorage({}, source);
+    plane.state.storage = undefined;
+    const body = { prompt: "child", spawnKey: "key" };
+    await expect(createSessionChildDurable(plane.state, "parent", body)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+    });
+    source.sessionApiKeyHash = "new-hash";
+    plane.state.sessions.set("parent", source);
+
+    await expect(
+      createSessionChildDurable(plane.state, "parent", body, {
+        sessionCredentialHash: "old-hash",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "parent session attempt is no longer running",
+      code: "CONFLICT",
+    });
+  });
+
   it("rejects a credential when the in-memory parent disappears before admission", async () => {
     const source = parent({ rootSessionId: undefined, sessionApiKeyHash: "hash" });
     const plane = planeWithStorage({}, source);
     plane.state.storage = undefined;
     vi.spyOn(plane.state.sessions, "get")
-      .mockReturnValueOnce(source)
       .mockReturnValueOnce(source)
       .mockReturnValueOnce(undefined);
 

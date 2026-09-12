@@ -213,6 +213,8 @@ describe("session command credential", () => {
       commandRunner,
       {
         HARNESS_API_KEY: "host-secret",
+        HARNESS_SESSION_API_KEY: "stale-session-secret",
+        HARNESS_SESSION_ID: "stale-session-id",
         HARNESS_CHILD_ENV_ALLOWLIST: "PRESERVED_VALUE",
         PRESERVED_VALUE: "preserved",
       },
@@ -220,6 +222,8 @@ describe("session command credential", () => {
     );
     expect(seenEnv).toMatchObject({ PROFILE_VALUE: "enabled", PRESERVED_VALUE: "preserved" });
     expect(seenEnv).not.toHaveProperty("HARNESS_API_KEY");
+    expect(seenEnv).not.toHaveProperty("HARNESS_SESSION_API_KEY");
+    expect(seenEnv).not.toHaveProperty("HARNESS_SESSION_ID");
   });
 
   it.each([

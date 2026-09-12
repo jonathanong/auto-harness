@@ -259,6 +259,8 @@ async function runProcessAndFinish(
   }
   const commandEnv = profile ? applyExecutionProfile(environment, profile) : { ...environment };
   delete commandEnv.HARNESS_API_KEY;
+  delete commandEnv.HARNESS_SESSION_API_KEY;
+  delete commandEnv.HARNESS_SESSION_ID;
   // Written after setup (which may `git clean`/reset the checkout — resumeWireFields omits
   // `resume: true` for a fallback, so setup still runs) and removed once the process exits.
   const priorContextPath =

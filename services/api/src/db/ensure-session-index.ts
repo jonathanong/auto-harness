@@ -82,10 +82,10 @@ export async function ensureSessionsParentIndex(
         if (!isConcurrentIndexUpdate(error)) throw error;
       }
     }
-    await delay(PARENT_INDEX_ACTIVE_POLL_MS);
     if (attempt === MAX_PARENT_INDEX_ACTIVE_POLLS - 1) {
       throw new Error(`timed out waiting for ${SESSIONS_PARENT_INDEX_NAME} to become ACTIVE`);
     }
+    await delay(PARENT_INDEX_ACTIVE_POLL_MS);
   }
 }
 

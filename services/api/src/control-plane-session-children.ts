@@ -150,6 +150,23 @@ export async function createSessionChildDurable(
     prepared.child.metadata = { createdBy: owner };
   }
   if (!state.storage) {
+    // A session credential is only valid for the exact active attempt which
+    // received it. Re-read before any response, including an idempotent
+    // duplicate, so a terminal transition cannot expose child data.
+    if (options.sessionCredentialHash) {
+      const current = state.sessions.get(parentId);
+      if (
+        !current ||
+        current.status !== "running" ||
+        current.sessionApiKeyHash !== options.sessionCredentialHash
+      ) {
+        return {
+          ok: false,
+          error: "parent session attempt is no longer running",
+          code: "CONFLICT",
+        };
+      }
+    }
     const duplicate = [...state.sessions.values()].find(
       (session) =>
         session.concurrencyId === prepared.child.concurrencyId &&
@@ -164,24 +181,6 @@ export async function createSessionChildDurable(
         error: "root session descendant budget is exhausted",
         code: "CONFLICT",
       };
-    }
-    // A session credential is only valid for the exact active attempt which
-    // received it. Re-read immediately before the local insert so a terminal
-    // transition between request authentication and admission cannot mint a
-    // child after the parent has exited.
-    if (options.sessionCredentialHash) {
-      const current = state.sessions.get(parentId);
-      if (
-        !current ||
-        current.status !== "running" ||
-        current.sessionApiKeyHash !== options.sessionCredentialHash
-      ) {
-        return {
-          ok: false,
-          error: "parent session attempt is no longer running",
-          code: "CONFLICT",
-        };
-      }
     }
     state.sessions.set(prepared.child.id, { ...prepared.child });
     root.descendantCount = descendantCount + 1;

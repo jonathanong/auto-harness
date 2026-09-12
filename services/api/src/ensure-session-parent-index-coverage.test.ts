@@ -179,6 +179,6 @@ describe("ensureSessionsParentIndex", () => {
     await expect(ensureSessionsParentIndex(client, "Sessions")).rejects.toThrow(
       "timed out waiting for parentSessionId-createdOrder to become ACTIVE",
     );
-    expect(timer.delay).toHaveBeenCalledTimes(300);
+    expect(timer.delay).toHaveBeenCalledTimes(299);
   });
 });
