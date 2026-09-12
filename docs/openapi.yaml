@@ -853,7 +853,7 @@ components:
       required: [githubRepositoryId, repositoryId, target, timeout, defaultRef]
       additionalProperties: false
       properties:
-        githubRepositoryId: { type: integer, minimum: 1 }
+        githubRepositoryId: { type: integer, minimum: 1, maximum: 9007199254740991 }
         repositoryId: { type: string, minLength: 1, maxLength: 256 }
         target: { $ref: "#/components/schemas/Target" }
         fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }

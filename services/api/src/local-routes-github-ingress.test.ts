@@ -271,6 +271,32 @@ describe("GitHub App webhook ingress", () => {
     });
   });
 
+  it("tracks assignment enqueue through the webhook response lifecycle", async () => {
+    const { plane, handler } = await fixture();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const enqueue = vi.spyOn(plane, "enqueueAssignment").mockReturnValueOnce(pending);
+    const payload = body({ comment: { ...body().comment, id: 30 } });
+    const response = invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/webhooks/github",
+      payload,
+      headers(payload),
+    );
+    let settled = false;
+    void response.then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await expect(response).resolves.toMatchObject({ status: 202, json: { accepted: true } });
+  });
+
   it("audits a deduplicated session under the repository returned by concurrency", async () => {
     const { plane, handler } = await fixture();
     const payload = body({ comment: { ...body().comment, id: 31 } });

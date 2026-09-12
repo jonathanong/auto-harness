@@ -101,20 +101,19 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
       );
       return true;
     }
-    void ctx.plane
+    const assignmentEnqueue = ctx.plane
       .enqueueAssignment()
       .catch((error: unknown) =>
         console.error("failed to enqueue GitHub ingress assignment", error),
       );
-    if (
-      !(await audit(
-        ctx,
-        "success",
-        { delivery, created: result.created },
-        result.session.repositoryId,
-      ))
-    )
-      return true;
+    const audited = await audit(
+      ctx,
+      "success",
+      { delivery, created: result.created },
+      result.session.repositoryId,
+    );
+    await assignmentEnqueue;
+    if (!audited) return true;
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
     if (!(await audit(ctx, "failed"))) return true;
