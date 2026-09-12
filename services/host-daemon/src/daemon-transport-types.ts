@@ -9,8 +9,17 @@ export type SendOptions = {
 
 export type DaemonTransport = {
   send(msg: HostToServerMessage, options?: SendOptions): Promise<void>;
+  /**
+   * Inbound wire messages. Transports that do not consume `host:registered`
+   * through `onRegistered` must forward it here so the daemon can negotiate
+   * the control-plane protocol.
+   */
   onMessage(handler: (msg: HostWireMessage) => void): void;
   onConnected?(handler: () => void): void;
+  /**
+   * Registration acknowledgement for transports that consume it before the
+   * general message handler (such as the WebSocket transport).
+   */
   onRegistered?(handler: (protocolVersion?: number) => void): void;
   onDisconnected?(handler: () => void): void;
   /** Current registration state, for an external liveness log -- not an event. */

@@ -10,6 +10,7 @@ export function createLoopbackTransport(opts: {
   sendToServer: (msg: HostToServerMessage) => void | Promise<void>;
 }): DaemonTransport & { deliver(msg: HostWireMessage): void } {
   let handler: ((msg: HostWireMessage) => void) | null = null;
+  let registeredHandler: ((protocolVersion?: number) => void) | null = null;
   return {
     async send(msg) {
       await opts.sendToServer(msg);
@@ -17,10 +18,18 @@ export function createLoopbackTransport(opts: {
     onMessage(h) {
       handler = h;
     },
+    onRegistered(h) {
+      registeredHandler = h;
+    },
     close() {
       handler = null;
+      registeredHandler = null;
     },
     deliver(msg) {
+      if (msg.type === "host:registered") {
+        registeredHandler?.(msg.protocolVersion);
+        return;
+      }
       handler?.(msg);
     },
   };

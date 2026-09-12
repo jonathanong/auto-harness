@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage, SessionAssign } from "@auto-harness/shared";
 
-import { DaemonLoop, type DaemonTransport } from "./daemon-loop.ts";
+import { createLoopbackTransport, DaemonLoop, type DaemonTransport } from "./daemon-loop.ts";
 
 class ProtocolTransport implements DaemonTransport {
   readonly sent: HostToServerMessage[] = [];
@@ -88,6 +88,83 @@ async function startedLoop(transport: ProtocolTransport): Promise<DaemonLoop> {
 }
 
 describe("DaemonLoop command-start authorization", () => {
+  it("uses loopback registration negotiation before authorizing a command start", async () => {
+    const sent: HostToServerMessage[] = [];
+    const transport = createLoopbackTransport({
+      sendToServer: (message) => void sent.push(message),
+    });
+    const loop = new DaemonLoop({
+      config: { hostId: "host-1", repositories: [], providerAccounts: [] },
+      transport,
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_unavailable",
+      },
+    });
+    await loop.start();
+    try {
+      expect(sent).toContainEqual(
+        expect.objectContaining({ type: "host:register", protocolVersion: 3 }),
+      );
+      transport.deliver({ type: "host:registered", hostId: "host-1", protocolVersion: 3 });
+
+      const pending = authorize(loop);
+      expect(sent.filter((message) => message.type === "session:command-start")).toHaveLength(1);
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      await expect(pending).resolves.toBe(true);
+    } finally {
+      loop.stop();
+    }
+  });
+
+  it("negotiates through host:registered when a transport omits onRegistered", async () => {
+    const sent: HostToServerMessage[] = [];
+    let receive: ((message: HostWireMessage) => void) | undefined;
+    const loop = new DaemonLoop({
+      config: { hostId: "host-1", repositories: [], providerAccounts: [] },
+      transport: {
+        send: async (message) => void sent.push(message),
+        onMessage(handler) {
+          receive = handler;
+        },
+        close() {},
+      },
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_unavailable",
+      },
+    });
+    await loop.start();
+    try {
+      receive?.({ type: "host:registered", hostId: "host-1", protocolVersion: 3 });
+      const pending = authorize(loop);
+      expect(sent.filter((message) => message.type === "session:command-start")).toHaveLength(1);
+      receive?.({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      await expect(pending).resolves.toBe(true);
+    } finally {
+      loop.stop();
+    }
+  });
+
   it("sends v3 command-start and waits for the matching acknowledgement", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);

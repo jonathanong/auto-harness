@@ -286,33 +286,7 @@ export class DaemonLoop {
       abortInflight: () => {
         for (const session of this.inflight.values()) session.controller.abort();
       },
-      onRegistered: (protocolVersion) => {
-        this.serverProtocolVersion = protocolVersion ?? 0;
-        // A reconnect can negotiate an older peer than the connection that
-        // created these checkpoints.  The older peer cannot acknowledge a
-        // v3 command-start, so leave the authorization gate closed rather
-        // than leaving the session-runner waiting forever.  This also wins
-        // over any late ACK from the superseded connection; stop() and abort
-        // use the same false settlement through finishCommandStart().
-        if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
-          for (const key of this.pendingCommandStarts.keys()) {
-            this.finishCommandStart(key, false);
-          }
-        }
-        // A reconnect registration carrying `draining: true` is itself a
-        // durable acknowledgement. This covers a lost drain reply.
-        if (this.drainRequested) this.confirmDrain();
-        // A fresh registration means a new/recovered socket: retry any
-        // terminal status still unacknowledged now instead of waiting for
-        // the next keepalive tick.
-        this.retryPendingTerminalStatuses();
-        this.retryPendingCommandStarts();
-        this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
-        this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
-        // A fresh registration is itself proof this connection is live —
-        // reset the same deadline a successful keepalive would.
-        this.armKeepaliveStallTimer();
-      },
+      onRegistered: (protocolVersion) => this.handleRegistered(protocolVersion),
       abortAfterMs: this.reconnectAbortMs,
       timers: this.timers,
     });
@@ -516,6 +490,9 @@ export class DaemonLoop {
 
   private async handleServerMessage(msg: HostWireMessage): Promise<void> {
     switch (msg.type) {
+      case "host:registered":
+        this.handleRegistered(msg.protocolVersion);
+        return;
       case "host:drain":
         this.confirmDrain();
         return;
@@ -543,6 +520,34 @@ export class DaemonLoop {
       default:
         return;
     }
+  }
+
+  private handleRegistered(protocolVersion?: number): void {
+    this.serverProtocolVersion = protocolVersion ?? 0;
+    // A reconnect can negotiate an older peer than the connection that
+    // created these checkpoints.  The older peer cannot acknowledge a
+    // v3 command-start, so leave the authorization gate closed rather
+    // than leaving the session-runner waiting forever.  This also wins
+    // over any late ACK from the superseded connection; stop() and abort
+    // use the same false settlement through finishCommandStart().
+    if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
+      for (const key of this.pendingCommandStarts.keys()) {
+        this.finishCommandStart(key, false);
+      }
+    }
+    // A reconnect registration carrying `draining: true` is itself a
+    // durable acknowledgement. This covers a lost drain reply.
+    if (this.drainRequested) this.confirmDrain();
+    // A fresh registration means a new/recovered socket: retry any
+    // terminal status still unacknowledged now instead of waiting for
+    // the next keepalive tick.
+    this.retryPendingTerminalStatuses();
+    this.retryPendingCommandStarts();
+    this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
+    this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
+    // A fresh registration is itself proof this connection is live —
+    // reset the same deadline a successful keepalive would.
+    this.armKeepaliveStallTimer();
   }
 
   private abortSupersededAttempts(sessionId: string, attemptId: string): void {
