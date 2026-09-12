@@ -172,7 +172,7 @@ describe("createGitClient checkout and revParse", () => {
       ),
     ).resolves.toBeNull();
     expect(fetchEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
-    expect(fetchEnvironment?.GIT_CONFIG_GLOBAL).toContain("auto-harness-pull-fetch-");
+    expect(fetchEnvironment?.GIT_CONFIG_GLOBAL).toBe("/dev/null");
     expect(fetchEnvironment).not.toHaveProperty("GIT_CONFIG_COUNT");
   });
 
@@ -336,6 +336,7 @@ describe("createGitClient checkout and revParse", () => {
     await git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
     expect(fetchEnvironment).toMatchObject({
       GIT_ALTERNATE_OBJECT_DIRECTORIES: join(checkoutRepo, ".git", "objects"),
+      GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_NO_REPLACE_OBJECTS: "1",
     });

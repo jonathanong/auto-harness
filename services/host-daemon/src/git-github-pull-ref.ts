@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createChildEnv } from "./child-env.ts";
@@ -19,15 +19,18 @@ export function isGitHubPullRequestRef(ref: string): boolean {
   return GITHUB_PULL_REQUEST_REF.test(ref);
 }
 
-function isolatedFetchEnvironment(
-  configDirectory: string,
-  objectDirectory: string | undefined,
-): NodeJS.ProcessEnv {
+export function nullGlobalGitConfigPath(platformName: NodeJS.Platform = platform()): string {
+  return platformName === "win32" ? "NUL" : "/dev/null";
+}
+
+function isolatedFetchEnvironment(objectDirectory: string | undefined): NodeJS.ProcessEnv {
   // Do not let system or user configuration rewrite the daemon-pinned URL. The temporary bare
   // repository below is new for this operation, so it has no repository-local URL rewrites either.
   return {
     ...createChildEnv(),
-    GIT_CONFIG_GLOBAL: join(configDirectory, "global.gitconfig"),
+    // A platform null device cannot be planted by a concurrent session, unlike a config file in
+    // the same-UID temporary directory used for the isolated bare repository.
+    GIT_CONFIG_GLOBAL: nullGlobalGitConfigPath(),
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_NO_REPLACE_OBJECTS: "1",
     ...(objectDirectory === undefined ? {} : { GIT_ALTERNATE_OBJECT_DIRECTORIES: objectDirectory }),
@@ -75,7 +78,7 @@ export async function fetchGitHubPullRequestRef(
   // `refs/worktree` is private to this linked worktree. A fresh random component also prevents a
   // prior session in the same worktree from precreating the handoff ref.
   const destination = `refs/worktree/auto-harness/pull-fetch/${randomUUID()}`;
-  const environment = isolatedFetchEnvironment(temporaryDirectory, objectDirectory);
+  const environment = isolatedFetchEnvironment(objectDirectory);
   const transport = transportArguments(configured);
   try {
     const initialized = await runGit(

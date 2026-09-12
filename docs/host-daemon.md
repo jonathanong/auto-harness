@@ -554,6 +554,8 @@ remote URL and, where HTTPS needs it, an explicit `credentialHelper`, `httpProxy
 so a session cannot replace it before or after a daemon restart. URL rewrite settings and shell
 credential helpers are not supported. The policy file and every ancestor must be root-owned,
 non-group/world-writable, and not a symlink; each remote URL is credential-free HTTPS.
+Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
+on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
 A pull-head checkout fetches only that pinned URL in a fresh temporary bare repository with
 system/global URL-rewrite configuration disabled. Its object database reuses the claimed checkout's

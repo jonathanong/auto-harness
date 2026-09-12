@@ -118,9 +118,15 @@ export function loadGitHubPullRefConfigs(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string, encoding: "utf8") => string = readFileSync,
   inspect: InspectPolicyPath = lstatSync,
+  platformName: NodeJS.Platform = process.platform,
 ): GitHubPullRefConfigs {
   const path = env[GITHUB_PULL_REF_CONFIG_ENV]?.trim();
   if (!path) return new Map();
+  if (platformName === "win32") {
+    throw new Error(
+      `${GITHUB_PULL_REF_CONFIG_ENV} is unsupported on Windows until native ACL immutability can be verified`,
+    );
+  }
   if (!isAbsolute(path)) throw new Error(`${GITHUB_PULL_REF_CONFIG_ENV} must be absolute`);
   assertRootOwnedPath(path, inspect);
   const root = record(JSON.parse(readFile(path, "utf8")) as unknown, "GitHub pull-ref config");

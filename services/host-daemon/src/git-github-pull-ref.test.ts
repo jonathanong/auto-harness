@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
+import { fetchGitHubPullRequestRef, nullGlobalGitConfigPath } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const cwd = "/tmp/auto-harness-github-pull-ref-test";
@@ -38,6 +38,14 @@ const bundled = {
 const imported = { match: ["bundle", "unbundle", "*"], exitCode: 0 };
 
 describe("isolated GitHub pull-ref fetch", () => {
+  it.each([
+    ["darwin", "/dev/null"],
+    ["linux", "/dev/null"],
+    ["win32", "NUL"],
+  ] as const)("uses the immutable null global config path on %s", (platformName, expected) => {
+    expect(nullGlobalGitConfigPath(platformName)).toBe(expected);
+  });
+
   it("ignores ordinary refs and pull refs without a pinned origin", async () => {
     const runner = scripted([]);
     await expect(fetchGitHubPullRequestRef(runner, cwd, "main", remoteUrl)).resolves.toBeNull();

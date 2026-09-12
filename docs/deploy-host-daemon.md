@@ -400,12 +400,16 @@ after assignment and therefore are not advertised as ambient host environment ca
 
 ### GitHub pull-ref checkout policy
 
-To enable `refs/pull/<number>/head`, create a root-owned, mode-`0644` (or stricter) policy file
-outside every checkout and set its absolute path as `HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent
-directory and the file itself must be root-owned, non-group/world-writable, and free of symlinks.
+To enable `refs/pull/<number>/head`, create a root-owned mode-`0644` policy file, or a root-owned
+`root:harness` mode-`0640` policy file, outside every checkout and set its absolute path as
+`HARNESS_GITHUB_PULL_REF_CONFIG`. Every parent directory and the file itself must be root-owned,
+non-group/world-writable, and free of symlinks.
 Keys are canonical repository paths. Each `remoteUrl` must be credential-free HTTPS. The optional
 transport fields preserve only the explicit HTTPS settings needed by that host; URL rewrites and
 shell helpers are deliberately unsupported.
+
+Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
+on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
 ```json
 {

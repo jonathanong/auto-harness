@@ -31,6 +31,17 @@ describe("GitHub pull-ref host policy", () => {
     }
   });
 
+  it("fails closed on Windows until native ACL immutability is verified", () => {
+    expect(() =>
+      loadGitHubPullRefConfigs(
+        { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
+        () => JSON.stringify(repositoryConfig()),
+        () => rootOwnedFile,
+        "win32",
+      ),
+    ).toThrow("unsupported on Windows");
+  });
+
   it("loads a pinned repository URL and safe transport settings from an absolute host file", () => {
     const configs = loadGitHubPullRefConfigs(
       { [GITHUB_PULL_REF_CONFIG_ENV]: configPath },
