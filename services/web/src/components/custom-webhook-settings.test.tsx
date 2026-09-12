@@ -69,7 +69,7 @@ describe("CustomWebhookSettings", () => {
     const save = fake.requests[1]?.[1];
     expect(save?.method).toBe("PUT");
     expect(JSON.parse(String(save?.body))).not.toHaveProperty("secret");
-    expect(JSON.parse(String(save?.body))).toMatchObject({ version: 2 });
+    expect(JSON.parse(String(save?.body))).toMatchObject({ version: 2, generation: "legacy" });
     expect(field(view.container, "custom-webhook-delete")).toBeInstanceOf(HTMLButtonElement);
     press(field(view.container, "custom-webhook-delete"));
     expect(document.body.textContent).toContain("Delete custom webhook configuration?");

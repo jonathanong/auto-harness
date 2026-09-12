@@ -102,6 +102,40 @@ export async function failWebhookDelivery(
   return null;
 }
 
+/** Settle a permanent transport rejection only while this worker still owns the live lease. */
+export async function deadLetterWebhookDelivery(
+  ctx: PlaneStorageCtx,
+  input: WebhookLeaseFence & { failureCode: WebhookFailureCode },
+): Promise<boolean> {
+  assertFence(input);
+  assertWebhookFailureCode(input.failureCode);
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.webhookDeliveries,
+        Key: { id: input.id },
+        UpdateExpression:
+          "SET #state = :dead, updatedAt = :now, deadLetteredAt = :now, lastFailedAt = :now, lastFailureCode = :failure REMOVE dueAt, leaseOwner, leaseId, leaseExpiresAt",
+        ConditionExpression:
+          "#state = :leased AND leaseOwner = :owner AND leaseId = :leaseId AND leaseExpiresAt > :now",
+        ExpressionAttributeNames: { "#state": "state" },
+        ExpressionAttributeValues: {
+          ":leased": "leased",
+          ":dead": "dead",
+          ":owner": input.owner,
+          ":leaseId": input.leaseId,
+          ":now": input.now,
+          ":failure": input.failureCode,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 /** Recover an exhausted due row whose last worker vanished before settlement. */
 export async function deadLetterExhaustedWebhookDelivery(
   ctx: PlaneStorageCtx,

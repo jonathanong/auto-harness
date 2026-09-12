@@ -204,6 +204,10 @@ export type WebhookOutboxStore = {
       nextAttemptAt: string;
     },
   ): Promise<"pending" | "dead" | null>;
+  /** Permanently reject an exact live lease without scheduling another attempt. */
+  deadLetterWebhookDelivery(
+    input: WebhookLeaseFence & { failureCode: WebhookFailureCode },
+  ): Promise<boolean>;
   deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean>;
 };
 

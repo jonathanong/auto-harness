@@ -42,6 +42,7 @@ export function webhookProcessStore(fields: Partial<WebhookOutboxStore> = {}): W
     ),
     completeWebhookDelivery: vi.fn(async () => true),
     failWebhookDelivery: vi.fn<WebhookOutboxStore["failWebhookDelivery"]>(async () => "pending"),
+    deadLetterWebhookDelivery: vi.fn(async () => true),
     deadLetterExhaustedWebhookDelivery: vi.fn(async () => false),
     ...fields,
   };
@@ -83,6 +84,9 @@ export function webhookMemoryStore(rows: Map<string, DurableWebhookDelivery>): W
     },
     async failWebhookDelivery() {
       return null;
+    },
+    async deadLetterWebhookDelivery() {
+      return false;
     },
     async deadLetterExhaustedWebhookDelivery() {
       return false;

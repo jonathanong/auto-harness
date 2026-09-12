@@ -83,6 +83,11 @@ async function processCandidate(
   if (result.ok) {
     return (await store.completeWebhookDelivery(fence)) ? "sent" : "lease-lost";
   }
+  if (result.failureCode === "delivery-rejected") {
+    return (await store.deadLetterWebhookDelivery({ ...fence, failureCode: result.failureCode }))
+      ? "dead"
+      : "lease-lost";
+  }
   const settled = await store.failWebhookDelivery({
     ...fence,
     failureCode: result.failureCode,

@@ -344,7 +344,7 @@ Outbound HTTP delivery signs the exact JSON event body with the same header and 
 `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the default (plain HTTP
 needs an explicit non-production development/test escape), redirects are disabled, and resolver
 plus request work is bounded by the delivery lease with time reserved for settlement. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
-responses are permanent failures.
+responses are permanent failures and are dead-lettered immediately under the worker's exact lease.
 
 ### Custom Webhooks (Outbound)
 

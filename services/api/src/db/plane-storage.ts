@@ -120,6 +120,14 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return webhookSettlement.failWebhookDelivery(this.ctx, input);
   }
 
+  deadLetterWebhookDelivery(
+    input: webhookOutbox.WebhookLeaseFence & {
+      failureCode: import("../webhook-outbox.ts").WebhookFailureCode;
+    },
+  ): Promise<boolean> {
+    return webhookSettlement.deadLetterWebhookDelivery(this.ctx, input);
+  }
+
   deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean> {
     return webhookSettlement.deadLetterExhaustedWebhookDelivery(this.ctx, input);
   }

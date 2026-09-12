@@ -132,7 +132,7 @@ export function CustomWebhookSettings() {
       try {
         const { id: _id, generation, ...settings } = config;
         const body: Record<string, unknown> = { ...settings };
-        if (submittedConfigured) body.generation = generation;
+        if (submittedConfigured) body.generation = generation ?? "legacy";
         if (secret) body.secret = secret;
         const response = await apiFetch(submittedEndpoint!, {
           method: submittedConfigured ? "PUT" : "POST",

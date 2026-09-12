@@ -94,7 +94,23 @@ describe("webhook outbox processor", () => {
       ),
     ).resolves.toBe("lease-lost");
 
-    const lostFailure = webhookProcessStore({ failWebhookDelivery: vi.fn(async () => null) });
+    const terminal = vi.fn(async () => true);
+    const permanent = webhookProcessStore({ deadLetterWebhookDelivery: terminal });
+    await expect(
+      processWebhookOutboxOnce(
+        permanent,
+        { deliver: async () => ({ ok: false, failureCode: "delivery-rejected" }) },
+        { now: () => webhookTestNow },
+      ),
+    ).resolves.toBe("dead");
+    expect(terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ failureCode: "delivery-rejected" }),
+    );
+    expect(permanent.failWebhookDelivery).not.toHaveBeenCalled();
+
+    const lostFailure = webhookProcessStore({
+      deadLetterWebhookDelivery: vi.fn(async () => false),
+    });
     await expect(
       processWebhookOutboxOnce(
         lostFailure,
