@@ -13,7 +13,7 @@ test("renders a durable Filaments webhook session created through the public API
   const repositoryResponse = await request.post(`${API}/api/v1/repositories`, {
     data: {
       name: repositoryName,
-      url: `/tmp/${repositoryName}`,
+      url: `https://example.test/${repositoryName}.git`,
       defaultBranch: "main",
     },
   });

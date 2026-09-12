@@ -154,7 +154,11 @@ test.describe("control plane hosts", () => {
       const repoId = `pw-host-repo-${test.info().parallelIndex}-${Date.now()}`;
       const repo = await (
         await request.post(`${API_BASE}/api/v1/repositories`, {
-          data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
+          data: {
+            name: repoId,
+            url: `https://example.test/${repoId}.git`,
+            defaultBranch: "main",
+          },
         })
       ).json();
       await putHostRepo(request, {

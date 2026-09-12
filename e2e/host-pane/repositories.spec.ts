@@ -9,7 +9,7 @@ const API = API_BASE;
 async function createCatalogRepo(request: import("@playwright/test").APIRequestContext) {
   const name = `pw-agent-repo-${test.info().parallelIndex}-${Date.now()}`;
   const res = await request.post(`${API}/api/v1/repositories`, {
-    data: { name, url: `/tmp/${name}` },
+    data: { name, url: `https://example.test/${name}.git` },
   });
   const { id } = (await res.json()) as { id: string; name: string };
   return { id, name };

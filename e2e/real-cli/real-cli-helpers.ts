@@ -85,7 +85,7 @@ export async function runRealCliSession(opts: {
     const account = await accountRes.json();
 
     const repositoryRes = await request.post(`${API}/api/v1/repositories`, {
-      data: { name: repoId, url: repo, defaultBranch: "main" },
+      data: { name: repoId, url: `https://example.test/${repoId}.git`, defaultBranch: "main" },
     });
     expect(
       repositoryRes.ok(),

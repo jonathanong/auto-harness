@@ -172,7 +172,11 @@ test.describe("control plane sessions", () => {
       const secondFallbackCommandName = `echo-fallback-two-${test.info().parallelIndex}-${Date.now()}`;
 
       const repositoryResponse = await request.post(`${API_BASE}/api/v1/repositories`, {
-        data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
+        data: {
+          name: repoId,
+          url: `https://example.test/${repoId}.git`,
+          defaultBranch: "main",
+        },
       });
       expect(repositoryResponse.ok()).toBe(true);
       const repositoryId = ((await repositoryResponse.json()) as { id: string }).id;
@@ -733,7 +737,11 @@ test.describe("control plane sessions", () => {
 
     try {
       const repository = await request.post(`${API_BASE}/api/v1/repositories`, {
-        data: { name: repositoryName, url: `/tmp/${repositoryName}`, defaultBranch: "main" },
+        data: {
+          name: repositoryName,
+          url: `https://example.test/${repositoryName}.git`,
+          defaultBranch: "main",
+        },
       });
       const repositoryId = ((await repository.json()) as { id: string }).id;
       const command = await request.post(`${API_BASE}/api/v1/commands`, {

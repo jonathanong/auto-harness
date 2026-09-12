@@ -11,7 +11,7 @@ test("opens Clone & Edit without creating and submits only replayable source inp
     await request.post(`${API}/api/v1/repositories`, {
       data: {
         name: `pw-clone-edit-${suffix}`,
-        url: `/tmp/pw-clone-edit-${suffix}`,
+        url: `https://example.test/pw-clone-edit-${suffix}.git`,
         defaultBranch: "main",
       },
     })
