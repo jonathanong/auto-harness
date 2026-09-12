@@ -544,6 +544,19 @@ actually flagged, avoiding index updates proportional to every tracked file. The
 is then hard-reset so hidden tracked changes cannot survive. The session transcript reports the
 ref-checkout phase before this work begins; if the session deadline expires there, the terminal
 failure identifies checkout and the requested ref as the timeout cause.
+
+GitHub pull-request heads use the special exact form `refs/pull/<positive-number>/head`; they are
+not resolved through the ordinary `fetch --all` fallback because a repository's configured
+refspec commonly does not advertise them. Before an untrusted session can edit Git configuration,
+the daemon captures `origin` once (including an unavailable origin, which remains unavailable for
+the daemon lifetime). A pull-head checkout fetches only that captured URL in a fresh temporary bare
+repository with system/global URL-rewrite configuration disabled, imports the resulting bundle into
+the claimed checkout, and roots it in a fresh worktree-private scratch ref. The scratch ref remains
+reachable through detached checkout and `HEAD` verification, then is deleted in `finally`; it is
+never a shared predictable ref or `FETCH_HEAD`. Any missing origin, failed exact fetch, bundle
+import, ref resolution, checkout, verification, or cleanup fails the checkout closed and does not
+probe another remote or use the generic recovery path.
+
 It syncs their configured URLs and force-checks out already initialized submodules recursively, so
 tracked submodule changes cannot leak into the next session without implicitly
 initializing new submodules. Before any destructive checkout, the daemon verifies

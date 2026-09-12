@@ -131,6 +131,52 @@ describe("createGitClient real git", () => {
     expect(head).toBe(mainSha);
   });
 
+  it("fetches a pinned pull head without applying a later local URL rewrite", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-pull-ref-"));
+    roots.push(root);
+    const { repo, worktree } = await createTwoCommitWorktree(root);
+    const remote = join(root, "remote.git");
+    const source = join(root, "source");
+    const attackerRemote = join(root, "attacker.git");
+    const attacker = join(root, "attacker-source");
+    await git(root, ["init", "--bare", remote]);
+    await git(root, ["init", "--bare", attackerRemote]);
+    mkdirSync(source);
+    await git(source, ["init"]);
+    await git(source, ["config", "user.email", "t@example.com"]);
+    await git(source, ["config", "user.name", "t"]);
+    writeFileSync(join(source, "from.txt"), "trusted\n");
+    await git(source, ["add", "from.txt"]);
+    await git(source, ["commit", "-m", "trusted pull head"]);
+    const trustedSha = (await git(source, ["rev-parse", "HEAD"])).trim();
+    await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
+    mkdirSync(attacker);
+    await git(attacker, ["init"]);
+    await git(attacker, ["config", "user.email", "t@example.com"]);
+    await git(attacker, ["config", "user.name", "t"]);
+    writeFileSync(join(attacker, "from.txt"), "attacker\n");
+    await git(attacker, ["add", "from.txt"]);
+    await git(attacker, ["commit", "-m", "attacker pull head"]);
+    await git(attacker, ["push", attackerRemote, "HEAD:refs/pull/42/head"]);
+
+    await git(repo, ["remote", "add", "origin", remote]);
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.ensureRepo(repo);
+    // Models a prior untrusted session mutating the shared local Git config after capture.
+    await git(repo, ["config", `url.${attackerRemote}.insteadOf`, remote]);
+
+    await client.checkoutRef({ cwd: worktree, repoPath: repo, ref: "refs/pull/42/head" });
+
+    await expect(client.revParse(worktree, "HEAD")).resolves.toBe(trustedSha);
+    await expect(
+      git(worktree, [
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/worktree/auto-harness/pull-fetch",
+      ]),
+    ).resolves.toBe("");
+  });
+
   it("recycles tracked state while preserving unrelated untracked files", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-recycle-"));
     roots.push(root);

@@ -1,11 +1,11 @@
 /* eslint-disable max-lines -- checkout resolution, recovery, and diagnostics share one scripted Git fixture. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
+import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 function resolvesCommit(ref: string, sha = "abc") {
@@ -60,8 +60,54 @@ function capturesOrigin(url = "https://github.com/example/repository.git") {
   return { match: ["remote", "get-url", "--", "origin"], exitCode: 0, stdout: `${url}\n` };
 }
 
-function noSymbolicScratchRef(destination: string) {
-  return { match: ["symbolic-ref", "--quiet", "--", destination], exitCode: 1 };
+function fetchesGitHubPullRef(
+  ref: string,
+  remoteUrl = "https://github.com/example/repository.git",
+) {
+  return [
+    { match: ["init", "--bare", "*"], exitCode: 0 },
+    {
+      match: [
+        "--git-dir",
+        "*",
+        "fetch",
+        "--no-write-fetch-head",
+        "--no-tags",
+        remoteUrl,
+        `+${ref}:refs/auto-harness/pull-fetch/source`,
+      ],
+      exitCode: 0,
+    },
+    {
+      match: [
+        "--git-dir",
+        "*",
+        "rev-parse",
+        "--verify",
+        "refs/auto-harness/pull-fetch/source^{commit}",
+      ],
+      exitCode: 0,
+      stdout: "pr-sha\n",
+    },
+    {
+      match: ["--git-dir", "*", "bundle", "create", "*", "refs/auto-harness/pull-fetch/source"],
+      exitCode: 0,
+    },
+    { match: ["bundle", "unbundle", "*"], exitCode: 0 },
+    { match: ["update-ref", "--no-deref", "*", "pr-sha"], exitCode: 0 },
+  ];
+}
+
+function resolvesFetchedPullRef(sha = "pr-sha") {
+  return {
+    match: ["rev-parse", "--verify", "--end-of-options", "*"],
+    exitCode: 0,
+    stdout: `${sha}\n`,
+  };
+}
+
+function deletesFetchedPullRef(exitCode = 0) {
+  return { match: ["update-ref", "--no-deref", "-d", "*"], exitCode };
 }
 
 const checkoutRoot = mkdtempSync(join(tmpdir(), "ah-git-checkout-unit-"));
@@ -81,6 +127,35 @@ afterAll(() => {
 });
 
 describe("createGitClient checkout and revParse", () => {
+  it("fetches a pinned pull URL with mutable URL-rewrite configuration isolated", async () => {
+    let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        const args = options.argv.slice(1);
+        if (args[0] === "init") {
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        if (args.includes("fetch")) {
+          fetchEnvironment = options.env;
+          return { exitCode: 1, timedOut: false, signal: null };
+        }
+        throw new Error(`unexpected git ${args.join(" ")}`);
+      },
+    };
+
+    await expect(
+      fetchGitHubPullRequestRef(
+        runner,
+        checkoutCwd,
+        "refs/pull/130/head",
+        "https://github.com/example/repository.git",
+      ),
+    ).resolves.toBeNull();
+    expect(fetchEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
+    expect(fetchEnvironment?.GIT_CONFIG_GLOBAL).toContain("auto-harness-pull-fetch-");
+    expect(fetchEnvironment).not.toHaveProperty("GIT_CONFIG_COUNT");
+  });
+
   it("checkoutRef detaches at resolved sha", async () => {
     const git = createGitClient(
       scripted([
@@ -127,32 +202,19 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fetches an exact GitHub pull-request ref without shared FETCH_HEAD", async () => {
     const ref = "refs/pull/123/head";
     const remoteUrl = "https://github.com/example/repository.git";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
         capturesOrigin(remoteUrl),
-        noSymbolicScratchRef(destination),
-        {
-          match: [
-            "fetch",
-            "--no-write-fetch-head",
-            "--no-tags",
-            remoteUrl,
-            `+${ref}:${destination}`,
-          ],
-          exitCode: 0,
-        },
-        resolvesCommit(destination, "pr-sha"),
-        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 0 },
+        ...fetchesGitHubPullRef(ref, remoteUrl),
+        resolvesFetchedPullRef(),
         { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
         hardReset("pr-sha"),
         syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+        deletesFetchedPullRef(),
       ]),
     );
 
@@ -165,9 +227,6 @@ describe("createGitClient checkout and revParse", () => {
     const ref = "refs/pull/124/head";
     const remoteUrl = "https://github.com/example/repository.git";
     const mutatedUrl = "https://attacker.example/other.git";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
     const git = createGitClient(
       scripted([
         { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
@@ -176,25 +235,15 @@ describe("createGitClient checkout and revParse", () => {
         // make the expected fetch below fail.
         capturesOrigin(mutatedUrl),
         ...resetsPriorState(),
-        noSymbolicScratchRef(destination),
-        {
-          match: [
-            "fetch",
-            "--no-write-fetch-head",
-            "--no-tags",
-            remoteUrl,
-            `+${ref}:${destination}`,
-          ],
-          exitCode: 0,
-        },
-        resolvesCommit(destination, "pinned-pr-sha"),
-        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 0 },
+        ...fetchesGitHubPullRef(ref, remoteUrl),
+        resolvesFetchedPullRef("pinned-pr-sha"),
         { match: ["switch", "--discard-changes", "--detach", "pinned-pr-sha"], exitCode: 0 },
         hardReset("pinned-pr-sha"),
         syncsSubmodules(),
         updatesSubmodules(),
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pinned-pr-sha\n" },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+        deletesFetchedPullRef(),
       ]),
     );
 
@@ -204,44 +253,27 @@ describe("createGitClient checkout and revParse", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("rejects a preexisting symbolic scratch ref before fetching", async () => {
+  it("uses a fresh per-worktree scratch ref rather than inspecting a shared predictable ref", async () => {
     const ref = "refs/pull/125/head";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
-    const checkout = createGitClient(
+    const git = createGitClient(
       scripted([
         ...resetsPriorState(),
         capturesOrigin(),
-        {
-          match: ["symbolic-ref", "--quiet", "--", destination],
-          exitCode: 0,
-          stdout: "refs/heads/main\n",
-        },
+        ...fetchesGitHubPullRef(ref),
+        resolvesFetchedPullRef(),
+        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
+        hardReset("pr-sha"),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+        deletesFetchedPullRef(),
       ]),
-    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+    );
 
-    await expect(checkout).rejects.toThrow("Refusing symbolic GitHub pull-request scratch ref");
-  });
-
-  it("fails closed when scratch-ref inspection fails", async () => {
-    const ref = "refs/pull/126/head";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
-    const checkout = createGitClient(
-      scripted([
-        ...resetsPriorState(),
-        capturesOrigin(),
-        {
-          match: ["symbolic-ref", "--quiet", "--", destination],
-          exitCode: 128,
-          stderr: "ref inspection failed",
-        },
-      ]),
-    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
-
-    await expect(checkout).rejects.toThrow("Failed to inspect GitHub pull-request scratch ref");
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).resolves.toBeUndefined();
   });
 
   it("fails closed when no immutable origin URL is available", async () => {
@@ -268,23 +300,38 @@ describe("createGitClient checkout and revParse", () => {
     await expect(checkout).rejects.toThrow("Failed to fetch GitHub pull-request ref");
   });
 
+  it("pins unavailable origin capture instead of accepting an origin added by an untrusted session", async () => {
+    const ref = "refs/pull/129/head";
+    const git = createGitClient(
+      scripted([
+        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
+        { match: ["remote", "get-url", "--", "origin"], exitCode: 1 },
+        ...resetsPriorState(),
+      ]),
+    );
+
+    await git.ensureRepo(checkoutRepo);
+    await expect(
+      git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref }),
+    ).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+  });
+
   it("checkoutRef fails closed instead of probing an untrusted fallback remote", async () => {
     const ref = "refs/pull/7/head";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
     const git = createGitClient(
       scripted([
         ...resetsPriorState(),
         capturesOrigin(),
-        noSymbolicScratchRef(destination),
+        { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
+            "--git-dir",
+            "*",
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
             "https://github.com/example/repository.git",
-            `+${ref}:${destination}`,
+            `+${ref}:refs/auto-harness/pull-fetch/source`,
           ],
           exitCode: 1,
         },
@@ -298,21 +345,20 @@ describe("createGitClient checkout and revParse", () => {
 
   it("checkoutRef fails closed when no remote exposes a GitHub pull-request ref", async () => {
     const ref = "refs/pull/8/head";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
         capturesOrigin(),
-        noSymbolicScratchRef(destination),
+        { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
+            "--git-dir",
+            "*",
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
             "https://github.com/example/repository.git",
-            `+${ref}:${destination}`,
+            `+${ref}:refs/auto-harness/pull-fetch/source`,
           ],
           exitCode: 1,
         },
@@ -326,26 +372,19 @@ describe("createGitClient checkout and revParse", () => {
 
   it("checkoutRef fails closed when its bounded scratch ref cannot be deleted", async () => {
     const ref = "refs/pull/9/head";
-    const destination = `refs/auto-harness/pull-fetch/${createHash("sha256")
-      .update(checkoutCwd)
-      .digest("hex")}`;
     const checkout = createGitClient(
       scripted([
         ...resetsPriorState(),
         capturesOrigin(),
-        noSymbolicScratchRef(destination),
-        {
-          match: [
-            "fetch",
-            "--no-write-fetch-head",
-            "--no-tags",
-            "https://github.com/example/repository.git",
-            `+${ref}:${destination}`,
-          ],
-          exitCode: 0,
-        },
-        resolvesCommit(destination, "pr-sha"),
-        { match: ["update-ref", "--no-deref", "-d", destination], exitCode: 1 },
+        ...fetchesGitHubPullRef(ref),
+        resolvesFetchedPullRef(),
+        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
+        hardReset("pr-sha"),
+        syncsSubmodules(),
+        updatesSubmodules(),
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+        deletesFetchedPullRef(1),
       ]),
     ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
 

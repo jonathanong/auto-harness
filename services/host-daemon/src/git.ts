@@ -55,22 +55,30 @@ async function listedWorktreePaths(output: string, repoPath: string): Promise<Se
 }
 
 export function createGitClient(runner: ProcessRunner): GitClient {
-  const pinnedOriginUrls = new Map<string, string>();
+  const originUnavailable = Symbol("origin-unavailable");
+  const pinnedOriginUrls = new Map<string, string | typeof originUnavailable>();
 
   async function captureOrigin(path: string): Promise<string | undefined> {
     const key = await canonicalPath(path);
     const existing = pinnedOriginUrls.get(key);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) return existing === originUnavailable ? undefined : existing;
     try {
       const configured = await runGit(runner, path, ["remote", "get-url", "--", "origin"]);
-      if (configured.exitCode !== 0) return undefined;
+      if (configured.exitCode !== 0) {
+        pinnedOriginUrls.set(key, originUnavailable);
+        return undefined;
+      }
       const remoteUrl = configured.stdout.trim();
-      if (remoteUrl.length === 0) return undefined;
+      if (remoteUrl.length === 0) {
+        pinnedOriginUrls.set(key, originUnavailable);
+        return undefined;
+      }
       pinnedOriginUrls.set(key, remoteUrl);
       return remoteUrl;
     } catch {
       // Repositories without an origin remain valid for ordinary local-ref checkouts. A
       // GitHub pull-ref checkout fails closed later when no immutable origin was captured.
+      pinnedOriginUrls.set(key, originUnavailable);
       return undefined;
     }
   }
@@ -129,70 +137,74 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
       const isPullRequestRef = isGitHubPullRequestRef(ref);
-      const pullRequestRef = isPullRequestRef
-        ? await fetchGitHubPullRequestRef(runner, cwd, ref, await captureOrigin(repoPath), signal)
-        : null;
-      if (isPullRequestRef && pullRequestRef === null) {
-        throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
-      }
-      let commitRef = `${pullRequestRef ?? ref}^{commit}`;
-      let resolved = await runGit(
-        runner,
-        cwd,
-        ["rev-parse", "--verify", "--end-of-options", commitRef],
-        signal,
-      );
-      if (pullRequestRef) {
-        await deleteGitHubPullRequestRef(runner, cwd, pullRequestRef, ref, signal);
-      }
-      if (resolved.exitCode !== 0 && !isPullRequestRef) {
-        await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-        commitRef = `${ref}^{commit}`;
-        resolved = await runGit(
+      let pullRequestRef: string | null = null;
+      try {
+        pullRequestRef = isPullRequestRef
+          ? await fetchGitHubPullRequestRef(runner, cwd, ref, await captureOrigin(repoPath), signal)
+          : null;
+        if (isPullRequestRef && pullRequestRef === null) {
+          throw new Error(`Failed to fetch GitHub pull-request ref ${ref}`);
+        }
+        let commitRef = `${pullRequestRef ?? ref}^{commit}`;
+        let resolved = await runGit(
           runner,
           cwd,
           ["rev-parse", "--verify", "--end-of-options", commitRef],
           signal,
         );
-      }
-      if (resolved.exitCode !== 0) {
-        throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
-      }
-      const sha = resolved.stdout.trim();
-      let co = await checkoutDetached(runner, cwd, sha, signal);
-      if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
-        if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
-          co = await checkoutDetached(runner, cwd, sha, signal);
+        if (resolved.exitCode !== 0 && !isPullRequestRef) {
+          await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+          commitRef = `${ref}^{commit}`;
+          resolved = await runGit(
+            runner,
+            cwd,
+            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            signal,
+          );
         }
-      }
-      if (co.exitCode !== 0) {
-        // A regular fetch can treat the locally-present commit as complete
-        // while its graph is missing an object. Repair only that condition,
-        // rather than masking ordinary checkout failures with a network retry.
-        const connectivity = await runGit(
-          runner,
-          cwd,
-          ["fsck", "--connectivity-only", sha],
-          signal,
-        );
-        if (connectivity.exitCode !== 0) {
-          if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
-            throw new Error("Failed to fetch required checkout objects");
+        if (resolved.exitCode !== 0) {
+          throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
+        }
+        const sha = resolved.stdout.trim();
+        let co = await checkoutDetached(runner, cwd, sha, signal);
+        if (co.exitCode !== 0 && co.stderr.includes("index.lock")) {
+          if (await removeStaleIndexLock(runner, cwd, claimedCommonDir, signal)) {
+            co = await checkoutDetached(runner, cwd, sha, signal);
           }
-          co = await checkoutDetached(runner, cwd, sha, signal);
         }
-      }
-      if (co.exitCode !== 0) {
-        throw gitFailure("Failed to checkout resolved ref", co.stderr);
-      }
-      await resetInitializedSubmodules(runner, cwd, signal);
-      const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
-      if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
-        throw new Error("Failed to verify detached checkout");
-      }
-      const detached = await runGit(runner, cwd, ["symbolic-ref", "--quiet", "HEAD"], signal);
-      if (detached.exitCode !== 1) {
-        throw new Error("Failed to verify detached checkout");
+        if (co.exitCode !== 0) {
+          // A regular fetch can treat the locally-present commit as complete
+          // while its graph is missing an object. Repair only that condition,
+          // rather than masking ordinary checkout failures with a network retry.
+          const connectivity = await runGit(
+            runner,
+            cwd,
+            ["fsck", "--connectivity-only", sha],
+            signal,
+          );
+          if (connectivity.exitCode !== 0) {
+            if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
+              throw new Error("Failed to fetch required checkout objects");
+            }
+            co = await checkoutDetached(runner, cwd, sha, signal);
+          }
+        }
+        if (co.exitCode !== 0) {
+          throw gitFailure("Failed to checkout resolved ref", co.stderr);
+        }
+        await resetInitializedSubmodules(runner, cwd, signal);
+        const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
+        if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+          throw new Error("Failed to verify detached checkout");
+        }
+        const detached = await runGit(runner, cwd, ["symbolic-ref", "--quiet", "HEAD"], signal);
+        if (detached.exitCode !== 1) {
+          throw new Error("Failed to verify detached checkout");
+        }
+      } finally {
+        if (pullRequestRef !== null) {
+          await deleteGitHubPullRequestRef(runner, cwd, pullRequestRef, ref, signal);
+        }
       }
       return sha;
     },
