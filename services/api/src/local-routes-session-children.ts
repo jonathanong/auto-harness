@@ -32,9 +32,9 @@ export async function handleSessionChildrenRoute(ctx: RouteCtx): Promise<boolean
     if (
       !sessionToken &&
       (!mayAccessRepository(ctx.principal, parent.repositoryId) ||
-        (ctx.method === "POST" &&
-          ctx.principal &&
-          (ctx.principal.boundHostId || !may(ctx.principal, "sessions:spawn"))))
+        (ctx.principal &&
+          (ctx.principal.boundHostId ||
+            (ctx.method === "POST" && !may(ctx.principal, "sessions:spawn")))))
     ) {
       sendSessionForbidden(ctx.res);
       return true;

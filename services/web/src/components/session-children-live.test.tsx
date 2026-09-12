@@ -27,7 +27,7 @@ describe("SessionChildrenLive", () => {
     });
     expect(request).toHaveBeenCalledWith(
       "/api/v1/sessions/parent%2Fone/children?limit=50&cursor=next",
-      expect.objectContaining({ credentials: "same-origin" }),
+      expect.objectContaining({ cache: "no-store", credentials: "same-origin" }),
     );
     view.unmount();
   });

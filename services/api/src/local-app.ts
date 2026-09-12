@@ -134,6 +134,18 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const sessionKey = authorization.startsWith("Bearer hns_session_")
       ? authorization.slice("Bearer ".length)
       : undefined;
+    // Session credentials are not AuthService principals, so their parent lookup
+    // happens before the ordinary authenticated-route limiter. Consume the route's
+    // mutation budget first, keyed by the peer address, so invalid session keys cannot
+    // turn arbitrary parent ids into an unauthenticated durable-read oracle. Mark the
+    // route as already limited below: one request gets one normal mutation/login budget,
+    // not a pre-auth token plus a second post-auth token.
+    const sessionCredentialRoute = method === "POST" && Boolean(childRoute && sessionKey);
+    let preAuthRouteRateLimited = false;
+    if (sessionCredentialRoute) {
+      if (await enforceRateLimit({ ...loginLimit, bucket: "mutation" })) return;
+      preAuthRouteRateLimited = true;
+    }
     // A session token is deliberately not an AuthService principal: it cannot
     // reach any route other than its own children collection.
     if (
@@ -151,7 +163,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       if (basicGuess && (await enforceRateLimit(loginLimit))) return;
       const principal = ctx.sessionParentId ? null : await auth.authenticate(req);
       if (!ctx.sessionParentId && !principal) {
-        if (!basicGuess && (await enforceRateLimit(loginLimit))) return;
+        if (!basicGuess && !sessionCredentialRoute && (await enforceRateLimit(loginLimit))) return;
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
       }
       if (principal) ctx.principal = principal;
@@ -187,7 +199,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       if (principal) ctx.principal = principal;
     }
     const bucket = classifyRateLimitBucket(method, url.pathname);
-    if (bucket) {
+    if (bucket && !preAuthRouteRateLimited) {
       const limited = await enforceRateLimit({
         config,
         memoryLimiter,

@@ -1,9 +1,11 @@
+/* eslint-disable max-lines -- credential boundary regressions share one runner fixture. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
+import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
@@ -83,6 +85,82 @@ describe("session command credential", () => {
     expect(transcript).not.toContain(credential);
   });
 
+  it("does not reconstruct a credential whose final character overlaps its prefix", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-credential-overlap-"));
+    const credential = `hns_session_${"a".repeat(42)}h`;
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        options.onChunk?.({ stream: "stdout", data: credential });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs: Array<{ content: string }> = [];
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-overlap", "attempt-1", (chunk) => logs.push(chunk)),
+      logs as never,
+      baseAssign({ sessionApiKey: credential }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
+    );
+    const transcript = logs.map((chunk) => chunk.content).join("");
+    expect(transcript).not.toContain(credential);
+    expect(transcript).toContain("[session credential redacted]");
+  });
+
+  it("removes the host API credential after applying the execution profile", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-command-environment-"));
+    let seenEnv: NodeJS.ProcessEnv | undefined;
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        seenEnv = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const executionProfiles: ExecutionProfiles = {
+      maxConcurrentAssignments: 1,
+      profiles: new Map([
+        [
+          "provider-1",
+          { providerAccountId: "provider-1", home: cwd, env: { PROFILE_VALUE: "enabled" } },
+        ],
+      ]),
+    };
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-command-env", "attempt-1", () => undefined),
+      [] as never,
+      baseAssign({ providerAccountId: "provider-1" }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      {
+        HARNESS_API_KEY: "host-secret",
+        HARNESS_CHILD_ENV_ALLOWLIST: "PRESERVED_VALUE",
+        PRESERVED_VALUE: "preserved",
+      },
+      executionProfiles,
+    );
+    expect(seenEnv).toMatchObject({ PROFILE_VALUE: "enabled", PRESERVED_VALUE: "preserved" });
+    expect(seenEnv).not.toHaveProperty("HARNESS_API_KEY");
+  });
+
   it.each([
     ["completed", { exitCode: 0, timedOut: false }],
     ["failed", { exitCode: 1, timedOut: false }],
@@ -95,7 +173,11 @@ describe("session command credential", () => {
       async run() {
         if (primary) {
           primary = false;
-          return { ...result, signal: null, agentSummary: "Child work was queued." };
+          return {
+            ...result,
+            signal: null,
+            agentSummary: "Child work was queued with hns_session_ephemeral.",
+          };
         }
         return { exitCode: 1, timedOut: false, signal: null };
       },
@@ -121,7 +203,7 @@ describe("session command credential", () => {
     );
     expect(outcome.status).toBe(status);
     expect(outcome.result).toEqual({
-      summary: "Child work was queued.",
+      summary: "Child work was queued with [session credential redacted].",
       summarySource: "agent",
     });
   });

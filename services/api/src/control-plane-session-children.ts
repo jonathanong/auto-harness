@@ -235,10 +235,11 @@ export async function listSessionChildrenDurable(
   }
   const records = [...state.sessions.values()]
     .filter((session) => session.parentSessionId === parentId)
-    .toSorted(
-      (left, right) =>
-        right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
-    );
+    .toSorted((left, right) => {
+      const leftOrder = `${left.createdAt}#${left.id}`;
+      const rightOrder = `${right.createdAt}#${right.id}`;
+      return rightOrder < leftOrder ? -1 : rightOrder > leftOrder ? 1 : 0;
+    });
   const cursorOrder = typeof startKey?.createdOrder === "string" ? startKey.createdOrder : null;
   const remaining = cursorOrder
     ? records.filter((session) => `${session.createdAt}#${session.id}` < cursorOrder)

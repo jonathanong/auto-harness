@@ -35,7 +35,15 @@ class SessionCredentialRedactor {
     if (!this.credential) return content;
     const combined = (this.pending.get(stream) ?? "") + content;
     let heldLength = 0;
-    const maximum = Math.min(combined.length, this.credential.length - 1);
+    // A complete credential can itself have a suffix matching its first
+    // character(s). Do not retain such an overlap: otherwise the safe prefix
+    // and drained suffix would reconstruct the secret in the transcript.
+    const lastCompleteCredential = combined.lastIndexOf(this.credential);
+    const trailingAfterCredential =
+      lastCompleteCredential === -1
+        ? combined.length
+        : combined.length - (lastCompleteCredential + this.credential.length);
+    const maximum = Math.min(trailingAfterCredential, this.credential.length - 1);
     for (let length = maximum; length > 0; length -= 1) {
       if (combined.endsWith(this.credential.slice(0, length))) {
         heldLength = length;
@@ -44,13 +52,22 @@ class SessionCredentialRedactor {
     }
     const safe = heldLength === 0 ? combined : combined.slice(0, -heldLength);
     this.pending.set(stream, heldLength === 0 ? "" : combined.slice(-heldLength));
-    return safe.split(this.credential).join(SESSION_CREDENTIAL_REDACTION);
+    return this.redact(safe);
   }
 
   drain(): Array<{ stream: string; content: string }> {
-    const trailing = [...this.pending].map(([stream, content]) => ({ stream, content }));
+    const trailing = [...this.pending].map(([stream, content]) => ({
+      stream,
+      content: this.redact(content),
+    }));
     this.pending.clear();
     return trailing;
+  }
+
+  redact(content: string): string {
+    return this.credential
+      ? content.split(this.credential).join(SESSION_CREDENTIAL_REDACTION)
+      : content;
   }
 }
 
@@ -227,7 +244,8 @@ async function runProcessAndFinish(
       true,
     );
   }
-  const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
+  const commandEnv = profile ? applyExecutionProfile(environment, profile) : { ...environment };
+  delete commandEnv.HARNESS_API_KEY;
   // Written after setup (which may `git clean`/reset the checkout — resumeWireFields omits
   // `resume: true` for a fallback, so setup still runs) and removed once the process exits.
   const priorContextPath =
@@ -312,7 +330,9 @@ async function runProcessAndFinish(
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      ...(result.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+        : {}),
     });
   }
 
@@ -322,7 +342,9 @@ async function runProcessAndFinish(
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      ...(result.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+        : {}),
     });
   }
 
@@ -332,7 +354,9 @@ async function runProcessAndFinish(
       exitCode: 0,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      ...(result.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+        : {}),
     });
   }
 
@@ -350,7 +374,9 @@ async function runProcessAndFinish(
       errorMessage: "Usage limit detected",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      ...(result.agentSummary !== undefined
+        ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+        : {}),
     });
   }
 
@@ -360,6 +386,8 @@ async function runProcessAndFinish(
     errorMessage: `process exited with code ${String(result.exitCode)}`,
     ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
     ...(result.usage !== undefined ? { usage: result.usage } : {}),
-    ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+    ...(result.agentSummary !== undefined
+      ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
+      : {}),
   });
 }

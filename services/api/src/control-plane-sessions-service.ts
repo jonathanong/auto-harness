@@ -86,7 +86,10 @@ export class ControlPlaneSessionsService {
   ): Promise<{ items: PublicSession[]; nextCursor: string | null }> {
     const page = await children.listSessionChildrenDurable(this.state, parentId, query);
     return {
-      items: page.items.map((session) => toPublic(this.state, session)),
+      // Child collection reads are list views: terminal session results may contain
+      // large/provider-sensitive output and must follow the same omission contract as
+      // the top-level session list.
+      items: page.items.map((session) => toPublic(this.state, session, false)),
       nextCursor: page.nextCursor,
     };
   }

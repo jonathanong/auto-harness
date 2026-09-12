@@ -231,21 +231,26 @@ describe("durable child session branches", () => {
     expect(listSessionChildren.mock.calls[1]![2]).toEqual({ id: "child-a" });
   });
 
-  it("uses the session id to break equal creation-time ties in memory", async () => {
+  it("uses cursor-compatible code-unit ordering for punctuation-bearing ids", async () => {
     const plane = new ControlPlane({ sessionCursorSecret: "test-secret" });
     const createdAt = "2026-01-02T00:00:00.000Z";
     plane.state.sessions.set(
-      "child-a",
-      parent({ id: "child-a", parentSessionId: "parent", createdAt }),
+      "child-Z",
+      parent({ id: "child-Z", parentSessionId: "parent", createdAt }),
     );
     plane.state.sessions.set(
-      "child-b",
-      parent({ id: "child-b", parentSessionId: "parent", createdAt }),
+      "child_a",
+      parent({ id: "child_a", parentSessionId: "parent", createdAt }),
     );
 
+    const first = await listSessionChildrenDurable(plane.state, "parent", {
+      limit: 1,
+      cursor: null,
+    });
+    expect(first).toMatchObject({ items: [{ id: "child_a" }] });
     await expect(
-      listSessionChildrenDurable(plane.state, "parent", { limit: 2, cursor: null }),
-    ).resolves.toMatchObject({ items: [{ id: "child-b" }, { id: "child-a" }] });
+      listSessionChildrenDurable(plane.state, "parent", { limit: 1, cursor: first.nextCursor }),
+    ).resolves.toMatchObject({ items: [{ id: "child-Z" }], nextCursor: null });
   });
 
   it("authenticates only a current durable session credential", async () => {

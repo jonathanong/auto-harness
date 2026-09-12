@@ -23,7 +23,7 @@ export function SessionChildrenLive({
       initialNextCursor={initialNextCursor}
       initialPollError={initialError}
       path={`/api/v1/sessions/${encodeURIComponent(parentSessionId)}/children?limit=50`}
-      fetchPage={apiFetch}
+      fetchPage={(path) => apiFetch(path, { cache: "no-store" })}
       pollMs={pollMs}
     />
   );

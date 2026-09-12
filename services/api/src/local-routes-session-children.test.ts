@@ -47,6 +47,30 @@ async function harness() {
 }
 
 describe("child session route", () => {
+  it("omits terminal results from child collection reads", async () => {
+    const { handler, path, apiKey, parent, plane } = await harness();
+    const rawParent = plane.state.sessions.get(parent.id)!;
+    plane.state.sessions.set("terminal-child", {
+      ...rawParent,
+      id: "terminal-child",
+      parentSessionId: parent.id,
+      rootSessionId: parent.id,
+      status: "completed",
+      result: { summary: "private terminal output", summarySource: "agent" },
+    });
+
+    const response = await invokeHandler(handler, "GET", path, undefined, {
+      authorization: `Bearer ${apiKey}`,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({ items: [{ id: "terminal-child" }] });
+    expect(JSON.stringify(response.json)).not.toContain("private terminal output");
+    expect(
+      (response.json as { items: Array<Record<string, unknown>> }).items[0],
+    ).not.toHaveProperty("result");
+  });
+
   it("creates an inherited child once and never exposes its raw spawn key", async () => {
     const { handler, path, apiKey } = await harness();
     const body = { prompt: "follow up", spawnKey: "private idempotency input", priority: 9 };
@@ -350,6 +374,13 @@ describe("child session route", () => {
           { prompt: "child", spawnKey: "daemon" },
           { authorization: `Bearer ${daemonKey}` },
         )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invokeHandler(handler, "GET", path, undefined, {
+          authorization: `Bearer ${daemonKey}`,
+        })
       ).status,
     ).toBe(404);
   });
