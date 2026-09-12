@@ -109,11 +109,10 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
     if (!(await audit(ctx, integrationId, "success", { created: result.created }, repositoryId))) {
       return true;
     }
-    // Assignment is deliberately detached from the public ingress response. The durable session
-    // and concurrency claim are the acknowledgment; a retry can safely observe the same claim.
-    // The durable create above is the acknowledgement. Assignment is explicitly detached so a
-    // slow or unavailable host sweep cannot hold public ingress open.
-    void ctx.plane
+    // The control plane's deployed callback invokes Lambda asynchronously, so awaiting this
+    // promise confirms the enqueue request was handed to Lambda before acknowledging ingress.
+    // Local callbacks can still fail without invalidating the durable session acknowledgement.
+    await ctx.plane
       .enqueueAssignment()
       .catch((error: unknown) =>
         console.error("failed to enqueue custom webhook assignment", error),

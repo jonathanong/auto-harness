@@ -57,9 +57,21 @@ describe("custom webhook integration lifecycle", () => {
     ]) {
       expect((await value.createCustomWebhookIntegration(config(invalid))).ok).toBe(false);
     }
+    await expect(value.createCustomWebhookIntegration(config())).resolves.toMatchObject({
+      ok: true,
+    });
     await expect(
       value.updateCustomWebhookIntegration(config({ secret: "short" })),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+    await expect(
+      value.updateCustomWebhookIntegration(config({ secret: 123 as never })),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+    await expect(
+      value.updateCustomWebhookIntegration(config({ secret: "😀".repeat(8) })),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
+    await expect(
+      value.updateCustomWebhookIntegration(config({ secret: "😀".repeat(16) })),
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it("redacts secrets, retains them on routing updates, rotates explicitly, and deletes", async () => {

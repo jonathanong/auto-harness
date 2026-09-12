@@ -167,6 +167,7 @@ export function CustomWebhookSettings() {
   };
 
   const remove = async () => {
+    const submittedId = config.id;
     try {
       const response = await apiFetch(endpoint!, {
         method: "DELETE",
@@ -183,7 +184,9 @@ export function CustomWebhookSettings() {
         });
         return { ok: false as const, error: "Unable to delete custom webhook configuration." };
       }
+      if (latestId.current !== submittedId) return;
       setConfig({ ...emptyConfig });
+      latestId.current = "";
       setSecret("");
       setConfigured(false);
       showToast("Custom webhook configuration deleted.", { pw: "custom-webhook-success" });
@@ -418,7 +421,9 @@ export function CustomWebhookSettings() {
               <Input
                 id="custom-webhook-timeout"
                 type="number"
-                min="1"
+                min="0.001"
+                max="604800"
+                step="any"
                 value={config.timeout}
                 onChange={(event) =>
                   setConfig((current) => ({ ...current, timeout: Number(event.target.value) }))

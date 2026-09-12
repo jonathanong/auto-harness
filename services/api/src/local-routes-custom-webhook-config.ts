@@ -74,12 +74,20 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   let currentForAudit:
     | Awaited<ReturnType<RouteCtx["plane"]["getCustomWebhookIntegration"]>>
     | undefined;
+  let repositoryIdForAudit: string | undefined;
   try {
     const value = await readJson(ctx.req);
     if (ctx.method === "PUT") {
-      currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
+      try {
+        currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
+      } catch {
+        if (!(await audit(ctx, id, "failed"))) return true;
+        sendInternalError(ctx.res);
+        return true;
+      }
     }
     input = parseConfig(value, id, ctx.method === "POST");
+    repositoryIdForAudit = input.repositoryId;
     if (ctx.method === "PUT") {
       expectedVersion = parseBodyVersion(value);
       expectedGeneration = parseBodyGeneration(value);
@@ -133,7 +141,8 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
     if (await audit(ctx, id, "success", result.integration.repositoryId))
       send(ctx.res, ctx.method === "POST" ? 201 : 200, result.integration);
   } catch {
-    if (!(await audit(ctx, id, "failed"))) return true;
+    if (!(await audit(ctx, id, "failed", currentForAudit?.repositoryId ?? repositoryIdForAudit)))
+      return true;
     sendInternalError(ctx.res);
   }
   return true;

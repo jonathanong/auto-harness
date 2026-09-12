@@ -237,6 +237,14 @@ describe("custom webhook receiver", () => {
     expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
       { status: 500, json: { error: { code: "INTERNAL_ERROR" } } },
     );
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+        ...complete,
+        secret: undefined,
+        version: 1,
+        generation,
+      }),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     mutable.getCustomWebhookIntegration = async () => ({ repositoryId: "repo" }) as never;
     mutable.deleteCustomWebhookIntegration = async () => ({
       ok: false,
@@ -277,6 +285,11 @@ describe("custom webhook receiver", () => {
     expect(
       await invokeHandler(handler, "POST", "/api/v1/integrations/custom/throws", complete),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ action: "integration:custom-webhook:create", outcome: "failed" }),
+      ]),
+    });
   });
 
   it("maps every configuration write outcome and fails closed when its audit cannot persist", async () => {
@@ -636,7 +649,7 @@ describe("custom webhook receiver", () => {
     ).toBe(400);
   });
 
-  it("acknowledges durably when detached assignment cannot be queued", async () => {
+  it("acknowledges durably when assignment cannot be queued", async () => {
     const { plane, handler } = await fixture();
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     plane.setOnAssignmentRequested(async () => {
@@ -656,6 +669,32 @@ describe("custom webhook receiver", () => {
       ),
     );
     log.mockRestore();
+  });
+
+  it("waits for assignment enqueue before acknowledging ingress", async () => {
+    const { plane, handler } = await fixture();
+    let started = false;
+    let release!: () => void;
+    plane.setOnAssignmentRequested(
+      () =>
+        new Promise<void>((resolve) => {
+          started = true;
+          release = resolve;
+        }),
+    );
+    const body = { prompt: "x", idempotencyKey: "await-assignment" };
+    const response = invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", body, {
+      "x-auto-harness-signature-256": signature(body),
+    });
+    await vi.waitFor(() => expect(started).toBe(true));
+    let acknowledged = false;
+    void response.then(() => {
+      acknowledged = true;
+    });
+    await Promise.resolve();
+    expect(acknowledged).toBe(false);
+    release();
+    await expect(response).resolves.toMatchObject({ status: 202 });
   });
 
   it("handles legacy generation rows and unmatched receiver paths", async () => {

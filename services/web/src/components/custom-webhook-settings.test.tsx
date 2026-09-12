@@ -41,6 +41,15 @@ function offline() {
 }
 
 describe("CustomWebhookSettings", () => {
+  it("accepts the full positive fractional API timeout range", () => {
+    const view = mountForm(<CustomWebhookSettings />);
+    const timeout = field<HTMLInputElement>(view.container, "custom-webhook-timeout");
+    expect(timeout.min).toBe("0.001");
+    expect(timeout.max).toBe("604800");
+    expect(timeout.step).toBe("any");
+    view.unmount();
+  });
+
   it("loads existing state, edits structured routing, retains a blank secret, and deletes", async () => {
     const fake = createApiFake(json(existing), json({ ...existing, version: 3 }), json({}, 204));
     const view = mountForm(<CustomWebhookSettings />);
@@ -129,6 +138,26 @@ describe("CustomWebhookSettings", () => {
     setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "other");
     resolveSave(json({ ...existing, version: 3 }));
     await settle();
+    expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("does not clear a different configuration when a delete finishes late", async () => {
+    let resolveDelete!: (response: Response) => void;
+    createApiFake(
+      json(existing),
+      () => new Promise<Response>((resolve) => (resolveDelete = resolve)),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    press(field(view.container, "custom-webhook-delete"));
+    press(field(document, "custom-webhook-delete-confirm-submit"));
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "other");
+    resolveDelete(json({}, 204));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-id").value).toBe("other");
     expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
     view.unmount();
   });

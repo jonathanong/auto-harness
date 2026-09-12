@@ -145,6 +145,11 @@ export function createSignedWebhookTransport(options: {
       } catch {
         return { ok: false, failureCode: "transient-failure" };
       }
+      try {
+        await response.body?.cancel();
+      } catch {
+        return { ok: false, failureCode: "transient-failure" };
+      }
       if (response.status >= 300 && response.status < 400) {
         return { ok: false, failureCode: "delivery-rejected" };
       }

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- transport edge cases share one signed request fixture. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createSignedWebhookTransport,
@@ -54,6 +54,17 @@ describe("signed webhook transport", () => {
       ok: false,
       failureCode: "transient-failure",
     });
+  });
+
+  it("cancels response bodies before classifying the delivery result", async () => {
+    const response = new Response("unused response body", { status: 200 });
+    const cancel = vi.spyOn(response.body!, "cancel");
+    const transport = createSignedWebhookTransport({
+      resolveDestination: async () => ({ url: "https://example.test/hook", secret: "secret" }),
+      fetch: async () => response,
+    });
+    await expect(transport.deliver(request)).resolves.toEqual({ ok: true });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("classifies other client failures as permanent and missing config as unavailable", async () => {

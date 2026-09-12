@@ -53,6 +53,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     const slackApp = slackAppParam(this);
     const ingressSecret = cloudFrontIngressSecret(this);
     const commonEnvironment = {
+      NODE_ENV: "production",
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
