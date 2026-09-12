@@ -153,6 +153,7 @@ export function planWorkspacePlacement(
       return (
         slot.workspacePoolId === session.workspacePoolId &&
         slot.status === "idle" &&
+        !slot.retired &&
         slot.online &&
         hasHostCapability(connection?.capabilities, "workspace-sessions") &&
         hostAcceptsNewAssignments(state, slot.hostId) &&

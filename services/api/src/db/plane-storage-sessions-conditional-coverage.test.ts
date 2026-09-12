@@ -160,6 +160,7 @@ describe("session storage conditional outcomes", () => {
       queueShard: 0,
       now: "now",
       usageLimitedUntil: "later",
+      workspaceSlotError: "cleanup failed",
     };
     const lost = vi
       .fn()
@@ -189,6 +190,10 @@ describe("session storage conditional outcomes", () => {
             TableName: "WorkspaceSlots",
             Key: { id: "slot" },
             ConditionExpression: "currentSessionId = :sid",
+            UpdateExpression: expect.stringContaining("#s = :error"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":errorMessage": "cleanup failed",
+            }),
           }),
         }),
         expect.objectContaining({

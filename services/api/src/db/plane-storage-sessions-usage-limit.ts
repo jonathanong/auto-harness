@@ -31,16 +31,25 @@ function idleClaimedWorktreeUpdate(
 
 function idleClaimedWorkspaceSlotUpdate(
   ctx: PlaneStorageCtx,
-  opts: { workspaceSlotId: string; sessionId: string },
+  opts: { workspaceSlotId: string; sessionId: string; workspaceSlotError?: string },
 ) {
+  const failed = opts.workspaceSlotError !== undefined;
   return {
     Update: {
       TableName: ctx.tables.workspaceSlots,
       Key: { id: opts.workspaceSlotId },
-      UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+      UpdateExpression: failed
+        ? "SET #s = :error, currentSessionId = :null, errorMessage = :errorMessage"
+        : "SET #s = :idle, currentSessionId = :null REMOVE errorMessage",
       ConditionExpression: "currentSessionId = :sid",
       ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+      ExpressionAttributeValues: {
+        ":null": null,
+        ":sid": opts.sessionId,
+        ...(failed
+          ? { ":error": "error", ":errorMessage": opts.workspaceSlotError }
+          : { ":idle": "idle" }),
+      },
     },
   };
 }
@@ -156,6 +165,8 @@ export async function requeueUsageLimitedWorkspaceSession(
     now: string;
     usageLimitedUntil: string;
     errorMessage?: string;
+    /** A daemon cleanup report quarantines the slot even while the session retries. */
+    workspaceSlotError?: string;
     providerAccountLease?: ProviderAccountLeaseKey | undefined;
     hostAssignmentLease?: HostAssignmentLease | undefined;
   },

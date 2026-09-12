@@ -22,6 +22,47 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
+async function persistRetiredWorkspaceSlot(
+  storage: DynamoPlaneStorage,
+  slot: WorkspaceSlotRecord,
+): Promise<WorkspaceSlotRecord | null> {
+  if (!slot.currentSessionId || typeof storage.retireWorkspaceSlot !== "function") {
+    await storage.putWorkspaceSlot({ ...slot });
+    return slot;
+  }
+  if (await storage.retireWorkspaceSlot(slot.id, slot.currentSessionId)) return slot;
+
+  // The terminal transition (or a second scheduler) won between projection
+  // and the retire fence. Re-read: an idle row can disappear now; a newly
+  // claimed row becomes the tombstone's new owner instead of returning to
+  // capacity under a removed inventory attachment.
+  let current =
+    typeof storage.getWorkspaceSlot === "function" ? await storage.getWorkspaceSlot(slot.id) : null;
+  // A racing terminal/reassignment may change ownership between each read and
+  // conditional mutation. Never synthesize `retired` locally: either fence a
+  // real current owner, delete a released row, or fail so the queued durable
+  // projection retry observes a fresh state.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!current) return null;
+    if (current.currentSessionId && typeof storage.retireWorkspaceSlot === "function") {
+      if (await storage.retireWorkspaceSlot(current.id, current.currentSessionId)) {
+        return { ...current, online: false, retired: true };
+      }
+    } else if (
+      !current.currentSessionId &&
+      typeof storage.deleteWorkspaceSlotIfIdle === "function" &&
+      (await storage.deleteWorkspaceSlotIfIdle(current.id))
+    ) {
+      return null;
+    }
+    current =
+      typeof storage.getWorkspaceSlot === "function"
+        ? await storage.getWorkspaceSlot(slot.id)
+        : null;
+  }
+  throw new Error("workspace slot changed repeatedly while retiring it from inventory");
+}
+
 function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
   const { worktrees, removedIds } = projectHostWorktrees(state, host);
   for (const worktree of worktrees) {
@@ -30,10 +71,10 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
   for (const id of removedIds) state.worktrees.delete(id);
 }
 
-export function projectHostWorkspaceSlots(
+function projectHostWorkspaceSlots(
   state: ControlPlaneState,
   host: HostInventoryRecord,
-): { slots: WorkspaceSlotRecord[]; removedIds: string[] } {
+): { slots: WorkspaceSlotRecord[]; retiredSlots: WorkspaceSlotRecord[]; removedIds: string[] } {
   const online = state.hostConnection.has(host.hostId);
   const configuredIds = new Set<string>();
   const slots: WorkspaceSlotRecord[] = [];
@@ -64,7 +105,19 @@ export function projectHostWorkspaceSlots(
         slot.hostId === host.hostId && !configuredIds.has(slot.id) && slot.status !== "busy",
     )
     .map((slot) => slot.id);
-  return { slots, removedIds };
+  // Do not erase an active allocation merely because the next inventory
+  // snapshot no longer advertises it. The terminal transition must not turn
+  // that path into a new candidate; retain an offline tombstone until its
+  // exact owner releases it.
+  const retiredSlots = [...state.workspaceSlots.values()]
+    .filter(
+      (slot) =>
+        slot.hostId === host.hostId &&
+        !configuredIds.has(slot.id) &&
+        (slot.status === "busy" || slot.currentSessionId != null),
+    )
+    .map((slot) => ({ ...slot, online: false, retired: true }));
+  return { slots, retiredSlots, removedIds };
 }
 
 /** Project a locally accepted inventory snapshot into its workspace-slot read model. */
@@ -73,6 +126,15 @@ export function syncHostWorkspaceSlots(state: ControlPlaneState, host: HostInven
   for (const slot of projection.slots) {
     state.workspaceSlots.set(slot.id, slot);
     if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
+  }
+  for (const slot of projection.retiredSlots) {
+    state.workspaceSlots.set(slot.id, slot);
+    if (state.storage)
+      queueWrite(state, async (storage) => {
+        const result = await persistRetiredWorkspaceSlot(storage!, slot);
+        if (result) state.workspaceSlots.set(result.id, result);
+        else state.workspaceSlots.delete(slot.id);
+      });
   }
   for (const id of projection.removedIds) {
     state.workspaceSlots.delete(id);
@@ -87,9 +149,12 @@ export async function syncHostWorkspaceSlotsDurable(
 ): Promise<void> {
   if (!state.storage) return syncHostWorkspaceSlots(state, host);
   const projection = projectHostWorkspaceSlots(state, host);
+  const retired = await Promise.all(
+    projection.retiredSlots.map((slot) => persistRetiredWorkspaceSlot(state.storage!, slot)),
+  );
   await Promise.all([
     ...projection.slots.map(async (slot) => {
-      if (slot.status === "busy") return;
+      if (slot.status === "busy" && !slot.retired) return;
       const connectionId = state.hostConnection.get(host.hostId);
       if (connectionId && typeof state.storage!.putWorkspaceSlotFenced === "function") {
         const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
@@ -109,6 +174,10 @@ export async function syncHostWorkspaceSlotsDurable(
     ...projection.removedIds.map(async (id) => await state.storage!.deleteWorkspaceSlot(id)),
   ]);
   for (const slot of projection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const [index, slot] of retired.entries()) {
+    if (slot) state.workspaceSlots.set(slot.id, slot);
+    else state.workspaceSlots.delete(projection.retiredSlots[index]!.id);
+  }
   for (const id of projection.removedIds) state.workspaceSlots.delete(id);
 }
 
@@ -308,7 +377,7 @@ export async function putHostInventoryDurable(
   if (stored === false) return inventoryVersionConflict();
   const writeProjection = async (storage: DynamoPlaneStorage | undefined): Promise<void> => {
     const writeSlot = async (slot: WorkspaceSlotRecord): Promise<void> => {
-      if (slot.status === "busy") return;
+      if (slot.status === "busy" && !slot.retired) return;
       const connectionId = slot.connectionId;
       if (connectionId && typeof storage!.putWorkspaceSlotFenced === "function") {
         const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
@@ -325,6 +394,11 @@ export async function putHostInventoryDurable(
       ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
       ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
       ...workspaceProjection.slots.map((slot) => writeSlot(slot)),
+      ...workspaceProjection.retiredSlots.map(async (slot) => {
+        const retired = await persistRetiredWorkspaceSlot(storage!, slot);
+        if (retired) state.workspaceSlots.set(retired.id, retired);
+        else state.workspaceSlots.delete(slot.id);
+      }),
       ...workspaceProjection.removedIds.map((id) => storage!.deleteWorkspaceSlot(id)),
     ]);
   };
@@ -333,6 +407,7 @@ export async function putHostInventoryDurable(
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
   for (const slot of workspaceProjection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const slot of workspaceProjection.retiredSlots) state.workspaceSlots.set(slot.id, slot);
   for (const id of workspaceProjection.removedIds) state.workspaceSlots.delete(id);
   if (options.awaitProjection === false) {
     // The inventory document is already committed. Exec-config callers intentionally retain

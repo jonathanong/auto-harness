@@ -67,6 +67,78 @@ it("requeues a running workspace slot and takes the slot offline on durable disc
   expect(state.workspaceSlots.get(slot.id)).toMatchObject({ online: false });
 });
 
+it("holds an acknowledged workspace attempt through durable reconnect grace", async () => {
+  const state = createControlPlaneState({
+    now: () => "2026-09-12T00:00:00.000Z",
+    reconnectGraceMs: 10_000,
+  });
+  const session = {
+    id: "acknowledged",
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    prompt: "inspect",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: [],
+    queueTtlSeconds: 300,
+    queueExpiresAt: "later",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "running" as const,
+    queueShard: 0,
+    createdAt: "now",
+    worktreeId: null,
+    hostId: "host",
+    attemptId: "attempt",
+    ackReceivedAt: "now",
+    assignmentConnectionId: "connection",
+  };
+  const slot: WorkspaceSlotRecord = {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "host",
+    workspacePoolId: "pool",
+    status: "busy",
+    online: true,
+    currentSessionId: session.id,
+    connectionId: "connection",
+  };
+  const mark = vi.fn(async () => true);
+  state.storage = {
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => [slot],
+    getSession: async () => session,
+    getWorkspaceSlot: async () => slot,
+    putWorkspaceSlot: async () => undefined,
+    markWorkspaceReconnectPending: mark,
+  } as never;
+
+  await expect(
+    offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []),
+  ).resolves.toEqual([]);
+  expect(mark).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: session.id,
+      workspaceSlotId: slot.id,
+      connectionId: "connection",
+    }),
+  );
+  expect(state.sessions.get(session.id)).toMatchObject({
+    status: "running",
+    workspaceSlotId: slot.id,
+    reconnectDeadlineAt: "2026-09-12T00:00:10.000Z",
+  });
+  expect(state.workspaceSlots.get(slot.id)).toMatchObject({
+    status: "busy",
+    currentSessionId: session.id,
+    online: false,
+  });
+});
+
 it("releases timeout-preserved workspace and host leases on durable disconnect", async () => {
   const state = createControlPlaneState();
   const session: SessionRecord = {

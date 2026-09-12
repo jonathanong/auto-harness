@@ -130,4 +130,82 @@ describe("session creation preparation", () => {
       type: "workspace",
     });
   });
+
+  it("rejects workspace sessions whose escaped assignment frame exceeds the WebSocket bound", () => {
+    const state = createControlPlaneState();
+    state.commands.set("command-1", {
+      id: "command-1",
+      name: "command",
+      argv: ["command"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    state.workspacePools.set("pool-1", {
+      id: "pool-1",
+      name: "workspace",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+
+    expect(
+      validateSessionCreate(state, {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        prompt: "\u0000".repeat(30_000),
+        target: { commandId: "command-1" },
+        timeout: 30,
+        type: "workspace",
+      }),
+    ).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      error: "workspace session assignment exceeds 122880 byte WebSocket limit",
+    });
+  });
+
+  it("does not reject a provider route because an unrelated command has an oversized argv", () => {
+    const state = createControlPlaneState();
+    state.providers.set("provider-1", {
+      id: "provider-1",
+      name: "provider",
+      defaultCommandId: "small",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.commands.set("small", {
+      id: "small",
+      name: "small",
+      argv: ["small"],
+      appendPrompt: true,
+      providerId: "provider-1",
+    });
+    state.commands.set("unrelated", {
+      id: "unrelated",
+      name: "unrelated",
+      argv: ["\u0000".repeat(30_000)],
+      appendPrompt: false,
+      providerId: null,
+    });
+    state.workspacePools.set("pool-1", {
+      id: "pool-1",
+      name: "workspace",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+
+    expect(
+      validateSessionCreate(state, {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        prompt: "inspect",
+        target: { providerId: "provider-1" },
+        timeout: 30,
+        type: "workspace",
+      }),
+    ).toMatchObject({ ok: true });
+  });
 });

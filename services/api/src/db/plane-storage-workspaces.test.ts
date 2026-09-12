@@ -6,6 +6,7 @@ import {
   deleteWorkspacePool,
   deleteWorkspaceSlot,
   deleteWorkspaceSlotIfIdle,
+  deleteRetiredWorkspaceSlotIfIdle,
   getWorkspacePool,
   getWorkspaceSlot,
   listWorkspacePools,
@@ -15,6 +16,7 @@ import {
   putWorkspacePool,
   putWorkspaceSlot,
   putWorkspaceSlotFenced,
+  retireWorkspaceSlot,
   updateWorkspacePool,
   tryAssignWorkspaceSession,
 } from "./plane-storage-workspaces.ts";
@@ -198,6 +200,20 @@ describe("workspace storage", () => {
     await expect(
       deleteWorkspaceSlotIfIdle(ctx(vi.fn().mockRejectedValue(conditional())), "slot"),
     ).resolves.toBe(false);
+  });
+
+  it("fences retirement to its owner and deletes the released tombstone", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(retireWorkspaceSlot(ctx(send), "slot", "session")).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      ConditionExpression: "currentSessionId = :sessionId",
+      ExpressionAttributeValues: expect.objectContaining({ ":retired": true }),
+    });
+    await expect(deleteRetiredWorkspaceSlotIfIdle(ctx(send), "slot")).resolves.toBe(true);
+    expect(send.mock.calls[1]?.[0].input).toMatchObject({
+      ConditionExpression: expect.stringContaining("retired = :retired"),
+      ExpressionAttributeValues: expect.objectContaining({ ":retired": true }),
+    });
   });
 
   it("handles conditional catalog outcomes and owned deletion", async () => {

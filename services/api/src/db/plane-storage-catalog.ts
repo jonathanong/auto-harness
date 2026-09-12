@@ -138,7 +138,15 @@ export function catalogPageItems<T>(items: T[] | undefined): T[] {
 export function scheduleAttributes(
   attributes: Record<string, unknown> | undefined,
 ): ScheduleRecord | null {
-  return attributes ? (normalizeTargetDisplayNames(attributes) as ScheduleRecord) : null;
+  if (!attributes) return null;
+  const normalized = normalizeTargetDisplayNames(attributes);
+  // Workspace schedules deliberately omit the repository GSI key because
+  // DynamoDB rejects empty strings. Restore the in-memory sentinel used by
+  // the control plane and public conversion (which exposes null).
+  if (!("repositoryId" in normalized) && typeof normalized.workspacePoolId === "string") {
+    normalized.repositoryId = "";
+  }
+  return normalized as ScheduleRecord;
 }
 
 export function isActiveSession(session: SessionRecord | null): session is SessionRecord {
@@ -332,7 +340,13 @@ export async function putSchedule(
   rec: ScheduleRecord,
   markers?: readonly DeletionMarker[],
 ): Promise<void> {
-  const write = { Put: { TableName: ctx.tables.schedules, Item: { ...rec } } };
+  const { repositoryId, ...recordWithoutRepository } = rec;
+  const write = {
+    Put: {
+      TableName: ctx.tables.schedules,
+      Item: repositoryId ? { ...recordWithoutRepository, repositoryId } : recordWithoutRepository,
+    },
+  };
   const principalCheck = principalExistsCheck(ctx, rec.principalId);
   await guardedWrite(
     ctx,
@@ -359,7 +373,6 @@ export async function updateScheduleManagement(
 ): Promise<ScheduleRecord | null> {
   try {
     const set = [
-      "repositoryId = :repositoryId",
       "#name = :name",
       "target = :target",
       "fallbacks = :fallbacks",
@@ -372,6 +385,8 @@ export async function updateScheduleManagement(
       "createdAt = :createdAt",
     ];
     const remove = ["targetLabels"];
+    if (rec.repositoryId) set.unshift("repositoryId = :repositoryId");
+    else remove.unshift("repositoryId");
     if (rec.workspacePoolId === undefined) remove.push("workspacePoolId");
     else set.push("workspacePoolId = :workspacePoolId");
     if (rec.setupProfileId === undefined) remove.push("setupProfileId");
@@ -397,7 +412,7 @@ export async function updateScheduleManagement(
           : "(attribute_not_exists(principalId) OR principalId = :principalId)"),
       ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
       ExpressionAttributeValues: {
-        ":repositoryId": rec.repositoryId,
+        ...(rec.repositoryId ? { ":repositoryId": rec.repositoryId } : {}),
         ":name": rec.name,
         ":target": rec.target,
         ":fallbacks": rec.fallbacks,

@@ -17,6 +17,7 @@ describe("workspace sessions", () => {
       worktreeId: null,
       workspacePoolId: "pool-1",
       workspaceSlotId: "slot-1",
+      prompt: "",
       setupScript: "pnpm install",
     });
     expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
@@ -155,5 +156,21 @@ describe("workspace sessions", () => {
       setupScript: "pnpm install",
     });
     expect(plane.getSession(session.id)).not.toHaveProperty("workspaceSetupScript");
+  });
+
+  it("does not lease or emit a workspace assignment that exceeds the JSON WebSocket bound", async () => {
+    const { plane, messages } = workspacePlane();
+    const session = createWorkspaceSession(plane);
+    // JSON escapes a NUL as six bytes. The raw source looks well below the
+    // 128 KiB socket limit, while the serialized resolved argv is not.
+    plane.state.sessions.get(session.id)!.prompt = "\u0000".repeat(30_000);
+
+    await expect(assignWorkspaceQueuedDurable(plane.state)).resolves.toEqual([]);
+    expect(messages).toEqual([]);
+    expect(plane.getSession(session.id)).toMatchObject({ status: "queued" });
+    expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
   });
 });

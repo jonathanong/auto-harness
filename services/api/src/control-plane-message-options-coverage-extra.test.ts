@@ -666,23 +666,32 @@ describe("host message optional-field coverage", () => {
       updatedAt: NOW,
     });
     let committed = true;
+    let requeueOpts: Record<string, unknown> | undefined;
+    const requeueUsageLimitedWorkspaceSession = async (opts: Record<string, unknown>) => {
+      requeueOpts = opts;
+      return committed;
+    };
     setDurableReadStorage(current, {
       getSession: async () => row,
       getProviderAccount: async () => account,
-      requeueUsageLimitedWorkspaceSession: async () => committed,
+      requeueUsageLimitedWorkspaceSession,
       listConnections: async () => [],
       listHostInventories: async () => [],
     });
 
-    await expect(handleHostMessageDurable(current, status())).resolves.toMatchObject({ ok: true });
+    await expect(
+      handleHostMessageDurable(current, status({ workspaceSlotError: "cleanup failed" })),
+    ).resolves.toMatchObject({ ok: true });
     expect(current.sessions.get("s")).toMatchObject({
       status: "queued",
       workspaceSlotId: null,
     });
     expect(current.sessions.get("s")).not.toHaveProperty("workspaceSlotLease");
+    expect(requeueOpts).toMatchObject({ workspaceSlotError: "cleanup failed" });
     expect(current.workspaceSlots.get("slot")).toMatchObject({
-      status: "idle",
+      status: "error",
       currentSessionId: null,
+      errorMessage: "cleanup failed",
     });
     expect(current.providerAccounts.get("account")?.usageLimitedUntil).toBeTruthy();
 

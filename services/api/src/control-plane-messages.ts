@@ -32,6 +32,10 @@ import {
   transitionEffect,
 } from "./control-plane-lifecycle.ts";
 import {
+  removeReleasedRetiredWorkspaceSlot,
+  removeReleasedRetiredWorkspaceSlotDurable,
+} from "./control-plane-workspace-slot-retirement.ts";
+import {
   emitCooldown,
   emitLogDrops,
   emitLogSeqGap,
@@ -251,6 +255,7 @@ function releaseWorkspaceSlotLocal(
       currentSessionId: null,
       ...(errorMessage === undefined ? {} : { errorMessage }),
     });
+    removeReleasedRetiredWorkspaceSlot(state, slotId);
   }
   session.workspaceSlotId = null;
   delete session.workspaceSlotLease;
@@ -891,6 +896,7 @@ async function applySessionStatusDurable(
         ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
       });
     }
+    await removeReleasedRetiredWorkspaceSlotDurable(state, slotId);
     session.workspaceSlotId = null;
     delete session.workspaceSlotLease;
     persistSession(state, session);
@@ -1022,6 +1028,7 @@ async function applySessionStatusDurable(
         ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
       });
     }
+    await removeReleasedRetiredWorkspaceSlotDurable(state, slotId);
     const next = { ...session, workspaceSlotId: null };
     delete next.workspaceSlotLease;
     state.sessions.set(session.id, next);
@@ -1256,6 +1263,9 @@ async function applySessionStatusDurable(
           requeueUsageLimitedWorkspaceSessionOptsFromPlan(session, plan, {
             now,
             attemptId: msg.attemptId,
+            ...(msg.workspaceSlotError !== undefined
+              ? { workspaceSlotError: msg.workspaceSlotError }
+              : {}),
           }),
         )
       : await storage.requeueUsageLimitedSession(
@@ -1270,8 +1280,16 @@ async function applySessionStatusDurable(
     const slot = session.workspaceSlotId
       ? state.workspaceSlots.get(session.workspaceSlotId)
       : undefined;
-    if (slot)
-      state.workspaceSlots.set(slot.id, { ...slot, status: "idle", currentSessionId: null });
+    if (slot) {
+      const { errorMessage: _errorMessage, ...cleanSlot } = slot;
+      state.workspaceSlots.set(slot.id, {
+        ...cleanSlot,
+        status: msg.workspaceSlotError === undefined ? "idle" : "error",
+        currentSessionId: null,
+        ...(msg.workspaceSlotError === undefined ? {} : { errorMessage: msg.workspaceSlotError }),
+      });
+      await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
+    }
     if (loadedAccount) {
       state.providerAccounts.set(cooldown.providerAccountId, {
         ...loadedAccount,
@@ -1348,6 +1366,7 @@ async function applySessionStatusDurable(
         ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
       });
     }
+    await removeReleasedRetiredWorkspaceSlotDurable(state, workspaceSlotId);
   }
   const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
   const nextSession = {

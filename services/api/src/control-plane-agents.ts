@@ -78,6 +78,14 @@ function offlineWorkspaceSlotsLocal(
     if (slot.hostId !== hostId) continue;
     const session = slot.currentSessionId ? state.sessions.get(slot.currentSessionId) : undefined;
     if (session && (session.status === "running" || session.status === "cancelled")) {
+      if (session.status === "running" && session.ackReceivedAt) {
+        session.reconnectDeadlineAt = new Date(
+          Date.parse(state.now()) + state.reconnectGraceMs,
+        ).toISOString();
+        persistSession(state, session);
+        state.workspaceSlots.set(slot.id, { ...slot, online: false });
+        continue;
+      }
       releaseProviderAccountLease(state, session);
       if (session.status === "running") {
         session.status = "queued";

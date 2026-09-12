@@ -123,7 +123,7 @@ export function requeueUsageLimitedSessionOptsFromPlan(
 export function requeueUsageLimitedWorkspaceSessionOptsFromPlan(
   session: SessionRecord,
   plan: SessionTransitionPlan,
-  extras: { now: string; attemptId: string },
+  extras: { now: string; attemptId: string; workspaceSlotError?: string },
 ): Parameters<typeof requeueUsageLimitedWorkspaceSession>[1] {
   const cooldown = transitionEffect(plan, "cooldown")!;
   const requeue = transitionEffect(plan, "requeue");
@@ -136,6 +136,9 @@ export function requeueUsageLimitedWorkspaceSessionOptsFromPlan(
     now: extras.now,
     usageLimitedUntil: cooldown.usageLimitedUntil,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
+    ...(extras.workspaceSlotError !== undefined
+      ? { workspaceSlotError: extras.workspaceSlotError }
+      : {}),
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
     ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };

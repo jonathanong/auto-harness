@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace lifecycle boundaries share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { disconnectHost } from "./control-plane-agents.ts";
@@ -192,6 +193,11 @@ describe("workspace control-plane branch boundaries", () => {
       }),
     ).toEqual({ ok: false, error: "cannot change the path of busy workspace slot: slot-1" });
 
+    plane.state.workspaceSlots.set("slot-1", {
+      ...plane.state.workspaceSlots.get("slot-1")!,
+      status: "idle",
+      currentSessionId: null,
+    });
     expect(plane.deleteHostInventory("host-1")).toEqual({ ok: true });
     expect(plane.state.workspaceSlots.has("slot-1")).toBe(false);
 
@@ -204,4 +210,34 @@ describe("workspace control-plane branch boundaries", () => {
     ).toMatchObject({ ok: true });
     expect(removal.state.workspaceSlots.has("slot-1")).toBe(false);
   });
+});
+
+it("retires a removed busy slot until its exact owner reports terminal", async () => {
+  const { plane } = workspacePlane();
+  const session = createWorkspaceSession(plane);
+  await assignWorkspaceQueuedDurable(plane.state);
+
+  expect(
+    plane.putHostInventory("host-1", {
+      repositories: [],
+      allowedRoots: ["/srv/workspaces"],
+    }),
+  ).toMatchObject({ ok: true });
+  expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+    status: "busy",
+    currentSessionId: session.id,
+    online: false,
+    retired: true,
+  });
+
+  expect(
+    plane.handleHostMessage({
+      type: "session:status",
+      sessionId: session.id,
+      worktreeId: null,
+      attemptId: "attempt-1",
+      status: "completed",
+    }),
+  ).toMatchObject({ ok: true });
+  expect(plane.state.workspaceSlots.has("slot-1")).toBe(false);
 });

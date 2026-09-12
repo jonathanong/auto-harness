@@ -127,6 +127,9 @@ export type WorkspaceSlotRecord = {
   status: "idle" | "busy" | "error";
   online: boolean;
   currentSessionId?: string | null;
+  /** The host inventory no longer advertises this claimed slot. It must not
+   * receive another assignment and is deleted once its owning attempt exits. */
+  retired?: boolean;
   connectionId?: string;
   lastAssignedAt?: string | null;
   errorMessage?: string;

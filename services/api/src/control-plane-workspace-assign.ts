@@ -26,6 +26,9 @@ export type WorkspaceAssignment = {
   workspaceSlot: WorkspaceSlotRecord;
 };
 
+/** Leave framing headroom below the control-channel's 128 KiB WebSocket limit. */
+const MAX_WORKSPACE_ASSIGN_BYTES = 120 * 1024;
+
 function setupScriptFor(state: ControlPlaneState, session: SessionRecord): string | undefined {
   const pool = session.workspacePoolId
     ? state.workspacePools.get(session.workspacePoolId)
@@ -57,7 +60,10 @@ function assignMessage(
     ...(session.destroyWorkspaceAfter !== undefined
       ? { destroyWorkspaceAfter: session.destroyWorkspaceAfter }
       : {}),
-    prompt: session.prompt,
+    // Workspace execution only consumes resolvedArgv. Keeping the prompt out
+    // of this field avoids serializing an untrusted prompt twice; a command
+    // that opts out of appendPrompt does not consume it at all.
+    prompt: "",
     resolvedArgv: route.resolvedArgv,
     timeout: session.timeout,
     assignedAt,
@@ -67,6 +73,11 @@ function assignMessage(
     commandId: route.commandId,
     targetIndex: route.targetIndex,
   };
+}
+
+/** JSON escaping can grow hostile input several-fold, so measure the real frame. */
+function fitsWorkspaceAssignFrame(message: HostWireMessage): boolean {
+  return Buffer.byteLength(JSON.stringify(message), "utf8") <= MAX_WORKSPACE_ASSIGN_BYTES;
 }
 
 function nextSession(
@@ -171,6 +182,18 @@ export async function assignWorkspaceQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      const message = assignMessage(
+        session,
+        slot,
+        route,
+        attemptId,
+        now,
+        session.workspaceSetupScript ?? setupScriptFor(state, session),
+      );
+      // Never commit a lease whose control frame the daemon cannot receive.
+      // The session remains queued for an operator to reduce its opted-in
+      // trusted setup profile or prompt/configuration payload.
+      if (!fitsWorkspaceAssignFrame(message)) continue;
       const occupied = new Set<number>();
       let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
       let won: AssignmentWriteResult = false;
@@ -242,17 +265,7 @@ export async function assignWorkspaceQueuedDurable(
         attemptId,
         assignedAtMs: nowMs,
       });
-      state.onHostMessage?.(
-        slot.hostId,
-        assignMessage(
-          session,
-          slot,
-          route,
-          attemptId,
-          now,
-          session.workspaceSetupScript ?? setupScriptFor(state, session),
-        ),
-      );
+      state.onHostMessage?.(slot.hostId, message);
       assigned.push({ session: toPublic(state, updatedSession), workspaceSlot: updatedSlot });
       break;
     }

@@ -6,6 +6,7 @@ import {
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
+import { removeReleasedRetiredWorkspaceSlotDurable } from "./control-plane-workspace-slot-retirement.ts";
 
 export async function offlineHostAndRequeueDurableImpl(
   state: ControlPlaneState,
@@ -204,6 +205,36 @@ export async function offlineHostAndRequeueDurableImpl(
       ? await state.storage.getSession(slot.currentSessionId)
       : null;
     if (
+      session?.status === "running" &&
+      session.ackReceivedAt &&
+      typeof state.storage.markWorkspaceReconnectPending === "function"
+    ) {
+      const nextSession = {
+        ...session,
+        reconnectDeadlineAt: new Date(
+          Date.parse(state.now()) + state.reconnectGraceMs,
+        ).toISOString(),
+        assignmentConnectionId: connectionId,
+      };
+      const marked = await state.storage.markWorkspaceReconnectPending({
+        sessionId: session.id,
+        hostId,
+        workspaceSlotId: slot.id,
+        deadlineAt: nextSession.reconnectDeadlineAt,
+        connectionId,
+      });
+      if (marked) {
+        state.sessions.set(session.id, nextSession);
+        state.workspaceSlots.set(slot.id, { ...slot, online: false });
+        continue;
+      }
+      const latestSession = await state.storage.getSession(session.id);
+      const latestSlot = await state.storage.getWorkspaceSlot(slot.id);
+      if (latestSession) state.sessions.set(latestSession.id, latestSession);
+      if (latestSlot) state.workspaceSlots.set(latestSlot.id, latestSlot);
+      continue;
+    }
+    if (
       session &&
       (session.status === "running" ||
         session.status === "cancelled" ||
@@ -244,6 +275,7 @@ export async function offlineHostAndRequeueDurableImpl(
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       if (session.status === "running") requeued.push(session.id);
+      if (await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id)) continue;
     }
     const current = (await state.storage.getWorkspaceSlot(slot.id)) ?? slot;
     const offline = { ...current, online: false };

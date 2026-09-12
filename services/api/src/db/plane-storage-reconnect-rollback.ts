@@ -3,6 +3,7 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { isConditionalTransactionFailed } from "./plane-storage-types.ts";
 import type { ReconnectSession } from "./plane-storage-reconnect.ts";
+import type { WorkspaceReconnectSession } from "./plane-storage-reconnect.ts";
 
 /**
  * Undo one successful reconnect confirmation while the same registration
@@ -92,6 +93,90 @@ export async function restoreReconnectPending(
               ConditionExpression: "currentSessionId = :sessionId AND connectionId = :connectionId",
               ExpressionAttributeNames: { "#o": "online" },
               ExpressionAttributeValues: worktreeValues,
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
+export async function restoreWorkspaceReconnectPending(
+  ctx: PlaneStorageCtx,
+  opts: WorkspaceReconnectSession & {
+    previousDeadlineAt?: string;
+    previousAssignmentConnectionId?: string;
+    previousWorkspaceSlotConnectionId?: string;
+  },
+): Promise<boolean> {
+  const sessionSets = ["hostId = :hostId"];
+  const sessionRemoves: string[] = [];
+  const sessionValues: Record<string, unknown> = {
+    ":running": "running",
+    ":hostId": opts.hostId,
+    ":workspaceSlotId": opts.workspaceSlotId,
+    ":connectionId": opts.connectionId,
+  };
+  if (opts.previousDeadlineAt !== undefined) {
+    sessionSets.push("reconnectDeadlineAt = :previousDeadline");
+    sessionValues[":previousDeadline"] = opts.previousDeadlineAt;
+  } else sessionRemoves.push("reconnectDeadlineAt");
+  if (opts.previousAssignmentConnectionId !== undefined) {
+    sessionSets.push("assignmentConnectionId = :previousAssignmentConnectionId");
+    sessionValues[":previousAssignmentConnectionId"] = opts.previousAssignmentConnectionId;
+  } else sessionRemoves.push("assignmentConnectionId");
+  const slotSets = ["#o = :offline"];
+  const slotRemoves: string[] = [];
+  const slotValues: Record<string, unknown> = {
+    ":offline": false,
+    ":sessionId": opts.sessionId,
+    ":connectionId": opts.connectionId,
+  };
+  if (opts.previousWorkspaceSlotConnectionId !== undefined) {
+    slotSets.push("connectionId = :previousWorkspaceSlotConnectionId");
+    slotValues[":previousWorkspaceSlotConnectionId"] = opts.previousWorkspaceSlotConnectionId;
+  } else slotRemoves.push("connectionId");
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                `SET ${sessionSets.join(", ")}` +
+                (sessionRemoves.length > 0 ? ` REMOVE ${sessionRemoves.join(", ")}` : ""),
+              ConditionExpression:
+                "#s = :running AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
+                " AND assignmentConnectionId = :connectionId" +
+                " AND attribute_not_exists(reconnectDeadlineAt)",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: sessionValues,
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.workspaceSlots,
+              Key: { id: opts.workspaceSlotId },
+              UpdateExpression:
+                `SET ${slotSets.join(", ")}` +
+                (slotRemoves.length > 0 ? ` REMOVE ${slotRemoves.join(", ")}` : ""),
+              ConditionExpression: "currentSessionId = :sessionId AND connectionId = :connectionId",
+              ExpressionAttributeNames: { "#o": "online" },
+              ExpressionAttributeValues: slotValues,
             },
           },
         ],

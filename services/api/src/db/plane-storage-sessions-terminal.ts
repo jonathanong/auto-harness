@@ -45,6 +45,7 @@ type FinishSessionOpts = {
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   expectedStatus?: string;
+  expectedReconnectDeadlineAt?: string;
 };
 
 function setOptional(
@@ -142,11 +143,17 @@ function finishSessionItems(
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${update.sets.join(", ")} REMOVE ${update.removes.join(", ")}`,
         ConditionExpression:
-          "#s = :expectedStatus AND worktreeId = :worktreeId AND attemptId = :attemptId",
+          "#s = :expectedStatus AND worktreeId = :worktreeId AND attemptId = :attemptId" +
+          (opts.expectedReconnectDeadlineAt
+            ? " AND reconnectDeadlineAt = :expectedReconnectDeadlineAt"
+            : ""),
         ExpressionAttributeNames: update.names,
         ExpressionAttributeValues: {
           ...update.values,
           ":expectedStatus": opts.expectedStatus ?? "running",
+          ...(opts.expectedReconnectDeadlineAt
+            ? { ":expectedReconnectDeadlineAt": opts.expectedReconnectDeadlineAt }
+            : {}),
         },
       },
     },

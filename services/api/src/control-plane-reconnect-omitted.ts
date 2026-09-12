@@ -7,6 +7,10 @@ import {
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import {
+  removeReleasedRetiredWorkspaceSlot,
+  removeReleasedRetiredWorkspaceSlotDurable,
+} from "./control-plane-workspace-slot-retirement.ts";
 
 /**
  * Requeue every worktree-owned session this host is not currently reporting as
@@ -112,6 +116,7 @@ async function requeueOmittedWorkspaceSessions(
         status: "idle",
         currentSessionId: null,
       });
+      removeReleasedRetiredWorkspaceSlot(state, slot.id);
       state.pendingAcks.delete(session.id);
       requeued.push(session.id);
       continue;
@@ -141,6 +146,7 @@ async function requeueOmittedWorkspaceSessions(
       status: "idle",
       currentSessionId: null,
     });
+    await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
     state.pendingAcks.delete(session.id);
     requeued.push(session.id);
   }

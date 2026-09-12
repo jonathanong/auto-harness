@@ -6,6 +6,7 @@ import {
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -130,6 +131,30 @@ export async function putWorkspaceSlot(
   await ctx.doc.send(new PutCommand({ TableName: ctx.tables.workspaceSlots, Item: slot }));
 }
 
+/** Fence removal from inventory against the slot's current owner. */
+export async function retireWorkspaceSlot(
+  ctx: PlaneStorageCtx,
+  id: string,
+  sessionId: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.workspaceSlots,
+        Key: { id },
+        UpdateExpression: "SET #online = :offline, retired = :retired",
+        ConditionExpression: "currentSessionId = :sessionId",
+        ExpressionAttributeNames: { "#online": "online" },
+        ExpressionAttributeValues: { ":offline": false, ":retired": true, ":sessionId": sessionId },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 /** Publish a slot only while its host connection still owns the row. */
 export async function putWorkspaceSlotFenced(
   ctx: PlaneStorageCtx,
@@ -181,6 +206,29 @@ export async function deleteWorkspaceSlotIfIdle(
           "(attribute_not_exists(currentSessionId) OR currentSessionId = :null) AND #status <> :busy",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: { ":null": null, ":busy": "busy" },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
+/** Remove a retired slot only after its final owner has released it. */
+export async function deleteRetiredWorkspaceSlotIfIdle(
+  ctx: PlaneStorageCtx,
+  id: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.workspaceSlots,
+        Key: { id },
+        ConditionExpression:
+          "retired = :retired AND (attribute_not_exists(currentSessionId) OR currentSessionId = :null) AND #status <> :busy",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":retired": true, ":null": null, ":busy": "busy" },
       }),
     );
     return true;

@@ -315,15 +315,20 @@ export type HostInventoryRecord = {
 };
 
 export function sessionToItem(session: SessionRecord): Record<string, unknown> {
+  // DynamoDB GSI key attributes may not be empty strings. Workspace sessions
+  // intentionally have no repository, so omit the repository index key while
+  // retaining the empty internal value after hydration.
+  const { repositoryId, ...sessionWithoutRepository } = session;
   const item: Record<string, unknown> = {
-    ...session,
+    ...sessionWithoutRepository,
     statusShard: statusShardAttr(session.status, session.queueShard),
     createdOrder: createdOrderKey(session),
     queueOrder: queueOrderKey(session),
     priorityOrder: priorityOrderKey(session),
   };
-  if (session.repositoryId) {
-    item.repositoryPriorityOrder = repositoryPriorityOrderKey(session.repositoryId, session);
+  if (repositoryId) {
+    item.repositoryId = repositoryId;
+    item.repositoryPriorityOrder = repositoryPriorityOrderKey(repositoryId, session);
   }
   return item;
 }
@@ -348,7 +353,11 @@ export function itemToSession(item: Record<string, unknown>): SessionRecord {
     repositoryPriorityOrder: _rpo,
     ...rest
   } = item;
-  return normalizeTargetDisplayNames(rest) as SessionRecord;
+  const normalized = normalizeTargetDisplayNames(rest);
+  if (!("repositoryId" in normalized) && typeof normalized.workspacePoolId === "string") {
+    normalized.repositoryId = "";
+  }
+  return normalized as SessionRecord;
 }
 
 /** Drop leftover session retry attributes from the rejected D8 retry-counter design. */
