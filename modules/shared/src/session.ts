@@ -27,12 +27,17 @@ export type SessionAssign = {
   sessionType?: SessionType;
   /** Immutable execution-attempt fence supplied by the scheduler. */
   attemptId: string;
-  repositoryId: string;
+  repositoryId: string | null;
   prompt: string;
   /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
   resolvedArgv: string[];
   timeout: number;
   worktreeId: string | null;
+  /** Present only for a workspace session; the assigned slot is host-local. */
+  workspacePoolId?: string;
+  workspaceSlotId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   ref?: string;
   setupScript?: string;
   resume?: boolean;
@@ -74,6 +79,8 @@ export type SessionActiveStatus = Extract<SessionStatus, "queued" | "running">;
 export type SessionStatusUpdate = {
   sessionId: string;
   status: SessionStatus;
+  workspaceSlotId?: string;
+  workspaceSlotError?: string;
   exitCode?: number | null;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
@@ -83,7 +90,7 @@ export type SessionStatusUpdate = {
 };
 
 export type CreateSessionFields = {
-  repositoryId: string;
+  repositoryId: string | null;
   prompt: string;
   /** Primary routing target, followed by fallbacks when it has no capacity. */
   target: TargetRef;
@@ -99,6 +106,11 @@ export type CreateSessionFields = {
   /** Suppresses duplicate queued/running work globally while this session is active. */
   concurrencyId?: string;
   metadata?: Record<string, unknown>;
+  /** Non-git workspace pool selected at admission time. */
+  workspacePoolId?: string;
+  /** Approved pool-local setup profile; raw setup scripts are never session input. */
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
 };
 
 /** A provider selects an eligible attached account; a command runs exactly that command. */
@@ -112,11 +124,15 @@ export type HostWireMessage =
       type: "session:assign";
       sessionId: string;
       sessionType?: SessionType;
-      repositoryId: string;
+      repositoryId: string | null;
       prompt: string;
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;
+      workspacePoolId?: string;
+      workspaceSlotId?: string;
+      setupProfileId?: string;
+      destroyWorkspaceAfter?: boolean;
       ref?: string;
       setupScript?: string;
       resume?: boolean;
@@ -201,6 +217,8 @@ export type HostToServerMessage =
       type: "session:status";
       sessionId: string;
       worktreeId: string | null;
+      workspaceSlotId?: string;
+      workspaceSlotError?: string;
       attemptId: string;
       status: SessionStatus;
       exitCode?: number | null;

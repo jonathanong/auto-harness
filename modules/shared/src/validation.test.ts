@@ -209,6 +209,75 @@ describe("validateCreateSessionInput", () => {
     }
   });
 
+  it("accepts a workspace session without resolving a repository", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "profile-1",
+      destroyWorkspaceAfter: false,
+      requiredLabels: [],
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        repositoryId: null,
+        type: "workspace",
+        workspacePoolId: "pool-1",
+        setupProfileId: "profile-1",
+        destroyWorkspaceAfter: false,
+      }),
+    });
+  });
+
+  it("rejects repository refs, labels, and raw setup scripts for workspace sessions", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        ref: "main",
+      }),
+    ).toEqual({ ok: false, error: "ref is not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        requiredLabels: ["linux"],
+      }),
+    ).toEqual({ ok: false, error: "requiredLabels are not supported for workspace sessions" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupScript: "echo unsafe",
+      }),
+    ).toEqual({ ok: false, error: "setupScript is not accepted; use setupProfileId" });
+  });
+
+  it("requires a pool and boolean cleanup policy for workspace sessions", () => {
+    expect(validateCreateSessionInput({ ...base, repositoryId: null })).toEqual({
+      ok: false,
+      error: "workspacePoolId is required for workspace sessions",
+    });
+    expect(
+      validateCreateSessionInput({ ...base, repositoryId: null, workspacePoolId: "pool" }),
+    ).toMatchObject({ ok: true, value: { type: "workspace", workspacePoolId: "pool" } });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        destroyWorkspaceAfter: "yes",
+      }),
+    ).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter must be a boolean when set",
+    });
+  });
+
   it("rejects missing repositoryId", () => {
     const result = validateCreateSessionInput({ ...base, repositoryId: "" });
     expect(result).toEqual({ ok: false, error: "repositoryId is required" });

@@ -4,7 +4,11 @@ import {
 } from "./constants.ts";
 
 /** Explicit feature support advertised by a connected host daemon. */
-export const HOST_CAPABILITIES = ["scheduled-main-checkout", "prior-session-context"] as const;
+export const HOST_CAPABILITIES = [
+  "scheduled-main-checkout",
+  "prior-session-context",
+  "workspace-sessions",
+] as const;
 
 export type HostCapability = (typeof HOST_CAPABILITIES)[number];
 

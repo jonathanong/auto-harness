@@ -1,4 +1,7 @@
-import { CreateSessionForm } from "../../../components/create-session-form.tsx";
+import {
+  CreateSessionForm,
+  type WorkspacePoolOption,
+} from "../../../components/create-session-form.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import {
@@ -19,19 +22,22 @@ export default async function NewSessionPage({
   let targets: SessionTarget[] = [];
   let repositories: Array<{ id: string; name: string }> = [];
   let availableLabels: string[] = [];
+  let workspacePools: WorkspacePoolOption[] = [];
   let draft: SessionCloneDraft | null = null;
   const errors: string[] = [];
   const query = await searchParams;
   const requestedCloneId = cloneSourceId(query.cloneFrom);
   if (query.cloneFrom !== undefined && !requestedCloneId) errors.push("clone source: invalid id");
-  const [targetResult, repositoryResult, worktreeResult, sourceResult] = await Promise.allSettled([
-    apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
-    apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
-    apiGetAllPages<{ online?: boolean; labels?: string[] }>("/api/v1/worktrees?limit=100"),
-    requestedCloneId
-      ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
-      : Promise.resolve(null),
-  ]);
+  const [targetResult, repositoryResult, worktreeResult, workspacePoolResult, sourceResult] =
+    await Promise.allSettled([
+      apiGetAllPages<SessionTarget>("/api/v1/session-targets?limit=100"),
+      apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories?limit=100"),
+      apiGetAllPages<{ online?: boolean; labels?: string[] }>("/api/v1/worktrees?limit=100"),
+      apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools"),
+      requestedCloneId
+        ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
+        : Promise.resolve(null),
+    ]);
   if (targetResult.status === "fulfilled") targets = targetResult.value;
   else errors.push(`targets: ${String(targetResult.reason)}`);
   if (repositoryResult.status === "fulfilled") {
@@ -47,6 +53,11 @@ export default async function NewSessionPage({
       ),
     ].toSorted();
   } else errors.push(`labels: ${String(worktreeResult.reason)}`);
+  if (workspacePoolResult.status === "fulfilled") {
+    workspacePools = workspacePoolResult.value.items ?? [];
+  } else {
+    errors.push(`workspace pools: ${String(workspacePoolResult.reason)}`);
+  }
   if (sourceResult.status === "fulfilled" && sourceResult.value) {
     draft = sessionCloneDraft(sourceResult.value);
     if (!draft) errors.push("clone source: session inputs are unavailable");
@@ -83,6 +94,7 @@ export default async function NewSessionPage({
         key={requestedCloneId ?? "fresh"}
         targets={targets}
         repositories={repositories}
+        workspacePools={workspacePools}
         availableLabels={availableLabels}
         initialValues={draft}
       />

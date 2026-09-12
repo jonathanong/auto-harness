@@ -1,5 +1,13 @@
 export type ScheduleInput = {
-  repositoryId: string;
+  /** `null` is accepted at the API boundary; the control plane stores it as "". */
+  repositoryId: string | null;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
+  /** Rejected for schedules; labels belong to repository session authoring. */
+  requiredLabels?: unknown;
+  /** Rejected for schedules; raw scripts are admin pool configuration only. */
+  setupScript?: unknown;
   name: string;
   target: unknown;
   fallbacks?: unknown;

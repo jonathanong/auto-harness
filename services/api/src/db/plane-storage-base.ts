@@ -4,7 +4,7 @@ import type { SessionResult, SessionStatus } from "@auto-harness/shared";
 import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
-import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
+import type { SessionRecord, UsageRecord, WorkspaceSlotRecord, WorktreeRecord } from "./types.ts";
 import {
   type AssignmentWriteResult,
   type HostInventoryRecord,
@@ -16,6 +16,7 @@ import {
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
+  type WorkspacePoolRecord,
   type SessionDrainRecord,
   type ScheduleRecord,
   type ViewerTicketRecord,
@@ -34,6 +35,7 @@ import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
 import * as repositoryCounts from "./plane-storage-repository-counts.ts";
+import * as workspaces from "./plane-storage-workspaces.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { backfillArchiveRetryIndexPage } from "./ensure-archive-retry-index.ts";
 import { backfillQueuedSessionQueueOrder } from "./ensure-queue-order-index.ts";
@@ -247,6 +249,59 @@ export class DynamoPlaneStorageBase {
 
   putWorktree(wt: WorktreeRecord): Promise<void> {
     return sessions.putWorktree(this.ctx, wt);
+  }
+
+  putWorkspacePool(record: WorkspacePoolRecord): Promise<void> {
+    return workspaces.putWorkspacePool(this.ctx, record);
+  }
+
+  createWorkspacePool(record: WorkspacePoolRecord): Promise<boolean> {
+    return workspaces.createWorkspacePool(this.ctx, record);
+  }
+
+  getWorkspacePool(id: string): Promise<WorkspacePoolRecord | null> {
+    return workspaces.getWorkspacePool(this.ctx, id);
+  }
+
+  listWorkspacePools(): Promise<WorkspacePoolRecord[]> {
+    return workspaces.listWorkspacePools(this.ctx);
+  }
+
+  deleteWorkspacePool(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return workspaces.deleteWorkspacePool(this.ctx, id, markers);
+  }
+
+  putWorkspaceSlot(slot: WorkspaceSlotRecord): Promise<void> {
+    return workspaces.putWorkspaceSlot(this.ctx, slot);
+  }
+
+  deleteWorkspaceSlot(id: string): Promise<void> {
+    return workspaces.deleteWorkspaceSlot(this.ctx, id);
+  }
+
+  getWorkspaceSlot(id: string): Promise<WorkspaceSlotRecord | null> {
+    return workspaces.getWorkspaceSlot(this.ctx, id);
+  }
+
+  listWorkspaceSlots(): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlots(this.ctx);
+  }
+
+  listWorkspaceSlotsByPool(workspacePoolId: string): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlotsByPool(this.ctx, workspacePoolId);
+  }
+
+  listWorkspaceSlotsByHost(hostId: string): Promise<WorkspaceSlotRecord[]> {
+    return workspaces.listWorkspaceSlotsByHost(this.ctx, hostId);
+  }
+
+  tryAssignWorkspaceSession(
+    opts: Parameters<typeof workspaces.tryAssignWorkspaceSession>[1],
+  ): ReturnType<typeof workspaces.tryAssignWorkspaceSession> {
+    return workspaces.tryAssignWorkspaceSession(this.ctx, opts);
   }
 
   deleteWorktree(id: string): Promise<void> {
@@ -688,6 +743,8 @@ export class DynamoPlaneStorageBase {
   finishSession(opts: {
     sessionId: string;
     worktreeId?: string | null;
+    workspaceSlotId?: string | null;
+    workspaceSlotError?: string;
     attemptId: string;
     status: string;
     queueShard: number;
@@ -705,6 +762,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    expectedStatus?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

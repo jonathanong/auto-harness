@@ -11,7 +11,7 @@ export type UserSessionRecord = {
   lastHeartbeatAt: string;
   subscriptions: Array<{
     sessionId: string;
-    repositoryId: string;
+    repositoryId: string | null;
     status: string;
   }>;
 };
@@ -73,8 +73,9 @@ export function filterUserSessionsForPrincipal(
   const allowed = new Set(principal.allowedRepositoryIds);
   return items.flatMap((item) => {
     if (item.userId === principal.id) return [item];
-    const subscriptions = item.subscriptions.filter((subscription) =>
-      allowed.has(subscription.repositoryId),
+    const subscriptions = item.subscriptions.filter(
+      (subscription) =>
+        subscription.repositoryId !== null && allowed.has(subscription.repositoryId),
     );
     return subscriptions.length > 0 ? [{ ...item, subscriptions }] : [];
   });

@@ -11,16 +11,25 @@ import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
+import { WorkspaceManager } from "./workspace-manager.ts";
 
 export async function ensureDaemonReady(
   config: DaemonConfig,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
 ): Promise<HostRuntimeReport> {
   const runtime = await probeGitReadiness(processRunner);
-  if (!runtime.gitReady) return runtime;
+  const workspaces = new WorkspaceManager(config);
+  if (!runtime.gitReady) {
+    // A workspace-only host can execute an explicitly capability-gated non-git
+    // assignment. Repository/worktree startup remains Git-gated.
+    if (config.repositories.length > 0) return runtime;
+    await workspaces.ensureAll();
+    return runtime;
+  }
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
+  await workspaces.ensureAll();
   return runtime;
 }
 
@@ -35,13 +44,15 @@ export async function runAssignedSession(
   childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   const runtime = await probeGitReadiness(processRunner);
-  if (!runtime.gitReady) {
+  const workspace = (assign.sessionType as string | undefined) === "workspace";
+  if (!runtime.gitReady && !workspace) {
     throw new Error("Git 2.36 or newer with checkout recovery support is required");
   }
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   const sessionRunner = new SessionRunner({
     worktrees,
+    workspaces: new WorkspaceManager(config),
     processRunner,
     commandRunner,
     childEnvSource,

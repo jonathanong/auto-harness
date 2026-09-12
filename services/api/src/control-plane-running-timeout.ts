@@ -9,6 +9,22 @@ import { releaseWorktree } from "./control-plane-worktrees.ts";
 
 const TIMEOUT_ERROR = "session exceeded timeout without a host terminal report";
 
+function releaseWorkspaceSlot(state: ControlPlaneState, session: SessionRecord): void {
+  const slotId = session.workspaceSlotId;
+  if (!slotId) return;
+  const slot = state.workspaceSlots.get(slotId);
+  if (slot?.currentSessionId === session.id) {
+    const { errorMessage: _, ...cleanSlot } = slot;
+    state.workspaceSlots.set(slotId, {
+      ...cleanSlot,
+      status: "idle",
+      currentSessionId: null,
+    });
+  }
+  session.workspaceSlotId = null;
+  delete session.workspaceSlotLease;
+}
+
 function isAcknowledgedRunningDue(session: SessionRecord, nowMs: number): boolean {
   if (session.status !== "running" || !session.ackReceivedAt) return false;
   const deadlineMs = Date.parse(session.ackReceivedAt) + session.timeout * 1000;
@@ -60,6 +76,8 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
     if (wt?.currentSessionId === session.id) {
       releaseWorktree(state, session.worktreeId);
     }
+  } else {
+    releaseWorkspaceSlot(state, session);
   }
   session.worktreeId = null;
   session.hostId = null;
@@ -89,6 +107,18 @@ function rememberDurableTimeout(
       state.worktrees.set(worktreeId, { ...wt, status: "idle", currentSessionId: null });
     }
   }
+  const workspaceSlotId = session.workspaceSlotId;
+  if (workspaceSlotId) {
+    const slot = state.workspaceSlots.get(workspaceSlotId);
+    if (slot?.currentSessionId === session.id) {
+      const { errorMessage: _, ...cleanSlot } = slot;
+      state.workspaceSlots.set(workspaceSlotId, {
+        ...cleanSlot,
+        status: "idle",
+        currentSessionId: null,
+      });
+    }
+  }
   if (session.mainCheckoutLease) releaseScheduledLeaseLocal(state, session);
   if (session.hostId) {
     state.onHostMessage?.(session.hostId, {
@@ -104,6 +134,7 @@ function rememberDurableTimeout(
     errorMessage: TIMEOUT_ERROR,
     completedAt,
     worktreeId: null,
+    workspaceSlotId: null,
     hostId: null,
     ...(timedOutHostId ? { timedOutHostId } : {}),
     ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
@@ -113,6 +144,7 @@ function rememberDurableTimeout(
   delete next.assignmentSentAt;
   delete next.ackReceivedAt;
   delete next.reconnectDeadlineAt;
+  delete next.workspaceSlotLease;
   state.sessions.set(session.id, next);
   queueSessionArchive(state, session.id);
   noteSlackSessionLifecycle(state, next);
@@ -161,6 +193,7 @@ async function commitDurableTimeout(
   return storage.finishSession({
     sessionId: session.id,
     worktreeId: session.worktreeId ?? null,
+    ...(session.workspaceSlotId ? { workspaceSlotId: session.workspaceSlotId } : {}),
     attemptId: session.attemptId!,
     status: "timed_out",
     queueShard: session.queueShard,

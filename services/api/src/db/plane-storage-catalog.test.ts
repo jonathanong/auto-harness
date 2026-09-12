@@ -1124,7 +1124,7 @@ describe("durable schedule management updates", () => {
   it("removes an omitted ref and reports a concurrently deleted schedule", async () => {
     const storage = scheduleCtx(async (command) => {
       expect((command as UpdateCommand).input.UpdateExpression).toContain(
-        "REMOVE targetLabels, #ref, concurrencyId",
+        "#ref, concurrencyId, principalId, prompt",
       );
       throw { name: "ConditionalCheckFailedException" };
     });

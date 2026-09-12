@@ -2,6 +2,7 @@
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 import type { HostCapability } from "./host-capabilities.ts";
 import type { HostUpdateConfig } from "./host-update-config.ts";
+import type { WorkspacePoolAttachment } from "./workspace.ts";
 import {
   assertHostRepositoryRequiredEnvironmentLimit,
   parseRequiredEnvironment,
@@ -65,6 +66,8 @@ export type HostInventory = {
   providerAccounts: HostProviderAccount[];
   /** Optional features this host daemon explicitly supports. */
   capabilities?: HostCapability[] | undefined;
+  /** Control-plane workspace pools attached to this host. */
+  workspacePools?: WorkspacePoolAttachment[] | undefined;
 };
 
 /** Empty host inventory for “add agent” before any repositories are attached. */
@@ -98,6 +101,14 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
       ? existing.providerAccounts.map((a) => ({ ...a }))
       : [],
     capabilities: [...(existing?.capabilities ?? [])],
+    ...(existing?.workspacePools !== undefined
+      ? {
+          workspacePools: existing.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
   };
 }
 

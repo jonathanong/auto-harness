@@ -60,6 +60,7 @@ import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,
 } from "./control-plane-scheduled-assign.ts";
+import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
 import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
@@ -231,6 +232,27 @@ function plannerContext(
     source,
     ...(providerAccount !== undefined ? { providerAccount } : {}),
   };
+}
+
+function releaseWorkspaceSlotLocal(
+  state: ControlPlaneState,
+  session: SessionRecord,
+  errorMessage?: string,
+): void {
+  const slotId = session.workspaceSlotId;
+  if (!slotId) return;
+  const slot = state.workspaceSlots.get(slotId);
+  if (slot?.currentSessionId === session.id) {
+    const { errorMessage: _errorMessage, ...cleanSlot } = slot;
+    state.workspaceSlots.set(slotId, {
+      ...cleanSlot,
+      status: errorMessage === undefined ? "idle" : "error",
+      currentSessionId: null,
+      ...(errorMessage === undefined ? {} : { errorMessage }),
+    });
+  }
+  session.workspaceSlotId = null;
+  delete session.workspaceSlotLease;
 }
 
 function ignoreStaleAttempt(
@@ -937,6 +959,41 @@ async function applySessionStatusDurable(
   }
   if (
     session.status === "cancelled" &&
+    session.workspaceSlotId &&
+    transitionEffect(plan, "release_workspace")
+  ) {
+    const slotId = session.workspaceSlotId;
+    const released = await storage.finishSession({
+      ...finishSessionOptsFromPlan(session, plan, {
+        attemptId: msg.attemptId,
+        ...(fence ? { fence } : {}),
+        ...(msg.workspaceSlotError ? { workspaceSlotError: msg.workspaceSlotError } : {}),
+      }),
+      expectedStatus: "cancelled",
+      status: "cancelled",
+      completedAt: session.completedAt ?? state.now(),
+    });
+    if (!released) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    releaseProviderAccountLease(state, session);
+    const slot = state.workspaceSlots.get(slotId);
+    if (slot?.currentSessionId === session.id) {
+      state.workspaceSlots.set(slotId, {
+        ...slot,
+        status: msg.workspaceSlotError ? "error" : "idle",
+        currentSessionId: null,
+        ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
+      });
+    }
+    const next = { ...session, workspaceSlotId: null };
+    delete next.workspaceSlotLease;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+    return { ok: true, applied: true };
+  }
+  if (
+    session.status === "cancelled" &&
     session.mainCheckoutLease &&
     session.hostId &&
     session.assignmentConnectionId &&
@@ -1212,6 +1269,7 @@ async function applySessionStatusDurable(
     finishSessionOptsFromPlan(session, plan, {
       attemptId: msg.attemptId,
       ...(fence ? { fence } : {}),
+      ...(msg.workspaceSlotError ? { workspaceSlotError: msg.workspaceSlotError } : {}),
     }),
   );
   if (!committed) {
@@ -1230,12 +1288,25 @@ async function applySessionStatusDurable(
       });
     }
   }
+  const workspaceSlotId = session.workspaceSlotId;
+  if (workspaceSlotId) {
+    const slot = state.workspaceSlots.get(workspaceSlotId);
+    if (slot?.currentSessionId === session.id) {
+      state.workspaceSlots.set(workspaceSlotId, {
+        ...slot,
+        status: msg.workspaceSlotError ? "error" : "idle",
+        currentSessionId: null,
+        ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
+      });
+    }
+  }
   const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
   const nextSession = {
     ...session,
     status: nextStatus,
     ...(shouldSuppressTarget ? {} : { completedAt: state.now() }),
     worktreeId: null,
+    workspaceSlotId: null,
     hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
@@ -1307,7 +1378,11 @@ function applySessionStatus(
   const patch = transitionEffect(plan, "patch_report");
 
   if (session.status !== "running") {
-    if (transitionEffect(plan, "release_lease") || transitionEffect(plan, "release_worktree")) {
+    if (
+      transitionEffect(plan, "release_lease") ||
+      transitionEffect(plan, "release_worktree") ||
+      transitionEffect(plan, "release_workspace")
+    ) {
       releaseProviderAccountLease(state, session);
     }
     if (transitionEffect(plan, "release_lease") && session.mainCheckoutLease) {
@@ -1325,6 +1400,9 @@ function applySessionStatus(
         releaseWorktree(state, session.worktreeId);
       }
       session.worktreeId = null;
+    }
+    if (transitionEffect(plan, "release_workspace")) {
+      releaseWorkspaceSlotLocal(state, session, msg.workspaceSlotError);
     }
     if (patch?.cliResumeRef !== undefined) session.cliResumeRef = patch.cliResumeRef;
     if (patch?.result !== undefined && session.result === undefined) session.result = patch.result;
@@ -1372,6 +1450,8 @@ function applySessionStatus(
       delete session.reconnectDeadlineAt;
     } else if (transitionEffect(plan, "release_worktree") && session.worktreeId) {
       releaseWorktree(state, session.worktreeId);
+    } else if (transitionEffect(plan, "release_workspace")) {
+      releaseWorkspaceSlotLocal(state, session, msg.workspaceSlotError);
     }
 
     const cooldown = transitionEffect(plan, "cooldown");
@@ -1403,11 +1483,14 @@ function applySessionStatus(
       const reschedule = transitionEffect(plan, "reschedule");
       if (reschedule?.kind === "scheduled") {
         void assignScheduledQueuedDurable(state).catch(() => undefined);
+      } else if (reschedule?.kind === "workspace") {
+        void assignWorkspaceQueuedDurable(state).catch(() => undefined);
       } else if (reschedule) {
         void assignQueued(state);
       }
     } else if (finish) {
       session.worktreeId = null;
+      session.workspaceSlotId = null;
       // A continuation reference is single-use: a resumed command must report
       // a fresh one if it wants to support another native continuation.
       if (finish.clearResumeRef) {

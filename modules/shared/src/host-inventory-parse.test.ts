@@ -27,7 +27,13 @@ const valid = {
     },
   ],
   providerAccounts: [{ providerAccountId: "account", commandId: "command" }],
-  capabilities: ["scheduled-main-checkout"],
+  capabilities: ["scheduled-main-checkout", "workspace-sessions"],
+  workspacePools: [
+    {
+      workspacePoolId: "pool-1",
+      slots: [{ id: "slot-1", name: "research", path: "/srv/workspace-1" }],
+    },
+  ],
 };
 
 describe("parseHostInventory", () => {
@@ -96,6 +102,59 @@ describe("parseHostInventory", () => {
         ],
       }),
     ).toThrow("must contain at most 256 distinct names");
+  });
+
+  it("requires unique workspace pool and slot ids while retaining path-only slots", () => {
+    expect(
+      parseHostInventory({
+        workspacePools: [
+          { workspacePoolId: "pool", slots: [{ id: "slot", name: "one", path: "/srv/one" }] },
+        ],
+        repositories: [],
+      }),
+    ).toMatchObject({
+      workspacePools: [
+        { workspacePoolId: "pool", slots: [{ id: "slot", name: "one", path: "/srv/one" }] },
+      ],
+    });
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [
+              { id: "slot", name: "one", path: "/srv/one" },
+              { id: "slot", name: "two", path: "/srv/two" },
+            ],
+          },
+        ],
+        repositories: [],
+      }),
+    ).toThrow("slots ids must be unique");
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [
+          { workspacePoolId: "pool-a", slots: [{ id: "shared", name: "one", path: "/srv/one" }] },
+          { workspacePoolId: "pool-b", slots: [{ id: "shared", name: "two", path: "/srv/two" }] },
+        ],
+        repositories: [],
+      }),
+    ).toThrow("workspace slot ids must be unique: shared");
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [{ workspacePoolId: "pool", slots: [null] }],
+        repositories: [],
+      }),
+    ).toThrow("slots[0] invalid");
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [
+          { workspacePoolId: "pool", slots: [] },
+          { workspacePoolId: "pool", slots: [] },
+        ],
+        repositories: [],
+      }),
+    ).toThrow("workspacePools ids must be unique");
   });
 
   it.each([

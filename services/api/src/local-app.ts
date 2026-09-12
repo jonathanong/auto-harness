@@ -21,6 +21,7 @@ import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { handleUsageRoutes } from "./local-routes-usage.ts";
+import { handleWorkspacePoolRoutes } from "./local-routes-workspace-pools.ts";
 import { handleSlackIntegrationRoutes } from "./local-routes-slack-integration.ts";
 import {
   handlePublicSlackRoutes,
@@ -188,6 +189,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleSessionDrainRoutes(ctx)) return;
     if (await handleUsageRoutes(ctx)) return;
     if (await handleRepositoryRoutes(ctx)) return;
+    if (await handleWorkspacePoolRoutes(ctx)) return;
     if (await handleScheduleRoutes(ctx)) return;
     if (await handleHostSchedulerRoutes(ctx)) return;
     if (await handleHostInventoryRoutes(ctx)) return;

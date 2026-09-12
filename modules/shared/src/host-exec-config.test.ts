@@ -534,6 +534,25 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       { repositories: [], providerAccounts: [], updateConfig: { enabled: false } },
     );
     expect(incomingWins.updateConfig).toEqual({ enabled: true });
+    const workspaceIncoming = preserveHostExecConfig(
+      {
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+          },
+        ],
+      },
+      inventory(),
+    );
+    expect(workspaceIncoming.workspacePools).toEqual([
+      {
+        workspacePoolId: "pool-1",
+        slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+      },
+    ]);
   });
 
   it("handles sparse inventories and explicit blank nested values", () => {

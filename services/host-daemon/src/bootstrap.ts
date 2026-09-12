@@ -2,6 +2,7 @@ import { thrownMessage } from "@auto-harness/shared";
 import type { DaemonConfig, HostIdentity } from "./config-types.ts";
 import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
+import { WorkspaceManager } from "./workspace-manager.ts";
 
 /** Normalize control-plane base to HTTP origin (strip trailing slash and /ws). */
 export function httpBaseFromApiUrl(apiUrl: string): string {
@@ -53,6 +54,7 @@ export function inventoryFingerprint(config: DaemonConfig): string {
     ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
     ...(config.allowedRoots !== undefined ? { allowedRoots: config.allowedRoots } : {}),
     ...(config.updateConfig !== undefined ? { updateConfig: config.updateConfig } : {}),
+    ...(config.workspacePools !== undefined ? { workspacePools: config.workspacePools } : {}),
     repositories: config.repositories,
   });
 }
@@ -93,6 +95,9 @@ export async function fetchHostInventory(
   }
   try {
     await assertDaemonPathsAllowed(config);
+    // Repository inventory permits an unrestricted legacy host, but a
+    // destructive non-git workspace must always have a real, strict root.
+    await new WorkspaceManager(config).ensureAll();
   } catch (error) {
     throw new HostInventoryPolicyError(error, config.allowedRoots);
   }

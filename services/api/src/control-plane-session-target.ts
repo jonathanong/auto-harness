@@ -403,6 +403,44 @@ export function resolveScheduledSessionTargets(
   return routes;
 }
 
+/** Resolve a non-git workspace against host-level provider/account configuration only. */
+export function resolveWorkspaceSessionTargets(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  slot: import("./db/types.ts").WorkspaceSlotRecord,
+): ResolvedSessionRoute[] {
+  const synthetic: WorktreeRecord = {
+    id: slot.id,
+    name: slot.name,
+    hostId: slot.hostId,
+    repositoryId: "",
+    path: slot.path,
+    labels: [],
+    status: slot.status,
+    online: slot.online,
+  };
+  const nowMs = Date.parse(state.now());
+  const routes: ResolvedSessionRoute[] = [];
+  for (let targetIndex = 0; targetIndex <= session.fallbacks.length; targetIndex += 1) {
+    if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
+    const target = [session.target, ...session.fallbacks][targetIndex];
+    if (!target) continue;
+    for (const route of resolveTargets(
+      state,
+      catalog,
+      target,
+      session.prompt,
+      synthetic,
+      nowMs,
+      undefined,
+    )) {
+      routes.push({ ...route, targetIndex });
+    }
+  }
+  return routes;
+}
+
 export function resolveScheduledSessionTarget(
   state: ControlPlaneState,
   catalog: ProviderCatalog,

@@ -30,6 +30,7 @@ import {
   storedSchedulePrompt,
   type ScheduleInput,
 } from "./control-plane-schedule-prompt.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 
 export {
   evaluateCron,
@@ -55,6 +56,8 @@ function preparePutSchedule(
   state: ControlPlaneState,
   input: ScheduleInput,
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+  const mode = validateScheduleMode(state, input);
+  if (!mode.ok) return mode;
   const now = state.now();
   if (!isValidUtcTimestamp(now)) {
     return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };
@@ -91,7 +94,7 @@ function preparePutSchedule(
   const principalId = input.principalId ?? "system";
   const rec: ScheduleRecord = {
     id,
-    repositoryId: input.repositoryId,
+    repositoryId: mode.repositoryId,
     principalId,
     name: input.name,
     target: routing.value.target,
@@ -105,6 +108,11 @@ function preparePutSchedule(
     lastRunAt: null,
     createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
+    ...(mode.workspacePoolId ? { workspacePoolId: mode.workspacePoolId } : {}),
+    ...(mode.setupProfileId ? { setupProfileId: mode.setupProfileId } : {}),
+    ...(mode.workspacePoolId
+      ? { destroyWorkspaceAfter: input.destroyWorkspaceAfter ?? mode.poolDefaultCleanup }
+      : {}),
     concurrencyId,
     ...(prompt !== undefined ? { prompt } : {}),
   };
@@ -117,18 +125,36 @@ export async function putScheduleDurable(
   input: ScheduleInput,
 ): Promise<ReturnType<typeof putSchedule>> {
   if (!state.storage) {
-    if (!state.repositories.has(input.repositoryId)) {
+    const mode = validateScheduleMode(state, input);
+    if (!mode.ok) return mode;
+    if (mode.repositoryId && !state.repositories.has(mode.repositoryId)) {
       return { ok: false, error: "repository not found" };
     }
-    const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
+    const admissionFailure = mode.repositoryId
+      ? repositoryAdmissionFailure(state, mode.repositoryId)
+      : undefined;
     if (admissionFailure) return admissionFailure;
     return putSchedule(state, input);
   }
   await refreshTargetCatalogDurable(state);
-  const repository = await getRepositoryDurable(state, input.repositoryId);
-  if (!repository) return { ok: false, error: "repository not found" };
-  const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
-  if (admissionFailure) return admissionFailure;
+  if (
+    (input.repositoryId === null || input.repositoryId === "") &&
+    typeof input.workspacePoolId === "string"
+  ) {
+    await getWorkspacePoolDurable(state, input.workspacePoolId);
+  }
+  const mode = validateScheduleMode(state, input);
+  if (!mode.ok) return mode;
+  if (mode.repositoryId) {
+    const repository = await getRepositoryDurable(state, mode.repositoryId);
+    if (!repository) return { ok: false, error: "repository not found" };
+    const admissionFailure = repositoryAdmissionFailure(state, mode.repositoryId);
+    if (admissionFailure) return admissionFailure;
+  } else {
+    if (!state.workspacePools.has(mode.workspacePoolId!)) {
+      return { ok: false, error: "workspace pool not found" };
+    }
+  }
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   await state.storage.putSchedule(
@@ -183,6 +209,21 @@ export function prepareUpdateSchedule(
     return { ok: false, error: "schedule ownership cannot be transferred" };
   }
   const now = state.now();
+  const mergedInput: ScheduleInput = {
+    ...existing,
+    ...patch,
+    repositoryId:
+      patch.repositoryId !== undefined ? patch.repositoryId : existing.repositoryId || null,
+  };
+  if (mergedInput.repositoryId !== null && mergedInput.repositoryId !== "") {
+    delete mergedInput.workspacePoolId;
+    delete mergedInput.setupProfileId;
+    delete mergedInput.destroyWorkspaceAfter;
+  } else {
+    delete mergedInput.ref;
+  }
+  const mode = validateScheduleMode(state, mergedInput);
+  if (!mode.ok) return mode;
   if (!isValidUtcTimestamp(now)) {
     return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };
   }
@@ -217,9 +258,13 @@ export function prepareUpdateSchedule(
     routing.value.fallbacks,
   );
   if (!displayNames.ok) return displayNames;
+  const schedulePatch = { ...patch };
+  delete (schedulePatch as Record<string, unknown>).requiredLabels;
+  delete (schedulePatch as Record<string, unknown>).setupScript;
   const next: ScheduleRecord = {
     ...existing,
-    ...patch,
+    ...schedulePatch,
+    repositoryId: mode.repositoryId,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
     targetDisplayNames: displayNames.displayNames,
@@ -227,8 +272,95 @@ export function prepareUpdateSchedule(
     nextRunAt,
     concurrencyId,
   };
+  if (mode.repositoryId) {
+    delete next.workspacePoolId;
+    delete next.setupProfileId;
+    delete next.destroyWorkspaceAfter;
+  } else {
+    delete next.ref;
+    if (mode.workspacePoolId) next.workspacePoolId = mode.workspacePoolId;
+    if (mode.setupProfileId) next.setupProfileId = mode.setupProfileId;
+    else delete next.setupProfileId;
+    next.destroyWorkspaceAfter = Boolean(
+      mergedInput.destroyWorkspaceAfter ?? mode.poolDefaultCleanup,
+    );
+  }
   if (patch.prompt !== undefined) applyStoredPrompt(next, patch.prompt);
   return { ok: true, schedule: next };
+}
+
+type ScheduleMode =
+  | {
+      ok: true;
+      repositoryId: string;
+      workspacePoolId?: undefined;
+      setupProfileId?: undefined;
+      poolDefaultCleanup?: undefined;
+    }
+  | {
+      ok: true;
+      repositoryId: "";
+      workspacePoolId: string;
+      setupProfileId?: string;
+      poolDefaultCleanup: boolean;
+    };
+
+function validateScheduleMode(
+  state: ControlPlaneState,
+  input: ScheduleInput,
+): ScheduleMode | { ok: false; error: string } {
+  if (input.setupScript !== undefined) {
+    return { ok: false, error: "setupScript is not accepted by schedule inputs" };
+  }
+  if (input.requiredLabels !== undefined && !Array.isArray(input.requiredLabels)) {
+    return { ok: false, error: "requiredLabels must be an array" };
+  }
+  if (Array.isArray(input.requiredLabels) && input.requiredLabels.length > 0) {
+    return { ok: false, error: "requiredLabels are not supported by schedule inputs" };
+  }
+  const workspace = input.repositoryId === null || input.repositoryId === "";
+  if (!workspace) {
+    if (typeof input.repositoryId !== "string" || !input.repositoryId.trim()) {
+      return { ok: false, error: "repositoryId is required" };
+    }
+    if (
+      input.workspacePoolId !== undefined ||
+      input.setupProfileId !== undefined ||
+      input.destroyWorkspaceAfter !== undefined
+    ) {
+      return { ok: false, error: "workspace fields require repositoryId to be null" };
+    }
+    return { ok: true, repositoryId: input.repositoryId };
+  }
+  if (input.workspacePoolId === undefined || !input.workspacePoolId.trim()) {
+    return { ok: false, error: "workspacePoolId is required for workspace schedules" };
+  }
+  if (input.ref !== undefined)
+    return { ok: false, error: "ref is not supported for workspace schedules" };
+  if (input.setupProfileId !== undefined && !input.setupProfileId.trim()) {
+    return { ok: false, error: "setupProfileId must not be empty" };
+  }
+  if (
+    input.destroyWorkspaceAfter !== undefined &&
+    typeof input.destroyWorkspaceAfter !== "boolean"
+  ) {
+    return { ok: false, error: "destroyWorkspaceAfter must be a boolean" };
+  }
+  const pool = state.workspacePools.get(input.workspacePoolId);
+  if (!pool) return { ok: false, error: "workspace pool not found" };
+  if (
+    input.setupProfileId &&
+    !pool.setupProfiles.some((profile) => profile.id === input.setupProfileId)
+  ) {
+    return { ok: false, error: "workspace setup profile not found" };
+  }
+  return {
+    ok: true,
+    repositoryId: "",
+    workspacePoolId: input.workspacePoolId,
+    ...(input.setupProfileId ? { setupProfileId: input.setupProfileId } : {}),
+    poolDefaultCleanup: pool.destroyWorkspaceAfter,
+  };
 }
 
 export function deleteSchedule(

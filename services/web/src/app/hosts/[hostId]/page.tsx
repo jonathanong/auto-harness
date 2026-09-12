@@ -8,6 +8,7 @@ import { HostNotFound } from "../../../components/host-not-found.tsx";
 import { HostOverviewSection } from "../../../components/host-overview-section.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
+import { HostWorkspacePoolsSection } from "../../../components/host-workspace-pools-section.tsx";
 import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
@@ -128,6 +129,14 @@ export default async function HostDetailPage({
       }),
     ),
   ]);
+  let workspacePools: Array<{ id: string; name: string }> = [];
+  try {
+    workspacePools =
+      (await apiGet<{ items?: Array<{ id: string; name: string }> }>("/api/v1/workspace-pools"))
+        .items ?? [];
+  } catch {
+    /* slot controls remain usable only when a pool list is available */
+  }
   const catalog = catalogResult.catalog;
   const catalogError = catalogResult.error;
   const namesById = Object.fromEntries(catalog.map((r) => [r.id, r.name]));
@@ -199,6 +208,18 @@ export default async function HostDetailPage({
                 commandsById={commandsById}
                 catalogError={providerCatalogError}
                 canWrite={canWriteProviderAccounts}
+              />
+            ),
+          },
+          {
+            key: "workspace-pools",
+            label: "Workspace pools",
+            content: (
+              <HostWorkspacePoolsSection
+                hostId={hostId}
+                inventory={inv}
+                pools={workspacePools}
+                canWriteExecConfig={canWriteExecConfig}
               />
             ),
           },

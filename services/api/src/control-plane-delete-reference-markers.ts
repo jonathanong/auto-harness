@@ -18,7 +18,8 @@ export function principalDeletionMarker(principalId: string | undefined): string
 export function referenceMarkers(
   now: string,
   reference: {
-    repositoryId?: string;
+    repositoryId?: string | null;
+    workspacePoolId?: string;
     principalId?: string;
     target?: TargetRef;
     fallbacks?: TargetRef[];
@@ -26,6 +27,7 @@ export function referenceMarkers(
 ): DeletionMarker[] {
   const keys = new Set<string>();
   if (reference.repositoryId) keys.add(`repository:${reference.repositoryId}`);
+  if (reference.workspacePoolId) keys.add(`workspace-pool:${reference.workspacePoolId}`);
   const principalMarker = principalDeletionMarker(reference.principalId);
   if (principalMarker) keys.add(principalMarker);
   for (const route of reference.target ? [reference.target, ...(reference.fallbacks ?? [])] : []) {
@@ -55,6 +57,9 @@ export function inventoryReferenceMarkers(
         if (override.commandId) keys.add(`command:${override.commandId}`);
       }
     }
+  }
+  for (const attachment of inventory.workspacePools ?? []) {
+    keys.add(`workspace-pool:${attachment.workspacePoolId}`);
   }
   for (const account of inventory.providerAccounts) {
     keys.add(`provider-account:${account.providerAccountId}`);

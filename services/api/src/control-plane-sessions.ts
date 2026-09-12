@@ -48,14 +48,29 @@ export function createSession(
     metadata: record.metadata,
     type: record.type,
     source: record.source,
+    workspacePoolId: record.workspacePoolId,
+    setupProfileId: record.setupProfileId,
+    destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+    setupScript: record.setupScript,
   });
   if (!validated.ok) {
     return validated;
   }
 
   const v = validated.value;
-  const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
-  if (admissionFailure) return admissionFailure;
+  if (v.repositoryId) {
+    const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
+    if (admissionFailure) return admissionFailure;
+  } else {
+    const pool = state.workspacePools.get(v.workspacePoolId!);
+    if (!pool) return { ok: false, error: "workspace pool not found", code: "NOT_FOUND" };
+    if (
+      v.setupProfileId &&
+      !pool.setupProfiles.some((profile) => profile.id === v.setupProfileId)
+    ) {
+      return { ok: false, error: "workspace setup profile not found", code: "NOT_FOUND" };
+    }
+  }
   const targets = resolveTargetDisplayNames(state, v.target, v.fallbacks);
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
@@ -74,7 +89,17 @@ export function createSession(
   const queueShard = Math.abs(hashString(id)) % state.shardCount;
   const session: SessionRecord = {
     id,
-    repositoryId: v.repositoryId,
+    repositoryId: v.repositoryId ?? "",
+    ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
+    ...(v.setupProfileId ? { setupProfileId: v.setupProfileId } : {}),
+    ...(v.workspacePoolId
+      ? {
+          destroyWorkspaceAfter:
+            v.destroyWorkspaceAfter ??
+            state.workspacePools.get(v.workspacePoolId)?.destroyWorkspaceAfter ??
+            false,
+        }
+      : {}),
     prompt: v.prompt,
     target: v.target,
     fallbacks: v.fallbacks,

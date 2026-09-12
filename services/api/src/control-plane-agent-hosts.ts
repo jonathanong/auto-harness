@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
 import { thrownMessage } from "@auto-harness/shared";
 import type { DynamoPlaneStorage, HostInventoryRecord } from "./db/plane-storage.ts";
-import type { WorktreeRecord } from "./db/types.ts";
+import type { WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
@@ -15,6 +15,7 @@ import {
   listHostInventoriesDurable,
   listProviderAccountsDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { listWorkspacePoolsDurable } from "./control-plane-workspace-pools.ts";
 import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
@@ -24,6 +25,41 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
     persistWorktree(state, worktree);
   }
   for (const id of removedIds) state.worktrees.delete(id);
+}
+
+function projectHostWorkspaceSlots(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+): { slots: WorkspaceSlotRecord[]; removedIds: string[] } {
+  const online = state.hostConnection.has(host.hostId);
+  const configuredIds = new Set<string>();
+  const slots: WorkspaceSlotRecord[] = [];
+  for (const attachment of host.workspacePools ?? []) {
+    for (const slot of attachment.slots) {
+      configuredIds.add(slot.id);
+      const previous = state.workspaceSlots.get(slot.id);
+      slots.push({
+        id: slot.id,
+        name: slot.name,
+        path: slot.path,
+        hostId: host.hostId,
+        workspacePoolId: attachment.workspacePoolId,
+        status:
+          previous?.status === "busy" || previous?.status === "error" ? previous.status : "idle",
+        online: previous?.online ?? online,
+        currentSessionId: previous?.currentSessionId ?? null,
+        lastAssignedAt: previous?.lastAssignedAt ?? null,
+        ...(previous?.errorMessage ? { errorMessage: previous.errorMessage } : {}),
+      });
+    }
+  }
+  const removedIds = [...state.workspaceSlots.values()]
+    .filter(
+      (slot) =>
+        slot.hostId === host.hostId && !configuredIds.has(slot.id) && slot.status !== "busy",
+    )
+    .map((slot) => slot.id);
+  return { slots, removedIds };
 }
 
 function projectHostWorktrees(
@@ -84,6 +120,15 @@ export function putHostInventory(
     );
   }
   syncWorktreesFromHost(state, rec);
+  const workspaceProjection = projectHostWorkspaceSlots(state, rec);
+  for (const slot of workspaceProjection.slots) {
+    state.workspaceSlots.set(slot.id, slot);
+    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
+  }
+  for (const id of workspaceProjection.removedIds) {
+    state.workspaceSlots.delete(id);
+    if (state.storage) queueWrite(state, (storage) => storage!.deleteWorkspaceSlot(id));
+  }
   return { ok: true, config: withoutDaemonLabelProvenance(rec) };
 }
 
@@ -126,6 +171,20 @@ function prepareHostInventory(
     );
     if (unknownAccount) {
       return { ok: false, error: `unknown providerAccountId: ${unknownAccount.providerAccountId}` };
+    }
+    for (const attachment of parsed.workspacePools ?? []) {
+      if (!state.workspacePools.has(attachment.workspacePoolId)) {
+        return { ok: false, error: `unknown workspacePoolId: ${attachment.workspacePoolId}` };
+      }
+      for (const slot of attachment.slots) {
+        const projected = state.workspaceSlots.get(slot.id);
+        if (projected && projected.hostId !== hostId) {
+          return { ok: false, error: `workspace slot id already in use: ${slot.id}` };
+        }
+        if (projected?.status === "busy" && projected.path !== slot.path) {
+          return { ok: false, error: `cannot change the path of busy workspace slot: ${slot.id}` };
+        }
+      }
     }
     const collision = findWorktreeNameCollision(state, hostId, parsed);
     if (collision) return { ok: false, error: collision };
@@ -181,6 +240,9 @@ export async function putHostInventoryDurable(
     typeof state.storage.listProviderAccounts === "function"
       ? listProviderAccountsDurable(state)
       : Promise.resolve(),
+    typeof state.storage.listWorkspacePools === "function"
+      ? listWorkspacePoolsDurable(state)
+      : Promise.resolve(),
   ]);
   const expectedVersion =
     expectedVersionFrom(body) ?? state.hostInventories.get(hostId)?.version ?? 0;
@@ -191,6 +253,7 @@ export async function putHostInventoryDurable(
     return { ok: false, error: "host inventory has too many catalog references" };
   }
   const projection = projectHostWorktrees(state, result.config);
+  const workspaceProjection = projectHostWorkspaceSlots(state, result.config);
   const stored = await state.storage.putHostInventory(
     { ...result.config },
     markers,
@@ -202,12 +265,16 @@ export async function putHostInventoryDurable(
     await Promise.all([
       ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
       ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
+      ...workspaceProjection.slots.map((slot) => storage!.putWorkspaceSlot({ ...slot })),
+      ...workspaceProjection.removedIds.map((id) => storage!.deleteWorkspaceSlot(id)),
     ]);
   };
   state.hostInventoryRevision += 1;
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
+  for (const slot of workspaceProjection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const id of workspaceProjection.removedIds) state.workspaceSlots.delete(id);
   if (options.awaitProjection === false) {
     // The inventory document is already committed. Exec-config callers intentionally retain
     // their committed-result response contract while the ordinary inventory route below waits.
@@ -279,6 +346,9 @@ export function deleteHostInventory(
       state.worktrees.delete(id);
     }
   }
+  for (const [id, slot] of state.workspaceSlots) {
+    if (slot.hostId === hostId) state.workspaceSlots.delete(id);
+  }
   return { ok: true };
 }
 
@@ -298,13 +368,22 @@ export async function deleteHostInventoryDurable(
   const worktreeIds = [...state.worktrees.values()]
     .filter((worktree) => worktree.hostId === hostId)
     .map((worktree) => worktree.id);
+  const workspaceSlotIds = [...state.workspaceSlots.values()]
+    .filter((slot) => slot.hostId === hostId)
+    .map((slot) => slot.id);
   const deleted = await state.storage.deleteHostInventory(hostId, expected);
   if (deleted === false) return inventoryVersionConflict();
-  await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
+  await Promise.all([
+    ...worktreeIds.map((id) => state.storage!.deleteWorktree(id)),
+    ...workspaceSlotIds.map((id) => state.storage!.deleteWorkspaceSlot(id)),
+  ]);
   state.hostInventoryRevision += 1;
   state.hostInventories.delete(hostId);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === hostId) state.worktrees.delete(id);
+  }
+  for (const [id, slot] of state.workspaceSlots) {
+    if (slot.hostId === hostId) state.workspaceSlots.delete(id);
   }
   return { ok: true };
 }

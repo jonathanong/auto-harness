@@ -94,7 +94,8 @@ export async function cancelRunningSession(
   ctx: PlaneStorageCtx,
   opts: {
     sessionId: string;
-    worktreeId: string;
+    worktreeId?: string | null;
+    workspaceSlotId?: string;
     hostId: string;
     connectionId: string;
     attemptId: string;
@@ -114,7 +115,9 @@ export async function cancelRunningSession(
       Key: { id: opts.sessionId },
       UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)}`,
       ConditionExpression:
-        "#s = :running AND worktreeId = :worktreeId AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId",
+        "#s = :running AND worktreeId = :worktreeId" +
+        (opts.workspaceSlotId ? " AND workspaceSlotId = :workspaceSlotId" : "") +
+        " AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":running": "running",
@@ -122,7 +125,8 @@ export async function cancelRunningSession(
         ":statusShard": statusShardAttr("cancelled", opts.queueShard),
         ":completedAt": opts.completedAt,
         ":errorMessage": opts.errorMessage,
-        ":worktreeId": opts.worktreeId,
+        ":worktreeId": opts.worktreeId ?? null,
+        ...(opts.workspaceSlotId ? { ":workspaceSlotId": opts.workspaceSlotId } : {}),
         ":hostId": opts.hostId,
         ":connectionId": opts.connectionId,
         ":attemptId": opts.attemptId,

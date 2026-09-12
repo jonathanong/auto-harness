@@ -18,6 +18,7 @@ import { ControlPlaneIntegrationsService } from "./control-plane-integrations-se
 import { ControlPlaneRepositoriesService } from "./control-plane-repositories-service.ts";
 import { ControlPlaneSchedulingService } from "./control-plane-scheduling-service.ts";
 import { ControlPlaneSessionsService } from "./control-plane-sessions-service.ts";
+import { ControlPlaneWorkspacesService } from "./control-plane-workspaces-service.ts";
 import { bindControlPlaneServices } from "./control-plane-service-bind.ts";
 import { requestAssignment, type AssignmentSweepOptions } from "./request-assignment.ts";
 
@@ -48,6 +49,7 @@ export class ControlPlane {
   readonly audit: ControlPlaneAuditService;
   readonly repositories: ControlPlaneRepositoriesService;
   readonly integrations: ControlPlaneIntegrationsService;
+  readonly workspaces: ControlPlaneWorkspacesService;
 
   constructor(options: ControlPlaneOptions = {}) {
     this.state = createControlPlaneState(options);
@@ -58,6 +60,7 @@ export class ControlPlane {
     this.audit = new ControlPlaneAuditService(this.state);
     this.repositories = new ControlPlaneRepositoriesService(this.state);
     this.integrations = new ControlPlaneIntegrationsService(this.state);
+    this.workspaces = new ControlPlaneWorkspacesService(this.state);
   }
 
   setOnHostMessage(handler: ((hostId: string, msg: HostWireMessage) => void) | undefined): void {
@@ -104,7 +107,8 @@ export interface ControlPlane
     ControlPlaneCatalogService,
     ControlPlaneAuditService,
     ControlPlaneRepositoriesService,
-    ControlPlaneIntegrationsService {}
+    ControlPlaneIntegrationsService,
+    ControlPlaneWorkspacesService {}
 
 bindControlPlaneServices(ControlPlane, [
   ControlPlaneSessionsService,
@@ -114,6 +118,7 @@ bindControlPlaneServices(ControlPlane, [
   ControlPlaneAuditService,
   ControlPlaneRepositoriesService,
   ControlPlaneIntegrationsService,
+  ControlPlaneWorkspacesService,
 ]);
 
 export { ControlPlane as ControlPlaneBase };

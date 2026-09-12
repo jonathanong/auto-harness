@@ -71,13 +71,19 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
 export function finishSessionOptsFromPlan(
   session: SessionRecord,
   plan: SessionTransitionPlan,
-  extras: { attemptId: string; fence?: { hostId: string; connectionId: string } },
+  extras: {
+    attemptId: string;
+    fence?: { hostId: string; connectionId: string };
+    workspaceSlotError?: string;
+  },
 ): Parameters<typeof finishSession>[1] {
   const finish = transitionEffect(plan, "finish");
   const queued = transitionEffect(plan, "requeue") !== undefined && finish === undefined;
   return {
     sessionId: session.id,
     worktreeId: session.worktreeId ?? null,
+    ...(session.workspaceSlotId ? { workspaceSlotId: session.workspaceSlotId } : {}),
+    ...(extras.workspaceSlotError ? { workspaceSlotError: extras.workspaceSlotError } : {}),
     attemptId: extras.attemptId,
     status: finish?.status ?? "queued",
     queueShard: session.queueShard,

@@ -14,6 +14,7 @@ import {
   type ExecutionProfiles,
 } from "./execution-profiles.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import type { WorkspaceManager } from "./workspace-manager.ts";
 
 export type DaemonRuntimeIdentity = {
   instanceId: string;
@@ -49,7 +50,7 @@ export async function registerDaemon(
       .map(({ id, path, defaultBranch }) => ({ id, path, defaultBranch }))
       .toSorted((a, b) => a.id.localeCompare(b.id)),
     capabilities: {
-      features: ["scheduled-main-checkout"],
+      features: ["scheduled-main-checkout", "workspace-sessions"],
       maxConcurrentAssignments: executionProfiles.maxConcurrentAssignments,
     },
     providerAccountReadiness: providerAccountReadiness(executionProfiles),
@@ -80,10 +81,12 @@ export async function applyDaemonInventory(
   worktrees: WorktreeManager,
   register: (candidate: DaemonConfig) => Promise<void>,
   afterApply?: () => void,
+  workspaces?: WorkspaceManager,
 ): Promise<void> {
   const previousSetupScript = config.setupScript;
   const previousAllowedRoots = config.allowedRoots;
   const previousRepositories = config.repositories;
+  const previousWorkspacePools = config.workspacePools;
   // Older test-only managers may not expose the generation hook; real managers always do.
   worktrees.noteInventoryChange?.();
   try {
@@ -91,16 +94,20 @@ export async function applyDaemonInventory(
     // retained roots policy. Pending terminal hooks must remain fail-closed
     // until the control plane has accepted this registration.
     await worktrees.ensureAll(next);
+    await workspaces?.ensureAll(next);
     await register(next);
     if (next.setupScript === undefined) delete config.setupScript;
     else config.setupScript = next.setupScript;
     if (next.allowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = next.allowedRoots;
     config.repositories = next.repositories;
+    if (next.workspacePools === undefined) delete config.workspacePools;
+    else config.workspacePools = next.workspacePools;
     // A claim can begin after the pre-registration fence above and finish while
     // registration is in flight. Once the candidate becomes live, advance the
     // generation again so that claim has to revalidate against this inventory.
     worktrees.noteInventoryChange?.();
+    workspaces?.noteInventoryChange();
     afterApply?.();
   } catch (err) {
     if (previousSetupScript === undefined) delete config.setupScript;
@@ -108,9 +115,12 @@ export async function applyDaemonInventory(
     if (previousAllowedRoots === undefined) delete config.allowedRoots;
     else config.allowedRoots = previousAllowedRoots;
     config.repositories = previousRepositories;
+    if (previousWorkspacePools === undefined) delete config.workspacePools;
+    else config.workspacePools = previousWorkspacePools;
     // Claims that were revalidating during this attempt must retry against the
     // restored configuration too.
     worktrees.noteInventoryChange?.();
+    workspaces?.noteInventoryChange();
     throw err;
   }
 }

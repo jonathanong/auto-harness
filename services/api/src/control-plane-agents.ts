@@ -50,6 +50,80 @@ function listedHostRuntime(runtime?: HostRuntimeReport): ListedHostRuntime {
   };
 }
 
+function publishWorkspaceSlotsLocal(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string,
+  online: boolean,
+): void {
+  for (const slot of state.workspaceSlots.values()) {
+    if (slot.hostId !== hostId || slot.status === "busy") continue;
+    const next = { ...slot, online, connectionId };
+    state.workspaceSlots.set(slot.id, next);
+    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot(next));
+  }
+}
+
+function offlineWorkspaceSlotsLocal(
+  state: ControlPlaneState,
+  hostId: string,
+  reason: string,
+): string[] {
+  const requeued: string[] = [];
+  for (const slot of state.workspaceSlots.values()) {
+    if (slot.hostId !== hostId) continue;
+    const session = slot.currentSessionId ? state.sessions.get(slot.currentSessionId) : undefined;
+    if (session && (session.status === "running" || session.status === "cancelled")) {
+      releaseProviderAccountLease(state, session);
+      if (session.status === "running") {
+        session.status = "queued";
+        session.errorMessage = reason;
+        delete session.completedAt;
+        requeued.push(session.id);
+      }
+      session.workspaceSlotId = null;
+      session.hostId = null;
+      delete session.workspaceSlotLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
+      persistSession(state, session);
+    }
+    state.workspaceSlots.set(slot.id, {
+      ...slot,
+      status: slot.status === "error" ? "error" : "idle",
+      online: false,
+      currentSessionId: null,
+    });
+  }
+  return requeued;
+}
+
+async function publishWorkspaceSlotsDurable(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string,
+  online: boolean,
+): Promise<void> {
+  if (
+    typeof state.storage?.listWorkspaceSlotsByHost !== "function" ||
+    typeof state.storage.putWorkspaceSlot !== "function"
+  ) {
+    return;
+  }
+  const slots = await state.storage!.listWorkspaceSlotsByHost(hostId);
+  for (const slot of slots) {
+    if (slot.status === "busy") {
+      state.workspaceSlots.set(slot.id, slot);
+      continue;
+    }
+    const next = { ...slot, online, connectionId };
+    await state.storage!.putWorkspaceSlot(next);
+    state.workspaceSlots.set(slot.id, next);
+  }
+}
+
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
  * connection, so an intervening replacement keeps its own inventory. */
@@ -59,6 +133,7 @@ async function rollbackDurableRegistration(
   connectionId: string,
   at: string,
   worktrees: readonly import("./db/types.ts").WorktreeRecord[],
+  workspaceSlots: readonly import("./db/types.ts").WorkspaceSlotRecord[] = [],
 ): Promise<void> {
   const storage = state.storage!;
   // Do not drop the candidate host lock until every inherited main-checkout
@@ -83,6 +158,24 @@ async function rollbackDurableRegistration(
         })
       ) {
         state.worktrees.set(worktree.id, { ...worktree, online: false });
+      }
+    }
+    // Workspace-slot publication is part of the same registration boundary as
+    // worktree publication. Slots are written before the host inventory fence,
+    // so a failed slot write must leave neither the lease nor an online slot
+    // owned by this connection behind.
+    if (
+      typeof storage.listWorkspaceSlotsByHost === "function" &&
+      typeof storage.putWorkspaceSlot === "function"
+    ) {
+      const ownedSlots = new Map(workspaceSlots.map((slot) => [slot.id, slot]));
+      for (const slot of await storage.listWorkspaceSlotsByHost(hostId)) {
+        if (slot.connectionId === connectionId) ownedSlots.set(slot.id, slot);
+      }
+      for (const slot of ownedSlots.values()) {
+        const offline = { ...slot, online: false };
+        await storage.putWorkspaceSlot(offline);
+        state.workspaceSlots.set(offline.id, offline);
       }
     }
   } finally {
@@ -497,6 +590,7 @@ export function registerHost(
     queueWrite(state, (storage) => storage!.putConnection(conn));
   }
   state.hostConnection.set(opts.hostId, connectionId);
+  publishWorkspaceSlotsLocal(state, opts.hostId, connectionId, !opts.draining);
   state.disconnectedHosts.delete(opts.hostId);
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
@@ -726,6 +820,12 @@ export async function registerHostDurable(
   }
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
+  try {
+    await publishWorkspaceSlotsDurable(state, opts.hostId, connectionId, !opts.draining);
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+    throw err;
+  }
   state.disconnectedHosts.delete(opts.hostId);
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
@@ -844,6 +944,7 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
   const requeued = offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  requeued.push(...offlineWorkspaceSlotsLocal(state, hostId, "agent disconnected; requeued"));
   for (const session of state.sessions.values()) {
     if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
     releaseProviderAccountLease(state, session);

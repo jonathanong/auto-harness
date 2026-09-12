@@ -7,8 +7,9 @@ import type {
   ProviderAccountRecord,
   ProviderRecord,
   RepositoryRecord,
+  WorkspacePoolRecord,
 } from "./db/plane-storage.ts";
-import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
 import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import type {
@@ -25,6 +26,8 @@ type HydratableState = {
   storage: DynamoPlaneStorage | undefined;
   sessions: Map<string, SessionRecord>;
   worktrees: Map<string, WorktreeRecord>;
+  workspacePools: Map<string, WorkspacePoolRecord>;
+  workspaceSlots: Map<string, WorkspaceSlotRecord>;
   connections: Map<string, ConnectionRecord>;
   hostConnection: Map<string, string>;
   logs: Map<string, LogRecord[]>;
@@ -95,6 +98,8 @@ export async function hydrateFromStorage(
     connections,
     schedules,
     repositories,
+    workspacePools,
+    workspaceSlots,
     inventories,
     providers,
     accounts,
@@ -108,6 +113,12 @@ export async function hydrateFromStorage(
     catalogs ? state.storage.listConnections() : skipList<ConnectionRecord>(),
     catalogs ? state.storage.listSchedules() : skipList<ScheduleRecord>(),
     catalogs ? state.storage.listRepositories() : skipList<RepositoryRecord>(),
+    catalogs && typeof state.storage.listWorkspacePools === "function"
+      ? state.storage.listWorkspacePools()
+      : skipList<WorkspacePoolRecord>(),
+    catalogs && typeof state.storage.listWorkspaceSlots === "function"
+      ? state.storage.listWorkspaceSlots()
+      : skipList<WorkspaceSlotRecord>(),
     catalogs ? state.storage.listHostInventories() : skipList<HostInventoryRecord>(),
     catalogs ? state.storage.listProviders() : skipList<ProviderRecord>(),
     catalogs ? state.storage.listProviderAccounts() : skipList<ProviderAccountRecord>(),
@@ -125,6 +136,8 @@ export async function hydrateFromStorage(
   state.logs.clear();
   state.schedules.clear();
   state.repositories.clear();
+  state.workspacePools.clear();
+  state.workspaceSlots.clear();
   state.hostInventories.clear();
   state.providers.clear();
   state.providerAccounts.clear();
@@ -189,6 +202,8 @@ export async function hydrateFromStorage(
     });
   }
   for (const record of repositories) state.repositories.set(record.id, record);
+  for (const record of workspacePools) state.workspacePools.set(record.id, record);
+  for (const record of workspaceSlots) state.workspaceSlots.set(record.id, record);
   for (const record of inventories) {
     state.hostInventories.set(record.hostId, {
       ...record,

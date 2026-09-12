@@ -9,6 +9,7 @@ import {
   canAuthorSessions,
   sendSessionForbidden,
 } from "./local-routes-session-access.ts";
+import { may } from "./auth-policy.ts";
 
 export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> {
   const { plane, res, url, method } = ctx;
@@ -39,6 +40,13 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     return true;
   }
   if (
+    sessionBody?.destroyWorkspaceAfter !== undefined &&
+    (!ctx.principal || !may(ctx.principal, "fleet:exec-config"))
+  ) {
+    sendSessionForbidden(res);
+    return true;
+  }
+  if (
     ctx.principal &&
     sessionBody?.metadata !== undefined &&
     (typeof sessionBody.metadata !== "object" ||
@@ -53,7 +61,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
         ...sessionBody,
         // Public create cannot mint scheduled sessions. webhook/ui are real
         // caller provenance; schedule is internal to the dispatcher.
-        type: "prompt",
+        type: sessionBody.repositoryId === null ? "workspace" : "prompt",
         source:
           sessionBody.source === "ui" || sessionBody.source === "webhook"
             ? sessionBody.source
@@ -114,7 +122,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
           action: "session:create",
           resourceType: "session",
           resourceId: result.session.id,
-          repositoryId: result.session.repositoryId,
+          ...(result.session.repositoryId ? { repositoryId: result.session.repositoryId } : {}),
           outcome: "denied",
         }))
       )
@@ -127,7 +135,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
         action: "session:create",
         resourceType: "session",
         resourceId: result.session.id,
-        repositoryId: result.session.repositoryId,
+        ...(result.session.repositoryId ? { repositoryId: result.session.repositoryId } : {}),
         metadata: { created: result.created },
       }))
     )

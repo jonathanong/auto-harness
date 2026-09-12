@@ -48,6 +48,12 @@ export {
   isSessionResult,
   normalizeSessionResult,
 } from "./session-result.ts";
+export type {
+  WorkspacePoolAttachment,
+  WorkspaceSessionInput,
+  WorkspaceSetupProfile,
+  WorkspaceSlot,
+} from "./workspace.ts";
 
 export {
   HOST_CAPABILITIES,

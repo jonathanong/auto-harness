@@ -119,12 +119,14 @@ export function mergeQueuedShardHeads<
 function queuedSessionsByShard(
   sessions: Iterable<SessionRecord>,
   shardCount: number,
-  type: "prompt" | "scheduled",
+  type: "prompt" | "scheduled" | "workspace",
 ): SessionRecord[][] {
   const shards = Array.from({ length: shardCount }, () => [] as SessionRecord[]);
   for (const session of sessions) {
     if (session.status !== "queued") continue;
-    if (type === "scheduled" ? session.type !== "scheduled" : session.type === "scheduled") {
+    const sessionType =
+      session.type === "scheduled" || session.type === "workspace" ? session.type : "prompt";
+    if (sessionType !== type) {
       continue;
     }
     const shard = shards[session.queueShard];
@@ -138,7 +140,7 @@ function queuedSessionsByShard(
 export function orderedQueuedSessions(
   sessions: Iterable<SessionRecord>,
   shardCount: number,
-  type: "prompt" | "scheduled",
+  type: "prompt" | "scheduled" | "workspace",
 ): SessionRecord[] {
   return mergeQueuedShardHeads(queuedSessionsByShard(sessions, shardCount, type));
 }

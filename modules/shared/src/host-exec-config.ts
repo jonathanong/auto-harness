@@ -61,6 +61,14 @@ export function applyHostExecConfig(
     })),
     providerAccounts: existing.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(existing.capabilities ?? [])],
+    ...(existing.workspacePools !== undefined
+      ? {
+          workspacePools: existing.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
   };
   if (patch.setupScript !== undefined) assignOptionalString(next, "setupScript", patch.setupScript);
   if (patch.allowedRoots !== undefined) {
@@ -328,6 +336,14 @@ export function preserveHostExecConfig(
     })),
     providerAccounts: incoming.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(incoming.capabilities ?? [])],
+    ...(incoming.workspacePools !== undefined
+      ? {
+          workspacePools: incoming.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
   };
   if (!Object.hasOwn(next, "setupScript")) restoreScript(next, existing ?? undefined);
   else if (next.setupScript === "") delete next.setupScript;

@@ -191,5 +191,58 @@ export async function offlineHostAndRequeueDurableImpl(
     }
   }
   await disconnectScheduledMainCheckouts(state, hostId, connectionId, reason, requeued);
+  if (
+    typeof state.storage.listWorkspaceSlotsByHost !== "function" ||
+    typeof state.storage.getWorkspaceSlot !== "function" ||
+    typeof state.storage.putWorkspaceSlot !== "function"
+  ) {
+    return requeued;
+  }
+  for (const slot of await state.storage.listWorkspaceSlotsByHost(hostId)) {
+    if (slot.connectionId && slot.connectionId !== connectionId) continue;
+    const session = slot.currentSessionId
+      ? await state.storage.getSession(slot.currentSessionId)
+      : null;
+    if (session && (session.status === "running" || session.status === "cancelled")) {
+      const released = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: null,
+        workspaceSlotId: slot.id,
+        attemptId: session.attemptId!,
+        status: session.status === "running" ? "queued" : "cancelled",
+        expectedStatus: session.status,
+        queueShard: session.queueShard,
+        ...(session.status === "running" ? { errorMessage: reason } : {}),
+        fence: { hostId, connectionId },
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
+      });
+      if (!released) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      const next = {
+        ...session,
+        status: session.status === "running" ? ("queued" as const) : session.status,
+        workspaceSlotId: null,
+        hostId: null,
+        ...(session.status === "running" ? { errorMessage: reason } : {}),
+      };
+      delete next.workspaceSlotLease;
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      state.sessions.set(session.id, next);
+      state.pendingAcks.delete(session.id);
+      if (session.status === "running") requeued.push(session.id);
+    }
+    const current = (await state.storage.getWorkspaceSlot(slot.id)) ?? slot;
+    const offline = { ...current, online: false };
+    await state.storage.putWorkspaceSlot(offline);
+    state.workspaceSlots.set(slot.id, offline);
+  }
   return requeued;
 }

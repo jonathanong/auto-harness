@@ -8,7 +8,16 @@ export type { UsageRecord } from "../usage.ts";
 
 export type SessionRecord = {
   id: string;
+  /** Empty only for workspace sessions; public and host-wire shapes expose that as null. */
   repositoryId: string;
+  /** Workspace-pool execution is mutually exclusive with repository execution. */
+  workspacePoolId?: string;
+  /** Assigned host-local workspace slot; absent/null while queued. */
+  workspaceSlotId?: string | null;
+  /** Approved pool-local setup profile selected for this run. */
+  setupProfileId?: string;
+  /** Resolved cleanup policy, frozen when the session is admitted. */
+  destroyWorkspaceAfter?: boolean;
   prompt: string;
   target: TargetRef;
   fallbacks: TargetRef[];
@@ -24,6 +33,8 @@ export type SessionRecord = {
     commandId: string;
     hostId: string;
     worktreeId: string | null;
+    workspacePoolId?: string;
+    workspaceSlotId?: string;
     /** Immutable token for the assignment that resolved this route. */
     attemptId: string;
   };
@@ -84,6 +95,8 @@ export type SessionRecord = {
   resumeFallback?: boolean;
   /** The repository main checkout is held by this scheduled session. */
   mainCheckoutLease?: boolean;
+  /** A host-local non-git workspace slot is held by this session. */
+  workspaceSlotLease?: boolean;
   /** Attempt-owned provider-account concurrency lease, if this route is gated. */
   providerAccountLease?: {
     concurrencyId: string;
@@ -101,6 +114,20 @@ export type SessionRecord = {
   };
   /** Idempotency marker for post-transition repair of a pre-lease host slot. */
   legacyHostAssignmentReleased?: boolean;
+};
+
+export type WorkspaceSlotRecord = {
+  id: string;
+  name: string;
+  hostId: string;
+  workspacePoolId: string;
+  path: string;
+  status: "idle" | "busy" | "error";
+  online: boolean;
+  currentSessionId?: string | null;
+  connectionId?: string;
+  lastAssignedAt?: string | null;
+  errorMessage?: string;
 };
 
 export type WorktreeRecord = {

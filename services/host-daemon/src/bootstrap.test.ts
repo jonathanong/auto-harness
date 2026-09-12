@@ -51,6 +51,34 @@ describe("fetchHostInventory", () => {
     expect(config.repositories).toEqual([]);
   });
 
+  it("rejects a workspace inventory without a usable allowed root", async () => {
+    const fetchFn = vi.fn(async () =>
+      Response.json({
+        allowedRoots: ["/definitely-not-an-auto-harness-root"],
+        repositories: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [
+              {
+                id: "slot",
+                name: "slot",
+                path: "/definitely-not-an-auto-harness-root/slot",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      fetchHostInventory(
+        { hostId: "a", apiUrl: "http://x" },
+        { fetchFn: fetchFn as unknown as typeof fetch },
+      ),
+    ).rejects.toBeInstanceOf(HostInventoryPolicyError);
+  });
+
   it("emptyDaemonConfig and inventoryFingerprint", () => {
     const empty = emptyDaemonConfig({ hostId: "a", apiUrl: "http://x", apiKey: "k" });
     expect(empty.repositories).toEqual([]);

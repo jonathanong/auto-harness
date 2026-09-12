@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- strict inventory parsing stays colocated with its field rules. */
 import {
   HOST_CAPABILITIES,
   isHostCapability,
@@ -5,6 +6,7 @@ import {
   type HostCapability,
 } from "./host-capabilities.ts";
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
+import type { WorkspacePoolAttachment, WorkspaceSlot } from "./workspace.ts";
 import { parseProviderAccountOverrides, parseProviderAccounts } from "./provider-account-parse.ts";
 import { isValidSlugName, SLUG_NAME_HINT } from "./slug.ts";
 import {
@@ -138,6 +140,57 @@ function parseCapabilities(value: unknown): HostCapability[] {
   return normalizeHostCapabilities(value as HostCapability[] | undefined);
 }
 
+function parseWorkspacePools(value: unknown): WorkspacePoolAttachment[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new TypeError("workspacePools must be an array");
+  const pools = value.map((rawPool, poolIndex): WorkspacePoolAttachment => {
+    if (!isRecord(rawPool)) throw new TypeError(`workspacePools[${poolIndex}] invalid`);
+    const workspacePoolId = requireString(
+      rawPool,
+      "workspacePoolId",
+      `workspacePools[${poolIndex}]`,
+    );
+    if (!Array.isArray(rawPool.slots)) {
+      throw new TypeError(`workspacePools.${workspacePoolId}.slots must be an array`);
+    }
+    const slots = rawPool.slots.map((rawSlot, slotIndex): WorkspaceSlot => {
+      if (!isRecord(rawSlot)) {
+        throw new TypeError(`workspacePools.${workspacePoolId}.slots[${slotIndex}] invalid`);
+      }
+      return {
+        id: requireString(rawSlot, "id", `workspacePools.${workspacePoolId}.slots[${slotIndex}]`),
+        name: requireString(
+          rawSlot,
+          "name",
+          `workspacePools.${workspacePoolId}.slots[${slotIndex}]`,
+        ),
+        path: requireString(
+          rawSlot,
+          "path",
+          `workspacePools.${workspacePoolId}.slots[${slotIndex}]`,
+        ),
+      };
+    });
+    if (new Set(slots.map((slot) => slot.id)).size !== slots.length) {
+      throw new TypeError(`workspacePools.${workspacePoolId}.slots ids must be unique`);
+    }
+    return { workspacePoolId, slots };
+  });
+  if (new Set(pools.map((pool) => pool.workspacePoolId)).size !== pools.length) {
+    throw new TypeError("workspacePools ids must be unique");
+  }
+  const slotIds = new Set<string>();
+  for (const pool of pools) {
+    for (const slot of pool.slots) {
+      if (slotIds.has(slot.id)) {
+        throw new TypeError(`workspace slot ids must be unique: ${slot.id}`);
+      }
+      slotIds.add(slot.id);
+    }
+  }
+  return pools;
+}
+
 /** Strictly parse the operator-editable host inventory document. */
 export function parseHostInventory(
   value: unknown,
@@ -151,6 +204,7 @@ export function parseHostInventory(
   const requiredEnvironment = parseRequiredEnvironment(value.requiredEnvironment);
   const updateConfig =
     value.updateConfig === undefined ? undefined : parseHostUpdateConfig(value.updateConfig);
+  const workspacePools = parseWorkspacePools(value.workspacePools);
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
   }
@@ -170,6 +224,7 @@ export function parseHostInventory(
     ...(allowedRoots !== undefined ? { allowedRoots } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(updateConfig !== undefined ? { updateConfig } : {}),
+    ...(workspacePools !== undefined ? { workspacePools } : {}),
     repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),

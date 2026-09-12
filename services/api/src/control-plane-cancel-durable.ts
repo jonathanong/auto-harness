@@ -33,7 +33,7 @@ export async function cancelSessionDurable(
     if (!session.mainCheckoutLease) {
       if (
         assignment.status !== "running" ||
-        !assignment.worktreeId ||
+        (!assignment.worktreeId && !assignment.workspaceSlotId) ||
         !assignment.hostId ||
         !assignment.assignmentConnectionId ||
         !assignment.attemptId
@@ -44,7 +44,8 @@ export async function cancelSessionDurable(
       const errorMessage = "cancelled by operator";
       const cancelled = await state.storage.cancelRunningSession({
         sessionId: id,
-        worktreeId: assignment.worktreeId,
+        worktreeId: assignment.worktreeId ?? null,
+        ...(assignment.workspaceSlotId ? { workspaceSlotId: assignment.workspaceSlotId } : {}),
         hostId: assignment.hostId,
         connectionId: assignment.assignmentConnectionId,
         attemptId: assignment.attemptId,

@@ -1,0 +1,200 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  createWorkspacePool,
+  deleteWorkspacePool,
+  deleteWorkspaceSlot,
+  getWorkspacePool,
+  getWorkspaceSlot,
+  listWorkspacePools,
+  listWorkspaceSlots,
+  listWorkspaceSlotsByHost,
+  listWorkspaceSlotsByPool,
+  putWorkspacePool,
+  putWorkspaceSlot,
+  tryAssignWorkspaceSession,
+} from "./plane-storage-workspaces.ts";
+import type { PlaneStorageCtx, WorkspacePoolRecord } from "./plane-storage-types.ts";
+import type { WorkspaceSlotRecord } from "./types.ts";
+
+const pool: WorkspacePoolRecord = {
+  id: "pool",
+  name: "pool",
+  setupProfiles: [],
+  destroyWorkspaceAfter: false,
+  createdAt: "now",
+  updatedAt: "now",
+};
+const slot: WorkspaceSlotRecord = {
+  id: "slot",
+  workspacePoolId: "pool",
+  hostId: "host",
+  name: "slot",
+  path: "/tmp/slot",
+  status: "idle",
+  online: true,
+  currentSessionId: null,
+  connectionId: "connection",
+  updatedAt: "now",
+};
+
+function ctx(send: (command: { input: Record<string, unknown> }) => Promise<unknown>) {
+  return {
+    doc: { send } as never,
+    tables: {
+      workspacePools: "WorkspacePools",
+      workspaceSlots: "WorkspaceSlots",
+      sessions: "Sessions",
+      hostLocks: "HostLocks",
+      providerAccounts: "ProviderAccounts",
+      concurrencyLocks: "ConcurrencyLocks",
+    } as never,
+  } satisfies PlaneStorageCtx;
+}
+
+const conditional = () =>
+  Object.assign(new Error("lost"), { name: "ConditionalCheckFailedException" });
+
+function cancelled(length: number, failed: number, secondFailure?: number) {
+  return {
+    name: "TransactionCanceledException",
+    CancellationReasons: Array.from({ length }, (_, index) => ({
+      Code: index === failed || index === secondFailure ? "ConditionalCheckFailed" : "None",
+    })),
+  };
+}
+
+const assignment = {
+  sessionId: "session",
+  workspacePoolId: "pool",
+  workspaceSlotId: "slot",
+  hostId: "host",
+  connectionId: "connection",
+  now: "2026-01-01T00:00:00.000Z",
+  attemptId: "attempt",
+  resolvedArgv: ["echo"],
+  resolvedRoute: {
+    targetIndex: 0,
+    commandId: "command",
+    hostId: "host",
+    worktreeId: null,
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    attemptId: "attempt",
+  },
+  queueShard: 0,
+};
+
+describe("workspace storage", () => {
+  it("reads, writes, lists, queries, and deletes pool and slot rows", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Item: pool })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Items: [pool] })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Item: slot })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Items: [slot] })
+      .mockResolvedValueOnce({ Items: [slot] })
+      .mockResolvedValueOnce({ Items: [slot] });
+    const storage = ctx(send);
+
+    await expect(putWorkspacePool(storage, pool)).resolves.toBeUndefined();
+    await expect(createWorkspacePool(storage, pool)).resolves.toBe(true);
+    await expect(getWorkspacePool(storage, pool.id)).resolves.toEqual(pool);
+    await expect(getWorkspacePool(storage, "missing")).resolves.toBeNull();
+    await expect(listWorkspacePools(storage)).resolves.toEqual([pool]);
+    await expect(deleteWorkspacePool(storage, pool.id)).resolves.toBe(true);
+    await expect(putWorkspaceSlot(storage, slot)).resolves.toBeUndefined();
+    await expect(getWorkspaceSlot(storage, slot.id)).resolves.toEqual(slot);
+    await expect(getWorkspaceSlot(storage, "missing")).resolves.toBeNull();
+    await expect(listWorkspaceSlots(storage)).resolves.toEqual([slot]);
+    await expect(listWorkspaceSlotsByPool(storage, pool.id)).resolves.toEqual([slot]);
+    await expect(listWorkspaceSlotsByHost(storage, slot.hostId)).resolves.toEqual([slot]);
+    await expect(deleteWorkspaceSlot(storage, slot.id)).resolves.toBeUndefined();
+
+    expect(send.mock.calls.map(([command]) => command.input.TableName)).toEqual(
+      expect.arrayContaining(["WorkspacePools", "WorkspaceSlots"]),
+    );
+    expect(send.mock.calls[10]?.[0].input).toMatchObject({
+      IndexName: "workspacePoolId-id",
+      ExpressionAttributeValues: { ":value": "pool" },
+    });
+  });
+
+  it("handles conditional catalog outcomes and owned deletion", async () => {
+    await expect(
+      createWorkspacePool(ctx(vi.fn().mockRejectedValue(conditional())), pool),
+    ).resolves.toBe(false);
+    await expect(
+      deleteWorkspacePool(ctx(vi.fn().mockRejectedValue(conditional())), pool.id),
+    ).resolves.toBe(false);
+    const owned = vi.fn().mockResolvedValue({});
+    await expect(
+      deleteWorkspacePool(ctx(owned), pool.id, [
+        { key: "workspace-pool:pool", owner: "owner", now: "now" },
+      ]),
+    ).resolves.toBe(true);
+    expect(owned.mock.calls[0]?.[0].input.TransactItems).toHaveLength(2);
+
+    const unavailable = new Error("unavailable");
+    await expect(
+      createWorkspacePool(ctx(vi.fn().mockRejectedValue(unavailable)), pool),
+    ).rejects.toThrow("unavailable");
+    await expect(
+      deleteWorkspacePool(ctx(vi.fn().mockRejectedValue(unavailable)), pool.id),
+    ).rejects.toThrow("unavailable");
+  });
+
+  it("atomically assigns a slot and distinguishes provider lease collisions", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(tryAssignWorkspaceSession(ctx(send), assignment)).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0].input.TransactItems).toHaveLength(4);
+    expect(send.mock.calls[0]?.[0].input.TransactItems[2].Update).toMatchObject({
+      Key: { id: "session" },
+      ExpressionAttributeValues: expect.objectContaining({
+        ":poolId": "pool",
+        ":slotId": "slot",
+      }),
+    });
+
+    const withLease = {
+      ...assignment,
+      providerId: "provider",
+      providerAccountId: "account",
+      providerAccountLease: {
+        concurrencyId: "acct:account:0",
+        providerAccountId: "account",
+        slot: 0,
+        attemptId: "attempt",
+      },
+      hostAssignmentLease: { hostId: "host" },
+      hostAssignmentCap: 2,
+      legacyAssignmentCount: 0,
+    };
+    await expect(tryAssignWorkspaceSession(ctx(send), withLease)).resolves.toBe(true);
+    const items = send.mock.calls[1]?.[0].input.TransactItems;
+    expect(items).toHaveLength(6);
+    expect(items[5].Put.Item).toMatchObject({ providerAccountId: "account", slot: 0 });
+
+    await expect(
+      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(conditional())), assignment),
+    ).resolves.toBe(false);
+    await expect(
+      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(6, 5))), withLease),
+    ).resolves.toBe("lease_collision");
+    await expect(
+      tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(cancelled(6, 5, 2))), withLease),
+    ).resolves.toBe(false);
+    await expect(
+      tryAssignWorkspaceSession(
+        ctx(vi.fn().mockRejectedValue(new Error("unavailable"))),
+        assignment,
+      ),
+    ).rejects.toThrow("unavailable");
+  });
+});

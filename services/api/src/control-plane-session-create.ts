@@ -42,10 +42,25 @@ export function validateSessionCreate(
     metadata: record.metadata,
     type: record.type,
     source: record.source,
+    workspacePoolId: record.workspacePoolId,
+    setupProfileId: record.setupProfileId,
+    destroyWorkspaceAfter: record.destroyWorkspaceAfter,
+    setupScript: record.setupScript,
   });
   if (!validated.ok) return validated;
-  const admissionFailure = repositoryAdmissionFailure(state, validated.value.repositoryId);
-  if (admissionFailure) return admissionFailure;
+  if (validated.value.repositoryId) {
+    const admissionFailure = repositoryAdmissionFailure(state, validated.value.repositoryId);
+    if (admissionFailure) return admissionFailure;
+  } else {
+    const pool = state.workspacePools.get(validated.value.workspacePoolId!);
+    if (!pool) return { ok: false, error: "workspace pool not found", code: "NOT_FOUND" };
+    if (
+      validated.value.setupProfileId &&
+      !pool.setupProfiles.some((profile) => profile.id === validated.value.setupProfileId)
+    ) {
+      return { ok: false, error: "workspace setup profile not found", code: "NOT_FOUND" };
+    }
+  }
   const targets = resolveTargetDisplayNames(
     state,
     validated.value.target,
@@ -73,7 +88,17 @@ export function buildSessionRecord(
   const createdAt = state.now();
   return {
     id,
-    repositoryId: v.repositoryId,
+    repositoryId: v.repositoryId ?? "",
+    ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
+    ...(v.setupProfileId ? { setupProfileId: v.setupProfileId } : {}),
+    ...(v.workspacePoolId
+      ? {
+          destroyWorkspaceAfter:
+            v.destroyWorkspaceAfter ??
+            state.workspacePools.get(v.workspacePoolId)?.destroyWorkspaceAfter ??
+            false,
+        }
+      : {}),
     prompt: v.prompt,
     target: v.target,
     fallbacks: v.fallbacks,

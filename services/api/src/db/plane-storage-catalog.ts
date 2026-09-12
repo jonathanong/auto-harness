@@ -372,6 +372,12 @@ export async function updateScheduleManagement(
       "createdAt = :createdAt",
     ];
     const remove = ["targetLabels"];
+    if (rec.workspacePoolId === undefined) remove.push("workspacePoolId");
+    else set.push("workspacePoolId = :workspacePoolId");
+    if (rec.setupProfileId === undefined) remove.push("setupProfileId");
+    else set.push("setupProfileId = :setupProfileId");
+    if (rec.destroyWorkspaceAfter === undefined) remove.push("destroyWorkspaceAfter");
+    else set.push("destroyWorkspaceAfter = :destroyWorkspaceAfter");
     if (rec.ref === undefined) remove.push("#ref");
     else set.push("#ref = :ref");
     if (rec.concurrencyId === undefined) remove.push("concurrencyId");
@@ -403,6 +409,11 @@ export async function updateScheduleManagement(
         ":nextRunAt": rec.nextRunAt,
         ":expectedNextRunAt": expectedNextRunAt,
         ":createdAt": rec.createdAt,
+        ...(rec.workspacePoolId === undefined ? {} : { ":workspacePoolId": rec.workspacePoolId }),
+        ...(rec.setupProfileId === undefined ? {} : { ":setupProfileId": rec.setupProfileId }),
+        ...(rec.destroyWorkspaceAfter === undefined
+          ? {}
+          : { ":destroyWorkspaceAfter": rec.destroyWorkspaceAfter }),
         ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
         ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
         ...(rec.principalId === undefined ? {} : { ":principalId": rec.principalId }),
@@ -937,9 +948,34 @@ export async function tryClaimScheduleAndCreateSession(
     (typeof opts.session.metadata?.createdBy === "string"
       ? opts.session.metadata.createdBy
       : undefined);
-  const drainCheck = sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId);
+  const drainCheck = opts.session.repositoryId
+    ? sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId)
+    : null;
   const principalCheck = principalExistsCheck(ctx, principalId);
-  const activityPut = sessionDrainActivityPut(ctx, opts.session);
+  const activityPut = opts.session.repositoryId ? sessionDrainActivityPut(ctx, opts.session) : null;
+  const repositoryCheck = opts.session.repositoryId
+    ? {
+        ConditionCheck: {
+          TableName: ctx.tables.repositories,
+          Key: { id: opts.session.repositoryId },
+          ConditionExpression:
+            "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)" +
+            (opts.activationCutoffAt
+              ? " AND activationCutoffAt = :activationCutoffAt"
+              : " AND attribute_not_exists(activationCutoffAt)"),
+          ExpressionAttributeValues: {
+            ":active": "active",
+            ...(opts.activationCutoffAt ? { ":activationCutoffAt": opts.activationCutoffAt } : {}),
+          },
+        },
+      }
+    : {
+        ConditionCheck: {
+          TableName: ctx.tables.workspacePools,
+          Key: { id: opts.session.workspacePoolId },
+          ConditionExpression: "attribute_exists(id)",
+        },
+      };
   const markerChecks = withMarkerTable(
     ctx,
     markerConditions(scheduleClaimMarkers(opts.lastRunAt, opts.session)),
@@ -980,23 +1016,7 @@ export async function tryClaimScheduleAndCreateSession(
           },
           ...(drainCheck ? [drainCheck] : []),
           ...(principalCheck ? [principalCheck] : []),
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.repositories,
-              Key: { id: opts.session.repositoryId },
-              ConditionExpression:
-                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)" +
-                (opts.activationCutoffAt
-                  ? " AND activationCutoffAt = :activationCutoffAt"
-                  : " AND attribute_not_exists(activationCutoffAt)"),
-              ExpressionAttributeValues: {
-                ":active": "active",
-                ...(opts.activationCutoffAt
-                  ? { ":activationCutoffAt": opts.activationCutoffAt }
-                  : {}),
-              },
-            },
-          },
+          repositoryCheck,
           ...markerChecks,
           {
             Put: {
@@ -1069,7 +1089,13 @@ function scheduleClaimMarkers(
     "repositoryId" | "principalId" | "metadata" | "target" | "fallbacks"
   >,
 ): DeletionMarker[] {
-  const keys = new Set<string>([`repository:${session.repositoryId}`]);
+  const keys = new Set<string>(
+    session.repositoryId
+      ? [`repository:${session.repositoryId}`]
+      : typeof (session as SessionRecord).workspacePoolId === "string"
+        ? [`workspace-pool:${(session as SessionRecord).workspacePoolId}`]
+        : [],
+  );
   const principalId =
     session.principalId ??
     (typeof session.metadata?.createdBy === "string" ? session.metadata.createdBy : undefined);

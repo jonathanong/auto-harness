@@ -112,8 +112,13 @@ export async function triggerScheduleDurable(
   if (!schedule.principalId) {
     return { ok: false, error: "schedule must be claimed by an authenticated principal" };
   }
-  const repository = await getRepositoryDurable(state, schedule.repositoryId);
-  if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
+  const repository = schedule.repositoryId
+    ? await getRepositoryDurable(state, schedule.repositoryId)
+    : null;
+  if (
+    schedule.repositoryId &&
+    (!repository || repositoryAdmissionFailure(state, schedule.repositoryId))
+  ) {
     return { ok: false, error: "repository admission is closed" };
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
@@ -128,7 +133,9 @@ export async function triggerScheduleDurable(
     expectedNextRunAt: schedule.nextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
-    ...(repository.activationCutoffAt ? { activationCutoffAt: repository.activationCutoffAt } : {}),
+    ...(repository?.activationCutoffAt
+      ? { activationCutoffAt: repository.activationCutoffAt }
+      : {}),
     session,
   });
   if (outcome.kind === "duplicate") {
@@ -205,7 +212,9 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  const activationCutoffAt = state.repositories.get(schedule.repositoryId)?.activationCutoffAt;
+  const activationCutoffAt = schedule.repositoryId
+    ? state.repositories.get(schedule.repositoryId)?.activationCutoffAt
+    : undefined;
   if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
     schedule.nextRunAt = newNextRunAt;
     return null;
@@ -281,9 +290,11 @@ export async function tryClaimScheduleFireDurable(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  const repository = await getRepositoryDurable(state, schedule.repositoryId);
-  if (!repository) return null;
-  const activationCutoffAt = repository.activationCutoffAt;
+  const repository = schedule.repositoryId
+    ? await getRepositoryDurable(state, schedule.repositoryId)
+    : null;
+  if (schedule.repositoryId && !repository) return null;
+  const activationCutoffAt = repository?.activationCutoffAt;
   if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
     let skipped = false;
     if (repositoryAdmissionOpen(repository.admissionState)) {
@@ -503,6 +514,11 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
   return {
     id,
     repositoryId: schedule.repositoryId,
+    ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
+    ...(schedule.setupProfileId ? { setupProfileId: schedule.setupProfileId } : {}),
+    ...(schedule.workspacePoolId
+      ? { destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false }
+      : {}),
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: [...schedule.fallbacks],
@@ -515,7 +531,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt,
-    type: "scheduled",
+    type: schedule.workspacePoolId ? "workspace" : "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
@@ -532,7 +548,7 @@ function resolveScheduledTarget(
 }
 
 function scheduledSessionInput(schedule: ScheduleRecord): {
-  repositoryId: string;
+  repositoryId: string | null;
   prompt: string;
   target: import("@auto-harness/shared").TargetRef;
   fallbacks: import("@auto-harness/shared").TargetRef[];
@@ -543,20 +559,28 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
   ref?: string;
   concurrencyId?: string;
   scheduleId?: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   metadata?: Record<string, unknown>;
 } {
   return {
-    repositoryId: schedule.repositoryId,
+    repositoryId: schedule.workspacePoolId ? null : schedule.repositoryId,
     prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: schedule.fallbacks,
     timeout: schedule.timeout,
     queueTtlSeconds: schedule.queueTtlSeconds,
-    type: "scheduled",
+    type: schedule.workspacePoolId ? "workspace" : "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
+    ...(schedule.setupProfileId ? { setupProfileId: schedule.setupProfileId } : {}),
+    ...(schedule.workspacePoolId
+      ? { destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false }
+      : {}),
     ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
   };
 }

@@ -35,6 +35,7 @@ import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.t
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import { WorkspaceManager } from "./workspace-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
@@ -150,6 +151,7 @@ function inflightKey(sessionId: string, attemptId: string): string {
 export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
+  private readonly workspaces: WorkspaceManager;
   private readonly inflight = new Map<string, InflightSession>();
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
   private readonly pendingStatusMaxAgeMs: number;
@@ -234,8 +236,10 @@ export class DaemonLoop {
       : new UsageCapturingProcessRunner(innerCommandRunner, this.now);
     const git = createGitClient(processRunner);
     this.worktrees = new WorktreeManager(options.config, git);
+    this.workspaces = new WorkspaceManager(options.config);
     this.runner = new SessionRunner({
       worktrees: this.worktrees,
+      workspaces: this.workspaces,
       processRunner,
       commandRunner,
       ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
@@ -255,6 +259,7 @@ export class DaemonLoop {
   async start(): Promise<void> {
     this.runtime ??= await probeGitReadiness(this.processRunner);
     if (this.runtime.gitReady) await this.worktrees.ensureAll();
+    await this.workspaces.ensureAll();
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${thrownMessage(err)}`);
@@ -312,9 +317,11 @@ export class DaemonLoop {
         },
         () => {
           this.worktrees.clearAllowedRootsPolicy();
+          this.workspaces.clearAllowedRootsPolicy();
           this.inventoryPolicyBlocked = false;
           this.inventoryPolicyDrainPublished = false;
         },
+        this.workspaces,
       );
     } catch (error) {
       this.worktrees.restoreAllowedRootsPolicy(previousRootsPolicy);
@@ -325,6 +332,7 @@ export class DaemonLoop {
   }
   async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
     this.worktrees.setAllowedRootsPolicy(allowedRoots);
+    this.workspaces.setAllowedRootsPolicy(allowedRoots);
     if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
     // Set the local gate before network I/O so an already-connected peer cannot assign work in
     // the interval before its durable registration is marked draining.
@@ -686,7 +694,7 @@ export class DaemonLoop {
       this.onLog?.(`draining: refused assign ${msg.sessionId}`);
       return;
     }
-    if (!this.runtime?.gitReady) {
+    if (!this.runtime?.gitReady && (msg.sessionType as string | undefined) !== "workspace") {
       this.onLog?.(`git not ready: refused assign ${msg.sessionId}`);
       return;
     }
@@ -769,13 +777,28 @@ export class DaemonLoop {
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
     signal: AbortSignal,
   ): Promise<void> {
+    const workspace = (msg.sessionType as string | undefined) === "workspace";
+    const workspaceFields = msg as typeof msg & {
+      workspacePoolId?: unknown;
+      workspaceSlotId?: unknown;
+    };
     // Scheduled assignments deliberately use the repository's main checkout;
-    // ordinary assignments must name an inventoried worktree.
-    if ((msg.worktreeId === null) !== (msg.sessionType === "scheduled")) {
+    // ordinary assignments name a worktree; workspace assignments name a slot.
+    if (
+      (!workspace && (msg.worktreeId === null) !== (msg.sessionType === "scheduled")) ||
+      (workspace &&
+        (msg.worktreeId !== null ||
+          typeof workspaceFields.workspacePoolId !== "string" ||
+          !workspaceFields.workspacePoolId ||
+          typeof workspaceFields.workspaceSlotId !== "string" ||
+          !workspaceFields.workspaceSlotId))
+    ) {
       throw new Error(
-        msg.worktreeId === null
-          ? `assignment ${msg.sessionId} is missing a worktree`
-          : `scheduled assignment ${msg.sessionId} must use the main checkout`,
+        workspace
+          ? `workspace assignment ${msg.sessionId} is missing a workspace slot`
+          : msg.worktreeId === null
+            ? `assignment ${msg.sessionId} is missing a worktree`
+            : `scheduled assignment ${msg.sessionId} must use the main checkout`,
       );
     }
     await this.outbound.send(
@@ -808,6 +831,8 @@ export class DaemonLoop {
     if (result.logs.length > 0) {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
     }
+    const assignedWorkspaceSlotId =
+      msg.sessionType === "workspace" ? msg.workspaceSlotId : undefined;
     const statusMessage: Extract<HostToServerMessage, { type: "session:status" }> = {
       type: "session:status",
       sessionId: msg.sessionId,
@@ -821,6 +846,14 @@ export class DaemonLoop {
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
       ...(this.supportsSessionResult && result.result !== undefined
         ? { result: result.result }
+        : {}),
+      ...(result.workspaceSlotId !== undefined
+        ? { workspaceSlotId: result.workspaceSlotId }
+        : typeof assignedWorkspaceSlotId === "string"
+          ? { workspaceSlotId: assignedWorkspaceSlotId }
+          : {}),
+      ...(result.workspaceSlotError !== undefined
+        ? { workspaceSlotError: result.workspaceSlotError }
         : {}),
     };
     // Record the completed result before waiting for the output queue. A

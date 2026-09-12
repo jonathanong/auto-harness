@@ -1,0 +1,120 @@
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { parseDaemonConfig } from "./config.ts";
+import { WorkspaceManager } from "./workspace-manager.ts";
+
+const roots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    roots.splice(0).map(async (root) => await rm(root, { recursive: true, force: true })),
+  );
+});
+
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), "ah-workspace-"));
+  roots.push(root);
+  const slot = join(root, "pool", "slot");
+  await mkdir(slot, { recursive: true });
+  return {
+    root,
+    slot,
+    config: parseDaemonConfig({
+      hostId: "workspace-host",
+      allowedRoots: [root],
+      repositories: [],
+      workspacePools: [
+        { workspacePoolId: "pool", slots: [{ id: "slot", name: "isolated", path: slot }] },
+      ],
+    }),
+  };
+}
+
+describe("WorkspaceManager", () => {
+  it("serializes a slot and recreates exactly that slot after cleanup", async () => {
+    const { slot, config } = await fixture();
+    await writeFile(join(slot, "leftover.txt"), "old state");
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+
+    await expect(manager.claim("pool", "slot")).rejects.toThrow("already busy");
+    await manager.destroyWorkspaceAfter(claimed);
+
+    expect(await readdir(slot)).toEqual([]);
+    await expect(manager.claim("pool", "slot")).resolves.toMatchObject({
+      cwd: expect.stringMatching(/\/pool\/slot$/),
+    });
+  });
+
+  it("refuses unrestricted and root-equal destructive workspace paths", async () => {
+    const { root, config } = await fixture();
+    config.allowedRoots = [];
+    await expect(new WorkspaceManager(config).claim("pool", "slot")).rejects.toThrow(
+      "require non-empty allowedRoots",
+    );
+
+    config.allowedRoots = [root];
+    config.workspacePools![0]!.slots[0]!.path = root;
+    await expect(new WorkspaceManager(config).claim("pool", "slot")).rejects.toThrow(
+      "strict descendant",
+    );
+  });
+
+  it("rejects unknown and aborted claims without leaving the slot busy", async () => {
+    const { config } = await fixture();
+    const manager = new WorkspaceManager(config);
+    await expect(manager.claim("missing", "slot")).rejects.toThrow("Unknown workspace pool");
+    await expect(manager.claim("pool", "missing")).rejects.toThrow("Unknown workspace slot");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(manager.claim("pool", "slot", controller.signal)).rejects.toThrow();
+    const claimed = await manager.claim("pool", "slot");
+    manager.release(claimed);
+    await expect(manager.claim("pool", "slot")).resolves.toMatchObject({ slot: { id: "slot" } });
+  });
+
+  it("revalidates policy and inventory changes before execution", async () => {
+    const { root, slot, config } = await fixture();
+    config.setupScript = "echo host setup";
+    const manager = new WorkspaceManager(config);
+    await expect(manager.ensureAll()).resolves.toBeUndefined();
+    await expect(manager.ensureAll(config)).resolves.toBeUndefined();
+    const claimed = await manager.claim("pool", "slot");
+    expect(claimed).toMatchObject({
+      cwd: expect.stringMatching(/\/pool\/slot$/),
+      hostSetupScript: "echo host setup",
+      allowedRoots: [root],
+    });
+    manager.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).resolves.toBeUndefined();
+    config.workspacePools![0]!.slots[0]!.path = join(root, "moved");
+    manager.noteInventoryChange();
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow("inventory changed");
+    manager.release(claimed);
+
+    manager.setAllowedRootsPolicy([]);
+    await expect(manager.claim("pool", "slot")).rejects.toThrow("non-empty allowedRoots");
+    manager.clearAllowedRootsPolicy();
+    config.workspacePools![0]!.slots[0]!.path = slot;
+    await expect(manager.claim("pool", "slot")).resolves.toMatchObject({
+      cwd: expect.stringMatching(/\/pool\/slot$/),
+    });
+  });
+
+  it("always releases a claim when destructive cleanup fails", async () => {
+    const { config } = await fixture();
+    const remove = vi.fn(async () => {
+      throw new Error("cleanup unavailable");
+    });
+    const manager = new WorkspaceManager(config, {
+      rm: remove,
+      mkdir: vi.fn(async () => undefined),
+    });
+    const claimed = await manager.claim("pool", "slot");
+    await expect(manager.destroyWorkspaceAfter(claimed)).rejects.toThrow("cleanup unavailable");
+    await expect(manager.claim("pool", "slot")).resolves.toMatchObject({ slot: { id: "slot" } });
+  });
+});

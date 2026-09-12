@@ -34,9 +34,14 @@ export const SESSION_ERROR_CODES = [
   "resume_failed",
   "unknown_command_profile",
   "setup_failed",
+  "workspace_cleanup_failed",
 ] as const satisfies readonly SessionErrorCode[];
 
-export const SESSION_TYPES = ["prompt", "scheduled"] as const satisfies readonly SessionType[];
+export const SESSION_TYPES = [
+  "prompt",
+  "scheduled",
+  "workspace",
+] as const satisfies readonly SessionType[];
 export const SESSION_SOURCES = [
   "api",
   "ui",

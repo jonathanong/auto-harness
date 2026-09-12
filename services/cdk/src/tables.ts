@@ -40,6 +40,26 @@ export const DYNAMO_TABLES: TableDef[] = [
     ],
   },
   {
+    name: "WorkspacePools",
+    partitionKey: { name: "id", type: "S" },
+  },
+  {
+    name: "WorkspaceSlots",
+    partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "workspacePoolId-id",
+        partitionKey: { name: "workspacePoolId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+      {
+        name: "hostId-id",
+        partitionKey: { name: "hostId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+    ],
+  },
+  {
     name: "Sessions",
     partitionKey: { name: "id", type: "S" },
     gsis: [

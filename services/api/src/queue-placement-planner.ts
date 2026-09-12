@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- one evaluator covers prompt, scheduled, and UI availability. */
-import type { ProviderCatalog, TargetRef } from "@auto-harness/shared";
+import { hasHostCapability, type ProviderCatalog, type TargetRef } from "@auto-harness/shared";
 
-import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { compareWorktreesForRoundRobin } from "./control-plane-ordering.ts";
 import {
@@ -20,6 +20,7 @@ import {
   resolveSessionTargetRouteAt,
   resolveSessionTargetRoutesAt,
   resolveScheduledSessionTargets,
+  resolveWorkspaceSessionTargets,
   type ResolvedSessionRoute,
 } from "./control-plane-session-target.ts";
 
@@ -53,6 +54,14 @@ type ScheduledPlacementPlan =
         connectionId: string;
         route: ResolvedSessionRoute;
       }>;
+    };
+
+export type WorkspacePlacementPlan =
+  | { action: "expire" }
+  | { action: "skip"; reason: PlacementWaitReason }
+  | {
+      action: "assign";
+      candidates: Array<{ slot: WorkspaceSlotRecord; route: ResolvedSessionRoute }>;
     };
 
 type ScheduledEligibleHost = { hostId: string; connectionId: string };
@@ -122,6 +131,58 @@ function eligibleRoutes(
 
 function queueExpired(session: SessionRecord, nowMs: number): boolean {
   return Date.parse(session.queueExpiresAt) <= nowMs;
+}
+
+function compareWorkspaceSlots(a: WorkspaceSlotRecord, b: WorkspaceSlotRecord): number {
+  return (a.lastAssignedAt ?? "").localeCompare(b.lastAssignedAt ?? "") || a.id.localeCompare(b.id);
+}
+
+/** Host-only placement for non-git workspace sessions. */
+export function planWorkspacePlacement(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  nowMs: number,
+): WorkspacePlacementPlan {
+  if (queueExpired(session, nowMs)) return { action: "expire" };
+  if (!session.workspacePoolId) return { action: "skip", reason: "no_idle_worktree" };
+  const eligible = [...state.workspaceSlots.values()]
+    .filter((slot) => {
+      const connectionId = state.hostConnection.get(slot.hostId);
+      const connection = connectionId ? state.connections.get(connectionId) : undefined;
+      return (
+        slot.workspacePoolId === session.workspacePoolId &&
+        slot.status === "idle" &&
+        slot.online &&
+        hasHostCapability(connection?.capabilities, "workspace-sessions") &&
+        hostAcceptsNewAssignments(state, slot.hostId) &&
+        hostHasAssignmentCapacity(state, slot.hostId) &&
+        hostEnvironmentReady(state, slot.hostId, "") &&
+        !state.drainingHosts.has(slot.hostId) &&
+        !state.disconnectedHosts.has(slot.hostId)
+      );
+    })
+    .toSorted(compareWorkspaceSlots);
+  const candidates: Array<{ slot: WorkspaceSlotRecord; route: ResolvedSessionRoute }> = [];
+  for (let targetIndex = 0; targetIndex <= session.fallbacks.length; targetIndex += 1) {
+    for (const slot of eligible) {
+      for (const route of resolveWorkspaceSessionTargets(state, catalog, session, slot)) {
+        if (route.targetIndex !== targetIndex) continue;
+        if (
+          hostProviderAccountReady(state, slot.hostId, route.providerAccountId) &&
+          accountHasLeaseCapacity(state, route.providerAccountId)
+        ) {
+          candidates.push({ slot, route });
+        }
+      }
+    }
+  }
+  return candidates.length
+    ? { action: "assign", candidates }
+    : {
+        action: "skip",
+        reason: eligible.length ? "no_eligible_route" : "no_eligible_host",
+      };
 }
 
 export function planPromptPlacement(

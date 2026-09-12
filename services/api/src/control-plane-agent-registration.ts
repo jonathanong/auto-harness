@@ -202,6 +202,14 @@ export function buildRegisteredInventory(
     ...(previous?.requiredEnvironment !== undefined
       ? { requiredEnvironment: [...previous.requiredEnvironment] }
       : {}),
+    ...(previous?.workspacePools !== undefined
+      ? {
+          workspacePools: previous.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
     // Advance the optimistic-concurrency counter rather than dropping it: a registration
     // is another whole-document replace, and leaving the attribute off would fail the
     // next conditional edit from the UI.

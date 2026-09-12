@@ -24,6 +24,7 @@ describe("new session route", () => {
           { online: true },
         ],
       },
+      "/api/v1/workspace-pools": { items: [] },
     });
     const html = await renderPage(NewSessionPage(blankSearchParams));
     expect(html).toContain('data-pw="create-session-label-codex"');
@@ -40,15 +41,19 @@ describe("new session route", () => {
       "/api/v1/session-targets": "__throw_string__",
       "/api/v1/repositories": "__throw_string__",
       "/api/v1/worktrees": "__throw_string__",
+      "/api/v1/workspace-pools": "__throw_string__",
     });
     let html = await renderPage(NewSessionPage(blankSearchParams));
-    expect(html).toContain("targets: offline; repositories: offline; labels: offline");
+    expect(html).toContain(
+      "targets: offline; repositories: offline; labels: offline; workspace pools: offline",
+    );
     expect(html).toContain('data-pw="create-session-labels-empty"');
 
     stubApi({
       "/api/v1/session-targets": {},
       "/api/v1/repositories": {},
       "/api/v1/worktrees": {},
+      "/api/v1/workspace-pools": { items: [] },
     });
     html = await renderPage(NewSessionPage(blankSearchParams));
     expect(html).toContain('data-pw="form-create-session"');
@@ -61,6 +66,7 @@ describe("new session route", () => {
       },
       "/api/v1/repositories": { items: [{ id: "other-repository", name: "other" }] },
       "/api/v1/worktrees": { items: [{ online: true, labels: ["online"] }] },
+      "/api/v1/workspace-pools": { items: [] },
       "/api/v1/sessions/source%2Fsession": {
         repositoryId: "source-repository",
         prompt: "secret-looking prompt stays in the response body, not the URL",
@@ -102,6 +108,7 @@ describe("new session route", () => {
       },
       "/api/v1/repositories": { items: [{ id: "source-repository", name: "Source" }] },
       "/api/v1/worktrees": { items: [] },
+      "/api/v1/workspace-pools": { items: [] },
       "/api/v1/sessions/source": {
         repositoryId: "source-repository",
         prompt: "again",
@@ -126,17 +133,19 @@ describe("new session route", () => {
       "/api/v1/session-targets": {},
       "/api/v1/repositories": {},
       "/api/v1/worktrees": {},
+      "/api/v1/workspace-pools": { items: [] },
     });
     let html = await renderPage(
       NewSessionPage({ searchParams: Promise.resolve({ cloneFrom: ["one", "two"] }) }),
     );
     expect(html).toContain("clone source: invalid id");
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(4);
 
     fetch = stubApi({
       "/api/v1/session-targets": {},
       "/api/v1/repositories": {},
       "/api/v1/worktrees": {},
+      "/api/v1/workspace-pools": { items: [] },
       "/api/v1/sessions/missing": new Error("private detail"),
     });
     html = await renderPage(
@@ -144,12 +153,13 @@ describe("new session route", () => {
     );
     expect(html).toContain("clone source: session could not be loaded");
     expect(html).not.toContain("private detail");
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenCalledTimes(5);
 
     stubApi({
       "/api/v1/session-targets": {},
       "/api/v1/repositories": {},
       "/api/v1/worktrees": {},
+      "/api/v1/workspace-pools": { items: [] },
       "/api/v1/sessions/incomplete": { repositoryId: "repo", target: { commandId: "cmd" } },
     });
     html = await renderPage(

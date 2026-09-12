@@ -77,6 +77,39 @@ describe("host registration repository inventory", () => {
     ]);
   });
 
+  it("preserves attached workspace pools across daemon registration", () => {
+    const plane = new ControlPlane({
+      connectionIdFactory: () => "connection",
+      workspacePoolIdFactory: () => "pool",
+    });
+    expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
+    expect(
+      plane.putHostInventory("host", {
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "research", path: "/srv/research" }],
+          },
+        ],
+        repositories: [],
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [],
+        worktrees: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")?.workspacePools).toEqual([
+      {
+        workspacePoolId: "pool",
+        slots: [{ id: "slot", name: "research", path: "/srv/research" }],
+      },
+    ]);
+  });
+
   it("preserves repository and worktree exec config omitted from registration", () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
     expect(

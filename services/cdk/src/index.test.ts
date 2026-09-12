@@ -8,6 +8,8 @@ describe("CDK table catalog", () => {
       "Users",
       "Repositories",
       "Worktrees",
+      "WorkspacePools",
+      "WorkspaceSlots",
       "Sessions",
       "SessionDrains",
       "HostLocks",
@@ -36,6 +38,18 @@ describe("CDK table catalog", () => {
       {
         name: "repositoryId-id",
         partitionKey: { name: "repositoryId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+    ]);
+    expect(DYNAMO_TABLES.find((table) => table.name === "WorkspaceSlots")?.gsis).toEqual([
+      {
+        name: "workspacePoolId-id",
+        partitionKey: { name: "workspacePoolId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+      {
+        name: "hostId-id",
+        partitionKey: { name: "hostId", type: "S" },
         sortKey: { name: "id", type: "S" },
       },
     ]);

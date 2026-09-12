@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { mayAccessRepository } from "./auth-policy.ts";
+import { may, mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import {
@@ -8,12 +8,16 @@ import {
   sendSessionForbidden,
 } from "./local-routes-session-access.ts";
 
-const CLONE_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
+const CLONE_BODY_FIELDS = new Set(["prompt", "timeout", "priority", "destroyWorkspaceAfter"]);
 
-function parseCloneBody(
-  body: unknown,
-):
-  | { ok: true; prompt?: string; timeout?: number; priority?: number }
+function parseCloneBody(body: unknown):
+  | {
+      ok: true;
+      prompt?: string;
+      timeout?: number;
+      priority?: number;
+      destroyWorkspaceAfter?: boolean;
+    }
   | { ok: false; error: string } {
   if (body === undefined || body === null) return { ok: true };
   if (typeof body !== "object" || Array.isArray(body)) {
@@ -41,11 +45,20 @@ function parseCloneBody(
   if (record.priority !== undefined && !Number.isInteger(record.priority)) {
     return { ok: false, error: "priority must be an integer" };
   }
+  if (
+    record.destroyWorkspaceAfter !== undefined &&
+    typeof record.destroyWorkspaceAfter !== "boolean"
+  ) {
+    return { ok: false, error: "destroyWorkspaceAfter must be a boolean" };
+  }
   return {
     ok: true,
     ...(typeof record.prompt === "string" ? { prompt: record.prompt } : {}),
     ...(typeof record.timeout === "number" ? { timeout: record.timeout } : {}),
     ...(typeof record.priority === "number" ? { priority: record.priority } : {}),
+    ...(typeof record.destroyWorkspaceAfter === "boolean"
+      ? { destroyWorkspaceAfter: record.destroyWorkspaceAfter }
+      : {}),
   };
 }
 
@@ -149,12 +162,31 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
       () => send(res, 400, { error: { code: "VALIDATION_ERROR", message: parsed.error } }),
     );
   }
+  if (
+    parsed.destroyWorkspaceAfter !== undefined &&
+    (!ctx.principal || !may(ctx.principal, "fleet:exec-config"))
+  ) {
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        repositoryId: source.repositoryId,
+        outcome: "denied",
+      },
+      () => sendSessionForbidden(res),
+    );
+  }
 
   try {
     const result = await plane.cloneSessionDurable(sourceId, {
       ...(parsed.prompt !== undefined ? { prompt: parsed.prompt } : {}),
       ...(parsed.timeout !== undefined ? { timeout: parsed.timeout } : {}),
       ...(parsed.priority !== undefined ? { priority: parsed.priority } : {}),
+      ...(parsed.destroyWorkspaceAfter !== undefined
+        ? { destroyWorkspaceAfter: parsed.destroyWorkspaceAfter }
+        : {}),
       ...(ctx.principal ? { createdBy: ctx.principal.id } : {}),
     });
     if (!result.ok) {
@@ -183,7 +215,7 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
                 ...(result.operationId
                   ? {
                       operationId: result.operationId,
-                      statusUrl: `/api/v1/repositories/${encodeURIComponent(source.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+                      statusUrl: `/api/v1/repositories/${encodeURIComponent(source.repositoryId ?? "")}/session-drains/${encodeURIComponent(result.operationId)}`,
                     }
                   : {}),
               },

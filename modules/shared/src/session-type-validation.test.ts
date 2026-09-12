@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isSessionSource, isSessionType, validateCreateSessionInput } from "./validation.ts";
+import {
+  isSessionErrorCode,
+  isSessionSource,
+  isSessionType,
+  validateCreateSessionInput,
+} from "./validation.ts";
 
 const base = {
   repositoryId: "repo",
@@ -13,9 +18,11 @@ describe("session type validation", () => {
   it("recognizes only supported type/source values", () => {
     expect(isSessionType("prompt")).toBe(true);
     expect(isSessionType("scheduled")).toBe(true);
+    expect(isSessionType("workspace")).toBe(true);
     expect(isSessionType("other")).toBe(false);
     expect(isSessionSource("schedule")).toBe(true);
     expect(isSessionSource("other")).toBe(false);
+    expect(isSessionErrorCode("workspace_cleanup_failed")).toBe(true);
   });
 
   it("defaults a prompt session and validates explicit values", () => {
@@ -28,7 +35,7 @@ describe("session type validation", () => {
     ).toMatchObject({ ok: true, value: { type: "scheduled", source: "schedule" } });
     expect(validateCreateSessionInput({ ...base, type: "other" })).toEqual({
       ok: false,
-      error: "type must be prompt or scheduled",
+      error: "type must be prompt, scheduled, or workspace",
     });
     expect(validateCreateSessionInput({ ...base, source: "other" })).toEqual({
       ok: false,
@@ -52,5 +59,23 @@ describe("session type validation", () => {
     expect(
       validateCreateSessionInput({ ...base, type: "scheduled", source: "schedule", ref: "main" }),
     ).toMatchObject({ ok: true, value: { ref: "main", type: "scheduled" } });
+  });
+
+  it("permits a blank prompt only for schedule-fired workspace sessions", () => {
+    const workspace = {
+      ...base,
+      repositoryId: null,
+      workspacePoolId: "pool",
+      prompt: "",
+      type: "workspace",
+    };
+    expect(validateCreateSessionInput(workspace)).toEqual({
+      ok: false,
+      error: "prompt is required",
+    });
+    expect(validateCreateSessionInput({ ...workspace, source: "schedule" })).toMatchObject({
+      ok: true,
+      value: { prompt: "", type: "workspace", source: "schedule" },
+    });
   });
 });

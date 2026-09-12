@@ -100,7 +100,7 @@ export type ConnectionRecord = {
   /** Durable viewer subscriptions used across API Gateway Lambda invocations. */
   viewerSubscriptions?: Array<{
     sessionId: string;
-    repositoryId: string;
+    repositoryId: string | null;
     status: string;
     after?: string;
   }>;
@@ -110,7 +110,11 @@ export type ConnectionRecord = {
 
 export type ScheduleRecord = {
   id: string;
+  /** Empty only for workspace schedules; HTTP responses expose it as null. */
   repositoryId: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   principalId?: string;
   name: string;
   target: TargetRef;
@@ -200,6 +204,22 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
+export type WorkspaceSetupProfile = {
+  id: string;
+  name: string;
+  script: string;
+};
+
+export type WorkspacePoolRecord = {
+  id: string;
+  name: string;
+  setupProfiles: WorkspaceSetupProfile[];
+  defaultSetupProfileId?: string;
+  destroyWorkspaceAfter: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** The durable form of a repository-list query. Storage continuation keys stay opaque. */
 export type RepositoryPageQuery = {
   limit: number;
@@ -278,6 +298,10 @@ export type HostInventoryRecord = {
       providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;
   }>;
+  workspacePools?: Array<{
+    workspacePoolId: string;
+    slots: Array<{ id: string; name: string; path: string }>;
+  }>;
   providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[] | undefined;
@@ -291,14 +315,17 @@ export type HostInventoryRecord = {
 };
 
 export function sessionToItem(session: SessionRecord): Record<string, unknown> {
-  return {
+  const item: Record<string, unknown> = {
     ...session,
     statusShard: statusShardAttr(session.status, session.queueShard),
     createdOrder: createdOrderKey(session),
     queueOrder: queueOrderKey(session),
     priorityOrder: priorityOrderKey(session),
-    repositoryPriorityOrder: repositoryPriorityOrderKey(session.repositoryId, session),
   };
+  if (session.repositoryId) {
+    item.repositoryPriorityOrder = repositoryPriorityOrderKey(session.repositoryId, session);
+  }
+  return item;
 }
 
 /** Remove the legacy label-named display snapshot while hydrating persisted records. */

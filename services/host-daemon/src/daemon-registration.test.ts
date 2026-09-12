@@ -61,7 +61,7 @@ describe("daemon registration", () => {
         type: "host:register",
         hostId: "h",
         capabilities: {
-          features: ["scheduled-main-checkout"],
+          features: ["scheduled-main-checkout", "workspace-sessions"],
           maxConcurrentAssignments: 64,
         },
         providerAccountReadiness: [],
@@ -101,7 +101,10 @@ describe("daemon registration", () => {
       profiles,
     );
     expect(messages[0]).toMatchObject({
-      capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 2 },
+      capabilities: {
+        features: ["scheduled-main-checkout", "workspace-sessions"],
+        maxConcurrentAssignments: 2,
+      },
       providerAccountReadiness: [
         expect.objectContaining({ providerAccountId: "acct", ready: false }),
       ],

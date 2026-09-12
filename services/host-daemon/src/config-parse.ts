@@ -7,7 +7,13 @@ import {
   parseHostUpdateConfig,
 } from "@auto-harness/shared";
 
-import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
+import type {
+  DaemonConfig,
+  RepositoryConfig,
+  WorkspacePoolConfig,
+  WorkspaceSlotConfig,
+  WorktreeConfig,
+} from "./config-types.ts";
 import { isForeignWindowsAbsolutePath } from "./allowed-roots.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +106,37 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
   return repo;
 }
 
+function parseWorkspaceSlot(raw: unknown, poolId: string, index: number): WorkspaceSlotConfig {
+  if (!isRecord(raw)) throw new Error(`workspacePools.${poolId}.slots[${index}] invalid`);
+  return {
+    id: requireString(raw, "id", `workspacePools.${poolId}.slots[${index}]`),
+    name: requireString(raw, "name", `workspacePools.${poolId}.slots[${index}]`),
+    path: requireString(raw, "path", `workspacePools.${poolId}.slots[${index}]`),
+  };
+}
+
+function parseWorkspacePools(raw: unknown): WorkspacePoolConfig[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new Error("workspacePools must be an array");
+  const pools = raw.map((candidate, index) => {
+    if (!isRecord(candidate)) throw new Error(`workspacePools[${index}] invalid`);
+    const workspacePoolId = requireString(candidate, "workspacePoolId", `workspacePools[${index}]`);
+    if (!Array.isArray(candidate.slots))
+      throw new Error(`workspacePools.${workspacePoolId}.slots must be an array`);
+    const slots = candidate.slots.map((slot, slotIndex) =>
+      parseWorkspaceSlot(slot, workspacePoolId, slotIndex),
+    );
+    if (new Set(slots.map((slot) => slot.id)).size !== slots.length) {
+      throw new Error(`workspacePools.${workspacePoolId}.slots ids must be unique`);
+    }
+    return { workspacePoolId, slots };
+  });
+  if (new Set(pools.map((pool) => pool.workspacePoolId)).size !== pools.length) {
+    throw new Error("workspacePools ids must be unique");
+  }
+  return pools;
+}
+
 type ParseDaemonConfigOptions = {
   /** Allow zero repositories (agent registered before host inventory is set). */
   allowEmptyRepositories?: boolean;
@@ -117,8 +154,12 @@ export function parseDaemonConfig(
   if (!Array.isArray(raw.repositories)) {
     throw new Error("repositories must be an array");
   }
-  if (raw.repositories.length === 0 && !options.allowEmptyRepositories) {
-    throw new Error("repositories must be a non-empty array");
+  if (
+    raw.repositories.length === 0 &&
+    !options.allowEmptyRepositories &&
+    !Array.isArray(raw.workspacePools)
+  ) {
+    throw new Error("repositories must be a non-empty array unless workspacePools are configured");
   }
 
   const config: DaemonConfig = {
@@ -134,6 +175,15 @@ export function parseDaemonConfig(
   }
   const allowedRoots = parseAllowedRoots(raw.allowedRoots);
   if (allowedRoots?.length) config.allowedRoots = allowedRoots;
+  const workspacePools = parseWorkspacePools(raw.workspacePools);
+  if (
+    raw.repositories.length === 0 &&
+    !options.allowEmptyRepositories &&
+    workspacePools?.length === 0
+  ) {
+    throw new Error("repositories must be a non-empty array unless workspacePools are configured");
+  }
+  if (workspacePools?.length) config.workspacePools = workspacePools;
   const requiredEnvironment = parseRequiredEnvironment(raw.requiredEnvironment);
   for (const repository of config.repositories) {
     assertHostRepositoryRequiredEnvironmentLimit(

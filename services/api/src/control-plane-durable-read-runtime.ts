@@ -1,6 +1,7 @@
+/* eslint-disable max-lines -- scheduler hydration keeps related bounded durable reads together. */
 import type { LogQuery, LogRecord } from "./control-plane-types.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
-import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { selectLogs } from "./log-query.ts";
 import { rebuildProviderAccountLeasesFromSessions } from "./control-plane-provider-account-leases.ts";
@@ -10,6 +11,7 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { hydrateRunningSessions } from "./control-plane-durable-read-hydration.ts";
+import { listWorkspacePoolsDurable } from "./control-plane-workspace-pools.ts";
 
 export async function getSessionDurable(
   state: ControlPlaneState,
@@ -158,6 +160,33 @@ export async function listWorktreesForRepositoryDurable(
   return worktrees;
 }
 
+export async function listWorkspaceSlotsDurable(
+  state: ControlPlaneState,
+  workspacePoolId?: string,
+): Promise<WorkspaceSlotRecord[]> {
+  if (
+    !state.storage ||
+    typeof state.storage.listWorkspaceSlots !== "function" ||
+    typeof state.storage.listWorkspaceSlotsByPool !== "function"
+  ) {
+    return [...state.workspaceSlots.values()].filter(
+      (slot) => workspacePoolId === undefined || slot.workspacePoolId === workspacePoolId,
+    );
+  }
+  const slots = workspacePoolId
+    ? await state.storage.listWorkspaceSlotsByPool(workspacePoolId)
+    : await state.storage.listWorkspaceSlots();
+  if (workspacePoolId) {
+    for (const [id, slot] of state.workspaceSlots) {
+      if (slot.workspacePoolId === workspacePoolId) state.workspaceSlots.delete(id);
+    }
+  } else {
+    state.workspaceSlots.clear();
+  }
+  for (const slot of slots) state.workspaceSlots.set(slot.id, { ...slot });
+  return slots;
+}
+
 export async function refreshSchedulerReadModel(state: ControlPlaneState): Promise<void> {
   const storage: DynamoPlaneStorage | undefined = state.storage;
   if (!storage) {
@@ -165,6 +194,8 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
       refreshTargetCatalogDurable(state),
       listHostInventoriesDurable(state),
       listRepositoriesDurable(state),
+      listWorkspacePoolsDurable(state),
+      listWorkspaceSlotsDurable(state),
     ]);
     return;
   }
@@ -174,6 +205,8 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
     refreshTargetCatalogDurable(state),
     listHostInventoriesDurable(state),
     listRepositoriesDurable(state),
+    listWorkspacePoolsDurable(state),
+    listWorkspaceSlotsDurable(state),
   ]);
   state.connections.clear();
   state.hostConnection.clear();

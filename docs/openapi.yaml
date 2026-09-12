@@ -81,6 +81,96 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /workspace-pools:
+    get:
+      operationId: listWorkspacePools
+      summary: List workspace pools
+      responses:
+        "200":
+          description: Workspace pools with public setup-profile metadata; scripts are not returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/WorkspacePool" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createWorkspacePool
+      summary: Create a workspace pool
+      description: Admin-only configuration API. Setup profile scripts are accepted only here and are never session or schedule inputs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspacePoolInput" }
+      responses:
+        "201":
+          description: Workspace pool created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspacePoolExecConfig" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /workspace-pools/{workspacePoolId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspacePoolId"
+    get:
+      operationId: getWorkspacePool
+      summary: Get a workspace pool
+      responses:
+        "200":
+          description: Workspace pool with public setup-profile metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspacePool" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateWorkspacePool
+      summary: Update a workspace pool
+      description: Admin-only configuration API. Active sessions keep their admitted profile and cleanup policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspacePoolInput" }
+      responses:
+        "200":
+          description: Workspace pool updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspacePoolExecConfig" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteWorkspacePool
+      summary: Delete a workspace pool
+      description: Deletion is blocked while attached to a host or referenced by a schedule or queued/running session; retire attachments first, then delete and recreate when changing the pool definition.
+      responses:
+        "204": { description: Workspace pool deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /workspace-pools/{workspacePoolId}/exec-config:
+    parameters:
+      - $ref: "#/components/parameters/WorkspacePoolId"
+    get:
+      operationId: getWorkspacePoolExecConfig
+      summary: Get a workspace pool including setup scripts
+      description: Requires fleet:exec-config. This is the only read API that returns setup script bodies.
+      responses:
+        "200":
+          description: Workspace pool including setup-profile script bodies
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspacePoolExecConfig" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
   /repositories:
     get:
       operationId: listRepositories
@@ -324,6 +414,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    WorkspacePoolId:
+      name: workspacePoolId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
     ProviderAccountId:
       name: providerAccountId
       in: path
@@ -394,10 +489,13 @@ components:
         - required: [commandId]
       additionalProperties: false
     CreateSession:
+      description: Repository-backed or host-scoped workspace session input. Raw setupScript is intentionally not accepted.
+      oneOf:
+        - $ref: "#/components/schemas/CreateRepositorySession"
+        - $ref: "#/components/schemas/CreateWorkspaceSession"
+    CreateSessionCommon:
       type: object
-      required: [repositoryId, prompt, target, timeout]
       properties:
-        repositoryId: { type: string }
         prompt:
           type: string
           minLength: 1
@@ -426,7 +524,40 @@ components:
               - type: number
               - type: boolean
               - type: "null"
-      additionalProperties: false
+        source:
+          type: string
+          enum: [api, ui, webhook, schedule]
+    CreateRepositorySession:
+      allOf:
+        - $ref: "#/components/schemas/CreateSessionCommon"
+        - type: object
+          required: [repositoryId, prompt, target, timeout]
+          properties:
+            repositoryId: { type: string, minLength: 1 }
+            type:
+              type: string
+              enum: [prompt, scheduled]
+          unevaluatedProperties: false
+    CreateWorkspaceSession:
+      allOf:
+        - $ref: "#/components/schemas/CreateSessionCommon"
+        - type: object
+          required: [repositoryId, workspacePoolId, prompt, target, timeout]
+          properties:
+            repositoryId: { type: "null" }
+            workspacePoolId: { type: string, minLength: 1 }
+            setupProfileId: { type: string, minLength: 1 }
+            destroyWorkspaceAfter:
+              type: boolean
+              default: false
+            type:
+              type: string
+              const: workspace
+            ref: false
+            requiredLabels:
+              type: array
+              maxItems: 0
+          unevaluatedProperties: false
     ResumeSession:
       type: object
       properties:
@@ -460,9 +591,16 @@ components:
       required: [id, repositoryId, prompt, target, status, createdAt, url]
       properties:
         id: { type: string }
-        repositoryId: { type: string }
+        repositoryId: { type: [string, "null"] }
+        workspacePoolId: { type: string }
+        workspaceSlotId: { type: [string, "null"] }
+        setupProfileId: { type: string }
+        destroyWorkspaceAfter: { type: boolean, default: false }
         prompt: { type: string }
         target: { $ref: "#/components/schemas/Target" }
+        type:
+          type: string
+          enum: [prompt, scheduled, workspace]
         status: { type: string }
         createdAt: { type: string, format: date-time }
         url: { type: string }
@@ -502,6 +640,66 @@ components:
           description: Unique pull request associated with the final branch, at most 2,048 UTF-8 bytes.
       additionalProperties: false
       description: Untrusted, best-effort terminal outcome bounded to 32 KiB overall. Absent on list responses and when unavailable.
+    WorkspaceSetupProfileInput:
+      type: object
+      required: [id, name, script]
+      properties:
+        id: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        script:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          description: Trusted administrator script; never accepted on a session or schedule.
+      additionalProperties: false
+    WorkspaceSetupProfile:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+      additionalProperties: false
+    WorkspacePoolInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        setupProfiles:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceSetupProfileInput" }
+        defaultSetupProfileId: { type: [string, "null"] }
+        destroyWorkspaceAfter:
+          type: boolean
+          default: false
+      additionalProperties: false
+    WorkspacePool:
+      type: object
+      required: [id, name, setupProfiles, destroyWorkspaceAfter, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        setupProfiles:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceSetupProfile" }
+        defaultSetupProfileId: { type: string }
+        destroyWorkspaceAfter: { type: boolean, default: false }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      additionalProperties: false
+    WorkspacePoolExecConfig:
+      type: object
+      required: [id, name, setupProfiles, destroyWorkspaceAfter, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        setupProfiles:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceSetupProfileInput" }
+        defaultSetupProfileId: { type: string }
+        destroyWorkspaceAfter: { type: boolean, default: false }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      additionalProperties: false
     SessionCreateResult:
       allOf:
         - $ref: "#/components/schemas/Session"

@@ -27,6 +27,8 @@ export type {
   ProviderAccountRecord,
   ProviderRecord,
   RepositoryRecord,
+  WorkspacePoolRecord,
+  WorkspaceSetupProfile,
   SessionDrainRecord,
 } from "./plane-storage-types.ts";
 export {

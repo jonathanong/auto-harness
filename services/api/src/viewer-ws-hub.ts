@@ -25,7 +25,7 @@ const MAX_DRAIN_PAGES = 4;
 
 type Subscription = {
   sessionId: string;
-  repositoryId: string;
+  repositoryId: string | null;
   after?: string;
   status: string;
   replaying: boolean;
@@ -264,7 +264,7 @@ export function attachViewerWsHub(
 async function loadSession(
   plane: ControlPlane,
   sessionId: string,
-): Promise<{ repositoryId: string; status: string } | null> {
+): Promise<{ repositoryId: string | null; status: string } | null> {
   if (plane.state.storage) return await plane.state.storage.getSession(sessionId);
   return plane.getSession(sessionId);
 }
