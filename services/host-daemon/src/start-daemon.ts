@@ -9,6 +9,7 @@ import { DaemonLoop } from "./daemon-loop.ts";
 import { startLivenessLog } from "./liveness-log.ts";
 import { RepeatedLogSuppressor } from "./repeated-log-suppressor.ts";
 import { loadExecutionProfiles } from "./execution-profiles.ts";
+import { loadGitHubAppConfig } from "./github-app.ts";
 import {
   confirmDaemonUpdateBoot,
   notifySystemdReady,
@@ -268,6 +269,11 @@ async function connectDaemon(
   // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
   const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
   const registrationTimeoutMs = options.registrationTimeoutMs ?? 30_000;
+  // Validate file-backed configuration before creating a reconnecting transport. A load failure
+  // must return control to the supervisor rather than leave an unowned WebSocket retry loop alive.
+  const childEnvSource = options.childEnvSource ?? process.env;
+  const githubApp = loadGitHubAppConfig(childEnvSource);
+  const executionProfiles = loadExecutionProfiles(childEnvSource);
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
@@ -284,7 +290,8 @@ async function connectDaemon(
     transport,
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
-    executionProfiles: loadExecutionProfiles(options.childEnvSource ?? process.env),
+    executionProfiles,
+    ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();

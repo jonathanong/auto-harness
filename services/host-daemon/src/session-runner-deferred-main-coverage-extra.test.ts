@@ -66,6 +66,10 @@ describe("SessionRunner deferred main coverage", () => {
       process.env,
       undefined,
       undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       async () => false,
     );
     expect(result).toMatchObject({ status: "timed_out", exitCode: null });

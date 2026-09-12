@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- shutdown races share one durable-handoff lifecycle fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
@@ -180,6 +181,50 @@ describe("DaemonLoop terminal-hook shutdown", () => {
 
       finishCompletionSend();
       await waiting;
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("leaves queued durable handoffs for a replacement daemon during shutdown", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const hookStarted = vi.fn(async () => ({ exitCode: 0 }));
+      const loop = new DaemonLoop({
+        config,
+        transport: createLoopbackTransport({ sendToServer: () => undefined }),
+      });
+      await loop.start();
+      (
+        loop as unknown as { processRunner: { run(): Promise<{ exitCode: number }> } }
+      ).processRunner = { run: hookStarted };
+      const pending = (
+        loop as unknown as {
+          pendingTerminalHookHandoffs: Map<string, object>;
+        }
+      ).pendingTerminalHookHandoffs;
+      pending.set("queued-during-shutdown", {
+        message: {
+          type: "session:terminal-hook",
+          handoffId: "queued-during-shutdown",
+          sessionId: "lost",
+          repositoryId: "demo",
+          worktreeId: "wt-1",
+          status: "failed",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        expiresAtMs: Date.now() + 60_000,
+        complete: false,
+        executing: false,
+        sending: false,
+      });
+
+      loop.prepareForShutdown();
+      await loop.waitForIdle();
+
+      expect(hookStarted).not.toHaveBeenCalled();
+      expect(pending.has("queued-during-shutdown")).toBe(true);
       loop.stop();
     } finally {
       cleanup();

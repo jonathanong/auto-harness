@@ -44,7 +44,9 @@ Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_K
 paths are refused rather than being tied to the supervisor working directory. Unknown top-level
 or per-profile JSON keys are rejected. Optional
 `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` overrides the
-host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`.
+host-wide assignment cap advertised as `capabilities.maxConcurrentAssignments`. To disable a
+previously persisted GitHub App configuration, export `HARNESS_GITHUB_APP_CONFIG=''` and rerun
+`install-service`; the existing service env entry is cleared.
 
 ---
 

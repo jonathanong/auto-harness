@@ -81,6 +81,10 @@ describe("claimed session PTY output", () => {
       process.env,
       undefined,
       undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       async () => {
         authorizationEntered();
         return await authorization;
@@ -129,6 +133,10 @@ describe("claimed session PTY output", () => {
       process.env,
       undefined,
       undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       async () => {
         controller.abort();
         return false;
@@ -163,6 +171,10 @@ describe("claimed session PTY output", () => {
         },
       },
       process.env,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       undefined,
       undefined,
       async () => false,

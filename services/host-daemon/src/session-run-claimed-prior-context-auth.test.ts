@@ -35,7 +35,7 @@ function claimedAt(dir: string) {
 }
 
 async function runWithAuthorization(
-  authorize: Parameters<typeof runClaimedSession>[12],
+  authorize: Parameters<typeof runClaimedSession>[16],
   signal?: AbortSignal,
 ) {
   const logs: unknown[] = [];
@@ -52,6 +52,10 @@ async function runWithAuthorization(
     process.env,
     undefined,
     identity,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
     authorize,
   );
 }
@@ -139,6 +143,10 @@ describe("prior-session context cleanup around command-start authorization", () 
         process.env,
         undefined,
         identity,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
         authorize,
       );
 

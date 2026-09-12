@@ -88,4 +88,32 @@ describe("SessionRunner lifecycle transcript", () => {
     );
     expect(result.logs.some((chunk) => chunk.content.includes("runner boom"))).toBe(false);
   });
+
+  it("closes the transcript when claimed execution rejects outside its lifecycle", async () => {
+    const { sessionRunner } = setup({
+      async run() {
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    const assign = baseAssign();
+    Object.defineProperty(assign, "resolvedArgv", {
+      get() {
+        throw new Error("resolved argv unavailable");
+      },
+    });
+
+    const result = await sessionRunner.run(assign);
+
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "resolved argv unavailable",
+    });
+    expect(result.logs.map((chunk) => chunk.content)).toEqual(
+      expect.arrayContaining([
+        "Process execution failed.",
+        "Session failed at 2026-08-01T00:00:00.000Z",
+      ]),
+    );
+  });
 });

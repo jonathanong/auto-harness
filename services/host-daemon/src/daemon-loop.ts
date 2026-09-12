@@ -44,6 +44,7 @@ import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
 import { runTerminalHook } from "./terminal-hook.ts";
 import { collectSessionResult } from "./session-result.ts";
+import { loadGitHubAppConfig, type GitHubAppConfig } from "./github-app.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -54,6 +55,7 @@ export type DaemonLoopOptions = {
   childEnvSource?: NodeJS.ProcessEnv;
   /** Daemon-local execution profiles keyed by provider account. */
   executionProfiles?: ExecutionProfiles;
+  githubApp?: GitHubAppConfig;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -286,6 +288,7 @@ export class DaemonLoop {
   private readonly processRunner: ProcessRunner;
   private readonly childEnvSource: NodeJS.ProcessEnv;
   private readonly executionProfiles: ExecutionProfiles;
+  private readonly githubApp: GitHubAppConfig | undefined;
   private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
@@ -324,6 +327,8 @@ export class DaemonLoop {
     this.childEnvSource = options.childEnvSource ?? process.env;
     this.runtime = options.runtime;
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
+    this.githubApp =
+      options.githubApp ?? loadGitHubAppConfig(options.childEnvSource ?? process.env);
     const innerCommandRunner =
       options.commandRunner ??
       (options.processRunner ? processRunner : new PtyProcessRunner({ emitUntruncated: true }));
@@ -342,6 +347,7 @@ export class DaemonLoop {
       commandRunner,
       ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
       executionProfiles: this.executionProfiles,
+      ...(this.githubApp ? { githubApp: this.githubApp } : {}),
       ...(options.config.apiUrl
         ? {
             identity: {
@@ -1167,6 +1173,7 @@ export class DaemonLoop {
 
   private startTerminalHookHandoff(pending: PendingTerminalHookHandoff): void {
     if (
+      this.settleDeferredOnCompletion ||
       pending.complete ||
       pending.executing ||
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending ||

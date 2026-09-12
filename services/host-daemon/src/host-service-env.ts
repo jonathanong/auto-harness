@@ -34,10 +34,10 @@ export function loadEnvFileIfPresent(
 export function applyEnvFile(contents: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };
   for (const [key, value] of Object.entries(parseEnvFile(contents))) {
-    // An explicitly blank updater value disables an already-persisted update
-    // configuration. Other historical identity fields retain their existing
-    // "empty means load the env file" behavior.
-    if (out[key] === undefined || (out[key] === "" && !UPDATER_ENV_KEYS.has(key))) {
+    // An explicitly blank clearable setting disables an already-persisted
+    // optional configuration. Other historical identity fields retain their
+    // existing "empty means load the env file" behavior.
+    if (out[key] === undefined || (out[key] === "" && !BLANK_PRESERVING_ENV_KEYS.has(key))) {
       out[key] = value;
     }
   }
@@ -135,6 +135,14 @@ export function validatePersistedEnvFile(contents: string): string[] {
   ) {
     errors.push("HARNESS_EXECUTION_PROFILES");
   }
+  const githubAppConfig = env.HARNESS_GITHUB_APP_CONFIG;
+  if (
+    githubAppConfig !== undefined &&
+    githubAppConfig !== "" &&
+    !isPersistableExecutionProfilesPath(githubAppConfig)
+  ) {
+    errors.push("HARNESS_GITHUB_APP_CONFIG");
+  }
   const maxConcurrentAssignments = env.HARNESS_MAX_CONCURRENT_ASSIGNMENTS;
   if (isInvalidAssignmentCap(maxConcurrentAssignments)) {
     errors.push("HARNESS_MAX_CONCURRENT_ASSIGNMENTS");
@@ -146,14 +154,19 @@ export function validatePersistedEnvFile(contents: string): string[] {
 export function persistedEnvError(errors: string[]): string {
   const remediation =
     "set each named variable to its real bound production value (HTTPS control-plane URL, bound host id, and bound service key)";
-  const profilePathRemediation = errors.includes("HARNESS_EXECUTION_PROFILES")
-    ? " HARNESS_EXECUTION_PROFILES must be an absolute path."
-    : "";
+  const invalidPaths = ["HARNESS_EXECUTION_PROFILES", "HARNESS_GITHUB_APP_CONFIG"].filter((name) =>
+    errors.includes(name),
+  );
+  const profilePathRemediation =
+    invalidPaths.length > 0
+      ? ` ${invalidPaths.join(" and ")} must be ${invalidPaths.length === 1 ? "an absolute path" : "absolute paths"}.`
+      : "";
   return `Refusing service install: invalid ${errors.join(", ")}; ${remediation}.${profilePathRemediation}`;
 }
 
 export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_EXECUTION_PROFILES",
+  "HARNESS_GITHUB_APP_CONFIG",
   "HARNESS_MAX_CONCURRENT_ASSIGNMENTS",
   "HARNESS_HOST_SENTRY_DSN",
   "HARNESS_UPDATE_MANIFEST_URL",
@@ -163,7 +176,8 @@ export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_DAEMON_VERSION",
 ] as const;
 
-const UPDATER_ENV_KEYS = new Set<string>([
+const BLANK_PRESERVING_ENV_KEYS = new Set<string>([
+  "HARNESS_GITHUB_APP_CONFIG",
   "HARNESS_HOST_SENTRY_DSN",
   "HARNESS_UPDATE_MANIFEST_URL",
   "HARNESS_UPDATE_PUBLIC_KEY",

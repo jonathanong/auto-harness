@@ -181,11 +181,12 @@ describe("persisted service environment validation", () => {
 
   it("clears persisted updater settings when explicitly set to blank", () => {
     const original =
-      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nHARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json\nHARNESS_UPDATE_PUBLIC_KEY=old-key\nHARNESS_UPDATE_INSTALL_DIR=/srv/updates\nHARNESS_UPDATE_POLL_MS=60000\nHARNESS_DAEMON_VERSION=1.2.3\n";
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nHARNESS_GITHUB_APP_CONFIG=/etc/auto-harness/github-app.json\nHARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json\nHARNESS_UPDATE_PUBLIC_KEY=old-key\nHARNESS_UPDATE_INSTALL_DIR=/srv/updates\nHARNESS_UPDATE_POLL_MS=60000\nHARNESS_DAEMON_VERSION=1.2.3\n";
     const updated = preparePersistedEnv({
       existing: original,
       example: "",
       env: {
+        HARNESS_GITHUB_APP_CONFIG: "",
         HARNESS_UPDATE_MANIFEST_URL: "",
         HARNESS_UPDATE_PUBLIC_KEY: "",
         HARNESS_UPDATE_INSTALL_DIR: "",
@@ -193,6 +194,8 @@ describe("persisted service environment validation", () => {
         HARNESS_DAEMON_VERSION: "",
       },
     }).contents;
+    expect(updated).toContain("HARNESS_GITHUB_APP_CONFIG=\n");
+    expect(updated).not.toContain("github-app.json");
     expect(updated).toContain("HARNESS_UPDATE_MANIFEST_URL=\n");
     expect(updated).toContain("HARNESS_UPDATE_PUBLIC_KEY=\n");
     expect(updated).toContain("HARNESS_UPDATE_INSTALL_DIR=\n");

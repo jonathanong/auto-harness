@@ -1,4 +1,8 @@
-/* eslint-disable max-lines -- checkout, deferred-hook, and claim-release ordering share one fence. */
+/* eslint-disable max-lines -- execution keeps process teardown and workspace cleanup coordinated. */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
@@ -15,6 +19,11 @@ import {
 } from "./session-outcome.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
 import type { PriorContextIdentity } from "./prior-context-file.ts";
+import {
+  withoutAmbientGitHubTokens,
+  withIsolatedGitHubConfigDir,
+  type GitHubAppConfig,
+} from "./github-app.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 import { WorkspaceManager, type ClaimedWorkspace } from "./workspace-manager.ts";
 
@@ -34,9 +43,12 @@ export type SessionRunnerDeps = {
   executionProfiles?: ExecutionProfiles;
   /** Used only to fetch `assign.priorContext`; never forwarded to the CLI. */
   identity?: PriorContextIdentity;
+  /** Optional host-local GitHub App credential source. */
+  githubApp?: GitHubAppConfig;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
   /** Durable control-plane authorization immediately before the primary CLI starts. */
+  nowMs?: () => number;
   authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>;
 };
 
@@ -58,201 +70,236 @@ export class SessionRunner {
 
   async run(assign: SessionAssign, options: SessionRunOptions = {}): Promise<SessionRunResult> {
     if (isWorkspaceAssign(assign)) return await this.runWorkspace(assign, options);
-    const logs: SessionLogChunk[] = [];
-    const streamer = new LogStreamer(
-      assign.sessionId,
-      assign.attemptId,
-      (chunk) => {
-        logs.push(chunk);
-        this.deps.onLog?.(chunk);
-      },
-      this.deps.now,
-      options.initialLogSeq,
-    );
-    streamer.writeTimestampedSystem("Session started");
-
-    let expired = false;
-    const timeout = new AbortController();
-    const deadlineMs = Date.now() + assign.timeout * 1000;
-    const timeoutTimer = setTimeout(() => {
-      expired = true;
-      timeout.abort();
-    }, assign.timeout * 1000);
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, timeout.signal])
-      : timeout.signal;
-
-    if (!assign.worktreeId && assign.sessionType !== "scheduled") {
-      clearTimeout(timeoutTimer);
-      return failSession(
-        streamer,
-        logs,
-        "setup_failed",
-        "main checkout sessions must be scheduled",
-        null,
-      );
-    }
-    // The workspace branch above is the sole legal repository-less execution
-    // mode. Keep the older worktree/main-checkout path fail-closed on malformed
-    // mixed-rollout frames.
-    if (!assign.repositoryId) {
-      clearTimeout(timeoutTimer);
-      return failSession(streamer, logs, "setup_failed", "repositoryId is required", null);
-    }
-    const repositoryId = assign.repositoryId;
-
-    let claimed;
-    let mainClaimed = false;
-    let retainedClaim = false;
+    const childEnvSource = this.deps.childEnvSource ?? process.env;
+    const mappedGitHubApp = assign.repositoryId
+      ? (this.deps.githubApp?.repositories.has(assign.repositoryId) ?? false)
+      : false;
+    const baseSessionChildEnv = mappedGitHubApp
+      ? withoutAmbientGitHubTokens(childEnvSource)
+      : childEnvSource;
+    let isolatedGitHubConfigDir: string | undefined;
+    let sessionChildEnv = baseSessionChildEnv;
     try {
-      if (assign.worktreeId) {
-        claimed = await this.deps.worktrees.claim(repositoryId, assign.worktreeId, signal);
-      } else {
-        if (!(await this.deps.worktrees.acquireMain(repositoryId, signal))) {
-          clearTimeout(timeoutTimer);
+      const logs: SessionLogChunk[] = [];
+      const streamer = new LogStreamer(
+        assign.sessionId,
+        assign.attemptId,
+        (chunk) => {
+          logs.push(chunk);
+          this.deps.onLog?.(chunk);
+        },
+        this.deps.now,
+        options.initialLogSeq,
+      );
+      streamer.writeTimestampedSystem("Session started");
+
+      try {
+        if (mappedGitHubApp) {
+          isolatedGitHubConfigDir = await mkdtemp(join(tmpdir(), "auto-harness-gh-config-"));
+          sessionChildEnv = withIsolatedGitHubConfigDir(
+            baseSessionChildEnv,
+            isolatedGitHubConfigDir,
+          );
+        }
+      } catch (error) {
+        return await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);
+      }
+
+      let expired = false;
+      const timeout = new AbortController();
+      const deadlineMs = Date.now() + assign.timeout * 1000;
+      const timeoutTimer = setTimeout(() => {
+        expired = true;
+        timeout.abort();
+      }, assign.timeout * 1000);
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, timeout.signal])
+        : timeout.signal;
+
+      if (!assign.worktreeId && assign.sessionType !== "scheduled") {
+        clearTimeout(timeoutTimer);
+        return failSession(
+          streamer,
+          logs,
+          "setup_failed",
+          "main checkout sessions must be scheduled",
+          null,
+        );
+      }
+      // The workspace branch above is the sole legal repository-less execution
+      // mode. Keep the older worktree/main-checkout path fail-closed on malformed
+      // mixed-rollout frames.
+      if (!assign.repositoryId) {
+        clearTimeout(timeoutTimer);
+        return failSession(streamer, logs, "setup_failed", "repositoryId is required", null);
+      }
+      const repositoryId = assign.repositoryId;
+
+      let claimed;
+      let mainClaimed = false;
+      let retainedClaim = false;
+      try {
+        if (assign.worktreeId) {
+          claimed = await this.deps.worktrees.claim(repositoryId, assign.worktreeId, signal);
+        } else {
+          if (!(await this.deps.worktrees.acquireMain(repositoryId, signal))) {
+            clearTimeout(timeoutTimer);
+            const status = expired ? "timed_out" : "cancelled";
+            streamer.writeTimestampedSystem(`Session ${status}`);
+            return { status, exitCode: null, result: harnessSessionResult(status), logs };
+          }
+          mainClaimed = true;
+          // The lock can wait behind another session. Resolve the current repository object and
+          // realpath-check it only after that wait, immediately before it is used.
+          claimed = await this.deps.worktrees.mainClaim(repositoryId, signal);
+        }
+      } catch (err) {
+        if (mainClaimed) this.deps.worktrees.releaseMain(repositoryId);
+        clearTimeout(timeoutTimer);
+        if (signal.aborted) {
+          streamer.flush();
           const status = expired ? "timed_out" : "cancelled";
           streamer.writeTimestampedSystem(`Session ${status}`);
           return { status, exitCode: null, result: harnessSessionResult(status), logs };
         }
-        mainClaimed = true;
-        // The lock can wait behind another session. Resolve the current repository object and
-        // realpath-check it only after that wait, immediately before it is used.
-        claimed = await this.deps.worktrees.mainClaim(repositoryId, signal);
-      }
-    } catch (err) {
-      if (mainClaimed) this.deps.worktrees.releaseMain(repositoryId);
-      clearTimeout(timeoutTimer);
-      if (signal.aborted) {
-        streamer.flush();
-        const status = expired ? "timed_out" : "cancelled";
-        streamer.writeTimestampedSystem(`Session ${status}`);
-        return { status, exitCode: null, result: harnessSessionResult(status), logs };
-      }
-      return failSession(streamer, logs, "setup_failed", thrownMessage(err), null);
-    }
-
-    try {
-      streamer.write(
-        "system",
-        assign.worktreeId
-          ? `Claimed worktree ${claimed.worktree.id}`
-          : `Claimed main checkout ${claimed.repository.id}`,
-      );
-
-      const checkoutRef = assign.ref ?? claimed.repository.defaultBranch;
-      let baseline: string | undefined;
-      const finishCheckoutInterruption = () =>
-        finishClaimedSession(
-          this.deps.processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          {
-            status: expired ? "timed_out" : "cancelled",
-            exitCode: null,
-            ...(expired
-              ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
-              : {}),
-          },
-          this.deps.childEnvSource ?? process.env,
-          baseline,
-        );
-      streamer.write("system", `Checking out ref ${checkoutRef}...`);
-
-      if (signal.aborted) {
-        return await finishCheckoutInterruption();
+        return failSession(streamer, logs, "setup_failed", thrownMessage(err), null);
       }
 
       try {
-        if (mainClaimed) {
-          baseline = await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
-        } else {
-          baseline = await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
-        }
         streamer.write(
           "system",
-          `Checked out ref ${assign.ref ?? claimed.repository.defaultBranch}`,
+          assign.worktreeId
+            ? `Claimed worktree ${claimed.worktree.id}`
+            : `Claimed main checkout ${claimed.repository.id}`,
         );
-      } catch (err) {
-        // A checkout can reject because its git child was aborted. Preserve the
-        // requested terminal state instead of misreporting cancellation as a
-        // checkout/setup failure.
+
+        const checkoutRef = assign.ref ?? claimed.repository.defaultBranch;
+        let baseline: string | undefined;
+        const finishCheckoutInterruption = () =>
+          finishClaimedSession(
+            this.deps.processRunner,
+            streamer,
+            logs,
+            assign,
+            claimed,
+            {
+              status: expired ? "timed_out" : "cancelled",
+              exitCode: null,
+              ...(expired
+                ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
+                : {}),
+            },
+            sessionChildEnv,
+            baseline,
+          );
+        streamer.write("system", `Checking out ref ${checkoutRef}...`);
+
         if (signal.aborted) {
           return await finishCheckoutInterruption();
         }
-        const result = await finishClaimedSession(
-          this.deps.processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          {
-            status: "failed",
-            exitCode: null,
-            errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
-            errorMessage: thrownMessage(err),
-            deferTerminalHook:
-              isCheckoutFetchFailure(err) &&
-              assign.infrastructureRetryCount === 0 &&
-              options.deferCheckoutFetchFailureHook === true,
-          },
-          this.deps.childEnvSource ?? process.env,
-        );
-        if (!result.settleDeferredTerminalHook) return result;
-        retainedClaim = true;
-        return retainClaimForDeferredTerminalHook(
-          result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
-            SessionRunResult,
-          () => {
-            if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
-            else this.deps.worktrees.release(assign.worktreeId!);
-          },
-        );
-      }
-      if (signal.aborted) {
-        return await finishCheckoutInterruption();
-      }
+        try {
+          if (mainClaimed) {
+            baseline = await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
+          } else {
+            baseline = await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
+          }
+          streamer.write(
+            "system",
+            `Checked out ref ${assign.ref ?? claimed.repository.defaultBranch}`,
+          );
+        } catch (err) {
+          // A checkout can reject because its git child was aborted. Preserve the
+          // requested terminal state instead of misreporting cancellation as a
+          // checkout/setup failure.
+          if (signal.aborted) {
+            return await finishCheckoutInterruption();
+          }
+          const result = await finishClaimedSession(
+            this.deps.processRunner,
+            streamer,
+            logs,
+            assign,
+            claimed,
+            {
+              status: "failed",
+              exitCode: null,
+              errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
+              errorMessage: thrownMessage(err),
+              deferTerminalHook:
+                isCheckoutFetchFailure(err) &&
+                assign.infrastructureRetryCount === 0 &&
+                options.deferCheckoutFetchFailureHook === true,
+            },
+            sessionChildEnv,
+          );
+          if (!result.settleDeferredTerminalHook) return result;
+          retainedClaim = true;
+          return retainClaimForDeferredTerminalHook(
+            result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
+              SessionRunResult,
+            () => {
+              if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
+              else this.deps.worktrees.release(assign.worktreeId!);
+            },
+          );
+        }
 
-      try {
-        return await runClaimedSession(
-          this.deps.processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          signal,
-          () => expired,
-          () => Math.max(1, deadlineMs - Date.now()),
-          this.deps.commandRunner ?? this.deps.processRunner,
-          this.deps.childEnvSource ?? process.env,
-          this.deps.executionProfiles,
-          this.deps.identity,
-          this.deps.authorizeCommandStart,
-          baseline,
-        );
-      } catch (error) {
-        const errorMessage = thrownMessage(error);
-        // A runner error can include the original argv. Keep the transcript
-        // useful without copying prompts or other opaque arguments into logs.
-        streamer.write("system", "Process execution failed.");
-        return await finishClaimedSession(
-          this.deps.processRunner,
-          streamer,
-          logs,
-          assign,
-          claimed,
-          { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
-          this.deps.childEnvSource ?? process.env,
-          baseline,
-        );
+        if (signal.aborted) {
+          return await finishCheckoutInterruption();
+        }
+
+        try {
+          return await runClaimedSession(
+            this.deps.processRunner,
+            streamer,
+            logs,
+            assign,
+            claimed,
+            signal,
+            () => expired,
+            () => Math.max(1, deadlineMs - Date.now()),
+            this.deps.commandRunner ?? this.deps.processRunner,
+            sessionChildEnv,
+            this.deps.executionProfiles,
+            this.deps.identity,
+            this.deps.githubApp,
+            this.deps.nowMs,
+            baseline,
+            isolatedGitHubConfigDir,
+            this.deps.authorizeCommandStart,
+          );
+        } catch (error) {
+          const errorMessage = thrownMessage(error);
+          // A runner error can include the original argv. Keep the transcript
+          // useful without copying prompts or other opaque arguments into logs.
+          streamer.write("system", "Process execution failed.");
+          return await finishClaimedSession(
+            this.deps.processRunner,
+            streamer,
+            logs,
+            assign,
+            claimed,
+            { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
+            sessionChildEnv,
+            baseline,
+          );
+        }
+      } finally {
+        streamer.flush();
+        clearTimeout(timeoutTimer);
+        if (!retainedClaim && mainClaimed) {
+          this.deps.worktrees.releaseMain(assign.repositoryId);
+        } else if (!retainedClaim && assign.worktreeId) {
+          this.deps.worktrees.release(assign.worktreeId);
+        }
       }
     } finally {
-      streamer.flush();
-      clearTimeout(timeoutTimer);
-      if (!retainedClaim) {
-        if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId);
-        else if (assign.worktreeId) this.deps.worktrees.release(assign.worktreeId);
+      if (isolatedGitHubConfigDir) {
+        try {
+          await rm(isolatedGitHubConfigDir, { force: true, recursive: true });
+        } catch (error) {
+          console.error("failed to remove isolated GitHub config directory", error);
+        }
       }
     }
   }
@@ -348,8 +395,11 @@ export class SessionRunner {
           // identity here cannot fetch/write one. It does preserve the
           // one-attempt child credential environment for the workspace CLI.
           this.deps.identity,
-          // This positional argument follows identity: protocol-v4 peers must
-          // durably authorize before the workspace CLI can spawn.
+          this.deps.githubApp,
+          this.deps.nowMs,
+          undefined,
+          undefined,
+          // Protocol-v4 peers must durably authorize before the workspace CLI can spawn.
           this.deps.authorizeCommandStart,
         );
       } catch (error) {

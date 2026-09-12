@@ -265,6 +265,7 @@ On the agent host:
 | `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                                                                               |
 | `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                                                                            |
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed.                                                             |
+| `HARNESS_GITHUB_APP_CONFIG`   | Optional absolute path to a host-local GitHub App config JSON file. It is not a child allowlist entry: the daemon mints and injects the per-session `GH_TOKEN` itself.                                                                                                                                                                                                                                             |
 | `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                                                                                        |
 | `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                                                                                        |
 | `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. It must be an absolute path on every platform. On Linux it defaults to `/opt/auto-harness`; every path component through a custom root must be a root-owned, non-writable, non-symlink directory. Its `current`/`releases` contents stay root-owned while only `incoming` is writable by `harness`. The writable deployment checkout is `staging/` beneath that same root. |
@@ -362,6 +363,50 @@ and named in `HARNESS_CHILD_ENV_ALLOWLIST`. Setup-script exports apply only to f
 native resumes deliberately skip setup scripts. For example, Filaments Blackboard integration should
 persist and allowlist both `AGENT_BLACKBOARD_URL` and `AGENT_BLACKBOARD_TOKEN` before restarting the
 daemon.
+
+### GitHub App credentials (optional)
+
+GitHub App credentials are host-local and are used only for an assigned CLI's GitHub API calls; Git
+push remains on the existing SSH remote. Create an App with only **Contents: read/write**, **Pull
+requests: read/write**, and **Issues: read/write** repository permissions. Do not request Actions,
+workflows, checks, administration, or secrets permissions, and do not enable webhook ingress for
+this feature.
+
+Install the App with **Only select repositories**, selecting no repositories beyond the ones this
+host serves. Create a private key and place it outside every checkout, readable by the daemon user,
+with mode `0600`. The daemon and sessions are the same OS user, so this cannot prevent a compromised
+session from reading the key; selected-repository installation is the accepted blast-radius control.
+
+Create a mode-`0600` config file outside the checkout, then set its absolute path as
+`HARNESS_GITHUB_APP_CONFIG` in `host-daemon.env` (do not add `GH_TOKEN` to
+`HARNESS_CHILD_ENV_ALLOWLIST`):
+
+When migrating a mapped repository from an ambient `GH_TOKEN` or `GITHUB_TOKEN`, also remove that
+name from the host or repository `requiredEnvironment` list. App-backed credentials are minted only
+after assignment and therefore are not advertised as ambient host environment capabilities.
+
+```json
+{
+  "appId": "123456",
+  "privateKeyPath": "/etc/auto-harness/github-app.pem",
+  "botLogin": "auto-harness[bot]",
+  "botUserId": 12345678,
+  "repositories": {
+    "catalog-repository-id": { "installationId": 12345678, "repositoryId": 123456789 }
+  }
+}
+```
+
+`catalog-repository-id` is the Auto Harness repository id, not its path. Obtain the other numeric
+values from GitHub's App/installations and repository metadata. A mapped session mints one token with
+only that repository and the three listed write permissions, injects bot author/committer identity
+only into that session's process environment, and limits its command to the token expiry less five
+minutes. It never writes the shared repository config. A native resume receives a new token; there
+is no refresh service. Mapped sessions strip ambient GitHub credential variables before setup and
+terminal hooks, inject the scoped token and bot identity into the assigned command and terminal hook,
+and use a fresh private empty `GH_CONFIG_DIR` for the session so stored `gh auth login` credentials
+cannot be used as a fallback. The temporary directory is removed after the session. A host without
+this setting, or a repository omitted from the mapping, retains its current ambient GitHub behavior.
 
 The verifier reads the root-only environment file without echoing its API key, tolerates a
 `ws(s)://…/ws`-shaped value even though `HARNESS_API_URL` is expected to be the plain
