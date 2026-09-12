@@ -169,6 +169,14 @@ describe("workspace storage", () => {
     expect(calls[7]).toMatchObject({ ExclusiveStartKey: { hostId: "host", id: "slot-next" } });
   });
 
+  it("treats empty scan and query pages as empty workspace inventories", async () => {
+    const storage = ctx(vi.fn().mockResolvedValue({}));
+    await expect(listWorkspacePools(storage)).resolves.toEqual([]);
+    await expect(listWorkspaceSlots(storage)).resolves.toEqual([]);
+    await expect(listWorkspaceSlotsByPool(storage, "pool")).resolves.toEqual([]);
+    await expect(listWorkspaceSlotsByHost(storage, "host")).resolves.toEqual([]);
+  });
+
   it("conditionally updates existing pools and publishes idle slots for one connection", async () => {
     const send = vi.fn().mockResolvedValue({});
     const storage = ctx(send);
@@ -214,6 +222,28 @@ describe("workspace storage", () => {
       ConditionExpression: expect.stringContaining("retired = :retired"),
       ExpressionAttributeValues: expect.objectContaining({ ":retired": true }),
     });
+    await expect(
+      retireWorkspaceSlot(ctx(vi.fn().mockRejectedValue(conditional())), "slot", "session"),
+    ).resolves.toBe(false);
+    await expect(
+      deleteRetiredWorkspaceSlotIfIdle(ctx(vi.fn().mockRejectedValue(conditional())), "slot"),
+    ).resolves.toBe(false);
+  });
+
+  it("propagates storage failures while fencing slot lifecycle changes", async () => {
+    const unavailable = new Error("storage unavailable");
+    const storage = ctx(vi.fn().mockRejectedValue(unavailable));
+
+    await expect(retireWorkspaceSlot(storage, "slot", "session")).rejects.toThrow(
+      "storage unavailable",
+    );
+    await expect(putWorkspaceSlotFenced(storage, slot, "connection")).rejects.toThrow(
+      "storage unavailable",
+    );
+    await expect(deleteWorkspaceSlotIfIdle(storage, "slot")).rejects.toThrow("storage unavailable");
+    await expect(deleteRetiredWorkspaceSlotIfIdle(storage, "slot")).rejects.toThrow(
+      "storage unavailable",
+    );
   });
 
   it("handles conditional catalog outcomes and owned deletion", async () => {
@@ -234,6 +264,9 @@ describe("workspace storage", () => {
     const unavailable = new Error("unavailable");
     await expect(
       createWorkspacePool(ctx(vi.fn().mockRejectedValue(unavailable)), pool),
+    ).rejects.toThrow("unavailable");
+    await expect(
+      updateWorkspacePool(ctx(vi.fn().mockRejectedValue(unavailable)), pool),
     ).rejects.toThrow("unavailable");
     await expect(
       deleteWorkspacePool(ctx(vi.fn().mockRejectedValue(unavailable)), pool.id),
@@ -270,6 +303,14 @@ describe("workspace storage", () => {
     const items = send.mock.calls[1]?.[0].input.TransactItems;
     expect(items).toHaveLength(6);
     expect(items[5].Put.Item).toMatchObject({ providerAccountId: "account", slot: 0 });
+
+    await expect(
+      tryAssignWorkspaceSession(ctx(send), { ...assignment, providerAccountId: "account" }),
+    ).resolves.toBe(true);
+    expect(send.mock.calls[2]?.[0].input.TransactItems).toHaveLength(5);
+    expect(
+      send.mock.calls[2]?.[0].input.TransactItems[4].Update.ExpressionAttributeValues,
+    ).not.toHaveProperty(":providerId");
 
     await expect(
       tryAssignWorkspaceSession(ctx(vi.fn().mockRejectedValue(conditional())), assignment),

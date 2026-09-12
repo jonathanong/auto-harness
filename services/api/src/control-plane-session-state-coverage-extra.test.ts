@@ -1,10 +1,15 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
-import { cloneSessionDurable, resumeSessionDurable } from "./control-plane-sessions-durable.ts";
+import {
+  cloneSessionDurable,
+  createSessionDurable,
+  resumeSessionDurable,
+} from "./control-plane-sessions-durable.ts";
 import { createSession, supersedeSession } from "./control-plane-sessions.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -158,5 +163,109 @@ describe("session state-machine residual coverage", () => {
       error: "session not found",
       code: "NOT_FOUND",
     });
+  });
+
+  it("clones against an isolated durable provider catalog snapshot", async () => {
+    const state = commandState();
+    const source = row({ status: "completed", completedAt: NOW });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "https://example.test/repo.git",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account@example.test",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => source,
+      createSession: async (session: SessionRecord) => ({ session, created: true }),
+    });
+
+    await expect(cloneSessionDurable(state, source.id)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+      session: { id: "new" },
+    });
+  });
+
+  it("hydrates workspace references for durable create and clone snapshots", async () => {
+    const state = commandState();
+    const pool = {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as never;
+    setDurableReadStorage(state, {
+      getWorkspacePool: async () => pool,
+      createSession: async (session: SessionRecord) => ({ session, created: true }),
+      listCommands: async () => [...state.commands.values()],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+    });
+    await expect(
+      createSessionDurable(state, {
+        repositoryId: null,
+        workspacePoolId: "pool",
+        prompt: "workspace",
+        target: { commandId: "cmd" },
+        timeout: 30,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    const source = row({
+      id: "workspace-source",
+      repositoryId: null,
+      workspacePoolId: "pool",
+      status: "completed",
+      completedAt: NOW,
+    });
+    state.storage!.getSession = async () => source;
+    state.storage!.getWorkspacePool = async () => pool;
+    await expect(cloneSessionDurable(state, source.id)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+    });
+  });
+
+  it("refreshes the durable catalog when resuming with a target override", async () => {
+    const state = commandState();
+    const source = row({
+      status: "completed",
+      hostId: "host",
+      resolvedRoute: { hostId: "host", commandId: "cmd", targetIndex: 0 },
+    });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "https://example.test/repo.git",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => source,
+      getRepository: async () => state.repositories.get("repo"),
+      createSession: async (session: SessionRecord) => ({ session, created: true }),
+    });
+    await expect(
+      resumeSessionDurable(state, source.id, { target: { commandId: "cmd" } }),
+    ).resolves.toMatchObject({ ok: true });
   });
 });

@@ -109,4 +109,40 @@ describe("workspace schedule route validation", () => {
     ).toMatchObject({ status: 200, json: { repositoryId: null, workspacePoolId: "pool-1" } });
     expect(plane.getSchedule("schedule-1")).not.toHaveProperty("ref");
   });
+
+  it("rejects an explicit repository ref while converting to a workspace schedule", async () => {
+    const { invoke, plane } = workspaceRoutes();
+    expect(
+      plane.createRepository({
+        id: "repository-1",
+        name: "repository",
+        url: "https://example.test/repository.git",
+      }).ok,
+    ).toBe(true);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          ...schedule,
+          repositoryId: "repository-1",
+          workspacePoolId: undefined,
+          ref: "main",
+        })
+      ).status,
+    ).toBe(201);
+
+    expect(
+      await invoke("PATCH", "/api/v1/schedules/schedule-1", {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        ref: "another-branch",
+      }),
+    ).toMatchObject({
+      status: 400,
+      json: { error: { message: "ref is not supported for workspace schedules" } },
+    });
+    expect(plane.getSchedule("schedule-1")).toMatchObject({
+      repositoryId: "repository-1",
+      ref: "main",
+    });
+  });
 });

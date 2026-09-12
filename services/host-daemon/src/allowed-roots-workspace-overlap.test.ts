@@ -91,3 +91,28 @@ it("rejects workspace nesting and a slot that contains a worktree", async () => 
     }),
   ).rejects.toThrow("workspace slot overlaps repository execution path");
 });
+
+it("rejects nesting regardless of the workspace slot declaration order", async () => {
+  const root = await tempDir("reverse-nesting");
+  const parent = join(root, "workspace");
+  const child = join(parent, "nested");
+  await mkdir(child, { recursive: true });
+
+  await expect(
+    assertDaemonPathsAllowed({
+      hostId: "host",
+      allowedRoots: [root],
+      repositories: [],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [
+            { id: "child", name: "child", path: child },
+            { id: "parent", name: "parent", path: parent },
+          ],
+        },
+      ],
+      providerAccounts: [],
+    }),
+  ).rejects.toThrow("workspace slots overlap: child and parent");
+});

@@ -1121,6 +1121,25 @@ describe("durable schedule management updates", () => {
     ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });
   });
 
+  it("writes workspace schedule fields when they are configured", async () => {
+    const storage = scheduleCtx(async (command) => {
+      if (command instanceof UpdateCommand) return { Attributes: schedule() };
+      return { Item: schedule() };
+    });
+    await expect(
+      updateScheduleManagement(
+        storage,
+        {
+          ...schedule(),
+          workspacePoolId: "pool",
+          setupProfileId: "setup",
+          destroyWorkspaceAfter: true,
+        },
+        "stale-next",
+      ),
+    ).resolves.toMatchObject({ id: "schedule-1" });
+  });
+
   it("removes an omitted ref and reports a concurrently deleted schedule", async () => {
     const storage = scheduleCtx(async (command) => {
       expect((command as UpdateCommand).input.UpdateExpression).toContain(

@@ -85,11 +85,21 @@ describe("CreateSessionForm workspace policy", () => {
     expect(field(view.container, "create-session-workspace-cleanup").textContent).toContain(
       "require fleet:exec-config",
     );
+    setValue(field(view.container, "create-session-workspace-profile"), "");
     submit(field(view.container, "form-create-session"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).not.toHaveProperty(
       "destroyWorkspaceAfter",
     );
+    view.unmount();
+  });
+
+  it("disables workspace submission when no pool exists", () => {
+    const view = mountForm(
+      <CreateSessionForm targets={targets} repositories={repositories} workspacePools={[]} />,
+    );
+    press(field(view.container, "create-session-mode-workspace"));
+    expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(true);
     view.unmount();
   });
 });

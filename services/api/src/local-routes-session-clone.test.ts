@@ -35,6 +35,8 @@ describe("session clone route", () => {
       { timeout: "30" },
       { priority: Number.POSITIVE_INFINITY },
       { priority: "high" },
+      { priority: 1.5 },
+      { destroyWorkspaceAfter: "afterward" },
     ]) {
       expect((await clone(body)).status).toBe(400);
     }
@@ -236,6 +238,58 @@ describe("session clone route", () => {
         workspacePoolId: "pool-1",
         prompt: "cloned",
         type: "workspace",
+      },
+    });
+  });
+
+  it("lets an exec-config administrator opt into workspace cleanup on a clone", async () => {
+    const { plane } = workspacePlane();
+    const source = createWorkspaceSession(plane);
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
+        "base64url",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({ name: "operator", role: "admin" });
+
+    const response = await invokeHandler(
+      createLocalApp({ plane, authService: auth }).handler,
+      "POST",
+      `/api/v1/sessions/${source.id}/clone`,
+      { destroyWorkspaceAfter: true },
+      { authorization: `Bearer ${apiKey}` },
+    );
+
+    expect(response).toMatchObject({ status: 201, json: { destroyWorkspaceAfter: true } });
+  });
+
+  it("returns a durable admission operation link when cloning is draining", async () => {
+    const plane = new ControlPlane({ idFactory: () => "session-1" });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+    plane.cloneSessionDurable = async () => ({
+      ok: false as const,
+      error: "principal session admission is draining",
+      code: "DRAINING",
+      operationId: "drain-1",
+    });
+
+    const response = await invokeHandler(
+      createLocalApp({ plane }).handler,
+      "POST",
+      "/api/v1/sessions/session-1/clone",
+    );
+
+    expect(response).toMatchObject({
+      status: 409,
+      json: {
+        error: {
+          code: "DRAINING",
+          operationId: "drain-1",
+          statusUrl: "/api/v1/repositories/repo-1/session-drains/drain-1",
+        },
       },
     });
   });

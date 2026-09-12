@@ -119,6 +119,70 @@ describe("WorkspaceManager", () => {
     });
   });
 
+  it("retains usable roots when an extra configured root cannot be resolved", async () => {
+    const { root, config } = await fixture();
+    config.allowedRoots = [root, "/definitely-not-an-auto-harness-root"];
+    const manager = new WorkspaceManager(config);
+
+    const claimed = await manager.claim("pool", "slot");
+
+    manager.release(claimed);
+  });
+
+  it("accepts a slot under a later allowed root when an earlier root is unrelated", async () => {
+    const { root, config } = await fixture();
+    const { root: unrelated } = await fixture();
+    config.allowedRoots = [unrelated, root];
+    const manager = new WorkspaceManager(config);
+
+    const claimed = await manager.claim("pool", "slot");
+
+    expect(claimed.cwd).toMatch(/\/pool\/slot$/);
+    manager.release(claimed);
+  });
+
+  it("rejects a claimed slot whose inventory entry is replaced", async () => {
+    const { root, config } = await fixture();
+    const moved = join(root, "pool", "moved");
+    await mkdir(moved, { recursive: true });
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+
+    config.workspacePools![0]!.slots[0] = {
+      ...config.workspacePools![0]!.slots[0]!,
+      path: moved,
+    };
+    manager.noteInventoryChange();
+
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow("inventory changed");
+    manager.release(claimed);
+  });
+
+  it("rejects a removed slot path without disguising an unchanged inventory", async () => {
+    const { slot, config } = await fixture();
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+    await rm(slot, { recursive: true, force: true });
+
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow(
+      "workspace slot path must exist",
+    );
+    manager.release(claimed);
+  });
+
+  it("rejects an in-place move to a different canonical workspace path", async () => {
+    const { root, config } = await fixture();
+    const moved = join(root, "pool", "moved");
+    await mkdir(moved, { recursive: true });
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+    config.workspacePools![0]!.slots[0]!.path = moved;
+    manager.noteInventoryChange();
+
+    await expect(claimed.currentExecutionTarget()).rejects.toThrow("inventory changed");
+    manager.release(claimed);
+  });
+
   it("always releases a claim when destructive cleanup fails", async () => {
     const { config } = await fixture();
     const remove = vi.fn(async () => {

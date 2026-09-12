@@ -60,6 +60,7 @@ describe("schedule pages", () => {
           { id: "repo-a", name: "Same" },
         ],
       },
+      "/api/v1/workspace-pools": {},
     });
 
     const html = await renderPage(
@@ -321,6 +322,7 @@ describe("schedule pages", () => {
         activeSessionId: "session/active",
       },
       "/api/v1/session-targets": {},
+      "/api/v1/workspace-pools": {},
       "/api/v1/sessions?scheduleId=schedule%2Fone&limit=100": {
         items: [],
         nextCursor: "history-next",

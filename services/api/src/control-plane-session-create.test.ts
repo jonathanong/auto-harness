@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session admission cases share one record-building fixture. */
 import { describe, expect, it } from "vitest";
 
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
@@ -197,6 +198,80 @@ describe("session creation preparation", () => {
       updatedAt: "t",
     });
 
+    expect(
+      validateSessionCreate(state, {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        prompt: "inspect",
+        target: { providerId: "provider-1" },
+        timeout: 30,
+        type: "workspace",
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("checks every currently routable provider command and host-account route", () => {
+    const state = createControlPlaneState();
+    state.providers.set("provider-1", {
+      id: "provider-1",
+      name: "provider",
+      defaultCommandId: "provider-command",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.commands.set("provider-command", {
+      id: "provider-command",
+      name: "provider-command",
+      argv: ["provider"],
+      appendPrompt: true,
+      appendPromptSeparator: true,
+      providerId: "provider-1",
+    });
+    state.commands.set("plain-command", {
+      id: "plain-command",
+      name: "plain-command",
+      argv: ["plain"],
+      appendPrompt: false,
+      providerId: null,
+    });
+    state.workspacePools.set("pool-1", {
+      id: "pool-1",
+      name: "workspace",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+
+    // A command with a provider is admissible even before an account is configured;
+    // the synthetic account route reserves the frame size for future host opt-in.
+    expect(
+      validateSessionCreate(state, {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        prompt: "inspect",
+        target: { commandId: "provider-command" },
+        fallbacks: [{ commandId: "plain-command" }],
+        timeout: 30,
+        type: "workspace",
+      }),
+    ).toMatchObject({ ok: true });
+
+    state.providerAccounts.set("account-1", {
+      id: "account-1",
+      providerId: "provider-1",
+      label: "one",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.hostInventories.set("host-1", {
+      hostId: "host-1",
+      version: 1,
+      updatedAt: "t",
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "account-1" }],
+      workspacePools: [{ workspacePoolId: "pool-1", slots: [] }],
+    });
     expect(
       validateSessionCreate(state, {
         repositoryId: null,

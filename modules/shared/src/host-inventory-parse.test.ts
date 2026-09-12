@@ -155,6 +155,15 @@ describe("parseHostInventory", () => {
         repositories: [],
       }),
     ).toThrow("workspacePools ids must be unique");
+    expect(() => parseHostInventory({ workspacePools: {}, repositories: [] })).toThrow(
+      "workspacePools must be an array",
+    );
+    expect(() => parseHostInventory({ workspacePools: [null], repositories: [] })).toThrow(
+      "workspacePools[0] invalid",
+    );
+    expect(() =>
+      parseHostInventory({ workspacePools: [{ workspacePoolId: "pool" }], repositories: [] }),
+    ).toThrow("workspacePools.pool.slots must be an array");
   });
 
   it.each([

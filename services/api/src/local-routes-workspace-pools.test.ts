@@ -1,10 +1,11 @@
+/* eslint-disable max-lines -- each HTTP failure mapping needs a concrete public contract. */
 import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { handleWorkspacePoolRoutes } from "./local-routes-workspace-pools.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function invoke(plane: ControlPlane, method: string, path: string, body?: unknown) {
   return invokeHandler(createLocalApp({ plane }).handler, method, path, body);
@@ -86,5 +87,137 @@ describe("workspace-pool routes", () => {
       status: 400,
       json: { error: { code: "VALIDATION_ERROR" } },
     });
+  });
+
+  it("does not expose pool configuration when durable reads or writes fail", async () => {
+    const failure = new Error("storage unavailable");
+
+    const list = new ControlPlane();
+    list.listWorkspacePoolsDurable = async () => {
+      throw failure;
+    };
+    expect((await invoke(list, "GET", "/api/v1/workspace-pools")).status).toBe(500);
+
+    const create = new ControlPlane();
+    create.createWorkspacePoolDurable = async () => {
+      throw failure;
+    };
+    expect(
+      (
+        await invoke(create, "POST", "/api/v1/workspace-pools", {
+          name: "pool",
+          setupProfiles: [],
+          destroyWorkspaceAfter: false,
+        })
+      ).status,
+    ).toBe(500);
+
+    const read = new ControlPlane();
+    read.getWorkspacePoolDurable = async () => {
+      throw failure;
+    };
+    expect((await invoke(read, "GET", "/api/v1/workspace-pools/pool/exec-config")).status).toBe(
+      500,
+    );
+    expect((await invoke(read, "GET", "/api/v1/workspace-pools/pool")).status).toBe(500);
+
+    const update = new ControlPlane();
+    update.updateWorkspacePoolDurable = async () => {
+      throw failure;
+    };
+    expect(
+      (await invoke(update, "PATCH", "/api/v1/workspace-pools/pool", { name: "changed" })).status,
+    ).toBe(500);
+
+    const remove = new ControlPlane();
+    remove.deleteWorkspacePoolDurable = async () => {
+      throw failure;
+    };
+    expect((await invoke(remove, "DELETE", "/api/v1/workspace-pools/pool")).status).toBe(500);
+  });
+
+  it("leaves unsupported workspace-pool descendants for the next route", async () => {
+    const response = await invoke(
+      new ControlPlane(),
+      "GET",
+      "/api/v1/workspace-pools/pool/unsupported",
+    );
+    expect(response.status).toBe(404);
+    expect((await invoke(new ControlPlane(), "POST", "/api/v1/workspace-pools/pool")).status).toBe(
+      404,
+    );
+
+    const plane = new ControlPlane();
+    let handled: boolean | undefined;
+    await invokeHandler(
+      async (req, res) => {
+        handled = await handleWorkspacePoolRoutes({
+          plane,
+          req,
+          res,
+          url: new URL("/api/v1/not-workspace-pools", "http://localhost"),
+          method: "GET",
+        });
+      },
+      "GET",
+      "/api/v1/not-workspace-pools",
+    );
+    expect(handled).toBe(false);
+  });
+
+  it("rejects malformed pool mutations before they reach the control plane", async () => {
+    const { handler } = createLocalApp({ plane: new ControlPlane() });
+    expect(await invokeBadJson(handler, "POST", "/api/v1/workspace-pools")).toBe(400);
+    expect(await invokeBadJson(handler, "PATCH", "/api/v1/workspace-pools/pool")).toBe(400);
+    expect(
+      await invoke(new ControlPlane(), "PATCH", "/api/v1/workspace-pools/pool", { name: 42 }),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+  });
+
+  it("accepts an empty partial update and leaves an unsupported collection method unhandled", async () => {
+    expect(
+      await invoke(new ControlPlane(), "PATCH", "/api/v1/workspace-pools/missing", {}),
+    ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
+    expect((await invoke(new ControlPlane(), "DELETE", "/api/v1/workspace-pools")).status).toBe(
+      404,
+    );
+  });
+
+  it("returns categorized errors when pool mutations lose their durable preconditions", async () => {
+    for (const [error, status, code] of [
+      ["workspace pool not found", 404, "NOT_FOUND"],
+      ["workspace pool has active slots", 400, "VALIDATION_ERROR"],
+    ] as const) {
+      const plane = new ControlPlane();
+      plane.updateWorkspacePoolDurable = async () => ({ ok: false, error }) as never;
+      expect(
+        await invoke(plane, "PATCH", "/api/v1/workspace-pools/pool", { name: "changed" }),
+      ).toMatchObject({ status, json: { error: { code, message: error } } });
+    }
+
+    for (const [error, status, code] of [
+      ["workspace pool not found", 404, "NOT_FOUND"],
+      ["workspace pool is in use", 409, "CONFLICT"],
+    ] as const) {
+      const plane = new ControlPlane();
+      plane.deleteWorkspacePoolDurable = async () => ({ ok: false, error }) as never;
+      expect(await invoke(plane, "DELETE", "/api/v1/workspace-pools/pool")).toMatchObject({
+        status,
+        json: { error: { code, message: error } },
+      });
+    }
+
+    const create = new ControlPlane();
+    create.createWorkspacePoolDurable = async () =>
+      ({
+        ok: false,
+        error: "workspace pool already exists",
+      }) as never;
+    expect(await invoke(create, "POST", "/api/v1/workspace-pools", { name: "pool" })).toMatchObject(
+      {
+        status: 400,
+        json: { error: { code: "VALIDATION_ERROR", message: "workspace pool already exists" } },
+      },
+    );
   });
 });

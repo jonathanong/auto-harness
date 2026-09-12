@@ -61,3 +61,28 @@ it("rejects a legacy workspace clone when its selected profile was removed", () 
     code: "NOT_FOUND",
   });
 });
+
+it("validates workspace cleanup overrides and requires the source pool", () => {
+  let id = 0;
+  const plane = workspacePlane(() => `workspace-${++id}`);
+  const source = createWorkspaceSource(plane);
+
+  expect(plane.cloneSession(source.id, { destroyWorkspaceAfter: "later" } as never)).toEqual({
+    ok: false,
+    error: "destroyWorkspaceAfter must be a boolean",
+    code: "VALIDATION_ERROR",
+  });
+
+  delete plane.state.sessions.get(source.id)!.destroyWorkspaceAfter;
+  expect(plane.cloneSession(source.id)).toMatchObject({
+    ok: true,
+    session: { destroyWorkspaceAfter: false },
+  });
+
+  plane.state.workspacePools.clear();
+  expect(plane.cloneSession(source.id)).toEqual({
+    ok: false,
+    error: "workspace pool not found",
+    code: "VALIDATION_ERROR",
+  });
+});

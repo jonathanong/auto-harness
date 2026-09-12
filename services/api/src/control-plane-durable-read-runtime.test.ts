@@ -9,6 +9,7 @@ import {
   listSessionsForRepositoriesDurable,
   listWorktreesDurable,
   listWorktreesForRepositoryDurable,
+  listWorkspaceSlotsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
@@ -670,6 +671,41 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([durable]);
     expect(state.sessions.get(stale.id)?.status).toBe("running");
+  });
+
+  it("removes cached queued sessions deleted before the status GSI read", async () => {
+    const deleted = { ...session, id: "deleted-from-queue" };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatus: async () => [],
+        getSession: async () => null,
+      } as never,
+    });
+    state.sessions.set(deleted.id, deleted);
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
+    expect(state.sessions.has(deleted.id)).toBe(false);
+  });
+
+  it("uses the local slot read when durable pool indexes are unavailable", async () => {
+    const state = createControlPlaneState();
+    state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    state.storage = { listWorkspaceSlots: async () => [] } as never;
+
+    await expect(listWorkspaceSlotsDurable(state, "pool")).resolves.toEqual([
+      expect.objectContaining({ id: "slot" }),
+    ]);
+    expect(state.workspaceSlots.has("slot")).toBe(true);
   });
 
   it("does not revert a just-assigned session when the queued GSI still lists it", async () => {

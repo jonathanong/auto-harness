@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace attachment mutation edge coverage shares its fixture. */
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
@@ -167,5 +168,214 @@ describe("HostWorkspacePoolsSection", () => {
       field<HTMLButtonElement>(empty.container, "host-workspace-slot-add-submit").disabled,
     ).toBe(true);
     empty.unmount();
+  });
+
+  it("uses the attachment id when the workspace catalog no longer has that pool", () => {
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[]}
+        canWriteExecConfig={false}
+      />,
+    );
+
+    expect(field(view.container, "host-workspace-pool-pool-1").textContent).toContain("pool-1");
+    view.unmount();
+  });
+
+  it("reports a rejected inventory mutation without navigating away", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ ...inventory, version: 11 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "workspace slot is busy" } }), {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[{ id: "pool-1", name: "Pool" }]}
+        canWriteExecConfig
+      />,
+    );
+
+    press(
+      [...view.container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Remove pool",
+      )!,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(field(view.container, "host-workspace-pools-error").textContent).toBe(
+      "workspace slot is busy",
+    );
+    view.unmount();
+  });
+
+  it("reports a failed inventory request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[{ id: "pool-1", name: "Pool" }]}
+        canWriteExecConfig
+      />,
+    );
+
+    press(
+      [...view.container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Remove pool",
+      )!,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(field(view.container, "host-workspace-pools-error").textContent).toBe(
+      "network unavailable",
+    );
+    view.unmount();
+  });
+
+  it("handles absent inventories and preserves nonmatching pools and slots", async () => {
+    const withoutAttachments = { ...inventory, workspacePools: undefined };
+    const empty = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={withoutAttachments}
+        pools={[{ id: "pool-1", name: "Pool" }]}
+        canWriteExecConfig={false}
+      />,
+    );
+    expect(empty.container.querySelectorAll("section")).toHaveLength(0);
+    empty.unmount();
+
+    const expanded = {
+      ...inventory,
+      workspacePools: [
+        {
+          workspacePoolId: "pool-1",
+          slots: [
+            inventory.workspacePools[0]!.slots[0],
+            { id: "other", name: "Other", path: "/workspaces/other" },
+          ],
+        },
+        {
+          workspacePoolId: "pool-2",
+          slots: [{ id: "second", name: "Second", path: "/workspaces/second" }],
+        },
+      ],
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ ...expanded, version: 20 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ ...expanded, version: 21 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ ...expanded, version: 22 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[
+          { id: "pool-1", name: "Pool" },
+          { id: "pool-2", name: "Other pool" },
+        ]}
+        canWriteExecConfig
+      />,
+    );
+
+    const editForm = view.container.querySelector('form input[name="name"]')!.closest("form")!;
+    for (const input of editForm.querySelectorAll("input")) input.removeAttribute("name");
+    submit(editForm);
+    await act(async () => Promise.resolve());
+    const edited = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).workspacePools;
+    expect(edited[0].slots).toEqual([
+      { id: "", name: "", path: "" },
+      expanded.workspacePools[0]!.slots[1],
+    ]);
+    expect(edited[1]).toEqual(expanded.workspacePools[1]);
+
+    press(
+      [...view.container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Remove",
+      )!,
+    );
+    await act(async () => Promise.resolve());
+    const removed = JSON.parse(String(fetch.mock.calls[3]?.[1]?.body)).workspacePools;
+    expect(removed[0].slots).toEqual([expanded.workspacePools[0]!.slots[1]]);
+    expect(removed[1]).toEqual(expanded.workspacePools[1]);
+
+    const addForm = field<HTMLFormElement>(view.container, "host-workspace-slot-add");
+    setValue(addForm.querySelector('select[name="poolId"]')!, "pool-1");
+    for (const input of addForm.querySelectorAll("input")) input.removeAttribute("name");
+    submit(addForm);
+    await act(async () => Promise.resolve());
+    const added = JSON.parse(String(fetch.mock.calls[5]?.[1]?.body)).workspacePools;
+    expect(added[0].slots.at(-1)).toEqual({ id: "", name: "", path: "" });
+    expect(added[1]).toEqual(expanded.workspacePools[1]);
+    view.unmount();
+  });
+
+  it("creates missing attachment arrays from fresh inventory reads", async () => {
+    const current = { ...inventory, workspacePools: undefined, version: 30 };
+    const fetch = vi.fn();
+    for (let index = 0; index < 4; index += 1) {
+      fetch
+        .mockResolvedValueOnce(json({ ...current, version: current.version + index }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    }
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostWorkspacePoolsSection
+        hostId="host"
+        inventory={inventory}
+        pools={[{ id: "pool-1", name: "Pool" }]}
+        canWriteExecConfig
+      />,
+    );
+
+    press(
+      [...view.container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Remove pool",
+      )!,
+    );
+    await act(async () => Promise.resolve());
+
+    const slotForm = view.container.querySelector('form input[name="name"]')!.closest("form")!;
+    submit(slotForm);
+    await act(async () => Promise.resolve());
+    press(
+      [...slotForm.querySelectorAll("button")].find((button) => button.textContent === "Remove")!,
+    );
+    await act(async () => Promise.resolve());
+
+    const addForm = field<HTMLFormElement>(view.container, "host-workspace-slot-add");
+    addForm.querySelector("select")!.removeAttribute("name");
+    submit(addForm);
+    await act(async () => Promise.resolve());
+
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)).workspacePools).toEqual([]);
+    expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body)).workspacePools).toEqual([]);
+    expect(JSON.parse(String(fetch.mock.calls[5]?.[1]?.body)).workspacePools).toEqual([]);
+    expect(JSON.parse(String(fetch.mock.calls[7]?.[1]?.body)).workspacePools).toEqual([
+      {
+        workspacePoolId: "",
+        slots: [{ id: "", name: "", path: "" }],
+      },
+    ]);
+    view.unmount();
   });
 });

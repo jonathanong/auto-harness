@@ -325,4 +325,62 @@ describe("daemon registration", () => {
     ).rejects.toThrow("invalid roots");
     expect(config.allowedRoots).toEqual(["/old"]);
   });
+
+  it("rolls back a newly applied workspace inventory when its post-apply hook fails", async () => {
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    const next = {
+      ...config,
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "slot", name: "slot", path: "/workspace/slot" }],
+        },
+      ],
+    };
+    const workspaceChanges: string[] = [];
+
+    await expect(
+      applyDaemonInventory(
+        config,
+        next,
+        { ensureAll: async () => undefined, noteInventoryChange: () => undefined } as never,
+        async () => undefined,
+        () => {
+          throw new Error("post-apply failed");
+        },
+        {
+          ensureAll: async (candidate) => expect(candidate).toBe(next),
+          noteInventoryChange: () => void workspaceChanges.push("changed"),
+        } as never,
+      ),
+    ).rejects.toThrow("post-apply failed");
+
+    expect(config).not.toHaveProperty("workspacePools");
+    expect(workspaceChanges).toEqual(["changed", "changed"]);
+  });
+
+  it("restores an existing workspace inventory after registration fails", async () => {
+    const workspacePools = [
+      {
+        workspacePoolId: "old-pool",
+        slots: [{ id: "old-slot", name: "old", path: "/workspace/old" }],
+      },
+    ];
+    const config = { hostId: "h", repositories: [], providerAccounts: [], workspacePools };
+    const next = { hostId: "h", repositories: [], providerAccounts: [] };
+
+    await expect(
+      applyDaemonInventory(
+        config,
+        next,
+        { ensureAll: async () => undefined, noteInventoryChange: () => undefined } as never,
+        async () => {
+          throw new Error("registration failed");
+        },
+        undefined,
+        { ensureAll: async () => undefined, noteInventoryChange: () => undefined } as never,
+      ),
+    ).rejects.toThrow("registration failed");
+    expect(config.workspacePools).toEqual(workspacePools);
+  });
 });

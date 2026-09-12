@@ -152,4 +152,38 @@ describe("workspace assignment matrix", () => {
       lastAssignedAt: "2026-09-12T00:00:00.000Z",
     });
   });
+
+  it("uses a command that does not append the prompt and skips unavailable connections", async () => {
+    const { plane, messages } = workspacePlane();
+    expect(
+      plane.createCommand({
+        id: "no-prompt",
+        name: "no-prompt",
+        argv: ["tool", "--fixed"],
+        appendPrompt: false,
+        providerId: null,
+      }).ok,
+    ).toBe(true);
+    const created = plane.createSession({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      prompt: "must not be sent twice",
+      target: { commandId: "no-prompt" },
+      timeout: 60,
+      type: "workspace",
+      source: "api",
+    });
+    if (!created.ok) throw new Error(created.error);
+    plane.state.hostConnection.delete("host-1");
+    await expect(assignWorkspaceQueuedDurable(plane.state)).resolves.toEqual([]);
+    expect(plane.getSession(created.session.id)).toMatchObject({ status: "queued" });
+
+    plane.state.hostConnection.set("host-1", "connection-1");
+    const assigned = await assignWorkspaceQueuedDurable(plane.state);
+    expect(assigned).toHaveLength(1);
+    expect(messages.at(-1)).toMatchObject({
+      resolvedArgv: ["tool", "--fixed"],
+      prompt: "",
+    });
+  });
 });

@@ -24,7 +24,7 @@ describe("new session route", () => {
           { online: true },
         ],
       },
-      "/api/v1/workspace-pools": { items: [] },
+      "/api/v1/workspace-pools": {},
     });
     const html = await renderPage(NewSessionPage(blankSearchParams));
     expect(html).toContain('data-pw="create-session-label-codex"');

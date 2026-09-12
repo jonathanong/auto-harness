@@ -81,6 +81,43 @@ describe("workspace schedules", () => {
     });
   });
 
+  it("rejects invalid workspace and repository mode field shapes", () => {
+    const plane = workspacePlane();
+    const target = { commandId: "cmd-base" };
+    const repository = {
+      repositoryId: "repo-1",
+      name: "repository schedule",
+      target,
+      cron: "* * * * *",
+      timeout: 30,
+    };
+    const workspace = {
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      name: "workspace schedule",
+      target,
+      cron: "* * * * *",
+      timeout: 30,
+    };
+
+    expect(plane.putSchedule({ ...repository, requiredLabels: "gpu" as never })).toEqual({
+      ok: false,
+      error: "requiredLabels must be an array",
+    });
+    expect(plane.putSchedule({ ...repository, workspacePoolId: "pool-1" })).toEqual({
+      ok: false,
+      error: "workspace fields require repositoryId to be null",
+    });
+    expect(plane.putSchedule({ ...workspace, setupProfileId: " " })).toEqual({
+      ok: false,
+      error: "setupProfileId must not be empty",
+    });
+    expect(plane.putSchedule({ ...workspace, destroyWorkspaceAfter: "yes" as never })).toEqual({
+      ok: false,
+      error: "destroyWorkspaceAfter must be a boolean",
+    });
+  });
+
   it("preserves repository schedules", () => {
     const plane = workspacePlane();
     const schedule = putScheduleOrThrow(plane, {

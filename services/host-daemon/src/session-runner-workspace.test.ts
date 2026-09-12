@@ -95,6 +95,33 @@ describe("SessionRunner workspace sessions", () => {
     expect(result.logs.some((entry) => entry.content.includes("Checking out ref"))).toBe(false);
   });
 
+  it("uses the process runner as the workspace command runner when none is supplied", async () => {
+    const test = await workspaceRunner();
+    const calls: string[][] = [];
+    const processRunner: ProcessRunner = {
+      async run(options) {
+        calls.push([...options.argv]);
+        if (options.argv[0] === "job") {
+          options.onChunk({ stream: "stdout", data: "completed\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        return await test.processRunner.run(options);
+      },
+    };
+    const runner = new SessionRunner({
+      worktrees: {} as never,
+      workspaces: new WorkspaceManager(test.config),
+      processRunner,
+    });
+
+    await expect(
+      runner.run({ ...test.assign, destroyWorkspaceAfter: false }),
+    ).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(calls).toContainEqual(["job"]);
+  });
+
   it("turns a successful command into a cleanup failure and retains the slot error", async () => {
     const test = await workspaceRunner();
     const brokenWorkspace = new WorkspaceManager(test.config, {

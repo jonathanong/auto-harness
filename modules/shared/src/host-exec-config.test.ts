@@ -193,6 +193,27 @@ describe("applyHostExecConfig", () => {
       }),
     ).toThrow("Unknown worktree");
   });
+
+  it("copies provider accounts and workspace slots before applying a patch", () => {
+    const existing: HostInventory = {
+      ...inventory(),
+      providerAccounts: [{ providerAccountId: "provider", commandId: "command" }],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "slot", name: "slot", path: "/opt/harness/workspaces/slot" }],
+        },
+      ],
+    };
+
+    const next = applyHostExecConfig(existing, {});
+
+    expect(next).toEqual(existing);
+    expect(next.providerAccounts).not.toBe(existing.providerAccounts);
+    expect(next.providerAccounts[0]).not.toBe(existing.providerAccounts[0]);
+    expect(next.workspacePools).not.toBe(existing.workspacePools);
+    expect(next.workspacePools?.[0]?.slots[0]).not.toBe(existing.workspacePools?.[0]?.slots[0]);
+  });
 });
 
 describe("listExecConfigEdits / preserve / reconcile", () => {
@@ -489,6 +510,17 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
         ],
       }),
     ).toEqual(["workspacePools.pool-1.slots.slot-1.path"]);
+    expect(
+      listExecConfigEdits(attached, {
+        ...attached,
+        workspacePools: [
+          {
+            ...attached.workspacePools![0]!,
+            slots: [{ id: "slot-1", name: "renamed", path: "/srv/workspaces/one" }],
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 
   it("names each changed exec-config field", () => {

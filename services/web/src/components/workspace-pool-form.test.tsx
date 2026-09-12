@@ -81,4 +81,60 @@ describe("WorkspacePoolForm", () => {
     expect(router.push).toHaveBeenCalledWith("/workspace-pools/pool-1?toast=Workspace+pool+saved.");
     view.unmount();
   });
+
+  it("reports a rejected save and restores the submit control", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "pool name is already in use" } }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<WorkspacePoolForm />);
+    setValue(field(view.container, "workspace-pool-name"), "browser-tests");
+
+    submit(field(view.container, "form-workspace-pool-create"));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(field(view.container, "workspace-pool-form-error").textContent).toBe(
+      "pool name is already in use",
+    );
+    expect(field<HTMLButtonElement>(view.container, "workspace-pool-submit").disabled).toBe(false);
+    expect(router.push).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("updates one of several profiles and removes a non-default profile", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "pool-1" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <WorkspacePoolForm
+        pool={{
+          id: "pool-1",
+          name: "browser-tests",
+          setupProfiles: [
+            { id: "default", name: "Default", script: "default" },
+            { id: "other", name: "Other", script: "other" },
+          ],
+          defaultSetupProfileId: "default",
+          destroyWorkspaceAfter: false,
+        }}
+      />,
+    );
+    setValue(field(view.container, "workspace-pool-profile-name-0"), "Updated");
+    press(field(view.container, "workspace-pool-profile-remove-1"));
+    field(view.container, "workspace-pool-name").removeAttribute("name");
+    submit(field(view.container, "form-workspace-pool-edit"));
+    await act(async () => Promise.resolve());
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      name: "",
+      setupProfiles: [{ id: "default", name: "Updated", script: "default" }],
+      defaultSetupProfileId: "default",
+    });
+    view.unmount();
+  });
 });

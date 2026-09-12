@@ -18,5 +18,12 @@ describe("SessionExecutionMode", () => {
     press(workspace);
     expect(onModeChange).toHaveBeenCalledWith("workspace");
     view.unmount();
+
+    const alternate = mountForm(
+      <SessionExecutionMode mode="workspace" onModeChange={onModeChange} />,
+    );
+    press(field(alternate.container, "create-session-mode-repository"));
+    expect(onModeChange).toHaveBeenLastCalledWith("repository");
+    alternate.unmount();
   });
 });

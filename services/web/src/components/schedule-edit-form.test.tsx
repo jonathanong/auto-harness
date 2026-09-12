@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- schedule mode and workspace fallback cases share one form fixture. */
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
@@ -151,6 +152,82 @@ describe("ScheduleEditForm", () => {
     const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
     expect(body).not.toHaveProperty("setupScript");
     expect(body).not.toHaveProperty("ref");
+    view.unmount();
+  });
+
+  it("keeps a stale workspace attachment selectable without inventing a setup profile", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ScheduleEditForm
+        schedule={{
+          ...schedule,
+          repositoryId: "",
+          workspacePoolId: "retired-pool",
+          setupProfileId: null,
+          destroyWorkspaceAfter: null,
+        }}
+        targets={targets}
+        workspacePools={[]}
+      />,
+    );
+
+    expect(field<HTMLSelectElement>(view.container, "edit-schedule-workspace-pool").value).toBe(
+      "retired-pool",
+    );
+    expect(field(view.container, "edit-schedule-workspace-cleanup").textContent).toContain(
+      "Use pool policy (retain)",
+    );
+    submit(field(view.container, "form-edit-schedule"));
+    await act(async () => Promise.resolve());
+
+    const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({ repositoryId: null, workspacePoolId: "retired-pool" });
+    expect(body).not.toHaveProperty("setupProfileId");
+    expect(body).not.toHaveProperty("destroyWorkspaceAfter");
+    expect(body).not.toHaveProperty("ref");
+    view.unmount();
+  });
+
+  it("switches a repository schedule to workspace mode without inherited workspace defaults", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ScheduleEditForm schedule={schedule} targets={targets} workspacePools={workspacePools} />,
+    );
+    press(field(view.container, "edit-schedule-mode-workspace"));
+    setValue(field(view.container, "edit-schedule-workspace-pool"), "pool-1");
+    submit(field(view.container, "form-edit-schedule"));
+    await act(async () => Promise.resolve());
+
+    const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({ repositoryId: null, workspacePoolId: "pool-1" });
+    expect(body).not.toHaveProperty("setupProfileId");
+    expect(body).not.toHaveProperty("destroyWorkspaceAfter");
+    expect(body).not.toHaveProperty("ref");
+    view.unmount();
+  });
+
+  it("keeps a removed setup profile visible while omitting an absent profile field", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ScheduleEditForm
+        schedule={{
+          ...schedule,
+          repositoryId: "",
+          workspacePoolId: "retired-pool",
+          setupProfileId: "retired-profile",
+        }}
+        targets={targets}
+        workspacePools={[]}
+      />,
+    );
+    field(view.container, "edit-schedule-workspace-profile").removeAttribute("name");
+    submit(field(view.container, "form-edit-schedule"));
+    await act(async () => Promise.resolve());
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).not.toHaveProperty("setupProfileId");
     view.unmount();
   });
 });

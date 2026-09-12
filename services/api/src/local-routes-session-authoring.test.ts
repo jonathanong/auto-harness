@@ -70,6 +70,20 @@ async function harness() {
 }
 
 describe("session authoring is closed to host-bound credentials", () => {
+  it("does not attach a repository audit field to a denied workspace-shaped create", async () => {
+    const current = await harness();
+    expect(
+      (
+        await current.invoke(
+          "POST",
+          "/api/v1/sessions",
+          { repositoryId: null, workspacePoolId: "pool", destroyWorkspaceAfter: true },
+          current.hostKey,
+        )
+      ).status,
+    ).toBe(404);
+  });
+
   it("fails closed when create denial and outcome audits cannot be stored", async () => {
     const invalid = new ControlPlane();
     invalid.appendAuditLog = async () => {

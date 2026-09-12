@@ -372,8 +372,8 @@ export async function tryAssignWorkspaceSession(
         UpdateExpression:
           "SET #s = :busy, currentSessionId = :sessionId, lastAssignedAt = :now, connectionId = :connectionId",
         ConditionExpression:
-          "workspacePoolId = :poolId AND hostId = :hostId AND #s = :idle AND online = :true",
-        ExpressionAttributeNames: { "#s": "status" },
+          "workspacePoolId = :poolId AND hostId = :hostId AND #s = :idle AND #online = :true",
+        ExpressionAttributeNames: { "#s": "status", "#online": "online" },
         ExpressionAttributeValues: {
           ":poolId": opts.workspacePoolId,
           ":hostId": opts.hostId,

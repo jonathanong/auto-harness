@@ -102,6 +102,12 @@ describe("fetchHostInventory", () => {
     expect(
       inventoryFingerprint({
         ...empty,
+        workspacePools: [{ workspacePoolId: "pool", slots: [] }],
+      }),
+    ).not.toBe(inventoryFingerprint(empty));
+    expect(
+      inventoryFingerprint({
+        ...empty,
         updateConfig: { enabled: true, pollMs: 60_000 },
       }),
     ).not.toBe(inventoryFingerprint(empty));

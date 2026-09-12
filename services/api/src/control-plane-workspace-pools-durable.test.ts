@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -109,4 +110,144 @@ it("does not update a pool while its deletion marker is held", async () => {
     error: "catalog deletion is busy; retry the request",
   });
   expect(updateWorkspacePool).not.toHaveBeenCalled();
+});
+
+it("covers local fallbacks, queued persistence, and durable conditional update outcomes", async () => {
+  const local = new ControlPlane({ workspacePoolIdFactory: () => "local" });
+  const putWorkspacePool = vi.fn(async () => undefined);
+  local.state.storage = { putWorkspacePool } as never;
+  expect(local.createWorkspacePool({ name: "local" })).toMatchObject({ ok: true });
+  await local.state.writeTail;
+  expect(putWorkspacePool).toHaveBeenCalledWith(expect.objectContaining({ id: "local" }));
+
+  const noStorage = new ControlPlane({ workspacePoolIdFactory: () => "fallback" });
+  await expect(noStorage.createWorkspacePoolDurable({ name: "fallback" })).resolves.toMatchObject({
+    ok: true,
+  });
+  await expect(noStorage.listWorkspacePoolsDurable()).resolves.toHaveLength(1);
+  await expect(noStorage.getWorkspacePoolDurable("fallback")).resolves.toMatchObject({
+    id: "fallback",
+  });
+  expect(noStorage.updateWorkspacePool("fallback", { name: "renamed" })).toMatchObject({
+    ok: true,
+  });
+
+  const record = {
+    id: "pool-1",
+    name: "durable",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const updateWorkspacePool = vi.fn(async () => false);
+  const storage = {
+    listWorkspacePools: async () => [record],
+    updateWorkspacePool,
+    acquireDeletionMarker: async () => true,
+    releaseDeletionMarker: async () => true,
+    renewDeletionMarker: async () => true,
+  };
+  const durable = new ControlPlane({ storage: storage as never });
+  await expect(
+    durable.updateWorkspacePoolDurable(record.id, { name: "new-name" }),
+  ).resolves.toEqual({
+    ok: false,
+    error: "workspace pool not found",
+  });
+  expect(updateWorkspacePool).toHaveBeenCalledWith(expect.objectContaining({ name: "new-name" }));
+});
+
+it("covers invalid durable pool preparation, tie sorting, and local persistence", async () => {
+  const invalid = new ControlPlane({ workspacePoolIdFactory: () => "invalid" });
+  const storage = {
+    listWorkspacePools: vi.fn(async () => []),
+    createWorkspacePool: vi.fn(async () => true),
+    putWorkspacePool: vi.fn(async () => undefined),
+  };
+  invalid.state.storage = storage as never;
+  await expect(invalid.createWorkspacePoolDurable({ name: "" })).resolves.toMatchObject({
+    ok: false,
+  });
+
+  const tied = new ControlPlane({ storage: storage as never });
+  tied.state.workspacePools.set("b", {
+    id: "b",
+    name: "same",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+  tied.state.workspacePools.set("a", {
+    id: "a",
+    name: "same",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+  expect(tied.listWorkspacePools().map((pool) => pool.id)).toEqual(["a", "b"]);
+
+  const local = new ControlPlane({ workspacePoolIdFactory: () => "local" });
+  local.state.storage = storage as never;
+  local.state.workspacePools.set("local", {
+    id: "local",
+    name: "local",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  });
+  expect(local.updateWorkspacePool("local", { name: "renamed" })).toMatchObject({ ok: true });
+  await local.state.writeTail;
+  storage.listWorkspacePools.mockResolvedValue([
+    {
+      id: "valid",
+      name: "valid",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    },
+  ]);
+  await expect(invalid.updateWorkspacePoolDurable("valid", { name: "" })).resolves.toMatchObject({
+    ok: false,
+  });
+});
+
+it("blocks durable deletion when refreshed inventories reference the pool", async () => {
+  const record = {
+    id: "pool-1",
+    name: "durable",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const storage = {
+    listWorkspacePools: async () => [record],
+    acquireDeletionMarker: async () => true,
+    releaseDeletionMarker: async () => true,
+    listSchedules: async () => [],
+    listAllSessions: async () => [],
+    listSessionDrains: async () => [],
+    listAllWorktrees: async () => [],
+    listHostInventories: async () => [
+      {
+        hostId: "host",
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [{ workspacePoolId: record.id }],
+      },
+    ],
+    listProviders: async () => [],
+    listProviderAccounts: async () => [],
+    listCommands: async () => [],
+  };
+  const plane = new ControlPlane({ storage: storage as never });
+  await expect(plane.deleteWorkspacePoolDurable(record.id)).resolves.toMatchObject({
+    ok: false,
+    error: "workspace pool is attached to a host",
+  });
 });

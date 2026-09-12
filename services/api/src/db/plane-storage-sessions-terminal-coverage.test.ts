@@ -67,4 +67,36 @@ describe("session terminal cleanup branches", () => {
       }),
     ).rejects.toBe(failure);
   });
+
+  it("preserves workspace and provider leases for a timeout terminal write", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      finishSession(ctx(send), {
+        sessionId: "workspace",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        attemptId: "attempt",
+        status: "timed_out",
+        queueShard: 0,
+        preserveWorkspaceSlotLease: true,
+        preserveProviderAccountLease: true,
+        preserveHostAssignmentLease: true,
+        providerAccountLease: {
+          concurrencyId: "account-lock",
+          attemptId: "attempt",
+          providerAccountId: "account",
+          slot: 0,
+        },
+        hostAssignmentLease: { hostId: "host", connectionId: "connection" },
+      }),
+    ).resolves.toBe(true);
+    const items = send.mock.calls[send.mock.calls.length - 1]?.[0].input.TransactItems as Array<{
+      Update?: { TableName?: string; UpdateExpression?: string };
+    }>;
+    expect(items).toHaveLength(2);
+    expect(
+      items.find((transactionItem) => transactionItem.Update?.TableName === "Sessions")?.Update
+        ?.UpdateExpression,
+    ).not.toContain("workspaceSlotId = :null");
+  });
 });

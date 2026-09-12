@@ -55,6 +55,21 @@ describe("SessionRunner workspace validation branches", () => {
     });
   });
 
+  it("fails closed when a non-workspace assignment omits its repository", async () => {
+    await expect(
+      runner().run(
+        assignment({
+          sessionType: "prompt",
+          repositoryId: null,
+          worktreeId: "worktree",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "repositoryId is required",
+    });
+  });
+
   it.each([{ resume: true }, { priorContext: {} as never }])(
     "rejects continuation-only fields",
     async (patch) => {

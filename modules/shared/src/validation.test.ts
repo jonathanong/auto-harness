@@ -23,6 +23,7 @@ describe("repositoryUrlError", () => {
     for (const url of [
       "https://example.test/repository.git",
       "https://example.test:8443/repository.git",
+      "https://example.test",
       "git@example.test:repository.git",
       "git@example.test:group/repository.git",
     ]) {
@@ -276,6 +277,14 @@ describe("validateCreateSessionInput", () => {
       ok: false,
       error: "destroyWorkspaceAfter must be a boolean when set",
     });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        repositoryId: null,
+        workspacePoolId: "pool",
+        setupProfileId: "",
+      }),
+    ).toEqual({ ok: false, error: "setupProfileId must be a non-empty string when set" });
   });
 
   it("rejects workspace-only fields on repository sessions and invalid workspace types", () => {

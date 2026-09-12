@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelQueuedSession,
+  cancelRunningSession,
   expireQueuedSession,
   failExpiredResumeSession,
   finishSession,
@@ -43,6 +44,35 @@ function cancelled(failedIndex: number, extraFailed?: number) {
 }
 
 describe("session storage conditional outcomes", () => {
+  it("builds cancellation fences for workspace and worktree-less assignments", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      cancelRunningSession(ctx(send), {
+        sessionId: "workspace",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        hostId: "host",
+        connectionId: "connection",
+        attemptId: "attempt",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      cancelRunningSession(ctx(send), {
+        sessionId: "main-checkout",
+        hostId: "host",
+        connectionId: "connection",
+        attemptId: "attempt",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+      }),
+    ).resolves.toBe(true);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it("returns false when queued terminal transitions lose their condition", async () => {
     for (const operation of [
       (storage: PlaneStorageCtx) =>
@@ -174,6 +204,12 @@ describe("session storage conditional outcomes", () => {
     await expect(requeueUsageLimitedWorkspaceSession(ctx(committed), usageLimit)).resolves.toBe(
       true,
     );
+    await expect(
+      requeueUsageLimitedWorkspaceSession(ctx(vi.fn().mockResolvedValue({})), {
+        ...usageLimit,
+        hostAssignmentLease: { hostId: "host", connectionId: "connection" },
+      }),
+    ).resolves.toBe(true);
     const writes = committed.mock.calls[1]?.[0].input.TransactItems as Array<{
       Update?: {
         TableName: string;

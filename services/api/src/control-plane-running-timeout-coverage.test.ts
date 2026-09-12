@@ -83,6 +83,88 @@ describe("running timeout residual coverage", () => {
     expect(cancels).toEqual([`host:${sessionId}`]);
   });
 
+  it("releases the exact workspace slot when a local workspace assignment times out", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "workspace-timeout",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+    });
+    plane.state.sessions.set(session.id, session);
+    plane.state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy",
+      online: true,
+      currentSessionId: session.id,
+      errorMessage: "stale failure",
+    });
+
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.getSession(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+    expect(plane.state.workspaceSlots.get("slot")).not.toHaveProperty("errorMessage");
+  });
+
+  it("clears a timed-out workspace lease without releasing a slot owned by another session", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({
+      id: "workspace-race",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      mainCheckoutLease: undefined,
+    });
+    plane.state.sessions.set(session.id, session);
+    plane.state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace/slot",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "busy",
+      online: true,
+      currentSessionId: "replacement",
+    });
+
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.state.workspaceSlots.get("slot")).toMatchObject({
+      status: "busy",
+      currentSessionId: "replacement",
+    });
+    expect(plane.getSession(session.id)).toMatchObject({
+      status: "timed_out",
+      workspaceSlotId: null,
+    });
+  });
+
+  it("times out sessions without a workspace slot lease", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const session = scheduledRunning({ id: "without-workspace", workspaceSlotId: null });
+    plane.state.sessions.set(session.id, session);
+    expect(plane.enforceRunningTimeouts(Date.parse(NOW) + TIMEOUT_SECONDS * 1000)).toEqual([
+      session.id,
+    ]);
+    expect(plane.getSession(session.id)).toMatchObject({ status: "timed_out" });
+  });
+
   it("releases a scheduled main-checkout lease and a concurrency lock", async () => {
     const released: string[] = [];
     const plane = new ControlPlane({ now: () => NOW });
