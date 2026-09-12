@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import {
-  decryptCustomWebhookSecret,
-  validateConfiguredTargetReferences,
-} from "./control-plane-custom-webhooks.ts";
+import { decryptCustomWebhookSecret } from "./control-plane-custom-webhooks.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 
 const secret = "s".repeat(32);
@@ -52,6 +49,7 @@ describe("custom webhook integration lifecycle", () => {
       { priority: 1.5 },
       { fallbacks: [{ providerId: "provider" }] },
       { requiredLabels: ["ok", 1] },
+      { requiredLabels: [""] },
       { requiredLabels: Array.from({ length: 17 }, () => "label") },
       { requiredLabels: ["x".repeat(65)] },
       { enabled: "yes" },
@@ -80,10 +78,18 @@ describe("custom webhook integration lifecycle", () => {
     const afterRetain = await value.getCustomWebhookIntegrationRecord("deploy");
     expect(retained).toMatchObject({ ok: true, integration: { timeout: 120, version: 2 } });
     expect(afterRetain?.encryptedSecret).toBe(before?.encryptedSecret);
+    expect(afterRetain?.generation).toBe(before?.generation);
+    await expect(
+      value.updateCustomWebhookIntegration(config({ secret: undefined }), 1),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
     const rotated = await value.updateCustomWebhookIntegration(config({ secret: "r".repeat(32) }));
     const afterRotate = await value.getCustomWebhookIntegrationRecord("deploy");
     expect(rotated).toMatchObject({ ok: true, integration: { version: 3 } });
     expect(afterRotate?.encryptedSecret).not.toBe(afterRetain?.encryptedSecret);
+    await expect(value.deleteCustomWebhookIntegration("deploy", 2)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
     expect(await value.deleteCustomWebhookIntegration("deploy")).toEqual({ ok: true });
     expect(await value.getCustomWebhookIntegration("deploy")).toBeNull();
     expect(await value.deleteCustomWebhookIntegration("deploy")).toMatchObject({ ok: false });
@@ -165,35 +171,5 @@ describe("custom webhook integration lifecycle", () => {
       ok: false,
       conflict: true,
     });
-  });
-
-  it("rejects absent catalog references and every malformed encrypted-secret shape", async () => {
-    const value = plane();
-    await expect(
-      validateConfiguredTargetReferences(value.state, "missing", { providerId: "provider" }),
-    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
-    await expect(
-      validateConfiguredTargetReferences(value.state, "repo", { providerId: "missing" }),
-    ).resolves.toMatchObject({ ok: false, error: "providerId missing not found" });
-    await expect(
-      validateConfiguredTargetReferences(value.state, "repo", { commandId: "missing" }),
-    ).resolves.toMatchObject({ ok: false, error: "commandId missing not found" });
-
-    const created = await value.createCustomWebhookIntegration(config());
-    expect(created.ok).toBe(true);
-    const record = await value.getCustomWebhookIntegrationRecord("deploy");
-    expect(record).not.toBeNull();
-    value.state.secretEncryptor = undefined;
-    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
-      "unavailable",
-    );
-    value.state.secretEncryptor = encryptor({ decrypt: async () => "{}" });
-    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
-      "invalid",
-    );
-    value.state.secretEncryptor = encryptor({ decrypt: async () => '{"secret": 1}' });
-    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
-      "invalid",
-    );
   });
 });

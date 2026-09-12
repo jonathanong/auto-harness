@@ -32,8 +32,21 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
     return true;
   }
   if (ctx.method === "DELETE") {
+    let expectedVersion: number;
     try {
-      const result = await ctx.plane.deleteCustomWebhookIntegration(id);
+      expectedVersion = parseExpectedVersion(ctx.req.headers["if-match"]);
+    } catch (error) {
+      if (!(await audit(ctx, id, "failed"))) return true;
+      send(ctx.res, 400, {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: error instanceof Error ? error.message : "invalid version fence",
+        },
+      });
+      return true;
+    }
+    try {
+      const result = await ctx.plane.deleteCustomWebhookIntegration(id, expectedVersion);
       if (!result.ok) {
         if (!(await audit(ctx, id, "failed"))) return true;
         send(ctx.res, result.conflict ? 409 : 404, {
@@ -48,8 +61,11 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   }
   if (ctx.method !== "POST" && ctx.method !== "PUT") return false;
   let input: CustomWebhookConfigInput;
+  let expectedVersion: number | undefined;
   try {
-    input = parseConfig(await readJson(ctx.req), id, ctx.method === "POST");
+    const value = await readJson(ctx.req);
+    input = parseConfig(value, id, ctx.method === "POST");
+    if (ctx.method === "PUT") expectedVersion = parseBodyVersion(value);
   } catch (error) {
     if (!(await audit(ctx, id, "failed"))) return true;
     send(ctx.res, 400, {
@@ -64,7 +80,7 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
     const result =
       ctx.method === "POST"
         ? await ctx.plane.createCustomWebhookIntegration(input)
-        : await ctx.plane.updateCustomWebhookIntegration(input);
+        : await ctx.plane.updateCustomWebhookIntegration(input, expectedVersion);
     if (!result.ok) {
       if (!(await audit(ctx, id, "failed"))) return true;
       const status = result.unavailable
@@ -111,8 +127,11 @@ function parseConfig(value: unknown, id: string, requireSecret: boolean): Custom
     "priority",
     "requiredLabels",
     "enabled",
+    "version",
   ]);
   if (Object.keys(body).some((key) => !allowed.has(key)))
+    throw new Error("configuration contains an unsupported field");
+  if (requireSecret && body.version !== undefined)
     throw new Error("configuration contains an unsupported field");
   if (requireSecret && typeof body.secret !== "string") throw new Error("secret is required");
   if (!requireSecret && body.secret !== undefined && typeof body.secret !== "string")
@@ -146,9 +165,25 @@ function parseConfig(value: unknown, id: string, requireSecret: boolean): Custom
   };
 }
 
+function parseBodyVersion(value: unknown): number {
+  const version = (value as { version?: unknown }).version;
+  if (!Number.isSafeInteger(version) || (version as number) < 1)
+    throw new Error("version must be a positive integer");
+  return version as number;
+}
+
+function parseExpectedVersion(value: string | string[] | undefined): number {
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value))
+    throw new Error("If-Match must contain the observed positive integer version");
+  const version = Number(value);
+  if (!Number.isSafeInteger(version)) throw new Error("If-Match version is too large");
+  return version;
+}
+
 function audit(ctx: RouteCtx, id: string, outcome: "success" | "failed"): Promise<boolean> {
+  const verb = ctx.method === "POST" ? "create" : ctx.method === "PUT" ? "update" : "delete";
   return writeRouteAudit(ctx, {
-    action: "integration:custom-webhook",
+    action: `integration:custom-webhook:${verb}`,
     resourceType: "integration",
     resourceId: id,
     outcome,

@@ -60,7 +60,10 @@ paths:
       requestBody:
         required: true
         content:
-          { application/json: { schema: { $ref: "#/components/schemas/CustomWebhookConfig" } } }
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/CustomWebhookCreateConfig" } },
+          }
       responses:
         "201":
           description: Created redacted configuration
@@ -76,7 +79,10 @@ paths:
       requestBody:
         required: true
         content:
-          { application/json: { schema: { $ref: "#/components/schemas/CustomWebhookConfig" } } }
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/CustomWebhookUpdateConfig" } },
+          }
       responses:
         "200":
           description: Updated redacted configuration
@@ -89,6 +95,12 @@ paths:
     delete:
       operationId: deleteCustomWebhookIntegration
       security: [{ bearerAuth: [] }]
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: Positive integer version observed in the latest configuration response.
+          schema: { type: integer, minimum: 1 }
       responses:
         "204": { description: Deleted }
         default: { $ref: "#/components/responses/Error" }
@@ -626,9 +638,9 @@ components:
         - required: [providerId]
         - required: [commandId]
       additionalProperties: false
-    CustomWebhookConfig:
+    CustomWebhookCreateConfig:
       type: object
-      required: [repositoryId, target, timeout]
+      required: [secret, repositoryId, target, timeout]
       additionalProperties: false
       properties:
         secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
@@ -643,6 +655,24 @@ components:
           maxItems: 16
           items: { type: string, minLength: 1, maxLength: 64 }
         enabled: { type: boolean }
+    CustomWebhookUpdateConfig:
+      type: object
+      required: [repositoryId, target, timeout, version]
+      additionalProperties: false
+      properties:
+        secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
+        repositoryId: { type: string, minLength: 1 }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks: { type: array, maxItems: 90, items: { $ref: "#/components/schemas/Target" } }
+        queueTtlSeconds: { type: number, minimum: 1 }
+        timeout: { type: number, minimum: 1 }
+        priority: { type: integer }
+        requiredLabels:
+          type: array
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 64 }
+        enabled: { type: boolean }
+        version: { type: integer, minimum: 1 }
     CustomWebhookIntegration:
       type: object
       required:
@@ -687,8 +717,14 @@ components:
       required: [prompt, idempotencyKey]
       additionalProperties: false
       properties:
-        prompt: { type: string, minLength: 1, maxLength: 65536 }
-        idempotencyKey: { type: string, minLength: 1, maxLength: 1900 }
+        prompt:
+          type: string
+          minLength: 1
+          description: At most 65,536 UTF-8 bytes.
+        idempotencyKey:
+          type: string
+          minLength: 1
+          description: At most 1,900 UTF-8 bytes.
         ref: { type: string, minLength: 1 }
     CustomWebhookAccepted:
       type: object

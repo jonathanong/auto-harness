@@ -86,6 +86,7 @@ describe("custom webhook integration storage", () => {
     const customRecord = {
       id: "slack",
       type: "custom-webhook" as const,
+      generation: "generation",
       encryptedSecret: "ciphertext",
       repositoryId: "repo",
       target: { providerId: "provider" },
@@ -120,6 +121,7 @@ describe("custom webhook integration storage", () => {
     const first = {
       id: "custom-webhook:first",
       type: "custom-webhook" as const,
+      generation: "generation",
       encryptedSecret: "ciphertext",
       repositoryId: "repo",
       target: { providerId: "provider" },
@@ -158,6 +160,7 @@ describe("custom webhook integration storage", () => {
     const customRecord = {
       id: "deploy",
       type: "custom-webhook" as const,
+      generation: "generation",
       encryptedSecret: "ciphertext",
       repositoryId: "repo",
       target: { providerId: "provider" },

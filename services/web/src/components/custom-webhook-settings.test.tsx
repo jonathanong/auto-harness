@@ -36,6 +36,10 @@ async function settle() {
   await act(async () => Promise.resolve());
 }
 
+function offline() {
+  return Promise.reject(new Error("offline"));
+}
+
 describe("CustomWebhookSettings", () => {
   it("loads existing state, edits structured routing, retains a blank secret, and deletes", async () => {
     const fake = createApiFake(json(existing), json({ ...existing, version: 3 }), json({}, 204));
@@ -65,10 +69,15 @@ describe("CustomWebhookSettings", () => {
     const save = fake.requests[1]?.[1];
     expect(save?.method).toBe("PUT");
     expect(JSON.parse(String(save?.body))).not.toHaveProperty("secret");
+    expect(JSON.parse(String(save?.body))).toMatchObject({ version: 2 });
     expect(field(view.container, "custom-webhook-delete")).toBeInstanceOf(HTMLButtonElement);
     press(field(view.container, "custom-webhook-delete"));
+    expect(document.body.textContent).toContain("Delete custom webhook configuration?");
+    expect(fake.requests).toHaveLength(2);
+    press(field(document, "custom-webhook-delete-confirm-submit"));
     await settle();
     expect(fake.requests[2]?.[1]?.method).toBe("DELETE");
+    expect(fake.requests[2]?.[1]?.headers).toMatchObject({ "if-match": "3" });
     view.unmount();
   });
 
@@ -101,6 +110,7 @@ describe("CustomWebhookSettings", () => {
     await settle();
     expect(fake.requests[1]?.[0]).toBe("/api/v1/integrations/custom/other");
     expect(fake.requests[1]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fake.requests[1]?.[1]?.body))).not.toHaveProperty("version");
   });
 
   it("normalizes optional loaded routing fields and updates later dynamic rows", async () => {
@@ -108,7 +118,7 @@ describe("CustomWebhookSettings", () => {
       json({
         ...existing,
         target: {},
-        fallbacks: [{}],
+        fallbacks: undefined,
         requiredLabels: undefined,
       }),
     );
@@ -117,10 +127,10 @@ describe("CustomWebhookSettings", () => {
     press(field(view.container, "custom-webhook-load"));
     await settle();
     expect(field<HTMLInputElement>(view.container, "custom-webhook-target").value).toBe("");
-    expect(field<HTMLInputElement>(view.container, "custom-webhook-fallback-id-0").value).toBe("");
     press(field(view.container, "custom-webhook-add-label"));
     press(field(view.container, "custom-webhook-add-label"));
     setValue(field(view.container, "custom-webhook-label-1"), "release");
+    press(field(view.container, "custom-webhook-add-fallback"));
     press(field(view.container, "custom-webhook-add-fallback"));
     setValue(field(view.container, "custom-webhook-fallback-id-1"), "backup");
     view.unmount();
@@ -170,9 +180,29 @@ describe("CustomWebhookSettings", () => {
     submit(view.container.querySelector("form")!);
     await settle();
     press(field(view.container, "custom-webhook-delete"));
+    press(field(document, "custom-webhook-delete-confirm-submit"));
     await settle();
     expect(document.body.textContent).toContain("Unable to delete");
     expect(fake.requests).toHaveLength(6);
+  });
+
+  it("reports rejected load, save, and delete requests", async () => {
+    const fake = createApiFake(offline, json(existing), offline, offline);
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(document.body.textContent).toContain("Unable to load");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    submit(view.container.querySelector("form")!);
+    await settle();
+    expect(document.body.textContent).toContain("Unable to save");
+    press(field(view.container, "custom-webhook-delete"));
+    press(field(document, "custom-webhook-delete-confirm-submit"));
+    await settle();
+    expect(document.body.textContent).toContain("Unable to delete");
+    expect(fake.requests).toHaveLength(4);
   });
 
   it("renders the settings page wrapper", () => {

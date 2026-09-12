@@ -64,7 +64,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
       send(ctx.res, 400, { error: { code: "VALIDATION_ERROR", message: parsed.error } });
       return true;
     }
-    const result = await ctx.plane.createSessionDurable(
+    const result = await ctx.plane.createCustomWebhookSessionDurable(
       {
         repositoryId: record.repositoryId,
         prompt: parsed.prompt,
@@ -85,6 +85,7 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
           id: integrationId,
           type: "custom-webhook",
           storageId: `custom-webhook:${integrationId}`,
+          ...(record.generation === undefined ? {} : { generation: record.generation }),
           version: record.version,
           enabled: record.enabled,
         },

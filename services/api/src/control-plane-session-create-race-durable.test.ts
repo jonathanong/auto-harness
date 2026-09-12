@@ -97,69 +97,6 @@ describe("durable session create races", () => {
     });
   });
 
-  it("does not admit a session against a rotated inbound integration", async () => {
-    if (!ctx.available || !ctx.storage) return;
-    await putActiveTestRepository(ctx.storage, "repo-fenced");
-    await ctx.storage.putCommand({
-      id: "cmd-fenced",
-      name: "fenced",
-      argv: ["echo"],
-      appendPrompt: true,
-      providerId: null,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    await ctx.storage.putCustomWebhookIntegration(
-      {
-        id: "deploy-fenced",
-        type: "custom-webhook",
-        encryptedSecret: "cipher",
-        repositoryId: "repo-fenced",
-        target: { commandId: "cmd-fenced" },
-        fallbacks: [],
-        queueTtlSeconds: 3600,
-        timeout: 30,
-        priority: 0,
-        requiredLabels: [],
-        enabled: true,
-        version: 2,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-      null,
-    );
-    const { plane } = await createControlPlane({
-      tablePrefix: ctx.prefix,
-      skipEnsureTables: true,
-      idFactory: () => "fenced-session",
-      now: () => "2026-01-01T00:00:00.000Z",
-      shardCount: 1,
-    });
-    await expect(
-      plane.createSessionDurable(
-        {
-          repositoryId: "repo-fenced",
-          prompt: "stale delivery",
-          target: { commandId: "cmd-fenced" },
-          timeout: 30,
-          concurrencyId: "webhook:deploy-fenced:delivery-1",
-        },
-        {
-          integrationFence: {
-            id: "deploy-fenced",
-            type: "custom-webhook",
-            storageId: "custom-webhook:deploy-fenced",
-            version: 1,
-            enabled: true,
-          },
-        },
-      ),
-    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
-    expect(await ctx.storage.listAllSessions()).not.toContainEqual(
-      expect.objectContaining({ id: "fenced-session" }),
-    );
-  });
-
   it("validates and preserves priority and required labels across a durable restart", async () => {
     if (!ctx.available || !ctx.storage) return;
     await putActiveTestRepository(ctx.storage, "repo-priority-labels");

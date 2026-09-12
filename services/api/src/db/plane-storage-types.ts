@@ -44,6 +44,8 @@ export type CommandRecord = Command;
 export type CustomWebhookIntegrationRecord = {
   id: string;
   type: "custom-webhook";
+  /** Absent only on rows written before recreate fencing was introduced. */
+  generation?: string;
   encryptedSecret: string;
   repositoryId: string;
   target: TargetRef;
@@ -63,6 +65,8 @@ export type IntegrationSessionFence = {
   id: string;
   type: "custom-webhook";
   storageId: string;
+  /** Undefined fences a legacy row and requires the attribute to remain absent. */
+  generation?: string;
   version: number;
   enabled: boolean;
 };

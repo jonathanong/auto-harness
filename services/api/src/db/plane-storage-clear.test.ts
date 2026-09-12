@@ -28,6 +28,7 @@ describe("clearAll session-drain cleanup", () => {
                 {
                   id: "custom-webhook:deploy",
                   type: "custom-webhook",
+                  generation: "generation",
                   encryptedSecret: "ciphertext",
                 },
               ],

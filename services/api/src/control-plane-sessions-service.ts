@@ -64,6 +64,13 @@ export class ControlPlaneSessionsService {
     return durableSessions.createSessionDurable(this.state, body, options);
   }
 
+  createCustomWebhookSessionDurable(
+    body: unknown,
+    options: { integrationFence?: IntegrationSessionFence } = {},
+  ): ReturnType<typeof durableSessions.createCustomWebhookSessionDurable> {
+    return durableSessions.createCustomWebhookSessionDurable(this.state, body, options);
+  }
+
   getSession(id: string): PublicSession | null {
     return sessions.getSession(this.state, id);
   }

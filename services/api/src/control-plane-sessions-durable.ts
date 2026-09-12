@@ -41,7 +41,11 @@ function sessionDrainFailure(
 export async function createSessionDurable(
   state: ControlPlaneState,
   body: unknown,
-  options: { principalId?: string; integrationFence?: IntegrationSessionFence } = {},
+  options: {
+    principalId?: string;
+    integrationFence?: IntegrationSessionFence;
+    allowCustomWebhookConcurrencyId?: boolean;
+  } = {},
 ): Promise<
   | { ok: true; session: PublicSession; created: boolean }
   | { ok: false; error: string; code?: string; operationId?: string }
@@ -54,7 +58,11 @@ export async function createSessionDurable(
         code: "CONFLICT",
       };
     }
-    return createSession(state, body);
+    return createSession(
+      state,
+      body,
+      options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
+    );
   }
   await refreshTargetCatalogDurable(state);
   if (
@@ -70,7 +78,11 @@ export async function createSessionDurable(
   ) {
     await getWorkspacePoolDurable(state, (body as { workspacePoolId: string }).workspacePoolId);
   }
-  const prepared = validateSessionCreate(state, body);
+  const prepared = validateSessionCreate(
+    state,
+    body,
+    options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {},
+  );
   if (!prepared.ok) return prepared;
   if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
     return {
@@ -112,6 +124,18 @@ export async function createSessionDurable(
   return { ok: true, session: toPublic(state, result.session), created: result.created };
 }
 
+/** Trusted custom-webhook ingress alone may mint its concurrency namespace. */
+export function createCustomWebhookSessionDurable(
+  state: ControlPlaneState,
+  body: unknown,
+  options: { integrationFence?: IntegrationSessionFence } = {},
+): ReturnType<typeof createSessionDurable> {
+  return createSessionDurable(state, body, {
+    ...options,
+    allowCustomWebhookConcurrencyId: true,
+  });
+}
+
 function matchesIntegrationFence(
   state: ControlPlaneState,
   fence: IntegrationSessionFence,
@@ -120,6 +144,7 @@ function matchesIntegrationFence(
   return (
     !!current &&
     current.type === fence.type &&
+    current.generation === fence.generation &&
     current.version === fence.version &&
     current.enabled === fence.enabled
   );

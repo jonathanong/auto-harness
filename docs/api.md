@@ -388,8 +388,9 @@ start a new run. Admin configuration is at
 
 Admin `POST` creates and `PUT` replaces routing with a body containing `secret`, `repositoryId`,
 `target`, and `timeout`, plus optional `fallbacks`, `queueTtlSeconds`, `priority`, `requiredLabels`,
-and `enabled`. `PUT` may omit `secret` to retain the encrypted value; supplying it rotates the
-secret.
+and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the encrypted value,
+supplying it rotates the secret, and requires the last observed positive integer `version`.
+`DELETE` requires that same version in `If-Match`; stale writes and deletes return `409`.
 
 Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus
 stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. Production destinations must

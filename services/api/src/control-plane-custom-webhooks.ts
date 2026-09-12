@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- generic webhook config owns validation, KMS, and CAS lifecycle. */
+import { randomUUID } from "node:crypto";
+
 import {
   DEFAULT_QUEUE_TTL_SECONDS,
   validateTargetRouting,
@@ -63,7 +65,7 @@ export async function createCustomWebhookIntegration(
         conflict: true as const,
       };
     const now = state.now();
-    const record = await makeRecord(state, input, now, 1, now);
+    const record = await makeRecord(state, input, now, 1, now, randomUUID());
     if (
       state.storage &&
       !(await state.storage.putCustomWebhookIntegration(record, null, markers))
@@ -78,6 +80,7 @@ export async function createCustomWebhookIntegration(
 export async function updateCustomWebhookIntegration(
   state: ControlPlaneState,
   input: CustomWebhookConfigInput,
+  expectedVersion?: number,
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
@@ -89,12 +92,14 @@ export async function updateCustomWebhookIntegration(
       ? await state.storage.getCustomWebhookIntegration(input.id)
       : state.customWebhookIntegrations.get(input.id);
     if (!current) return { ok: false, error: "custom webhook integration not found" };
+    if (expectedVersion !== undefined && current.version !== expectedVersion) return conflict();
     const record = await makeRecord(
       state,
       input,
       current.createdAt,
       current.version + 1,
       state.now(),
+      current.generation ?? randomUUID(),
       input.secret === undefined ? current.encryptedSecret : undefined,
     );
     if (
@@ -111,11 +116,13 @@ export async function updateCustomWebhookIntegration(
 export async function deleteCustomWebhookIntegration(
   state: ControlPlaneState,
   id: string,
+  expectedVersion?: number,
 ): Promise<{ ok: true } | Failure> {
   const current = state.storage
     ? await state.storage.getCustomWebhookIntegration(id)
     : state.customWebhookIntegrations.get(id);
   if (!current) return { ok: false, error: "custom webhook integration not found" };
+  if (expectedVersion !== undefined && current.version !== expectedVersion) return conflict();
   if (state.storage && !(await state.storage.deleteCustomWebhookIntegration(id, current.version))) {
     return conflict();
   }
@@ -156,11 +163,13 @@ async function makeRecord(
   createdAt: string,
   version: number,
   updatedAt: string,
+  generation: string,
   retainedEncryptedSecret?: string,
 ): Promise<CustomWebhookIntegrationRecord> {
   return {
     id: input.id,
     type: "custom-webhook",
+    generation,
     encryptedSecret:
       retainedEncryptedSecret ??
       (await state.secretEncryptor!.encrypt(
@@ -220,9 +229,9 @@ function validateInput(
   if (
     input.requiredLabels &&
     (!Array.isArray(input.requiredLabels) ||
-      input.requiredLabels.some((v) => typeof v !== "string"))
+      input.requiredLabels.some((v) => typeof v !== "string" || v.length === 0))
   ) {
-    return { ok: false, error: "requiredLabels must be an array of strings" };
+    return { ok: false, error: "requiredLabels must be an array of non-empty strings" };
   }
   if (input.requiredLabels && input.requiredLabels.length > MAX_REQUIRED_LABELS) {
     return {

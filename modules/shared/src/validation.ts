@@ -158,39 +158,43 @@ export function isWorktreeStatus(value: unknown): value is WorktreeStatus {
   return typeof value === "string" && (WORKTREE_STATUSES as readonly string[]).includes(value);
 }
 
-/** Internal deletion leases share the concurrency-lock table but reserve this namespace. */
+/** Internal concurrency users share the lock table but reserve their namespaces. */
 export function isReservedConcurrencyId(value: string): boolean {
   return (
     value.startsWith("catalog-delete:") ||
     value.startsWith("provider-account:") ||
     value.startsWith("provider-lease:") ||
-    value.startsWith("session-spawn:")
+    value.startsWith("session-spawn:") ||
+    value.startsWith("webhook:")
   );
 }
 
 /** Validate fields required to create a session (control-plane create path). */
-export function validateCreateSessionInput(input: {
-  repositoryId: unknown;
-  prompt: unknown;
-  target?: unknown;
-  fallbacks?: unknown;
-  queueTtlSeconds?: unknown;
-  timeout: unknown;
-  priority?: unknown;
-  requiredLabels?: unknown;
-  ref?: unknown;
-  concurrencyId?: unknown;
-  metadata?: unknown;
-  type?: unknown;
-  source?: unknown;
-  workspacePoolId?: unknown;
-  setupProfileId?: unknown;
-  destroyWorkspaceAfter?: unknown;
-  /** Rejected deliberately: setup is selected by trusted profile id. */
-  setupScript?: unknown;
-  /** Internal scheduler/session derivations may use reserved lock namespaces. */
-  allowReservedConcurrencyId?: boolean;
-}): ValidationResult<{
+export function validateCreateSessionInput(
+  input: {
+    repositoryId: unknown;
+    prompt: unknown;
+    target?: unknown;
+    fallbacks?: unknown;
+    queueTtlSeconds?: unknown;
+    timeout: unknown;
+    priority?: unknown;
+    requiredLabels?: unknown;
+    ref?: unknown;
+    concurrencyId?: unknown;
+    metadata?: unknown;
+    type?: unknown;
+    source?: unknown;
+    workspacePoolId?: unknown;
+    setupProfileId?: unknown;
+    destroyWorkspaceAfter?: unknown;
+    /** Rejected deliberately: setup is selected by trusted profile id. */
+    setupScript?: unknown;
+    /** Internal scheduler/session derivations may use reserved lock namespaces. */
+    allowReservedConcurrencyId?: boolean;
+  },
+  options: { allowCustomWebhookConcurrencyId?: boolean } = {},
+): ValidationResult<{
   repositoryId: string | null;
   prompt: string;
   target: TargetRef;
@@ -317,7 +321,11 @@ export function validateCreateSessionInput(input: {
     if (!isNonEmptyString(input.concurrencyId)) {
       return { ok: false, error: "concurrencyId must be a non-empty string when set" };
     }
-    if (!input.allowReservedConcurrencyId && isReservedConcurrencyId(input.concurrencyId)) {
+    if (
+      isReservedConcurrencyId(input.concurrencyId) &&
+      !input.allowReservedConcurrencyId &&
+      !(options.allowCustomWebhookConcurrencyId && input.concurrencyId.startsWith("webhook:"))
+    ) {
       return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
     }
     const concurrencyIdBytes = concurrencyIdByteLengthError(input.concurrencyId);

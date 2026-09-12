@@ -163,6 +163,7 @@ describe("catalog delete references in every route shape", () => {
         {
           id: "deploy",
           type: "custom-webhook",
+          generation: "generation",
           encryptedSecret: "ciphertext",
           repositoryId: "repository",
           target: { providerId: "provider" },

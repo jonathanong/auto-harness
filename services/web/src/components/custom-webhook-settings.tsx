@@ -8,6 +8,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  ConfirmButton,
   Input,
   Label,
   showToast,
@@ -25,6 +26,7 @@ type Config = {
   priority: number;
   requiredLabels: string[];
   enabled: boolean;
+  version?: number;
 };
 
 const emptyConfig: Config = {
@@ -61,34 +63,43 @@ export function CustomWebhookSettings() {
       return;
     }
     start(async () => {
-      const response = await apiFetch(endpoint, { cache: "no-store" });
-      if (response.status === 404) {
-        setConfigured(false);
-        showToast("No configuration exists for this id yet.", { pw: "custom-webhook-error" });
-        return;
-      }
-      if (!response.ok) {
+      try {
+        const response = await apiFetch(endpoint, { cache: "no-store" });
+        if (response.status === 404) {
+          setConfigured(false);
+          setConfig((current) => ({ ...current, version: undefined }));
+          showToast("No configuration exists for this id yet.", { pw: "custom-webhook-error" });
+          return;
+        }
+        if (!response.ok) {
+          showToast("Unable to load custom webhook configuration.", {
+            variant: "destructive",
+            pw: "custom-webhook-error",
+          });
+          return;
+        }
+        const loaded = (await response.json()) as Config;
+        setConfig({
+          id: loaded.id,
+          repositoryId: loaded.repositoryId,
+          target: loaded.target,
+          fallbacks: loaded.fallbacks ?? [],
+          timeout: loaded.timeout,
+          queueTtlSeconds: loaded.queueTtlSeconds,
+          priority: loaded.priority,
+          requiredLabels: loaded.requiredLabels ?? [],
+          enabled: loaded.enabled,
+          version: loaded.version,
+        });
+        setSecret("");
+        setConfigured(true);
+        showToast("Custom webhook configuration loaded.", { pw: "custom-webhook-loaded" });
+      } catch {
         showToast("Unable to load custom webhook configuration.", {
           variant: "destructive",
           pw: "custom-webhook-error",
         });
-        return;
       }
-      const loaded = (await response.json()) as Config;
-      setConfig({
-        id: loaded.id,
-        repositoryId: loaded.repositoryId,
-        target: loaded.target,
-        fallbacks: loaded.fallbacks ?? [],
-        timeout: loaded.timeout,
-        queueTtlSeconds: loaded.queueTtlSeconds,
-        priority: loaded.priority,
-        requiredLabels: loaded.requiredLabels ?? [],
-        enabled: loaded.enabled,
-      });
-      setSecret("");
-      setConfigured(true);
-      showToast("Custom webhook configuration loaded.", { pw: "custom-webhook-loaded" });
     });
   };
 
@@ -108,44 +119,62 @@ export function CustomWebhookSettings() {
       return;
     }
     start(async () => {
-      const { id: _id, ...settings } = config;
-      const body: Record<string, unknown> = { ...settings };
-      if (secret) body.secret = secret;
-      const response = await apiFetch(endpoint!, {
-        method: configured ? "PUT" : "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        cache: "no-store",
-      });
-      if (!response.ok) {
+      try {
+        const { id: _id, ...settings } = config;
+        const body: Record<string, unknown> = { ...settings };
+        if (secret) body.secret = secret;
+        const response = await apiFetch(endpoint!, {
+          method: configured ? "PUT" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          showToast("Unable to save custom webhook configuration.", {
+            variant: "destructive",
+            pw: "custom-webhook-error",
+          });
+          return;
+        }
+        const saved = (await response.json()) as { version: number };
+        setConfig((current) => ({ ...current, version: saved.version }));
+        setConfigured(true);
+        setSecret("");
+        showToast("Custom webhook configuration saved.", { pw: "custom-webhook-success" });
+      } catch {
         showToast("Unable to save custom webhook configuration.", {
           variant: "destructive",
           pw: "custom-webhook-error",
         });
-        return;
       }
-      setConfigured(true);
-      setSecret("");
-      showToast("Custom webhook configuration saved.", { pw: "custom-webhook-success" });
     });
   };
 
-  const remove = () => {
-    if (!endpoint || !configured) return;
-    start(async () => {
-      const response = await apiFetch(endpoint, { method: "DELETE", cache: "no-store" });
+  const remove = async () => {
+    try {
+      const response = await apiFetch(endpoint!, {
+        method: "DELETE",
+        headers: { "if-match": String(config.version!) },
+        cache: "no-store",
+      });
       if (!response.ok) {
         showToast("Unable to delete custom webhook configuration.", {
           variant: "destructive",
           pw: "custom-webhook-error",
         });
-        return;
+        return { ok: false as const, error: "Unable to delete custom webhook configuration." };
       }
       setConfig({ ...emptyConfig });
       setSecret("");
       setConfigured(false);
       showToast("Custom webhook configuration deleted.", { pw: "custom-webhook-success" });
-    });
+    } catch {
+      showToast("Unable to delete custom webhook configuration.", {
+        variant: "destructive",
+        pw: "custom-webhook-error",
+      });
+      return { ok: false as const, error: "Unable to delete custom webhook configuration." };
+    }
   };
 
   const updateTarget = (target: Target, index?: number) => {
@@ -175,7 +204,11 @@ export function CustomWebhookSettings() {
                 id="custom-webhook-id"
                 value={config.id}
                 onChange={(event) => {
-                  setConfig((current) => ({ ...current, id: event.target.value }));
+                  setConfig((current) => ({
+                    ...current,
+                    id: event.target.value,
+                    version: undefined,
+                  }));
                   // A loaded configuration only authorizes PUT/DELETE for its exact ID.
                   setConfigured(false);
                 }}
@@ -400,15 +433,16 @@ export function CustomWebhookSettings() {
               {pending ? "Saving…" : configured ? "Save changes" : "Save"}
             </Button>
             {configured && (
-              <Button
-                type="button"
+              <ConfirmButton
+                triggerLabel="Delete"
+                confirmTitle="Delete custom webhook configuration?"
+                confirmDescription="This permanently removes the stored custom webhook configuration. It cannot be undone."
+                confirmLabel="Delete configuration"
                 variant="destructive"
-                onClick={remove}
                 disabled={pending}
-                data-pw="custom-webhook-delete"
-              >
-                Delete
-              </Button>
+                pw="custom-webhook-delete"
+                onConfirm={remove}
+              />
             )}
           </div>
         </form>

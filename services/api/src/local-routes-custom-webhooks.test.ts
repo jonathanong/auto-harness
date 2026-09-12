@@ -87,7 +87,7 @@ function directRoute(
 
 describe("custom webhook receiver", () => {
   it("exposes CRUD configuration without returning the encrypted secret", async () => {
-    const { handler } = await fixture();
+    const { plane, handler } = await fixture();
     const loaded = await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy");
     expect(loaded).toMatchObject({ status: 200, json: { id: "deploy", secretConfigured: true } });
     expect(JSON.stringify(loaded.json)).not.toContain("encryptedSecret");
@@ -96,14 +96,30 @@ describe("custom webhook receiver", () => {
       target: { providerId: "provider" },
       timeout: 90,
       enabled: false,
+      version: 1,
     });
-    expect(updated).toMatchObject({ status: 200, json: { enabled: false } });
+    expect(updated).toMatchObject({ status: 200, json: { enabled: false, version: 2 } });
     expect(
-      (await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy")).status,
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "1",
+      }),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      (
+        await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+          "if-match": "2",
+        })
+      ).status,
     ).toBe(204);
     expect((await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).status).toBe(
       404,
     );
+    await expect(plane.listAuditLogs({})).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ action: "integration:custom-webhook:update" }),
+        expect.objectContaining({ action: "integration:custom-webhook:delete" }),
+      ]),
+    });
   });
 
   it("covers configuration CRUD validation, conflicts, and storage failures", async () => {
@@ -129,6 +145,7 @@ describe("custom webhook receiver", () => {
       await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/missing", {
         ...complete,
         secret: undefined,
+        version: 1,
       }),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     for (const [id, body] of [
@@ -141,16 +158,28 @@ describe("custom webhook receiver", () => {
       ["missing-timeout", { ...complete, timeout: undefined }],
       ["bad-fallbacks", { ...complete, fallbacks: {} }],
       ["bad-labels", { ...complete, requiredLabels: {} }],
+      ["empty-label", { ...complete, requiredLabels: [""] }],
+      ["post-version", { ...complete, version: 1 }],
     ]) {
       expect(
         await invokeHandler(handler, "POST", `/api/v1/integrations/custom/${id}`, body),
       ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
     }
     expect(await invokeBadJson(handler, "POST", "/api/v1/integrations/custom/bad-json")).toBe(400);
+    for (const version of [undefined, 0, 1.5]) {
+      expect(
+        await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+          ...complete,
+          secret: undefined,
+          version,
+        }),
+      ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    }
     expect(
       await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
         ...complete,
         secret: 1,
+        version: 1,
       }),
     ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
 
@@ -178,13 +207,28 @@ describe("custom webhook receiver", () => {
       conflict: true,
     });
     expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy"),
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "1",
+      }),
     ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    for (const invalid of [undefined, "0", "1.5", "9007199254740992"]) {
+      expect(
+        await invokeHandler(
+          handler,
+          "DELETE",
+          "/api/v1/integrations/custom/deploy",
+          undefined,
+          invalid === undefined ? {} : { "if-match": invalid },
+        ),
+      ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    }
     mutable.deleteCustomWebhookIntegration = async () => {
       throw new Error("storage unavailable");
     };
     expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy"),
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
+        "if-match": "1",
+      }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     mutable.createCustomWebhookIntegration = async () => {
       throw new Error("storage unavailable");
@@ -252,12 +296,22 @@ describe("custom webhook receiver", () => {
       await invokeHandler(handler, "POST", "/api/v1/integrations/custom/optional", optional),
     ).toMatchObject({ status: 201, json: { id: "optional", enabled: true } });
     expect(
-      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/missing"),
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/missing", undefined, {
+        "if-match": "1",
+      }),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     plane.appendAuditLog = async () => {
       throw new Error("audit unavailable");
     };
-    const deleting = directRoute(plane, "/api/v1/integrations/custom/optional", "DELETE");
+    const deleting = directRoute(
+      plane,
+      "/api/v1/integrations/custom/optional",
+      "DELETE",
+      undefined,
+      {
+        "if-match": "1",
+      },
+    );
     await expect(handleCustomWebhookConfigRoutes(deleting.ctx as never)).resolves.toBe(true);
     expect(deleting.status()).toBe(500);
   });
@@ -467,7 +521,7 @@ describe("custom webhook receiver", () => {
   it("maps durable session conflicts and fails closed when ingress auditing fails", async () => {
     const { plane } = await fixture();
     const mutable = plane as unknown as {
-      createSessionDurable: () => Promise<unknown>;
+      createCustomWebhookSessionDurable: () => Promise<unknown>;
     };
     const body = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "conflict" }));
     const headers = {
@@ -478,7 +532,7 @@ describe("custom webhook receiver", () => {
       [{ ok: false, code: "REPOSITORY_ADMISSION_CLOSED", error: "closed" }, 409],
       [{ ok: false, code: "VALIDATION_ERROR", error: "invalid" }, 400],
     ]) {
-      mutable.createSessionDurable = async () => result;
+      mutable.createCustomWebhookSessionDurable = async () => result;
       const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, headers);
       await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
       expect(route.status()).toBe(expectedStatus);
@@ -524,8 +578,8 @@ describe("custom webhook receiver", () => {
       {
         configure: async (plane) => {
           (
-            plane as unknown as { createSessionDurable: () => Promise<unknown> }
-          ).createSessionDurable = async () => ({
+            plane as unknown as { createCustomWebhookSessionDurable: () => Promise<unknown> }
+          ).createCustomWebhookSessionDurable = async () => ({
             ok: false,
             code: "VALIDATION_ERROR",
             error: "invalid",
@@ -665,18 +719,23 @@ describe("custom webhook receiver", () => {
     ).toBe(500);
   });
 
-  it("rejects an in-flight create whose integration version was rotated", async () => {
+  it("rejects an in-flight create after its integration was deleted and recreated", async () => {
     const { plane } = await fixture();
     const old = await plane.integrations.getCustomWebhookIntegrationRecord("deploy");
     expect(old).not.toBeNull();
-    await plane.updateCustomWebhookIntegration({
+    await plane.deleteCustomWebhookIntegration("deploy");
+    await plane.createCustomWebhookIntegration({
       id: "deploy",
+      secret,
       repositoryId: "repo",
       target: { providerId: "provider" },
       timeout: 60,
     });
+    const recreated = await plane.integrations.getCustomWebhookIntegrationRecord("deploy");
+    expect(recreated).toMatchObject({ version: old!.version, enabled: old!.enabled });
+    expect(recreated?.generation).not.toBe(old!.generation);
     await expect(
-      plane.sessions.createSessionDurable(
+      plane.sessions.createCustomWebhookSessionDurable(
         {
           repositoryId: "repo",
           prompt: "x",
@@ -692,6 +751,7 @@ describe("custom webhook receiver", () => {
             id: "deploy",
             type: "custom-webhook",
             storageId: "custom-webhook:deploy",
+            generation: old!.generation,
             version: old!.version,
             enabled: true,
           },

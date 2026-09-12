@@ -39,12 +39,20 @@ function integrationSessionFenceCheck(
       TableName: ctx.tables.integrations,
       Key: { id: fence.storageId },
       ConditionExpression:
-        "attribute_exists(id) AND #type = :type AND #version = :version AND #enabled = :enabled",
-      ExpressionAttributeNames: { "#type": "type", "#version": "version", "#enabled": "enabled" },
+        fence.generation === undefined
+          ? "attribute_exists(id) AND #type = :type AND #version = :version AND #enabled = :enabled AND attribute_not_exists(#generation)"
+          : "attribute_exists(id) AND #type = :type AND #version = :version AND #enabled = :enabled AND #generation = :generation",
+      ExpressionAttributeNames: {
+        "#type": "type",
+        "#version": "version",
+        "#enabled": "enabled",
+        "#generation": "generation",
+      },
       ExpressionAttributeValues: {
         ":type": fence.type,
         ":version": fence.version,
         ":enabled": fence.enabled,
+        ...(fence.generation === undefined ? {} : { ":generation": fence.generation }),
       },
     },
   };
