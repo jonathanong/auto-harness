@@ -10,6 +10,7 @@ import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-pla
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
   queueHostLossRetry,
@@ -94,6 +95,7 @@ async function requeueOmittedWorktreeSessions(
       requeued.push(session.id);
     } else if (terminalHostLoss) {
       if (typeof state.storage.finishSession !== "function") continue;
+      const handoff = hostLostTerminalHookHandoff(state, session);
       const finished = await state.storage.finishSession({
         sessionId: session.id,
         worktreeId: worktree.id,
@@ -103,6 +105,7 @@ async function requeueOmittedWorktreeSessions(
         completedAt: state.now(),
         errorCode: "host_lost",
         errorMessage: HOST_LOSS_TERMINAL_REASON,
+        ...(handoff ? { terminalHookHandoff: handoff } : {}),
         fence: { hostId, connectionId: connectionId! },
         ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),
@@ -110,7 +113,7 @@ async function requeueOmittedWorktreeSessions(
       if (!finished) continue;
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, finishHostLostSession(state, session));
+      state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",

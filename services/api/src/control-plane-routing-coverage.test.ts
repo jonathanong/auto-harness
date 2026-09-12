@@ -475,7 +475,7 @@ describe("routing edge coverage", () => {
         worktrees: [],
         commandProfiles: [],
       }),
-    ).toEqual({ ok: true, connectionId: "connection" });
+    ).toEqual({ ok: true, connectionId: "connection", terminalHookHandoffs: [] });
 
     const delegated: SessionRecord = {
       id: "delegated",

@@ -9,6 +9,7 @@ import {
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
   queueHostLossRetry,
@@ -108,6 +109,7 @@ export async function offlineHostAndRequeueDurableImpl(
         const terminalHostLoss = canRequeue && !canRetryHostLoss(latestSession);
         if (terminalHostLoss && latestWorktree) {
           if (typeof state.storage.finishSession !== "function") continue;
+          const handoff = hostLostTerminalHookHandoff(state, latestSession);
           const finished = await state.storage.finishSession({
             sessionId,
             worktreeId: wt.id,
@@ -117,6 +119,7 @@ export async function offlineHostAndRequeueDurableImpl(
             completedAt: state.now(),
             errorCode: "host_lost",
             errorMessage: HOST_LOSS_TERMINAL_REASON,
+            ...(handoff ? { terminalHookHandoff: handoff } : {}),
             fence: { hostId, connectionId },
             ...(latestSession.concurrencyId ? { concurrencyId: latestSession.concurrencyId } : {}),
             ...providerAccountLeaseWriteOpts(latestSession),
@@ -124,7 +127,7 @@ export async function offlineHostAndRequeueDurableImpl(
           if (finished) {
             await releaseLegacyHostAssignmentAfterDurableTransition(state, latestSession);
             releaseProviderAccountLease(state, latestSession);
-            state.sessions.set(sessionId, finishHostLostSession(state, latestSession));
+            state.sessions.set(sessionId, finishHostLostSession(state, latestSession, handoff));
             state.worktrees.set(wt.id, {
               ...latestWorktree,
               status: "idle",

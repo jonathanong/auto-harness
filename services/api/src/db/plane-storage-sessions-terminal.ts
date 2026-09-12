@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- terminal transition fencing and cleanup form one atomic storage operation. */
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { SessionResult } from "@auto-harness/shared";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -42,6 +42,8 @@ type FinishSessionOpts = {
   preserveHostAssignmentLease?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
+  /** Retain a host-indexed, replacement-daemon terminal-hook handoff. */
+  terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
 };
 
 function setOptional(
@@ -100,6 +102,10 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   }
   setOptional(sets, values, "timedOutHostId", opts.timedOutHostId);
   setOptional(sets, values, "timedOutAssignmentConnectionId", opts.timedOutAssignmentConnectionId);
+  if (opts.terminalHookHandoff !== undefined) {
+    sets.push("terminalHookHandoff = :terminalHookHandoff");
+    values[":terminalHookHandoff"] = opts.terminalHookHandoff;
+  }
   return {
     names: {
       "#s": "status",
@@ -108,9 +114,12 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     values,
     sets,
     removes: [
+      ...(opts.terminalHookHandoff ? ["terminalHookHandoffSettled"] : []),
       "reconnectDeadlineAt",
       "assignmentConnectionId",
-      ...(opts.preserveHostAssignmentLease ? [] : ["activeHostId", "activeHostOrder"]),
+      ...(opts.preserveHostAssignmentLease || opts.terminalHookHandoff
+        ? []
+        : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
     ],
@@ -216,5 +225,88 @@ export async function finishSession(
     return true;
   } catch (err) {
     return finishSessionConflict(ctx, err, opts, cleanup);
+  }
+}
+
+/**
+ * The hook itself is an agent-local side effect. Its completion only clears
+ * the durable handoff when the current host connection confirms the exact
+ * handoff id, so a replacement socket cannot settle a stale delivery.
+ */
+export async function settleTerminalHookHandoff(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    handoffId: string;
+    hostId: string;
+    connectionId: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET terminalHookHandoffSettled = :settled REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
+              ConditionExpression:
+                "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.hostId = :hostId",
+              ExpressionAttributeValues: {
+                ":handoffId": opts.handoffId,
+                ":hostId": opts.hostId,
+                ":settled": { handoffId: opts.handoffId, hostId: opts.hostId },
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (!isConditionalTransactionFailed(err)) throw err;
+    const current = await getSession(ctx, opts.sessionId, true);
+    return (
+      current?.terminalHookHandoffSettled?.handoffId === opts.handoffId &&
+      current.terminalHookHandoffSettled.hostId === opts.hostId
+    );
+  }
+}
+
+/** Expire an unreachable replacement-daemon handoff without leaving its host index forever. */
+export async function expireTerminalHookHandoff(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; handoffId: string; expiresAt: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET terminalHookHandoffExpiredAt = :expiredAt REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
+        ConditionExpression:
+          "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.expiresAt = :expiresAt",
+        ExpressionAttributeValues: {
+          ":handoffId": opts.handoffId,
+          ":expiresAt": opts.expiresAt,
+          ":expiredAt": opts.expiresAt,
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (!isConditionalTransactionFailed(err)) throw err;
+    return false;
   }
 }

@@ -607,12 +607,24 @@ export async function createLambdaRuntime(
               );
         const sessionCommandStartAcknowledged = result.sessionCommandStartAcknowledged;
         if (result.ok && message.type === "host:register") {
-          trackDelivery(message.hostId, {
+          // Registration establishes this exact socket as the handoff owner.
+          // Keep the wire order strict: a daemon must see registration before
+          // recovery work, and neither frame may follow a newer host socket.
+          await postToConnection(created.plane, management, authenticated.hostId, connectionId, {
             type: "host:registered",
             hostId: message.hostId,
             connectionId: result.connectionId,
             protocolVersion: HOST_PROTOCOL_VERSION,
           });
+          for (const handoff of result.terminalHookHandoffs ?? []) {
+            await postToConnection(
+              created.plane,
+              management,
+              authenticated.hostId,
+              connectionId,
+              handoff,
+            );
+          }
           await created.plane.requestAssignment();
         } else if (result.ok && message.type === "host:keepalive") {
           // Same inbound-connection delivery as session:status-acknowledged:
@@ -670,6 +682,17 @@ export async function createLambdaRuntime(
               ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
                 ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
                 : {}),
+            }).catch(() => undefined),
+          );
+        } else if (
+          result.sessionTerminalHookAcknowledged &&
+          message.type === "session:terminal-hook-complete"
+        ) {
+          track(
+            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+              type: "session:terminal-hook-acknowledged",
+              sessionId: result.sessionTerminalHookAcknowledged.sessionId,
+              handoffId: result.sessionTerminalHookAcknowledged.handoffId,
             }).catch(() => undefined),
           );
         } else if (result.hostDraining) {

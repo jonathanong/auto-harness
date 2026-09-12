@@ -133,6 +133,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async listAllWorktrees() {
       return [...worktrees.values()];
     },
+    async listActiveSessionsByHost(hostId: string) {
+      return [...sessions.values()].filter((session) => session.activeHostId === hostId);
+    },
     async listProviders() {
       return [];
     },
@@ -220,6 +223,27 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return true;
     },
     async setWorktreeOnlineFenced() {
+      return true;
+    },
+    async settleTerminalHookHandoff(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      const handoff = session?.terminalHookHandoff as
+        | { handoffId?: string; hostId?: string }
+        | undefined;
+      if (
+        !session ||
+        !handoff ||
+        handoff.handoffId !== input.handoffId ||
+        handoff.hostId !== input.hostId ||
+        hostLocks.get(String(input.hostId)) !== input.connectionId
+      )
+        return false;
+      sessions.set(sessionId, {
+        ...session,
+        terminalHookHandoffSettled: { handoffId: input.handoffId, hostId: input.hostId },
+      });
+      delete (sessions.get(sessionId) as Record<string, unknown>).terminalHookHandoff;
       return true;
     },
     async tryAssignMainCheckoutSession(input: Record<string, unknown>) {
@@ -683,6 +707,79 @@ describe("Lambda runtime adapters", () => {
       connectionId: "gateway-1",
       protocolVersion: HOST_PROTOCOL_VERSION,
     });
+  });
+
+  it("delivers v5 terminal-hook handoffs sequentially after registration on the inbound socket", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: "worktree-1",
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    await registerGatewayHost(fixture, "gateway-1", 5);
+    const messages = fixture.management.send.mock.calls
+      .map((call) => call[0].input)
+      .filter((input) => input.Data !== undefined)
+      .map((input) => ({ connectionId: input.ConnectionId, body: JSON.parse(String(input.Data)) }));
+    expect(messages.slice(-2)).toEqual([
+      expect.objectContaining({
+        connectionId: "gateway-1",
+        body: expect.objectContaining({ type: "host:registered" }),
+      }),
+      expect.objectContaining({
+        connectionId: "gateway-1",
+        body: expect.objectContaining({ type: "session:terminal-hook", handoffId: "handoff" }),
+      }),
+    ]);
+  });
+
+  it("acknowledges a terminal-hook completion on its submitting connection", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: null,
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 5);
+    fixture.management.send.mockClear();
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:terminal-hook-complete",
+          sessionId: "lost",
+          handoffId: "handoff",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "session:terminal-hook-acknowledged",
+        sessionId: "lost",
+        handoffId: "handoff",
+      },
+    ]);
   });
 
   it("acks a successful host keepalive over postToConnection and skips a rejected one", async () => {

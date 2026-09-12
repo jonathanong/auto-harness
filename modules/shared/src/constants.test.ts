@@ -50,7 +50,7 @@ describe("constants", () => {
     expect(WORKTREE_STATUSES).toEqual(["idle", "busy", "error"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");
-    expect(HOST_PROTOCOL_VERSION).toBe(4);
+    expect(HOST_PROTOCOL_VERSION).toBe(5);
     expect(COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION).toBe(4);
     expect(KEEPALIVE_ACK_PROTOCOL_VERSION).toBe(2);
     expect(ATTEMPT_FENCED_PROTOCOL_VERSION).toBe(1);

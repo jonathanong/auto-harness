@@ -62,6 +62,8 @@ export type SessionRecord = {
   infrastructureRetryCount?: number;
   /** Most recent retryable infrastructure failure, retained across attempts. */
   lastInfrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
+  /** Attempt whose failure consumed the automatic infrastructure retry. */
+  infrastructureRetryAttemptId?: string;
   url?: string;
   type?: string | undefined;
   source?: string | undefined;
@@ -107,6 +109,30 @@ export type SessionRecord = {
   };
   /** Idempotency marker for post-transition repair of a pre-lease host slot. */
   legacyHostAssignmentReleased?: boolean;
+  /**
+   * A host-loss terminal outcome whose repository hook must be run by the
+   * replacement daemon on the same host. It is retained on the active-host
+   * index until that daemon durably confirms completion.
+   */
+  terminalHookHandoff?: {
+    handoffId: string;
+    hostId: string;
+    repositoryId: string;
+    worktreeId: string | null;
+    status: "failed";
+    errorCode: "host_lost";
+    /** Bounded recovery retention; expiry records a fail-closed no-op. */
+    expiresAt: string;
+    ref?: string;
+    metadata?: Record<string, unknown>;
+  };
+  /** Exact handoff/host pair that settled the hook, retained for lost completion acknowledgements. */
+  terminalHookHandoffSettled?: {
+    handoffId: string;
+    hostId: string;
+  };
+  /** Audit marker when the replacement daemon never returned before bounded recovery expired. */
+  terminalHookHandoffExpiredAt?: string;
 };
 
 export type WorktreeRecord = {

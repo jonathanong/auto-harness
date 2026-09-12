@@ -576,6 +576,7 @@ describe("ControlPlane assignment-attempt fencing", () => {
       ...plane.getSession("sess-1")!,
       infrastructureRetryCount: 1,
       lastInfrastructureErrorCode: "checkout_fetch_failed",
+      infrastructureRetryAttemptId: first.session.attemptId,
     });
     await expect(plane.handleHostMessageDurable(status, "old-connection")).resolves.toEqual({
       ok: true,
@@ -588,14 +589,35 @@ describe("ControlPlane assignment-attempt fencing", () => {
 
     plane.state.sessions.set("sess-1", {
       ...plane.getSession("sess-1")!,
+      status: "failed",
+      hostId: null,
+      worktreeId: null,
+      attemptId: "attempt-2",
       lastInfrastructureErrorCode: "host_lost",
+    });
+    await expect(
+      plane.handleHostMessageDurable({ ...status, attemptId: "attempt-2" }, "old-connection"),
+    ).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "sess-1",
+        attemptId: "attempt-2",
+        retryAccepted: false,
+      },
+    });
+
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      status: "queued",
+      attemptId: first.session.attemptId,
+      infrastructureRetryAttemptId: first.session.attemptId,
     });
     await expect(plane.handleHostMessageDurable(status, "old-connection")).resolves.toEqual({
       ok: true,
       sessionStatusAcknowledged: {
         sessionId: "sess-1",
         attemptId: first.session.attemptId!,
-        retryAccepted: false,
+        retryAccepted: true,
       },
     });
   });

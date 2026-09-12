@@ -4,6 +4,7 @@ import {
   COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
   KEEPALIVE_ACK_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
+  TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
   thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
@@ -36,9 +37,10 @@ import {
 import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
-import { WorktreeManager } from "./worktree-manager.ts";
+import { WorktreeManager, type ClaimedWorktree } from "./worktree-manager.ts";
 import { probeGitReadiness } from "./git-readiness.ts";
 import { withTimeout } from "./with-timeout.ts";
+import { runTerminalHook } from "./terminal-hook.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -73,6 +75,10 @@ export type DaemonLoopOptions = {
   pendingStatusMaxCount?: number;
   /** Retry at most this many pending terminal statuses per keepalive tick. */
   statusRetriesPerTick?: number;
+  /** Drop an unacknowledged host-loss hook completion after the server's 24h retention window. */
+  pendingTerminalHookHandoffMaxAgeMs?: number;
+  /** Bound replacement-hook completion retention while the server is unreachable. */
+  pendingTerminalHookHandoffMaxCount?: number;
   /**
    * Bound on one keepalive attempt. A stalled outbound write (the transport
    * thinks it's connected but nothing is actually being delivered) otherwise
@@ -137,6 +143,14 @@ type PendingCommandStart = {
   sending: boolean;
 };
 
+type PendingTerminalHookHandoff = {
+  message: Extract<HostWireMessage, { type: "session:terminal-hook" }>;
+  firstAttemptedAtMs: number;
+  complete: boolean;
+  executing: boolean;
+  sending: boolean;
+};
+
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /**
  * Ceiling on retained terminal statuses, comfortably under the control
@@ -156,6 +170,8 @@ const DEFAULT_PENDING_STATUS_MAX_COUNT = 500;
  * backlog across multiple 20s ticks instead keeps every tick well under it.
  */
 const DEFAULT_STATUS_RETRIES_PER_TICK = 20;
+const DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_COUNT = 500;
 
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
@@ -182,10 +198,16 @@ export class DaemonLoop {
    */
   private readonly worktreeAssignmentTails = new Map<string, Promise<void>>();
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
+  /** Replacement-daemon hook completions retained until the API confirms their fence. */
+  private readonly pendingTerminalHookHandoffs = new Map<string, PendingTerminalHookHandoff>();
+  /** Recovery hooks share the daemon's bounded execution capacity with CLI sessions. */
+  private activeTerminalHookHandoffs = 0;
   private readonly pendingCommandStarts = new Map<string, PendingCommandStart>();
   private readonly pendingStatusMaxAgeMs: number;
   private readonly pendingStatusMaxCount: number;
   private readonly statusRetriesPerTick: number;
+  private readonly pendingTerminalHookHandoffMaxAgeMs: number;
+  private readonly pendingTerminalHookHandoffMaxCount: number;
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
   /** A polled allowed-roots policy rejected this daemon's paths; clear only after a valid apply. */
@@ -226,6 +248,7 @@ export class DaemonLoop {
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
+  private readonly childEnvSource: NodeJS.ProcessEnv;
   private readonly executionProfiles: ExecutionProfiles;
   private advertisedProviderAccountReadiness = "";
   private runtime: HostRuntimeReport | undefined;
@@ -247,6 +270,11 @@ export class DaemonLoop {
     this.pendingStatusMaxAgeMs = options.pendingStatusMaxAgeMs ?? DEFAULT_PENDING_STATUS_MAX_AGE_MS;
     this.pendingStatusMaxCount = options.pendingStatusMaxCount ?? DEFAULT_PENDING_STATUS_MAX_COUNT;
     this.statusRetriesPerTick = options.statusRetriesPerTick ?? DEFAULT_STATUS_RETRIES_PER_TICK;
+    this.pendingTerminalHookHandoffMaxAgeMs =
+      options.pendingTerminalHookHandoffMaxAgeMs ??
+      DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_AGE_MS;
+    this.pendingTerminalHookHandoffMaxCount =
+      options.pendingTerminalHookHandoffMaxCount ?? DEFAULT_PENDING_TERMINAL_HOOK_HANDOFF_MAX_COUNT;
     this.keepaliveTimeoutMs = options.keepaliveTimeoutMs ?? 10_000;
     // Comfortably under the control plane's default 60s heartbeat staleness
     // window (DEFAULT_HEARTBEAT_STALE_MS in modules/shared) — not imported
@@ -257,6 +285,7 @@ export class DaemonLoop {
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     this.processRunner = processRunner;
+    this.childEnvSource = options.childEnvSource ?? process.env;
     this.runtime = options.runtime;
     this.executionProfiles = options.executionProfiles ?? emptyExecutionProfiles();
     const innerCommandRunner =
@@ -397,6 +426,7 @@ export class DaemonLoop {
     // while the connection remains healthy, so retry pending authorizations on
     // the next keepalive as well as after reconnect registration.
     this.retryPendingCommandStarts();
+    this.retryPendingTerminalHookHandoffs();
     // Bounded: an outbound write stalled on a connection the transport still
     // considers open (registration wedged, dead epoch fencing) otherwise
     // leaves this promise pending forever — it never resolves *or* rejects,
@@ -575,6 +605,12 @@ export class DaemonLoop {
       case "session:status-acknowledged":
         await this.handleStatusAcknowledged(msg);
         return;
+      case "session:terminal-hook":
+        await this.handleTerminalHookHandoff(msg);
+        return;
+      case "session:terminal-hook-acknowledged":
+        this.pendingTerminalHookHandoffs.delete(msg.handoffId);
+        return;
       case "session:assign":
         await this.handleAssign(msg);
         return;
@@ -604,6 +640,7 @@ export class DaemonLoop {
     // the next keepalive tick.
     this.retryPendingTerminalStatuses();
     this.retryPendingCommandStarts();
+    this.retryPendingTerminalHookHandoffs();
     this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
     this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
     // A fresh registration is itself proof this connection is live —
@@ -653,6 +690,35 @@ export class DaemonLoop {
         entry.controller.signal.aborted,
     );
     await Promise.all(pending.map((entry) => entry.work.catch(() => undefined)));
+  }
+
+  /**
+   * Wait for a preceding assignment's physical-target fence without retaining
+   * a cancelled replacement behind it. The caller still leaves its own tail
+   * chained to this fence, so a later assignment cannot overtake the work
+   * that this cancelled waiter chose not to run.
+   */
+  private waitForTargetFence(targetWork: Promise<void>, signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (available: boolean) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", aborted);
+        resolve(available);
+      };
+      const aborted = () => finish(false);
+      signal.addEventListener("abort", aborted, { once: true });
+      // Target fences normally only resolve, but an injected or future
+      // predecessor must not strand this assignment's completion tail.
+      void targetWork.then(
+        () => finish(true),
+        () => finish(true),
+      );
+      // Abort can race between the precondition above and listener setup.
+      if (signal.aborted) aborted();
+    });
   }
 
   private inflightFor(sessionId: string, attemptId: string | undefined): InflightSession[] {
@@ -854,6 +920,209 @@ export class DaemonLoop {
   }
 
   /**
+   * A v5 peer assigns this only after a prior daemon died. It deliberately
+   * reuses the current inventory and root policy; the control plane never
+   * sends executable paths. Completion is retained and retried until the
+   * durable fenced acknowledgement arrives.
+   */
+  private async handleTerminalHookHandoff(
+    msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
+  ): Promise<void> {
+    if (this.serverProtocolVersion < TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION) return;
+    const existing = this.pendingTerminalHookHandoffs.get(msg.handoffId);
+    if (existing) {
+      if (existing.complete) this.sendTerminalHookHandoffCompletion(existing);
+      return;
+    }
+    this.expirePendingTerminalHookHandoffs(Date.now());
+    if (this.pendingTerminalHookHandoffs.size >= this.pendingTerminalHookHandoffMaxCount) {
+      this.onLog?.(
+        `terminal hook handoff retry buffer full (${String(this.pendingTerminalHookHandoffMaxCount)}); ` +
+          `deferring ${msg.sessionId} until a fresh registration`,
+      );
+      return;
+    }
+    const pending: PendingTerminalHookHandoff = {
+      message: msg,
+      firstAttemptedAtMs: Date.now(),
+      complete: false,
+      executing: false,
+      sending: false,
+    };
+    this.pendingTerminalHookHandoffs.set(msg.handoffId, pending);
+    // A reconnect can receive the durable replacement handoff while this
+    // process still owns the original terminal status. That status's retained
+    // checkout tail waits for its hook disposition; let it finish its one
+    // hook first and merely settle the replacement handoff, never duplicate it.
+    if (await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId)) {
+      pending.complete = true;
+      this.sendTerminalHookHandoffCompletion(pending);
+      return;
+    }
+    this.startTerminalHookHandoff(pending);
+  }
+
+  private activeAssignmentCount(): number {
+    return [...this.inflight.values()].filter(
+      (entry) =>
+        !entry.controller.signal.aborted &&
+        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
+    ).length;
+  }
+
+  private startTerminalHookHandoff(pending: PendingTerminalHookHandoff): void {
+    if (
+      pending.complete ||
+      pending.executing ||
+      this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending ||
+      this.activeAssignmentCount() + this.activeTerminalHookHandoffs >=
+        this.executionProfiles.maxConcurrentAssignments
+    )
+      return;
+    pending.executing = true;
+    this.activeTerminalHookHandoffs += 1;
+    void this.runTerminalHookHandoff(pending).finally(() => {
+      pending.executing = false;
+      this.activeTerminalHookHandoffs -= 1;
+    });
+  }
+
+  private async runTerminalHookHandoff(pending: PendingTerminalHookHandoff): Promise<void> {
+    const msg = pending.message;
+    const targetKey =
+      msg.worktreeId === null
+        ? `main\0${msg.repositoryId}`
+        : `worktree\0${msg.repositoryId}\0${msg.worktreeId}`;
+    const previousTargetWork = this.worktreeAssignmentTails.get(targetKey);
+    let resolveTargetWork!: () => void;
+    const targetWork = new Promise<void>((resolve) => {
+      resolveTargetWork = resolve;
+    });
+    this.worktreeAssignmentTails.set(targetKey, targetWork);
+    try {
+      if (previousTargetWork) await previousTargetWork.catch(() => undefined);
+      if (msg.worktreeId === null) {
+        if (!(await this.worktrees.acquireMain(msg.repositoryId))) {
+          throw new Error(`main checkout unavailable for terminal hook ${msg.sessionId}`);
+        }
+        try {
+          await this.runTerminalHookForClaim(msg, await this.worktrees.mainClaim(msg.repositoryId));
+        } finally {
+          this.worktrees.releaseMain(msg.repositoryId);
+        }
+      } else {
+        const claim = await this.worktrees.claim(msg.repositoryId, msg.worktreeId);
+        try {
+          await this.runTerminalHookForClaim(msg, claim);
+        } finally {
+          this.worktrees.release(msg.worktreeId);
+        }
+      }
+    } catch (error) {
+      // A missing/changed checkout or policy is a fail-closed no-op: the
+      // recovery owner is nevertheless settled, so it cannot retain work
+      // indefinitely while the host remains healthy.
+      this.onLog?.(`terminal hook handoff failed for ${msg.sessionId}: ${thrownMessage(error)}`);
+    } finally {
+      resolveTargetWork();
+      if (this.worktreeAssignmentTails.get(targetKey) === targetWork) {
+        this.worktreeAssignmentTails.delete(targetKey);
+      }
+    }
+    pending.complete = true;
+    this.sendTerminalHookHandoffCompletion(pending);
+  }
+
+  private async runTerminalHookForClaim(
+    msg: Extract<HostWireMessage, { type: "session:terminal-hook" }>,
+    claim: ClaimedWorktree,
+  ): Promise<void> {
+    const current = await claim.currentHookTarget();
+    const scriptPath = current?.repository.terminalHookScript;
+    if (!current || !scriptPath) return;
+    await runTerminalHook(this.processRunner, {
+      scriptPath,
+      cwd: current.cwd,
+      sessionId: msg.sessionId,
+      status: msg.status,
+      worktreePath: current.cwd,
+      childEnvSource: this.childEnvSource,
+      ...(current.allowedRoots?.length ? { allowedRoots: current.allowedRoots } : {}),
+      ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+      ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
+      ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
+    });
+  }
+
+  private sendTerminalHookHandoffCompletion(pending: PendingTerminalHookHandoff): void {
+    if (
+      pending.sending ||
+      !pending.complete ||
+      this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending
+    )
+      return;
+    pending.sending = true;
+    void this.outbound
+      .send({
+        type: "session:terminal-hook-complete",
+        sessionId: pending.message.sessionId,
+        handoffId: pending.message.handoffId,
+      })
+      .catch((error: unknown) => {
+        this.onLog?.(
+          `terminal hook handoff completion send failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+        );
+      })
+      .finally(() => {
+        pending.sending = false;
+      });
+  }
+
+  private retryPendingTerminalHookHandoffs(): void {
+    this.expirePendingTerminalHookHandoffs(Date.now());
+    for (const pending of this.pendingTerminalHookHandoffs.values()) {
+      if (pending.complete) this.sendTerminalHookHandoffCompletion(pending);
+      else this.startTerminalHookHandoff(pending);
+    }
+  }
+
+  private expirePendingTerminalHookHandoffs(nowMs: number): void {
+    for (const [handoffId, pending] of this.pendingTerminalHookHandoffs) {
+      if (nowMs - pending.firstAttemptedAtMs <= this.pendingTerminalHookHandoffMaxAgeMs) continue;
+      this.pendingTerminalHookHandoffs.delete(handoffId);
+      this.onLog?.(
+        `terminal hook handoff completion expired for ${pending.message.sessionId} ` +
+          `after ${String(this.pendingTerminalHookHandoffMaxAgeMs)}ms`,
+      );
+    }
+  }
+
+  /**
+   * A same-process recovery handoff is proof that this daemon still has the
+   * original terminal owner. Deferred statuses release their target only once
+   * their hook has run; ordinary statuses already ran it. Keep the status for
+   * its own ACK retry, but settle the handoff without executing a second hook.
+   */
+  private async reconcilePendingTerminalStatusForHandoff(sessionId: string): Promise<boolean> {
+    const matching = [...this.pendingTerminalStatus.values()].filter(
+      (pending) => pending.message.sessionId === sessionId,
+    );
+    if (matching.length === 0) return false;
+    await Promise.all(
+      matching.map(async (pending) => {
+        if (pending.settleDeferredTerminalHook) {
+          await pending
+            .settleDeferredTerminalHook(true)
+            .finally(() => pending.resolveDeferredDisposition?.());
+        } else {
+          pending.resolveDeferredDisposition?.();
+        }
+      }),
+    );
+    return true;
+  }
+
+  /**
    * Re-send every terminal status not yet acknowledged. A completed WebSocket
    * write is not delivery (see ws-transport.ts), so success here does not
    * remove the entry — only `session:status-acknowledged` does. Fire-and-forget
@@ -949,12 +1218,8 @@ export class DaemonLoop {
     // consume the bounded CLI capacity during that acknowledgement interval;
     // `worktreeAssignmentTails` below still serializes a retained checkout
     // claim before another session may use the same physical worktree.
-    const live = [...this.inflight.values()].filter(
-      (entry) =>
-        !entry.controller.signal.aborted &&
-        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
-    );
-    if (live.length >= this.executionProfiles.maxConcurrentAssignments) {
+    const live = this.activeAssignmentCount();
+    if (live + this.activeTerminalHookHandoffs >= this.executionProfiles.maxConcurrentAssignments) {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
       return;
     }
@@ -969,7 +1234,7 @@ export class DaemonLoop {
     ).length;
     if (
       this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION &&
-      retainedForOtherSessions + live.length >=
+      retainedForOtherSessions + live >=
         this.pendingStatusMaxCount + this.executionProfiles.maxConcurrentAssignments
     ) {
       this.onLog?.(`terminal status retry capacity reached: refused assign ${msg.sessionId}`);
@@ -997,19 +1262,54 @@ export class DaemonLoop {
     this.worktreeAssignmentTails.set(targetKey, targetWork);
     const work = (async () => {
       try {
+        const usesCommandStartAuthorization =
+          this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION;
+        // The control plane's ACK deadline governs v4 ownership, not physical
+        // execution. Confirm the v4 assignment before any retained worktree
+        // claim can delay it; the fences below still prevent its runner from
+        // touching the target until the predecessor has released. Older peers
+        // retain their send-after-local-admission behavior.
+        if (
+          usesCommandStartAuthorization &&
+          !(await this.acknowledgeAssignment(msg, controller.signal))
+        )
+          return;
         // A replacement for this logical session must first settle its old
         // retry disposition. That releases the preceding retained claim and
         // prevents a same-session retry from waiting on itself below.
-        if (settleSuperseded) await settleSuperseded;
+        if (
+          settleSuperseded &&
+          !(await this.waitForTargetFence(settleSuperseded, controller.signal))
+        )
+          return;
         // A different logical session on this target waits until all work for
         // the preceding assignment has returned. `runAssign` includes its v4
         // disposition wait, so this fence covers retained checkout claims.
-        if (previousTargetWork) await previousTargetWork;
+        if (
+          previousTargetWork &&
+          !(await this.waitForTargetFence(previousTargetWork, controller.signal))
+        )
+          return;
+        if (
+          !usesCommandStartAuthorization &&
+          !(await this.acknowledgeAssignment(msg, controller.signal))
+        )
+          return;
         if (!controller.signal.aborted) await this.runAssign(msg, controller.signal);
       } finally {
-        resolveTargetWork();
-        if (this.worktreeAssignmentTails.get(targetKey) === targetWork) {
-          this.worktreeAssignmentTails.delete(targetKey);
+        // A cancelled waiter may return before its predecessor. Keep this
+        // tail pending until both are clear, otherwise a third assignment
+        // could overtake the predecessor's still-retained physical claim.
+        const finishTargetWork = () => {
+          resolveTargetWork();
+          if (this.worktreeAssignmentTails.get(targetKey) === targetWork) {
+            this.worktreeAssignmentTails.delete(targetKey);
+          }
+        };
+        if (previousTargetWork) {
+          void previousTargetWork.then(finishTargetWork, finishTargetWork);
+        } else {
+          finishTargetWork();
         }
       }
     })();
@@ -1053,10 +1353,10 @@ export class DaemonLoop {
     }, this.drainRetryMs);
   }
 
-  private async runAssign(
+  private async acknowledgeAssignment(
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Scheduled assignments deliberately use the repository's main checkout;
     // ordinary assignments must name an inventoried worktree.
     if ((msg.worktreeId === null) !== (msg.sessionType === "scheduled")) {
@@ -1075,7 +1375,13 @@ export class DaemonLoop {
       },
       { signal },
     );
-    if (!(await this.waitForAcknowledgement(msg.sessionId, msg.attemptId, signal))) return;
+    return this.waitForAcknowledgement(msg.sessionId, msg.attemptId, signal);
+  }
+
+  private async runAssign(
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
+    signal: AbortSignal,
+  ): Promise<void> {
     await this.waitForAbortedAttempts(msg.sessionId, msg.attemptId);
     const route = resolvedRouteMetadata(msg);
     if (route.targetIndex !== undefined || route.commandId || route.providerAccountId) {

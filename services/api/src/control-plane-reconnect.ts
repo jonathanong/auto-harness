@@ -25,10 +25,12 @@ import {
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
   queueHostLossRetry,
 } from "./control-plane-infrastructure-retry.ts";
+import { expireTerminalHookHandoffIfNeeded } from "./control-plane-terminal-hook-handoff.ts";
 
 export async function reconcileHostRunningSessions(
   state: ControlPlaneState,
@@ -116,6 +118,7 @@ export async function reclaimReconnectDeadlines(
     ? await state.storage.listAllSessions()
     : [...state.sessions.values()];
   for (const session of sessions) {
+    if (await expireTerminalHookHandoffIfNeeded(state, session, nowMs)) continue;
     const reclaimableStatus =
       session.status === "running" ||
       (session.status === "cancelled" && session.mainCheckoutLease === true);
@@ -150,6 +153,7 @@ export async function reclaimReconnectDeadlines(
       state.pendingAcks.delete(session.id);
     } else if (!canRetryHostLoss(session)) {
       if (typeof state.storage.finishSession !== "function") continue;
+      const handoff = hostLostTerminalHookHandoff(state, session);
       const finished = await state.storage.finishSession({
         sessionId: session.id,
         worktreeId: worktree.id,
@@ -159,6 +163,7 @@ export async function reclaimReconnectDeadlines(
         completedAt: state.now(),
         errorCode: "host_lost",
         errorMessage: HOST_LOSS_TERMINAL_REASON,
+        ...(handoff ? { terminalHookHandoff: handoff } : {}),
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
         ...(session.assignmentConnectionId
           ? { expectedConnectionId: session.assignmentConnectionId }
@@ -170,7 +175,7 @@ export async function reclaimReconnectDeadlines(
       if (!finished) continue;
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, finishHostLostSession(state, session));
+      state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",

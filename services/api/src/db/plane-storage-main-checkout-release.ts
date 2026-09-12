@@ -49,6 +49,7 @@ type ReleaseMainCheckoutOptions = {
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
+  terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -189,14 +190,19 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.errorCode ? ", errorCode = :errorCode" : "") +
     (opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : "") +
     (opts.result && !isQueued ? ", #result = if_not_exists(#result, :result)" : "") +
+    (opts.terminalHookHandoff ? ", terminalHookHandoff = :terminalHookHandoff" : "") +
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
     (opts.infrastructureErrorCode
-      ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode"
+      ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode" +
+        (opts.attemptId ? ", infrastructureRetryAttemptId = :attemptId" : "")
       : "") +
     " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState" +
-    (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
+    (opts.terminalHookHandoff ? ", terminalHookHandoffSettled" : "") +
+    (opts.preserveHostAssignmentLease || opts.terminalHookHandoff
+      ? ""
+      : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt, #result" : "")
@@ -226,6 +232,7 @@ function expressionValues(
     ...(opts.errorCode ? { ":errorCode": opts.errorCode } : {}),
     ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
     ...(opts.result && opts.status !== "queued" ? { ":result": opts.result } : {}),
+    ...(opts.terminalHookHandoff ? { ":terminalHookHandoff": opts.terminalHookHandoff } : {}),
     ...(opts.suppressedTargetIndex !== undefined
       ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
       : {}),

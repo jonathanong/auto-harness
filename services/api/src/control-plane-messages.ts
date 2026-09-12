@@ -4,6 +4,7 @@ import {
   isTerminalSessionStatus,
   normalizeSessionResult,
   SESSION_RESULT_PROTOCOL_VERSION,
+  TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
 
@@ -66,6 +67,10 @@ import { requestAssignment } from "./request-assignment.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
+import {
+  pendingTerminalHookHandoffs,
+  settleTerminalHookHandoff,
+} from "./control-plane-terminal-hook-handoff.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 
@@ -240,10 +245,12 @@ function settledCheckoutFetchRetryDisposition(
   session: SessionRecord | null | undefined,
 ): boolean | undefined {
   if (msg.status !== "failed" || msg.errorCode !== "checkout_fetch_failed") return undefined;
-  return (
-    (session?.infrastructureRetryCount ?? 0) >= 1 &&
-    session?.lastInfrastructureErrorCode === "checkout_fetch_failed"
-  );
+  // The retry is a property of the logical session, not of the particular
+  // failure report that arrived first. A disconnected daemon may report a
+  // checkout failure after reconnect-deadline recovery has already consumed
+  // the one retry as `host_lost`; that still means this old attempt's deferred
+  // hook must be settled as accepted.
+  return session?.infrastructureRetryAttemptId === msg.attemptId;
 }
 
 function plannerContext(
@@ -473,7 +480,25 @@ export function handleHostMessage(
         runtime: msg.runtime ?? legacyHostRuntime(),
         ...(msg.draining ? { draining: true } : {}),
       });
-      return r.ok ? { ok: true } : { ok: false, error: r.error };
+      if (!r.ok) return { ok: false, error: r.error };
+      for (const session of (msg.protocolVersion ?? 0) >= TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION
+        ? state.sessions.values()
+        : []) {
+        const handoff = session.terminalHookHandoff;
+        if (!handoff || handoff.hostId !== msg.hostId) continue;
+        state.onHostMessage?.(msg.hostId, {
+          type: "session:terminal-hook",
+          handoffId: handoff.handoffId,
+          sessionId: session.id,
+          repositoryId: handoff.repositoryId,
+          worktreeId: handoff.worktreeId,
+          status: handoff.status,
+          errorCode: handoff.errorCode,
+          ...(handoff.ref !== undefined ? { ref: handoff.ref } : {}),
+          ...(handoff.metadata !== undefined ? { metadata: handoff.metadata } : {}),
+        });
+      }
+      return { ok: true };
     }
     case "session:ack": {
       const session = state.sessions.get(msg.sessionId);
@@ -539,6 +564,25 @@ export function handleHostMessage(
     case "session:usage": {
       return ingestUsage(state, msg);
     }
+    case "session:terminal-hook-complete": {
+      const handoff = state.sessions.get(msg.sessionId)?.terminalHookHandoff;
+      if (!handoff) return { ok: false, error: "terminal hook handoff not found" };
+      void settleTerminalHookHandoff(state, {
+        sessionId: msg.sessionId,
+        handoffId: msg.handoffId,
+        hostId: handoff.hostId,
+        ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
+      }).then((settled) => {
+        if (settled) {
+          state.onHostMessage?.(handoff.hostId, {
+            type: "session:terminal-hook-acknowledged",
+            sessionId: msg.sessionId,
+            handoffId: msg.handoffId,
+          });
+        }
+      });
+      return { ok: true };
+    }
     case "session:log": {
       if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
         return { ok: false, error: "log chunk exceeds 32 KiB" };
@@ -602,6 +646,12 @@ export async function handleHostMessageDurable(
     attemptId: string;
     retryAccepted?: boolean | undefined;
   };
+  /** Present only after a replacement daemon durably settles its hook handoff. */
+  sessionTerminalHookAcknowledged?: { sessionId: string; handoffId: string };
+  /** Pending hooks to deliver after this daemon's socket becomes current. */
+  terminalHookHandoffs?: Array<
+    Extract<import("@auto-harness/shared").HostWireMessage, { type: "session:terminal-hook" }>
+  >;
   /** Present only after the host's drain flag committed. */
   hostDraining?: string;
 }> {
@@ -641,7 +691,11 @@ export async function handleHostMessageDurable(
       ...(consumePendingConnection ? { consumePendingConnection: true } : {}),
     });
     return result.ok
-      ? { ok: true, connectionId: result.connectionId }
+      ? {
+          ok: true,
+          connectionId: result.connectionId,
+          terminalHookHandoffs: await pendingTerminalHookHandoffs(state, msg.hostId),
+        }
       : { ok: false, error: result.error };
   }
   if (
@@ -727,11 +781,18 @@ export async function handleHostMessageDurable(
   }
   let fence: { hostId: string; connectionId: string } | undefined;
   if (sourceConnectionId) {
+    const loaded =
+      msg.type === "host:keepalive" || msg.type === "host:status"
+        ? undefined
+        : msg.type === "session:terminal-hook-complete"
+          ? await storage.getSession(msg.sessionId, true)
+          : (state.sessions.get(msg.sessionId) ?? (await storage.getSession(msg.sessionId)));
     const hostId =
       msg.type === "host:keepalive" || msg.type === "host:status"
         ? msg.hostId
-        : (state.sessions.get(msg.sessionId)?.hostId ??
-          (await storage.getSession(msg.sessionId))?.hostId);
+        : msg.type === "session:terminal-hook-complete"
+          ? (loaded?.terminalHookHandoff?.hostId ?? loaded?.terminalHookHandoffSettled?.hostId)
+          : loaded?.hostId;
     // Distinct from a lock mismatch below: this session has no host claim at
     // all, which only happens once some transition has already cleared it.
     const noHostClaim = !hostId;
@@ -810,6 +871,40 @@ export async function handleHostMessageDurable(
     return result.ok
       ? { ok: true, hostDraining: msg.hostId }
       : { ok: false, error: "stale host connection" };
+  }
+  if (msg.type === "session:terminal-hook-complete") {
+    const session = await storage.getSession(msg.sessionId, true);
+    const handoff = session?.terminalHookHandoff;
+    if (!handoff) {
+      return session?.terminalHookHandoffSettled?.handoffId === msg.handoffId &&
+        session.terminalHookHandoffSettled.hostId === fence?.hostId
+        ? {
+            ok: true,
+            sessionTerminalHookAcknowledged: {
+              sessionId: msg.sessionId,
+              handoffId: msg.handoffId,
+            },
+          }
+        : { ok: false, error: "terminal hook handoff not found" };
+    }
+    if (handoff.handoffId !== msg.handoffId || handoff.hostId !== fence?.hostId) {
+      return { ok: false, error: "terminal hook handoff not found" };
+    }
+    const settled = await settleTerminalHookHandoff(state, {
+      sessionId: msg.sessionId,
+      handoffId: msg.handoffId,
+      hostId: handoff.hostId,
+      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+    });
+    return settled
+      ? {
+          ok: true,
+          sessionTerminalHookAcknowledged: {
+            sessionId: msg.sessionId,
+            handoffId: msg.handoffId,
+          },
+        }
+      : { ok: false, error: "terminal hook handoff not found" };
   }
   if (msg.type === "session:ack") {
     // Any API node can receive this frame. The process map is only a cache;
@@ -1123,6 +1218,7 @@ async function applySessionStatusDurable(
         ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
         infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
         lastInfrastructureErrorCode: code,
+        infrastructureRetryAttemptId: msg.attemptId,
       });
       emitInfrastructureRetry();
       state.pendingAcks.delete(session.id);
@@ -1356,6 +1452,7 @@ async function applySessionStatusDurable(
       ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
       infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
       lastInfrastructureErrorCode: code,
+      infrastructureRetryAttemptId: msg.attemptId,
     });
     emitInfrastructureRetry();
     state.pendingAcks.delete(session.id);
@@ -1518,6 +1615,7 @@ function applySessionStatus(
       ...queueReconnectSession(session, infrastructureRetry.errorMessage ?? "infrastructure retry"),
       infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
       lastInfrastructureErrorCode: code,
+      infrastructureRetryAttemptId: msg.attemptId,
     });
     emitInfrastructureRetry();
     state.pendingAcks.delete(session.id);

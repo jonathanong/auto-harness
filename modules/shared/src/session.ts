@@ -5,6 +5,11 @@ import type {
   SessionStatus,
   SessionType,
 } from "./types.ts";
+import type {
+  TerminalHookAcknowledgedMessage,
+  TerminalHookCompleteMessage,
+  TerminalHookHandoffMessage,
+} from "./terminal-hook-handoff.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability, HostCapabilitiesAdvertisement } from "./host-capabilities.ts";
 import type { HostRuntimeReport } from "./host-runtime.ts";
@@ -155,6 +160,8 @@ export type HostWireMessage =
       /** Present for a v4 first checkout-fetch failure after its durable retry decision. */
       retryAccepted?: boolean | undefined;
     }
+  | TerminalHookHandoffMessage
+  | TerminalHookAcknowledgedMessage
   | { type: "session:cancel"; sessionId: string; attemptId?: string | undefined }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
@@ -236,6 +243,7 @@ export type HostToServerMessage =
       attemptId: string;
       usage: SessionUsage;
     }
+  | TerminalHookCompleteMessage
   | {
       type: "session:log";
       sessionId: string;

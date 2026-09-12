@@ -174,6 +174,10 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 protocolVersion: HOST_PROTOCOL_VERSION,
               }),
             );
+            for (const handoff of result.terminalHookHandoffs ?? []) {
+              if (socket.readyState !== socket.OPEN) break;
+              socket.send(JSON.stringify(handoff));
+            }
             await plane.requestAssignment();
           } else if (
             msg.type === "session:ack" &&
@@ -217,6 +221,18 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 ...(result.sessionStatusAcknowledged.retryAccepted !== undefined
                   ? { retryAccepted: result.sessionStatusAcknowledged.retryAccepted }
                   : {}),
+              }),
+            );
+          } else if (
+            msg.type === "session:terminal-hook-complete" &&
+            result.sessionTerminalHookAcknowledged?.sessionId === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            socket.send(
+              JSON.stringify({
+                type: "session:terminal-hook-acknowledged",
+                sessionId: msg.sessionId,
+                handoffId: result.sessionTerminalHookAcknowledged.handoffId,
               }),
             );
           } else if (
@@ -591,6 +607,11 @@ export function parseHostMessage(
         ? (message as HostToServerMessage)
         : null;
     }
+    if (message.type === "session:terminal-hook-complete") {
+      return boundedText(message.sessionId) && boundedText(message.handoffId)
+        ? (message as HostToServerMessage)
+        : null;
+    }
     return message.type === "host:keepalive" &&
       boundedText(message.hostId) &&
       boundedText(message.at, 128) &&
@@ -627,6 +648,16 @@ function isAllowedMessage(
   if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
   if (!session) return false;
+  if (
+    msg.type === "session:terminal-hook-complete" &&
+    ((session.terminalHookHandoff?.hostId === hostId &&
+      session.terminalHookHandoff.handoffId === msg.handoffId) ||
+      (session.terminalHookHandoffSettled?.hostId === hostId &&
+        session.terminalHookHandoffSettled.handoffId === msg.handoffId))
+  ) {
+    return true;
+  }
+  if (msg.type === "session:terminal-hook-complete") return false;
   if (session.hostId === hostId) return true;
   return (
     "attemptId" in msg &&

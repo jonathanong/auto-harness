@@ -410,6 +410,7 @@ describe("DynamoDB Local main-checkout release", () => {
       status: "queued",
       infrastructureRetryCount: 1,
       lastInfrastructureErrorCode: "host_lost",
+      infrastructureRetryAttemptId: pending.attemptId,
     });
     expect(
       (
@@ -432,6 +433,7 @@ describe("DynamoDB Local main-checkout release", () => {
       status: "queued",
       infrastructureRetryCount: 1,
       lastInfrastructureErrorCode: "checkout_fetch_failed",
+      infrastructureRetryAttemptId: authorized.attemptId,
     });
 
     const capped = await seed("main-capped-infrastructure-retry", "pending", 1);
@@ -444,5 +446,82 @@ describe("DynamoDB Local main-checkout release", () => {
         )
       ).Item,
     ).toMatchObject({ status: "running", infrastructureRetryCount: 1 });
+  });
+
+  it("retains final host-loss hook ownership on a released main checkout", async () => {
+    const opts = {
+      sessionId: "main-terminal-handoff",
+      hostId: "main-terminal-host",
+      repositoryId: "main-terminal-repo",
+      connectionId: "main-terminal-connection",
+      status: "failed",
+      queueShard: 0,
+      attemptId: "main-terminal-attempt",
+      errorCode: "host_lost",
+      terminalHookHandoff: {
+        handoffId: "main-terminal-handoff-id",
+        hostId: "main-terminal-host",
+        repositoryId: "main-terminal-repo",
+        worktreeId: null,
+        status: "failed" as const,
+        errorCode: "host_lost" as const,
+        expiresAt: "2026-01-02T00:00:00.000Z",
+      },
+    };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: opts.hostId,
+          mainCheckoutLeases: {
+            [opts.repositoryId]: {
+              sessionId: opts.sessionId,
+              connectionId: opts.connectionId,
+            },
+          },
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessions,
+        Item: {
+          id: opts.sessionId,
+          status: "running",
+          statusShard: "running#0",
+          hostId: opts.hostId,
+          assignmentConnectionId: opts.connectionId,
+          mainCheckoutLease: true,
+          attemptId: opts.attemptId,
+          worktreeId: null,
+          activeHostId: opts.hostId,
+          activeHostOrder: "2026-01-01T00:00:00.000Z#main-terminal-handoff",
+          primaryCommandStartState: "authorized",
+          terminalHookHandoffSettled: { handoffId: "old", hostId: opts.hostId },
+        },
+      }),
+    );
+
+    expect(await releaseMainCheckoutSession(ctx, opts)).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      status: "failed",
+      hostId: opts.hostId,
+      activeHostId: opts.hostId,
+      terminalHookHandoff: opts.terminalHookHandoff,
+    });
+    const session = (
+      await ctx.doc.send(
+        new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+      )
+    ).Item;
+    expect(session).not.toHaveProperty("terminalHookHandoffSettled");
+    expect(session).not.toHaveProperty("mainCheckoutLease");
+    expect(session).not.toHaveProperty("primaryCommandStartState");
   });
 });

@@ -61,10 +61,13 @@ describe("scheduled disconnect branch coverage", () => {
     expect(terminal.sessions.get("s")).not.toHaveProperty("assignmentConnectionId");
     expect(terminal.sessions.get("s")).not.toHaveProperty("ackReceivedAt");
     expect(terminal.mainCheckoutLeases.size).toBe(0);
-    expect(terminal.archives.get("sessions/s/logs.jsonl")).toMatchObject({
-      status: "pending",
-      objectStored: false,
+    expect(terminal.sessions.get("s")?.terminalHookHandoff).toMatchObject({
+      hostId: "host",
+      worktreeId: null,
+      status: "failed",
+      errorCode: "host_lost",
     });
+    expect(terminal.archives.has("sessions/s/logs.jsonl")).toBe(false);
   });
 
   it("uses the active-claim query and skips unrelated sessions", async () => {

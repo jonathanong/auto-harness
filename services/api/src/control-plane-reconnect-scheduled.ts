@@ -9,6 +9,7 @@ import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts"
 import {
   canRetryHostLoss,
   finishHostLostSession,
+  hostLostTerminalHookHandoff,
   HOST_LOSS_RETRY_REASON,
   HOST_LOSS_TERMINAL_REASON,
   queueHostLossRetry,
@@ -43,6 +44,7 @@ export async function requeueOmittedScheduled(
       continue;
     const retryableHostLoss = Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
     const terminalHostLoss = Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
+    const handoff = terminalHostLoss ? hostLostTerminalHookHandoff(state, session) : undefined;
     const released = state.storage
       ? await state.storage.releaseMainCheckoutSession({
           sessionId: session.id,
@@ -62,6 +64,7 @@ export async function requeueOmittedScheduled(
                 completedAt: state.now(),
                 errorCode: "host_lost",
                 ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+                ...(handoff ? { terminalHookHandoff: handoff } : {}),
               }
             : retryableHostLoss
               ? { infrastructureErrorCode: "host_lost" as const }
@@ -77,7 +80,7 @@ export async function requeueOmittedScheduled(
         retryableHostLoss
           ? queueHostLossRetry(session)
           : terminalHostLoss
-            ? finishHostLostSession(state, session)
+            ? finishHostLostSession(state, session, handoff)
             : queueReconnectSession(session, reason),
       );
       state.pendingAcks.delete(session.id);
@@ -98,6 +101,7 @@ export async function reclaimScheduledReconnect(
     !cancelled && Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
   const terminalHostLoss =
     !cancelled && Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
+  const handoff = terminalHostLoss ? hostLostTerminalHookHandoff(state, session) : undefined;
   const released = state.storage
     ? await state.storage.releaseMainCheckoutSession({
         sessionId: session.id,
@@ -119,6 +123,7 @@ export async function reclaimScheduledReconnect(
               completedAt: state.now(),
               errorCode: "host_lost",
               ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+              ...(handoff ? { terminalHookHandoff: handoff } : {}),
             }
           : retryableHostLoss
             ? { infrastructureErrorCode: "host_lost" as const }
@@ -148,7 +153,7 @@ export async function reclaimScheduledReconnect(
         retryableHostLoss
           ? queueHostLossRetry(session)
           : terminalHostLoss
-            ? finishHostLostSession(state, session)
+            ? finishHostLostSession(state, session, handoff)
             : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
       );
       if (!terminalHostLoss) requeued.push(session.id);

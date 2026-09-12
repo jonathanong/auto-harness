@@ -116,7 +116,7 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
         ", worktreeId = :null, hostId = :null, errorMessage = :reason" +
         (opts.infrastructureErrorCode
-          ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode"
+          ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode, infrastructureRetryAttemptId = :attemptId"
           : "") +
         " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, primaryCommandStartState",
       ConditionExpression: requeueSessionCondition(opts),

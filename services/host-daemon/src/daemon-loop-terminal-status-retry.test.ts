@@ -715,44 +715,90 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
-  it("skips an assignment whose controller was aborted while waiting for a target", async () => {
+  it("acknowledges before a retained v4 target fence and keeps it through a cancelled waiter", async () => {
     const { config, cleanup } = await makeRepo();
     try {
-      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
       const loop = new DaemonLoop({ config, transport });
       const runs: string[] = [];
       (
         loop as unknown as {
           runner: {
-            run(assign: {
-              sessionId: string;
-            }): Promise<{ status: "completed"; exitCode: 0; logs: [] }>;
+            run(assign: { sessionId: string }): Promise<{
+              status: "completed" | "failed";
+              exitCode: 0 | null;
+              logs: [];
+              errorCode?: "checkout_fetch_failed";
+              settleDeferredTerminalHook?: (runHook: boolean) => Promise<void>;
+            }>;
           };
         }
       ).runner = {
         async run(assign) {
           runs.push(assign.sessionId);
+          if (assign.sessionId === "retained") {
+            return {
+              status: "failed",
+              exitCode: null,
+              logs: [],
+              errorCode: "checkout_fetch_failed",
+              settleDeferredTerminalHook: async () => undefined,
+            };
+          }
           return { status: "completed", exitCode: 0, logs: [] };
         },
       };
       await loop.start();
       transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
 
-      let releaseTarget!: () => void;
-      const targetGate = new Promise<void>((resolve) => {
-        releaseTarget = resolve;
+      transport.deliver({
+        ...replacementAssignment("attempt-retained"),
+        sessionId: "retained",
       });
-      (
-        loop as unknown as { worktreeAssignmentTails: Map<string, Promise<void>> }
-      ).worktreeAssignmentTails.set("worktree\0demo\0wt-1", targetGate);
-      transport.deliver(replacementAssignment("attempt-old"));
       await flushMacrotask();
-      transport.deliver(replacementAssignment("attempt-new"));
+      expect(runs).toEqual(["retained"]);
+
+      transport.deliver({
+        ...replacementAssignment("attempt-waiting"),
+        sessionId: "waiting",
+      });
       await flushMacrotask();
-      releaseTarget();
+      expect(runs).toEqual(["retained"]);
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          type: "session:ack",
+          sessionId: "waiting",
+          attemptId: "attempt-waiting",
+        }),
+      );
+
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "waiting",
+        attemptId: "attempt-waiting",
+      });
+      await flushMacrotask();
+      expect(loop.inflightCount()).toBe(1);
+
+      transport.deliver({
+        ...replacementAssignment("attempt-after-cancel"),
+        sessionId: "after-cancel",
+      });
+      await flushMacrotask();
+      expect(runs).toEqual(["retained"]);
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "retained",
+        attemptId: "attempt-retained",
+        retryAccepted: true,
+      });
       await loop.waitForIdle();
 
-      expect(runs).toEqual(["replaced"]);
+      expect(runs).toEqual(["retained", "after-cancel"]);
       loop.stop();
     } finally {
       cleanup();
