@@ -15,7 +15,13 @@ import {
 } from "./plane-storage-sessions.ts";
 import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
 import { tryRequeueSession } from "./plane-storage-sessions-requeue.ts";
-import { assignmentLeaseCollision, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  assignmentLeaseCollision,
+  sessionToItem,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
+import { createSessionWithConcurrency } from "./plane-storage-sessions-concurrency.ts";
+import type { SessionRecord } from "./types.ts";
 
 const conditional = Object.assign(new Error("lost"), {
   name: "ConditionalCheckFailedException",
@@ -72,6 +78,40 @@ describe("session storage conditional outcomes", () => {
       }),
     ).resolves.toBe(true);
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the active lock winner when admission and concurrency fail together", async () => {
+    const winner: SessionRecord = {
+      id: "winner",
+      repositoryId: "repo",
+      prompt: "already admitted",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "later",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "queued",
+      queueShard: 0,
+      createdAt: "now",
+      concurrencyId: "github-comment:delivery",
+    };
+    const candidate = { ...winner, id: "candidate", prompt: "redelivery" };
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(cancelled(0, 1))
+      .mockResolvedValueOnce({ Item: { sessionId: winner.id } })
+      .mockResolvedValueOnce({ Item: sessionToItem(winner) });
+    await expect(
+      createSessionWithConcurrency(ctx(send), candidate, [], {
+        drainCheck: null,
+        activityPut: null,
+        principalCheck: null,
+        integrationCheck: undefined,
+      }),
+    ).resolves.toEqual({ created: false, session: winner });
   });
 
   it("returns false when queued terminal transitions lose their condition", async () => {

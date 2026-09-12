@@ -73,7 +73,7 @@ async function throwIfCreateAdmissionConflict(
   session: SessionRecord,
   markers: readonly DeletionMarker[],
   parts: CreateSessionAdmissionParts,
-): Promise<void> {
+): Promise<CreateSessionResult | undefined> {
   if (!isConditionalTransactionFailed(err)) throw err;
   const { drainCheck, principalCheck, integrationCheck } = parts;
   if (
@@ -89,22 +89,31 @@ async function throwIfCreateAdmissionConflict(
     throw new CatalogDeletionInProgressError();
   }
   const resourceIndex = principalIndex + Number(!!principalCheck);
-  if (isConditionalTransactionFailureAt(err, resourceIndex)) {
+  const resourceFailed = isConditionalTransactionFailureAt(err, resourceIndex);
+  const drainIndex = resourceIndex + 1;
+  const parentIndex = drainIndex + Number(!!drainCheck);
+  const integrationIndex = parentIndex + Number(hasSeparateParentCheck(parts.parentFence));
+  const lockIndex = integrationIndex + Number(!!integrationCheck);
+  if (resourceFailed && isConditionalTransactionFailureAt(err, lockIndex)) {
+    // A concurrent redelivery may lose both resource admission and the lock
+    // condition. The lock's active session is the authoritative winner; resolve
+    // it before reporting the resource's later admission state.
+    const resolved = await resolveConcurrencyLockConflict(ctx, err, session, lockIndex);
+    if (resolved !== "retry") return resolved;
+  }
+  if (resourceFailed) {
     if (session.repositoryId) throw new RepositoryAdmissionClosedError();
     throw new CatalogDeletionInProgressError();
   }
-  const drainIndex = resourceIndex + 1;
   if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
     throw await activeSessionDrainError(ctx, session);
   }
-  const parentIndex = drainIndex + Number(!!drainCheck);
   if (
     hasSeparateParentCheck(parts.parentFence) &&
     isConditionalTransactionFailureAt(err, parentIndex)
   ) {
     throw new ParentSessionAttemptEndedError();
   }
-  const integrationIndex = parentIndex + Number(hasSeparateParentCheck(parts.parentFence));
   if (integrationCheck && isConditionalTransactionFailureAt(err, integrationIndex)) {
     throw new IntegrationChangedError();
   }
@@ -328,7 +337,14 @@ export async function createSessionWithConcurrency(
       );
       return { created: true, session };
     } catch (err) {
-      await throwIfCreateAdmissionConflict(ctx, err, session, markers, parts);
+      const admissionResult = await throwIfCreateAdmissionConflict(
+        ctx,
+        err,
+        session,
+        markers,
+        parts,
+      );
+      if (admissionResult) return admissionResult;
       if (rootBudgetUpdate && isConditionalTransactionFailureAt(err, rootBudgetIndex)) {
         if (parentFence && !separateParentCheck) {
           const currentParent = await getSession(ctx, parentFence.id, true);
