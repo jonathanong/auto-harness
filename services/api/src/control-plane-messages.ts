@@ -246,7 +246,7 @@ function isFirstCheckoutFetchFailure(
   );
 }
 
-function deferredCheckoutFailureHandoff(
+function deferredTerminalHookHandoff(
   state: ControlPlaneState,
   session: SessionRecord,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
@@ -286,7 +286,7 @@ async function committedDeferredCheckoutFailureHandoff(
   const handoff = current?.terminalHookHandoff;
   return current?.status === proposed.status &&
     handoff?.hostId === proposed.hostId &&
-    handoff.errorCode === "checkout_fetch_failed"
+    handoff.status === proposed.status
     ? handoff
     : undefined;
 }
@@ -306,24 +306,23 @@ function settledCheckoutFetchRetryDisposition(
 }
 
 /** Return the durable handoff that must accompany a replayed deferred failure. */
-function deferredCheckoutFailureHandoffId(
+function deferredTerminalHookHandoffId(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   session: SessionRecord | null | undefined,
 ): string | undefined {
-  return msg.deferTerminalHookResult === true &&
-    session?.terminalHookHandoff?.errorCode === "checkout_fetch_failed"
+  return msg.deferTerminalHookResult === true && session?.terminalHookHandoff
     ? session.terminalHookHandoff.handoffId
     : undefined;
 }
 
 /** Return the exact durable expiry for a replayed deferred failure handoff. */
-function deferredCheckoutFailureHandoffExpiresAt(
+function deferredTerminalHookHandoffExpiresAt(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   session: SessionRecord | null | undefined,
   protocolVersion: number,
 ): string | undefined {
   return protocolVersion < TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION ||
-    deferredCheckoutFailureHandoffId(msg, session) === undefined
+    deferredTerminalHookHandoffId(msg, session) === undefined
     ? undefined
     : session?.terminalHookHandoff?.expiresAt;
 }
@@ -947,16 +946,16 @@ export async function handleHostMessageDurable(
                 ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
                   ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
                   : {}),
-                ...(deferredCheckoutFailureHandoffId(msg, session) !== undefined
-                  ? { terminalHookHandoffId: deferredCheckoutFailureHandoffId(msg, session) }
+                ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+                  ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
                   : {}),
-                ...(deferredCheckoutFailureHandoffExpiresAt(
+                ...(deferredTerminalHookHandoffExpiresAt(
                   msg,
                   session,
                   acknowledgedProtocolVersion,
                 ) !== undefined
                   ? {
-                      terminalHookHandoffExpiresAt: deferredCheckoutFailureHandoffExpiresAt(
+                      terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
                         msg,
                         session,
                         acknowledgedProtocolVersion,
@@ -988,16 +987,16 @@ export async function handleHostMessageDurable(
               ...(settledCheckoutFetchRetryDisposition(msg, session) !== undefined
                 ? { retryAccepted: settledCheckoutFetchRetryDisposition(msg, session) }
                 : {}),
-              ...(deferredCheckoutFailureHandoffId(msg, session) !== undefined
-                ? { terminalHookHandoffId: deferredCheckoutFailureHandoffId(msg, session) }
+              ...(deferredTerminalHookHandoffId(msg, session) !== undefined
+                ? { terminalHookHandoffId: deferredTerminalHookHandoffId(msg, session) }
                 : {}),
-              ...(deferredCheckoutFailureHandoffExpiresAt(
+              ...(deferredTerminalHookHandoffExpiresAt(
                 msg,
                 session,
                 acknowledgedProtocolVersion,
               ) !== undefined
                 ? {
-                    terminalHookHandoffExpiresAt: deferredCheckoutFailureHandoffExpiresAt(
+                    terminalHookHandoffExpiresAt: deferredTerminalHookHandoffExpiresAt(
                       msg,
                       session,
                       acknowledgedProtocolVersion,
@@ -1344,15 +1343,12 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       ...(retryAccepted !== undefined ? { retryAccepted } : {}),
-      ...(retryAccepted === false &&
-      msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff?.errorCode === "checkout_fetch_failed"
+      ...(msg.deferTerminalHookResult === true && session.terminalHookHandoff
         ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
         : {}),
-      ...(retryAccepted === false &&
-      protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
+      ...(protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
       msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff?.errorCode === "checkout_fetch_failed"
+      session.terminalHookHandoff
         ? { terminalHookHandoffExpiresAt: session.terminalHookHandoff.expiresAt }
         : {}),
     };
@@ -1494,15 +1490,13 @@ async function applySessionStatusDurable(
       ok: true,
       applied: true,
       ...(isFirstCheckoutFetchFailure(msg, session) ? { retryAccepted: false } : {}),
-      ...(session.terminalHookHandoff &&
-      msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff.errorCode === "checkout_fetch_failed"
+      ...(session.terminalHookHandoff && msg.deferTerminalHookResult === true
         ? { terminalHookHandoffId: session.terminalHookHandoff.handoffId }
         : {}),
       ...(session.terminalHookHandoff &&
       protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
       msg.deferTerminalHookResult === true &&
-      session.terminalHookHandoff.errorCode === "checkout_fetch_failed"
+      session.terminalHookHandoff
         ? { terminalHookHandoffExpiresAt: session.terminalHookHandoff.expiresAt }
         : {}),
     };
@@ -1672,10 +1666,8 @@ async function applySessionStatusDurable(
     const deferredHandoff =
       msg.deferTerminalHookResult === true &&
       protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-      msg.status === "failed" &&
-      msg.errorCode === "checkout_fetch_failed" &&
       finish !== undefined
-        ? deferredCheckoutFailureHandoff(state, session, msg)
+        ? deferredTerminalHookHandoff(state, session, msg)
         : undefined;
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
@@ -1894,10 +1886,8 @@ async function applySessionStatusDurable(
   const deferredHandoff =
     msg.deferTerminalHookResult === true &&
     protocolVersion >= TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION &&
-    msg.status === "failed" &&
-    msg.errorCode === "checkout_fetch_failed" &&
     finish !== undefined
-      ? deferredCheckoutFailureHandoff(state, session, msg)
+      ? deferredTerminalHookHandoff(state, session, msg)
       : undefined;
   const committed = await storage.finishSession({
     ...finishSessionOptsFromPlan(session, plan, {

@@ -138,6 +138,8 @@ export async function runClaimedSession(
   isolatedGitHubConfigDir?: string,
   /** Durable control-plane authorization immediately before the primary CLI starts. */
   authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
+  /** A v7 peer must durably own pre-command hooks before they can run. */
+  deferPreCommandFailureHook = false,
 ): Promise<SessionRunResult> {
   const repositoryId = assign.repositoryId;
   const mappedGitHubApp = repositoryId
@@ -182,9 +184,13 @@ export async function runClaimedSession(
               exitCode: null,
               errorCode: "setup_failed",
               errorMessage: "GitHub App credential provisioning failed",
+              ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
             },
         sessionChildEnv,
         baseline,
+        false,
+        githubApp,
+        nowMs,
       );
     }
   }
@@ -205,9 +211,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
   let setup: Awaited<ReturnType<typeof runSetupIfNeeded>>;
@@ -225,6 +235,9 @@ export async function runClaimedSession(
       baseline,
       effectiveTerminalRunner,
       authenticatedTerminalEnvironment,
+      deferPreCommandFailureHook,
+      githubApp,
+      nowMs,
     );
   } catch (error) {
     return await finishClaimedSession(
@@ -238,9 +251,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
   if (setup.failure) return setup.failure;
@@ -259,9 +276,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -272,9 +293,16 @@ export async function runClaimedSession(
       logs,
       assign,
       claimed,
-      { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+      {
+        status: timedOut() ? "timed_out" : "cancelled",
+        exitCode: null,
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
+      },
       authenticatedTerminalEnvironment,
       baseline,
+      false,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -290,10 +318,13 @@ export async function runClaimedSession(
         exitCode: null,
         errorCode: "unknown_command_profile",
         errorMessage: "no resolved command argv for this session",
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       setup.environment,
       baseline,
       true,
+      githubApp,
+      nowMs,
     );
   }
 
@@ -317,6 +348,7 @@ export async function runClaimedSession(
     baseline,
     isolatedGitHubConfigDir,
     installationToken,
+    deferPreCommandFailureHook,
   );
 }
 
@@ -340,6 +372,7 @@ async function runProcessAndFinish(
   baseline?: string,
   isolatedGitHubConfigDir?: string,
   installationToken?: InstallationToken,
+  deferPreCommandFailureHook = false,
 ): Promise<SessionRunResult> {
   const scrubbedTerminalEnvironment =
     assign.repositoryId && githubApp?.repositories.has(assign.repositoryId)
@@ -366,6 +399,7 @@ async function runProcessAndFinish(
         status: "failed",
         exitCode: null,
         errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       },
       terminalEnvironment,
       baseline,
@@ -444,6 +478,8 @@ async function runProcessAndFinish(
       authenticatedTerminalEnvironment,
       baseline,
       true,
+      githubApp,
+      nowMs,
     );
   };
   const executeAuthorized = async (): Promise<SessionRunResult> => {
@@ -453,7 +489,7 @@ async function runProcessAndFinish(
         return await finish({
           status: timedOut() ? "timed_out" : "cancelled",
           exitCode: null,
-          ...(signal?.aborted ? { suppressTerminalHook: true } : {}),
+          suppressTerminalHook: true,
         });
       }
     } catch (error) {
@@ -462,6 +498,7 @@ async function runProcessAndFinish(
         exitCode: null,
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
+        ...(deferPreCommandFailureHook ? { deferTerminalHook: true } : {}),
       });
     }
     streamer.write(

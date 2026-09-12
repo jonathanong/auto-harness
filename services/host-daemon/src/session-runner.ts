@@ -166,6 +166,18 @@ export class SessionRunner {
       }
 
       try {
+        const retainDeferredTerminalHook = (result: SessionRunResult): SessionRunResult => {
+          if (!result.settleDeferredTerminalHook) return result;
+          retainedClaim = true;
+          return retainClaimForDeferredTerminalHook(
+            result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
+              SessionRunResult,
+            () => {
+              if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
+              else this.deps.worktrees.release(assign.worktreeId!);
+            },
+          );
+        };
         streamer.write(
           "system",
           assign.worktreeId
@@ -188,14 +200,18 @@ export class SessionRunner {
               ...(expired
                 ? { errorMessage: `Session timed out while checking out ref ${checkoutRef}` }
                 : {}),
+              ...(options.deferCheckoutFetchFailureHook ? { deferTerminalHook: true } : {}),
             },
             sessionChildEnv,
             baseline,
+            false,
+            this.deps.githubApp,
+            this.deps.nowMs,
           );
         streamer.write("system", `Checking out ref ${checkoutRef}...`);
 
         if (signal.aborted) {
-          return await finishCheckoutInterruption();
+          return retainDeferredTerminalHook(await finishCheckoutInterruption());
         }
         try {
           if (mainClaimed) {
@@ -212,7 +228,7 @@ export class SessionRunner {
           // requested terminal state instead of misreporting cancellation as a
           // checkout/setup failure.
           if (signal.aborted) {
-            return await finishCheckoutInterruption();
+            return retainDeferredTerminalHook(await finishCheckoutInterruption());
           }
           const result = await finishClaimedSession(
             this.deps.processRunner,
@@ -226,9 +242,8 @@ export class SessionRunner {
               errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
               errorMessage: thrownMessage(err),
               deferTerminalHook:
-                isCheckoutFetchFailure(err) &&
-                assign.infrastructureRetryCount === 0 &&
-                options.deferCheckoutFetchFailureHook === true,
+                options.deferCheckoutFetchFailureHook === true &&
+                (!isCheckoutFetchFailure(err) || assign.infrastructureRetryCount === 0),
             },
             sessionChildEnv,
             undefined,
@@ -236,24 +251,15 @@ export class SessionRunner {
             this.deps.githubApp,
             this.deps.nowMs,
           );
-          if (!result.settleDeferredTerminalHook) return result;
-          retainedClaim = true;
-          return retainClaimForDeferredTerminalHook(
-            result as Required<Pick<SessionRunResult, "settleDeferredTerminalHook">> &
-              SessionRunResult,
-            () => {
-              if (mainClaimed) this.deps.worktrees.releaseMain(assign.repositoryId!);
-              else this.deps.worktrees.release(assign.worktreeId!);
-            },
-          );
+          return retainDeferredTerminalHook(result);
         }
 
         if (signal.aborted) {
-          return await finishCheckoutInterruption();
+          return retainDeferredTerminalHook(await finishCheckoutInterruption());
         }
 
         try {
-          return await runClaimedSession(
+          const result = await runClaimedSession(
             this.deps.processRunner,
             streamer,
             logs,
@@ -271,21 +277,34 @@ export class SessionRunner {
             baseline,
             isolatedGitHubConfigDir,
             this.deps.authorizeCommandStart,
+            options.deferCheckoutFetchFailureHook === true,
           );
+          return retainDeferredTerminalHook(result);
         } catch (error) {
           const errorMessage = thrownMessage(error);
           // A runner error can include the original argv. Keep the transcript
           // useful without copying prompts or other opaque arguments into logs.
           streamer.write("system", "Process execution failed.");
-          return await finishClaimedSession(
-            this.deps.processRunner,
-            streamer,
-            logs,
-            assign,
-            claimed,
-            { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
-            sessionChildEnv,
-            baseline,
+          return retainDeferredTerminalHook(
+            await finishClaimedSession(
+              this.deps.processRunner,
+              streamer,
+              logs,
+              assign,
+              claimed,
+              {
+                status: "failed",
+                exitCode: null,
+                errorCode: "setup_failed",
+                errorMessage,
+                ...(options.deferCheckoutFetchFailureHook ? { deferTerminalHook: true } : {}),
+              },
+              sessionChildEnv,
+              baseline,
+              false,
+              this.deps.githubApp,
+              this.deps.nowMs,
+            ),
           );
         }
       } finally {

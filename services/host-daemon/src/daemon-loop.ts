@@ -182,6 +182,8 @@ type PendingTerminalHookHandoff = {
   firstAttemptedAtMs?: number;
   complete: boolean;
   executing: boolean;
+  /** Blocks keepalive/reconnect retries while same-process ownership is reconciled. */
+  reconciling?: boolean;
   sending: boolean;
   /** Active recovery work; shutdown must retain the transport until it settles. */
   work?: Promise<void> | undefined;
@@ -1122,6 +1124,7 @@ export class DaemonLoop {
       expiresAtMs,
       complete: false,
       executing: false,
+      reconciling: true,
       sending: false,
     };
     this.pendingTerminalHookHandoffs.set(msg.handoffId, pending);
@@ -1130,9 +1133,20 @@ export class DaemonLoop {
     // checkout tail waits for its hook disposition; let it finish its one
     // hook first and merely settle the replacement handoff, never duplicate it.
     const reconciled = await this.reconcilePendingTerminalStatusForHandoff(msg.sessionId);
+    // The handoff may have been acknowledged or replaced while its same-process
+    // owner was settling. Never mutate or restart work for a stale entry.
+    if (this.pendingTerminalHookHandoffs.get(msg.handoffId) !== pending) return;
+    pending.reconciling = false;
     if (reconciled.matched) {
       if (reconciled.result) pending.result = reconciled.result;
       pending.complete = true;
+      this.sendTerminalHookHandoffCompletion(pending);
+      return;
+    }
+    // A concurrent status acknowledgement may have completed this handoff
+    // while reconciliation was pending. Its completion is already the sole
+    // terminal side effect; only ensure delivery and never start the hook.
+    if (pending.complete) {
       this.sendTerminalHookHandoffCompletion(pending);
       return;
     }
@@ -1151,6 +1165,7 @@ export class DaemonLoop {
     if (
       this.settleDeferredOnCompletion ||
       pending.complete ||
+      pending.reconciling ||
       pending.executing ||
       this.pendingTerminalHookHandoffs.get(pending.message.handoffId) !== pending ||
       this.activeAssignmentCount() + this.activeTerminalHookHandoffs >=
