@@ -133,6 +133,9 @@ describe("persisted service environment validation", () => {
     expect(updatePersistedApiUrl("HARNESS_HOST_ID=host-1\n", "https://new.example.com")).toContain(
       "HARNESS_API_URL=https://new.example.com",
     );
+    expect(updatePersistedApiUrl("HARNESS_HOST_ID=host-1", "https://new.example.com")).toBe(
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://new.example.com\n",
+    );
   });
 
   it("merges exported execution settings without replacing unrelated persisted values", () => {

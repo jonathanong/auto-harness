@@ -13,6 +13,20 @@ import {
   terminalStatusFixture as statusMessage,
 } from "../test-helpers/daemon-loop-test-helpers.ts";
 
+function replacementAssignment(attemptId: string) {
+  return {
+    type: "session:assign" as const,
+    sessionId: "replaced",
+    attemptId,
+    repositoryId: "demo",
+    prompt: "hello",
+    resolvedArgv: ["printf", "%s", "hello"],
+    timeout: 30,
+    worktreeId: "wt-1",
+    assignedAt: new Date().toISOString(),
+  };
+}
+
 describe("DaemonLoop terminal status retry", () => {
   it("runs a deferred fetch hook only for a terminal retry disposition", async () => {
     const { config, cleanup } = await makeRepo();
@@ -63,6 +77,68 @@ describe("DaemonLoop terminal status retry", () => {
       await flushMicrotasks();
       expect(hooks).toBe(1);
       expect(pending.size).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("handles a retry disposition acknowledged during the initial status send", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      let transport!: ReturnType<typeof createAcknowledgingLoopbackTransport>;
+      transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:status") {
+            transport.deliver({
+              type: "session:status-acknowledged",
+              sessionId: message.sessionId,
+              attemptId: message.attemptId,
+              retryAccepted: true,
+            });
+          }
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      const dispositions: boolean[] = [];
+      let settled = false;
+      (
+        loop as unknown as {
+          runner: {
+            run(): Promise<{
+              status: "failed";
+              exitCode: null;
+              logs: [];
+              errorCode: "checkout_fetch_failed";
+              settleDeferredTerminalHook: (runHook: boolean) => Promise<void>;
+            }>;
+          };
+        }
+      ).runner = {
+        async run() {
+          return {
+            status: "failed",
+            exitCode: null,
+            logs: [],
+            errorCode: "checkout_fetch_failed",
+            settleDeferredTerminalHook: async (runHook) => {
+              if (settled) return;
+              settled = true;
+              dispositions.push(runHook);
+            },
+          };
+        },
+      };
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+      transport.deliver({
+        ...replacementAssignment("attempt-immediate-status-ack"),
+        sessionId: "immediate-status-ack",
+      });
+      await loop.waitForIdle();
+
+      expect(dispositions).toEqual([false]);
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
       loop.stop();
     } finally {
       cleanup();
@@ -253,6 +329,16 @@ describe("DaemonLoop terminal status retry", () => {
           supersededDispositions.push(runHook);
           await supersededSettled;
         },
+      });
+      pendingTerminalStatusOf(loop).set("ordinary\0attempt-ordinary", {
+        message: {
+          ...statusMessage,
+          sessionId: "ordinary",
+          attemptId: "attempt-ordinary",
+        },
+        firstAttemptedAtMs: Date.now() - 2000,
+        sending: false,
+        controller: new AbortController(),
       });
       pendingTerminalStatusOf(loop).set("done-session\0attempt-unhooked", {
         message: { ...statusMessage, attemptId: "attempt-unhooked" },
@@ -597,6 +683,76 @@ describe("DaemonLoop terminal status retry", () => {
       });
       transport.deliver({ type: "session:status-acknowledged", sessionId: "done-session" });
       expect([...pendingTerminalStatusOf(loop).keys()]).toEqual(["other-session\0attempt-1"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("awaits a deferred disposition when an ACK omits attemptId", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      const dispositions: boolean[] = [];
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+        settleDeferredTerminalHook: async (runHook) => {
+          dispositions.push(runHook);
+        },
+      });
+      transport.deliver({ type: "session:status-acknowledged", sessionId: "done-session" });
+      await flushMicrotasks();
+      expect(dispositions).toEqual([true]);
+      expect(pendingTerminalStatusOf(loop).size).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("skips an assignment whose controller was aborted while waiting for a target", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport });
+      const runs: string[] = [];
+      (
+        loop as unknown as {
+          runner: {
+            run(assign: {
+              sessionId: string;
+            }): Promise<{ status: "completed"; exitCode: 0; logs: [] }>;
+          };
+        }
+      ).runner = {
+        async run(assign) {
+          runs.push(assign.sessionId);
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+
+      let releaseTarget!: () => void;
+      const targetGate = new Promise<void>((resolve) => {
+        releaseTarget = resolve;
+      });
+      (
+        loop as unknown as { worktreeAssignmentTails: Map<string, Promise<void>> }
+      ).worktreeAssignmentTails.set("worktree\0demo\0wt-1", targetGate);
+      transport.deliver(replacementAssignment("attempt-old"));
+      await flushMacrotask();
+      transport.deliver(replacementAssignment("attempt-new"));
+      await flushMacrotask();
+      releaseTarget();
+      await loop.waitForIdle();
+
+      expect(runs).toEqual(["replaced"]);
       loop.stop();
     } finally {
       cleanup();

@@ -57,6 +57,7 @@ describe("log coalescing helpers", () => {
     expect(splitLogLines("", 2)).toEqual([]);
     expect(splitLogLines("a\nb\n", 2)).toEqual(["a\nb\n"]);
     expect(splitLogLines("a\nb\nc\n", 2)).toEqual(["a\nb\n", "c\n"]);
+    expect(splitLogLines("a\nb\nc\nd\n", 2)).toEqual(["a\nb\n", "c\nd\n"]);
     expect(splitLogLines("a\nb\nc", 2)).toEqual(["a\nb\n", "c"]);
   });
 

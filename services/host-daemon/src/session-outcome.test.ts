@@ -393,4 +393,40 @@ describe("finishClaimedSession", () => {
       "terminal hook revalidation failed for session sess-1: claim disappeared",
     );
   });
+
+  it("omits optional hook fields when the failed run has no error code or ref", async () => {
+    const calls: Array<{ argv: string[]; env?: NodeJS.ProcessEnv }> = [];
+    const runner: ProcessRunner = {
+      async run(options) {
+        calls.push({ argv: options.argv, env: options.env });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await finishClaimedSession(
+      runner,
+      new LogStreamer("session-1", "attempt-1", () => undefined),
+      [],
+      baseAssign(),
+      {
+        worktree: { id: "wt-1" },
+        cwd: process.cwd(),
+        repository: { terminalHookScript: "AGENTS.md" },
+        currentHookTarget: async () => ({
+          cwd: process.cwd(),
+          repository: { terminalHookScript: "AGENTS.md" },
+        }),
+      },
+      {
+        status: "failed",
+        exitCode: null,
+        deferTerminalHook: true,
+      },
+    );
+
+    await result.settleDeferredTerminalHook?.(true);
+    const hook = calls[0];
+    expect(hook?.argv).toEqual(["/bin/sh", `${process.cwd()}/AGENTS.md`]);
+    expect(hook?.env).not.toHaveProperty("HARNESS_ERROR_CODE");
+    expect(hook?.env).not.toHaveProperty("HARNESS_REF");
+  });
 });

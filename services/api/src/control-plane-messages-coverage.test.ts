@@ -625,4 +625,40 @@ describe("control-plane host message coverage paths", () => {
       worktreeId: null,
     });
   });
+
+  it("retains retry state without a checkout retry disposition on an exhausted retry", async () => {
+    const local = createControlPlaneState({ now: () => NOW });
+    const localRun = running({ id: "local-exhausted", infrastructureRetryCount: 1 });
+    local.sessions.set(localRun.id, localRun);
+    local.worktrees.set("worktree", worktree(localRun.id));
+    expect(
+      handleHostMessage(
+        local,
+        status(localRun.id, "failed", { errorCode: "checkout_fetch_failed" }),
+      ),
+    ).toEqual({ ok: true });
+    expect(local.sessions.get(localRun.id)).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      infrastructureRetryCount: 1,
+    });
+
+    const durableRun = running({ id: "durable-exhausted", infrastructureRetryCount: 1 });
+    const durableState = durable(durableRun);
+    durableState.worktrees.set("worktree", worktree(durableRun.id));
+    await expect(
+      handleHostMessageDurable(
+        durableState,
+        status(durableRun.id, "failed", { errorCode: "checkout_fetch_failed" }),
+      ),
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { sessionId: durableRun.id },
+    });
+    expect(durableState.sessions.get(durableRun.id)).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      infrastructureRetryCount: 1,
+    });
+    expect(durableState.sessions.get(durableRun.id)).not.toHaveProperty("retryAccepted");
+  });
 });

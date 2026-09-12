@@ -210,6 +210,32 @@ describe("daemon updater runtime", () => {
     expect(stopped).toBe(true);
   });
 
+  it("does not overlap a poll while the previous update is still active", async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: () => void;
+      const active = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let runs = 0;
+      const stop = startUpdatePoll(
+        {
+          run: async () => {
+            runs += 1;
+            await active;
+          },
+        } as never,
+        { pollMs: 10, log: () => undefined, error: () => undefined },
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(runs).toBe(1);
+      release();
+      await stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("handles optional boot bindings and a string updater failure", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -319,5 +345,12 @@ describe("daemon updater runtime", () => {
     await expect(updater!.run()).resolves.toMatchObject({ phase: "failed" });
     expect(calls).toEqual(["begin", "prepare", "idle", "resume"]);
     expect(draining).toBe(false);
+
+    // A maintenance drain that predates the updater must remain owned by its
+    // original owner after the update attempt fails.
+    draining = true;
+    calls.length = 0;
+    await expect(updater!.run()).resolves.toMatchObject({ phase: "deferred" });
+    expect(calls).toEqual(["begin"]);
   });
 });

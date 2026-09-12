@@ -159,6 +159,13 @@ describe("resolveTrustedExecutable", () => {
       );
     });
 
+    it("does not double-append an explicit extension when the file is absent", () => {
+      const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-missing-ext-"));
+      expect(() =>
+        resolveTrustedExecutable("missing.exe", { PATH: binDir, PATHEXT: ".EXE;.CMD" }, "win32"),
+      ).toThrow('Cannot resolve trusted executable "missing.exe": not found on PATH');
+    });
+
     it("honors a custom PATHEXT instead of the built-in default", () => {
       const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-win32-pathext-"));
       stubBinary(binDir, "pnpm.foo");

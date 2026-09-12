@@ -108,6 +108,11 @@ describe("resolveHostService / defaults", () => {
     const ok = defaultHostServiceRun(process.execPath, ["-e", "process.stdout.write('ok')"]);
     expect(ok.status).toBe(0);
     expect(ok.stdout).toBe("ok");
+    expect(
+      defaultHostServiceRun(process.execPath, ["-e", "process.stdout.write('timed')"], {
+        timeoutMs: 1_000,
+      }).stdout,
+    ).toBe("timed");
     const missing = defaultHostServiceRun("auto-harness-host-service-missing-binary", []);
     expect(missing.status).toBe(1);
     expect(missing.stderr.length).toBeGreaterThan(0);

@@ -461,4 +461,23 @@ describe("refetchConfiguredRemotes", () => {
       refetchConfiguredRemotes(throwingRunner, "/repo", undefined, true),
     ).rejects.toThrow("Failed to refetch remote origin: network unavailable");
   });
+
+  it("preserves thrown Error diagnostics in both refetch failure modes", async () => {
+    const throwingRunner = {
+      async run(options: Parameters<Parameters<typeof runGit>[0]["run"]>[0]) {
+        if (options.argv[1] === "remote") {
+          options.onChunk({ stream: "stdout", data: "origin\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        throw new Error("remote unavailable");
+      },
+    };
+
+    await expect(refetchConfiguredRemotes(throwingRunner, "/repo", undefined, false)).resolves.toBe(
+      false,
+    );
+    await expect(
+      refetchConfiguredRemotes(throwingRunner, "/repo", undefined, true),
+    ).rejects.toThrow("Failed to refetch remote origin: remote unavailable");
+  });
 });

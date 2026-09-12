@@ -12,6 +12,35 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("registration watchdog", () => {
+  it("ignores a stale watchdog callback after the socket disconnects", async () => {
+    const sockets: FakeSocket[] = [];
+    const watchdogs: Array<() => void> = [];
+    const transport = createWsTransport({
+      url: "ws://fake.test/ws",
+      hostId: "a1",
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      timers: {
+        setTimeout: (callback) => {
+          watchdogs.push(callback as () => void);
+          return 1 as never;
+        },
+        clearTimeout: () => undefined,
+      },
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    await transport.send(register());
+    const watchdog = watchdogs[0];
+    expect(watchdog).toBeDefined();
+    socket.close();
+    watchdog?.();
+    transport.close();
+  });
+
   it("re-arms on every reconnect, not just the first connect", async () => {
     // waitForRegistration in start-daemon.ts only ever guards the very first
     // connect — its promise resolves once and is never replaced. Before this
