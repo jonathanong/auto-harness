@@ -49,7 +49,7 @@ describe("config file globs", () => {
     for (const metric of ["lines", "functions", "statements"]) {
       expect(aggregateThresholds).toMatch(new RegExp(`\\b${metric}: 99,`));
     }
-    // Vitest 4 remapping: 98 until the Vitest 5 follow-up restores 99.
+    // Vitest 4/5 remapping still lands branches at ~98.5%.
     expect(aggregateThresholds).toMatch(/\bbranches: 98,/);
   });
 
