@@ -231,7 +231,7 @@ describe("createGitClient real git", () => {
     await git(source, ["config", "user.name", "t"]);
     writeFileSync(
       join(source, ".gitmodules"),
-      `[submodule "attacker"]\n\tpath = attacker\n\turl = ${join(root, "attacker.git")}\n`,
+      '[submodule "attacker"]\n\tpath = attacker\n\turl = https://attacker.invalid/repository.git\n',
     );
     await git(source, ["add", ".gitmodules"]);
     await git(source, ["update-index", "--add", "--cacheinfo", `160000,${targetSha},attacker`]);
