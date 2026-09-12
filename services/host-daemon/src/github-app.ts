@@ -1,6 +1,6 @@
 import { createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isAbsolute, win32 } from "node:path";
+import { isAbsolute } from "node:path";
 
 const GITHUB_APP_CONFIG_ENV = "HARNESS_GITHUB_APP_CONFIG";
 export const GITHUB_APP_TOKEN_MARGIN_MS = 5 * 60_000;
@@ -33,12 +33,14 @@ const GITHUB_TOKEN_ENV_NAMES = new Set([
 /** Remove ambient GitHub credentials before a mapped App session can run any repository hook. */
 export function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const scoped = { ...environment };
-  for (const name of GITHUB_TOKEN_ENV_NAMES) delete scoped[name];
+  for (const name of Object.keys(scoped)) {
+    if (GITHUB_TOKEN_ENV_NAMES.has(name.toUpperCase())) delete scoped[name];
+  }
   const allowlist = scoped.HARNESS_CHILD_ENV_ALLOWLIST;
   if (allowlist) {
     const remaining = allowlist
       .split(",")
-      .filter((name) => !GITHUB_TOKEN_ENV_NAMES.has(name.trim()))
+      .filter((name) => !GITHUB_TOKEN_ENV_NAMES.has(name.trim().toUpperCase()))
       .join(",");
     if (remaining) scoped.HARNESS_CHILD_ENV_ALLOWLIST = remaining;
     else delete scoped.HARNESS_CHILD_ENV_ALLOWLIST;
@@ -92,7 +94,7 @@ export function parseGitHubAppConfig(
   const appId = string(config.appId, "GitHub App config.appId");
   if (!/^\d+$/.test(appId)) throw new Error("GitHub App config.appId must be numeric");
   const privateKeyPath = string(config.privateKeyPath, "GitHub App config.privateKeyPath");
-  if (!isAbsolute(privateKeyPath) && !win32.isAbsolute(privateKeyPath))
+  if (!isAbsolute(privateKeyPath))
     throw new Error("GitHub App config.privateKeyPath must be absolute");
   const botLogin = string(config.botLogin, "GitHub App config.botLogin");
   const botUserId = positiveInteger(config.botUserId, "GitHub App config.botUserId");
@@ -137,7 +139,7 @@ export function loadGitHubAppConfig(
 ): GitHubAppConfig | undefined {
   const path = env[GITHUB_APP_CONFIG_ENV]?.trim();
   if (!path) return undefined;
-  if (!isAbsolute(path) && !win32.isAbsolute(path)) {
+  if (!isAbsolute(path)) {
     throw new Error(`${GITHUB_APP_CONFIG_ENV} must be absolute`);
   }
   return parseGitHubAppConfig(JSON.parse(readFile(path, "utf8")) as unknown, readFile);

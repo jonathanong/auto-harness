@@ -7,6 +7,7 @@ import {
   loadGitHubAppConfig,
   mintInstallationToken,
   parseGitHubAppConfig,
+  withoutAmbientGitHubTokens,
 } from "./github-app.ts";
 
 const pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -145,6 +146,16 @@ describe("GitHub App credentials", () => {
   });
 
   it("rejects malformed or non-absolute host configuration without echoing key data", () => {
+    expect(() => parseGitHubAppConfig(null)).toThrow("GitHub App config must be an object");
+    expect(() =>
+      parseGitHubAppConfig({
+        appId: 1,
+        privateKeyPath: "/keys/app.pem",
+        botLogin: "bot",
+        botUserId: 1,
+        repositories: {},
+      }),
+    ).toThrow("appId must be a non-empty string");
     expect(() =>
       parseGitHubAppConfig(
         { appId: "1", privateKeyPath: "key.pem", botLogin: "bot", botUserId: 1, repositories: {} },
@@ -154,6 +165,20 @@ describe("GitHub App credentials", () => {
     expect(() =>
       loadGitHubAppConfig({ HARNESS_GITHUB_APP_CONFIG: "config.json" }, () => "{}"),
     ).toThrow("HARNESS_GITHUB_APP_CONFIG must be absolute");
+    if (process.platform !== "win32") {
+      expect(() =>
+        loadGitHubAppConfig({ HARNESS_GITHUB_APP_CONFIG: "C:\\keys\\config.json" }, () => "{}"),
+      ).toThrow("HARNESS_GITHUB_APP_CONFIG must be absolute");
+      expect(() =>
+        parseGitHubAppConfig({
+          appId: "1",
+          privateKeyPath: "C:\\keys\\app.pem",
+          botLogin: "bot",
+          botUserId: 1,
+          repositories: {},
+        }),
+      ).toThrow("privateKeyPath must be absolute");
+    }
     expect(() =>
       parseGitHubAppConfig(
         {
@@ -192,5 +217,16 @@ describe("GitHub App credentials", () => {
         },
       ),
     ).toThrow("GitHub App private key could not be loaded");
+  });
+
+  it("scrubs ambient GitHub token names case-insensitively", () => {
+    expect(
+      withoutAmbientGitHubTokens({
+        Github_Token: "secret",
+        gh_enterprise_token: "enterprise-secret",
+        SAFE: "kept",
+        HARNESS_CHILD_ENV_ALLOWLIST: " Github_Token ,SAFE,gh_enterprise_token",
+      }),
+    ).toEqual({ SAFE: "kept", HARNESS_CHILD_ENV_ALLOWLIST: "SAFE" });
   });
 });
