@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- token setup, expiry, cancellation, and environment isolation share one fixture. */
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -84,7 +85,14 @@ describe("claimed session GitHub App credentials", () => {
       () => false,
       () => 4_000_000,
       commandRunner,
-      { PATH: process.env.PATH, HOME: "/home/harness" },
+      {
+        PATH: process.env.PATH,
+        HOME: "/home/harness",
+        GH_TOKEN: "ambient-gh",
+        GITHUB_TOKEN: "ambient-github",
+        GH_ENTERPRISE_TOKEN: "ambient-ghes",
+        GITHUB_ENTERPRISE_TOKEN: "ambient-github-enterprise",
+      },
       undefined,
       undefined,
       app(),
@@ -97,10 +105,51 @@ describe("claimed session GitHub App credentials", () => {
       ["config", "--local", "user.email", "2+auto-harness[bot]@users.noreply.github.com"],
     ]);
     expect(commandEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(commandEnv?.GITHUB_TOKEN).toBeUndefined();
+    expect(commandEnv?.GH_ENTERPRISE_TOKEN).toBeUndefined();
+    expect(commandEnv?.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();
     expect(commandTimeout).toBe(3_300_000);
     expect(logs.map((chunk) => chunk.content).join("")).toContain("token=[redacted]");
     expect(logs.map((chunk) => chunk.content).join("")).not.toContain("ghs_exact-token");
   });
+
+  it.each([
+    { timeout: false, status: "cancelled" },
+    { timeout: true, status: "timed_out" },
+  ] as const)(
+    "preserves a $status outcome when provisioning is aborted",
+    async ({ timeout, status }) => {
+      const controller = new AbortController();
+      vi.stubGlobal("fetch", async () => {
+        controller.abort();
+        throw new Error("aborted while minting");
+      });
+      const runner: ProcessRunner = {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      };
+      const logs = [];
+      await expect(
+        runClaimedSession(
+          runner,
+          new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+          logs,
+          baseAssign(),
+          claimed,
+          controller.signal,
+          () => timeout,
+          () => 4_000_000,
+          runner,
+          { PATH: process.env.PATH },
+          undefined,
+          undefined,
+          app(),
+          () => now,
+        ),
+      ).resolves.toMatchObject({ status });
+    },
+  );
 
   it("mints a new token for a native resume and fails closed without exposing a response body", async () => {
     const fetchMock = installTokenFetch();

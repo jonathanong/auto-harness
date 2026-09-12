@@ -3,11 +3,12 @@ import type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } fro
 /** Redacts one exact secret before any command output reaches durable session logging. */
 export class SecretRedactingProcessRunner implements ProcessRunner {
   readonly outputStreams?: "merged";
+  private readonly inner: ProcessRunner;
+  private readonly secret: string;
 
-  constructor(
-    private readonly inner: ProcessRunner,
-    private readonly secret: string,
-  ) {
+  constructor(inner: ProcessRunner, secret: string) {
+    this.inner = inner;
+    this.secret = secret;
     if (inner.outputStreams === "merged") this.outputStreams = "merged";
   }
 

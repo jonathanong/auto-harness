@@ -130,10 +130,10 @@ export async function runClaimedSession(
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   /** Daemon identity used only to fetch `assign.priorContext`; never forwarded to the CLI. */
   identity?: PriorContextIdentity,
-  /** HEAD captured after checkout and before setup; used for post-session facts. */
-  baseline?: string,
   githubApp?: GitHubAppConfig,
   nowMs: () => number = Date.now,
+  /** HEAD captured after checkout and before setup; used for post-session facts. */
+  baseline?: string,
 ): Promise<SessionRunResult> {
   try {
     await claimed.currentExecutionTarget?.();
@@ -236,9 +236,9 @@ export async function runClaimedSession(
     setup.environment,
     executionProfiles,
     identity,
-    baseline,
     githubApp,
     nowMs,
+    baseline,
   );
 }
 
@@ -256,9 +256,9 @@ async function runProcessAndFinish(
   environment: NodeJS.ProcessEnv,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   identity?: PriorContextIdentity,
-  baseline?: string,
   githubApp?: GitHubAppConfig,
   nowMs: () => number = Date.now,
+  baseline?: string,
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -352,6 +352,19 @@ async function runProcessAndFinish(
       }
     } catch {
       await removePriorContextFile(priorContextPath);
+      if (signal?.aborted) {
+        return await finishClaimedSession(
+          processRunner,
+          streamer,
+          logs,
+          assign,
+          claimed,
+          { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+          environment,
+          baseline,
+          true,
+        );
+      }
       return await finishClaimedSession(
         processRunner,
         streamer,
@@ -365,21 +378,24 @@ async function runProcessAndFinish(
           errorMessage: "GitHub App credential provisioning failed",
         },
         environment,
+        baseline,
+        true,
       );
     }
   }
+  const scopedCommandEnv = installationToken ? withoutAmbientGitHubTokens(commandEnv) : commandEnv;
   // The daemon's host credential must never reach an agent command. Give the
   // primary command only its one-attempt child-session credential instead;
   // setup, checkout, and terminal hooks retain their existing environment.
   const sessionEnv =
     identity && assign.sessionApiKey
       ? {
-          ...commandEnv,
+          ...scopedCommandEnv,
           HARNESS_API_URL: httpBaseFromApiUrl(identity.apiUrl),
           HARNESS_SESSION_ID: assign.sessionId,
           HARNESS_SESSION_API_KEY: assign.sessionApiKey,
         }
-      : commandEnv;
+      : scopedCommandEnv;
   const authenticatedEnv = installationToken
     ? { ...sessionEnv, GH_TOKEN: installationToken.token }
     : sessionEnv;
@@ -509,4 +525,17 @@ async function runProcessAndFinish(
       ? { agentSummary: credentialRedactor.redact(result.agentSummary) }
       : {}),
   });
+}
+
+function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scoped = { ...environment };
+  for (const name of [
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+  ]) {
+    delete scoped[name];
+  }
+  return scoped;
 }

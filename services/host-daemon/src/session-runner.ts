@@ -212,9 +212,9 @@ export class SessionRunner {
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
           this.deps.identity,
-          baseline,
           this.deps.githubApp,
           this.deps.nowMs,
+          baseline,
         );
       } catch (error) {
         const errorMessage = thrownMessage(error);

@@ -269,6 +269,11 @@ async function connectDaemon(
   // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
   const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
   const registrationTimeoutMs = options.registrationTimeoutMs ?? 30_000;
+  // Validate file-backed configuration before creating a reconnecting transport. A load failure
+  // must return control to the supervisor rather than leave an unowned WebSocket retry loop alive.
+  const childEnvSource = options.childEnvSource ?? process.env;
+  const githubApp = loadGitHubAppConfig(childEnvSource);
+  const executionProfiles = loadExecutionProfiles(childEnvSource);
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
@@ -280,13 +285,12 @@ async function connectDaemon(
     // ws-transport.ts. Sharing the one option keeps both guards in sync.
     registrationTimeoutMs,
   });
-  const githubApp = loadGitHubAppConfig(options.childEnvSource ?? process.env);
   const loop = new DaemonLoop({
     config: options.config,
     transport,
     onLog: log,
     ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
-    executionProfiles: loadExecutionProfiles(options.childEnvSource ?? process.env),
+    executionProfiles,
     ...(githubApp ? { githubApp } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
