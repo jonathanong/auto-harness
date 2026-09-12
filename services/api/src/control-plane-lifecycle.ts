@@ -9,6 +9,7 @@ export { planSessionTransition, transitionEffect } from "./session-transition-pl
 export {
   archiveSessionLogs,
   getArchive,
+  getArchiveDownloadDurable,
   listArchives,
   queueSessionArchive,
   retrySessionArchiveIfNeeded,

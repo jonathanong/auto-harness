@@ -251,6 +251,24 @@ against a static snapshot — search, font sizing, fullscreen, pretty JSON, type
 raw terminal, and download all function identically, there's just no live update after the initial
 fetch.
 
+The detail header also shows durable archive availability. **Recent transcript — not archived** means
+the verified transcript is still in DynamoDB; terminal sessions poll this state every five seconds for
+at most 65 seconds. **Archived transcript is ready to download** exposes a JSONL download. The button
+performs a fresh `GET /api/v1/sessions/:id/archive` before each download so the signed S3 URL is
+short-lived and reflects current availability. **Archived transcript is unavailable for retrieval**
+means archive metadata exists but the verified S3 object cannot currently be read. Refresh archive
+rechecks any state manually, and a successful Archive logs action on a terminal session triggers an
+immediate recheck. Active sessions cannot be manually archived; they remain on the recent-log path
+until their terminal transition queues the archive.
+**Archived transcript failed integrity verification** means S3's version-pinned object identity,
+length, or content type differs from the verified DynamoDB metadata; it is withheld from download
+until repaired.
+**Transcript expired before archival completed** means the terminal session's seven-day recent-log
+retention elapsed and a bounded strongly consistent probe found no recent log row before a durable
+archive became retrievable.
+Queued and running sessions always remain in the recent/not-archived state, even if stale complete
+archive metadata exists; archived retrieval is exposed only after the authoritative session is terminal.
+
 **Behavior:**
 
 1. **On page load** — fetches bounded historical logs via `GET /sessions/:id/logs` and renders them in the terminal.
@@ -260,18 +278,19 @@ fetch.
 
 **Terminal controls:**
 
-| Control      | Function                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.        |
-| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                    |
-| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable. |
-| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                            |
-| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                    |
-| Copy         | Select text and copy. Right-click context menu.                                                                   |
-| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up). |
-| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                         |
-| Fullscreen   | Expand the viewer to fill the viewport                                                                            |
-| Download     | Download the raw log as a `.txt` file                                                                             |
+| Control      | Function                                                                                                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search       | `Ctrl+F` to search within log output. Readable view shows `N of M`; raw terminal reports match / no match.                                                                                                    |
+| Pretty JSON  | Pretty-print JSONL records with 2-space indent (readable view, on by default).                                                                                                                                |
+| Type filters | Show all records or restrict to message / thinking / tool / event / error / system / output. Numbering is stable.                                                                                             |
+| Line links   | Click a gutter number to copy a `#L<n>` URL and highlight that record.                                                                                                                                        |
+| Raw terminal | Replay the closed stream in xterm.js at the PTY's 120×40 grid.                                                                                                                                                |
+| Copy         | Select text and copy. Right-click context menu.                                                                                                                                                               |
+| Scroll       | Scroll up to view history. Auto-scroll snaps to bottom when new output arrives (unless the user has scrolled up).                                                                                             |
+| Font size    | `Ctrl+`/`Ctrl-` to adjust                                                                                                                                                                                     |
+| Fullscreen   | Expand the viewer to fill the viewport                                                                                                                                                                        |
+| Download     | Download the raw log as a `.txt` file                                                                                                                                                                         |
+| Archive      | Show whether the recent transcript is still in DynamoDB, archived and retrievable, integrity-incomplete, expired, or unavailable; refresh status and download a fresh archived `.jsonl` transcript when ready |
 
 **Status transitions** are displayed as system messages in the terminal:
 

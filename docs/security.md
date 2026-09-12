@@ -65,6 +65,11 @@ that host. Do not install it organization-wide, put it in prompts, or move it to
 | DynamoDB  | Encrypted at rest (AWS managed keys)                     |
 | S3        | Encrypted at rest (SSE-S3), bucket policy denies non-TLS |
 
+Archived terminal transcripts are downloaded directly from the private S3 bucket with a
+five-minute presigned `GetObject` URL. The REST Lambda verifies the canonical object key, length,
+content type, and cold-storage state before signing. Treat the URL as a short-lived bearer secret:
+clients fetch it immediately before download, and neither the API nor UI persists or logs it.
+
 ## CORS policy
 
 The Web UI domain is the only allowed origin for browser requests. Configure via CDK:

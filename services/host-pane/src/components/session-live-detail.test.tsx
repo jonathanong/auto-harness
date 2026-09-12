@@ -65,7 +65,10 @@ describe("host session live detail", () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(response(true, { ...queued, status: "completed" })),
+      vi
+        .fn()
+        .mockResolvedValueOnce(response(true, { state: "dynamodb" }))
+        .mockResolvedValue(response(true, { ...queued, status: "completed" })),
     );
     const view = mount(
       <SessionLiveDetail initialSession={queued}>
@@ -105,7 +108,10 @@ describe("host session live detail", () => {
 
   it("keeps the last state, reports a failure, and schedules a retry", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(false, {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(response(false, {})).mockResolvedValue(response(false, {})),
+    );
     const view = mount(<SessionLiveDetail initialSession={queued} />);
     await act(async () => {
       await Promise.resolve();

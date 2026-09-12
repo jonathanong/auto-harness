@@ -137,6 +137,7 @@ describe("session live detail", () => {
   it("shows the accessible offline warning and refreshes it away", async () => {
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(response(true, { state: "dynamodb" }))
       .mockResolvedValueOnce(response(true, running))
       .mockResolvedValueOnce(response(true, { hostId: "host-one", online: true }));
     vi.stubGlobal("fetch", fetchMock);
@@ -180,7 +181,10 @@ describe("session live detail", () => {
   });
 
   it("keeps the last state and reports a polling failure", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(false, {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(response(false, {})).mockResolvedValue(response(false, {})),
+    );
     const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
     await act(async () => {
       await Promise.resolve();
@@ -224,7 +228,7 @@ describe("session live detail", () => {
     );
     const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     view.unmount();
   });
 });

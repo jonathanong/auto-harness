@@ -66,7 +66,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       KMS_KEY_ID: props.foundation.integrationKey.keyArn,
     };
     const functionProps = {
-      bundling: { minify: true, sourceMap: true },
+      bundling: { minify: true, nodeModules: ["@aws-sdk/s3-request-presigner"], sourceMap: true },
       entry: lambdaEntry,
       memorySize: 256,
       runtime: lambda.Runtime.NODEJS_22_X,

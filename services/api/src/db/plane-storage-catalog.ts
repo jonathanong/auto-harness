@@ -298,6 +298,7 @@ export async function queryLogs(
               ExpressionAttributeNames: { "#stream": "stream" },
             }
           : {}),
+        ...(query.consistentRead ? { ConsistentRead: true } : {}),
         ScanIndexForward: true,
         Limit: query.limit,
       }),
@@ -324,6 +325,7 @@ export async function queryLogs(
               ExpressionAttributeNames: { "#stream": "stream" },
             }
           : {}),
+        ...(query.consistentRead ? { ConsistentRead: true } : {}),
         ScanIndexForward: query.order !== "desc",
         Limit: query.limit - records.length,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
@@ -1555,6 +1557,7 @@ export async function completeArchiveRetry(
         UpdateExpression:
           "SET contentType = :contentType, bodyBytes = :bodyBytes, #status = :complete, objectStored = :true, updatedAt = :updatedAt" +
           (archive.objectKey ? ", objectKey = :objectKey" : "") +
+          (archive.versionId ? ", versionId = :versionId" : "") +
           " REMOVE retryState, retryOrder",
         ConditionExpression:
           "objectStored = :false AND retryState = :processing AND retryOrder = :expected",
@@ -1566,6 +1569,7 @@ export async function completeArchiveRetry(
           ":true": true,
           ":updatedAt": archive.updatedAt,
           ...(archive.objectKey ? { ":objectKey": archive.objectKey } : {}),
+          ...(archive.versionId ? { ":versionId": archive.versionId } : {}),
           ":false": false,
           ":processing": "processing",
           ":expected": expectedRetryOrder,

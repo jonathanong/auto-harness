@@ -5,6 +5,7 @@ import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
 import type { HydrateFromStorageOptions } from "./control-plane-hydrate.ts";
 import { configuredSecretEncryptor } from "./secret-crypto.ts";
 import { configuredArchiveWriter } from "./archive-writer.ts";
+import { configuredArchiveReader } from "./archive-reader.ts";
 
 export type CreateControlPlaneOptions = ControlPlaneOptions &
   CreateDynamoClientOptions & {
@@ -86,6 +87,7 @@ export async function createControlPlane(
       : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
     archiveWriter: options.archiveWriter ?? configuredArchiveWriter(),
+    archiveReader: options.archiveReader ?? configuredArchiveReader(),
     ...(options.sessionCursorSecret !== undefined
       ? { sessionCursorSecret: options.sessionCursorSecret }
       : {}),

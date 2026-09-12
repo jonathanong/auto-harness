@@ -448,6 +448,178 @@ describe("archive retry state", () => {
     ]);
   });
 
+  it.each(["missing-result", "missing-version"])(
+    "does not publish a repaired legacy winner when the writer has a %s",
+    async (resultKind) => {
+      const key = `sessions/legacy-${resultKind}/logs.jsonl`;
+      const pending = {
+        key,
+        contentType: "application/x-ndjson",
+        bodyBytes: 0,
+        status: "pending" as const,
+        objectStored: false,
+        retryState: "processing" as const,
+        retryOrder: "claim-order",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      const complete = { ...pending, status: "complete" as const, objectStored: true };
+      let reads = 0;
+      const state = createControlPlaneState({
+        archiveWriter: {
+          putArchive: async () => (resultKind === "missing-version" ? ({} as never) : undefined),
+        },
+        storage: {
+          getArchive: async () => (reads++ === 0 ? pending : complete),
+          listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "legacy" }],
+          completeArchiveRetry: async () => false,
+        } as never,
+      });
+      await retrySessionArchiveIfNeeded(state, `legacy-${resultKind}`, {
+        retryState: "processing",
+        retryOrder: "claim-order",
+      });
+      expect(reads).toBe(2);
+      expect(state.archives.get(key)?.versionId).toBeUndefined();
+    },
+  );
+
+  it("persists a repaired legacy winner identity to durable metadata", async () => {
+    const key = "sessions/legacy-durable/logs.jsonl";
+    const pending = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending" as const,
+      objectStored: false,
+      retryState: "processing" as const,
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const complete = { ...pending, status: "complete" as const, objectStored: true };
+    let reads = 0;
+    const putArchive = vi.fn(async () => undefined);
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => ({ versionId: "repaired-v1" }) },
+      storage: {
+        getArchive: async () => (reads++ === 0 ? pending : complete),
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "legacy" }],
+        completeArchiveRetry: async () => false,
+        putArchive,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "legacy-durable", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    expect(putArchive).toHaveBeenCalledWith(expect.objectContaining({ versionId: "repaired-v1" }));
+    expect(state.archives.get(key)).toMatchObject({
+      versionId: "repaired-v1",
+      bodyBytes: expect.any(Number),
+    });
+  });
+
+  it("repairs a legacy winner in the in-memory retry fence", async () => {
+    const key = "sessions/legacy-memory/logs.jsonl";
+    let releaseUpload!: () => void;
+    const uploadStarted = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          await uploadStarted;
+          return { versionId: "memory-repaired-v1" };
+        },
+      },
+    });
+    state.logs.set("legacy-memory", [
+      { timestamp: "1", stream: "stdout", content: "legacy" } as never,
+    ]);
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "claim-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const retry = retrySessionArchiveIfNeeded(state, "legacy-memory", {
+      retryState: "processing",
+      retryOrder: "claim-order",
+    });
+    await Promise.resolve();
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    releaseUpload();
+    await retry;
+    expect(state.archives.get(key)).toMatchObject({ versionId: "memory-repaired-v1" });
+  });
+
+  it("releases a matching local retry claim after an upload failure", async () => {
+    const key = "sessions/local-release/logs.jsonl";
+    const state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          throw new Error("upload failed");
+        },
+      },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "old-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(state.archives.get(key)).toMatchObject({ retryState: "pending" });
+  });
+
+  it("does not reset a replaced local claim after an upload failure", async () => {
+    const key = "sessions/replaced-after-failure/logs.jsonl";
+    let state: ReturnType<typeof createControlPlaneState>;
+    state = createControlPlaneState({
+      archiveWriter: {
+        putArchive: async () => {
+          state.archives.set(key, {
+            key,
+            contentType: "application/x-ndjson",
+            bodyBytes: 0,
+            status: "pending",
+            objectStored: false,
+            retryState: "pending",
+            retryOrder: "new-order",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          });
+          throw new Error("upload failed");
+        },
+      },
+    });
+    state.archives.set(key, {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "pending",
+      retryOrder: "old-order",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(retryPendingArchives(state)).resolves.toBe(0);
+    expect(state.archives.get(key)?.retryOrder).toBe("new-order");
+  });
+
   it("keeps a retry pointer if the archive writer disappears after uploading", async () => {
     const putArchive = vi.fn(async () => undefined);
     const writer = { putArchive };

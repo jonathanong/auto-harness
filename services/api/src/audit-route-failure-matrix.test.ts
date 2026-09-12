@@ -5,10 +5,25 @@ import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import { durableMutationFailureCases } from "../test-helpers/audit-route-failure-test-helpers.ts";
 import { auditFixture } from "../test-helpers/audit-test-helpers.ts";
 
+function prepareFailureCase(
+  plane: ReturnType<typeof auditFixture>,
+  durableMethod: (typeof durableMutationFailureCases)[number][3],
+): void {
+  if (durableMethod !== "archiveSessionLogs") return;
+  const session = plane.state.sessions.get("session-a");
+  if (!session) throw new Error("session fixture missing");
+  plane.state.sessions.set(session.id, {
+    ...session,
+    status: "completed",
+    completedAt: "2026-08-10T00:00:00.000Z",
+  });
+}
+
 describe("audit route failures", () => {
   it("records failed outcomes when durable mutation handlers reject", async () => {
     for (const [method, path, body, durableMethod, action] of durableMutationFailureCases) {
       const plane = auditFixture();
+      prepareFailureCase(plane, durableMethod);
       Object.defineProperty(plane, durableMethod, {
         value: async () => {
           throw new Error("durable storage unavailable");
@@ -20,6 +35,7 @@ describe("audit route failures", () => {
       expect((await plane.listAuditLogs({ action, outcome: "failed" })).items).toHaveLength(1);
 
       const noAudit = auditFixture();
+      prepareFailureCase(noAudit, durableMethod);
       Object.defineProperty(noAudit, durableMethod, {
         value: async () => {
           throw new Error("durable storage unavailable");
