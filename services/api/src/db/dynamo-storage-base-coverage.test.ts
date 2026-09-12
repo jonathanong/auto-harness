@@ -310,6 +310,7 @@ describe("DynamoPlaneStorageBase", () => {
     await storage.putWorkspacePool(pool);
     expect(await storage.updateWorkspacePool({ ...pool, name: "Updated" })).toBe(true);
     expect(await storage.getWorkspacePool(pool.id)).toMatchObject({ id: pool.id });
+    expect(await storage.getWorkspacePoolSummary(pool.id)).toMatchObject({ id: pool.id });
     expect((await storage.listWorkspacePools()).map(({ id }) => id)).toContain(pool.id);
     await storage.putWorkspaceSlot(slot);
     expect(await storage.getWorkspaceSlot(slot.id)).toMatchObject({ id: slot.id });
@@ -384,6 +385,15 @@ describe("DynamoPlaneStorageBase", () => {
         queueShard: 0,
         now,
         usageLimitedUntil: now,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.suppressProviderlessUsageLimitWorkspace({
+        sessionId: "missing-workspace-session",
+        workspaceSlotId: slot.id,
+        attemptId: "attempt",
+        queueShard: 0,
+        targetIndex: 0,
       }),
     ).toBe(false);
     expect(await storage.deleteWorkspacePool(pool.id)).toBe(true);
