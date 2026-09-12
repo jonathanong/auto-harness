@@ -1211,6 +1211,7 @@ async function applySessionStatusDurable(
       delete next.reconnectDeadlineAt;
       delete next.startedAt;
       delete next.result;
+      delete next.sessionApiKeyHash;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);

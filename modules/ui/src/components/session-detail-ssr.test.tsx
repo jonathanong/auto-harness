@@ -32,6 +32,8 @@ describe("SessionDetail static markup", () => {
       errorMessage: "Retrying",
       resumeFallback: true,
       resumedFromSessionId: "session/old",
+      parentSessionId: "session/parent",
+      rootSessionId: "session/root",
     };
     const linked = render(
       <SessionDetail
@@ -77,6 +79,10 @@ describe("SessionDetail static markup", () => {
     expect(details).toContain("30s");
     expect(details).toContain('data-pw="session-detail-priority">0');
     expect(details).toContain('data-pw="session-usage-summary"');
+    expect(details).toContain('data-pw="session-detail-parent-session"');
+    expect(details).toContain('href="/sessions/session%2Fparent"');
+    expect(details).toContain('data-pw="session-detail-root-session"');
+    expect(details).toContain('href="/sessions/session%2Froot"');
 
     const prompts = render(
       <SessionDetail session={linkedSession} breadcrumbs={[]} defaultTab="prompts" />,

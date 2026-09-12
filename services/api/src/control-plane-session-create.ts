@@ -188,7 +188,7 @@ export function workspaceCreatePayloadError(
 export function validateSessionCreate(
   state: ControlPlaneState,
   body: unknown,
-  options: { allowScheduleId?: boolean } = {},
+  options: { allowScheduleId?: boolean; allowReservedConcurrencyId?: boolean } = {},
 ):
   | {
       ok: true;
@@ -220,6 +220,7 @@ export function validateSessionCreate(
     setupProfileId: record.setupProfileId,
     destroyWorkspaceAfter: record.destroyWorkspaceAfter,
     setupScript: record.setupScript,
+    ...(options.allowReservedConcurrencyId ? { allowReservedConcurrencyId: true } : {}),
   });
   if (!validated.ok) return validated;
   if (validated.value.repositoryId) {

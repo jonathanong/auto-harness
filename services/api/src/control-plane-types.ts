@@ -109,6 +109,8 @@ export type PublicSession = Omit<
   | "cancelledByDrainOperationId"
   | "activeHostId"
   | "activeHostOrder"
+  | "sessionApiKeyHash"
+  | "descendantCount"
 > & {
   repositoryId: string | null;
   url: string;

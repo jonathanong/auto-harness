@@ -41,7 +41,7 @@ UI copy uses the **label**. API, JWT, and DynamoDB store the **id**.
 | Id           | UI label    | For                                         | Intent                                                                                                                                                                                          |
 | ------------ | ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `read-only`  | Read-only   | Humans, reporting keys                      | Observe. No writes.                                                                                                                                                                             |
-| `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                                                     |
+| `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive, and spawn parent-scoped child sessions; cancel **own** sessions. No schedules, no fleet.                                                             |
 | `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate + recover stuck provider-account leases. Not inventory, catalog, or IAM.               |
 | `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                                                      |
 | `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                                          |
@@ -61,6 +61,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | _(authenticated read)_ | Any signed-in principal may `GET` sessions, logs, usage, catalog, hosts, worktrees, schedules, session-targets, user-sessions. Repo/host filters still apply. Not a stored capability — `read-only` has an empty grant list and still reads.                                                          |
 | `sessions:write`       | `POST /sessions`, clone, resume, cancel (own, unless `sessions:cancel-any`), and create/poll/release the caller's repository-principal session drain. Bound keys never author; see [Object-level rules](#object-level-rules).                                                                         |
+| `sessions:spawn`       | `POST /sessions/:id/children` using the assignment-scoped child credential; the parent and repository scope are enforced by the control plane.                                                                                                                                                        |
 | `sessions:cancel-any`  | Cancel any in-scope session, not only `metadata.createdBy`.                                                                                                                                                                                                                                           |
 | `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                                                                                         |
 | `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                                                                                         |
@@ -91,6 +92,7 @@ still applies to every non-admin row.
 | ---------------------------------------------------------- | :---------: | :------: | :--------: | :----------: | :------: | :-----: |
 | Read sessions / logs / usage / catalog / fleet / schedules |      ✓      |    ✓     |     ✓      |      ✓       | own host |    ✓    |
 | Create / clone / resume session                            |      ✗      |    ✓     |     ✓      |      ✓       |    ✗     |    ✓    |
+| Spawn direct child session                                 |      ✗      |    ✓     |     ✓      |      ✓       |    ✗     |    ✓    |
 | Cancel **own** session                                     |      ✗      |    ✓     |     ✓      |      ✓       |    ✗     |    ✓    |
 | Cancel **any** in-scope session                            |      ✗      |    ✗     |     ✓      |      ✓       |    ✗     |    ✓    |
 | Archive in-scope session                                   |      ✗      |    ✓     |     ✓      |      ✓       |    ✗     |    ✓    |
@@ -111,7 +113,7 @@ Stored grant lists (same file as the runtime table):
 | Role         | Capabilities                                                                                                 |
 | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | `read-only`  | _(none — reads are “any authenticated”)_                                                                     |
-| `author`     | `sessions:write`, `sessions:archive`                                                                         |
+| `author`     | `sessions:write`, `sessions:spawn`, `sessions:archive`                                                       |
 | `operator`   | author + `sessions:cancel-any`, `schedules:write`, `repositories:operate`, `fleet:drain`, `providers:leases` |
 | `maintainer` | operator + `fleet:inventory`, `providers:accounts`                                                           |
 | `agent`      | `agent:protocol`, `fleet:drain`                                                                              |
@@ -128,7 +130,8 @@ bound service-account, which `admin` is forbidden to be.
 
 | Path prefix                                                        | GET/HEAD/OPTIONS                       | Writes               |
 | ------------------------------------------------------------------ | -------------------------------------- | -------------------- |
-| `/api/v1/sessions` (except archive)                                | authenticated                          | `sessions:write`     |
+| `/api/v1/sessions/:id/children`                                    | authenticated                          | `sessions:spawn`     |
+| `/api/v1/sessions` (except archive and children)                   | authenticated                          | `sessions:write`     |
 | `/api/v1/sessions/:id/archive`                                     | authenticated                          | `sessions:archive`   |
 | `/api/v1/schedules`                                                | authenticated                          | `schedules:write`    |
 | `/api/v1/repositories/:id/session-drains`                          | authenticated                          | `sessions:write`     |
@@ -161,6 +164,7 @@ These run **inside** handlers after the path gate:
 | Host bind           | `mayAccessHost` — bound keys only see their `boundHostId`.                                                                                                                                                                   |
 | Session authoring   | `canAuthorSessions` — any `boundHostId` is refused, even if the path gate passed. Create, clone, resume, and schedule writes consult this so a stolen daemon key cannot mint work the scheduler might place on another host. |
 | Cancel              | `sessions:cancel-any`, **or** `sessions:write` and `metadata.createdBy === principal.id`. Missing `createdBy` on old rows: only cancel-any.                                                                                  |
+| Child spawning      | `sessions:spawn` plus the assignment-scoped credential, parent-session identity, and repository scope; children inherit the parent's route policy and are independent after creation.                                        |
 | Archive             | Requires `sessions:archive` **and** repo/host access.                                                                                                                                                                        |
 | Bound authoring 404 | A bound key that hits session/schedule write routes is allowed through `authorize()` so the handler can return **`404 NOT_FOUND`**, not `403`. A 403 would advertise that those routes exist for this credential.            |
 

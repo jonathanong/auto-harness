@@ -22,7 +22,7 @@ operator configuration only; Auto Harness does not fetch vendor prices or implem
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
-**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Workspace sessions run in a host-attached non-git workspace pool, advertise the `workspace-sessions` capability, and never accept `ref`, non-empty `requiredLabels`, or raw `setupScript`; they select trusted setup with `setupProfileId`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Workspace sessions run in a host-attached non-git workspace pool, advertise the `workspace-sessions` capability, and never accept `ref`, non-empty `requiredLabels`, or raw `setupScript`; they select trusted setup with `setupProfileId`. Resume pins **agent only** (D5). A running or terminal session may spawn independent follow-up children with `POST /sessions/:id/children`; list them with the bounded `GET` endpoint. List search is client-side only (no DynamoDB full-text).
 
 Queued assignment is globally ordered by priority (descending) then `createdAt`/`id` FIFO across all queue shards — a later shard's higher-priority session is never starved by draining shard 0 first. Prompt and scheduled assignment share one availability evaluator; fully hydrated in-process target hints use that evaluator too, while the bounded UI `GET /session-targets` catalog omits availability rather than scanning live fleet state. DynamoDB conditional writes remain the final claim. Prompt and scheduled queued sessions both fail `queue_expired` at their original `queueExpiresAt` and release their `concurrencyId` lock. A providerless `usage_limit` suppresses the failed target, immediately tries the next fallback, and waits only until that original queue deadline.
 
@@ -774,6 +774,8 @@ Get session details.
 | `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                                                 |
 | `errorMessage`                  | Optional short human excerpt from the match / logs (Git excerpts are bounded and redact credentials)                            |
 | `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                                                          |
+| `parentSessionId`               | Direct parent for a child session; omitted on root sessions                                                                     |
+| `rootSessionId`                 | Stable root session id for the lineage; omitted on root sessions                                                                |
 | `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing                                |
 | `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                              |
 | `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                                                |
@@ -797,6 +799,64 @@ sessions are not backfilled.
 Accepted terminal status owns the result atomically with the session transition. Duplicate or
 stale attempt reports cannot replace it, and a `usage_limit` report that requeues onto a fallback
 does not retain an intermediate result.
+
+#### `POST /sessions/:id/children`
+
+Spawn one independent follow-up session from a running or terminal parent. This route is intended
+for the per-assignment service-account credential delivered to the host; it is not a general
+replacement for `POST /sessions`. The credential is scoped to the assigned parent and is accepted
+only for this endpoint. The child inherits the parent's repository, target/fallback policy, and
+timeout. Callers may override `priority` and `queueTtlSeconds`. The parent remains independent of
+its children and may finish before them. Child admission supports at most 89 inherited fallbacks
+so its additional lineage-budget write remains within DynamoDB's 100-action transaction limit;
+root sessions retain the general 90-fallback limit.
+
+**Request:**
+
+```json
+{
+  "prompt": "Run the focused tests for the parser change",
+  "spawnKey": "parser-tests-v1",
+  "priority": 20,
+  "queueTtlSeconds": 3600
+}
+```
+
+| Field             | Type   | Required | Description                                                     |
+| ----------------- | ------ | -------- | --------------------------------------------------------------- |
+| `prompt`          | string | ✓        | Follow-up instruction, at most 65,536 UTF-8 bytes               |
+| `spawnKey`        | string | ✓        | Idempotency key scoped to this parent, at most 256 UTF-8 bytes  |
+| `priority`        | number | ✗        | Child queue priority; inherits the parent when omitted          |
+| `queueTtlSeconds` | number | ✗        | Absolute child queue lifetime; inherits the parent when omitted |
+
+The same `spawnKey` under one parent returns the active existing child (`200`, `created: false`)
+instead of creating a duplicate. A spawn key may be reused after that child reaches a terminal
+state. Children are assigned and completed independently; a child never extends the parent's
+liveness or terminal status.
+
+Each lineage has a durable root-wide descendant budget of 64 direct or indirect children. The
+budget is reserved atomically with child admission, so concurrent branches cannot exceed it;
+exhaustion returns `409 CONFLICT`. Repeating an active `spawnKey` returns its existing child and
+does not consume another budget slot.
+
+**Response:** `201 Created` for a new child or `200 OK` for an active deduplicated child, using the
+same `SessionCreateResult` shape as `POST /sessions`. The response includes `parentSessionId` and
+`rootSessionId`.
+
+#### `GET /sessions/:id/children`
+
+List the parent's direct children in newest-first order. Results are scoped by the authenticated
+caller and remain bounded by cursor pagination; this endpoint never returns descendants beyond one
+level.
+
+| Param    | Type   | Description                                           |
+| -------- | ------ | ----------------------------------------------------- |
+| `limit`  | number | 1–100, default 50                                     |
+| `cursor` | string | Opaque continuation cursor from the previous response |
+
+The response is `{ "items": [...], "nextCursor": "..." }` with the same session item shape used by
+`GET /sessions`. An empty page with a non-null cursor is not terminal. The Web UI renders only the
+first bounded page, polls that loaded bound, and offers **Load more** for later pages.
 
 #### `POST /sessions/:id/clone`
 

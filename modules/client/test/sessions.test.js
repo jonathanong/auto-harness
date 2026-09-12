@@ -47,6 +47,56 @@ test("resumes a session with an optional body", async () => {
   assert.equal(request.init.body, JSON.stringify({ prompt: "retry", priority: 5 }));
 });
 
+test("creates a child session with a parent-scoped spawn key", async () => {
+  let request;
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    fetch: async (url, init) => {
+      request = { url, init };
+      return Response.json({ id: "child", created: true, parentSessionId: "parent/one" });
+    },
+  });
+  await client.createChildSession("parent/one", {
+    prompt: "Run the focused tests",
+    spawnKey: "tests-1",
+    priority: 7,
+    queueTtlSeconds: 60,
+  });
+  assert.equal(request.url, "https://harness.test/api/v1/sessions/parent%2Fone/children");
+  assert.equal(request.init.method, "POST");
+  assert.deepEqual(JSON.parse(request.init.body), {
+    prompt: "Run the focused tests",
+    spawnKey: "tests-1",
+    priority: 7,
+    queueTtlSeconds: 60,
+  });
+});
+
+test("lists direct child sessions with bounded pagination", async () => {
+  const requestedUrls = [];
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    fetch: async (url) => {
+      requestedUrls.push(url);
+      return Response.json(
+        requestedUrls.length === 1
+          ? { items: [{ id: "child-1" }], nextCursor: "cursor/child" }
+          : { items: [{ id: "child-2" }], nextCursor: null },
+      );
+    },
+  });
+  const first = await client.listChildSessions("parent/one", { limit: 25 });
+  assert.deepEqual(first, { items: [{ id: "child-1" }], nextCursor: "cursor/child" });
+  assert.deepEqual(
+    await client.listChildSessions("parent/one", { limit: 25, cursor: first.nextCursor }),
+    { items: [{ id: "child-2" }], nextCursor: null },
+  );
+  assert.deepEqual(requestedUrls, [
+    "https://harness.test/api/v1/sessions/parent%2Fone/children?limit=25",
+    "https://harness.test/api/v1/sessions/parent%2Fone/children?limit=25&cursor=cursor%2Fchild",
+  ]);
+});
+
 test("resumes a session with no body when no input is given", async () => {
   let request;
   const client = new AutoHarnessClient({

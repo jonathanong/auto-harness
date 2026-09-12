@@ -140,6 +140,7 @@ function rememberDurableTimeout(
   if (!(workspaceSlotId && session.reconnectDeadlineAt)) {
     delete next.reconnectDeadlineAt;
   }
+  delete next.sessionApiKeyHash;
   state.sessions.set(session.id, next);
   queueSessionArchive(state, session.id);
   noteSlackSessionLifecycle(state, next);

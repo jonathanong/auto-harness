@@ -45,7 +45,7 @@ export async function cancelQueuedSession(
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null${drainUpdate} REMOVE reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder`,
+        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null${drainUpdate} REMOVE reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, sessionApiKeyHash`,
         ConditionExpression: "#s = :queued",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
@@ -113,7 +113,7 @@ export async function cancelRunningSession(
     {
       TableName: ctx.tables.sessions,
       Key: { id: opts.sessionId },
-      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)}`,
+      UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainCancelledByClause(opts.drainOperationId)} REMOVE sessionApiKeyHash`,
       ConditionExpression:
         "#s = :running AND worktreeId = :worktreeId" +
         (opts.workspaceSlotId ? " AND workspaceSlotId = :workspaceSlotId" : "") +

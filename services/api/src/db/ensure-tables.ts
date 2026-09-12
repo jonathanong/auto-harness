@@ -30,6 +30,7 @@ import {
 import { ensureSessionsPriorityIndexes } from "./ensure-session-priority-index.ts";
 import {
   ensureSchedulesRepositoryIndex,
+  ensureSessionsParentIndex,
   ensureSessionsRepositoryIndex,
 } from "./ensure-session-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
@@ -120,6 +121,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "priorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryPriorityOrder", AttributeType: ScalarAttributeType.S },
       { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "parentSessionId", AttributeType: ScalarAttributeType.S },
       { AttributeName: "activeHostId", AttributeType: ScalarAttributeType.S },
       { AttributeName: "activeHostOrder", AttributeType: ScalarAttributeType.S },
     ],
@@ -174,6 +176,14 @@ export async function ensureControlPlaneTables(opts: {
         Projection: { ProjectionType: ProjectionType.ALL },
       },
       {
+        IndexName: "parentSessionId-createdOrder",
+        KeySchema: [
+          { AttributeName: "parentSessionId", KeyType: KeyType.HASH },
+          { AttributeName: "createdOrder", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
         IndexName: "activeHostId-activeHostOrder",
         KeySchema: [
           { AttributeName: "activeHostId", KeyType: KeyType.HASH },
@@ -185,6 +195,7 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await ensureSessionsRepositoryIndex(ddb, names.sessions);
+  await ensureSessionsParentIndex(ddb, names.sessions);
   await ensureSessionsQueueOrderIndex(ddb, names.sessions);
   await ensureSessionsPriorityIndexes(ddb, names.sessions);
   await ensureSessionsActiveHostIndex(ddb, names.sessions);

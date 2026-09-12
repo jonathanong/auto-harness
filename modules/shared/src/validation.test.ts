@@ -21,6 +21,7 @@ import {
 describe("repositoryUrlError", () => {
   it("accepts credential-free HTTPS and SCP-style SSH remotes", () => {
     for (const url of [
+      "https://example.test",
       "https://example.test/repository.git",
       "https://example.test:8443/repository.git",
       "https://example.test",
@@ -426,10 +427,7 @@ describe("validateCreateSessionInput", () => {
     ).toEqual({ ok: false, error: "fallbacks[0].commandId must be a non-empty string" });
   });
 
-  it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
-    // 91 route markers (target + 90 fallbacks) + repository/principal markers +
-    // cursor/repository/drain/principal checks + session/activity/concurrency
-    // writes = DynamoDB's 100-action maximum.
+  it("caps general session fallback routing", () => {
     expect(MAX_FALLBACKS).toBe(90);
     const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
       commandId: `fallback-${index}`,
@@ -574,6 +572,9 @@ describe("validateCreateSessionInput", () => {
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({ ...base, concurrencyId: "provider-lease:acct:0" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "session-spawn:parent:digest" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(
       validateCreateSessionInput({

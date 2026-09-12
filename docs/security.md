@@ -11,6 +11,13 @@ the permission matrix:** [roles.md](roles.md).
 3. **Trusted execution environment.** The VPS agent runs directly on a secure server — no Docker isolation wrapping the agent (D9). The AI agents themselves may use Docker for development work within repositories.
 4. **Principle of least privilege.** Users and service accounts are scoped by named role and optionally by repository; daemon keys use the `agent` role plus `boundHostId` ([roles.md](roles.md)).
 
+Child-session spawning is separately capability-gated (`sessions:spawn`). When a session is assigned,
+the control plane may include a short-lived, attempt-scoped service-account credential for the CLI
+to call `POST /sessions/:id/children`. It is not included in session detail/list responses, is never
+written to prompts or logs, and is invalidated when the assignment leaves `running`. The child route
+accepts only the assigned parent and a parent-scoped `spawnKey`; it cannot be used to author an
+unrelated root session or bypass repository scope.
+
 Repository catalog admission enforces this boundary by accepting only credential-free HTTPS or
 SCP-style SSH Git remotes; embedded userinfo, query parameters, and fragments are rejected.
 
@@ -18,14 +25,18 @@ SCP-style SSH Git remotes; embedded userinfo, query parameters, and fragments ar
 
 Session **prompts are attacker-influenced input**: they may originate from issue comments, CI failure text, or other untrusted sources. Design consequences (see also [plan.md](plan.md) D1/D4/D7):
 
-| Control                                    | What it does                                                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Named Provider Account / Command only (D4) | Operators cannot run arbitrary shell strings via the API — a session targets a catalog entry, resolved control-plane-side into fixed argv |
-| Fine-grained GitHub token (D7)             | Compromised session write access is scoped to one repo’s contents/PRs/issues                                                              |
-| Agent-held credentials                     | Control plane never becomes a second vault for git/AI secrets                                                                             |
-| No control-plane “publisher”               | Agent opens PRs/comments itself — trust the agent host, not a second hop                                                                  |
+| Control                                    | What it does                                                                                                                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Named Provider Account / Command only (D4) | Operators cannot run arbitrary shell strings via the API — a session targets a catalog entry, resolved control-plane-side into fixed argv                              |
+| Fine-grained GitHub token (D7)             | Compromised session write access is scoped to one repo’s contents/PRs/issues                                                                                           |
+| Agent-held credentials                     | Control plane never becomes a second vault for git/AI secrets                                                                                                          |
+| No control-plane “publisher”               | Agent opens PRs/comments itself — trust the agent host, not a second hop                                                                                               |
+| Parent-scoped child credential             | A running session can request independent follow-up work without receiving a general session-write credential; the parent and repository scope are checked server-side |
 
 This does **not** protect against a fully compromised agent host, a malicious Command definition in the catalog, or exfiltration through whatever the AI CLI can reach with its own credentials.
+The per-assignment child credential is intentionally usable by the assigned CLI; a compromised
+session process can therefore spawn bounded child work within that parent’s authorized repository
+and route policy until the credential is invalidated.
 
 ## Transport security
 

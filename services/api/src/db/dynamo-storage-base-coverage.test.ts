@@ -88,6 +88,7 @@ describe("DynamoPlaneStorageBase", () => {
       nextKey: null,
     });
     expect(await storage.listSessionsByRepository("missing-repository")).toEqual([]);
+    await expect(storage.listSessionChildren("missing-parent", 1)).resolves.toEqual({ items: [] });
     expect(await storage.countSessionsByRepository("missing-repository", "base-host")).toBe(0);
     const markerAt = "2026-01-01T00:00:00.000Z";
     expect(await storage.acquireDeletionMarker("base-marker", "owner", markerAt)).toBe(true);

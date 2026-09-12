@@ -30,6 +30,8 @@ export type SessionAssign = {
   attemptId: string;
   repositoryId: string | null;
   prompt: string;
+  /** One-attempt credential for the assigned CLI to spawn child sessions. */
+  sessionApiKey?: string;
   /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
   resolvedArgv: string[];
   timeout: number;
@@ -127,6 +129,7 @@ export type HostWireMessage =
       sessionType?: SessionType;
       repositoryId: string | null;
       prompt: string;
+      sessionApiKey?: string;
       resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;

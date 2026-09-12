@@ -28,6 +28,7 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
+import { createSessionApiKey } from "./control-plane-session-api-key.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -76,7 +77,11 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
     .map(([hostId, connectionId]) => ({ hostId, connectionId }));
 }
 
-function wire(session: import("./db/types.ts").SessionRecord, now: string): HostWireMessage {
+function wire(
+  session: import("./db/types.ts").SessionRecord,
+  now: string,
+  sessionApiKey?: string,
+): HostWireMessage {
   const route = session.resolvedRoute;
   return {
     type: "session:assign",
@@ -84,6 +89,7 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
     sessionType: "scheduled",
     repositoryId: session.repositoryId,
     prompt: session.prompt,
+    ...(sessionApiKey ? { sessionApiKey } : {}),
     resolvedArgv: session.resolvedArgv!,
     timeout: session.timeout,
     worktreeId: null,
@@ -142,6 +148,7 @@ export async function assignScheduledQueuedDurable(
           target: (typeof plan.candidates)[number]["route"];
           attemptId: string;
           lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
+          sessionApiKey?: { key: string; hash: string };
         }
       | undefined;
     for (const { hostId, connectionId, route: target } of plan.candidates) {
@@ -154,6 +161,9 @@ export async function assignScheduledQueuedDurable(
       )
         continue;
       const attemptId = state.attemptIdFactory();
+      const apiKey = hasHostCapability(connection.capabilities, "session-spawn")
+        ? createSessionApiKey()
+        : undefined;
       const occupiedSlots = new Set<number>();
       let lease: ReturnType<typeof tryAcquireProviderAccountLeaseLocal>;
       let won: AssignmentWriteResult = false;
@@ -205,6 +215,7 @@ export async function assignScheduledQueuedDurable(
                 : {}),
               queueShard: session.queueShard,
               attemptId,
+              ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
             }))
           : !state.mainCheckoutLeases.has(leaseKey(hostId, session.repositoryId));
         if (won === true || !lease) break;
@@ -213,11 +224,18 @@ export async function assignScheduledQueuedDurable(
         occupiedSlots.add(lease.slot);
       }
       if (won !== true) continue;
-      placed = { hostId, connectionId, target, attemptId, lease };
+      placed = {
+        hostId,
+        connectionId,
+        target,
+        attemptId,
+        lease,
+        ...(apiKey ? { sessionApiKey: apiKey } : {}),
+      };
       break;
     }
     if (!placed) continue;
-    const { hostId, connectionId, target, attemptId, lease } = placed;
+    const { hostId, connectionId, target, attemptId, lease, sessionApiKey } = placed;
     const next = {
       ...session,
       status: "running" as const,
@@ -241,6 +259,7 @@ export async function assignScheduledQueuedDurable(
       assignmentConnectionId: connectionId,
       mainCheckoutLease: true,
       attemptId,
+      ...(sessionApiKey ? { sessionApiKeyHash: sessionApiKey.hash } : {}),
       ...(lease ? { providerAccountLease: lease } : {}),
       hostAssignmentLease: { hostId },
     };
@@ -248,6 +267,7 @@ export async function assignScheduledQueuedDurable(
     delete next.exitCode;
     delete next.errorCode;
     delete next.errorMessage;
+    if (!sessionApiKey) delete next.sessionApiKeyHash;
     clearAbandonedUsageLimitRetryFields(next);
     state.sessions.set(session.id, next);
     if (target.providerAccountId) {
@@ -270,7 +290,7 @@ export async function assignScheduledQueuedDurable(
       attemptId,
       assignedAtMs: Date.parse(now),
     });
-    state.onHostMessage?.(hostId, wire(next, now));
+    state.onHostMessage?.(hostId, wire(next, now, sessionApiKey?.key));
     assigned.push({ session: toPublic(state, next), hostId, worktreeId: null });
   }
   return assigned;

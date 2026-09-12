@@ -62,6 +62,7 @@ export async function cancelSessionDurable(
       session.status = "cancelled";
       session.errorMessage = errorMessage;
       session.completedAt = completedAt;
+      delete session.sessionApiKeyHash;
       const updatedSession = {
         ...session,
         ...(options.drainOperationId
@@ -109,6 +110,7 @@ export async function cancelSessionDurable(
     session.errorMessage = errorMessage;
     session.completedAt = completedAt;
     session.reconnectDeadlineAt = deadlineAt;
+    delete session.sessionApiKeyHash;
     const updatedSession = {
       ...session,
       ...(options.drainOperationId
@@ -150,6 +152,7 @@ export async function cancelSessionDurable(
   session.completedAt = completedAt;
   session.worktreeId = null;
   session.hostId = null;
+  delete session.sessionApiKeyHash;
   const updatedSession = {
     ...session,
     ...(options.drainOperationId ? { cancelledByDrainOperationId: options.drainOperationId } : {}),
