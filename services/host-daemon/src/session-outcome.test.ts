@@ -325,4 +325,72 @@ describe("finishClaimedSession", () => {
       HARNESS_METADATA: JSON.stringify({ trigger: "schedule" }),
     });
   });
+
+  it("settles a deferred hook after revalidating the live claim", async () => {
+    const logs: Array<{ content: string }> = [];
+    const runner: ProcessRunner = {
+      run: vi.fn(async () => ({ exitCode: 0, timedOut: false, signal: null })),
+    };
+    let mode: "none" | "null" | "hook" | "throw" = "none";
+    const claimed = {
+      worktree: { id: "wt-1" },
+      cwd: "/repo/wt-1",
+      repository: { terminalHookScript: "/repo/hook.sh" },
+      currentHookTarget: async () => {
+        if (mode === "throw") throw new Error("claim disappeared");
+        if (mode === "null") return null;
+        if (mode === "hook") {
+          return {
+            cwd: "/bin",
+            repository: { terminalHookScript: "/bin/true" },
+            allowedRoots: ["/bin"],
+          };
+        }
+        return { cwd: "/repo/wt-1", repository: {} };
+      },
+    };
+    const streamer = new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk));
+    const result = await finishClaimedSession(
+      runner,
+      streamer,
+      [],
+      baseAssign({ ref: "feature/test", metadata: { source: "deferred" } }),
+      claimed,
+      {
+        status: "failed",
+        exitCode: null,
+        errorCode: "checkout_fetch_failed",
+        deferTerminalHook: true,
+      },
+    );
+
+    // A retry disposition can discard the hook without another probe; a
+    // terminal disposition revalidates the claim before invoking it.
+    await result.settleDeferredTerminalHook?.(false);
+    expect(runner.run).not.toHaveBeenCalled();
+
+    mode = "null";
+    await result.settleDeferredTerminalHook?.(true);
+    expect(runner.run).not.toHaveBeenCalled();
+
+    mode = "hook";
+    await result.settleDeferredTerminalHook?.(true);
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        argv: ["/bin/sh", "/bin/true"],
+        cwd: "/bin",
+        env: expect.objectContaining({
+          HARNESS_ERROR_CODE: "checkout_fetch_failed",
+          HARNESS_REF: "feature/test",
+          HARNESS_METADATA: JSON.stringify({ source: "deferred" }),
+        }),
+      }),
+    );
+
+    mode = "throw";
+    await result.settleDeferredTerminalHook?.(true);
+    expect(logs.map((chunk) => chunk.content)).toContain(
+      "terminal hook revalidation failed for session sess-1: claim disappeared",
+    );
+  });
 });

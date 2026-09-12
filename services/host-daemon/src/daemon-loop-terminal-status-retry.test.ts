@@ -159,6 +159,12 @@ describe("DaemonLoop terminal status retry", () => {
           await supersededSettled;
         },
       });
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-unhooked", {
+        message: { ...statusMessage, attemptId: "attempt-unhooked" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
       transport.deliver({
         type: "session:assign",
         sessionId: "done-session",
@@ -319,11 +325,15 @@ describe("DaemonLoop terminal status retry", () => {
       sent.length = 0;
 
       const controller = new AbortController();
+      const dispositions: boolean[] = [];
       pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
         message: statusMessage,
         firstAttemptedAtMs: Date.now() - 2000,
         sending: false,
         controller,
+        settleDeferredTerminalHook: async (runHook) => {
+          dispositions.push(runHook);
+        },
       });
 
       await loop.keepalive();
@@ -340,6 +350,7 @@ describe("DaemonLoop terminal status retry", () => {
       // Giving up must cancel a still-buffered retained frame rather than
       // leaving it queued to transmit whenever the connection recovers.
       expect(controller.signal.aborted).toBe(true);
+      expect(dispositions).toEqual([true]);
 
       loop.stop();
     } finally {

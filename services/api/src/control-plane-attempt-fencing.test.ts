@@ -540,6 +540,66 @@ describe("ControlPlane assignment-attempt fencing", () => {
     expect(plane.getSession("sess-1")?.status).toBe("running");
   });
 
+  it("preserves the durable checkout retry disposition on a moot status", async () => {
+    const { plane } = assignedPlane();
+    const first = plane.assignQueued()[0]!;
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      hostId: "host-2",
+      worktreeId: "wt-2",
+      attemptId: "attempt-2",
+      infrastructureRetryCount: 0,
+    });
+    plane.state.storage = {
+      getSession: async () => plane.getSession("sess-1"),
+      getHostLock: async () => "new-connection",
+    } as never;
+
+    const status = {
+      type: "session:status" as const,
+      sessionId: "sess-1",
+      worktreeId: "wt-1",
+      attemptId: first.session.attemptId!,
+      status: "failed" as const,
+      errorCode: "checkout_fetch_failed" as const,
+    };
+    await expect(plane.handleHostMessageDurable(status, "old-connection")).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "sess-1",
+        attemptId: first.session.attemptId!,
+        retryAccepted: false,
+      },
+    });
+
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
+    });
+    await expect(plane.handleHostMessageDurable(status, "old-connection")).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "sess-1",
+        attemptId: first.session.attemptId!,
+        retryAccepted: true,
+      },
+    });
+
+    plane.state.sessions.set("sess-1", {
+      ...plane.getSession("sess-1")!,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+    await expect(plane.handleHostMessageDurable(status, "old-connection")).resolves.toEqual({
+      ok: true,
+      sessionStatusAcknowledged: {
+        sessionId: "sess-1",
+        attemptId: first.session.attemptId!,
+        retryAccepted: false,
+      },
+    });
+  });
+
   it("rejects a current-attempt durable log from a connection that does not own the host", async () => {
     const { now, plane } = assignedPlane();
     plane.assignQueued();

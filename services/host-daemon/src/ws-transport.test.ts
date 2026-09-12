@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- assign fixtures include attemptId. */
 import { createServer } from "node:http";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
@@ -233,6 +233,63 @@ describe("createWsTransport", () => {
     expect(registrations).toBe(2);
     transport.close();
     await close(wss, server);
+  });
+
+  it("accepts boolean retry dispositions but rejects malformed status acknowledgements", async () => {
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    const received: unknown[] = [];
+    let sendAcknowledgements!: () => void;
+    const acknowledgements = new Promise<void>((resolve) => {
+      sendAcknowledgements = resolve;
+    });
+    wss.on("connection", (sock) => {
+      sock.on("message", () => {
+        sock.send(JSON.stringify({ type: "host:registered", hostId: "a1" }));
+        void acknowledgements.then(() => {
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
+              retryAccepted: "yes",
+            }),
+          );
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
+              retryAccepted: true,
+            }),
+          );
+          sock.send(
+            JSON.stringify({
+              type: "session:status-acknowledged",
+              sessionId: "s1",
+              attemptId: "attempt-s1",
+            }),
+          );
+        });
+      });
+    });
+    await listen(server);
+    const transport = createWsTransport({ url: `ws://127.0.0.1:${port(server)}/ws`, hostId: "a1" });
+    transport.onMessage((message) => received.push(message));
+    try {
+      await transport.ready;
+      await transport.send(register());
+      await transport.registered;
+      sendAcknowledgements();
+      await vi.waitFor(() => expect(received).toHaveLength(2));
+      expect(received).toEqual([
+        expect.objectContaining({ type: "session:status-acknowledged", retryAccepted: true }),
+        expect.objectContaining({ type: "session:status-acknowledged" }),
+      ]);
+    } finally {
+      transport.close();
+      await close(wss, server);
+    }
   });
 });
 

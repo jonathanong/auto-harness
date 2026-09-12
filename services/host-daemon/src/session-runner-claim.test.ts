@@ -176,6 +176,8 @@ describe("SessionRunner claim and checkout failures", () => {
     expect(hooks).toEqual([]);
     await first.settleDeferredTerminalHook?.(true);
     expect(hooks).toEqual(["checkout_fetch_failed"]);
+    await first.settleDeferredTerminalHook?.(true);
+    expect(hooks).toEqual(["checkout_fetch_failed"]);
 
     await expect(
       sessionRunner.run(baseAssign({ ref: "missing", infrastructureRetryCount: 1 })),
