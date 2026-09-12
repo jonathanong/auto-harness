@@ -330,4 +330,40 @@ describe("createLocalApp operator management REST", () => {
       ).toHaveLength(9);
     },
   );
+
+  it("rejects and audits malformed repository create bodies", async () => {
+    const plane = new ControlPlane();
+    const { handler } = createLocalApp({ plane });
+    const create = (body: unknown) => invokeHandler(handler, "POST", "/api/v1/repositories", body);
+
+    for (const field of [
+      "name",
+      "url",
+      "defaultBranch",
+      "setupScript",
+      "terminalHookScript",
+    ] as const) {
+      const response = await create({
+        name: "demo",
+        url: "https://example.test/demo.git",
+        [field]: field === "url" ? ["https://example.test/demo.git"] : 42,
+      });
+      expect(response).toMatchObject({
+        status: 400,
+        json: { error: { code: "VALIDATION_ERROR", message: `${field} must be a string` } },
+      });
+    }
+    expect(await create(null)).toMatchObject({
+      status: 400,
+      json: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "repository create body must be an object",
+        },
+      },
+    });
+    expect(
+      (await plane.listAuditLogs({ action: "repository:create", outcome: "failed" })).items,
+    ).toHaveLength(6);
+  });
 });

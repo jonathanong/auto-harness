@@ -3,7 +3,6 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { writeRouteAudit } from "./local-audit.ts";
 import {
   commitMutationAudit,
-  readJsonBody,
   readJsonBodyWithAudit,
   repositoryInScope,
   sendHiddenNotFound,
@@ -73,6 +72,27 @@ function repositoryUpdateError(error: string): { status: number; code: string } 
   return { status: 400, code: "VALIDATION_ERROR" };
 }
 
+const REPOSITORY_MUTATION_STRING_FIELDS = [
+  "name",
+  "url",
+  "defaultBranch",
+  "setupScript",
+  "terminalHookScript",
+] as const;
+
+function repositoryMutationBodyError(body: unknown, operation: "create" | "update"): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return `repository ${operation} body must be an object`;
+  }
+  const record = body as Record<string, unknown>;
+  for (const field of REPOSITORY_MUTATION_STRING_FIELDS) {
+    if (Object.hasOwn(record, field) && typeof record[field] !== "string") {
+      return `${field} must be a string`;
+    }
+  }
+  return null;
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, res, url, method } = ctx;
@@ -107,13 +127,24 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
-    const parsed = await readJsonBody(ctx);
+    const createAudit = {
+      action: "repository:create",
+      resourceType: "repository",
+      resourceId: "new",
+    } as const;
+    const parsed = await readJsonBodyWithAudit(ctx, { ...createAudit, outcome: "failed" });
     if (!parsed.ok) return true;
+    const bodyError = repositoryMutationBodyError(parsed.body, "create");
+    if (bodyError) {
+      if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
+      sendRouteError(res, 400, "VALIDATION_ERROR", bodyError);
+      return true;
+    }
     const body = parsed.body as Record<string, unknown>;
     try {
       const result = await plane.createRepositoryDurable({
-        name: String(body.name ?? ""),
-        url: String(body.url ?? ""),
+        name: typeof body.name === "string" ? body.name : "",
+        url: typeof body.url === "string" ? body.url : "",
         ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
         ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
         ...(typeof body.terminalHookScript === "string"
@@ -121,15 +152,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           : {}),
       });
       if (!result.ok) {
-        if (
-          !(await commitMutationAudit(ctx, {
-            action: "repository:create",
-            resourceType: "repository",
-            resourceId: "new",
-            outcome: "failed",
-          }))
-        )
-          return true;
+        if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
         sendRouteError(res, 400, "VALIDATION_ERROR", result.error);
         return true;
       }
@@ -145,15 +168,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 201, result.repository);
       return true;
     } catch {
-      if (
-        !(await commitMutationAudit(ctx, {
-          action: "repository:create",
-          resourceType: "repository",
-          resourceId: "new",
-          outcome: "failed",
-        }))
-      )
-        return true;
+      if (!(await commitMutationAudit(ctx, { ...createAudit, outcome: "failed" }))) return true;
       sendInternalError(res);
       return true;
     }
@@ -263,26 +278,13 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       } as const;
       const parsed = await readJsonBodyWithAudit(ctx, { ...updateAudit, outcome: "failed" });
       if (!parsed.ok) return true;
-      const parsedBody = parsed.body;
-      if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+      const bodyError = repositoryMutationBodyError(parsed.body, "update");
+      if (bodyError) {
         if (!(await writeRouteAudit(ctx, { ...updateAudit, outcome: "failed" }))) return true;
-        sendRouteError(res, 400, "VALIDATION_ERROR", "repository update body must be an object");
+        sendRouteError(res, 400, "VALIDATION_ERROR", bodyError);
         return true;
       }
-      const body = parsedBody as Record<string, unknown>;
-      for (const field of [
-        "name",
-        "url",
-        "defaultBranch",
-        "setupScript",
-        "terminalHookScript",
-      ] as const) {
-        if (Object.hasOwn(body, field) && typeof body[field] !== "string") {
-          if (!(await writeRouteAudit(ctx, { ...updateAudit, outcome: "failed" }))) return true;
-          sendRouteError(res, 400, "VALIDATION_ERROR", `${field} must be a string`);
-          return true;
-        }
-      }
+      const body = parsed.body as Record<string, unknown>;
       try {
         const result = await plane.updateRepositoryDurable(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),

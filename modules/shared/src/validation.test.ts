@@ -65,11 +65,15 @@ describe("repositoryUrlError", () => {
       "https:example.test/repository.git",
       "https:\\example.test\\repository.git",
       "https:///example.test/repository.git",
+      "https://example.test\\repository.git",
       "git@example.test:",
       "git@:repository.git",
       "git@token@example.test:repository.git",
       "git@example.test/group:repository.git",
       "git@example.test\\group:repository.git",
+      "git@[example.test/group]:repository.git",
+      "git@[example@test]:repository.git",
+      "git@[example\\test]:repository.git",
     ]) {
       expect(repositoryUrlError(url)).toBe("url must be an HTTPS or SCP-style SSH Git remote");
     }

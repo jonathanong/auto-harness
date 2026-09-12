@@ -53,7 +53,7 @@ const INVALID_REPOSITORY_URL_ERROR = "url must be an HTTPS or SCP-style SSH Git 
 
 /** Validate the credential-free Git remote URL stored for a catalog repository. */
 export function repositoryUrlError(url: string): string | null {
-  if (/[\s\p{Cc}]/u.test(url)) return INVALID_REPOSITORY_URL_ERROR;
+  if (/[\s\p{Cc}\\]/u.test(url)) return INVALID_REPOSITORY_URL_ERROR;
 
   // Inspect the authority directly so even empty userinfo (`https://@host`) is
   // rejected; URL.username/password alone cannot distinguish that from no userinfo.
@@ -80,7 +80,7 @@ export function repositoryUrlError(url: string): string | null {
 
   // Git's SCP syntax is deliberately narrower than shell-style host aliases:
   // the user must be Git, and both the host and remote path must be present.
-  if (/^git@(?:\[[^\]\s]+\]|[^:/@\\\s]+):[^\s]+$/u.test(url)) return null;
+  if (/^git@(?:\[[^\]/@\\\s]+\]|[^:/@\\\s]+):[^\s]+$/u.test(url)) return null;
   return INVALID_REPOSITORY_URL_ERROR;
 }
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */
