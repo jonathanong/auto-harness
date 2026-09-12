@@ -70,6 +70,7 @@ describe("parseGitHubWebhookIngress edge cases", () => {
       event: string;
       payload: unknown;
       repositories?: readonly GitHubWebhookRepositoryBinding[];
+      repositoryId?: string;
     }> = [
       { event: "issue_comment", payload: null },
       { event: "issue_comment", payload: issueComment({ repository: { id: "42" } }) },
@@ -78,6 +79,7 @@ describe("parseGitHubWebhookIngress edge cases", () => {
         event: "issue_comment",
         payload: issueComment(),
         repositories: [repository],
+        repositoryId: "auto-harness",
       })),
       {
         event: "pull_request_review_comment",
@@ -92,11 +94,22 @@ describe("parseGitHubWebhookIngress edge cases", () => {
             user: { login: "owner" },
           },
         },
+        repositoryId: "auto-harness",
       },
-      { event: "issue_comment", payload: issueComment({ issue: { number: 0 } }) },
+      {
+        event: "issue_comment",
+        payload: issueComment({ issue: { number: 0 } }),
+        repositoryId: "auto-harness",
+      },
     ];
     for (const testCase of cases) {
-      expectIgnored(testCase.event, testCase.payload, "invalid_payload", testCase.repositories);
+      expectIgnored(
+        testCase.event,
+        testCase.payload,
+        "invalid_payload",
+        testCase.repositories,
+        testCase.repositoryId,
+      );
     }
   });
 
