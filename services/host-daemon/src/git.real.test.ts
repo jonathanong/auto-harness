@@ -179,6 +179,53 @@ describe("createGitClient real git", () => {
     ).resolves.toBe("");
   });
 
+  it("fetches a complete pinned pull graph for a shallow claimed checkout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-shallow-pull-ref-"));
+    roots.push(root);
+    const remote = join(root, "remote.git");
+    const source = join(root, "source");
+    const shallowRepo = join(root, "shallow-repo");
+    const shallowWorktree = join(root, "shallow-worktree");
+    await git(root, ["init", "--bare", remote]);
+    mkdirSync(source);
+    await git(source, ["init"]);
+    await git(source, ["config", "user.email", "t@example.com"]);
+    await git(source, ["config", "user.name", "t"]);
+    writeFileSync(join(source, "base.txt"), "base\n");
+    await git(source, ["add", "base.txt"]);
+    await git(source, ["commit", "-m", "base"]);
+    const baseSha = (await git(source, ["rev-parse", "HEAD"])).trim();
+    await git(source, ["branch", "-M", "main"]);
+    writeFileSync(join(source, "main.txt"), "main\n");
+    await git(source, ["add", "main.txt"]);
+    await git(source, ["commit", "-m", "main"]);
+    await git(source, ["push", remote, "main"]);
+    await git(source, ["switch", "--detach", baseSha]);
+    writeFileSync(join(source, "pull.txt"), "pull\n");
+    await git(source, ["add", "pull.txt"]);
+    await git(source, ["commit", "-m", "pull head"]);
+    const pullSha = (await git(source, ["rev-parse", "HEAD"])).trim();
+    await git(source, ["push", remote, "HEAD:refs/pull/42/head"]);
+
+    await git(root, ["clone", "--depth", "1", "--branch", "main", `file://${remote}`, shallowRepo]);
+    await git(shallowRepo, ["worktree", "add", "--detach", shallowWorktree, "HEAD"]);
+    await expect(git(shallowWorktree, ["rev-parse", "--is-shallow-repository"])).resolves.toBe(
+      "true\n",
+    );
+
+    const client = createGitClient(
+      new SpawnProcessRunner(),
+      new Map([[resolvePath(shallowRepo), { remoteUrl: `file://${remote}`, transport: {} }]]),
+    );
+    await client.checkoutRef({
+      cwd: shallowWorktree,
+      repoPath: shallowRepo,
+      ref: "refs/pull/42/head",
+    });
+
+    await expect(client.revParse(shallowWorktree, "HEAD")).resolves.toBe(pullSha);
+  });
+
   it("recycles tracked state while preserving unrelated untracked files", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-recycle-"));
     roots.push(root);

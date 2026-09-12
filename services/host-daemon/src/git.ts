@@ -121,8 +121,9 @@ export function createGitClient(
       let pullRequestFetch: GitHubPullRequestFetch | null = null;
       let sha = "";
       try {
+        const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
         const objectDirectory =
-          isPullRequestRef && pullRefConfigs !== undefined
+          isPullRequestRef && pullConfig !== undefined
             ? await runGit(
                 runner,
                 cwd,
@@ -130,18 +131,24 @@ export function createGitClient(
                 signal,
               )
             : undefined;
-        const base =
-          isPullRequestRef && pullRefConfigs !== undefined
-            ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
+        const shallow =
+          objectDirectory?.exitCode === 0
+            ? await runGit(runner, cwd, ["rev-parse", "--is-shallow-repository"], signal)
             : undefined;
-        const pullConfig = isPullRequestRef ? await pullRefConfig(repoPath) : undefined;
+        // An alternate object directory does not carry the checkout's shallow boundary. Advertise
+        // it only after proving this repository has complete history; otherwise fetch the exact
+        // pull head without an alternate or base exclusion.
+        const reusesObjects = shallow?.exitCode === 0 && shallow.stdout.trim() === "false";
+        const base = reusesObjects
+          ? await runGit(runner, cwd, ["rev-parse", "HEAD"], signal)
+          : undefined;
         pullRequestFetch = isPullRequestRef
           ? await fetchGitHubPullRequestRef(
               runner,
               cwd,
               ref,
               pullConfig,
-              objectDirectory?.exitCode === 0 ? objectDirectory.stdout.trim() : undefined,
+              reusesObjects ? objectDirectory?.stdout.trim() : undefined,
               base?.exitCode === 0 ? base.stdout.trim() : undefined,
               signal,
             )

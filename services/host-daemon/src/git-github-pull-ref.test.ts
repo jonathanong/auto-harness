@@ -6,8 +6,14 @@ import { scripted } from "../test-helpers/git-test-helpers.ts";
 const cwd = "/tmp/auto-harness-github-pull-ref-test";
 const remoteUrl = "https://github.com/example/repository.git";
 const ref = "refs/pull/42/head";
+const pullSha = "0123456789abcdef0123456789abcdef01234567";
 
 const initialized = { match: ["init", "--bare", "*"], exitCode: 0 };
+const advertised = {
+  match: ["ls-remote", "--exit-code", remoteUrl, ref],
+  exitCode: 0,
+  stdout: `${pullSha}\t${ref}\n`,
+};
 const fetched = {
   match: [
     "--git-dir",
@@ -29,10 +35,18 @@ const resolved = {
     "refs/auto-harness/pull-fetch/source^{commit}",
   ],
   exitCode: 0,
-  stdout: "pull-sha\n",
+  stdout: `${pullSha}\n`,
 };
 const bundled = {
-  match: ["--git-dir", "*", "bundle", "create", "*", "refs/auto-harness/pull-fetch/source"],
+  match: [
+    "--git-dir",
+    "*",
+    "bundle",
+    "create",
+    "*",
+    "refs/auto-harness/pull-fetch/source",
+    pullSha,
+  ],
   exitCode: 0,
 };
 const imported = { match: ["bundle", "unbundle", "*"], exitCode: 0 };
@@ -53,20 +67,35 @@ describe("isolated GitHub pull-ref fetch", () => {
   });
 
   it.each([
-    ["initialization", [{ ...initialized, exitCode: 1 }]],
-    ["resolution", [initialized, fetched, { ...resolved, exitCode: 1, stdout: "" }]],
-    ["empty resolution", [initialized, fetched, { ...resolved, stdout: "\n" }]],
-    ["bundle creation", [initialized, fetched, resolved, { ...bundled, exitCode: 1 }]],
-    ["bundle import", [initialized, fetched, resolved, bundled, { ...imported, exitCode: 1 }]],
+    ["advertisement", [{ ...advertised, exitCode: 2, stdout: "" }]],
+    ["empty successful advertisement", [{ ...advertised, stdout: "" }]],
+    [
+      "ambiguous advertisement lines",
+      [{ ...advertised, stdout: `${pullSha}\t${ref}\n${pullSha}\t${ref}\n` }],
+    ],
+    ["malformed advertisement", [{ ...advertised, stdout: "not-a-ref\n" }]],
+    ["ambiguous advertisement", [{ ...advertised, stdout: `${pullSha}\t${ref}\tunexpected\n` }]],
+    ["initialization", [advertised, { ...initialized, exitCode: 1 }]],
+    ["resolution", [advertised, initialized, fetched, { ...resolved, exitCode: 1, stdout: "" }]],
+    [
+      "mismatched resolution",
+      [advertised, initialized, fetched, { ...resolved, stdout: "f".repeat(40) }],
+    ],
+    ["bundle creation", [advertised, initialized, fetched, resolved, { ...bundled, exitCode: 1 }]],
+    [
+      "bundle import",
+      [advertised, initialized, fetched, resolved, bundled, { ...imported, exitCode: 1 }],
+    ],
     [
       "scratch-ref update",
       [
+        advertised,
         initialized,
         fetched,
         resolved,
         bundled,
         imported,
-        { match: ["update-ref", "--no-deref", "*", "pull-sha"], exitCode: 1 },
+        { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 1 },
       ],
     ],
   ])("returns null after failed %s", async (_stage, steps) => {
@@ -78,14 +107,15 @@ describe("isolated GitHub pull-ref fetch", () => {
   it("roots an already-present pull head without creating an empty bundle", async () => {
     const destination = await fetchGitHubPullRequestRef(
       scripted([
+        advertised,
         initialized,
         fetched,
         resolved,
         {
-          match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pull-sha", "base-sha"],
+          match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, "base-sha"],
           exitCode: 0,
         },
-        { match: ["update-ref", "--no-deref", "*", "pull-sha"], exitCode: 0 },
+        { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
       ]),
       cwd,
       ref,
@@ -96,7 +126,35 @@ describe("isolated GitHub pull-ref fetch", () => {
 
     expect(destination).toMatchObject({
       ref: expect.stringMatching(/^refs\/worktree\/auto-harness\/pull-fetch\//),
-      sha: "pull-sha",
+      sha: pullSha,
     });
+  });
+
+  it.each([
+    ["fails to root an already-present head", 0, 1],
+    ["cannot determine whether a head is already present", 128, 0],
+  ])("fails closed when it %s", async (_description, mergeBaseExitCode, updateRefExitCode) => {
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          advertised,
+          initialized,
+          fetched,
+          resolved,
+          {
+            match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, "base-sha"],
+            exitCode: mergeBaseExitCode,
+          },
+          ...(mergeBaseExitCode === 0
+            ? [{ match: ["update-ref", "--no-deref", "*", pullSha], exitCode: updateRefExitCode }]
+            : []),
+        ]),
+        cwd,
+        ref,
+        { remoteUrl, transport: {} },
+        "/srv/repository/.git/objects",
+        "base-sha",
+      ),
+    ).resolves.toBeNull();
   });
 });

@@ -8,6 +8,8 @@ import { createGitClient } from "./git.ts";
 import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
+const pullSha = "0123456789abcdef0123456789abcdef01234567";
+
 function resolvesCommit(ref: string, sha = "abc") {
   return {
     match: ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
@@ -67,8 +69,20 @@ function pullRefObjectReuse(baseSha = "base-sha") {
       exitCode: 0,
       stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
     },
+    { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
     { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${baseSha}\n` },
   ];
+}
+
+function advertisesGitHubPullRef(
+  ref: string,
+  remoteUrl = "https://github.com/example/repository.git",
+) {
+  return {
+    match: ["ls-remote", "--exit-code", remoteUrl, ref],
+    exitCode: 0,
+    stdout: `${pullSha}\t${ref}\n`,
+  };
 }
 
 function fetchesGitHubPullRef(
@@ -77,6 +91,7 @@ function fetchesGitHubPullRef(
   baseSha: string | undefined = undefined,
 ) {
   return [
+    advertisesGitHubPullRef(ref, remoteUrl),
     { match: ["init", "--bare", "*"], exitCode: 0 },
     {
       match: [
@@ -99,13 +114,13 @@ function fetchesGitHubPullRef(
         "refs/auto-harness/pull-fetch/source^{commit}",
       ],
       exitCode: 0,
-      stdout: "pr-sha\n",
+      stdout: `${pullSha}\n`,
     },
     ...(baseSha === undefined
       ? []
       : [
           {
-            match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pr-sha", baseSha],
+            match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, baseSha],
             exitCode: 1,
           },
         ]),
@@ -117,12 +132,13 @@ function fetchesGitHubPullRef(
         "create",
         "*",
         "refs/auto-harness/pull-fetch/source",
+        pullSha,
         ...(baseSha === undefined ? [] : [`^${baseSha}`]),
       ],
       exitCode: 0,
     },
     { match: ["bundle", "unbundle", "*"], exitCode: 0 },
-    { match: ["update-ref", "--no-deref", "*", "pr-sha"], exitCode: 0 },
+    { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
   ];
 }
 
@@ -152,6 +168,17 @@ describe("createGitClient checkout and revParse", () => {
     const runner = {
       async run(options: import("./executor.ts").RunProcessOptions) {
         const args = options.argv.slice(1);
+        if (args[0] === "ls-remote") {
+          options.onChunk({
+            stream: "stdout",
+            data: `${pullSha}\trefs/pull/130/head\n`,
+          });
+          return {
+            exitCode: 0,
+            timedOut: false,
+            signal: null,
+          };
+        }
         if (args[0] === "init") {
           return { exitCode: 0, timedOut: false, signal: null };
         }
@@ -227,11 +254,11 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-        hardReset("pr-sha"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
         syncsSubmodules(),
         updatesSubmodules(),
-        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
@@ -254,7 +281,24 @@ describe("createGitClient checkout and revParse", () => {
         exitCode: 0,
         stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
       },
+      { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
       { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "base-sha\n" },
+      {
+        match: [
+          "-c",
+          "credential.helper=manager-core",
+          "-c",
+          "http.proxy=https://proxy.example",
+          "-c",
+          "http.sslCAInfo=/etc/ssl/private-ca.pem",
+          "ls-remote",
+          "--exit-code",
+          remoteUrl,
+          ref,
+        ],
+        exitCode: 0,
+        stdout: `${pullSha}\t${ref}\n`,
+      },
       { match: ["init", "--bare", "*"], exitCode: 0 },
       {
         match: [
@@ -283,10 +327,10 @@ describe("createGitClient checkout and revParse", () => {
           "refs/auto-harness/pull-fetch/source^{commit}",
         ],
         exitCode: 0,
-        stdout: "pr-sha\n",
+        stdout: `${pullSha}\n`,
       },
       {
-        match: ["--git-dir", "*", "merge-base", "--is-ancestor", "pr-sha", "base-sha"],
+        match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, "base-sha"],
         exitCode: 1,
       },
       {
@@ -297,17 +341,18 @@ describe("createGitClient checkout and revParse", () => {
           "create",
           "*",
           "refs/auto-harness/pull-fetch/source",
+          pullSha,
           "^base-sha",
         ],
         exitCode: 0,
       },
       { match: ["bundle", "unbundle", "*"], exitCode: 0 },
-      { match: ["update-ref", "--no-deref", "*", "pr-sha"], exitCode: 0 },
-      { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-      hardReset("pr-sha"),
+      { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+      { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+      hardReset(pullSha),
       syncsSubmodules(),
       updatesSubmodules(),
-      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
     ];
@@ -342,6 +387,42 @@ describe("createGitClient checkout and revParse", () => {
     });
   });
 
+  it("fetches a pull head completely when the claimed checkout is shallow", async () => {
+    const ref = "refs/pull/131/head";
+    const remoteUrl = "https://github.com/example/repository.git";
+    let fetchEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner = scripted([
+      ...resetsPriorState(),
+      {
+        match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+        exitCode: 0,
+        stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
+      },
+      { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "true\n" },
+      ...fetchesGitHubPullRef(ref, remoteUrl),
+      { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+      hardReset(pullSha),
+      syncsSubmodules(),
+      updatesSubmodules(),
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
+      { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
+      deletesFetchedPullRef(),
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).includes("fetch")) fetchEnvironment = options.env;
+      return originalRun(options);
+    };
+
+    await createGitClient(runner, pullRefPolicy(remoteUrl)).checkoutRef({
+      cwd: checkoutCwd,
+      repoPath: checkoutRepo,
+      ref,
+    });
+
+    expect(fetchEnvironment).not.toHaveProperty("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+  });
+
   it("fails closed under configured policy when the repository has no pinned entry", async () => {
     const ref = "refs/pull/127/head";
     const checkout = createGitClient(
@@ -367,9 +448,9 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 1 },
-        { match: ["checkout", "--force", "--detach", "pr-sha"], exitCode: 1 },
-        { match: ["fsck", "--connectivity-only", "pr-sha"], exitCode: 1 },
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 1 },
+        { match: ["checkout", "--force", "--detach", pullSha], exitCode: 1 },
+        { match: ["fsck", "--connectivity-only", pullSha], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
       pullRefPolicy(),
@@ -386,11 +467,11 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, remoteUrl, "base-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-        hardReset("pr-sha"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
         syncsSubmodules(),
         updatesSubmodules(),
-        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
@@ -409,11 +490,11 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-        hardReset("pr-sha"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
         syncsSubmodules(),
         updatesSubmodules(),
-        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(),
       ]),
@@ -471,6 +552,7 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
+        advertisesGitHubPullRef(ref),
         { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
@@ -499,6 +581,7 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
+        advertisesGitHubPullRef(ref),
         { match: ["init", "--bare", "*"], exitCode: 0 },
         {
           match: [
@@ -528,11 +611,11 @@ describe("createGitClient checkout and revParse", () => {
         ...resetsPriorState(),
         ...pullRefObjectReuse(),
         ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-        { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-        hardReset("pr-sha"),
+        { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+        hardReset(pullSha),
         syncsSubmodules(),
         updatesSubmodules(),
-        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
         { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
         deletesFetchedPullRef(1),
       ]),
@@ -552,11 +635,11 @@ describe("createGitClient checkout and revParse", () => {
       ...resetsPriorState(),
       ...pullRefObjectReuse(),
       ...fetchesGitHubPullRef(ref, undefined, "base-sha"),
-      { match: ["switch", "--discard-changes", "--detach", "pr-sha"], exitCode: 0 },
-      hardReset("pr-sha"),
+      { match: ["switch", "--discard-changes", "--detach", pullSha], exitCode: 0 },
+      hardReset(pullSha),
       syncsSubmodules(),
       updatesSubmodules(),
-      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "pr-sha\n" },
+      { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
       { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
       deletesFetchedPullRef(),
     ]);

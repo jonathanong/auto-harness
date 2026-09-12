@@ -55,6 +55,23 @@ function normalizedConfig(
   return value;
 }
 
+function advertisedPullRequestHead(output: string, ref: string): string | undefined {
+  const [line, ...additionalLines] = output
+    .split(/\r?\n/)
+    .filter((candidate) => candidate.length > 0);
+  if (line === undefined || additionalLines.length > 0) return undefined;
+  const [sha, advertisedRef, ...rest] = line.split("\t");
+  if (
+    rest.length > 0 ||
+    advertisedRef !== ref ||
+    sha === undefined ||
+    !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(sha)
+  ) {
+    return undefined;
+  }
+  return sha;
+}
+
 export async function fetchGitHubPullRequestRef(
   runner: ProcessRunner,
   cwd: string,
@@ -81,6 +98,19 @@ export async function fetchGitHubPullRequestRef(
   const environment = isolatedFetchEnvironment(objectDirectory);
   const transport = transportArguments(configured);
   try {
+    // Capture the exact remote-advertised object identity before a same-UID session can mutate
+    // the temporary repository's loose ref. Git object IDs bind the subsequently imported commit
+    // cryptographically; a tampered ref can now only turn this transfer into a failed checkout.
+    const advertised = await runGit(
+      runner,
+      temporaryDirectory,
+      [...transport, "ls-remote", "--exit-code", configured.remoteUrl, ref],
+      signal,
+      environment,
+    );
+    if (advertised.exitCode !== 0) return null;
+    const advertisedSha = advertisedPullRequestHead(advertised.stdout, ref);
+    if (advertisedSha === undefined) return null;
     const initialized = await runGit(
       runner,
       temporaryDirectory,
@@ -115,7 +145,7 @@ export async function fetchGitHubPullRequestRef(
     );
     if (resolved.exitCode !== 0) return null;
     const sha = resolved.stdout.trim();
-    if (sha.length === 0) return null;
+    if (sha !== advertisedSha) return null;
     // When the requested pull head is already reachable from the current checkout, `bundle
     // create fetchedRef ^baseCommit` correctly refuses to create an empty bundle. The object is
     // already present through the alternate object directory, so root it directly instead.
@@ -149,7 +179,11 @@ export async function fetchGitHubPullRequestRef(
         "bundle",
         "create",
         bundlePath,
+        // Git bundles require a named ref for their header. Including the advertised SHA as a
+        // second positive rev-list argument keeps that exact object in the pack even if a
+        // same-UID session replaces the temporary named ref after the comparison above.
         fetchedRef,
+        sha,
         ...(excludesPresentBase ? [`^${baseCommit}`] : []),
       ],
       signal,
