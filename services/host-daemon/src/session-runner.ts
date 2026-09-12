@@ -69,12 +69,8 @@ export class SessionRunner {
     const baseSessionChildEnv = mappedGitHubApp
       ? withoutAmbientGitHubTokens(childEnvSource)
       : childEnvSource;
-    const isolatedGitHubConfigDir = mappedGitHubApp
-      ? await mkdtemp(join(tmpdir(), "auto-harness-gh-config-"))
-      : undefined;
-    const sessionChildEnv = isolatedGitHubConfigDir
-      ? withIsolatedGitHubConfigDir(baseSessionChildEnv, isolatedGitHubConfigDir)
-      : baseSessionChildEnv;
+    let isolatedGitHubConfigDir: string | undefined;
+    let sessionChildEnv = baseSessionChildEnv;
     try {
       const logs: SessionLogChunk[] = [];
       const streamer = new LogStreamer(
@@ -88,6 +84,18 @@ export class SessionRunner {
         options.initialLogSeq,
       );
       streamer.writeTimestampedSystem("Session started");
+
+      try {
+        if (mappedGitHubApp) {
+          isolatedGitHubConfigDir = await mkdtemp(join(tmpdir(), "auto-harness-gh-config-"));
+          sessionChildEnv = withIsolatedGitHubConfigDir(
+            baseSessionChildEnv,
+            isolatedGitHubConfigDir,
+          );
+        }
+      } catch (error) {
+        return await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);
+      }
 
       let expired = false;
       const timeout = new AbortController();
