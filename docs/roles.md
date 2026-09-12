@@ -128,27 +128,27 @@ bound service-account, which `admin` is forbidden to be.
 
 `authorize()` maps method + path to a capability before the handler runs.
 
-| Path prefix                                                        | GET/HEAD/OPTIONS                       | Writes               |
-| ------------------------------------------------------------------ | -------------------------------------- | -------------------- |
-| `/api/v1/sessions/:id/children`                                    | authenticated                          | `sessions:spawn`     |
-| `/api/v1/sessions` (except archive and children)                   | authenticated                          | `sessions:write`     |
-| `/api/v1/sessions/:id/archive`                                     | authenticated                          | `sessions:archive`   |
-| `/api/v1/schedules`                                                | authenticated                          | `schedules:write`    |
-| `/api/v1/repositories/:id/session-drains`                          | authenticated                          | `sessions:write`     |
-| `/api/v1/hosts/drain`                                              | authenticated                          | `fleet:drain`        |
-| `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`          | authenticated                          | `fleet:inventory`    |
-| `/api/v1/hosts/:id/exec-config`                                    | authenticated                          | `fleet:exec-config`  |
-| `/api/v1/provider-accounts/:id/leases`                             | `providers:leases`                     | `providers:leases`   |
-| `/api/v1/provider-accounts/:id/leases/:slot/release`               | —                                      | `providers:leases`   |
-| `/api/v1/provider-accounts`                                        | authenticated                          | `providers:accounts` |
-| `/api/v1/commands`, `/providers`, `/repositories`                  | authenticated                          | `catalog:write`      |
-| `/api/v1/auth/users`, `/auth/service-accounts`                     | `accounts:write`                       | `accounts:write`     |
-| `/api/v1/integrations/slack`                                       | `integrations:write`                   | `integrations:write` |
-| `/api/v1/integrations/custom/:id`, `/api/v1/integrations/github-ingress` | `integrations:write`              | `integrations:write` |
-| `/api/v1/audit-logs`                                               | `audit:read`                           | _(no write route)_   |
-| `/api/v1/scheduler/*`                                              | —                                      | `scheduler:run`      |
-| `/api/v1/host/messages`                                            | —                                      | `agent:protocol`     |
-| `/api/v1/auth/me`, `/auth/password`, `/auth/viewer-ticket`, logout | self-service; skipped by `authorize()` | same                 |
+| Path prefix                                                              | GET/HEAD/OPTIONS                       | Writes               |
+| ------------------------------------------------------------------------ | -------------------------------------- | -------------------- |
+| `/api/v1/sessions/:id/children`                                          | authenticated                          | `sessions:spawn`     |
+| `/api/v1/sessions` (except archive and children)                         | authenticated                          | `sessions:write`     |
+| `/api/v1/sessions/:id/archive`                                           | authenticated                          | `sessions:archive`   |
+| `/api/v1/schedules`                                                      | authenticated                          | `schedules:write`    |
+| `/api/v1/repositories/:id/session-drains`                                | authenticated                          | `sessions:write`     |
+| `/api/v1/hosts/drain`                                                    | authenticated                          | `fleet:drain`        |
+| `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`                | authenticated                          | `fleet:inventory`    |
+| `/api/v1/hosts/:id/exec-config`                                          | authenticated                          | `fleet:exec-config`  |
+| `/api/v1/provider-accounts/:id/leases`                                   | `providers:leases`                     | `providers:leases`   |
+| `/api/v1/provider-accounts/:id/leases/:slot/release`                     | —                                      | `providers:leases`   |
+| `/api/v1/provider-accounts`                                              | authenticated                          | `providers:accounts` |
+| `/api/v1/commands`, `/providers`, `/repositories`                        | authenticated                          | `catalog:write`      |
+| `/api/v1/auth/users`, `/auth/service-accounts`                           | `accounts:write`                       | `accounts:write`     |
+| `/api/v1/integrations/slack`                                             | `integrations:write`                   | `integrations:write` |
+| `/api/v1/integrations/custom/:id`, `/api/v1/integrations/github-ingress` | `integrations:write`                   | `integrations:write` |
+| `/api/v1/audit-logs`                                                     | `audit:read`                           | _(no write route)_   |
+| `/api/v1/scheduler/*`                                                    | —                                      | `scheduler:run`      |
+| `/api/v1/host/messages`                                                  | —                                      | `agent:protocol`     |
+| `/api/v1/auth/me`, `/auth/password`, `/auth/viewer-ticket`, logout       | self-service; skipped by `authorize()` | same                 |
 
 Self-service auth routes (`/auth/me`, password change, viewer ticket, logout)
 are reachable by any authenticated principal. Login is unauthenticated.

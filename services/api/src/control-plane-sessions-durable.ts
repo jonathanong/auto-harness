@@ -59,18 +59,10 @@ export async function createSessionDurable(
         code: "CONFLICT",
       };
     }
-    return createSession(
-      state,
-      body,
-      {
-        ...(options.allowCustomWebhookConcurrencyId
-          ? { allowCustomWebhookConcurrencyId: true }
-          : {}),
-        ...(options.allowGitHubCommentConcurrencyId
-          ? { allowGitHubCommentConcurrencyId: true }
-          : {}),
-      },
-    );
+    return createSession(state, body, {
+      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+    });
   }
   await refreshTargetCatalogDurable(state);
   if (
@@ -86,18 +78,10 @@ export async function createSessionDurable(
   ) {
     await getWorkspacePoolDurable(state, (body as { workspacePoolId: string }).workspacePoolId);
   }
-  const prepared = validateSessionCreate(
-    state,
-    body,
-    {
-      ...(options.allowCustomWebhookConcurrencyId
-        ? { allowCustomWebhookConcurrencyId: true }
-        : {}),
-      ...(options.allowGitHubCommentConcurrencyId
-        ? { allowGitHubCommentConcurrencyId: true }
-        : {}),
-    },
-  );
+  const prepared = validateSessionCreate(state, body, {
+    ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
+    ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+  });
   if (!prepared.ok) return prepared;
   if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
     return {
