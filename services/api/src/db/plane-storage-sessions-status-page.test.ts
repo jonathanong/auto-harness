@@ -58,4 +58,15 @@ describe("bounded session status pages", () => {
     } as unknown as PlaneStorageCtx;
     await expect(listSessionsByStatusPage(failing, "queued", 0, 1)).rejects.toBe(failure);
   });
+
+  it("skips queued index rows whose id is not a string", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ id: 1, status: "queued", createdAt: "t0", priority: 0 }, { status: "queued" }],
+    });
+    const ctx = {
+      doc: { send },
+      tables: { sessions: "Sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatusPage(ctx, "queued", 0, 2)).resolves.toEqual([]);
+  });
 });

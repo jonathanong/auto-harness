@@ -48,7 +48,7 @@ export function SessionLiveLogs({
       retryTimer = setTimeout(connect, delay);
     };
     const connect = (): void => {
-      if (stopped || terminalError) return;
+      if (stopped) return;
       void viewerTicket()
         .then((ticket) => {
           if (stopped || terminalError) return;

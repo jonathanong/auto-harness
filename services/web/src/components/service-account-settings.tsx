@@ -17,16 +17,29 @@ import { ServiceAccountCreateForm } from "./service-account-create-form.tsx";
 import { ServiceAccountKeyDialog } from "./service-account-key-dialog.tsx";
 import { ServiceAccountTable } from "./service-account-table.tsx";
 
+type ReadyState = {
+  kind: "ready";
+  accounts: ServiceAccount[];
+  repositories: RepositoryOption[];
+  hostIds: string[];
+};
 type State =
   | { kind: "loading" }
-  | {
-      kind: "ready";
-      accounts: ServiceAccount[];
-      repositories: RepositoryOption[];
-      hostIds: string[];
-    }
+  | ReadyState
   | { kind: "forbidden" }
   | { kind: "error"; message: string };
+
+export function withReadyAccount(current: State, account: ServiceAccount): State {
+  return current.kind === "ready"
+    ? { ...current, accounts: [...current.accounts, account] }
+    : current;
+}
+
+export function withoutAccount(current: State, id: string): State {
+  return current.kind === "ready"
+    ? { ...current, accounts: current.accounts.filter((account) => account.id !== id) }
+    : current;
+}
 
 export function ServiceAccountSettings({ canManage }: { canManage: boolean }) {
   const [state, setState] = useState<State>(
@@ -92,20 +105,12 @@ export function ServiceAccountSettings({ canManage }: { canManage: boolean }) {
   }
 
   const addSecret = (value: ServiceAccountSecret, rotatedFromId?: string) => {
-    setState((current) =>
-      current.kind === "ready"
-        ? { ...current, accounts: [...current.accounts, value.account] }
-        : current,
-    );
+    setState((current) => withReadyAccount(current, value.account));
     setSecret({ value, ...(rotatedFromId ? { rotatedFromId } : {}) });
   };
   const remove = async (id: string) => {
     await deleteServiceAccount(id);
-    setState((current) =>
-      current.kind === "ready"
-        ? { ...current, accounts: current.accounts.filter((account) => account.id !== id) }
-        : current,
-    );
+    setState((current) => withoutAccount(current, id));
     setSecret((current) => (current?.rotatedFromId === id ? { value: current.value } : current));
   };
   const create = async (input: ServiceAccountInput) => addSecret(await createServiceAccount(input));

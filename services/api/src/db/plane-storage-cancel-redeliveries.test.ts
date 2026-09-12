@@ -43,6 +43,21 @@ describe("cancel redelivery outbox query response handling", () => {
       "table unavailable",
     );
   });
+
+  it("treats a claim condition loss as a lost attempt", async () => {
+    const mockCtx = {
+      doc: {
+        send: vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("lost"), { name: "ConditionalCheckFailedException" }),
+          ),
+      },
+      tables: { sessionCancelRedeliveries: "SessionCancelRedeliveries" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(claimCancelRedeliveryAttempt(mockCtx, "session-a", t0, 3)).resolves.toBe(false);
+  });
 });
 
 describe("DynamoDB cancel redelivery outbox", () => {
