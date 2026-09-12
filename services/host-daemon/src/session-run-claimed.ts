@@ -134,6 +134,10 @@ export async function runClaimedSession(
   /** HEAD captured after checkout and before setup; used for post-session facts. */
   baseline?: string,
 ): Promise<SessionRunResult> {
+  const mappedGitHubApp = githubApp?.repositories.has(assign.repositoryId) ?? false;
+  const sessionChildEnv = mappedGitHubApp
+    ? withoutAmbientGitHubTokens(childEnvSource)
+    : childEnvSource;
   try {
     await claimed.currentExecutionTarget?.();
   } catch (error) {
@@ -149,7 +153,7 @@ export async function runClaimedSession(
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
       },
-      childEnvSource,
+      sessionChildEnv,
       baseline,
     );
   }
@@ -162,7 +166,7 @@ export async function runClaimedSession(
     signal,
     timedOut,
     remainingMs,
-    childEnvSource,
+    sessionChildEnv,
     baseline,
   );
   if (setup.failure) return setup.failure;
@@ -259,6 +263,9 @@ async function runProcessAndFinish(
   nowMs: () => number = Date.now,
   baseline?: string,
 ): Promise<SessionRunResult> {
+  const terminalEnvironment = githubApp?.repositories.has(assign.repositoryId)
+    ? withoutAmbientGitHubTokens(environment)
+    : environment;
   streamer.write(
     "system",
     `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
@@ -282,12 +289,14 @@ async function runProcessAndFinish(
         exitCode: null,
         errorMessage: `execution profile unavailable for ${assign.providerAccountId}`,
       },
-      environment,
+      terminalEnvironment,
       baseline,
       true,
     );
   }
-  const commandEnv = profile ? applyExecutionProfile(environment, profile) : { ...environment };
+  const commandEnv = profile
+    ? applyExecutionProfile(terminalEnvironment, profile)
+    : { ...terminalEnvironment };
   delete commandEnv.HARNESS_API_KEY;
   delete commandEnv.HARNESS_SESSION_API_KEY;
   delete commandEnv.HARNESS_SESSION_ID;
@@ -344,7 +353,7 @@ async function runProcessAndFinish(
           assign,
           claimed,
           { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
-          environment,
+          terminalEnvironment,
           baseline,
           true,
         );
@@ -361,7 +370,7 @@ async function runProcessAndFinish(
           errorCode: "setup_failed",
           errorMessage: "GitHub App credential provisioning failed",
         },
-        environment,
+        terminalEnvironment,
         baseline,
         true,
       );
@@ -445,7 +454,7 @@ async function runProcessAndFinish(
       assign,
       claimed,
       outcome,
-      environment,
+      terminalEnvironment,
       baseline,
       true,
     );
@@ -520,13 +529,23 @@ async function runProcessAndFinish(
 
 function withoutAmbientGitHubTokens(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const scoped = { ...environment };
-  for (const name of [
+  const tokenNames = new Set([
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "GH_ENTERPRISE_TOKEN",
     "GITHUB_ENTERPRISE_TOKEN",
-  ]) {
+  ]);
+  for (const name of tokenNames) {
     delete scoped[name];
+  }
+  const allowlist = scoped.HARNESS_CHILD_ENV_ALLOWLIST;
+  if (allowlist) {
+    const remaining = allowlist
+      .split(",")
+      .filter((name) => !tokenNames.has(name.trim()))
+      .join(",");
+    if (remaining) scoped.HARNESS_CHILD_ENV_ALLOWLIST = remaining;
+    else delete scoped.HARNESS_CHILD_ENV_ALLOWLIST;
   }
   return scoped;
 }

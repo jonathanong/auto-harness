@@ -152,6 +152,84 @@ describe("claimed session GitHub App credentials", () => {
     },
   );
 
+  it("scrubs ambient GitHub credentials before setup and again before the command", async () => {
+    installTokenFetch();
+    let setupEnv: NodeJS.ProcessEnv | undefined;
+    let hookEnv: NodeJS.ProcessEnv | undefined;
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh") {
+          hookEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        setupEnv = options.env;
+        return {
+          exitCode: 0,
+          timedOut: false,
+          signal: null,
+          environment: {
+            ...options.env,
+            GH_TOKEN: "setup-gh",
+            GITHUB_TOKEN: "setup-github",
+          },
+        };
+      },
+    };
+    let commandEnv: NodeJS.ProcessEnv | undefined;
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        commandEnv = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        systemRunner,
+        new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ setupScript: "setup" }),
+        {
+          ...claimed,
+          currentHookTarget: async () => ({
+            cwd: claimed.cwd,
+            repository: { terminalHookScript: "/hook.sh" },
+          }),
+        },
+        undefined,
+        () => false,
+        () => 4_000_000,
+        commandRunner,
+        {
+          PATH: process.env.PATH,
+          HARNESS_CHILD_ENV_ALLOWLIST:
+            "GH_TOKEN,GITHUB_TOKEN,GH_ENTERPRISE_TOKEN,GITHUB_ENTERPRISE_TOKEN",
+          GH_TOKEN: "ambient-gh",
+          GITHUB_TOKEN: "ambient-github",
+          GH_ENTERPRISE_TOKEN: "ambient-ghes",
+          GITHUB_ENTERPRISE_TOKEN: "ambient-github-enterprise",
+        },
+        undefined,
+        undefined,
+        app(),
+        () => now,
+      ),
+    ).resolves.toMatchObject({ status: "completed" });
+    for (const key of [
+      "GH_TOKEN",
+      "GITHUB_TOKEN",
+      "GH_ENTERPRISE_TOKEN",
+      "GITHUB_ENTERPRISE_TOKEN",
+    ]) {
+      expect(setupEnv?.[key]).toBeUndefined();
+      expect(hookEnv?.[key]).toBeUndefined();
+    }
+    expect(commandEnv?.GH_TOKEN).toBe("ghs_exact-token");
+    expect(commandEnv?.GITHUB_TOKEN).toBeUndefined();
+    expect(commandEnv?.GH_ENTERPRISE_TOKEN).toBeUndefined();
+    expect(commandEnv?.GITHUB_ENTERPRISE_TOKEN).toBeUndefined();
+  });
+
   it("mints a new token for a native resume and fails closed without exposing a response body", async () => {
     const fetchMock = installTokenFetch();
     const systemRunner: ProcessRunner = {
@@ -189,8 +267,15 @@ describe("claimed session GitHub App credentials", () => {
   });
 
   it("does not inject or clamp when no App config is present", async () => {
+    let setupEnv: NodeJS.ProcessEnv | undefined;
     let options: { env?: NodeJS.ProcessEnv; timeoutMs: number } | undefined;
-    const runner: ProcessRunner = {
+    const systemRunner: ProcessRunner = {
+      async run(input) {
+        setupEnv = input.env;
+        return { exitCode: 0, timedOut: false, signal: null, environment: input.env };
+      },
+    };
+    const commandRunner: ProcessRunner = {
       async run(input) {
         options = input;
         return { exitCode: 0, timedOut: false, signal: null };
@@ -198,16 +283,23 @@ describe("claimed session GitHub App credentials", () => {
     };
     const logs = [];
     await runClaimedSession(
-      runner,
+      systemRunner,
       new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
       logs,
-      baseAssign(),
+      baseAssign({ setupScript: "setup" }),
       claimed,
       undefined,
       () => false,
       () => 123,
+      commandRunner,
+      {
+        PATH: process.env.PATH,
+        HARNESS_CHILD_ENV_ALLOWLIST: "GH_TOKEN",
+        GH_TOKEN: "ambient-gh",
+      },
     );
-    expect(options?.env?.GH_TOKEN).toBeUndefined();
+    expect(setupEnv?.GH_TOKEN).toBe("ambient-gh");
+    expect(options?.env?.GH_TOKEN).toBe("ambient-gh");
     expect(options?.timeoutMs).toBe(123);
   });
 });

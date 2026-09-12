@@ -398,7 +398,9 @@ values from GitHub's App/installations and repository metadata. A mapped session
 only that repository and the three listed write permissions, injects bot author/committer identity
 only into that session's process environment, and limits its command to the token expiry less five
 minutes. It never writes the shared repository config. A native resume receives a new token; there
-is no refresh service. A host without this setting, or a repository omitted from the mapping,
+is no refresh service. Mapped sessions strip ambient GitHub credential variables before setup and
+terminal hooks; the minted token is injected only into the assigned command. A host without this
+setting, or a repository omitted from the mapping,
 retains its current ambient GitHub behavior.
 
 The verifier reads the root-only environment file without echoing its API key, tolerates a
