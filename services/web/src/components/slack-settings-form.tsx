@@ -1,43 +1,36 @@
 "use client";
-
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import {
-  Alert,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  WithTooltip,
-  dismissToast,
-  showToast,
-} from "@auto-harness/ui";
+import { Alert, Card, CardContent, CardHeader, CardTitle, showToast } from "@auto-harness/ui";
 
 import {
   buildSlackConfigBody,
-  notificationFields,
+  buildSlackSettingsBody,
   responseMessage,
+  slackInstallationMethod,
   slackDeliveryWarning,
   slackSaveSuccessMessage,
-  validateSlackForm,
-  type PublicSlackIntegration,
+  type SlackIntegration,
   type SlackFormValues,
-  type SlackNotifications,
 } from "./slack-settings.ts";
 import { SlackConfiguredState } from "./slack-configured-state.tsx";
+import { SlackDeliverySettingsForm } from "./slack-delivery-settings-form.tsx";
 import { SlackDeleteSection } from "./slack-delete-section.tsx";
-import { SlackSettingsFields } from "./slack-settings-fields.tsx";
+import { SlackManualReplacementForm } from "./slack-manual-replacement-form.tsx";
+import { SlackOAuthConnection } from "./slack-oauth-connection.tsx";
 import { apiFetch } from "../lib/client-api.ts";
 
-export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegration }) {
+export function SlackSettingsForm({ initial }: { initial?: SlackIntegration }) {
   const router = useRouter();
-  const [config, setConfig] = useState<PublicSlackIntegration | undefined>(initial);
+  const [config, setConfig] = useState<SlackIntegration | undefined>(initial);
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const mounted = useRef(true);
   const configured = Boolean(config);
+  const installationMethod = slackInstallationMethod(config);
+  const credentials = !configured || installationMethod === "manual";
   const deliveryWarning = slackDeliveryWarning(config);
 
   useEffect(() => {
@@ -47,22 +40,32 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
     };
   }, []);
 
-  async function save(form: HTMLFormElement, values: SlackFormValues): Promise<void> {
+  async function save(
+    form: HTMLFormElement,
+    values: SlackFormValues,
+    mode: "settings" | "manual" = credentials ? "manual" : "settings",
+  ): Promise<void> {
     try {
       const response = await apiFetch("/api/v1/integrations/slack", {
-        method: configured ? "PUT" : "POST",
+        method: configured ? (mode === "settings" ? "PATCH" : "PUT") : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(buildSlackConfigBody(values)),
+        body: JSON.stringify(
+          configured && mode === "settings" && config
+            ? buildSlackSettingsBody(values, config.version)
+            : buildSlackConfigBody(values),
+        ),
         cache: "no-store",
       });
       if (!response.ok) {
         const message = await responseMessage(response);
         if (mounted.current) {
+          if (mode === "manual") setManualError(message);
+          else setDeliveryError(message);
           showToast(message, { variant: "destructive", pw: "slack-error" });
         }
         return;
       }
-      const next = (await response.json()) as PublicSlackIntegration;
+      const next = (await response.json()) as SlackIntegration;
       if (!mounted.current) return;
       // Reset first so browser password managers and the DOM cannot retain plaintext secrets.
       form.reset();
@@ -71,6 +74,8 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
       router.refresh();
     } catch {
       if (mounted.current) {
+        if (mode === "manual") setManualError("Unable to save Slack configuration. Try again.");
+        else setDeliveryError("Unable to save Slack configuration. Try again.");
         showToast("Unable to save Slack configuration. Try again.", {
           variant: "destructive",
           pw: "slack-error",
@@ -95,83 +100,50 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
         ) : null}
 
         <SlackConfiguredState config={config} />
-        <form
-          key={configured ? `replace-${config?.version ?? 0}` : "create"}
-          className="grid gap-4"
-          data-pw={configured ? "form-slack-replace" : "form-slack-create"}
-          onSubmit={(event) => {
-            event.preventDefault();
-            dismissToast();
-            setError(null);
+        <SlackOAuthConnection
+          config={config}
+          pending={pending}
+          onStart={() => {
+            setDeliveryError(null);
+            setManualError(null);
             setSuccess(null);
-            const form = event.currentTarget;
-            const formData = new FormData(form);
-            const values: SlackFormValues = {
-              botToken: String(formData.get("botToken") ?? ""),
-              signingSecret: String(formData.get("signingSecret") ?? ""),
-              defaultChannel: String(formData.get("defaultChannel") ?? ""),
-              enabled: formData.get("enabled") === "on",
-              notifications: Object.fromEntries(
-                notificationFields.map(({ key }) => [key, formData.get(String(key)) === "on"]),
-              ) as unknown as SlackNotifications,
-            };
-            const validationError = validateSlackForm(values);
-            if (validationError) {
-              setError(validationError);
-              return;
-            }
+          }}
+        />
+        <SlackDeliverySettingsForm
+          config={config}
+          credentials={credentials}
+          pending={pending}
+          error={credentials ? manualError : deliveryError}
+          success={success}
+          onError={credentials ? setManualError : setDeliveryError}
+          onSave={(form, values) => {
+            if (credentials) setManualError(null);
+            else setDeliveryError(null);
+            setSuccess(null);
             start(() => save(form, values));
           }}
-        >
-          <h4 className="font-medium">
-            {configured ? "Replace configuration" : "Create configuration"}
-          </h4>
-          {configured ? (
-            <p className="text-sm text-muted-foreground" data-pw="slack-replace-help">
-              Replacement is complete: enter the bot token again. Existing secrets cannot be
-              revealed or preserved by the UI.
-            </p>
-          ) : null}
-          <SlackSettingsFields config={config} error={error} />
-          {error ? (
-            <p
-              id="slack-error"
-              className="text-sm text-red-700"
-              role="alert"
-              aria-live="assertive"
-              data-pw="slack-error"
-            >
-              {error}
-            </p>
-          ) : null}
-          {success ? (
-            <p
-              className="text-sm text-emerald-700"
-              role="status"
-              aria-live="polite"
-              data-pw="slack-ok"
-            >
-              {success}
-            </p>
-          ) : null}
-          <WithTooltip
-            tip={
-              configured
-                ? "Replace every Slack setting, including the bot token"
-                : "Save the Slack configuration securely"
-            }
-          >
-            <Button type="submit" disabled={pending} data-pw="slack-submit">
-              {pending ? "Saving…" : configured ? "Replace configuration" : "Create configuration"}
-            </Button>
-          </WithTooltip>
-        </form>
+        />
+
+        {config && !credentials ? (
+          <SlackManualReplacementForm
+            config={config}
+            error={manualError}
+            pending={pending}
+            onError={setManualError}
+            onSave={(form, values) => {
+              setManualError(null);
+              setSuccess(null);
+              start(() => save(form, values, "manual"));
+            }}
+          />
+        ) : null}
 
         {configured ? (
           <SlackDeleteSection
             pending={pending}
             onConfirm={async () => {
-              setError(null);
+              setDeliveryError(null);
+              setManualError(null);
               setSuccess(null);
               try {
                 const response = await apiFetch("/api/v1/integrations/slack", {

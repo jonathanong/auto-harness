@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- worktree and workspace reconnect fences are symmetric. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -9,6 +10,11 @@ export type ReconnectSession = {
   worktreeId: string;
   deadlineAt?: string;
   connectionId: string;
+};
+
+export type WorkspaceReconnectSession = Omit<ReconnectSession, "worktreeId"> & {
+  workspaceSlotId: string;
+  expectedStatus?: "running" | "cancelled";
 };
 
 /** Atomically take an acknowledged session offline without allowing a late
@@ -51,6 +57,66 @@ export async function markReconnectPending(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #o = :offline, connectionId = :connectionId",
+              ConditionExpression:
+                "currentSessionId = :sessionId AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)",
+              ExpressionAttributeNames: { "#o": "online" },
+              ExpressionAttributeValues: {
+                ":offline": false,
+                ":sessionId": opts.sessionId,
+                ":connectionId": opts.connectionId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
+/** Workspace slots retain their exact lease through reconnect grace as well. */
+export async function markWorkspaceReconnectPending(
+  ctx: PlaneStorageCtx,
+  opts: WorkspaceReconnectSession,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET reconnectDeadlineAt = :deadline, assignmentConnectionId = :connectionId",
+              ConditionExpression:
+                "#s = :expectedStatus AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId) AND attribute_exists(ackReceivedAt) AND attribute_not_exists(reconnectDeadlineAt)",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":deadline": opts.deadlineAt,
+                ":expectedStatus": opts.expectedStatus ?? "running",
+                ":hostId": opts.hostId,
+                ":workspaceSlotId": opts.workspaceSlotId,
+                ":connectionId": opts.connectionId,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.workspaceSlots,
+              Key: { id: opts.workspaceSlotId },
               UpdateExpression: "SET #o = :offline, connectionId = :connectionId",
               ConditionExpression:
                 "currentSessionId = :sessionId AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)",
@@ -115,6 +181,67 @@ export async function confirmReconnect(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #o = :online, connectionId = :connectionId",
+              ConditionExpression: "currentSessionId = :sessionId",
+              ExpressionAttributeNames: { "#o": "online" },
+              ExpressionAttributeValues: {
+                ":online": true,
+                ":sessionId": opts.sessionId,
+                ":connectionId": opts.connectionId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
+export async function confirmWorkspaceReconnect(
+  ctx: PlaneStorageCtx,
+  opts: WorkspaceReconnectSession,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET assignmentConnectionId = :connectionId REMOVE reconnectDeadlineAt",
+              ConditionExpression:
+                "#s = :expectedStatus AND hostId = :hostId AND workspaceSlotId = :workspaceSlotId" +
+                (opts.deadlineAt
+                  ? " AND reconnectDeadlineAt = :deadline"
+                  : " AND attribute_not_exists(reconnectDeadlineAt)"),
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":expectedStatus": opts.expectedStatus ?? "running",
+                ":hostId": opts.hostId,
+                ":workspaceSlotId": opts.workspaceSlotId,
+                ...(opts.deadlineAt ? { ":deadline": opts.deadlineAt } : {}),
+                ":connectionId": opts.connectionId,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.workspaceSlots,
+              Key: { id: opts.workspaceSlotId },
               UpdateExpression: "SET #o = :online, connectionId = :connectionId",
               ConditionExpression: "currentSessionId = :sessionId",
               ExpressionAttributeNames: { "#o": "online" },

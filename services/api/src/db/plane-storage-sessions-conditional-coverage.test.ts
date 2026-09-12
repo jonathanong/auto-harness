@@ -3,11 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelQueuedSession,
+  cancelRunningSession,
   expireQueuedSession,
   failExpiredResumeSession,
   finishSession,
   requeueUsageLimitedSession,
+  requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
+  suppressProviderlessUsageLimitWorkspace,
   tryAssignSession,
 } from "./plane-storage-sessions.ts";
 import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
@@ -26,6 +29,7 @@ function ctx(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
       worktrees: "Worktrees",
       concurrencyLocks: "ConcurrencyLocks",
       hostLocks: "HostLocks",
+      workspaceSlots: "WorkspaceSlots",
       sessionDrainActivity: "SessionDrainActivity",
     } as never,
   } as PlaneStorageCtx;
@@ -41,6 +45,35 @@ function cancelled(failedIndex: number, extraFailed?: number) {
 }
 
 describe("session storage conditional outcomes", () => {
+  it("builds cancellation fences for workspace and worktree-less assignments", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      cancelRunningSession(ctx(send), {
+        sessionId: "workspace",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        hostId: "host",
+        connectionId: "connection",
+        attemptId: "attempt",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      cancelRunningSession(ctx(send), {
+        sessionId: "main-checkout",
+        hostId: "host",
+        connectionId: "connection",
+        attemptId: "attempt",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+      }),
+    ).resolves.toBe(true);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it("returns false when queued terminal transitions lose their condition", async () => {
     for (const operation of [
       (storage: PlaneStorageCtx) =>
@@ -147,6 +180,145 @@ describe("session storage conditional outcomes", () => {
     expect(sessionUpdate).toContain("REMOVE");
     expect(sessionUpdate).toContain("assignmentConnectionId");
     expect(sessionUpdate).toContain("assignmentSentAt");
+
+    const workspaceSuppress = {
+      sessionId: "workspace-session",
+      workspaceSlotId: "workspace-slot",
+      attemptId: "workspace-attempt",
+      queueShard: 0,
+      targetIndex: 1,
+    };
+    const lostWorkspaceSuppress = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(conditional);
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(lostWorkspaceSuppress), workspaceSuppress),
+    ).resolves.toBe(false);
+    const failedWorkspaceSuppress = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(failedWorkspaceSuppress), workspaceSuppress),
+    ).rejects.toThrow("dynamo unavailable");
+
+    const committedWorkspaceSuppress = vi.fn().mockResolvedValue({});
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(committedWorkspaceSuppress), {
+        ...workspaceSuppress,
+        errorMessage: "workspace quota",
+        workspaceSlotError: "cleanup failed",
+        providerAccountLease: {
+          concurrencyId: "account-lock",
+          providerAccountId: "account",
+          slot: 0,
+          attemptId: "workspace-attempt",
+        },
+        hostAssignmentLease: { hostId: "host" },
+      }),
+    ).resolves.toBe(true);
+    const workspaceWrites = committedWorkspaceSuppress.mock.calls[1][0].input
+      .TransactItems as Array<{
+      Update?: {
+        TableName: string;
+        Key: { id?: string; hostId?: string; concurrencyId?: string };
+        ConditionExpression?: string;
+        UpdateExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    }>;
+    expect(workspaceWrites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            Key: { id: "workspace-slot" },
+            ConditionExpression: "currentSessionId = :sid",
+            UpdateExpression: expect.stringContaining("#s = :error"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":errorMessage": "cleanup failed",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "Sessions",
+            Key: { id: "workspace-session" },
+            ConditionExpression: expect.stringContaining("workspaceSlotId = :workspaceSlotId"),
+            UpdateExpression: expect.stringContaining("suppressedTargetIndexes"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":message": "workspace quota",
+              ":index": [1],
+            }),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("atomically cools down an account, releases its workspace slot, and requeues", async () => {
+    const usageLimit = {
+      sessionId: "session",
+      workspaceSlotId: "slot",
+      attemptId: "attempt",
+      providerAccountId: "account",
+      queueShard: 0,
+      now: "now",
+      usageLimitedUntil: "later",
+      workspaceSlotError: "cleanup failed",
+    };
+    const lost = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: { id: "session", status: "running", createdAt: "now", priority: 0 },
+      })
+      .mockRejectedValueOnce(conditional);
+    await expect(requeueUsageLimitedWorkspaceSession(ctx(lost), usageLimit)).resolves.toBe(false);
+
+    const committed = vi.fn().mockResolvedValue({});
+    await expect(requeueUsageLimitedWorkspaceSession(ctx(committed), usageLimit)).resolves.toBe(
+      true,
+    );
+    await expect(
+      requeueUsageLimitedWorkspaceSession(ctx(vi.fn().mockResolvedValue({})), {
+        ...usageLimit,
+        hostAssignmentLease: { hostId: "host", connectionId: "connection" },
+      }),
+    ).resolves.toBe(true);
+    const writes = committed.mock.calls[1]?.[0].input.TransactItems as Array<{
+      Update?: {
+        TableName: string;
+        Key: { id: string };
+        ConditionExpression?: string;
+        UpdateExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    }>;
+    expect(writes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            Key: { id: "slot" },
+            ConditionExpression: "currentSessionId = :sid",
+            UpdateExpression: expect.stringContaining("#s = :error"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":errorMessage": "cleanup failed",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "Sessions",
+            Key: { id: "session" },
+            ConditionExpression: expect.stringContaining("workspaceSlotId = :workspaceSlotId"),
+            UpdateExpression: expect.stringContaining("workspaceSlotLease"),
+            ExpressionAttributeValues: expect.objectContaining({ ":running": "running" }),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("retries only a sole provider-lease Put collision", async () => {
@@ -423,4 +595,44 @@ describe("session storage conditional outcomes", () => {
       }),
     );
   });
+
+  it.each([
+    [undefined, "idle", " REMOVE errorMessage", "running"],
+    ["cleanup failed", "error", ", errorMessage = :errorMessage", "cancelled"],
+  ])(
+    "releases a workspace slot with error %s",
+    async (workspaceSlotError, status, expression, expectedStatus) => {
+      const send = vi.fn().mockResolvedValue({});
+      await expect(
+        finishSession(ctx(send), {
+          sessionId: "session",
+          workspaceSlotId: "slot",
+          workspaceSlotError,
+          attemptId: "attempt",
+          status: "completed",
+          expectedStatus,
+          queueShard: 0,
+        }),
+      ).resolves.toBe(true);
+      const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
+      expect(request.input.TransactItems).toContainEqual(
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            UpdateExpression: expect.stringContaining(expression),
+            ExpressionAttributeValues: expect.objectContaining({ ":status": status }),
+          }),
+        }),
+      );
+      expect(request.input.TransactItems[0]).toEqual(
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            ExpressionAttributeValues: expect.objectContaining({
+              ":expectedStatus": expectedStatus,
+            }),
+          }),
+        }),
+      );
+    },
+  );
 });

@@ -239,6 +239,17 @@ reporting nothing running.
 
 Worktree records in DynamoDB are written by the control plane from register/status messages; the agent is source of truth for **local** busy/idle.
 
+### Workspace pools and slots
+
+A workspace pool is a control-plane record containing trusted setup profiles. A host attaches a
+pool by advertising path-only slots (`{ id, name, path }`) in its inventory. Slots are not Git
+worktrees and have no labels or per-slot setup scripts. The daemon advertises `workspace-sessions`
+only when it can claim, run, release, and clean these slots.
+
+Before registration, every slot path is validated against the host's non-empty `allowedRoots`
+using realpath. A busy slot's path cannot change. Removing a slot leaves a busy row quarantined
+until its owning session releases it; the scheduler never assigns a quarantined slot.
+
 ### Session Runner
 
 Orchestrates a single session after `session:assign`:

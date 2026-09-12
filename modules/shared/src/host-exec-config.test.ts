@@ -193,6 +193,27 @@ describe("applyHostExecConfig", () => {
       }),
     ).toThrow("Unknown worktree");
   });
+
+  it("copies provider accounts and workspace slots before applying a patch", () => {
+    const existing: HostInventory = {
+      ...inventory(),
+      providerAccounts: [{ providerAccountId: "provider", commandId: "command" }],
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "slot", name: "slot", path: "/opt/harness/workspaces/slot" }],
+        },
+      ],
+    };
+
+    const next = applyHostExecConfig(existing, {});
+
+    expect(next).toEqual(existing);
+    expect(next.providerAccounts).not.toBe(existing.providerAccounts);
+    expect(next.providerAccounts[0]).not.toBe(existing.providerAccounts[0]);
+    expect(next.workspacePools).not.toBe(existing.workspacePools);
+    expect(next.workspacePools?.[0]?.slots[0]).not.toBe(existing.workspacePools?.[0]?.slots[0]);
+  });
 });
 
 describe("listExecConfigEdits / preserve / reconcile", () => {
@@ -432,6 +453,74 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
         updateConfig: { enabled: false },
       }),
     ).toBe(true);
+    expect(
+      inventoryHasExecConfig({
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [{ workspacePoolId: "pool-1", slots: [] }],
+      }),
+    ).toBe(true);
+  });
+
+  it("treats workspace attachments and slot paths as exec-config edits", () => {
+    const empty = emptyHostInventory();
+    const attached: HostInventory = {
+      ...empty,
+      workspacePools: [
+        {
+          workspacePoolId: "pool-1",
+          slots: [{ id: "slot-1", name: "one", path: "/srv/workspaces/one" }],
+        },
+      ],
+    };
+    expect(listExecConfigEdits(empty, attached)).toEqual([
+      "workspacePools.pool-1",
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    expect(listExecConfigEdits(attached, empty)).toEqual([
+      "workspacePools.pool-1",
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    const attachedWithoutSlots: HostInventory = {
+      ...empty,
+      workspacePools: [{ workspacePoolId: "pool-1", slots: [] }],
+    };
+    expect(listExecConfigEdits(attachedWithoutSlots, attached)).toEqual([
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    expect(
+      reconcileInventoryWrite({
+        existing: attachedWithoutSlots,
+        incoming: attached,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["workspacePools.pool-1.slots.slot-1.path"],
+    });
+    expect(
+      listExecConfigEdits(attached, {
+        ...attached,
+        workspacePools: [
+          {
+            ...attached.workspacePools![0]!,
+            slots: [{ id: "slot-1", name: "renamed", path: "/srv/workspaces/renamed" }],
+          },
+        ],
+      }),
+    ).toEqual(["workspacePools.pool-1.slots.slot-1.path"]);
+    expect(
+      listExecConfigEdits(attached, {
+        ...attached,
+        workspacePools: [
+          {
+            ...attached.workspacePools![0]!,
+            slots: [{ id: "slot-1", name: "renamed", path: "/srv/workspaces/one" }],
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 
   it("names each changed exec-config field", () => {
@@ -534,6 +623,25 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       { repositories: [], providerAccounts: [], updateConfig: { enabled: false } },
     );
     expect(incomingWins.updateConfig).toEqual({ enabled: true });
+    const workspaceIncoming = preserveHostExecConfig(
+      {
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+          },
+        ],
+      },
+      inventory(),
+    );
+    expect(workspaceIncoming.workspacePools).toEqual([
+      {
+        workspacePoolId: "pool-1",
+        slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+      },
+    ]);
   });
 
   it("handles sparse inventories and explicit blank nested values", () => {

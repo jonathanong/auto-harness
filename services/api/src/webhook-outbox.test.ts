@@ -57,6 +57,8 @@ describe("webhook outbox contract", () => {
         subject: { type: "session", id: input.sessionId },
         data: {
           repositoryId: input.repositoryId,
+          workspacePoolId: null,
+          workspaceSlotId: null,
           attemptId: input.attemptId,
           status: input.status,
         },
@@ -68,12 +70,49 @@ describe("webhook outbox contract", () => {
     expect(unassigned.event.data.attemptId).toBeNull();
     expect(createWebhookDelivery({ ...input, attemptId: null }).id).toBe(unassigned.id);
     expect(unassigned.event.id).not.toBe(first.event.id);
+
+    expect(
+      createWebhookDelivery({
+        ...input,
+        repositoryId: null,
+        workspacePoolId: "workspace-pool-1",
+        workspaceSlotId: "workspace-slot-1",
+      }).event.data,
+    ).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "workspace-pool-1",
+      workspaceSlotId: "workspace-slot-1",
+    });
   });
 
   it("rejects ambiguous identifiers, timestamps, states, and retry bounds", () => {
     for (const key of ["sessionId", "repositoryId"] as const) {
       expect(() => createWebhookDelivery({ ...input, [key]: " " })).toThrow(`${key} must`);
     }
+    expect(() => createWebhookDelivery({ ...input, workspacePoolId: " " })).toThrow(
+      "workspacePoolId must",
+    );
+    expect(() =>
+      createWebhookDelivery({
+        ...input,
+        repositoryId: null,
+        workspacePoolId: "workspace-pool-1",
+        workspaceSlotId: " ",
+      }),
+    ).toThrow("workspaceSlotId must");
+    expect(() => createWebhookDelivery({ ...input, repositoryId: null })).toThrow(
+      "requires repositoryId or workspacePoolId",
+    );
+    expect(() => createWebhookDelivery({ ...input, workspacePoolId: "workspace-pool-1" })).toThrow(
+      "cannot have both repositoryId and workspacePoolId",
+    );
+    expect(() =>
+      createWebhookDelivery({
+        ...input,
+        repositoryId: null,
+        workspaceSlotId: "workspace-slot-1",
+      }),
+    ).toThrow("workspaceSlotId requires workspacePoolId");
     expect(() => createWebhookDelivery({ ...input, attemptId: " " })).toThrow("attemptId must");
     expect(() =>
       createWebhookDelivery({
@@ -94,6 +133,7 @@ describe("webhook outbox contract", () => {
     for (const maxAttempts of [0, MAX_WEBHOOK_ATTEMPTS + 1, 1.5]) {
       expect(() => createWebhookDelivery({ ...input, maxAttempts })).toThrow("maxAttempts");
     }
+    expect(createWebhookDelivery({ ...input, maxAttempts: 1 }).maxAttempts).toBe(1);
   });
 
   it("validates canonical queue timestamps and bounded query sizes", () => {

@@ -26,6 +26,10 @@ export type SessionRunResult = {
   /** Settles a retained first-fetch-failure hook before its worktree claim releases. */
   settleDeferredTerminalHook?: (runHook: boolean) => Promise<SessionResult | undefined>;
   logs: SessionLogChunk[];
+  /** Local cleanup/quarantine state; the daemon forwards the terminal failure normally. */
+  workspaceSlotError?: string;
+  /** Echoed in the terminal frame so the control plane can release/quarantine this slot atomically. */
+  workspaceSlotId?: string;
 };
 
 type SessionOutcome = {

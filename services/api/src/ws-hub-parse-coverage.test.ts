@@ -74,6 +74,13 @@ describe("parseHostMessage exhaustive wire validation", () => {
       }),
     ).toMatchObject({ type: "session:command-start" });
     expect(parseHostMessage(status)).toEqual(status);
+    expect(
+      parseHostMessage({
+        ...status,
+        workspaceSlotId: "slot-1",
+        workspaceSlotError: "cleanup failed",
+      }),
+    ).toMatchObject({ workspaceSlotId: "slot-1", workspaceSlotError: "cleanup failed" });
     const resultStatus = {
       ...status,
       result: { summary: "done", summarySource: "agent", filesChanged: ["README.md"] },
@@ -250,6 +257,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...status, errorCode: "x".repeat(129) },
       { ...status, errorMessage: 1 },
       { ...status, errorMessage: "x".repeat(4_097) },
+      { ...status, workspaceSlotError: 1 },
+      { ...status, workspaceSlotError: "x".repeat(4_097) },
       { ...status, cliResumeRef: "bad\0ref" },
       { ...log, sessionId: "" },
       { ...log, attemptId: "" },

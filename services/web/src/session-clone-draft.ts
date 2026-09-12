@@ -10,10 +10,13 @@ export type SessionCloneSource = {
   priority?: number | null;
   requiredLabels?: string[] | null;
   ref?: string | null;
+  workspacePoolId?: string | null;
+  setupProfileId?: string | null;
+  destroyWorkspaceAfter?: boolean | null;
 };
 
 export type SessionCloneDraft = {
-  repositoryId: string;
+  repositoryId: string | null;
   prompt: string;
   target: SessionTargetSelection;
   fallbacks: SessionTargetSelection[];
@@ -22,6 +25,9 @@ export type SessionCloneDraft = {
   priority: number;
   requiredLabels: string[];
   ref?: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
 };
 
 export function cloneSourceId(value: string | string[] | undefined): string | null {
@@ -31,11 +37,16 @@ export function cloneSourceId(value: string | string[] | undefined): string | nu
 /** Copy only fields accepted by a fresh create; runtime, concurrency, resume, and metadata stay out. */
 export function sessionCloneDraft(source: SessionCloneSource): SessionCloneDraft | null {
   const target = targetSelection(source.target);
-  if (typeof source.repositoryId !== "string" || typeof source.prompt !== "string" || !target) {
+  const workspace = typeof source.workspacePoolId === "string" && source.workspacePoolId.length > 0;
+  if (
+    (typeof source.repositoryId !== "string" && !workspace) ||
+    typeof source.prompt !== "string" ||
+    !target
+  ) {
     return null;
   }
   return {
-    repositoryId: source.repositoryId,
+    repositoryId: workspace ? null : source.repositoryId!,
     prompt: source.prompt,
     target,
     fallbacks: (source.fallbacks ?? [])
@@ -45,7 +56,14 @@ export function sessionCloneDraft(source: SessionCloneSource): SessionCloneDraft
     timeout: source.timeout ?? 600,
     priority: source.priority ?? 0,
     requiredLabels: [...(source.requiredLabels ?? [])],
-    ...(source.ref ? { ref: source.ref } : {}),
+    ...(!workspace && source.ref ? { ref: source.ref } : {}),
+    ...(workspace ? { workspacePoolId: source.workspacePoolId! } : {}),
+    ...(workspace && source.setupProfileId ? { setupProfileId: source.setupProfileId } : {}),
+    ...(workspace &&
+    source.destroyWorkspaceAfter !== null &&
+    source.destroyWorkspaceAfter !== undefined
+      ? { destroyWorkspaceAfter: source.destroyWorkspaceAfter }
+      : {}),
   };
 }
 

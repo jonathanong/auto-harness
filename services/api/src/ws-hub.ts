@@ -21,6 +21,7 @@ import {
   type HostToServerMessage,
   type HostWireMessage,
   type ProviderAccountReadiness,
+  type WorkspacePoolAttachment,
 } from "@auto-harness/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -48,6 +49,39 @@ function isUuid(candidate: unknown): candidate is string {
     typeof candidate === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
   );
+}
+
+function isWorkspacePoolSnapshot(value: unknown): value is WorkspacePoolAttachment[] {
+  if (!Array.isArray(value) || value.length > 1_000) return false;
+  const poolIds = new Set<string>();
+  const slotIds = new Set<string>();
+  for (const pool of value) {
+    if (!pool || typeof pool !== "object" || Array.isArray(pool)) return false;
+    const candidate = pool as Record<string, unknown>;
+    if (
+      !boundedText(candidate.workspacePoolId) ||
+      poolIds.has(candidate.workspacePoolId) ||
+      !Array.isArray(candidate.slots) ||
+      candidate.slots.length > 1_000
+    ) {
+      return false;
+    }
+    poolIds.add(candidate.workspacePoolId);
+    for (const slot of candidate.slots) {
+      if (!slot || typeof slot !== "object" || Array.isArray(slot)) return false;
+      const entry = slot as Record<string, unknown>;
+      if (
+        !boundedText(entry.id) ||
+        slotIds.has(entry.id) ||
+        !boundedText(entry.name) ||
+        !boundedText(entry.path, 4_096)
+      ) {
+        return false;
+      }
+      slotIds.add(entry.id);
+    }
+  }
+  return true;
 }
 
 export type WsHub = {
@@ -482,6 +516,8 @@ export function parseHostMessage(
             worktree.labels.every((label) => boundedText(label, 128))
           );
         }) ||
+        (message.workspacePools !== undefined &&
+          !isWorkspacePoolSnapshot(message.workspacePools)) ||
         (message.capabilities !== undefined &&
           parseHostCapabilitiesAdvertisement(message.capabilities) === null) ||
         (message.maxConcurrentAssignments !== undefined &&
@@ -578,6 +614,7 @@ export function parseHostMessage(
         validExitCode &&
         optionalText(message.errorCode, 128) &&
         optionalText(message.errorMessage, 4_096) &&
+        optionalText(message.workspaceSlotError, 4_096) &&
         (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef)) &&
         (message.result === undefined ||
           (isTerminalSessionStatus(message.status) &&

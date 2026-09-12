@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
 import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
@@ -71,6 +71,61 @@ describe("catalog persistence conflict coverage", () => {
       conflict: true,
     });
     expect(plane.getProviderAccount("account")).toEqual(winner);
+  });
+
+  it("rejects a durable account deletion that has a live inventory reference", async () => {
+    const deleteProviderAccount = vi.fn(async () => true);
+    const plane = providerPlane({
+      getProviderAccount: async () => account(),
+      listHostInventories: async () => [
+        {
+          hostId: "host",
+          repositories: [],
+          providerAccounts: [{ providerAccountId: "account" }],
+        },
+      ],
+      deleteProviderAccount,
+    });
+
+    await expect(plane.deleteProviderAccountDurable("account")).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("referenced by host-inventory host"),
+    });
+    expect(deleteProviderAccount).not.toHaveBeenCalled();
+  });
+
+  it("reports a conditional delete loss when the authoritative row has disappeared", async () => {
+    const stale = account("stale");
+    let reads = 0;
+    const plane = providerPlane({
+      getProviderAccount: async () => (++reads === 1 ? stale : null),
+      deleteProviderAccount: async () => false,
+    });
+
+    await expect(plane.deleteProviderAccountDurable("account")).resolves.toEqual({
+      ok: false,
+      error: "provider account changed concurrently",
+      conflict: true,
+    });
+  });
+
+  it("stops before deleting when a concurrent refresh evicts the cached account", async () => {
+    const deleteProviderAccount = vi.fn(async () => true);
+    const plane = providerPlane({
+      getProviderAccount: async () => account(),
+      acquireDeletionMarker: async () => {
+        plane.state.providerAccounts.delete("account");
+        return true;
+      },
+      releaseDeletionMarker: async () => {},
+      deleteProviderAccount,
+    });
+
+    await expect(plane.deleteProviderAccountDurable("account")).resolves.toEqual({
+      ok: false,
+      error: "provider account not found",
+    });
+    expect(deleteProviderAccount).not.toHaveBeenCalled();
   });
 
   it("reconciles failed queued account updates to an authoritative row or deletion", async () => {

@@ -1750,4 +1750,42 @@ describe("provider account execution-profile leases", () => {
       hostId: "",
     });
   });
+
+  it("reports a replacement durable lease whose session has disappeared", async () => {
+    const state = createControlPlaneState();
+    const account = { id: "acct", providerId: "provider", label: "acct" };
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      sessionId: "old",
+      attemptId: "attempt",
+    };
+    const session = {
+      id: "old",
+      repositoryId: "repo",
+      status: "cancelled",
+      attemptId: "attempt",
+      providerAccountLease: {
+        concurrencyId: lease.concurrencyId,
+        providerAccountId: lease.providerAccountId,
+        slot: lease.slot,
+        attemptId: lease.attemptId,
+      },
+    } as never;
+    state.storage = {
+      getProviderAccount: async () => account,
+      getProviderAccountLeaseLock: vi
+        .fn()
+        .mockResolvedValueOnce(lease)
+        .mockResolvedValueOnce({ ...lease, sessionId: "replacement" }),
+      getSession: vi.fn().mockResolvedValueOnce(session).mockResolvedValueOnce(undefined),
+      forceReleaseProviderAccountLease: async () => true,
+    } as never;
+
+    await expect(forceReleaseProviderAccountLease(state, "acct", 0)).resolves.toMatchObject({
+      ok: true,
+      result: { released: true, after: { holder: { releaseBlock: "session_not_found" } } },
+    });
+  });
 });

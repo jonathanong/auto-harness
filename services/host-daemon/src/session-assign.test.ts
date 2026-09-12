@@ -66,4 +66,31 @@ describe("sessionAssignFromWire", () => {
       worktreeId: null,
     });
   });
+
+  it("preserves workspace-only assignment fields without accepting a script payload", () => {
+    const assign = sessionAssignFromWire({
+      type: "session:assign",
+      sessionId: "workspace",
+      sessionType: "workspace",
+      attemptId: "attempt-1",
+      repositoryId: null,
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      setupProfileId: "setup",
+      destroyWorkspaceAfter: true,
+      prompt: "run",
+      resolvedArgv: ["echo", "workspace"],
+      timeout: 10,
+      worktreeId: null,
+      assignedAt: "now",
+    });
+
+    expect(assign).toMatchObject({
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      setupProfileId: "setup",
+      destroyWorkspaceAfter: true,
+    });
+    expect(assign).not.toHaveProperty("setupScript");
+  });
 });

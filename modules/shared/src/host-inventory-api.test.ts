@@ -45,6 +45,12 @@ describe("getInventory / putInventory", () => {
             manifestUrl: "https://updates.example.test/manifest.json",
             publicKey: "key",
           },
+          workspacePools: [
+            {
+              workspacePoolId: "pool-1",
+              slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+            },
+          ],
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
         }),
@@ -57,6 +63,9 @@ describe("getInventory / putInventory", () => {
       expect(inv.allowedRoots).toEqual(["/opt/harness"]);
       expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.updateConfig).toMatchObject({ enabled: true });
+      expect(inv.workspacePools).toEqual([
+        { workspacePoolId: "pool-1", slots: [{ id: "slot-1", name: "one", path: "/srv/one" }] },
+      ]);
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
@@ -97,6 +106,12 @@ describe("getInventory / putInventory", () => {
           manifestUrl: "https://updates.example.test/manifest.json",
           publicKey: "key",
         },
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+          },
+        ],
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -111,6 +126,12 @@ describe("getInventory / putInventory", () => {
           manifestUrl: "https://updates.example.test/manifest.json",
           publicKey: "key",
         },
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "one", path: "/srv/one" }],
+          },
+        ],
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],

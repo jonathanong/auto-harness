@@ -22,6 +22,7 @@ describe("DynamoDB Slack integration storage", () => {
         onScheduleCompleted: false,
       },
       signingSecretConfigured: false,
+      installationId: "installation-1",
       version: 1,
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
@@ -29,8 +30,17 @@ describe("DynamoDB Slack integration storage", () => {
     expect(await ctx.storage.putSlackIntegration(record, null)).toBe(true);
     expect(await ctx.storage.putSlackIntegration(record, null)).toBe(false);
     expect((await ctx.storage.getSlackIntegration())?.encryptedConfig).toBe("ciphertext-only");
-    expect(await ctx.storage.putSlackIntegration({ ...record, version: 2 }, 1)).toBe(true);
+    expect(
+      await ctx.storage.putSlackIntegration({ ...record, version: 2 }, 1, "installation-1"),
+    ).toBe(true);
     expect(await ctx.storage.deleteSlackIntegration(1)).toBe(false);
     expect(await ctx.storage.deleteSlackIntegration(2)).toBe(true);
+
+    const recreated = { ...record, installationId: "installation-2" };
+    expect(await ctx.storage.putSlackIntegration(recreated, null)).toBe(true);
+    expect(
+      await ctx.storage.putSlackIntegration({ ...recreated, version: 2 }, 1, "installation-1"),
+    ).toBe(false);
+    expect(await ctx.storage.deleteSlackIntegration(1)).toBe(true);
   });
 });

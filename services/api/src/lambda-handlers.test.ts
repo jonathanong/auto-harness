@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
 import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
-import { SSMClient } from "@aws-sdk/client-ssm";
+import { ParameterNotFound, SSMClient } from "@aws-sdk/client-ssm";
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +11,7 @@ import {
   fetchPublicBaseUrl,
   lambdaHydrateCatalogsEnabled,
   loadBootstrapSecrets,
+  loadSlackAppCredentials,
   type LambdaRuntime,
 } from "./lambda-handlers.ts";
 import { resetApiSentryForTests, type SentryClient } from "./sentry.ts";
@@ -1816,6 +1817,47 @@ describe("Lambda runtime adapters", () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 
+  it("retries after a Slack SSM access failure instead of treating it as optional absence", async () => {
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      const failure = Object.assign(new Error("KMS decryption denied"), {
+        name: "AccessDeniedException",
+      });
+      const ssm = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce({ Parameter: {} });
+      const create = vi.fn(async () => {
+        await loadSlackAppCredentials({ send: ssm } as never);
+        return {
+          cron: vi.fn(async () => ({
+            ackDeadlinesEnforced: 0,
+            archivesRetried: 0,
+            cancelsRedelivered: 0,
+            queuedAssigned: 0,
+            repositoriesReconciled: 0,
+            runningTimeoutsEnforced: 0,
+            scheduledAssigned: 0,
+            schedulesFired: 0,
+            sessionDrainsReconciled: 0,
+            staleHostsReclaimed: 0,
+          })),
+          rest: vi.fn(async () => ({ statusCode: 204 })),
+          websocket: vi.fn(async () => ({ statusCode: 200 })),
+        };
+      });
+      const handlers = createLambdaHandlers(create);
+
+      await expect(handlers.rest({})).resolves.toMatchObject({ statusCode: 500 });
+      await expect(handlers.rest({})).resolves.toEqual({ statusCode: 204 });
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(ssm).toHaveBeenCalledTimes(2);
+    } finally {
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+      error.mockRestore();
+    }
+  });
+
   it("returns a structured REST 500 when cold-start construction throws", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const handlers = createLambdaHandlers(async () => {
@@ -2232,6 +2274,31 @@ describe("Lambda runtime adapters", () => {
     }
   });
 
+  it("wires explicit Slack app and identity clients into an existing Lambda plane", async () => {
+    const fixture = runtimeFixture();
+    const slackOAuthClient = {
+      exchangeCode: vi.fn(),
+      revokeBotToken: vi.fn(),
+    } as never;
+    const slackIdentityClient = { authTestBotToken: vi.fn() } as never;
+    await createLambdaRuntime({
+      auth: fixture.auth as never,
+      created: { plane: fixture.plane, storage: fixture.storage } as never,
+      management: fixture.management,
+      slackAppCredentials: {
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        signingSecret: "signing-secret",
+      },
+      slackOAuthClient,
+      slackIdentityClient,
+    });
+
+    expect(fixture.plane.state.slackOAuthClient).toBe(slackOAuthClient);
+    expect(fixture.plane.state.slackIdentityClient).toBe(slackIdentityClient);
+    expect(fixture.plane.state.slackInboundEnabled).toBe(true);
+  });
+
   it("logs when enqueueing an assignment sweep fails", async () => {
     const fixture = runtimeFixture();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -2413,6 +2480,90 @@ function withPublicBaseUrlParamEnv<T>(value: string | undefined, run: () => T): 
     else process.env.PUBLIC_BASE_URL_SSM_PARAM = previous;
   }
 }
+
+describe("loadSlackAppCredentials", () => {
+  it("uses local JSON before optional SSM and treats missing/malformed values as unavailable", async () => {
+    const previousLocal = process.env.HARNESS_SLACK_APP;
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    try {
+      process.env.HARNESS_SLACK_APP = JSON.stringify({
+        clientId: "local",
+        clientSecret: "secret",
+        signingSecret: "slack-signing_secret-123",
+      });
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      const client = { send: vi.fn() };
+      await expect(loadSlackAppCredentials(client as never)).resolves.toMatchObject({
+        clientId: "local",
+      });
+      expect(client.send).not.toHaveBeenCalled();
+      delete process.env.HARNESS_SLACK_APP;
+      const ssm = {
+        send: vi.fn(async () => ({
+          Parameter: {
+            Value: JSON.stringify({
+              clientId: "ssm",
+              clientSecret: "secret",
+              signingSecret: "slack-signing_secret-123",
+            }),
+          },
+        })),
+      };
+      await expect(loadSlackAppCredentials(ssm as never)).resolves.toMatchObject({
+        clientId: "ssm",
+      });
+      await expect(
+        loadSlackAppCredentials({ send: async () => ({ Parameter: {} }) } as never),
+      ).resolves.toBeUndefined();
+      await expect(
+        loadSlackAppCredentials({
+          send: async () => ({ Parameter: { Value: "not JSON" } }),
+        } as never),
+      ).resolves.toBeUndefined();
+      delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      await expect(loadSlackAppCredentials(client as never)).resolves.toBeUndefined();
+    } finally {
+      if (previousLocal === undefined) delete process.env.HARNESS_SLACK_APP;
+      else process.env.HARNESS_SLACK_APP = previousLocal;
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+    }
+  });
+
+  it("treats the AWS SSM ParameterNotFound exception as optional absence", async () => {
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    try {
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      const absent = new ParameterNotFound({ message: "optional Slack app is not provisioned" });
+      await expect(
+        loadSlackAppCredentials({ send: async () => Promise.reject(absent) } as never),
+      ).resolves.toBeUndefined();
+    } finally {
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+    }
+  });
+
+  it("rejects SSM, KMS, access, and lookalike errors so the Lambda handler retries construction", async () => {
+    const previousParam = process.env.HARNESS_SLACK_APP_SSM_PARAM;
+    try {
+      process.env.HARNESS_SLACK_APP_SSM_PARAM = "/slack/app";
+      const failures = [
+        new Error("SSM temporarily unavailable"),
+        Object.assign(new Error("KMS decryption denied"), { name: "AccessDeniedException" }),
+        Object.assign(new Error("not an AWS SDK exception"), { name: "ParameterNotFound" }),
+      ];
+      for (const failure of failures) {
+        await expect(
+          loadSlackAppCredentials({ send: async () => Promise.reject(failure) } as never),
+        ).rejects.toBe(failure);
+      }
+    } finally {
+      if (previousParam === undefined) delete process.env.HARNESS_SLACK_APP_SSM_PARAM;
+      else process.env.HARNESS_SLACK_APP_SSM_PARAM = previousParam;
+    }
+  });
+});
 
 describe("fetchPublicBaseUrl", () => {
   it("fetches the published URL by name, without decryption", async () => {

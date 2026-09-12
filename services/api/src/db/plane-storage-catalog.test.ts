@@ -90,6 +90,7 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
       repositories: "Repositories",
       sessionDrains: "SessionDrains",
       users: "Users",
+      workspacePools: "WorkspacePools",
     } as never,
   };
 }
@@ -350,6 +351,56 @@ describe("durable schedule creation", () => {
       }),
     ).resolves.toEqual({ kind: "legacy_fallbacks", fallbackCount: 91 });
     expect(calls).toBe(0);
+  });
+
+  it("fences a workspace schedule claim with its workspace pool marker", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "workspace-schedule",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "workspace-session",
+          repositoryId: "",
+          workspacePoolId: "workspace-pool",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetDisplayNames: ["command"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+        },
+      }),
+    ).resolves.toEqual({ kind: "created" });
+    expect(input?.TransactItems).toEqual(
+      expect.arrayContaining([
+        {
+          ConditionCheck: expect.objectContaining({
+            TableName: "WorkspacePools",
+            Key: { id: "workspace-pool" },
+          }),
+        },
+        {
+          ConditionCheck: expect.objectContaining({
+            TableName: "Locks",
+            Key: { concurrencyId: "catalog-delete:workspace-pool:workspace-pool" },
+          }),
+        },
+      ]),
+    );
   });
 
   it("audits and disables a legacy fallback-heavy schedule atomically", async () => {
@@ -1121,10 +1172,29 @@ describe("durable schedule management updates", () => {
     ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });
   });
 
+  it("writes workspace schedule fields when they are configured", async () => {
+    const storage = scheduleCtx(async (command) => {
+      if (command instanceof UpdateCommand) return { Attributes: schedule() };
+      return { Item: schedule() };
+    });
+    await expect(
+      updateScheduleManagement(
+        storage,
+        {
+          ...schedule(),
+          workspacePoolId: "pool",
+          setupProfileId: "setup",
+          destroyWorkspaceAfter: true,
+        },
+        "stale-next",
+      ),
+    ).resolves.toMatchObject({ id: "schedule-1" });
+  });
+
   it("removes an omitted ref and reports a concurrently deleted schedule", async () => {
     const storage = scheduleCtx(async (command) => {
       expect((command as UpdateCommand).input.UpdateExpression).toContain(
-        "REMOVE targetLabels, #ref, concurrencyId",
+        "#ref, concurrencyId, principalId, prompt",
       );
       throw { name: "ConditionalCheckFailedException" };
     });

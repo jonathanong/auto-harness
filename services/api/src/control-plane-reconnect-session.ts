@@ -9,6 +9,8 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     assignmentSentAt: ______,
     startedAt: ____,
     mainCheckoutLease: _____,
+    workspaceSlotId: _workspaceSlotId,
+    workspaceSlotLease: _workspaceSlotLease,
     providerAccountLease: _______,
     activeHostId: ________,
     activeHostOrder: _________,
@@ -21,6 +23,7 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     status: "queued",
     hostId: null,
     worktreeId: null,
+    workspaceSlotId: null,
     errorMessage: reason,
   };
 }

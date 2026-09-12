@@ -22,6 +22,7 @@ const catalogOk = {
   "/api/v1/providers": { items: [] },
   "/api/v1/provider-accounts": { items: [] },
   "/api/v1/commands": { items: [] },
+  "/api/v1/workspace-pools": { items: [] },
 };
 
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;
@@ -277,5 +278,33 @@ describe("host detail route", () => {
     );
     expect(html).toContain('data-pw="page-host-detail"');
     expect(html).toContain('data-pw="host-detail-overview"');
+  });
+
+  it("maps populated provider catalogs into the attached-account workspace", async () => {
+    stubApi({
+      ...catalogOk,
+      "/api/v1/hosts/host-a/inventory": {
+        repositories: [],
+        providerAccounts: [{ providerAccountId: "account-1", commandId: "command-1" }],
+      },
+      "/api/v1/providers": { items: [{ id: "provider-1", name: "Claude" }] },
+      "/api/v1/provider-accounts": {
+        items: [{ id: "account-1", providerId: "provider-1", label: "Team account" }],
+      },
+      "/api/v1/commands": {
+        items: [{ id: "command-1", providerId: "provider-1", name: "Review" }],
+      },
+    });
+
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "provider-accounts" }),
+      }),
+    );
+
+    expect(html).toContain('data-pw="host-provider-account-row-account-1"');
+    expect(html).toContain("Claude — Team account");
+    expect(html).toContain("Review");
   });
 });

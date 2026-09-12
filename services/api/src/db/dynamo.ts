@@ -18,6 +18,8 @@ export type DynamoTableNames = {
   sessions: string;
   sessionDrains: string;
   worktrees: string;
+  workspacePools: string;
+  workspaceSlots: string;
   connections: string;
   sessionLogs: string;
   schedules: string;
@@ -38,6 +40,8 @@ export type DynamoTableNames = {
   notificationDeliveries: string;
   webhookDeliveries: string;
   sessionCancelRedeliveries: string;
+  slackOAuthStates: string;
+  slackInboundEvents: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -47,6 +51,8 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     sessions: `${p}-Sessions`,
     sessionDrains: `${p}-SessionDrains`,
     worktrees: `${p}-Worktrees`,
+    workspacePools: `${p}-WorkspacePools`,
+    workspaceSlots: `${p}-WorkspaceSlots`,
     connections: `${p}-Connections`,
     sessionLogs: `${p}-SessionLogs`,
     schedules: `${p}-Schedules`,
@@ -67,6 +73,8 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     notificationDeliveries: `${p}-NotificationDeliveries`,
     webhookDeliveries: `${p}-WebhookDeliveries`,
     sessionCancelRedeliveries: `${p}-SessionCancelRedeliveries`,
+    slackOAuthStates: `${p}-SlackOAuthStates`,
+    slackInboundEvents: `${p}-SlackInboundEvents`,
   };
 }
 

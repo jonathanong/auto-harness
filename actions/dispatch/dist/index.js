@@ -116,7 +116,11 @@ async function resolveTargetSpecs(client2, input2) {
   return { ...resolved, fallbacks };
 }
 async function resolveCreateSessionTargets(client2, input2) {
+  if (Object.hasOwn(input2, "setupScript")) {
+    throw new TypeError("setupScript is not accepted; use setupProfileId");
+  }
   const withTargets = await resolveTargetSpecs(client2, input2);
+  if (input2.repositoryId === null) return withTargets;
   const repositoryId = await resolveRepositoryId(
     client2,
     input2.repositoryId !== void 0 ? input2.repositoryId : { repositoryName: input2.repositoryName }

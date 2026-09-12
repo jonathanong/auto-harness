@@ -1,4 +1,4 @@
-import type { SlackConfigInput } from "./control-plane-slack.ts";
+import type { SlackConfigInput, SlackSettingsPatch } from "./control-plane-slack.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 
@@ -22,19 +22,30 @@ export async function handleSlackIntegrationRoutes(ctx: RouteCtx): Promise<boole
     }
     return true;
   }
-  if (ctx.method !== "POST" && ctx.method !== "PUT" && ctx.method !== "DELETE") return false;
+  if (
+    ctx.method !== "POST" &&
+    ctx.method !== "PUT" &&
+    ctx.method !== "PATCH" &&
+    ctx.method !== "DELETE"
+  )
+    return false;
 
   const action =
     ctx.method === "POST"
       ? "integration:slack:create"
       : ctx.method === "PUT"
         ? "integration:slack:update"
-        : "integration:slack:delete";
+        : ctx.method === "PATCH"
+          ? "integration:slack:patch"
+          : "integration:slack:delete";
   if (ctx.method === "DELETE") return deleteIntegration(ctx, action);
 
-  let input: SlackConfigInput;
+  let input: SlackConfigInput | SlackSettingsPatch;
   try {
-    input = parseSlackConfig(await readJson(ctx.req));
+    input =
+      ctx.method === "PATCH"
+        ? parseSlackPatch(await readJson(ctx.req))
+        : parseSlackConfig(await readJson(ctx.req));
   } catch (error) {
     if (!(await audit(ctx, action, "failed"))) return true;
     send(ctx.res, 400, {
@@ -48,8 +59,10 @@ export async function handleSlackIntegrationRoutes(ctx: RouteCtx): Promise<boole
   try {
     const result =
       ctx.method === "POST"
-        ? await ctx.plane.createSlackIntegrationDurable(input)
-        : await ctx.plane.updateSlackIntegrationDurable(input);
+        ? await ctx.plane.createSlackIntegrationDurable(input as SlackConfigInput)
+        : ctx.method === "PUT"
+          ? await ctx.plane.updateSlackIntegrationDurable(input as SlackConfigInput)
+          : await ctx.plane.patchSlackIntegrationDurable(input as SlackSettingsPatch);
     if (!result.ok) {
       if (!(await audit(ctx, action, "failed"))) return true;
       if (result.unavailable) return respondInternal(ctx);
@@ -73,6 +86,38 @@ export async function handleSlackIntegrationRoutes(ctx: RouteCtx): Promise<boole
     respondInternal(ctx);
   }
   return true;
+}
+
+function parseSlackPatch(value: unknown): SlackSettingsPatch {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Slack settings must be an object");
+  const body = value as Record<string, unknown>;
+  const allowed = new Set(["defaultChannel", "enabled", "expectedVersion", "notifications"]);
+  if (Object.keys(body).length === 0 || Object.keys(body).some((key) => !allowed.has(key))) {
+    throw new Error("Slack settings contain an unsupported field");
+  }
+  if (body.defaultChannel !== undefined && typeof body.defaultChannel !== "string")
+    throw new Error("defaultChannel must be a string");
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean")
+    throw new Error("enabled must be a boolean");
+  if (!Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 1)
+    throw new Error("expectedVersion must be a positive integer");
+  if (
+    body.notifications !== undefined &&
+    (!body.notifications ||
+      typeof body.notifications !== "object" ||
+      Array.isArray(body.notifications))
+  ) {
+    throw new Error("notifications must be an object");
+  }
+  const patch: SlackSettingsPatch = { expectedVersion: body.expectedVersion as number };
+  if (body.defaultChannel !== undefined) patch.defaultChannel = body.defaultChannel as string;
+  if (body.enabled !== undefined) patch.enabled = body.enabled as boolean;
+  if (body.notifications !== undefined)
+    patch.notifications = body.notifications as Partial<
+      import("@auto-harness/shared").SlackNotifications
+    >;
+  return patch;
 }
 
 async function deleteIntegration(ctx: RouteCtx, action: string): Promise<boolean> {

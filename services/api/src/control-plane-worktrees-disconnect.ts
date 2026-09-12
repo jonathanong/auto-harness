@@ -14,6 +14,7 @@ import {
   HOST_LOSS_TERMINAL_REASON,
   queueHostLossRetry,
 } from "./control-plane-infrastructure-retry.ts";
+import { removeReleasedRetiredWorkspaceSlotDurable } from "./control-plane-workspace-slot-retirement.ts";
 
 export async function offlineHostAndRequeueDurableImpl(
   state: ControlPlaneState,
@@ -231,5 +232,105 @@ export async function offlineHostAndRequeueDurableImpl(
     }
   }
   await disconnectScheduledMainCheckouts(state, hostId, connectionId, reason, requeued);
+  if (
+    typeof state.storage.listWorkspaceSlotsByHost !== "function" ||
+    typeof state.storage.getWorkspaceSlot !== "function" ||
+    typeof state.storage.putWorkspaceSlot !== "function"
+  ) {
+    return requeued;
+  }
+  for (const slot of await state.storage.listWorkspaceSlotsByHost(hostId)) {
+    if (slot.connectionId && slot.connectionId !== connectionId) continue;
+    const session = slot.currentSessionId
+      ? await state.storage.getSession(slot.currentSessionId)
+      : null;
+    if (
+      (session?.status === "running" || session?.status === "cancelled") &&
+      session.ackReceivedAt &&
+      typeof state.storage.markWorkspaceReconnectPending === "function"
+    ) {
+      const nextSession = {
+        ...session,
+        reconnectDeadlineAt: new Date(
+          Date.parse(state.now()) + state.reconnectGraceMs,
+        ).toISOString(),
+        assignmentConnectionId: connectionId,
+      };
+      const marked = await state.storage.markWorkspaceReconnectPending({
+        sessionId: session.id,
+        hostId,
+        workspaceSlotId: slot.id,
+        deadlineAt: nextSession.reconnectDeadlineAt,
+        connectionId,
+        expectedStatus: session.status,
+      });
+      if (marked) {
+        state.sessions.set(session.id, nextSession);
+        state.workspaceSlots.set(slot.id, { ...slot, online: false });
+        continue;
+      }
+      const latestSession = await state.storage.getSession(session.id);
+      const latestSlot = await state.storage.getWorkspaceSlot(slot.id);
+      if (latestSession) state.sessions.set(latestSession.id, latestSession);
+      if (latestSlot) state.workspaceSlots.set(latestSlot.id, latestSlot);
+      continue;
+    }
+    if (
+      session &&
+      (session.status === "running" ||
+        session.status === "cancelled" ||
+        session.status === "timed_out")
+    ) {
+      const timedOut = session.status === "timed_out";
+      const released = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: null,
+        workspaceSlotId: slot.id,
+        attemptId: session.attemptId!,
+        status: timedOut ? "timed_out" : session.status === "running" ? "queued" : "cancelled",
+        expectedStatus: session.status,
+        queueShard: session.queueShard,
+        ...(session.status === "running" ? { errorMessage: reason } : {}),
+        fence: { hostId, connectionId },
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
+      });
+      if (!released) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      const next = {
+        ...session,
+        status: session.status === "running" ? ("queued" as const) : session.status,
+        workspaceSlotId: null,
+        hostId: null,
+        ...(session.status === "running" ? { errorMessage: reason } : {}),
+      };
+      delete next.workspaceSlotLease;
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      state.sessions.set(session.id, next);
+      state.pendingAcks.delete(session.id);
+      if (session.status === "running") requeued.push(session.id);
+      if (await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id)) continue;
+    }
+    const current = (await state.storage.getWorkspaceSlot(slot.id)) ?? slot;
+    const offline = { ...current, online: false };
+    if (typeof state.storage.putWorkspaceSlotFenced === "function") {
+      const expectedConnectionId = slot.connectionId ? connectionId : undefined;
+      if (
+        !(await state.storage.putWorkspaceSlotFenced(offline, connectionId, expectedConnectionId))
+      ) {
+        continue;
+      }
+    } else {
+      await state.storage.putWorkspaceSlot(offline);
+    }
+    state.workspaceSlots.set(slot.id, offline);
+  }
   return requeued;
 }

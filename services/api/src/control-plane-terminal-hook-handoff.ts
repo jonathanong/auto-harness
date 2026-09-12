@@ -1,10 +1,27 @@
+/* eslint-disable max-lines -- handoff delivery, settlement, and expiry share one lifecycle boundary. */
 import { TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION, type HostWireMessage } from "@auto-harness/shared";
 
 import { queueSessionArchive } from "./control-plane-archive.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import type { ArchiveMetadata } from "./db/plane-storage-types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
+
+function pendingArchiveIntent(state: ControlPlaneState, sessionId: string): ArchiveMetadata {
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  const updatedAt = state.now();
+  return {
+    key,
+    contentType: "application/x-ndjson",
+    bodyBytes: 0,
+    status: "pending",
+    objectStored: false,
+    updatedAt,
+    retryState: "pending",
+    retryOrder: `${updatedAt}#${key}`,
+  };
+}
 
 /** Release a target reservation only after its exact handoff is terminally disposed. */
 function releaseReservedWorktree(
@@ -116,6 +133,7 @@ export async function settleTerminalHookHandoff(
       session.terminalHookHandoffSettled.hostId === input.hostId
     );
   }
+  const archive = pendingArchiveIntent(state, input.sessionId);
   const settled = state.storage
     ? input.connectionId !== undefined &&
       (await state.storage.settleTerminalHookHandoff({
@@ -124,6 +142,7 @@ export async function settleTerminalHookHandoff(
         hostId: input.hostId,
         connectionId: input.connectionId,
         worktreeId: handoff.worktreeId,
+        archive,
         ...(handoff.mainCheckoutLease ? { mainCheckoutRepositoryId: handoff.repositoryId } : {}),
         ...(input.result ? { result: input.result } : {}),
       }))
@@ -145,6 +164,7 @@ export async function settleTerminalHookHandoff(
   }
   next.terminalHookHandoffSettled = { handoffId: input.handoffId, hostId: input.hostId };
   state.sessions.set(next.id, next);
+  if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
   return true;
 }
@@ -159,6 +179,7 @@ export async function expireTerminalHookHandoffIfNeeded(
   const handoff = session.terminalHookHandoff;
   if (!handoff || Date.parse(handoff.expiresAt) > nowMs) return false;
   const connectionId = options.connectionId ?? state.hostConnection.get(handoff.hostId);
+  const archive = pendingArchiveIntent(state, session.id);
   const expired = state.storage
     ? await state.storage.expireTerminalHookHandoff({
         sessionId: session.id,
@@ -166,6 +187,7 @@ export async function expireTerminalHookHandoffIfNeeded(
         expiresAt: handoff.expiresAt,
         worktreeId: handoff.worktreeId,
         hostId: handoff.hostId,
+        archive,
         ...(handoff.mainCheckoutLease ? { mainCheckoutRepositoryId: handoff.repositoryId } : {}),
         ...(connectionId !== undefined ? { connectionId } : {}),
       })
@@ -185,6 +207,7 @@ export async function expireTerminalHookHandoffIfNeeded(
     delete next.ackReceivedAt;
   }
   state.sessions.set(next.id, next);
+  if (state.storage) state.archives.set(archive.key, archive);
   queueSessionArchive(state, next.id);
   return true;
 }

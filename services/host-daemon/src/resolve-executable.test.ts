@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { resolveTrustedExecutable } from "./resolve-executable.ts";
+import { resolveAssignedExecutable, resolveTrustedExecutable } from "./resolve-executable.ts";
 
 function stubBinary(dir: string, filename: string): void {
   // Mode 0o755: resolution requires POSIX candidates to actually be
@@ -229,5 +229,21 @@ describe("resolveTrustedExecutable", () => {
         process.chdir(originalCwd);
       }
     });
+  });
+});
+
+describe("resolveAssignedExecutable", () => {
+  it("resolves bare assigned commands through the trusted PATH", () => {
+    const binDir = mkdtempSync(join(tmpdir(), "auto-harness-resolve-assigned-bare-"));
+    stubBinary(binDir, "git");
+    expect(resolveAssignedExecutable("git", "/tmp/checkout", { PATH: binDir }, "linux")).toBe(
+      join(binDir, "git"),
+    );
+  });
+
+  it("resolves relative assigned commands against the checkout", () => {
+    expect(
+      resolveAssignedExecutable("./scripts/run.sh", "/tmp/checkout", { PATH: "" }, "linux"),
+    ).toBe("/tmp/checkout/scripts/run.sh");
   });
 });

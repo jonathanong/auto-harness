@@ -78,11 +78,13 @@ describe("rate limit policy", () => {
     const config = rateLimitConfigFromEnv({
       HARNESS_RATE_LIMIT_WINDOW_SECONDS: "5",
       HARNESS_RATE_LIMIT_READ: "7",
+      HARNESS_RATE_LIMIT_PUBLIC_INGRESS: "3",
       HARNESS_RATE_LIMIT_FAIL_MODE: "open",
       HARNESS_RATE_LIMIT_MODE: "disabled",
     });
     expect(config.windowSeconds).toBe(5);
     expect(config.limits.read).toBe(7);
+    expect(config.limits.publicIngress).toBe(3);
     expect(config.failMode).toBe("open");
     expect(config.enabled).toBe(false);
     expect(windowStartMs(5_999, 5)).toBe(5_000);

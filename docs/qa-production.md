@@ -552,10 +552,12 @@ aws ssm describe-parameters \
   --parameter-filters "Key=Name,Option=BeginsWith,Values=/auto-harness/$HARNESS_DEPLOY_ENVIRONMENT/"
 ```
 
-That should return nothing. The log groups captured above **will** still
-exist — purge never deletes them, whether they're RETAIN-policy CDK stack
-resources or pre-migration groups CDK never managed at all. Delete them by
-hand if you want the account fully clean:
+That should return no bootstrap or public-base-url parameters. If OAuth app
+credentials were configured, the optional `HARNESS_SLACK_APP_SSM_PARAM` remains
+by design because it may be shared across environments. The log groups captured
+above **will** still exist — purge never deletes them, whether they're
+RETAIN-policy CDK stack resources or pre-migration groups CDK never managed at
+all. Delete them by hand if you want the account fully clean:
 
 ```bash
 xargs -n1 aws logs delete-log-group --log-group-name \

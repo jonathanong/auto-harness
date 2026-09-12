@@ -287,6 +287,20 @@ describe("Slack durable outbox", () => {
     expect(store.items.get("root")?.nextAttemptAt).toBe("2026-08-12T10:00:07.000Z");
   });
 
+  it("ignores an invalid transport Retry-After delay", async () => {
+    const store = new MemoryStore();
+    await store.enqueue(record("root"));
+    const error = Object.assign(new Error("rate-limited"), { retryAfterMs: Number.NaN });
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn().mockRejectedValue(error) },
+        { now: () => now, leaseToken: () => "lease-invalid-retry-after", baseRetryMs: 2_000 },
+      ),
+    ).toBe("retried");
+    expect(store.items.get("root")?.nextAttemptAt).toBe("2026-08-12T10:00:02.000Z");
+  });
+
   it("lets a loopback transport deduplicate an ambiguous success", async () => {
     const store = new MemoryStore();
     store.loseComplete = true;

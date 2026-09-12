@@ -55,6 +55,51 @@ test("passes id-shaped target and fallbacks through with no catalog requests", a
   assert.deepEqual(calls, ["https://harness.test/api/v1/sessions"]);
 });
 
+test("sends workspace sessions with a null repository without resolving repositories", async () => {
+  const { client, calls } = makeClient({
+    "/api/v1/sessions": async (init) => {
+      assert.deepEqual(JSON.parse(init.body), {
+        repositoryId: null,
+        workspacePoolId: "pool-1",
+        setupProfileId: "profile-1",
+        destroyWorkspaceAfter: true,
+        type: "workspace",
+        prompt: "research",
+        target: { commandId: "cmd-1" },
+        timeout: 60,
+      });
+      return Response.json({ id: "session", created: true });
+    },
+  });
+  await client.createSession({
+    repositoryId: null,
+    workspacePoolId: "pool-1",
+    setupProfileId: "profile-1",
+    destroyWorkspaceAfter: true,
+    type: "workspace",
+    prompt: "research",
+    target: { commandId: "cmd-1" },
+    timeout: 60,
+  });
+  assert.deepEqual(calls, ["https://harness.test/api/v1/sessions"]);
+});
+
+test("rejects raw setup scripts before sending a session", async () => {
+  const { client, calls } = makeClient({});
+  await assert.rejects(
+    client.createSession({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      prompt: "research",
+      target: { commandId: "cmd-1" },
+      timeout: 60,
+      setupScript: "echo unsafe",
+    }),
+    { name: "TypeError", message: "setupScript is not accepted; use setupProfileId" },
+  );
+  assert.deepEqual(calls, []);
+});
+
 test("resolves name-based target and fallbacks with one catalog fetch each", async () => {
   let providerRequests = 0;
   let commandRequests = 0;

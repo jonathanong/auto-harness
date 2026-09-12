@@ -168,5 +168,26 @@ describe("shared data display composites", () => {
     expect(cli).toContain("—");
     expect(cli).toContain("account: CLI");
     expect(cli).toContain("host: CLI");
+
+    const topLevelWorkspace = render(
+      <SessionRouteSummary
+        session={{ workspacePoolId: "pool-from-session", workspaceSlotId: "slot-from-session" }}
+      />,
+    );
+    expect(topLevelWorkspace).toContain("workspace pool: pool-from-session");
+    expect(topLevelWorkspace).toContain("workspace slot: slot-from-session");
+
+    const resolvedWorkspace = render(
+      <SessionRouteSummary
+        session={{
+          resolvedRoute: {
+            workspacePoolId: "pool-from-route",
+            workspaceSlotId: "slot-from-route",
+          },
+        }}
+      />,
+    );
+    expect(resolvedWorkspace).toContain("workspace pool: pool-from-route");
+    expect(resolvedWorkspace).toContain("workspace slot: slot-from-route");
   });
 });

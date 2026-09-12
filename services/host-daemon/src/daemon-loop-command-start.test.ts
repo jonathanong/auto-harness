@@ -342,6 +342,21 @@ describe("DaemonLoop command-start authorization", () => {
     await expect(pending).resolves.toBe(false);
   });
 
+  it("fails closed before graceful idle shutdown waits for the assignment", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    transport.negotiate(HOST_PROTOCOL_VERSION);
+    const pending = authorize(loop);
+    expect(
+      transport.sent.filter((message) => message.type === "session:command-start"),
+    ).toHaveLength(1);
+
+    loop.prepareForShutdown();
+
+    await expect(pending).resolves.toBe(false);
+    loop.stop();
+  });
+
   it("logs a rejected command-start send while retaining its authorization gate", async () => {
     const lines: string[] = [];
     const loop = new DaemonLoop({

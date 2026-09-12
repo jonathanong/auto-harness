@@ -1,13 +1,18 @@
+/* eslint-disable max-lines -- helper coverage includes both credential paths and redaction cases. */
 import { describe, expect, it } from "vitest";
 
 import {
   buildSlackConfigBody,
+  buildSlackSettingsBody,
   DEFAULT_SLACK_NOTIFICATIONS,
   initialSlackFormValues,
   responseMessage,
+  slackInstallationMethod,
+  slackOAuthSettings,
   slackDeliveryWarning,
   slackSaveSuccessMessage,
   validateSlackForm,
+  validateSlackSettings,
   type SlackFormValues,
 } from "./slack-settings.ts";
 
@@ -27,7 +32,9 @@ describe("Slack settings form", () => {
     expect(validateSlackForm(values({ defaultChannel: "" }))).toContain("required");
     expect(validateSlackForm(values({ defaultChannel: "general" }))).toContain("channel name");
     expect(validateSlackForm(values({ defaultChannel: "C0123ABCDE" }))).toBeNull();
-    expect(validateSlackForm(values({ signingSecret: "not-secret" }))).toContain("hexadecimal");
+    expect(validateSlackForm(values({ signingSecret: "not-hex-secret-1" }))).toBeNull();
+    expect(validateSlackForm(values({ signingSecret: "too-short" }))).toContain("16 to 128");
+    expect(validateSlackForm(values({ signingSecret: "secret\nvalue" }))).toContain("visible");
     expect(validateSlackForm(values({ signingSecret: "a".repeat(32) }))).toBeNull();
   });
 
@@ -41,6 +48,38 @@ describe("Slack settings form", () => {
     expect(
       buildSlackConfigBody(values({ signingSecret: "a".repeat(32), enabled: false })),
     ).toMatchObject({ signingSecret: "a".repeat(32), enabled: false });
+  });
+
+  it("builds nonsecret settings and OAuth state with legacy-safe defaults", () => {
+    expect(buildSlackSettingsBody(values({ enabled: false }), 4)).toEqual({
+      expectedVersion: 4,
+      defaultChannel: "#harness",
+      enabled: false,
+      notifications: DEFAULT_SLACK_NOTIFICATIONS,
+    });
+    expect(validateSlackSettings({ defaultChannel: "general" })).toContain("channel name");
+    expect(slackInstallationMethod()).toBe("manual");
+    expect(
+      slackInstallationMethod({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#harness",
+        enabled: true,
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+        botTokenConfigured: true,
+        signingSecretConfigured: false,
+        deliveryAvailable: false,
+        version: 4,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        installationMethod: "oauth",
+        inboundAvailable: true,
+      }),
+    ).toBe("oauth");
+    expect(slackOAuthSettings()).toMatchObject({
+      expectedVersion: null,
+      defaultChannel: "#harness",
+    });
   });
 
   it("initializes only non-secret configuration values", () => {

@@ -2,7 +2,12 @@
 import type { HostRunningAttempt } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import {
+  removeReleasedRetiredWorkspaceSlot,
+  removeReleasedRetiredWorkspaceSlotDurable,
+} from "./control-plane-workspace-slot-retirement.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
+import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
 import {
   confirmScheduledReconnect,
@@ -10,6 +15,7 @@ import {
   type ScheduledReconnectConfirmation,
 } from "./control-plane-reconnect-scheduled-confirm.ts";
 import {
+  confirmReportedWorkspaceSession,
   confirmReportedSession,
   ignoreStaleReconnectClaim,
 } from "./control-plane-reconnect-confirm.ts";
@@ -60,6 +66,11 @@ export async function reconcileHostRunningSessions(
           ? await state.storage.getWorktree(session.worktreeId)
           : state.worktrees.get(session.worktreeId)
         : undefined;
+      const workspaceSlot = session?.workspaceSlotId
+        ? state.storage
+          ? await state.storage.getWorkspaceSlot(session.workspaceSlotId)
+          : state.workspaceSlots.get(session.workspaceSlotId)
+        : undefined;
       if (session?.mainCheckoutLease) {
         if (!(await confirmScheduledReconnect(state, session, hostId, connectionId))) {
           await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
@@ -69,6 +80,29 @@ export async function reconcileHostRunningSessions(
         scheduledConfirmed.push({ session });
         const { reconnectDeadlineAt: _, ...next } = session;
         state.sessions.set(session.id, { ...next, assignmentConnectionId: connectionId });
+        continue;
+      }
+      if (session?.workspaceSlotId) {
+        if (
+          !session.ackReceivedAt ||
+          (session.status !== "running" && session.status !== "cancelled") ||
+          session.hostId !== hostId ||
+          !workspaceSlot ||
+          workspaceSlot.hostId !== hostId ||
+          workspaceSlot.currentSessionId !== session.id ||
+          !(await confirmReportedWorkspaceSession(
+            state,
+            session,
+            workspaceSlot,
+            hostId,
+            connectionId,
+          ))
+        ) {
+          await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+          await restoreScheduledReconnects(state, hostId, connectionId, scheduledConfirmed);
+          return false;
+        }
+        confirmed.push({ session, workspaceSlot });
         continue;
       }
       if (
@@ -121,15 +155,94 @@ export async function reclaimReconnectDeadlines(
     if (await expireTerminalHookHandoffIfNeeded(state, session, nowMs)) continue;
     const reclaimableStatus =
       session.status === "running" ||
-      (session.status === "cancelled" && session.mainCheckoutLease === true);
+      (session.status === "cancelled" &&
+        (session.mainCheckoutLease === true || session.workspaceSlotLease === true)) ||
+      (session.status === "timed_out" && session.workspaceSlotLease === true);
     if (
       !reclaimableStatus ||
       !session.reconnectDeadlineAt ||
       Date.parse(session.reconnectDeadlineAt) > nowMs ||
-      (!session.worktreeId && !session.mainCheckoutLease)
+      (!session.worktreeId && !session.workspaceSlotId && !session.mainCheckoutLease)
     )
       continue;
     if (await reclaimScheduledReconnect(state, session, requeued)) continue;
+    if (session.workspaceSlotId) {
+      const slot = state.storage
+        ? await state.storage.getWorkspaceSlot(session.workspaceSlotId)
+        : state.workspaceSlots.get(session.workspaceSlotId);
+      const ownerHostId = session.hostId ?? session.timedOutHostId;
+      if (!slot || !ownerHostId || slot.currentSessionId !== session.id) continue;
+      const cancelled = session.status === "cancelled";
+      const timedOut = session.status === "timed_out";
+      if (!state.storage) {
+        releaseProviderAccountLease(state, session);
+        const next =
+          cancelled || timedOut
+            ? { ...session, workspaceSlotId: null, hostId: null }
+            : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+        delete next.workspaceSlotLease;
+        delete next.assignmentConnectionId;
+        delete next.assignmentSentAt;
+        delete next.ackReceivedAt;
+        delete next.reconnectDeadlineAt;
+        delete next.timedOutHostId;
+        delete next.timedOutAssignmentConnectionId;
+        state.sessions.set(session.id, next);
+        state.workspaceSlots.set(slot.id, {
+          ...slot,
+          status: "idle",
+          currentSessionId: null,
+          online: false,
+        });
+        removeReleasedRetiredWorkspaceSlot(state, slot.id);
+        state.pendingAcks.delete(session.id);
+        if (!cancelled && !timedOut) requeued.push(session.id);
+        continue;
+      }
+      const released = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: null,
+        workspaceSlotId: slot.id,
+        attemptId: session.attemptId!,
+        status: cancelled ? "cancelled" : timedOut ? "timed_out" : "queued",
+        expectedStatus: session.status,
+        expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
+        queueShard: session.queueShard,
+        ...(!cancelled && !timedOut
+          ? { errorMessage: "daemon reconnect deadline exceeded; requeued" }
+          : {}),
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+        ...(session.hostAssignmentLease
+          ? { hostAssignmentLease: session.hostAssignmentLease }
+          : {}),
+      });
+      if (!released) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      const next =
+        cancelled || timedOut
+          ? { ...session, workspaceSlotId: null, hostId: null }
+          : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued");
+      delete next.workspaceSlotLease;
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      delete next.timedOutHostId;
+      delete next.timedOutAssignmentConnectionId;
+      state.sessions.set(session.id, next);
+      state.workspaceSlots.set(slot.id, {
+        ...slot,
+        status: "idle",
+        currentSessionId: null,
+        online: false,
+      });
+      await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
+      state.pendingAcks.delete(session.id);
+      if (!cancelled && !timedOut) requeued.push(session.id);
+      continue;
+    }
     // The guard above allows a mainCheckoutLease session with no worktreeId through; the
     // lookup below correctly finds nothing for it and the !worktree check skips it, same
     // as before this session's worktreeId ever went missing.

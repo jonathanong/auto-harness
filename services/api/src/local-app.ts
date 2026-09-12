@@ -21,7 +21,15 @@ import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { handleUsageRoutes } from "./local-routes-usage.ts";
+import { handleWorkspacePoolRoutes } from "./local-routes-workspace-pools.ts";
 import { handleSlackIntegrationRoutes } from "./local-routes-slack-integration.ts";
+import {
+  handlePublicSlackRoutes,
+  handleSlackOAuthStartRoute,
+  isPublicSlackIngressRoute,
+} from "./local-routes-slack-public.ts";
+import { parseSlackAppCredentials } from "./slack-app-config.ts";
+import { createSlackOAuthClient } from "./slack-oauth-client.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
 import {
@@ -51,6 +59,23 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   });
   const memoryLimiter = new MemoryRateLimiter(config.maxEntries);
   const now = options.rateLimitNow ?? (() => Date.now());
+  const configuredSlackApp =
+    options.slackAppCredentials ?? parseSlackAppCredentials(process.env.HARNESS_SLACK_APP);
+  const slackOAuthClient =
+    options.slackOAuthClient ??
+    plane.state.slackOAuthClient ??
+    (configuredSlackApp ? createSlackOAuthClient(configuredSlackApp) : undefined);
+  plane.state.slackOAuthClient = slackOAuthClient;
+  if (options.slackIdentityClient) plane.state.slackIdentityClient = options.slackIdentityClient;
+  plane.state.slackInboundEnabled = Boolean(configuredSlackApp);
+  const slackRoutes = {
+    ...(configuredSlackApp ? { credentials: configuredSlackApp } : {}),
+    ...(options.resolveSlackOAuthPublicBaseUrl
+      ? { resolvePublicBaseUrl: options.resolveSlackOAuthPublicBaseUrl }
+      : {}),
+    ...(slackOAuthClient ? { oauthClient: slackOAuthClient } : {}),
+    ...(auth.mode === "disabled" ? { localPrincipalId: "local:disabled-auth" } : {}),
+  };
   const trustProxy = options.trustProxy ?? process.env.HARNESS_TRUST_PROXY === "true";
   const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (applyLocalCors(req, res)) return;
@@ -58,6 +83,25 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const method = req.method ?? "GET";
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
+    if (
+      isPublicSlackIngressRoute(method, url.pathname) &&
+      (await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        bucket: "publicIngress",
+        trustProxy,
+        auditDenied: false,
+      }))
+    )
+      return;
+    if (await handlePublicSlackRoutes(ctx, slackRoutes)) return;
     const authRoute = url.pathname.startsWith("/api/v1/auth/");
     const loginRoute = method === "POST" && url.pathname === "/api/v1/auth/login";
     const logoutRoute = method === "POST" && url.pathname === "/api/v1/auth/logout";
@@ -145,6 +189,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleSessionDrainRoutes(ctx)) return;
     if (await handleUsageRoutes(ctx)) return;
     if (await handleRepositoryRoutes(ctx)) return;
+    if (await handleWorkspacePoolRoutes(ctx)) return;
     if (await handleScheduleRoutes(ctx)) return;
     if (await handleHostSchedulerRoutes(ctx)) return;
     if (await handleHostInventoryRoutes(ctx)) return;
@@ -153,6 +198,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleProviderRoutes(ctx)) return;
     if (await handleProviderAccountRoutes(ctx)) return;
     if (await handleCommandRoutes(ctx)) return;
+    if (await handleSlackOAuthStartRoute(ctx, slackRoutes)) return;
     if (await handleSlackIntegrationRoutes(ctx)) return;
     if (await handleSessionTargetRoutes(ctx)) return;
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });

@@ -90,6 +90,12 @@ export async function createControlPlane(
       ? { sessionCursorSecret: options.sessionCursorSecret }
       : {}),
     ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),
+    ...(options.slackOAuthClient !== undefined
+      ? { slackOAuthClient: options.slackOAuthClient }
+      : {}),
+    ...(options.slackIdentityClient !== undefined
+      ? { slackIdentityClient: options.slackIdentityClient }
+      : {}),
     ...(options.secretEncryptor !== undefined
       ? { secretEncryptor: options.secretEncryptor }
       : { secretEncryptor: configuredSecretEncryptor() }),

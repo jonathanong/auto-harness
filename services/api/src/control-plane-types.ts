@@ -4,13 +4,18 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { ArchiveWriter } from "./archive-writer.ts";
+import type { SlackIdentityClient, SlackOAuthClient } from "./slack-oauth-types.ts";
 
 export type { ConnectionRecord } from "./db/plane-storage-types.ts";
 export type { LogQuery, LogRecord } from "./db/plane-storage-types.ts";
 
 export type ScheduleRecord = {
   id: string;
+  /** Empty string is the internal sentinel for a workspace-only schedule. */
   repositoryId: string;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
   name: string;
   target: TargetRef;
   fallbacks: TargetRef[];
@@ -61,6 +66,10 @@ export type ControlPlaneOptions = {
   storage?: DynamoPlaneStorage;
   /** KMS-backed boundary; absent means integration writes fail closed. */
   secretEncryptor?: SecretEncryptor | undefined;
+  /** Optional bounded Slack boundary used to verify manually configured event ingress. */
+  slackOAuthClient?: SlackOAuthClient | undefined;
+  /** Optional bounded Slack boundary used to identify manually supplied bot tokens. */
+  slackIdentityClient?: SlackIdentityClient | undefined;
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;
@@ -69,6 +78,7 @@ export type ControlPlaneOptions = {
   connectionIdFactory?: () => string;
   scheduleIdFactory?: () => string;
   repositoryIdFactory?: () => string;
+  workspacePoolIdFactory?: () => string;
   providerIdFactory?: () => string;
   providerAccountIdFactory?: () => string;
   commandIdFactory?: () => string;
@@ -94,12 +104,14 @@ export type ControlPlaneOptions = {
 
 export type PublicSession = Omit<
   SessionRecord,
+  | "repositoryId"
   | "principalId"
   | "cancelledByDrainOperationId"
   | "activeHostId"
   | "activeHostOrder"
   | "primaryCommandStartState"
 > & {
+  repositoryId: string | null;
   url: string;
 };
 

@@ -23,7 +23,11 @@ export function requiredCapability(
   pathname: string,
 ): Capability | "authenticated" | null {
   const write = !SAFE_METHODS.has(method);
-  if (pathname === "/api/v1/integrations/slack") return "integrations:write";
+  if (
+    pathname === "/api/v1/integrations/slack" ||
+    pathname === "/api/v1/integrations/slack/oauth/start"
+  )
+    return "integrations:write";
   if (
     matchesRoutePrefix(pathname, "/api/v1/auth/users") ||
     matchesRoutePrefix(pathname, "/api/v1/auth/service-accounts")
@@ -43,6 +47,9 @@ export function requiredCapability(
   if (/^\/api\/v1\/hosts\/[^/]+\/(?:exec-config|update-config)$/.test(pathname)) {
     return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
   }
+  if (/^\/api\/v1\/workspace-pools\/[^/]+\/exec-config$/.test(pathname)) {
+    return EXEC_CONFIG_CAPABILITY;
+  }
   if (
     pathname === "/api/v1/host-inventories" ||
     /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)
@@ -54,6 +61,9 @@ export function requiredCapability(
   }
   if (matchesRoutePrefix(pathname, "/api/v1/provider-accounts")) {
     return write ? "providers:accounts" : "authenticated";
+  }
+  if (matchesRoutePrefix(pathname, "/api/v1/workspace-pools")) {
+    return write ? EXEC_CONFIG_CAPABILITY : "authenticated";
   }
   if (
     matchesRoutePrefix(pathname, "/api/v1/commands") ||
@@ -91,7 +101,7 @@ export function authorize(principal: Principal, method: string, pathname: string
 
 export function mayAccessRepository(
   principal: Principal | undefined,
-  repositoryId: string | undefined,
+  repositoryId: string | null | undefined,
 ): boolean {
   if (!principal?.allowedRepositoryIds) return true;
   // A repository-scoped principal against a resource whose repository we could not

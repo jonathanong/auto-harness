@@ -65,9 +65,10 @@ export type SessionTransitionEffect =
   | { type: "suppress_target"; targetIndex: number }
   | { type: "fallback" }
   | { type: "release_worktree" }
+  | { type: "release_workspace" }
   | { type: "release_lease" }
   | { type: "archive" }
-  | { type: "reschedule"; kind: "prompt" | "scheduled" }
+  | { type: "reschedule"; kind: "prompt" | "scheduled" | "workspace" }
   | { type: "notify_cancel" }
   | { type: "cancel"; holdAssignment: boolean }
   | { type: "mark_reconnect"; deadlineAt: string };
@@ -119,12 +120,13 @@ function report(event: Extract<SessionTransitionEvent, { type: "status" }>): Ses
   };
 }
 
-function scheduleKind(session: SessionRecord): "prompt" | "scheduled" {
-  return session.type === "scheduled" ? "scheduled" : "prompt";
+function scheduleKind(session: SessionRecord): "prompt" | "scheduled" | "workspace" {
+  return session.type === "scheduled" || session.type === "workspace" ? session.type : "prompt";
 }
 
 function releaseEffects(session: SessionRecord): SessionTransitionEffect[] {
   if (session.mainCheckoutLease) return [{ type: "release_lease" }];
+  if (session.workspaceSlotId) return [{ type: "release_workspace" }];
   return session.worktreeId ? [{ type: "release_worktree" }] : [];
 }
 
@@ -275,7 +277,13 @@ function planLateTerminal(
   if (ctx.source === "durable" && !cancelled) {
     return planOf(...prefix, { type: "ignore", reason: "not_running" });
   }
-  if (ctx.source === "durable" && cancelled && !session.worktreeId && !session.mainCheckoutLease) {
+  if (
+    ctx.source === "durable" &&
+    cancelled &&
+    !session.worktreeId &&
+    !session.mainCheckoutLease &&
+    !session.workspaceSlotId
+  ) {
     return planOf(...prefix, { type: "ignore", reason: "not_running" });
   }
   return planOf(

@@ -60,6 +60,7 @@ describe("schedule pages", () => {
           { id: "repo-a", name: "Same" },
         ],
       },
+      "/api/v1/workspace-pools": {},
     });
 
     const html = await renderPage(
@@ -106,6 +107,52 @@ describe("schedule pages", () => {
     );
     expect(html).toContain("Edit Just created");
     expect(html).toContain('data-pw="form-edit-schedule-schedule-just-created"');
+  });
+
+  it("loads workspace pools for an existing workspace schedule edit", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": {
+        items: [
+          {
+            id: "workspace-schedule",
+            name: "Workspace run",
+            repositoryId: "",
+            workspacePoolId: "pool-1",
+            setupProfileId: "setup-1",
+            destroyWorkspaceAfter: true,
+            target: { commandId: "command-1" },
+            fallbacks: [],
+            cron: "0 * * * *",
+            enabled: true,
+            timeout: 60,
+            queueTtlSeconds: 120,
+            nextRunAt: "tomorrow",
+            lastRunAt: null,
+          },
+        ],
+      },
+      "/api/v1/session-targets": { items: [{ id: "command-1", label: "command" }] },
+      "/api/v1/repositories": { items: [] },
+      "/api/v1/workspace-pools": {
+        items: [
+          {
+            id: "pool-1",
+            name: "Workspace",
+            setupProfiles: [{ id: "setup-1", name: "Trusted setup" }],
+            destroyWorkspaceAfter: false,
+          },
+        ],
+      },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ edit: "workspace-schedule" }) }),
+    );
+    expect(html).toContain('data-pw="schedule-mode-workspace"');
+    expect(html).toContain('data-pw="schedule-workspace-pool"');
+    expect(html).toContain("Trusted setup");
+    expect(html).toContain("Workspace");
+    expect(html).not.toContain("/repositories/null");
   });
 
   it("keeps encoded-looking schedule ids intact when opening an edit", async () => {
@@ -277,6 +324,7 @@ describe("schedule pages", () => {
         activeSessionId: "session/active",
       },
       "/api/v1/session-targets": {},
+      "/api/v1/workspace-pools": {},
       "/api/v1/sessions?scheduleId=schedule%2Fone&limit=100": {
         items: [],
         nextCursor: "history-next",
@@ -302,6 +350,46 @@ describe("schedule pages", () => {
     expect(html).toContain("Concurrency ID:");
     expect(html).toContain('data-pw="schedule-history-row-session/1"');
     expect(html).toContain('data-pw="form-edit-schedule"');
+  });
+
+  it("loads structured workspace options for the schedule detail edit form", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules/workspace-schedule": {
+        id: "workspace-schedule",
+        name: "Workspace run",
+        repositoryId: "",
+        workspacePoolId: "pool-1",
+        setupProfileId: "setup-1",
+        destroyWorkspaceAfter: false,
+        target: { commandId: "command-1" },
+        fallbacks: [],
+        cron: "0 * * * *",
+        enabled: true,
+        timeout: 60,
+        queueTtlSeconds: 120,
+        nextRunAt: "tomorrow",
+        lastRunAt: null,
+      },
+      "/api/v1/session-targets": { items: [{ id: "command-1", label: "command" }] },
+      "/api/v1/workspace-pools": {
+        items: [
+          {
+            id: "pool-1",
+            name: "Workspace",
+            setupProfiles: [{ id: "setup-1", name: "Trusted setup" }],
+            destroyWorkspaceAfter: false,
+          },
+        ],
+      },
+      "/api/v1/sessions?scheduleId=workspace-schedule&limit=100": { items: [] },
+    });
+    const html = await renderPage(
+      ScheduleDetailPage({ params: Promise.resolve({ id: "workspace-schedule" }) }),
+    );
+    expect(html).toContain('data-pw="edit-schedule-mode-workspace"');
+    expect(html).toContain('data-pw="edit-schedule-workspace-pool"');
+    expect(html).toContain("Trusted setup");
   });
 
   it("renders read-only detail fallbacks when dependent APIs fail", async () => {

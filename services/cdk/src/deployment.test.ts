@@ -5,10 +5,25 @@ import { config, dependencies } from "../test-helpers/deployment-test-helpers.ts
 import {
   applySessionCreatedOrderIndexStage,
   applySessionPriorityIndexStage,
+  verifySecretParameters,
 } from "./deployment-support.ts";
 import { runDeployment } from "./deployment.ts";
 
 describe("runDeployment", () => {
+  it("keeps Slack application credentials optional during bootstrap verification", async () => {
+    const deps = dependencies([]);
+    await verifySecretParameters(config(), deps);
+    const parameterNames = deps.queries
+      .filter((args) => args.includes("get-parameter"))
+      .map((args) => args[args.indexOf("--name") + 1]);
+    expect(parameterNames).toEqual([
+      "/auto-harness/review/harness-admins",
+      "/auto-harness/review/harness-session-secret",
+      "/auto-harness/review/harness-cursor-secret",
+    ]);
+    expect(parameterNames).not.toContain("/auto-harness/review/slack-app");
+  });
+
   it("deploys either staged priority index template to the foundation only", async () => {
     for (const stage of ["status", "both"] as const) {
       const deps = dependencies([]);
@@ -77,9 +92,23 @@ describe("runDeployment", () => {
         "AutoHarness-review-Foundation",
         "--parameters",
         "AutoHarness-review-Runtime:HarnessPublicBaseUrlSsmParam=/auto-harness/review/public-base-url",
+        "--parameters",
+        "AutoHarness-review-Runtime:HarnessSlackAppSsmParam=/auto-harness/review/slack-app",
       ]),
     );
+    // The raw REST API is origin-protected. The smoke probe must exercise the public
+    // CloudFront route, just like a browser or host daemon.
     expect(deps.fetch).toHaveBeenCalledWith(new URL("https://api.example.test/health"));
+    const outputQueries = deps.queries.filter(
+      (args) => args.includes("describe-stacks") && args.includes("--query"),
+    );
+    expect(outputQueries).toEqual([
+      expect.arrayContaining([
+        "--stack-name",
+        "AutoHarness-review-Web",
+        expect.stringContaining("WebUrl"),
+      ]),
+    ]);
     // The agent endpoint is derived from WebUrl, not printed from the runtime stack's raw
     // WebSocketUrl output — a host daemon must never be handed the execute-api hostname.
     expect(deps.log).toHaveBeenCalledWith("Agent WebSocket endpoint: wss://api.example.test/ws");
@@ -217,9 +246,7 @@ describe("runDeployment", () => {
           ? { status: 0, stderr: "", stdout: output }
           : query(command, args),
       );
-      await expect(runDeployment("update", config(), missingOutput)).rejects.toThrow(
-        "no RestApiUrl",
-      );
+      await expect(runDeployment("update", config(), missingOutput)).rejects.toThrow("no WebUrl");
     }
   });
 

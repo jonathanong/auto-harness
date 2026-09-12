@@ -367,7 +367,8 @@ export function sessionOccupiesHostAssignment(session: SessionRecord): boolean {
     session.status === "running" ||
     session.providerAccountLease !== undefined ||
     session.worktreeId != null ||
-    session.mainCheckoutLease === true
+    session.mainCheckoutLease === true ||
+    session.workspaceSlotLease === true
   );
 }
 
@@ -378,6 +379,7 @@ function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boo
 function hostOccupancyKey(session: SessionRecord): string {
   if (session.worktreeId) return `w:${session.worktreeId}`;
   if (session.mainCheckoutLease) return `c:${session.repositoryId}`;
+  if (session.workspaceSlotId) return `x:${session.workspaceSlotId}`;
   return `s:${session.id}`;
 }
 
@@ -399,6 +401,10 @@ export function hostAssignmentOccupancyCount(state: ControlPlaneState, hostId: s
   for (const worktree of state.worktrees.values()) {
     if (worktree.hostId !== hostId) continue;
     if (worktree.status === "busy" || worktree.currentSessionId) occupied.add(`w:${worktree.id}`);
+  }
+  for (const slot of state.workspaceSlots.values()) {
+    if (slot.hostId !== hostId) continue;
+    if (slot.status === "busy" || slot.currentSessionId) occupied.add(`x:${slot.id}`);
   }
   for (const key of state.mainCheckoutLeases.keys()) {
     if (key.startsWith(`${hostId}\0`)) occupied.add(`c:${key.slice(hostId.length + 1)}`);

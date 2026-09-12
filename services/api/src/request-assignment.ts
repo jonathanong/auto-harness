@@ -2,6 +2,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
+import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
 import { compareSessionsForQueue } from "./control-plane-ordering.ts";
 import { refreshAssignmentReadinessDurable } from "./control-plane-assignment-readiness.ts";
 import { refreshAssignmentCommandsDurable } from "./control-plane-assignment-command-refresh.ts";
@@ -31,6 +32,7 @@ export async function assignQueuedAndScheduledDurable(
 ): Promise<{
   queuedAssigned: Awaited<ReturnType<typeof assignQueuedDurable>>;
   scheduledAssigned: Awaited<ReturnType<typeof assignScheduledQueuedDurable>>;
+  workspaceAssigned: Awaited<ReturnType<typeof assignWorkspaceQueuedDurable>>;
 }> {
   const fullScan = options.fullScan === true;
   const maxSessions = fullScan
@@ -49,12 +51,13 @@ export async function assignQueuedAndScheduledDurable(
       await state.storage.backfillQueuedSessionQueueOrder(state.shardCount);
     }
     const queueOptions = fullScan ? {} : { limit: maxSessions };
-    const [promptQueued, scheduledQueued] = await Promise.all([
+    const [promptQueued, scheduledQueued, workspaceQueued] = await Promise.all([
       listQueuedSessionsDurable(state, "prompt", queueOptions),
       listQueuedSessionsDurable(state, "scheduled", queueOptions),
+      listQueuedSessionsDurable(state, "workspace", queueOptions),
     ]);
-    if (promptQueued.length === 0 && scheduledQueued.length === 0) {
-      return { queuedAssigned: [], scheduledAssigned: [] };
+    if (promptQueued.length === 0 && scheduledQueued.length === 0 && workspaceQueued.length === 0) {
+      return { queuedAssigned: [], scheduledAssigned: [], workspaceAssigned: [] };
     }
     if (fullScan) {
       await refreshSchedulerReadModel(state);
@@ -62,9 +65,15 @@ export async function assignQueuedAndScheduledDurable(
       // Bound event-path reads while making every unrefreshed profile fail
       // closed until the complete cron repair refreshes the whole model.
       await refreshAssignmentReadinessDurable(state, maxSessions);
-      await refreshAssignmentCommandsDurable(state, [...promptQueued, ...scheduledQueued]);
+      await refreshAssignmentCommandsDurable(state, [
+        ...promptQueued,
+        ...scheduledQueued,
+        ...workspaceQueued,
+      ]);
     }
-    queued = [...promptQueued, ...scheduledQueued].toSorted(compareSessionsForQueue);
+    queued = [...promptQueued, ...scheduledQueued, ...workspaceQueued].toSorted(
+      compareSessionsForQueue,
+    );
   } else {
     queued = [...state.sessions.values()]
       .filter((session) => session.status === "queued")
@@ -72,6 +81,7 @@ export async function assignQueuedAndScheduledDurable(
   }
   const queuedAssigned: Awaited<ReturnType<typeof assignQueuedDurable>> = [];
   const scheduledAssigned: Awaited<ReturnType<typeof assignScheduledQueuedDurable>> = [];
+  const workspaceAssigned: Awaited<ReturnType<typeof assignWorkspaceQueuedDurable>> = [];
   let examined = 0;
   for (const session of queued) {
     if (examined >= maxSessions || now() - startedAt >= budgetMs) break;
@@ -80,6 +90,10 @@ export async function assignQueuedAndScheduledDurable(
       if (session.type === "scheduled") {
         scheduledAssigned.push(
           ...(await assignScheduledQueuedDurable(state, session.id, { readModelLoaded: true })),
+        );
+      } else if (session.type === "workspace") {
+        workspaceAssigned.push(
+          ...(await assignWorkspaceQueuedDurable(state, session.id, { readModelLoaded: true })),
         );
       } else {
         queuedAssigned.push(
@@ -91,7 +105,7 @@ export async function assignQueuedAndScheduledDurable(
       // from getting a chance during this repair pass.
     }
   }
-  return { queuedAssigned, scheduledAssigned };
+  return { queuedAssigned, scheduledAssigned, workspaceAssigned };
 }
 
 export async function requestAssignment(

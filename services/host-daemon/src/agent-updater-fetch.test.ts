@@ -265,4 +265,43 @@ describe("HTTPS update fetcher", () => {
       "artifact response has no body",
     );
   });
+
+  it("accepts a streamed response when the server omits content length", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => {
+        const chunks = [new TextEncoder().encode('{"version":"1.5.0"}')];
+        let index = 0;
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          body: {
+            getReader: () => ({
+              read: async () =>
+                index < chunks.length ? { done: false, value: chunks[index++] } : { done: true },
+            }),
+          },
+        };
+      },
+    );
+    await expect(fetcher.fetchManifest()).resolves.toEqual({ version: "1.5.0" });
+  });
+
+  it("preserves the size error when an oversized stream has no cancel method", async () => {
+    const fetcher = createHttpsUpdateFetcher(
+      "https://updates.example.test/manifest.json",
+      async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            read: async () => ({ done: false, value: new Uint8Array(64 * 1024 + 1) }),
+          }),
+        },
+      }),
+    );
+    await expect(fetcher.fetchManifest()).rejects.toThrow("manifest response exceeds");
+  });
 });

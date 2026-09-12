@@ -60,7 +60,7 @@ function parseSort(value: string | undefined): SessionListSort | undefined {
   throw new InvalidSessionListQueryError("invalid sort");
 }
 
-function canAccess(ctx: RouteCtx, repositoryId: string | undefined): boolean {
+function canAccess(ctx: RouteCtx, repositoryId: string | null | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
 }
 

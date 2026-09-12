@@ -3,16 +3,15 @@
 ## Slack
 
 > **Current status:** Auto Harness stores an encrypted, redacted Slack configuration through the
-> admin API and Web UI, then delivers session lifecycle messages (`chat.postMessage` /
-> `chat.update`) through the durable leased outbox. The local server starts the worker when
-> storage plus an injected transport or secret encryptor exist; the deployed cron Lambda drains
-> the same outbox. Delivery is **at-least-once** across Lambda invocations: in-process retries
-> share a request and a bounded result cache, but a lost complete-after-send lease can post
-> again after a cold start. Retries use bounded backoff and dead-letter exhausted operations.
-> If Slack is configured but this environment cannot actually send (missing token decrypt, no
-> worker), the API and UI report **configured but delivery unavailable**. There is still no
-> Slack OAuth or inbound webhook verification. GET decrypts the bot token only as a capability
-> probe for that flag, not as a send path.
+> admin API and Web UI. It supports both manual bot-token configuration and OAuth installation.
+> Session lifecycle messages (`chat.postMessage` / `chat.update`) use the durable leased
+> `NotificationDeliveries` outbox; local delivery runs only when its dependencies are injected and
+> the deployed cron Lambda drains the same outbox. Delivery is **at-least-once** across Lambda
+> invocations: a lost complete-after-send lease can post again after a cold start. If Slack is
+> configured but this environment cannot decrypt the token or run the outbound worker, the API and
+> UI report **configured but delivery unavailable**. OAuth installations also expose a public,
+> signature-verified events endpoint that durably records supported mentions and DMs as pending
+> inbound events. Events are not converted into sessions yet.
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
@@ -23,15 +22,57 @@ For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit)
 
 Auto Harness owns the **Slack** session thread when delivery is available. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
 
-The target delivery behavior posts real-time session updates to Slack: each session gets a thread in a configured channel, updated as the session progresses.
+When outbound delivery is available, Auto Harness posts session updates to Slack: each session
+gets a thread in the configured channel, updated as the session progresses.
 
-### Delivery setup (target)
+### Delivery and installation setup
 
-1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
-2. Add the `chat:write` OAuth scope
-3. Install the app to your workspace
-4. Copy the **Bot User OAuth Token** (`xoxb-...`)
-5. Configure the integration via the API or Web UI
+There are two equally supported setup paths. OAuth app credentials are optional; manual token
+configuration works without them.
+
+OAuth app credentials have the same JSON shape in both environments, but the configuration source
+is intentionally different:
+
+| Runtime                                   | Environment variable          | Value                                                                                     |
+| ----------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------- |
+| AWS REST Lambda                           | `HARNESS_SLACK_APP_SSM_PARAM` | The **name** of an environment-scoped SSM `SecureString` containing the credentials JSON. |
+| Local `createLocalApp` / `pnpm local:api` | `HARNESS_SLACK_APP`           | The credentials JSON itself; it is not an SSM parameter name.                             |
+
+For local development, set `HARNESS_SLACK_APP` only in a local shell or uncommitted environment
+file. This deliberately fake example shows the required shape; replace every value with the Slack
+app's credentials and do not commit the result:
+
+```sh
+export HARNESS_SLACK_APP='{"clientId":"example-client-id","clientSecret":"example-client-secret","signingSecret":"example-signing-secret-not-real"}'
+```
+
+1. **OAuth (recommended):** configure the Slack app's client ID, client secret, and signing secret
+   as JSON (`{"clientId":"…","clientSecret":"…","signingSecret":"…"}`) in the optional
+   environment-scoped SSM `SecureString` named by `HARNESS_SLACK_APP_SSM_PARAM` (default
+   `/auto-harness/<environment>/slack-app`), then select **Connect with Slack** in the admin Web
+   UI. The app requests `chat:write`, `app_mentions:read`, and `im:history`; Slack redirects to
+   the configured `/api/v1/integrations/slack/oauth/callback` URL after installation. AWS OAuth
+   start requires a readable HTTPS public-base-url parameter and returns unavailable rather than
+   giving Slack a localhost callback during a transient SSM failure. Only REST reads this
+   parameter; Cron only needs the encrypted installation token for delivery.
+2. **Manual:** create/install the Slack app, copy its Bot User OAuth Token (`xoxb-...`) and
+   signing secret, and enter them in the Web UI or `POST /api/v1/integrations/slack`. Secrets are
+   write-only and encrypted with KMS.
+
+For inbound events, set the Slack Events API Request URL to
+`/api/v1/integrations/slack/events` and subscribe to `app_mention` and `message.im`. Slack
+signatures are verified against the raw request body; accepted events are durably stored as
+pending with retry deduplication. Manual setup with a signing secret performs a bounded Slack
+`auth.test` for its bot token and enables inbound only when it can persist both the workspace and
+bot-user identity. OAuth installations require the signed envelope's workspace and app IDs to
+match the stored installation; verified manual installations require the workspace and an
+`authorizations[].user_id` to match the stored bot user. An unavailable manual identity check
+leaves outbound delivery configured but inbound disabled. Receipts expire after seven days. URL verification challenges are
+acknowledged, but unsupported event types are ignored. No inbound event creates a session yet.
+
+OAuth installs use Slack's long-lived bot token; automatic token rotation is not enabled. Auto
+Harness is currently a singleton, single-workspace integration, so an installation replaces the
+previous OAuth installation rather than creating a tenant-specific connection.
 
 ### Configuration
 
@@ -77,34 +118,54 @@ Get current Slack configuration (token is redacted). The response includes
 `deliveryAvailable`. When the integration is stored but this environment cannot
 decrypt the bot token or run the outbound worker, that flag is `false` and the
 UI reports **configured but delivery unavailable**.
+The response also includes an opaque `installationId` when present; clients must retain and echo
+it as `expectedInstallationId` when starting an OAuth reconnect. It is an identity fence, not a
+credential.
 
 #### `PUT /api/v1/integrations/slack`
 
 Update Slack configuration. **Admin only.**
 
-`PUT` replaces the complete configuration and therefore includes `botToken`.
-There is no Slack OAuth or inbound event verification.
+`PUT` replaces the complete configuration with manual credentials and therefore includes `botToken`.
+For an OAuth-managed installation this explicitly switches the installation to manual credentials;
+OAuth credentials are never returned.
+
+#### `PATCH /api/v1/integrations/slack`
+
+Update ordinary delivery settings without replacing credentials. **Admin only.** The request must
+include `expectedVersion` from the preceding `GET` plus `defaultChannel`, `enabled`, and/or
+`notifications`; credentials are rejected. `expectedVersion` must be a positive integer. A stale
+editor receives `409` rather than overwriting a configuration that changed after it was read.
+
+#### `POST /api/v1/integrations/slack/oauth/start`
+
+Start an OAuth installation or reconnect. **Admin only.** The request includes the current
+nonsecret delivery settings, the expected integration version (or `null` for a first install), and,
+for an existing installation, its opaque `expectedInstallationId` from `GET`. A missing or stale
+installation identity receives `409` and no OAuth state is created.
+On reconnect, omitted `enabled` and `notifications` values inherit the current integration
+settings; a first install defaults `enabled` to `true` and notifications to the global defaults.
+The response is `{ "url": "https://slack.com/oauth/v2/authorize?..." }`. The URL
+contains a one-time, expiring state; callers must navigate the browser to it and must not log it.
+
+#### `GET /api/v1/integrations/slack/oauth/callback`
+
+Public Slack redirect endpoint. The server consumes and validates state, exchanges the code, checks
+workspace/app identity and required scopes, encrypts the bot token, and uses compare-and-swap
+version plus opaque installation-identity fences. This prevents a delayed reconnect from applying
+over a delete/recreate that reused version `1`. OAuth state is hash-only, single-use, and expires
+after ten minutes. If the exchange succeeds but validation or durable installation is rejected, the
+server makes a bounded best-effort `auth.revoke` call for the newly issued bot token; a revocation
+failure does not replace the original installation failure. It redirects
+to `/settings?slackOAuth=success|error`; the settings index forwards that bounded result to the
+Slack settings page for display. OAuth codes, tokens, and Slack response details never appear in
+the redirect.
 
 #### `DELETE /api/v1/integrations/slack`
 
 Remove Slack integration. **Admin only.**
 
-### Per-Repository Overrides
-
-Repositories can override the default Slack channel:
-
-```json
-{
-  "name": "my-app",
-  "url": "git@github.com:org/my-app.git",
-  "defaultBranch": "main",
-  "slackChannel": "#my-app-auto-harness"
-}
-```
-
-If not set, the default channel from the integration config is used.
-
-### Thread Lifecycle (target)
+### Thread Lifecycle
 
 Each session creates a Slack thread that tracks the full lifecycle:
 
@@ -201,28 +262,21 @@ The original message is updated with ❌ status. The thread includes the last fe
 ⚪ Session cancelled by jong
 ```
 
-### Thread Metadata (target)
+### Thread Metadata
 
-The Slack `thread_ts` (thread timestamp) is stored on the Session record in DynamoDB so that subsequent status updates can reply to the correct thread:
+Slack thread state belongs to the durable `NotificationDeliveries` rows, not to the Session
+record. Each immutable lifecycle operation carries the configured channel and any thread
+timestamp returned by Slack, allowing retries without adding Slack-specific fields to sessions.
 
-```typescript
-// Session record in DynamoDB
-{
-  id: "sess-x1y2z3",
-  // ... other fields
-  slackThreadTs: "1722556800.001234",
-  slackChannel: "C0123ABCDEF"
-}
-```
-
-### Rate Limiting (target)
+### Rate Limiting
 
 The delivery implementation must respect Slack API rate limits and batch updates:
 
 - Log streaming is **not** sent to Slack (too noisy). Logs are only available in the Web UI (link the session from the thread when useful).
-- Once delivery ships, fire-and-forget CI callers can rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
-- Status updates are sent immediately (queued → started → completed/failed).
-- If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
+- When delivery is available, fire-and-forget CI callers can rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
+- Status updates are queued as durable operations (queued → started → completed/failed) and are
+  leased in bounded batches. Slack rate-limit responses are retried according to the API's
+  `Retry-After` guidance; there is no fixed one-second pacing promise.
 
 The outbox stores one immutable operation ID per lifecycle action. REST/WS/cron session
 writers enqueue those ids on create and status transitions so a session that is created and
@@ -234,15 +288,19 @@ stderr tails from durable logs when the process cache does not already have them
 terminal reply. The HTTP transport deduplicates ambiguous in-process retries with that operation
 ID, including overlapping `deliver()` calls. Across Lambda invocations, delivery is
 at-least-once: operators should treat a duplicate lifecycle post after a lost lease as
-expected rather than exactly-once. Inbound Slack events and OAuth are not implemented.
+expected rather than exactly-once. Inbound events are separately deduplicated by workspace and
+Slack `event_id` before they are acknowledged; they remain pending until a future consumer owns
+session routing.
 Failed sends store a secret-free `lastError` on the outbox row and emit a CloudWatch
 line (`slack <operation> retried|dead <id>: …`).
 
 ### Permissions Required
 
-| Slack OAuth Scope | Purpose                               |
-| ----------------- | ------------------------------------- |
-| `chat:write`      | Post messages and replies to channels |
+| Slack OAuth Scope   | Purpose                               |
+| ------------------- | ------------------------------------- |
+| `chat:write`        | Post messages and replies to channels |
+| `app_mentions:read` | Receive `app_mention` events          |
+| `im:history`        | Receive direct-message history/events |
 
 The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`.
 
@@ -286,15 +344,19 @@ envelope:
   "subject": { "type": "session", "id": "sess_123" },
   "data": {
     "repositoryId": "repo_123",
+    "workspacePoolId": null,
+    "workspaceSlotId": null,
     "attemptId": "attempt_123",
     "status": "completed"
   }
 }
 ```
 
-`attemptId` is `null` when a session becomes terminal before its first assignment, such as a queued
-cancellation or queue expiry. The null participates in the stable event digest; the worker never
-fabricates an assignment identity.
+`repositoryId` is `null` for a workspace session. In that case `workspacePoolId` identifies the
+non-Git pool and `workspaceSlotId` records the slot used by its terminal attempt (or is `null`
+when it never received one). `attemptId` is `null` when a session becomes terminal before its first
+assignment, such as a queued cancellation or queue expiry. The null participates in the stable
+event digest; the worker never fabricates an assignment identity.
 
 The outbox deliberately does not persist an endpoint, signing secret, request headers, prompt,
 logs, metadata, response body, or free-form failure text. Destination selection freezes only the

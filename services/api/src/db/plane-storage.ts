@@ -11,6 +11,7 @@ import * as providerAccountUpdates from "./plane-storage-provider-account-update
 import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
+import * as slackInbound from "./plane-storage-slack-inbound.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as cancelRedeliveries from "./plane-storage-cancel-redeliveries.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
@@ -26,6 +27,9 @@ export type {
   ProviderAccountRecord,
   ProviderRecord,
   RepositoryRecord,
+  WorkspacePoolRecord,
+  WorkspacePoolSummary,
+  WorkspaceSetupProfile,
   SessionDrainRecord,
 } from "./plane-storage-types.ts";
 export {
@@ -158,12 +162,30 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
   putSlackIntegration(
     record: import("../slack-integration-types.ts").SlackIntegrationRecord,
     expectedVersion: number | null,
+    expectedInstallationId?: string | null,
   ): Promise<boolean> {
-    return integrations.putSlackIntegration(this.ctx, record, expectedVersion);
+    return integrations.putSlackIntegration(
+      this.ctx,
+      record,
+      expectedVersion,
+      expectedInstallationId,
+    );
   }
 
   deleteSlackIntegration(expectedVersion: number): Promise<boolean> {
     return integrations.deleteSlackIntegration(this.ctx, expectedVersion);
+  }
+
+  putSlackOAuthState(record: import("../slack-oauth-types.ts").SlackOAuthStateRecord) {
+    return slackInbound.putSlackOAuthState(this.ctx, record);
+  }
+
+  consumeSlackOAuthState(stateHash: string, nowSeconds: number) {
+    return slackInbound.consumeSlackOAuthState(this.ctx, stateHash, nowSeconds);
+  }
+
+  putSlackInboundEvent(record: import("../slack-oauth-types.ts").SlackInboundEventRecord) {
+    return slackInbound.putSlackInboundEvent(this.ctx, record);
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

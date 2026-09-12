@@ -125,14 +125,15 @@ erDiagram
         string defaultBranch
         string setupScript "optional, may reference $HARNESS_REF"
         string terminalHookScript "optional, path on agent host — see Invariant-adjacent D3"
-        string slackChannel "optional override"
         string createdAt
     }
 
     Worktree {
         string id PK
         string hostId FK
-        string repositoryId FK
+        string repositoryId FK "nullable for workspace sessions"
+        string workspacePoolId FK "required when repositoryId is null"
+        string workspaceSlotId FK "nullable until workspace placement"
         string path
         string[] labels "e.g. codex, claude"
         string status "idle | busy | error"
@@ -149,13 +150,15 @@ erDiagram
         string hostId FK "nullable until assigned"
         string userId FK
         string prompt
-        string ref "nullable — branch/tag/SHA to check out; default branch if omitted"
+        string ref "nullable — branch/tag/SHA for repository sessions; forbidden for workspace sessions"
         string status "queued | running | completed | failed | cancelled | timed_out"
-        string type "prompt | scheduled"
+        string type "prompt | scheduled | workspace"
         string source "api | ui | webhook | schedule"
         number timeout "seconds, required"
         number priority
-        string[] requiredLabels
+        string[] requiredLabels "empty for workspace sessions"
+        string setupProfileId "nullable — trusted workspace-pool profile"
+        boolean destroyWorkspaceAfter "workspace cleanup policy; default false"
         string concurrencyId "nullable — global exact-match concurrency/idempotency identity"
         string scheduleId "nullable — exact schedule provenance for scheduled sessions"
         string queueShard "assigned at create; spreads the queued-status GSI (see Access patterns)"
@@ -172,8 +175,6 @@ erDiagram
         string pinnedHostId "nullable, resume affinity — agent only, no pinnedWorktreeId"
         string pinExpiresAt "nullable — pinned resume assign fails clearly past this time"
         string cliResumeRef "nullable, tool-native resume id"
-        string slackThreadTs "nullable"
-        string slackChannel "nullable"
         string createdAt
         string startedAt
         string completedAt
@@ -181,7 +182,10 @@ erDiagram
 
     Schedule {
         string id PK
-        string repositoryId FK
+        string repositoryId FK "nullable for workspace schedules"
+        string workspacePoolId FK "required when repositoryId is null"
+        string setupProfileId "nullable — trusted workspace-pool profile"
+        boolean destroyWorkspaceAfter "workspace cleanup policy; default false"
         string name
         object target "primary { providerId } or { commandId }"
         object[] fallbacks "ordered additional targets"
@@ -226,9 +230,14 @@ erDiagram
     Integration {
         string id PK "e.g. slack"
         string type "slack"
-        string encryptedConfig "KMS-encrypted bot token + settings"
+        string encryptedConfig "KMS-encrypted bot token + optional signing secret"
         string defaultChannel
         boolean enabled
+        string installationMethod "manual | oauth"
+        string installationId "opaque non-reusable installation identity"
+        string workspaceId "nullable"
+        string appId "nullable; OAuth app identity"
+        string botUserId "nullable; manual bot identity"
     }
 
     NotificationDelivery {
@@ -242,6 +251,33 @@ erDiagram
         string threadRootId "nullable"
         string remoteChannel "nullable"
         string remoteMessageTs "nullable"
+    }
+
+    SlackOAuthState {
+        string stateHash PK "SHA-256 of one-time state; plaintext state is never persisted"
+        string principalId
+        number expectedVersion "nullable for first install"
+        string expectedInstallationId "nullable for first install or legacy rows"
+        string defaultChannel "nonsecret pending setting"
+        boolean enabled "nonsecret pending setting"
+        object notifications "nonsecret pending settings; no secrets"
+        number expiresAt "TTL, ten minutes"
+    }
+
+    SlackInboundEvent {
+        string workspaceId PK
+        string eventId "sort key, Slack event_id, conditional put deduplicates retries"
+        string apiAppId "Slack api_app_id, nullable"
+        string[] authorizedUserIds "nullable signed authorizations user IDs for manual bot fencing"
+        string type "app_mention | message.im"
+        string channelId
+        string userId
+        string text "normalized, bounded text"
+        string eventTs
+        string receivedAt
+        string status "pending"
+        string dueOrder "bounded consumer ordering key"
+        number ttl "TTL, seven days"
     }
 
     User ||--o{ Session : creates
@@ -262,19 +298,21 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 
 ### Access patterns
 
-| Access pattern                      | Table / index          | Key shape                                                                           | Notes                                                                                                                                                                                        |
-| ----------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Get session by id                   | Sessions               | PK `id`                                                                             |                                                                                                                                                                                              |
-| List queued sessions for assignment | Sessions               | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.             |
-| List sessions by repo               | Sessions               | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                              |
-| Reconcile active host claims        | Sessions               | Sparse, keys-only GSI `activeHostId-activeHostOrder`                                | Only rows holding a host assignment lease carry these keys; bounded point reads load the claims, so reconnect and keepalive work is independent of retained session history and prompt size. |
-| Full-text prompt search             | —                      | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan.       |
-| Append session log chunk            | SessionLogs            | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                         |
-| Range-read logs for REST/history    | SessionLogs            | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                                     |
-| Idle matching worktrees             | Worktrees              | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                            |
-| Find agent connection for assign    | Connections            | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                               |
-| Due schedules                       | Schedules              | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                           |
-| Due notification operations         | NotificationDeliveries | GSI `status-nextAttemptAt`                                                          | Workers conditionally lease pending or expired-delivering rows; stable IDs make lifecycle replay insert-only.                                                                                |
+| Access pattern                      | Table / index          | Key shape                                                                           | Notes                                                                                                                                                                                                                                                     |
+| ----------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Get session by id                   | Sessions               | PK `id`                                                                             |                                                                                                                                                                                                                                                           |
+| List queued sessions for assignment | Sessions               | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.                                                                          |
+| List sessions by repo               | Sessions               | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                                                                                           |
+| Reconcile active host claims        | Sessions               | Sparse, keys-only GSI `activeHostId-activeHostOrder`                                | Only rows holding a host assignment lease carry these keys; bounded point reads load the claims, so reconnect and keepalive work is independent of retained session history and prompt size.                                                              |
+| Full-text prompt search             | —                      | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan.                                                                    |
+| Append session log chunk            | SessionLogs            | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                                                                                      |
+| Range-read logs for REST/history    | SessionLogs            | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                                                                                                  |
+| Idle matching worktrees             | Worktrees              | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                                                                                         |
+| Find agent connection for assign    | Connections            | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                                                                                            |
+| Due schedules                       | Schedules              | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                                                                                        |
+| Due notification operations         | NotificationDeliveries | GSI `status-nextAttemptAt`                                                          | Workers conditionally lease pending or expired-delivering rows; stable IDs make lifecycle replay insert-only.                                                                                                                                             |
+| Consume OAuth state                 | SlackOAuthState        | PK `stateHash`                                                                      | Store only a hash; conditional consume makes state single-use and the ten-minute TTL bounds replay/storage. Installation uses the expected integration version and opaque installation identity as CAS fences, so delete/recreate cannot reuse a version. |
+| Deduplicate inbound Slack events    | SlackInboundEvents     | PK `workspaceId`, SK `eventId`                                                      | Conditional put accepts retries exactly once per workspace/event; normalized mention/DM receipts remain `pending`, ordered by `dueOrder`, and expire after seven days.                                                                                    |
 
 ---
 
@@ -460,7 +498,7 @@ compatibility for non-interactive CLI modes; it does not add an interactive user
     patterns), get, cancel, clone, resume (**agent-only pin**, D5).
   - Repositories: CRUD (include `terminalHookScript`).
   - Worktrees: list, get. Hosts: list, get inventory, drain. Schedules: CRUD + manual trigger. Integrations:
-    Slack config CRUD.
+    Slack manual/OAuth installation, settings patch, and durable inbound event receipt.
 - `services/api` WebSocket handlers:
   - `$connect`/`$disconnect` — validate token, manage Connections table with the **conditional put
     on `hostId`** (Invariant 3).
@@ -554,6 +592,13 @@ archive writer. The local store is DynamoDB Local via `pnpm local:dynamodb` (off
 - Non-worktree (`scheduled`) session execution on main repo checkout; main-checkout lock, serial
   per repository. A scheduled `ref` is a branch name only (never a tag/SHA) and must exist on an
   eligible host; generic prompt-session `ref` remains branch/tag/SHA (D6).
+- Host-scoped workspace sessions (`repositoryId: null`) use attached path-only workspace slots on
+  hosts advertising `workspace-sessions`; they skip Git checkout and label matching, reject `ref`,
+  non-empty `requiredLabels`, raw `setupScript`, and resume, but support clone and schedules.
+  `setupProfileId` selects trusted pool configuration, cleanup defaults false, and cleanup failure
+  reports `workspace_cleanup_failed` while quarantining the slot. Slot paths use the existing
+  non-empty `allowedRoots` realpath boundary; pool replacement is delete/recreate after attachments
+  and active leases settle.
 - **Testing:** E2E test — create session (with `ref`) → agent picks up → runs → completes, using
   DynamoDB Local + mock WS; dedicated tests for Invariants 2, 6, 7, 9; a resume test that resumes
   onto a **different** worktree path after the original was reused by an intervening session,
@@ -677,8 +722,9 @@ durable inventory records count identity changes and expose API/UI restart obser
 Stale/offline host reclaim atomically records a retry candidate while it releases the host lease,
 then enqueues an external Slack `onHostOffline` alert when that notification is enabled. The
 candidate remains until the durable outbox accepts it, so independent WebSocket and cron Lambdas
-can retry after cold starts. Slack config CRUD and outbound session-thread delivery exist; OAuth
-and inbound verification do not. Provider-aware CLI usage adapters emit structured
+can retry after cold starts. Slack config CRUD, manual/OAuth installation, signature-verified
+inbound event acceptance, and outbound session-thread delivery exist; inbound events remain
+pending and do not create sessions yet. Provider-aware CLI usage adapters emit structured
 `SessionUsage` from Claude/Codex/Gemini/Grok results so session usage and configured-cost
 views reflect real executions. DynamoDB Local tests that share one endpoint run in a
 serialized `dynamo` Vitest project (one file at a time) so `pnpm check` does not 60s-timeout

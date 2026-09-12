@@ -9,6 +9,7 @@ import {
   listSessionsForRepositoriesDurable,
   listWorktreesDurable,
   listWorktreesForRepositoryDurable,
+  listWorkspaceSlotsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
@@ -399,6 +400,36 @@ describe("durable runtime read-through", () => {
     await expect(refreshSchedulerReadModel(state)).resolves.toBeUndefined();
   });
 
+  it("refreshes scheduler pool metadata from bounded script-free summaries", async () => {
+    const poolSummary = {
+      id: "pool",
+      name: "pool",
+      setupProfiles: [{ id: "install", name: "Install" }],
+      defaultSetupProfileId: "install",
+      destroyWorkspaceAfter: false,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    const listWorkspacePoolSummaries = async () => [poolSummary];
+    const state = createControlPlaneState({
+      storage: {
+        listConnections: async () => [],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listWorkspacePoolSummaries,
+        listWorkspacePools: async () => {
+          throw new Error("scheduler must not scan script-bearing pools");
+        },
+      } as never,
+    });
+
+    await expect(refreshSchedulerReadModel(state)).resolves.toBeUndefined();
+    expect(state.workspacePools.get("pool")).toEqual(poolSummary);
+  });
+
   it("replaces stale runtime rows from targeted durable reads", async () => {
     const worktreeReadModes: boolean[] = [];
     const state = createControlPlaneState({
@@ -702,6 +733,105 @@ describe("durable runtime read-through", () => {
 
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([durable]);
     expect(state.sessions.get(stale.id)?.status).toBe("running");
+  });
+
+  it("removes cached queued sessions deleted before the status GSI read", async () => {
+    const deleted = { ...session, id: "deleted-from-queue" };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listSessionsByStatus: async () => [],
+        getSession: async () => null,
+      } as never,
+    });
+    state.sessions.set(deleted.id, deleted);
+
+    await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
+    expect(state.sessions.has(deleted.id)).toBe(false);
+  });
+
+  it("uses the local slot read when durable pool indexes are unavailable", async () => {
+    const state = createControlPlaneState();
+    state.workspaceSlots.set("slot", {
+      id: "slot",
+      name: "slot",
+      path: "/workspace",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    state.storage = { listWorkspaceSlots: async () => [] } as never;
+
+    await expect(listWorkspaceSlotsDurable(state, "pool")).resolves.toEqual([
+      expect.objectContaining({ id: "slot" }),
+    ]);
+    expect(state.workspaceSlots.has("slot")).toBe(true);
+  });
+
+  it("refreshes all durable workspace slots and removes stale rows", async () => {
+    const state = createControlPlaneState({
+      storage: {
+        listWorkspaceSlots: async () => [
+          {
+            id: "fresh",
+            name: "fresh",
+            path: "/fresh",
+            hostId: "host",
+            workspacePoolId: "pool",
+            status: "idle",
+            online: true,
+            currentSessionId: null,
+          },
+        ],
+        listWorkspaceSlotsByPool: async () => [],
+      } as never,
+    });
+    state.workspaceSlots.set("stale", {
+      id: "stale",
+      name: "stale",
+      path: "/stale",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    await expect(listWorkspaceSlotsDurable(state)).resolves.toEqual([
+      expect.objectContaining({ id: "fresh" }),
+    ]);
+    expect(state.workspaceSlots.has("stale")).toBe(false);
+
+    state.workspaceSlots.set("old-pool-slot", {
+      id: "old-pool-slot",
+      name: "old",
+      path: "/old",
+      hostId: "host",
+      workspacePoolId: "pool",
+      status: "idle",
+      online: true,
+      currentSessionId: null,
+    });
+    state.storage = {
+      listWorkspaceSlots: async () => [],
+      listWorkspaceSlotsByPool: async () => [
+        {
+          id: "pool-slot",
+          name: "pool",
+          path: "/pool",
+          hostId: "host",
+          workspacePoolId: "pool",
+          status: "idle",
+          online: true,
+          currentSessionId: null,
+        },
+      ],
+    } as never;
+    await expect(listWorkspaceSlotsDurable(state, "pool")).resolves.toEqual([
+      expect.objectContaining({ id: "pool-slot" }),
+    ]);
+    expect(state.workspaceSlots.has("old-pool-slot")).toBe(false);
   });
 
   it("does not revert a just-assigned session when the queued GSI still lists it", async () => {
@@ -1011,6 +1141,20 @@ describe("durable runtime read-through", () => {
       }),
     ).resolves.toMatchObject({ items: [{ id: "session" }] });
     await expect(plane.listRepositoryCountsDurable([])).resolves.toEqual(new Map());
+  });
+
+  it("normalizes absent index results for every repository count", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => undefined,
+        countWorktreesByRepository: async () => undefined,
+        countSchedulesByRepository: async () => undefined,
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).resolves.toEqual(
+      new Map([["repository", { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]]),
+    );
   });
 
   it("uses repository indexes for page counts instead of catalog scans", async () => {

@@ -153,6 +153,8 @@ export async function deleteSecretParameters(
     config.sessionSecretSsmParam,
     config.cursorSecretSsmParam,
     config.publicBaseUrlSsmParam,
+    // The optional OAuth app parameter may be shared across environments. There is no
+    // separate confirmation for deleting it, so purge must leave it untouched.
   ];
   const stdout = await queryOk(
     dependencies,

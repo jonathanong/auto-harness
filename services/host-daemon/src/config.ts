@@ -8,6 +8,8 @@ export type {
   DaemonConfig,
   HostIdentity,
   RepositoryConfig,
+  WorkspacePoolConfig,
+  WorkspaceSlotConfig,
   WorktreeConfig,
 } from "./config-types.ts";
 export { findRepository, findWorktree } from "./config-types.ts";

@@ -27,7 +27,12 @@ export type WebhookEvent = {
   occurredAt: string;
   subject: { type: "session"; id: string };
   data: {
-    repositoryId: string;
+    /** Null for a non-Git workspace session. */
+    repositoryId: string | null;
+    /** Null for repository-backed work. */
+    workspacePoolId: string | null;
+    /** Null when a workspace session never received a slot. */
+    workspaceSlotId: string | null;
     /** Null when the session reached terminal state before its first assignment. */
     attemptId: string | null;
     status: SessionStatus;
@@ -63,7 +68,9 @@ export type DurableWebhookDelivery = {
 
 export type WebhookEnqueueInput = {
   sessionId: string;
-  repositoryId: string;
+  repositoryId?: string | null;
+  workspacePoolId?: string | null;
+  workspaceSlotId?: string | null;
   attemptId: string | null;
   status: SessionStatus;
   occurredAt: string;
@@ -105,7 +112,21 @@ function stableId(prefix: string, parts: readonly (null | number | string)[]): s
  */
 export function createWebhookDelivery(input: WebhookEnqueueInput): DurableWebhookDelivery {
   assertNonEmpty(input.sessionId, "sessionId");
-  assertNonEmpty(input.repositoryId, "repositoryId");
+  const repositoryId = input.repositoryId ?? null;
+  const workspacePoolId = input.workspacePoolId ?? null;
+  const workspaceSlotId = input.workspaceSlotId ?? null;
+  if (repositoryId !== null) assertNonEmpty(repositoryId, "repositoryId");
+  if (workspacePoolId !== null) assertNonEmpty(workspacePoolId, "workspacePoolId");
+  if (workspaceSlotId !== null) assertNonEmpty(workspaceSlotId, "workspaceSlotId");
+  if (workspaceSlotId !== null && workspacePoolId === null) {
+    throw new TypeError("workspaceSlotId requires workspacePoolId");
+  }
+  if (repositoryId === null && workspacePoolId === null) {
+    throw new TypeError("webhook event requires repositoryId or workspacePoolId");
+  }
+  if (repositoryId !== null && workspacePoolId !== null) {
+    throw new TypeError("webhook event cannot have both repositoryId and workspacePoolId");
+  }
   if (input.attemptId !== null) assertNonEmpty(input.attemptId, "attemptId");
   assertNonEmpty(input.destination.configurationId, "configurationId");
   assertCanonicalTimestamp(input.occurredAt, "occurredAt");
@@ -136,7 +157,9 @@ export function createWebhookDelivery(input: WebhookEnqueueInput): DurableWebhoo
     occurredAt: input.occurredAt,
     subject: { type: "session", id: input.sessionId },
     data: {
-      repositoryId: input.repositoryId,
+      repositoryId,
+      workspacePoolId,
+      workspaceSlotId,
       attemptId: input.attemptId,
       status: input.status,
     },

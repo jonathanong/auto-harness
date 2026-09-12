@@ -106,7 +106,7 @@ describe("Slack integration configuration", () => {
     for (const bad of [
       { ...input(), botToken: "xoxp-not-a-bot" },
       { ...input(), defaultChannel: "https://hooks.slack.com/not-a-channel" },
-      { ...input(), signingSecret: "not-hex" },
+      { ...input(), signingSecret: "too-short" },
       { ...input(), enabled: "yes" },
       { ...input(), notifications: { onSessionCreated: true } },
     ]) {

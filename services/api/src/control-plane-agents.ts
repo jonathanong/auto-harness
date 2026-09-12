@@ -25,7 +25,13 @@ import {
   resolveRegisteredRepositories,
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
+import {
+  syncHostWorkspaceSlots,
+  syncHostWorkspaceSlotsDurable,
+} from "./control-plane-agent-hosts.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
 import {
   releaseProviderAccountLease,
@@ -50,6 +56,125 @@ function listedHostRuntime(runtime?: HostRuntimeReport): ListedHostRuntime {
   };
 }
 
+function publishWorkspaceSlotsLocal(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string,
+  online: boolean,
+  advertisedWorkspacePools: readonly import("@auto-harness/shared").WorkspacePoolAttachment[] = [],
+): void {
+  for (const slot of state.workspaceSlots.values()) {
+    if (slot.hostId !== hostId || slot.status === "busy") continue;
+    const advertised = advertisedWorkspacePools.some(
+      (pool) =>
+        pool.workspacePoolId === slot.workspacePoolId &&
+        pool.slots.some(
+          (candidate) =>
+            candidate.id === slot.id &&
+            candidate.name === slot.name &&
+            candidate.path === slot.path,
+        ),
+    );
+    const next = { ...slot, online: online && advertised, connectionId };
+    state.workspaceSlots.set(slot.id, next);
+    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot(next));
+  }
+}
+
+function offlineWorkspaceSlotsLocal(
+  state: ControlPlaneState,
+  hostId: string,
+  reason: string,
+): string[] {
+  const requeued: string[] = [];
+  for (const slot of state.workspaceSlots.values()) {
+    if (slot.hostId !== hostId) continue;
+    const session = slot.currentSessionId ? state.sessions.get(slot.currentSessionId) : undefined;
+    if (session && (session.status === "running" || session.status === "cancelled")) {
+      if (session.ackReceivedAt) {
+        session.reconnectDeadlineAt = new Date(
+          Date.parse(state.now()) + state.reconnectGraceMs,
+        ).toISOString();
+        persistSession(state, session);
+        state.workspaceSlots.set(slot.id, { ...slot, online: false });
+        continue;
+      }
+      releaseProviderAccountLease(state, session);
+      if (session.status === "running") {
+        session.status = "queued";
+        session.errorMessage = reason;
+        delete session.completedAt;
+        requeued.push(session.id);
+      }
+      session.workspaceSlotId = null;
+      session.hostId = null;
+      delete session.workspaceSlotLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
+      persistSession(state, session);
+    } else if (session?.status === "timed_out") {
+      session.workspaceSlotId = null;
+      delete session.workspaceSlotLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
+      persistSession(state, session);
+    }
+    state.workspaceSlots.set(slot.id, {
+      ...slot,
+      status: slot.status === "error" ? "error" : "idle",
+      online: false,
+      currentSessionId: null,
+    });
+  }
+  return requeued;
+}
+
+async function publishWorkspaceSlotsDurable(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string,
+  online: boolean,
+  advertisedWorkspacePools: readonly import("@auto-harness/shared").WorkspacePoolAttachment[] = [],
+): Promise<boolean> {
+  if (
+    typeof state.storage?.listWorkspaceSlotsByHost !== "function" ||
+    typeof state.storage.putWorkspaceSlot !== "function"
+  ) {
+    return true;
+  }
+  const slots = await state.storage!.listWorkspaceSlotsByHost(hostId);
+  for (const slot of slots) {
+    if (slot.status === "busy") {
+      state.workspaceSlots.set(slot.id, slot);
+      continue;
+    }
+    const advertised = advertisedWorkspacePools.some(
+      (pool) =>
+        pool.workspacePoolId === slot.workspacePoolId &&
+        pool.slots.some(
+          (candidate) =>
+            candidate.id === slot.id &&
+            candidate.name === slot.name &&
+            candidate.path === slot.path,
+        ),
+    );
+    const next = { ...slot, online: online && advertised, connectionId };
+    if (typeof state.storage!.putWorkspaceSlotFenced === "function") {
+      if (!(await state.storage!.putWorkspaceSlotFenced(next, connectionId, slot.connectionId))) {
+        return false;
+      }
+    } else {
+      await state.storage!.putWorkspaceSlot(next);
+    }
+    state.workspaceSlots.set(slot.id, next);
+  }
+  return true;
+}
+
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
  * connection, so an intervening replacement keeps its own inventory. */
@@ -59,6 +184,7 @@ async function rollbackDurableRegistration(
   connectionId: string,
   at: string,
   worktrees: readonly import("./db/types.ts").WorktreeRecord[],
+  workspaceSlots: readonly import("./db/types.ts").WorkspaceSlotRecord[] = [],
 ): Promise<void> {
   const storage = state.storage!;
   // Do not drop the candidate host lock until every inherited main-checkout
@@ -83,6 +209,29 @@ async function rollbackDurableRegistration(
         })
       ) {
         state.worktrees.set(worktree.id, { ...worktree, online: false });
+      }
+    }
+    // Workspace-slot publication is part of the same registration boundary as
+    // worktree publication. Slots are written before the host inventory fence,
+    // so a failed slot write must leave neither the lease nor an online slot
+    // owned by this connection behind.
+    if (
+      typeof storage.listWorkspaceSlotsByHost === "function" &&
+      typeof storage.putWorkspaceSlot === "function"
+    ) {
+      const ownedSlots = new Map(workspaceSlots.map((slot) => [slot.id, slot]));
+      for (const slot of await storage.listWorkspaceSlotsByHost(hostId)) {
+        if (slot.connectionId === connectionId) ownedSlots.set(slot.id, slot);
+      }
+      for (const slot of ownedSlots.values()) {
+        const offline = { ...slot, online: false };
+        const fenced =
+          typeof storage.putWorkspaceSlotFenced === "function" && slot.connectionId
+            ? await storage.putWorkspaceSlotFenced(offline, slot.connectionId)
+            : undefined;
+        if (fenced === false) continue;
+        if (fenced === undefined) await storage.putWorkspaceSlot(offline);
+        state.workspaceSlots.set(offline.id, offline);
       }
     }
   } finally {
@@ -186,6 +335,21 @@ function validateRunningSessions(
         return `running session ${sessionId} is not owned by host ${hostId}`;
       continue;
     }
+    if (session?.workspaceSlotId) {
+      const slot = state.workspaceSlots.get(session.workspaceSlotId);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.workspaceSlotLease !== true ||
+        !slot ||
+        slot.hostId !== hostId ||
+        slot.currentSessionId !== sessionId
+      ) {
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      }
+      continue;
+    }
     const worktree = session?.worktreeId ? state.worktrees.get(session.worktreeId) : undefined;
     if (
       !session ||
@@ -225,6 +389,21 @@ async function validateRunningSessionsDurable(
         lease.connectionId !== session.assignmentConnectionId
       )
         return `running session ${sessionId} is not owned by host ${hostId}`;
+      continue;
+    }
+    if (session?.workspaceSlotId) {
+      const slot = await state.storage!.getWorkspaceSlot(session.workspaceSlotId);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.workspaceSlotLease !== true ||
+        !slot ||
+        slot.hostId !== hostId ||
+        slot.currentSessionId !== sessionId
+      ) {
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      }
       continue;
     }
     const worktree = session?.worktreeId
@@ -402,6 +581,7 @@ export function registerHost(
       labels: string[];
     }>;
     repositories?: HostRepositoryRegistration[];
+    workspacePools?: import("@auto-harness/shared").WorkspacePoolAttachment[];
     capabilities?: HostCapability[];
     maxConcurrentAssignments?: number;
     providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
@@ -497,6 +677,7 @@ export function registerHost(
     queueWrite(state, (storage) => storage!.putConnection(conn));
   }
   state.hostConnection.set(opts.hostId, connectionId);
+  publishWorkspaceSlotsLocal(state, opts.hostId, connectionId, !opts.draining, opts.workspacePools);
   state.disconnectedHosts.delete(opts.hostId);
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
@@ -509,8 +690,10 @@ export function registerHost(
     previousInventory,
     opts.daemonIdentity,
     opts.runtime,
+    opts.workspacePools,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
+  syncHostWorkspaceSlots(state, registrationInventory, opts.workspacePools ?? []);
   state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putHostInventory(registrationInventory));
@@ -570,6 +753,7 @@ export async function registerHostDurable(
       labels: string[];
     }>;
     repositories?: HostRepositoryRegistration[];
+    workspacePools?: import("@auto-harness/shared").WorkspacePoolAttachment[];
     capabilities?: HostCapability[];
     maxConcurrentAssignments?: number;
     providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
@@ -602,6 +786,24 @@ export async function registerHostDurable(
   }
   const attemptsError = validateReportedAttempts(opts);
   if (attemptsError) return { ok: false, error: attemptsError };
+  // Check each advertised attachment against the durable catalog before
+  // acquiring a host lease. The inventory publication below repeats this as
+  // transaction marker checks, so a pool deletion cannot slip between this
+  // admission read and the durable attachment write.
+  const advertisedWorkspacePoolIds = new Set(
+    (opts.workspacePools ?? []).map((attachment) => attachment.workspacePoolId),
+  );
+  for (const workspacePoolId of advertisedWorkspacePoolIds) {
+    // Production Dynamo always exposes the point read. Older storage doubles
+    // predate workspace pools and rely on the already-validated registration
+    // fixtures, so retain compatibility when that optional seam is absent.
+    if (
+      typeof state.storage.getWorkspacePool === "function" &&
+      !(await getWorkspacePoolDurable(state, workspacePoolId))
+    ) {
+      return { ok: false, error: `unknown workspacePoolId: ${workspacePoolId}` };
+    }
+  }
   const runningError = await validateRunningSessionsDurable(
     state,
     opts.hostId,
@@ -670,6 +872,7 @@ export async function registerHostDurable(
     previousInventory,
     opts.daemonIdentity,
     opts.runtime,
+    opts.workspacePools,
   );
   // The transaction committed. Finish all related row writes before changing
   // this process's cache; a failed inventory/worktree write must not make the
@@ -726,6 +929,23 @@ export async function registerHostDurable(
   }
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
+  try {
+    if (
+      !(await publishWorkspaceSlotsDurable(
+        state,
+        opts.hostId,
+        connectionId,
+        !opts.draining,
+        opts.workspacePools,
+      ))
+    ) {
+      await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+      return { ok: false, error: "host connection changed while publishing workspace slots" };
+    }
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+    throw err;
+  }
   state.disconnectedHosts.delete(opts.hostId);
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
@@ -764,20 +984,48 @@ export async function registerHostDurable(
     // with the edit instead of re-losing it. A "lease" failure means a different
     // connection won registration entirely and is not retryable here.
     for (let attempt = 0; ; attempt += 1) {
+      // A version retry reuses this connection lease but has crossed more
+      // durable round trips. Recheck catalog presence; the marker check below
+      // then closes the read-to-write deletion race again.
+      if (attempt > 0) {
+        for (const workspacePoolId of advertisedWorkspacePoolIds) {
+          if (
+            typeof state.storage.getWorkspacePool === "function" &&
+            !(await getWorkspacePoolDurable(state, workspacePoolId))
+          ) {
+            await rollbackDurableRegistration(
+              state,
+              opts.hostId,
+              connectionId,
+              at,
+              publishedWorktrees,
+            );
+            return { ok: false, error: `unknown workspacePoolId: ${workspacePoolId}` };
+          }
+        }
+      }
+      const markers = inventoryReferenceMarkers(state.now(), registrationInventory);
+      if (markers.length > 98) {
+        await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+        return { ok: false, error: "host inventory has too many catalog references" };
+      }
       const result = await state.storage.putHostInventoryFenced(
         registrationInventory,
         { hostId: opts.hostId, connectionId },
         previousInventory?.version ?? 0,
+        markers,
       );
       if (result.ok) break;
-      if (result.reason === "lease" || attempt >= 2) {
+      if (result.reason === "lease" || result.reason === "reference" || attempt >= 2) {
         await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
         return {
           ok: false,
           error:
             result.reason === "lease"
               ? "host connection changed while publishing inventory"
-              : "host inventory changed while publishing registration",
+              : result.reason === "reference"
+                ? "workspace pool changed while publishing inventory"
+                : "host inventory changed while publishing registration",
         };
       }
       previousInventory = (await state.storage.getHostInventory(opts.hostId)) ?? undefined;
@@ -790,6 +1038,7 @@ export async function registerHostDurable(
         previousInventory,
         opts.daemonIdentity,
         opts.runtime,
+        opts.workspacePools,
       );
       // The worktree projection was published before the inventory fence. If a
       // UI edit won that fence, republish the reconciled effective labels too;
@@ -820,6 +1069,12 @@ export async function registerHostDurable(
   // leave a failed draining registration excluded in this process.
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
+  try {
+    await syncHostWorkspaceSlotsDurable(state, registrationInventory, opts.workspacePools ?? []);
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+    throw err;
+  }
   state.hostInventories.set(opts.hostId, registrationInventory);
   state.hostInventoryRevision += 1;
   return { ok: true, connectionId };
@@ -844,6 +1099,7 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
   const requeued = offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
+  requeued.push(...offlineWorkspaceSlotsLocal(state, hostId, "agent disconnected; requeued"));
   for (const session of state.sessions.values()) {
     if (session.status !== "timed_out" || session.timedOutHostId !== hostId) continue;
     releaseProviderAccountLease(state, session);

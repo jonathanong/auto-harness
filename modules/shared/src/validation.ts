@@ -186,8 +186,13 @@ export function validateCreateSessionInput(input: {
   metadata?: unknown;
   type?: unknown;
   source?: unknown;
+  workspacePoolId?: unknown;
+  setupProfileId?: unknown;
+  destroyWorkspaceAfter?: unknown;
+  /** Rejected deliberately: setup is selected by trusted profile id. */
+  setupScript?: unknown;
 }): ValidationResult<{
-  repositoryId: string;
+  repositoryId: string | null;
   prompt: string;
   target: TargetRef;
   fallbacks: TargetRef[];
@@ -200,15 +205,56 @@ export function validateCreateSessionInput(input: {
   metadata: Record<string, unknown> | undefined;
   type: SessionType;
   source: SessionSource;
+  workspacePoolId?: string;
+  setupProfileId?: string;
+  destroyWorkspaceAfter?: boolean;
 }> {
-  if (!isNonEmptyString(input.repositoryId)) {
+  const isWorkspace = input.repositoryId === null;
+  if (!isWorkspace && !isNonEmptyString(input.repositoryId)) {
     return { ok: false, error: "repositoryId is required" };
+  }
+  if (input.setupScript !== undefined) {
+    return { ok: false, error: "setupScript is not accepted; use setupProfileId" };
+  }
+  if (isWorkspace) {
+    if (!isNonEmptyString(input.workspacePoolId)) {
+      return { ok: false, error: "workspacePoolId is required for workspace sessions" };
+    }
+  } else if (input.workspacePoolId !== undefined) {
+    return { ok: false, error: "workspacePoolId is only valid for workspace sessions" };
+  }
+  if (input.setupProfileId !== undefined && !isNonEmptyString(input.setupProfileId)) {
+    return { ok: false, error: "setupProfileId must be a non-empty string when set" };
+  }
+  if (!isWorkspace && input.setupProfileId !== undefined) {
+    return { ok: false, error: "setupProfileId is only valid for workspace sessions" };
+  }
+  if (
+    input.destroyWorkspaceAfter !== undefined &&
+    typeof input.destroyWorkspaceAfter !== "boolean"
+  ) {
+    return { ok: false, error: "destroyWorkspaceAfter must be a boolean when set" };
+  }
+  if (!isWorkspace && input.destroyWorkspaceAfter !== undefined) {
+    return { ok: false, error: "destroyWorkspaceAfter is only valid for workspace sessions" };
+  }
+  if (input.type !== undefined && !isSessionType(input.type)) {
+    return { ok: false, error: "type must be prompt, scheduled, or workspace" };
+  }
+  const type: SessionType = isWorkspace
+    ? ((input.type as SessionType | undefined) ?? "workspace")
+    : ((input.type as SessionType | undefined) ?? "prompt");
+  if (isWorkspace && type !== "workspace") {
+    return { ok: false, error: "workspace sessions must have type workspace" };
+  }
+  if (!isWorkspace && type === "workspace") {
+    return { ok: false, error: "workspace type requires repositoryId null" };
   }
   if (typeof input.prompt !== "string") {
     return { ok: false, error: "prompt is required" };
   }
   // Scheduled fires use the stored schedule prompt, which may be blank.
-  if (!input.prompt && input.type !== "scheduled") {
+  if (!input.prompt && type !== "scheduled" && input.source !== "schedule") {
     return { ok: false, error: "prompt is required" };
   }
   const promptBytes = promptByteLengthError(input.prompt);
@@ -247,6 +293,9 @@ export function validateCreateSessionInput(input: {
     }
     requiredLabels = input.requiredLabels;
   }
+  if (isWorkspace && requiredLabels.length > 0) {
+    return { ok: false, error: "requiredLabels are not supported for workspace sessions" };
+  }
 
   let ref: string | undefined;
   if (input.ref !== undefined) {
@@ -259,6 +308,9 @@ export function validateCreateSessionInput(input: {
       return { ok: false, error: "ref must be a valid git ref" };
     }
     ref = input.ref;
+  }
+  if (isWorkspace && ref !== undefined) {
+    return { ok: false, error: "ref is not supported for workspace sessions" };
   }
 
   let concurrencyId: string | undefined;
@@ -281,13 +333,9 @@ export function validateCreateSessionInput(input: {
     metadata = parsed.value;
   }
 
-  if (input.type !== undefined && !isSessionType(input.type)) {
-    return { ok: false, error: "type must be prompt or scheduled" };
-  }
   if (input.source !== undefined && !isSessionSource(input.source)) {
     return { ok: false, error: "source must be api, ui, webhook, or schedule" };
   }
-  const type = input.type ?? "prompt";
   if (type === "scheduled" && ref !== undefined && !isValidScheduledBranchRef(ref)) {
     return { ok: false, error: "scheduled ref must be a valid branch name" };
   }
@@ -295,7 +343,7 @@ export function validateCreateSessionInput(input: {
   return {
     ok: true,
     value: {
-      repositoryId: input.repositoryId,
+      repositoryId: isWorkspace ? null : (input.repositoryId as string),
       prompt: input.prompt,
       target: routing.value.target,
       fallbacks: routing.value.fallbacks,
@@ -308,6 +356,17 @@ export function validateCreateSessionInput(input: {
       metadata,
       type,
       source: input.source ?? "api",
+      ...(isWorkspace
+        ? {
+            workspacePoolId: input.workspacePoolId as string,
+            ...(input.setupProfileId !== undefined
+              ? { setupProfileId: input.setupProfileId as string }
+              : {}),
+            ...(input.destroyWorkspaceAfter !== undefined
+              ? { destroyWorkspaceAfter: input.destroyWorkspaceAfter as boolean }
+              : {}),
+          }
+        : {}),
     },
   };
 }

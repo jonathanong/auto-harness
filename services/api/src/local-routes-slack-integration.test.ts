@@ -89,6 +89,18 @@ describe("Slack integration routes", () => {
       ),
     ).toMatchObject({ status: 200, json: expect.objectContaining({ enabled: false }) });
     expect(
+      await invokeHandler(
+        handler,
+        "PATCH",
+        "/api/v1/integrations/slack",
+        { expectedVersion: 2, notifications: { onSessionCreated: false } },
+        basic(),
+      ),
+    ).toMatchObject({
+      status: 200,
+      json: { notifications: { onSessionCreated: false, onSessionStarted: true } },
+    });
+    expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/slack", undefined, basic()),
     ).toMatchObject({ status: 204 });
     expect((await plane.listAuditLogs({ resourceType: "integration" })).items).toEqual(
@@ -122,7 +134,12 @@ describe("Slack integration routes", () => {
       ).toBe(400);
     }
     expect(
-      (await invokeHandler(handler, "PATCH", "/api/v1/integrations/slack", body())).status,
+      (
+        await invokeHandler(handler, "PATCH", "/api/v1/integrations/slack", {
+          expectedVersion: 1,
+          enabled: false,
+        })
+      ).status,
     ).toBe(404);
     expect((await invokeHandler(handler, "DELETE", "/api/v1/integrations/slack")).status).toBe(404);
 

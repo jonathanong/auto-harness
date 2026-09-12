@@ -282,4 +282,120 @@ describe("DynamoPlaneStorageBase", () => {
       ),
     ).toBe(false);
   });
+
+  it("delegates workspace persistence and lifecycle calls", async () => {
+    const now = "2026-01-02T00:00:00.000Z";
+    const pool = {
+      id: "base-workspace-pool",
+      name: "Base workspace pool",
+      setupProfiles: [],
+      destroyWorkspaceAfter: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const slot = {
+      id: "base-workspace-slot",
+      workspacePoolId: pool.id,
+      hostId: "base-host",
+      name: "Base workspace slot",
+      path: "/tmp/base-workspace-slot",
+      status: "idle" as const,
+      online: true,
+      currentSessionId: null,
+      connectionId: "base-connection",
+      updatedAt: now,
+    };
+
+    expect(await storage.createWorkspacePool(pool)).toBe(true);
+    await storage.putWorkspacePool(pool);
+    expect(await storage.updateWorkspacePool({ ...pool, name: "Updated" })).toBe(true);
+    expect(await storage.getWorkspacePool(pool.id)).toMatchObject({ id: pool.id });
+    expect(await storage.getWorkspacePoolSummary(pool.id)).toMatchObject({ id: pool.id });
+    expect((await storage.listWorkspacePools()).map(({ id }) => id)).toContain(pool.id);
+    await storage.putWorkspaceSlot(slot);
+    expect(await storage.getWorkspaceSlot(slot.id)).toMatchObject({ id: slot.id });
+    expect((await storage.listWorkspaceSlots()).map(({ id }) => id)).toContain(slot.id);
+    expect((await storage.listWorkspaceSlotsByPool(pool.id)).map(({ id }) => id)).toContain(
+      slot.id,
+    );
+    expect((await storage.listWorkspaceSlotsByHost(slot.hostId)).map(({ id }) => id)).toContain(
+      slot.id,
+    );
+    expect(await storage.putWorkspaceSlotFenced(slot, slot.connectionId)).toBe(false);
+    expect(await storage.retireWorkspaceSlot(slot.id, "missing-session")).toBe(false);
+    expect(await storage.deleteWorkspaceSlotIfIdle(slot.id)).toBe(true);
+    await storage.putWorkspaceSlot({ ...slot, retired: true });
+    expect(await storage.deleteRetiredWorkspaceSlotIfIdle(slot.id)).toBe(true);
+    await storage.putWorkspaceSlot(slot);
+    await storage.deleteWorkspaceSlot(slot.id);
+
+    expect(
+      await storage.tryAssignWorkspaceSession({
+        sessionId: "missing-workspace-session",
+        workspacePoolId: pool.id,
+        workspaceSlotId: slot.id,
+        hostId: slot.hostId,
+        connectionId: slot.connectionId,
+        now,
+        attemptId: "attempt",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: slot.hostId,
+          worktreeId: null,
+          workspacePoolId: pool.id,
+          workspaceSlotId: slot.id,
+          attemptId: "attempt",
+        },
+        queueShard: 0,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.markWorkspaceReconnectPending({
+        sessionId: "missing-workspace-session",
+        hostId: slot.hostId,
+        workspaceSlotId: slot.id,
+        deadlineAt: now,
+        connectionId: slot.connectionId,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.confirmWorkspaceReconnect({
+        sessionId: "missing-workspace-session",
+        hostId: slot.hostId,
+        workspaceSlotId: slot.id,
+        connectionId: slot.connectionId,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.restoreWorkspaceReconnectPending({
+        sessionId: "missing-workspace-session",
+        hostId: slot.hostId,
+        workspaceSlotId: slot.id,
+        connectionId: slot.connectionId,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.requeueUsageLimitedWorkspaceSession({
+        sessionId: "missing-workspace-session",
+        workspaceSlotId: slot.id,
+        attemptId: "attempt",
+        providerAccountId: "account",
+        queueShard: 0,
+        now,
+        usageLimitedUntil: now,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.suppressProviderlessUsageLimitWorkspace({
+        sessionId: "missing-workspace-session",
+        workspaceSlotId: slot.id,
+        attemptId: "attempt",
+        queueShard: 0,
+        targetIndex: 0,
+      }),
+    ).toBe(false);
+    expect(await storage.deleteWorkspacePool(pool.id)).toBe(true);
+  });
 });

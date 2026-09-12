@@ -36,9 +36,14 @@ export const SESSION_ERROR_CODES = [
   "setup_failed",
   "checkout_fetch_failed",
   "host_lost",
+  "workspace_cleanup_failed",
 ] as const satisfies readonly SessionErrorCode[];
 
-export const SESSION_TYPES = ["prompt", "scheduled"] as const satisfies readonly SessionType[];
+export const SESSION_TYPES = [
+  "prompt",
+  "scheduled",
+  "workspace",
+] as const satisfies readonly SessionType[];
 export const SESSION_SOURCES = [
   "api",
   "ui",

@@ -61,6 +61,14 @@ export function applyHostExecConfig(
     })),
     providerAccounts: existing.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(existing.capabilities ?? [])],
+    ...(existing.workspacePools !== undefined
+      ? {
+          workspacePools: existing.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
   };
   if (patch.setupScript !== undefined) assignOptionalString(next, "setupScript", patch.setupScript);
   if (patch.allowedRoots !== undefined) {
@@ -143,6 +151,35 @@ function idsInOrder<T extends { id: string }>(
   return ordered;
 }
 
+type WorkspacePoolAttachment = NonNullable<HostInventory["workspacePools"]>[number];
+type WorkspaceSlot = WorkspacePoolAttachment["slots"][number];
+
+function workspacePoolsById(
+  entries: readonly WorkspacePoolAttachment[] | undefined,
+): Map<string, WorkspacePoolAttachment> {
+  return new Map(entries?.map((entry) => [entry.workspacePoolId, entry]) ?? []);
+}
+
+function workspacePoolIdsInOrder(
+  existing: readonly WorkspacePoolAttachment[] | undefined,
+  incoming: readonly WorkspacePoolAttachment[] | undefined,
+): string[] {
+  const ids = new Set<string>();
+  const ordered: string[] = [];
+  for (const entry of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (ids.has(entry.workspacePoolId)) continue;
+    ids.add(entry.workspacePoolId);
+    ordered.push(entry.workspacePoolId);
+  }
+  return ordered;
+}
+
+function workspaceSlotsById(
+  entries: readonly WorkspaceSlot[] | undefined,
+): Map<string, WorkspaceSlot> {
+  return new Map(entries?.map((entry) => [entry.id, entry]) ?? []);
+}
+
 function addOptionalStringEdit(
   edits: string[],
   path: string,
@@ -218,6 +255,7 @@ export function inventoryHasExecConfig(inventory: HostInventory | null | undefin
   if (inventory.updateConfig !== undefined) return true;
   if ((inventory.setupScript ?? "") !== "" || (inventory.allowedRoots ?? []).length > 0)
     return true;
+  if ((inventory.workspacePools ?? []).length > 0) return true;
   return inventory.repositories.some(
     (repository) =>
       (repository.setupScript ?? "") !== "" ||
@@ -298,6 +336,26 @@ export function listExecConfigEdits(
       }
     }
   }
+  const previousWorkspacePools = workspacePoolsById(existing?.workspacePools);
+  const nextWorkspacePools = workspacePoolsById(incoming.workspacePools);
+  for (const workspacePoolId of workspacePoolIdsInOrder(
+    existing?.workspacePools,
+    incoming.workspacePools,
+  )) {
+    const previous = previousWorkspacePools.get(workspacePoolId);
+    const next = nextWorkspacePools.get(workspacePoolId);
+    if (previous === undefined || next === undefined)
+      edits.push(`workspacePools.${workspacePoolId}`);
+    const previousSlots = workspaceSlotsById(previous?.slots);
+    const nextSlots = workspaceSlotsById(next?.slots);
+    for (const slotId of idsInOrder(previous?.slots, next?.slots)) {
+      const previousSlot = previousSlots.get(slotId);
+      const nextSlot = nextSlots.get(slotId);
+      if (previousSlot?.path !== nextSlot?.path) {
+        edits.push(`workspacePools.${workspacePoolId}.slots.${slotId}.path`);
+      }
+    }
+  }
   return edits;
 }
 
@@ -328,6 +386,14 @@ export function preserveHostExecConfig(
     })),
     providerAccounts: incoming.providerAccounts.map((account) => ({ ...account })),
     capabilities: [...(incoming.capabilities ?? [])],
+    ...(incoming.workspacePools !== undefined
+      ? {
+          workspacePools: incoming.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
   };
   if (!Object.hasOwn(next, "setupScript")) restoreScript(next, existing ?? undefined);
   else if (next.setupScript === "") delete next.setupScript;

@@ -16,6 +16,15 @@ export type SlackIntegrationRecord = {
   enabled: boolean;
   notifications: SlackNotifications;
   signingSecretConfigured: boolean;
+  /** Missing on rows created before OAuth support; normalize as manual. */
+  installationMethod?: "manual" | "oauth";
+  workspaceId?: string;
+  workspaceName?: string;
+  appId?: string;
+  botUserId?: string;
+  grantedScopes?: string[];
+  /** Opaque identity for this singleton installation; absent on legacy rows. */
+  installationId?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -24,6 +33,21 @@ export type SlackIntegrationRecord = {
 export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
   botTokenConfigured: true;
   deliveryAvailable: boolean;
+  installationMethod: "manual" | "oauth";
+  inboundAvailable: boolean;
+};
+
+/**
+ * Secret-minimal view used by the unauthenticated Slack events route. It deliberately
+ * excludes bot-token delivery configuration and public capability probes.
+ */
+export type SlackInboundIntegration = {
+  installationMethod: "manual" | "oauth";
+  workspaceId?: string;
+  appId?: string;
+  /** Manual ingress fence derived from Slack auth.test's user_id. */
+  botUserId?: string;
+  signingSecret: string | null;
 };
 
 export function toPublicSlackIntegration(
@@ -35,6 +59,8 @@ export function toPublicSlackIntegration(
     ...publicRecord,
     notifications: normalizeSlackNotifications(notifications),
     botTokenConfigured: true,
+    installationMethod: record.installationMethod ?? "manual",
+    inboundAvailable: record.signingSecretConfigured,
     deliveryAvailable,
   };
 }

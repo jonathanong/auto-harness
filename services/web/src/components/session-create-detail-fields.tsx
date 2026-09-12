@@ -5,25 +5,29 @@ import { SessionTimeoutField } from "./session-timeout-field.tsx";
 
 export function SessionCreateDetailFields({
   initialValues,
+  includeRef = true,
 }: {
   initialValues?: SessionCloneDraft | null;
+  includeRef?: boolean;
 }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
         <SessionTimeoutField initialSeconds={initialValues?.timeout} />
-        <div className="space-y-1">
-          <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
-            Git Ref
-          </Label>
-          <Input
-            id="ref"
-            name="ref"
-            placeholder="main"
-            defaultValue={initialValues?.ref}
-            data-pw="create-session-ref"
-          />
-        </div>
+        {includeRef ? (
+          <div className="space-y-1">
+            <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
+              Git Ref
+            </Label>
+            <Input
+              id="ref"
+              name="ref"
+              placeholder="main"
+              defaultValue={initialValues?.ref}
+              data-pw="create-session-ref"
+            />
+          </div>
+        ) : null}
       </div>
       <div className="space-y-1">
         <Label

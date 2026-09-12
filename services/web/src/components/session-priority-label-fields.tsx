@@ -14,10 +14,13 @@ export function SessionPriorityLabelFields({
   availableLabels,
   initialPriority = 0,
   initialRequiredLabels = [],
+  showLabels = true,
 }: {
   availableLabels: string[];
   initialPriority?: number;
   initialRequiredLabels?: string[];
+  /** Workspace sessions are ordered by priority but cannot target worktree labels. */
+  showLabels?: boolean;
 }) {
   const [priority, setPriority] = useState(initialPriority);
   const required = new Set(initialRequiredLabels);
@@ -47,35 +50,37 @@ export function SessionPriorityLabelFields({
           {priority} ({priorityBand(priority)})
         </output>
       </div>
-      <fieldset className="space-y-2" data-pw="create-session-labels">
-        <legend className="text-sm font-medium">Required labels</legend>
-        {availableLabels.length > 0 ? (
-          <div className="space-y-2">
-            {availableLabels.map((label) => {
-              const id = `create-session-label-${label}`;
-              return (
-                <div key={label} className="flex items-center gap-2">
-                  <Switch
-                    id={id}
-                    name="requiredLabels"
-                    value={label}
-                    defaultChecked={required.has(label)}
-                    data-pw={id}
-                  />
-                  <Label htmlFor={id}>{label}</Label>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground" data-pw="create-session-labels-empty">
-            No labels are advertised by online worktrees. This session can run on any worktree.
+      {showLabels ? (
+        <fieldset className="space-y-2" data-pw="create-session-labels">
+          <legend className="text-sm font-medium">Required labels</legend>
+          {availableLabels.length > 0 ? (
+            <div className="space-y-2">
+              {availableLabels.map((label) => {
+                const id = `create-session-label-${label}`;
+                return (
+                  <div key={label} className="flex items-center gap-2">
+                    <Switch
+                      id={id}
+                      name="requiredLabels"
+                      value={label}
+                      defaultChecked={required.has(label)}
+                      data-pw={id}
+                    />
+                    <Label htmlFor={id}>{label}</Label>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground" data-pw="create-session-labels-empty">
+              No labels are advertised by online worktrees. This session can run on any worktree.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            A worktree must have every selected label. Leave all unselected to allow any worktree.
           </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          A worktree must have every selected label. Leave all unselected to allow any worktree.
-        </p>
-      </fieldset>
+        </fieldset>
+      ) : null}
     </div>
   );
 }

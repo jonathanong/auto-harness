@@ -147,6 +147,15 @@ without specifying a customer-managed key) — scoped further with `kms:ViaServi
 `EncryptionContext:PARAMETER_ARN` condition (so it only applies to decrypting
 these three specific parameters).
 
+OAuth app credentials are optional. To enable the **Connect with Slack** flow,
+store a JSON object containing `clientId`, `clientSecret`, and `signingSecret`
+as an SSM `SecureString` at `HARNESS_SLACK_APP_SSM_PARAM` (default
+`/auto-harness/<environment>/slack-app`). REST receives a narrowly scoped read
+and decrypt grant for this parameter; Cron and Web do not. Manual bot-token and
+signing-secret configuration remains available without this parameter.
+Because this parameter is optional and may be shared across environments, purge
+always leaves it in place; `HARNESS_DEPLOY_PURGE_SSM=1` does not delete it.
+
 A fourth, non-secret parameter — `/auto-harness/<environment>/public-base-url` by
 default, overridable with `HARNESS_PUBLIC_BASE_URL_SSM_PARAM` — holds the
 CloudFront `WebUrl` this environment answers on. Unlike the three bootstrap
@@ -159,9 +168,11 @@ depends on Runtime, not the reverse). Each Lambda's IAM role gets a separate
 a plain `String` parameter is never SSE-encrypted. A REST Lambda cold start that
 finds this parameter missing or unreadable falls back to ControlPlane's own
 `http://localhost:7421` default for session `url` fields and Slack deep links
-rather than failing the cold start. Viewer WebSocket Origin checks use the
-fetched URL only and deny the connection until a later connect can read it; they
-never fall back to localhost. After writing the parameter, `deploy`/`update`
+rather than failing the cold start. Slack OAuth start is stricter: it re-reads
+and validates an HTTPS deployment URL, returning unavailable until one is
+available rather than registering a localhost callback. Viewer WebSocket Origin
+checks use the fetched URL only and deny the connection until a later connect
+can read it; they never fall back to localhost. After writing the parameter, `deploy`/`update`
 recycle the runtime Lambdas (a no-op `update-function-configuration`) so
 already-warm containers re-read WebUrl instead of keeping the localhost session
 URL fallback. AWS CLI v2 pages that JSON through `less` on a TTY; the lifecycle
@@ -171,6 +182,7 @@ sets `AWS_PAGER=""` so the dump prints to stdout and deploy continues.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | SSM: bootstrap secrets          | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var                                            |
 | SSM: public base URL            | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable                                          |
+| `HARNESS_SLACK_APP_SSM_PARAM`   | Optional SSM `SecureString` name containing OAuth `{clientId,clientSecret,signingSecret}`; REST only, manual Slack setup does not require it                                         |
 | Table names / prefix            | From stack (see [aws.md](aws.md) env table)                                                                                                                                          |
 | `ARCHIVE_BUCKET`                | S3 archive bucket (REST and Cron only — WebSocket does not write archives)                                                                                                           |
 | `WS_API_ENDPOINT`               | API Gateway Management API for `postToConnection`                                                                                                                                    |
@@ -197,19 +209,19 @@ All lifecycle commands use the same settings. Environment names are lowercase,
 start with a letter, contain only letters, numbers, and dashes, and are at most 32
 characters.
 
-| Variable                             | Required             | Purpose                                                                                           |
-| ------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------- |
-| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                                                      |
-| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                                                             |
-| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data                                        |
-| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known                                                  |
-| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                   |
-| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                            |
-| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete all four SSM parameters (three bootstrap secrets + the public base URL) |
-| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                             |
-| `HARNESS_API_SENTRY_DSN`             | No                   | Optional Sentry DSN for REST/WebSocket/Cron Lambdas. Invalid non-empty values fail deploy.        |
-| `HARNESS_WEB_SENTRY_DSN_CLIENT`      | No                   | Optional browser Sentry DSN for the CloudFront UI                                                 |
-| `HARNESS_WEB_SENTRY_DSN_SERVER`      | No                   | Optional Next.js server Sentry DSN for the web Lambda                                             |
+| Variable                             | Required             | Purpose                                                                                                                          |
+| ------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                                                                                     |
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                                                                                            |
+| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data                                                                       |
+| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known                                                                                 |
+| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                                                  |
+| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                                                           |
+| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete the four bootstrap/public-base-url SSM parameters; the optional Slack app parameter is always retained |
+| `HARNESS_ACCESS_LOGS_ENABLED`        | No; default off      | Set to exactly `1` to enable redacted HTTP/WS access logs (see below)                                                            |
+| `HARNESS_API_SENTRY_DSN`             | No                   | Optional Sentry DSN for REST/WebSocket/Cron Lambdas. Invalid non-empty values fail deploy.                                       |
+| `HARNESS_WEB_SENTRY_DSN_CLIENT`      | No                   | Optional browser Sentry DSN for the CloudFront UI                                                                                |
+| `HARNESS_WEB_SENTRY_DSN_SERVER`      | No                   | Optional Next.js server Sentry DSN for the web Lambda                                                                            |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
@@ -271,7 +283,7 @@ pnpm --filter @auto-harness/cdk run deploy
 
 `deploy` refuses to run if any application stack already exists, verifies the
 three SSM parameters, bootstraps CDK in the selected account and region, deploys
-all three stacks, calls the REST `/health` endpoint, loads the hosted `/login`
+all three stacks, calls `/health` through the public CloudFront `WebUrl`, loads the hosted `/login`
 page, and prints both URLs. The shared
 `CDKToolkit` bootstrap stack remains available for later environments.
 
@@ -297,7 +309,7 @@ deployed cleanly on the first attempt.)
 
 From the repository root, the normal update is one command. It defaults to the `production`
 environment in `us-west-2`, fast-forwards a clean `main` checkout, installs locked dependencies,
-updates all stacks, and runs the existing REST/web health checks:
+updates all stacks, and runs the existing CloudFront API/web health checks:
 
 ```bash
 pnpm deploy:aws
@@ -309,7 +321,7 @@ overrides before invoking it when the target differs. The lower-level
 that must deploy the current checkout without synchronizing `main`.
 
 `update` requires the foundation stack, applies the current CDK app to all three
-stacks, and runs the REST and web health checks. It also recreates missing runtime
+stacks, and runs the CloudFront API and web health checks. It also recreates missing runtime
 or web stacks after a retained teardown.
 
 ### First rollout of the principal session-drain ledger
@@ -468,10 +480,13 @@ Two things purge deliberately does **not** finish immediately:
 - **The integration KMS key** enters AWS's seven-day pending-deletion window —
   CloudFormation can only schedule deletion; seven days is the AWS minimum, and
   the key is not actually gone until that window elapses.
-- **All four SSM parameters** (the three bootstrap secrets, hand-managed outside
-  CDK and possibly shared with another environment, plus the deploy-script-managed
-  public base URL) are left in place unless `HARNESS_DEPLOY_PURGE_SSM=1` is also
-  set — deleting any of them is never implied by the rest of purge.
+- **The four bootstrap/public-base-url SSM parameters** (the three bootstrap
+  secrets, hand-managed outside CDK and possibly shared with another environment,
+  plus the deploy-script-managed public base URL) are left in place unless
+  `HARNESS_DEPLOY_PURGE_SSM=1` is also set — deleting any of them is never implied
+  by the rest of purge. The optional `HARNESS_SLACK_APP_SSM_PARAM` is also left in
+  place even when that opt-in is set because it may be shared and has no separate
+  purge confirmation.
 
 One thing purge does not finish **at all**: each runtime/web Lambda now
 provisions its own `AWS::Logs::LogGroup` **stack resource** with
@@ -512,14 +527,14 @@ stack survives its destroy phases — it never reports success on a partial resu
 The lifecycle script supplies the runtime stack's SSM parameter names. Secret
 values themselves are never CDK parameters or context.
 
-| Output                                                      | Consumer                                                                                                |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                       |
-| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                                   |
-| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Runtime Lambda attachments: all three get the DynamoDB policy; only REST and Cron get archive PutObject |
-| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                                 |
-| `RestApiUrl`, `WebSocketUrl`                                | Deploy-time health checks and debugging only — **not** a value to hand to a host daemon; see below      |
-| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon            |
+| Output                                                      | Consumer                                                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                             |
+| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                                         |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Runtime Lambda attachments: all three get the DynamoDB policy; only REST and Cron get archive PutObject       |
+| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                                       |
+| `RestApiUrl`, `WebSocketUrl`                                | Debugging only — direct REST ingress is origin-protected; **not** a value to hand to a host daemon; see below |
+| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon                  |
 
 `RestApiUrl` and `WebSocketUrl` are two different hostnames — API Gateway v2 fixes
 `protocolType` at creation, so REST and WebSocket are necessarily separate APIs (see
@@ -555,10 +570,10 @@ Prefer **control plane first**, then agents, so old agents fail closed on unknow
 
 ## Gates
 
-| When                           | Gate                                                                      |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests |
-| Before an AWS deployment claim | Deploy, update, REST/web health checks, and teardown in an AWS account    |
+| When                           | Gate                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests        |
+| Before an AWS deployment claim | Deploy, update, CloudFront API/web health checks, and teardown in an AWS account |
 
 [qa-production.md](qa-production.md) is the copy-pasteable script for the second row —
 restore or deploy through a real programmatic session to purge, with the traps that

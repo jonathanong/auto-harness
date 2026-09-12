@@ -56,13 +56,13 @@ describe("runtime observability", () => {
 
     // Access logs require a one-time, account-level API Gateway CloudWatch Logs role
     // (scripts/bootstrap-apigateway-account.sh) this stack does not provision, so they
-    // default off — see the enabled case below for accessLogsEnabled: true. The 3 log
+    // default off — see the enabled case below for accessLogsEnabled: true. The 4 log
     // groups present regardless are the rest/websocket/cron functions' own logGroup:
     // constructs (see functionLogGroup in runtime-stack.ts). RETAIN (not DESTROY) on every
     // one of them is the actual point of functionLogGroup: deleting or renaming a function's
     // construct must orphan its log group, not delete up to 14 days of application history.
     const functionLogGroups = Object.values(template.findResources("AWS::Logs::LogGroup"));
-    expect(functionLogGroups).toHaveLength(3);
+    expect(functionLogGroups).toHaveLength(4);
     for (const group of functionLogGroups) {
       expect(group.DeletionPolicy).toBe("Retain");
       expect(group.UpdateReplacePolicy).toBe("Retain");
@@ -102,12 +102,12 @@ describe("runtime observability", () => {
     });
     const template = Template.fromStack(runtime);
 
-    // 2 access-log groups (HTTP + WebSocket) plus the 3 always-present function log groups.
+    // 2 access-log groups (HTTP + WebSocket) plus the 4 always-present function log groups.
     // Disabling accessLogsEnabled later removes the access-log construct from the stack, and
     // deleting/renaming a function's construct removes its own log group; RETAIN on every one
     // of the 5 orphans the log group instead of deleting up to 14 days of history.
     const allLogGroups = Object.values(template.findResources("AWS::Logs::LogGroup"));
-    expect(allLogGroups).toHaveLength(5);
+    expect(allLogGroups).toHaveLength(6);
     for (const group of allLogGroups) {
       expect(group.DeletionPolicy).toBe("Retain");
       expect(group.UpdateReplacePolicy).toBe("Retain");

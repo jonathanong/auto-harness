@@ -5,7 +5,14 @@ import {
   DEFAULT_SLACK_NOTIFICATIONS,
   type SlackIntegrationRecord,
 } from "./slack-integration-types.ts";
-import { isSlackBotToken, resolveSlackBotToken, slackDeliveryAvailable } from "./slack-secrets.ts";
+import {
+  isSlackBotToken,
+  isSlackSigningSecret,
+  resolveSlackBotToken,
+  resolveSlackSigningSecret,
+  slackBotTokenOwnership,
+  slackDeliveryAvailable,
+} from "./slack-secrets.ts";
 
 const token = "xoxb-1234567890-abcdefghij";
 
@@ -28,6 +35,8 @@ describe("Slack secret resolution", () => {
   it("accepts bot tokens and decrypts only a valid secret payload", async () => {
     expect(isSlackBotToken(token)).toBe(true);
     expect(isSlackBotToken("xoxp-not-a-bot")).toBe(false);
+    expect(isSlackSigningSecret("slack-signing_secret-123")).toBe(true);
+    expect(isSlackSigningSecret("too-short")).toBe(false);
     expect(await resolveSlackBotToken(undefined, record())).toBeNull();
 
     const roundTrip: SecretEncryptor = {
@@ -43,6 +52,12 @@ describe("Slack secret resolution", () => {
         record(JSON.stringify({ botToken: token, signingSecret: "a".repeat(32) })),
       ),
     ).toBe(token);
+    expect(
+      await resolveSlackSigningSecret(
+        roundTrip,
+        record(JSON.stringify({ botToken: token, signingSecret: "slack-signing_secret-123" })),
+      ),
+    ).toBe("slack-signing_secret-123");
     expect(await resolveSlackBotToken(roundTrip, record("not-json"))).toBeNull();
     expect(await resolveSlackBotToken(roundTrip, record("[]"))).toBeNull();
     expect(await resolveSlackBotToken(roundTrip, record("null"))).toBeNull();
@@ -54,6 +69,15 @@ describe("Slack secret resolution", () => {
       await resolveSlackBotToken(roundTrip, record(JSON.stringify({ botToken: 1 }))),
     ).toBeNull();
 
+    expect(await resolveSlackSigningSecret(undefined, record())).toBeNull();
+    expect(await resolveSlackSigningSecret(roundTrip, record("null"))).toBeNull();
+    expect(
+      await resolveSlackSigningSecret(
+        roundTrip,
+        record(JSON.stringify({ signingSecret: "too-short" })),
+      ),
+    ).toBeNull();
+
     const failing: SecretEncryptor = {
       encrypt: async () => "x",
       decrypt: async () => {
@@ -61,6 +85,7 @@ describe("Slack secret resolution", () => {
       },
     };
     expect(await resolveSlackBotToken(failing, record())).toBeNull();
+    expect(await resolveSlackSigningSecret(failing, record())).toBeNull();
   });
 
   it("treats delivery as unavailable until outbound is enabled and the token decrypts", async () => {
@@ -82,5 +107,29 @@ describe("Slack secret resolution", () => {
         stored,
       ),
     ).toBe(true);
+  });
+
+  it("reports token ownership without returning a durable token and fails closed on bad secrets", async () => {
+    const encryptor: SecretEncryptor = {
+      encrypt: async (plaintext) => plaintext,
+      decrypt: async (ciphertext) => ciphertext,
+    };
+    const stored = record(JSON.stringify({ botToken: token }));
+
+    await expect(slackBotTokenOwnership(encryptor, stored, token)).resolves.toBe("owned");
+    await expect(
+      slackBotTokenOwnership(encryptor, stored, "xoxb-0987654321-abcdefghij"),
+    ).resolves.toBe("unowned");
+    await expect(slackBotTokenOwnership(undefined, stored, token)).resolves.toBe("unknown");
+    for (const ciphertext of [
+      "not-json",
+      JSON.stringify(null),
+      JSON.stringify([]),
+      JSON.stringify({}),
+      JSON.stringify({ botToken: "invalid" }),
+    ])
+      await expect(slackBotTokenOwnership(encryptor, record(ciphertext), token)).resolves.toBe(
+        "unknown",
+      );
   });
 });

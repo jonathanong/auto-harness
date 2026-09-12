@@ -40,6 +40,20 @@ const handoff = {
   expiresAt: "2026-01-02T00:00:00.000Z",
 };
 
+function archiveIntent(sessionId: string) {
+  const key = `sessions/${sessionId}/logs.jsonl`;
+  return {
+    key,
+    contentType: "application/x-ndjson",
+    bodyBytes: 0,
+    status: "pending" as const,
+    objectStored: false,
+    updatedAt: base.createdAt,
+    retryState: "pending" as const,
+    retryOrder: `${base.createdAt}#${key}`,
+  };
+}
+
 beforeAll(async () => {
   const clients = createDynamoClients();
   client = clients.client;
@@ -55,6 +69,72 @@ afterAll(async () => {
 });
 
 describe("DynamoDB Local terminal hook handoffs", () => {
+  it("does not clear a handoff unless its archive retry intent commits in the same transaction", async () => {
+    await putSession(ctx, {
+      ...base,
+      id: "atomic-settle",
+      status: "failed",
+      worktreeId: null,
+      hostId: "atomic-host",
+      activeHostId: "atomic-host",
+      activeHostOrder: "2026-01-01T00:00:00.000Z#atomic-settle",
+      terminalHookHandoff: {
+        ...handoff,
+        handoffId: "atomic-settle-handoff",
+        hostId: "atomic-host",
+      },
+    });
+    expect(
+      await tryAcquireHostLock(ctx, {
+        hostId: "atomic-host",
+        connectionId: "atomic-connection",
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    const unavailableArchives = new DynamoPlaneStorageBase(ctx.doc, {
+      ...tables,
+      archives: "missing-archives",
+    });
+    await expect(
+      unavailableArchives.settleTerminalHookHandoff({
+        sessionId: "atomic-settle",
+        handoffId: "atomic-settle-handoff",
+        hostId: "atomic-host",
+        connectionId: "atomic-connection",
+        archive: archiveIntent("atomic-settle"),
+      }),
+    ).rejects.toThrow();
+    await expect(getSession(ctx, "atomic-settle")).resolves.toMatchObject({
+      terminalHookHandoff: { handoffId: "atomic-settle-handoff" },
+    });
+
+    await putSession(ctx, {
+      ...base,
+      id: "atomic-expire",
+      status: "failed",
+      worktreeId: null,
+      hostId: "atomic-expire-host",
+      activeHostId: "atomic-expire-host",
+      activeHostOrder: "2026-01-01T00:00:00.000Z#atomic-expire",
+      terminalHookHandoff: {
+        ...handoff,
+        handoffId: "atomic-expire-handoff",
+        hostId: "atomic-expire-host",
+      },
+    });
+    await expect(
+      unavailableArchives.expireTerminalHookHandoff({
+        sessionId: "atomic-expire",
+        handoffId: "atomic-expire-handoff",
+        expiresAt: handoff.expiresAt,
+        archive: archiveIntent("atomic-expire"),
+      }),
+    ).rejects.toThrow();
+    await expect(getSession(ctx, "atomic-expire")).resolves.toMatchObject({
+      terminalHookHandoff: { handoffId: "atomic-expire-handoff" },
+    });
+  });
+
   it("retains a final host-loss handoff until its current replacement connection settles it", async () => {
     await putSession(ctx, {
       ...base,
@@ -107,6 +187,7 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         hostId: handoff.hostId,
         connectionId: "current-connection",
         result: { summary: "post-hook", summarySource: "harness" },
+        archive: archiveIntent("finish-handoff"),
       }),
     ).toBe(true);
     await expect(getSession(ctx, "finish-handoff")).resolves.toMatchObject({
@@ -116,6 +197,16 @@ describe("DynamoDB Local terminal hook handoffs", () => {
     const settled = await getSession(ctx, "finish-handoff");
     expect(settled?.terminalHookHandoff).toBeUndefined();
     expect(settled?.activeHostId).toBeUndefined();
+    await expect(
+      ctx.doc.send(
+        new GetCommand({
+          TableName: tables.archives,
+          Key: { key: "sessions/finish-handoff/logs.jsonl" },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      Item: expect.objectContaining({ status: "pending", objectStored: false }),
+    });
     expect(
       await storage.settleTerminalHookHandoff({
         sessionId: "finish-handoff",
@@ -150,6 +241,7 @@ describe("DynamoDB Local terminal hook handoffs", () => {
         sessionId: "expire-handoff",
         handoffId: handoff.handoffId,
         expiresAt: handoff.expiresAt,
+        archive: archiveIntent("expire-handoff"),
       }),
     ).toBe(true);
     await expect(getSession(ctx, "expire-handoff")).resolves.toMatchObject({
@@ -158,6 +250,16 @@ describe("DynamoDB Local terminal hook handoffs", () => {
     const expired = await getSession(ctx, "expire-handoff");
     expect(expired?.terminalHookHandoff).toBeUndefined();
     expect(expired?.activeHostId).toBeUndefined();
+    await expect(
+      ctx.doc.send(
+        new GetCommand({
+          TableName: tables.archives,
+          Key: { key: "sessions/expire-handoff/logs.jsonl" },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      Item: expect.objectContaining({ status: "pending", objectStored: false }),
+    });
     await expect(
       storage.expireTerminalHookHandoff({
         sessionId: "expire-handoff",

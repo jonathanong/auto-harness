@@ -5,6 +5,7 @@ import {
   finishSessionOptsFromPlan,
   legacyHostAssignmentForSession,
   requeueUsageLimitedSessionOptsFromPlan,
+  requeueUsageLimitedWorkspaceSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -841,6 +842,24 @@ describe("session-transition planner", () => {
         attemptId: "attempt",
       },
     });
+    expect(
+      requeueUsageLimitedWorkspaceSessionOptsFromPlan(
+        session({ workspaceSlotId: "slot", worktreeId: null }),
+        cooldownPlan,
+        { now: NOW, attemptId: "attempt", workspaceSlotError: "cleanup failed" },
+      ),
+    ).toMatchObject({
+      workspaceSlotId: "slot",
+      errorMessage: "quota",
+      workspaceSlotError: "cleanup failed",
+    });
+    expect(
+      requeueUsageLimitedWorkspaceSessionOptsFromPlan(
+        session({ workspaceSlotId: "slot", worktreeId: null }),
+        { effects: [{ type: "cooldown", providerAccountId: "acct", usageLimitedUntil: LATER }] },
+        { now: NOW, attemptId: "attempt" },
+      ),
+    ).not.toHaveProperty("errorMessage");
 
     const suppressPlan: SessionTransitionPlan = {
       effects: [

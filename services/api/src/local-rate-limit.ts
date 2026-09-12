@@ -29,6 +29,8 @@ type RateLimitContext = {
   principal?: import("./auth.ts").Principal | undefined;
   bucket: RateLimitBucket;
   trustProxy: boolean;
+  /** Public ingress denials must not become an unbounded audit-write source. */
+  auditDenied?: boolean;
 };
 
 /** Returns true when the request has been answered (429 or durable failure). */
@@ -86,7 +88,12 @@ export async function enforceRateLimit(ctx: RateLimitContext): Promise<boolean> 
   setRateLimitHeaders(ctx.res, decision, nowMs);
   if (decision.allowed) return false;
   const retryAfter = retryAfterSeconds(decision.resetAtMs, nowMs);
-  if (ctx.method !== "GET" && ctx.method !== "HEAD" && ctx.method !== "OPTIONS") {
+  if (
+    ctx.auditDenied !== false &&
+    ctx.method !== "GET" &&
+    ctx.method !== "HEAD" &&
+    ctx.method !== "OPTIONS"
+  ) {
     try {
       await ctx.plane.appendAuditLog({
         actor: auditActor(ctx.principal),

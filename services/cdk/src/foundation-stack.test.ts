@@ -35,7 +35,7 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 24);
+    template.resourceCountIs("AWS::DynamoDB::Table", 28);
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-SessionDrains",
       KeySchema: [
@@ -147,6 +147,31 @@ describe("AutoHarnessFoundationStack", () => {
       BillingMode: "PAY_PER_REQUEST",
       TableName: "AutoHarness-Integrations",
       KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      TableName: "AutoHarness-SlackOAuthStates",
+      KeySchema: [{ AttributeName: "stateHash", KeyType: "HASH" }],
+      TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      TableName: "AutoHarness-SlackInboundEvents",
+      KeySchema: [
+        { AttributeName: "workspaceId", KeyType: "HASH" },
+        { AttributeName: "eventId", KeyType: "RANGE" },
+      ],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "status-dueOrder",
+          KeySchema: [
+            { AttributeName: "status", KeyType: "HASH" },
+            { AttributeName: "dueOrder", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+      TimeToLiveSpecification: { AttributeName: "ttl", Enabled: true },
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
@@ -301,7 +326,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(27);
+    ).toHaveLength(31);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",

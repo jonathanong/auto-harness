@@ -1,9 +1,13 @@
-/* eslint-disable max-lines -- terminal transition fencing and cleanup form one atomic storage operation. */
+/* eslint-disable max-lines -- terminal release fencing spans sessions, workspaces, and handoffs. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { SessionResult } from "@auto-harness/shared";
 
 import { statusShardAttr } from "./dynamo.ts";
-import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  isConditionalTransactionFailed,
+  type ArchiveMetadata,
+  type PlaneStorageCtx,
+} from "./plane-storage-types.ts";
 import {
   readSessionDrainActivity,
   sessionDrainActivityDelete,
@@ -21,6 +25,8 @@ import {
 type FinishSessionOpts = {
   sessionId: string;
   worktreeId?: string | null;
+  workspaceSlotId?: string | null;
+  workspaceSlotError?: string;
   attemptId: string;
   status: string;
   queueShard: number;
@@ -40,10 +46,15 @@ type FinishSessionOpts = {
   preserveProviderAccountLease?: boolean;
   /** Timeout keeps host capacity until terminal/disconnect cleanup. */
   preserveHostAssignmentLease?: boolean;
+  /** Timeout keeps a workspace slot until terminal/disconnect cleanup. */
+  preserveWorkspaceSlotLease?: boolean;
+  /** A disconnected timeout keeps its reconnect marker until grace expiry. */
+  preserveReconnectDeadlineAt?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   /** Retain a host-indexed, replacement-daemon terminal-hook handoff. */
   terminalHookHandoff?: import("./types.ts").SessionRecord["terminalHookHandoff"];
+  expectedStatus?: string;
 };
 
 function setOptional(
@@ -76,7 +87,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   const values: Record<string, unknown> = {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
-    ":running": "running",
+    ":expectedStatus": opts.expectedStatus ?? "running",
     ":null": null,
     ":worktreeId": opts.worktreeId ?? null,
     ":attemptId": opts.attemptId,
@@ -89,6 +100,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     "#s = :status",
     "statusShard = :statusShard",
     "worktreeId = :null",
+    ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotId = :null"]),
     ...(opts.status === "queued" ? ["hostId = :null"] : []),
   ];
   setOptional(sets, values, "completedAt", opts.completedAt);
@@ -115,19 +127,20 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     sets,
     removes: [
       ...(opts.terminalHookHandoff ? ["terminalHookHandoffSettled"] : []),
-      "reconnectDeadlineAt",
+      ...(opts.preserveReconnectDeadlineAt ? [] : ["reconnectDeadlineAt"]),
       "assignmentConnectionId",
       ...(opts.preserveHostAssignmentLease || opts.terminalHookHandoff
         ? []
         : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
+      ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
     ],
   };
 }
 
 function finishSessionCondition(opts: FinishSessionOpts): string {
-  return `#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}`;
+  return `#s = :expectedStatus AND worktreeId = :worktreeId AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}`;
 }
 
 function finishSessionItems(
@@ -156,7 +169,9 @@ function finishSessionItems(
         UpdateExpression: `SET ${update.sets.join(", ")} REMOVE ${update.removes.join(", ")}`,
         ConditionExpression: finishSessionCondition(opts),
         ExpressionAttributeNames: update.names,
-        ExpressionAttributeValues: update.values,
+        ExpressionAttributeValues: {
+          ...update.values,
+        },
       },
     },
   ];
@@ -172,6 +187,26 @@ function finishSessionItems(
         ConditionExpression: "currentSessionId = :sid",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+      },
+    });
+  }
+  if (opts.workspaceSlotId && !opts.preserveWorkspaceSlotLease) {
+    const failed = opts.workspaceSlotError !== undefined;
+    items.push({
+      Update: {
+        TableName: ctx.tables.workspaceSlots,
+        Key: { id: opts.workspaceSlotId },
+        UpdateExpression: failed
+          ? "SET #s = :status, currentSessionId = :null, errorMessage = :errorMessage"
+          : "SET #s = :status, currentSessionId = :null REMOVE errorMessage",
+        ConditionExpression: "currentSessionId = :sessionId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":status": failed ? "error" : "idle",
+          ":null": null,
+          ":sessionId": opts.sessionId,
+          ...(failed ? { ":errorMessage": opts.workspaceSlotError } : {}),
+        },
       },
     });
   }
@@ -222,6 +257,19 @@ function reservedWorktreeReleaseItem(
         ":sid": sessionId,
         ...(hasCurrentConnection ? { ":online": true, ":connectionId": connectionId } : {}),
       },
+    },
+  };
+}
+
+/** Persist retry ownership with settlement so a short-lived socket cannot lose an archive. */
+function terminalHandoffArchiveIntentItem(
+  ctx: PlaneStorageCtx,
+  archive: ArchiveMetadata,
+): Record<string, unknown> {
+  return {
+    Put: {
+      TableName: ctx.tables.archives,
+      Item: archive,
     },
   };
 }
@@ -337,6 +385,8 @@ export async function settleTerminalHookHandoff(
     worktreeId?: string | null;
     /** Main-checkout repository lease reserved by the matching handoff, if any. */
     mainCheckoutRepositoryId?: string;
+    /** Durable retry intent for the transcript archive. */
+    archive?: ArchiveMetadata;
   },
 ): Promise<boolean> {
   try {
@@ -363,6 +413,7 @@ export async function settleTerminalHookHandoff(
           ...(opts.worktreeId
             ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId, opts.connectionId)]
             : []),
+          ...(opts.archive ? [terminalHandoffArchiveIntentItem(ctx, opts.archive)] : []),
         ],
       }),
     );
@@ -388,6 +439,8 @@ export async function expireTerminalHookHandoff(
     hostId?: string;
     connectionId?: string;
     mainCheckoutRepositoryId?: string;
+    /** Durable retry intent for the transcript archive. */
+    archive?: ArchiveMetadata;
   },
 ): Promise<boolean> {
   try {
@@ -425,6 +478,7 @@ export async function expireTerminalHookHandoff(
           ...(opts.worktreeId
             ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId, opts.connectionId)]
             : []),
+          ...(opts.archive ? [terminalHandoffArchiveIntentItem(ctx, opts.archive)] : []),
         ],
       }),
     );

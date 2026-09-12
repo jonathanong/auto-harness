@@ -8,6 +8,7 @@ import { resolvePublicBaseUrl, type LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
+import { createSlackIdentityClient } from "./slack-identity-client.ts";
 import { SlackLifecycleWorker } from "./slack-worker.ts";
 import { WebhookWorker } from "./webhook-worker.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
@@ -82,6 +83,13 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane,
     store: store ?? new MemorySessionStore({ plane }),
     publicBaseUrl,
+    ...(options.slackIdentityClient
+      ? { slackIdentityClient: options.slackIdentityClient }
+      : plane.state.slackIdentityClient
+        ? { slackIdentityClient: plane.state.slackIdentityClient }
+        : options.slackOAuthClient
+          ? {}
+          : { slackIdentityClient: createSlackIdentityClient() }),
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);
@@ -147,7 +155,10 @@ function createWebhookWorker(
       store: storage,
       transport: options.webhookTransport,
       selectDestinations: options.webhookDestinationSelector,
-      listSessions: async () => plane.listSessions(),
+      listSessions: async () =>
+        [...plane.state.sessions.values()].filter(
+          (session) => Boolean(session.repositoryId) || Boolean(session.workspacePoolId),
+        ),
     },
     options.webhookWorker,
   );

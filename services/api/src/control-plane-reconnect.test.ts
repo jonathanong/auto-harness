@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
@@ -138,6 +138,129 @@ describe("reconnect reconciliation", () => {
       status: "failed",
       errorCode: "host_lost",
     });
+  });
+
+  it("expires a reconnecting workspace attempt by releasing its exact slot", async () => {
+    const plane = new ControlPlane();
+    const session = {
+      id: "workspace",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      prompt: "p",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: [],
+      queueTtlSeconds: 300,
+      queueExpiresAt: "later",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      status: "running" as const,
+      queueShard: 0,
+      createdAt: "t",
+      hostId: "h",
+      worktreeId: null,
+      attemptId: "attempt",
+      ackReceivedAt: "t",
+      reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
+    };
+    const slot = {
+      id: "slot",
+      name: "slot",
+      path: "/workspace",
+      hostId: "h",
+      workspacePoolId: "pool",
+      status: "busy" as const,
+      online: false,
+      currentSessionId: session.id,
+    };
+    const finishSession = vi.fn(async () => true);
+    plane.state.workspaceSlots.set(slot.id, slot);
+    plane.state.storage = {
+      listAllSessions: async () => [session],
+      getWorkspaceSlot: async () => slot,
+      getHostLock: async () => null,
+      finishSession,
+    } as never;
+
+    await expect(reclaimReconnectDeadlines(plane.state, Date.now())).resolves.toEqual([session.id]);
+    expect(finishSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: session.id,
+        workspaceSlotId: slot.id,
+        expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
+        status: "queued",
+      }),
+    );
+    expect(plane.state.workspaceSlots.get(slot.id)).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+      online: false,
+    });
+  });
+
+  it("confirms a reported workspace attempt before reconciling omitted work", async () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "replacement");
+    const session = {
+      id: "workspace-confirm",
+      repositoryId: "",
+      workspacePoolId: "pool",
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      prompt: "p",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetDisplayNames: [],
+      queueTtlSeconds: 300,
+      queueExpiresAt: "later",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      status: "running" as const,
+      queueShard: 0,
+      createdAt: "t",
+      hostId: "h",
+      worktreeId: null,
+      attemptId: "attempt",
+      ackReceivedAt: "t",
+      reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
+      assignmentConnectionId: "old",
+    };
+    const slot = {
+      id: "slot",
+      name: "slot",
+      path: "/workspace",
+      hostId: "h",
+      workspacePoolId: "pool",
+      status: "busy" as const,
+      online: false,
+      currentSessionId: session.id,
+      connectionId: "old",
+    };
+    const confirm = vi.fn(async () => true);
+    plane.state.storage = {
+      getSession: async () => session,
+      getWorkspaceSlot: async () => slot,
+      confirmWorkspaceReconnect: confirm,
+      listActiveSessionsByHost: async () => [session],
+    } as never;
+
+    await expect(
+      reconcileHostRunningSessions(
+        plane.state,
+        "h",
+        [session.id],
+        [{ sessionId: session.id, attemptId: session.attemptId }],
+      ),
+    ).resolves.toEqual([]);
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceSlotId: slot.id, connectionId: "replacement" }),
+    );
+    expect(plane.state.sessions.get(session.id)).not.toHaveProperty("reconnectDeadlineAt");
+    expect(plane.state.workspaceSlots.get(slot.id)).toMatchObject({ online: true });
   });
 
   it("uses durable fence-aware reconcile and no-lock deadline reclaim paths", async () => {
