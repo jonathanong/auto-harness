@@ -38,7 +38,7 @@ describe("workspace inventory safety", () => {
         repositories: [],
         workspacePools: attachment("slot", "/work/slot", "pool-b"),
       }),
-    ).toMatchObject({ ok: false, error: expect.stringContaining("path or pool") });
+    ).toMatchObject({ ok: false, error: expect.stringContaining("name, path, or pool") });
     expect(
       plane.putHostInventory("host", {
         version: 1,

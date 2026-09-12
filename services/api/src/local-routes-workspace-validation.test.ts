@@ -78,8 +78,9 @@ describe("workspace schedule route validation", () => {
         setupProfileId: null,
         destroyWorkspaceAfter: null,
       }),
-    ).toMatchObject({ status: 200, json: { destroyWorkspaceAfter: false } });
+    ).toMatchObject({ status: 200, json: {} });
     expect(plane.getSchedule("schedule-1")).not.toHaveProperty("setupProfileId");
+    expect(plane.getSchedule("schedule-1")).not.toHaveProperty("destroyWorkspaceAfter");
   });
 
   it("drops an inherited repository ref when converting a schedule to a workspace", async () => {
