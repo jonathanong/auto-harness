@@ -48,6 +48,7 @@ type ReleaseMainCheckoutOptions = {
   preserveHostAssignmentLease?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
+  infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -114,6 +115,12 @@ export async function releaseMainCheckoutSession(
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
                 (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
+                (opts.infrastructureErrorCode
+                  ? " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries)"
+                  : "") +
+                (opts.infrastructureErrorCode === "host_lost"
+                  ? " AND primaryCommandStartState = :pendingCommandStart"
+                  : "") +
                 (requireNoDrainCancellation
                   ? " AND attribute_not_exists(cancelledByDrainOperationId)"
                   : ""),
@@ -185,7 +192,10 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    (opts.infrastructureErrorCode
+      ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode"
+      : "") +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState" +
     (opts.preserveHostAssignmentLease ? "" : ", activeHostId, activeHostOrder") +
     (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
@@ -220,5 +230,14 @@ function expressionValues(
       ? { ":empty": [], ":index": [opts.suppressedTargetIndex] }
       : {}),
     ...(opts.attemptId ? { ":attemptId": opts.attemptId } : {}),
+    ...(opts.infrastructureErrorCode
+      ? {
+          ":zero": 0,
+          ":one": 1,
+          ":maxInfrastructureRetries": 1,
+          ":infrastructureErrorCode": opts.infrastructureErrorCode,
+        }
+      : {}),
+    ...(opts.infrastructureErrorCode === "host_lost" ? { ":pendingCommandStart": "pending" } : {}),
   };
 }

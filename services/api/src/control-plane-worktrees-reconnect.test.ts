@@ -19,7 +19,7 @@ const session = (id: string, status: SessionRecord["status"], ack = false): Sess
   createdAt: "t",
   hostId: "h",
   worktreeId: `w-${id}`,
-  ...(ack ? { ackReceivedAt: "t" } : {}),
+  ...(ack ? { ackReceivedAt: "t", primaryCommandStartState: "pending" as const } : {}),
 });
 const worktree = (
   id: string,

@@ -65,6 +65,7 @@ export async function tryAssignMainCheckoutSession(
     hostAssignmentLease?: HostAssignmentLease | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     attemptId: string;
   },
@@ -146,7 +147,7 @@ export async function tryAssignMainCheckoutSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression:
-          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId" +
+          "SET #s = :running, statusShard = :statusShard, worktreeId = :null, hostId = :hostId, activeHostId = :activeHostId, activeHostOrder = :activeHostOrder, startedAt = :now, assignmentSentAt = :now, resolvedArgv = :argv, resolvedRoute = :route, assignmentConnectionId = :connectionId, mainCheckoutLease = :true, attemptId = :attemptId, primaryCommandStartState = :primaryCommandStartState" +
           (opts.resumeSpec ? ", resumeSpec = if_not_exists(resumeSpec, :resumeSpec)" : "") +
           (opts.providerAccountLease ? ", providerAccountLease = :providerAccountLease" : "") +
           ", hostAssignmentLease = :hostAssignmentLease" +
@@ -167,6 +168,7 @@ export async function tryAssignMainCheckoutSession(
           ":connectionId": opts.connectionId,
           ":true": true,
           ":attemptId": opts.attemptId,
+          ":primaryCommandStartState": opts.primaryCommandStartState ?? "pending",
           ":hostAssignmentLease": hostAssignmentLease,
           ...(opts.resumeSpec ? { ":resumeSpec": opts.resumeSpec } : {}),
           ...(opts.providerAccountLease

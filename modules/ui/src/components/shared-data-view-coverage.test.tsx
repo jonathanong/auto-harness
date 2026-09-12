@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Breadcrumbs, DetailHeader } from "./detail-header.tsx";
 import { ProviderAccountHealth, isProviderAccountPaused } from "./provider-account-health.tsx";
+import { SessionDetailsCard } from "./session-details-card.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 
@@ -94,12 +95,36 @@ describe("shared data display composites", () => {
         />,
       ),
     ).toContain('role="status"');
+    expect(
+      render(
+        <SessionExecutionSummary
+          status="queued"
+          infrastructureRetryCount={1}
+          lastInfrastructureErrorCode="checkout_fetch_failed"
+        />,
+      ),
+    ).toContain("Automatic retry 1 of 1");
+    expect(render(<SessionExecutionSummary status="failed" errorCode="host_lost" />)).toContain(
+      "Host lost before launch",
+    );
     expect(render(<SessionExecutionSummary status="completed" />)).not.toContain(
       "session-detail-error",
     );
     expect(render(<SessionExecutionSummary status="queued" resumeFallback />)).toContain(
       "fresh attempt",
     );
+    const retryDetails = render(
+      <SessionDetailsCard
+        session={{
+          id: "retry",
+          status: "queued",
+          infrastructureRetryCount: 1,
+          lastInfrastructureErrorCode: "host_lost",
+        }}
+      />,
+    );
+    expect(retryDetails).toContain('data-pw="session-detail-infrastructure-retry-count">1 of 1');
+    expect(retryDetails).toContain("Host lost before launch");
   });
 
   it("renders route labels, fallback sources, and resolution precedence", () => {

@@ -315,6 +315,7 @@ export function toPublic(
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
     activeHostId: _activeHostId,
     activeHostOrder: _activeHostOrder,
+    primaryCommandStartState: _primaryCommandStartState,
     ...publicSession
   } = session;
   if (!includeResult) delete (publicSession as Partial<SessionRecord>).result;

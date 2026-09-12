@@ -77,6 +77,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       // it writable would let a superseded host mutate a replacement lease.
       if (
         body.type === "session:ack" ||
+        body.type === "session:command-start" ||
         body.type === "session:status" ||
         body.type === "session:log" ||
         body.type === "session:usage"

@@ -345,4 +345,104 @@ describe("DynamoDB Local main-checkout release", () => {
       timedOutAssignmentConnectionId: opts.timedOutAssignmentConnectionId,
     });
   });
+
+  it("retries a main checkout once and permits host loss only before command start", async () => {
+    const seed = async (
+      sessionId: string,
+      primaryCommandStartState: "pending" | "authorized",
+      infrastructureRetryCount?: number,
+    ) => {
+      const hostId = `${sessionId}-host`;
+      const repositoryId = `${sessionId}-repo`;
+      const connectionId = `${sessionId}-connection`;
+      const opts = {
+        sessionId,
+        hostId,
+        repositoryId,
+        connectionId,
+        status: "queued" as const,
+        queueShard: 0,
+        attemptId: "attempt",
+        queueOrder: `${sessionId}-queue-order`,
+      };
+      await ctx.doc.send(
+        new PutCommand({
+          TableName: tables.hostLocks,
+          Item: {
+            hostId,
+            mainCheckoutLeases: { [repositoryId]: { sessionId, connectionId } },
+          },
+        }),
+      );
+      await ctx.doc.send(
+        new PutCommand({
+          TableName: tables.sessions,
+          Item: {
+            id: sessionId,
+            status: "running",
+            statusShard: "running#0",
+            hostId,
+            assignmentConnectionId: connectionId,
+            mainCheckoutLease: true,
+            attemptId: "attempt",
+            worktreeId: null,
+            primaryCommandStartState,
+            ...(infrastructureRetryCount === undefined ? {} : { infrastructureRetryCount }),
+          },
+        }),
+      );
+      return opts;
+    };
+    const release = (
+      opts: Awaited<ReturnType<typeof seed>>,
+      infrastructureErrorCode: "checkout_fetch_failed" | "host_lost",
+    ) => releaseMainCheckoutSession(ctx, { ...opts, infrastructureErrorCode });
+
+    const pending = await seed("main-pending-host-loss", "pending");
+    expect(await release(pending, "host_lost")).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: pending.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: pending.sessionId } }),
+        )
+      ).Item,
+    ).not.toHaveProperty("primaryCommandStartState");
+
+    const authorized = await seed("main-authorized-host-loss", "authorized");
+    expect(await release(authorized, "host_lost")).toBe(false);
+    expect(await release(authorized, "checkout_fetch_failed")).toBe(true);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: authorized.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
+    });
+
+    const capped = await seed("main-capped-infrastructure-retry", "pending", 1);
+    expect(await release(capped, "checkout_fetch_failed")).toBe(false);
+    expect(await release(capped, "host_lost")).toBe(false);
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.sessions, Key: { id: capped.sessionId } }),
+        )
+      ).Item,
+    ).toMatchObject({ status: "running", infrastructureRetryCount: 1 });
+  });
 });

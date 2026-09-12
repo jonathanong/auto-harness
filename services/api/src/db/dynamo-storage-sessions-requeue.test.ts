@@ -250,4 +250,81 @@ describe("DynamoDB Local requeue and acknowledgement races", () => {
       }),
     ).toBe(true);
   });
+
+  it("retries infrastructure failures once, requiring a pending command-start for host loss", async () => {
+    const seed = async (
+      id: string,
+      primaryCommandStartState: "pending" | "authorized",
+      infrastructureRetryCount?: number,
+    ) => {
+      const worktreeId = `${id}-worktree`;
+      await putSession(ctx, {
+        ...base,
+        id,
+        status: "running",
+        hostId: "host",
+        worktreeId,
+        attemptId: "attempt",
+        primaryCommandStartState,
+        ...(infrastructureRetryCount === undefined ? {} : { infrastructureRetryCount }),
+      });
+      await putWorktree(ctx, {
+        id: worktreeId,
+        name: worktreeId,
+        hostId: "host",
+        repositoryId: "repo",
+        path: `/${worktreeId}`,
+        labels: [],
+        status: "busy",
+        online: true,
+        currentSessionId: id,
+      });
+      return worktreeId;
+    };
+    const requeue = (
+      sessionId: string,
+      worktreeId: string,
+      infrastructureErrorCode: "checkout_fetch_failed" | "host_lost",
+    ) =>
+      tryRequeueSession(ctx, {
+        sessionId,
+        worktreeId,
+        attemptId: "attempt",
+        queueShard: 0,
+        infrastructureErrorCode,
+      });
+
+    const pendingWorktree = await seed("pending-host-loss", "pending");
+    expect(await requeue("pending-host-loss", pendingWorktree, "host_lost")).toBe(true);
+    expect(await getSession(ctx, "pending-host-loss")).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "host_lost",
+    });
+    expect(await getSession(ctx, "pending-host-loss")).not.toHaveProperty(
+      "primaryCommandStartState",
+    );
+
+    const authorizedWorktree = await seed("authorized-host-loss", "authorized");
+    expect(await requeue("authorized-host-loss", authorizedWorktree, "host_lost")).toBe(false);
+    expect((await getSession(ctx, "authorized-host-loss"))?.status).toBe("running");
+    expect(await requeue("authorized-host-loss", authorizedWorktree, "checkout_fetch_failed")).toBe(
+      true,
+    );
+    expect(await getSession(ctx, "authorized-host-loss")).toMatchObject({
+      status: "queued",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
+    });
+
+    const cappedWorktree = await seed("capped-infrastructure-retry", "pending", 1);
+    expect(
+      await requeue("capped-infrastructure-retry", cappedWorktree, "checkout_fetch_failed"),
+    ).toBe(false);
+    expect(await requeue("capped-infrastructure-retry", cappedWorktree, "host_lost")).toBe(false);
+    expect(await getSession(ctx, "capped-infrastructure-retry")).toMatchObject({
+      status: "running",
+      infrastructureRetryCount: 1,
+    });
+  });
 });

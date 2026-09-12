@@ -65,6 +65,14 @@ describe("parseHostMessage exhaustive wire validation", () => {
         attemptId: "attempt-1",
       }),
     ).toMatchObject({ type: "session:ack" });
+    expect(
+      parseHostMessage({
+        type: "session:command-start",
+        sessionId: "session-1",
+        worktreeId: null,
+        attemptId: "attempt-1",
+      }),
+    ).toMatchObject({ type: "session:command-start" });
     expect(parseHostMessage(status)).toEqual(status);
     const resultStatus = {
       ...status,

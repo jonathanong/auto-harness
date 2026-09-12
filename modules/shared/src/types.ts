@@ -19,7 +19,9 @@ export type SessionErrorCode =
   | "queue_expired"
   | "resume_failed"
   | "unknown_command_profile"
-  | "setup_failed";
+  | "setup_failed"
+  | "checkout_fetch_failed"
+  | "host_lost";
 
 export type UserRole = "read-only" | "author" | "operator" | "maintainer" | "agent" | "admin";
 

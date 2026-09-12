@@ -29,6 +29,8 @@ export type SearchableSession = {
   completedAt?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  infrastructureRetryCount?: number | null;
+  lastInfrastructureErrorCode?: string | null;
 };
 
 /** Build the client-side search corpus for one loaded session. */
@@ -65,6 +67,8 @@ export function sessionSearchableText(session: SearchableSession): string {
     session.completedAt,
     session.errorCode,
     session.errorMessage,
+    session.infrastructureRetryCount,
+    session.lastInfrastructureErrorCode,
   ];
 
   return values

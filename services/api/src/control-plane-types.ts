@@ -94,7 +94,11 @@ export type ControlPlaneOptions = {
 
 export type PublicSession = Omit<
   SessionRecord,
-  "principalId" | "cancelledByDrainOperationId" | "activeHostId" | "activeHostOrder"
+  | "principalId"
+  | "cancelledByDrainOperationId"
+  | "activeHostId"
+  | "activeHostOrder"
+  | "primaryCommandStartState"
 > & {
   url: string;
 };

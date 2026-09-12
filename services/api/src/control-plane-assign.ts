@@ -35,6 +35,7 @@ import {
   clearAbandonedUsageLimitRetryFields,
   type AssignmentWriteResult,
 } from "./db/plane-storage-types.ts";
+import { commandStartStateForProtocol } from "./control-plane-command-start.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -104,6 +105,9 @@ export function assignQueued(
         attemptId,
       };
       session.attemptId = attemptId;
+      session.primaryCommandStartState = commandStartStateForProtocol(
+        state.connections.get(state.hostConnection.get(candidate.hostId) ?? "")?.protocolVersion,
+      );
       if (lease) session.providerAccountLease = lease;
       else delete session.providerAccountLease;
       touchAccount(state, route.providerAccountId, nowIso);
@@ -272,6 +276,9 @@ export async function assignQueuedDurable(
               }
             : {}),
           queueShard: session.queueShard,
+          primaryCommandStartState: commandStartStateForProtocol(
+            state.connections.get(connectionId)?.protocolVersion,
+          ),
         });
         if (won === true || !lease) break;
         state.providerAccountLeases.delete(lease.concurrencyId);
@@ -298,6 +305,9 @@ export async function assignQueuedDurable(
           attemptId,
         },
         attemptId,
+        primaryCommandStartState: commandStartStateForProtocol(
+          state.connections.get(connectionId)?.protocolVersion,
+        ),
         ...(lease ? { providerAccountLease: lease } : {}),
         hostAssignmentLease: { hostId: candidate.hostId },
       };

@@ -141,6 +141,59 @@ describe("session-transition planner", () => {
     expect(transitionEffect(plan, "reschedule")).toEqual({ type: "reschedule", kind: "prompt" });
   });
 
+  it("replays only one safe infrastructure failure and fences command authorization", () => {
+    const first = planSessionTransition(
+      session(),
+      status({ status: "failed", errorCode: "checkout_fetch_failed" }),
+      ctx(),
+    );
+    expect(first.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "requeue",
+      "reschedule",
+    ]);
+    expect(transitionEffect(first, "requeue")).toMatchObject({
+      reason: "infrastructure",
+      errorCode: "checkout_fetch_failed",
+    });
+    const exhausted = planSessionTransition(
+      session({ infrastructureRetryCount: 1, primaryCommandStartState: "pending" }),
+      { type: "infrastructure_failure", code: "host_lost" },
+      ctx(),
+    );
+    expect(exhausted.effects.map((effect) => effect.type)).toEqual([
+      "release_worktree",
+      "finish",
+      "archive",
+    ]);
+    expect(transitionEffect(exhausted, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+      errorMessage: "host was lost before command launch; automatic retry exhausted",
+    });
+    expect(
+      types(
+        { type: "infrastructure_failure", code: "host_lost" },
+        session({ primaryCommandStartState: "authorized" }),
+      ),
+    ).toEqual(["release_worktree", "finish", "archive"]);
+    expect(
+      types(
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        session({ primaryCommandStartState: "pending" }),
+      ),
+    ).toEqual(["authorize_command_start"]);
+    expect(
+      types(
+        { type: "command_start", worktreeId: "wt", attemptId: "attempt" },
+        session({ primaryCommandStartState: "authorized" }),
+      ),
+    ).toEqual([]);
+    expect(types({ type: "command_start", worktreeId: "wt", attemptId: "stale" })).toEqual([
+      "ignore",
+    ]);
+  });
+
   it("usage_limit with no fallback stays queued until the original deadline", () => {
     const plan = planSessionTransition(
       session({

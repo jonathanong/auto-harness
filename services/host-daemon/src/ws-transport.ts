@@ -327,6 +327,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
           registered &&
           (("sessionId" in message &&
             (message.type === "session:acknowledged" ||
+              message.type === "session:command-start-acknowledged" ||
               message.type === "session:status-acknowledged" ||
               message.type === "session:cancel") &&
             typeof message.sessionId === "string" &&

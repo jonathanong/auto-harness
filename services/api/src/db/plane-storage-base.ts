@@ -310,6 +310,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -418,6 +419,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
     legacyAssignmentCount?: number;
+    primaryCommandStartState?: "pending" | "authorized";
     queueShard: number;
     attemptId: string;
   }): Promise<AssignmentWriteResult> {
@@ -462,6 +464,7 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     timedOutHostId?: string;
     timedOutAssignmentConnectionId?: string;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -590,6 +593,7 @@ export class DynamoPlaneStorageBase {
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -683,6 +687,15 @@ export class DynamoPlaneStorageBase {
       return sessions.acknowledgeSession(this.ctx, arg, acknowledgedAtOrFence as string, fence);
     }
     return sessions.acknowledgeSession(this.ctx, arg);
+  }
+
+  authorizePrimaryCommandStart(opts: {
+    sessionId: string;
+    worktreeId: string | null;
+    attemptId: string;
+    fence?: { hostId: string; connectionId: string };
+  }): Promise<boolean> {
+    return sessions.authorizePrimaryCommandStart(this.ctx, opts);
   }
 
   finishSession(opts: {

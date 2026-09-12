@@ -5,6 +5,7 @@ import {
   SESSION_QUEUED_WAIT_COPY,
   SessionStatusCell,
   SessionStatusDetail,
+  sessionErrorLabel,
   sessionStatusReason,
 } from "./session-status-cell.tsx";
 
@@ -12,6 +13,10 @@ describe("SessionStatusCell", () => {
   it("maps only documented terminal reasons", () => {
     expect(sessionStatusReason("usage_limit")).toBe("Usage limit");
     expect(sessionStatusReason("queue_expired")).toBe("Queue expired");
+    expect(sessionStatusReason("checkout_fetch_failed")).toBe("Checkout fetch failed");
+    expect(sessionStatusReason("host_lost")).toBe("Host lost before launch");
+    expect(sessionErrorLabel("checkout_fetch_failed")).toBe("Checkout fetch failed");
+    expect(sessionErrorLabel("unknown_failure")).toBe("unknown_failure");
     expect(sessionStatusReason("setup_failed")).toBeNull();
     expect(sessionStatusReason(null)).toBeNull();
   });
@@ -88,5 +93,39 @@ describe("SessionStatusCell", () => {
     expect(
       renderToStaticMarkup(<SessionStatusCell status="queued" sessionId="queued" />),
     ).not.toContain(SESSION_QUEUED_WAIT_COPY);
+  });
+
+  it("shows a bounded retry in queued status without changing ordinary status copy", () => {
+    const list = renderToStaticMarkup(
+      <SessionStatusCell
+        status="queued"
+        sessionId="retry"
+        infrastructureRetryCount={1}
+        lastInfrastructureErrorCode="host_lost"
+      />,
+    );
+    expect(list).toContain('data-pw="session-status-retry-retry"');
+    expect(list).toContain("Automatic retry 1 of 1 in progress after Host lost before launch.");
+
+    const detail = renderToStaticMarkup(
+      <SessionStatusDetail
+        status="queued"
+        infrastructureRetryCount={1}
+        lastInfrastructureErrorCode="checkout_fetch_failed"
+      />,
+    );
+    expect(detail).toContain('data-pw="session-detail-status-retry"');
+    expect(detail).toContain("Checkout fetch failed");
+    expect(
+      renderToStaticMarkup(<SessionStatusDetail status="running" infrastructureRetryCount={1} />),
+    ).not.toContain("Automatic retry");
+  });
+
+  it("uses friendly labels for terminal infrastructure failures", () => {
+    expect(
+      renderToStaticMarkup(
+        <SessionStatusCell status="failed" errorCode="host_lost" sessionId="lost" />,
+      ),
+    ).toContain("Host lost before launch");
   });
 });

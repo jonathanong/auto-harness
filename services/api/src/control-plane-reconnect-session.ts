@@ -13,6 +13,7 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     activeHostId: ________,
     activeHostOrder: _________,
     result: __________,
+    primaryCommandStartState: __________,
     ...next
   } = session;
   return {

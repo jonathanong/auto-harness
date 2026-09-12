@@ -32,6 +32,7 @@ export {
 export { tryAssignSession } from "./plane-storage-sessions-assign.ts";
 export { failExpiredResumeSession } from "./plane-storage-sessions-assign-resume.ts";
 export { acknowledgeSession } from "./plane-storage-sessions-ack.ts";
+export { authorizePrimaryCommandStart } from "./plane-storage-sessions-command-start.ts";
 export {
   cancelQueuedSession,
   cancelRunningSession,

@@ -33,6 +33,8 @@ import {
 } from "./control-plane-lifecycle.ts";
 import {
   emitCooldown,
+  emitInfrastructureRetry,
+  emitInfrastructureRetryExhausted,
   emitLogDrops,
   emitLogSeqGap,
   emitStaleAttemptLogDrop,
@@ -474,6 +476,27 @@ export function handleHostMessage(
       }
       return { ok: true };
     }
+    case "session:command-start": {
+      const session = state.sessions.get(msg.sessionId);
+      if (!session) return { ok: false, error: "session not found" };
+      const plan = planSessionTransition(
+        session,
+        { type: "command_start", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
+        plannerContext(state, "local"),
+      );
+      const accepted = !transitionEffect(plan, "ignore") && !transitionEffect(plan, "reject");
+      if (accepted && transitionEffect(plan, "authorize_command_start")) {
+        session.primaryCommandStartState = "authorized";
+      }
+      if (accepted && session.hostId && session.primaryCommandStartState === "authorized") {
+        state.onHostMessage?.(session.hostId, {
+          type: "session:command-start-acknowledged",
+          sessionId: session.id,
+          attemptId: msg.attemptId,
+        });
+      }
+      return { ok: true };
+    }
     case "session:status": {
       // Captured before mutation: a terminal report can clear session.hostId.
       const owner = state.sessions.get(msg.sessionId)?.hostId;
@@ -545,6 +568,8 @@ export async function handleHostMessageDurable(
   connectionId?: string;
   /** Present only after the durable ack transaction committed. */
   sessionAcknowledged?: string;
+  /** Present only after command launch is durably authorized. */
+  sessionCommandStartAcknowledged?: { sessionId: string; attemptId: string };
   /** Present only after a `session:status` report was durably applied. */
   sessionStatusAcknowledged?: { sessionId: string; attemptId: string };
   /** Present only after the host's drain flag committed. */
@@ -683,6 +708,7 @@ export async function handleHostMessageDurable(
     if (noHostClaim || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
       if (
         (msg.type === "session:ack" ||
+          msg.type === "session:command-start" ||
           msg.type === "session:status" ||
           msg.type === "session:usage") &&
         msg.attemptId
@@ -773,6 +799,33 @@ export async function handleHostMessageDurable(
       return { ok: true, sessionAcknowledged: msg.sessionId };
     }
     return { ok: true };
+  }
+  if (msg.type === "session:command-start") {
+    const session = await state.storage.getSession(msg.sessionId);
+    if (!session) return { ok: false, error: "session not found" };
+    const plan = planSessionTransition(
+      session,
+      { type: "command_start", worktreeId: msg.worktreeId, attemptId: msg.attemptId },
+      plannerContext(state, "durable"),
+    );
+    state.sessions.set(msg.sessionId, session);
+    const authorized =
+      !transitionEffect(plan, "ignore") &&
+      !transitionEffect(plan, "reject") &&
+      (session.primaryCommandStartState === "authorized" ||
+        (transitionEffect(plan, "authorize_command_start") &&
+          (await state.storage.authorizePrimaryCommandStart({
+            sessionId: msg.sessionId,
+            worktreeId: msg.worktreeId,
+            attemptId: msg.attemptId,
+            ...(fence ? { fence } : {}),
+          }))));
+    if (!authorized) return { ok: true };
+    state.sessions.set(msg.sessionId, { ...session, primaryCommandStartState: "authorized" });
+    return {
+      ok: true,
+      sessionCommandStartAcknowledged: { sessionId: msg.sessionId, attemptId: msg.attemptId },
+    };
   }
   if (msg.type === "session:status") {
     const { applied, ...result } = await applySessionStatusDurable(state, msg, storage, fence);
@@ -994,7 +1047,36 @@ async function applySessionStatusDurable(
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
   const suppress = transitionEffect(plan, "suppress_target");
+  const finish = transitionEffect(plan, "finish");
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
+    if (requeue?.reason === "infrastructure") {
+      const code = requeue.errorCode as "checkout_fetch_failed" | "host_lost";
+      const requeued = await storage.releaseMainCheckoutSession({
+        sessionId: session.id,
+        hostId: session.hostId,
+        repositoryId: session.repositoryId,
+        connectionId: session.assignmentConnectionId,
+        attemptId: msg.attemptId,
+        status: "queued",
+        queueShard: session.queueShard,
+        reason: requeue.errorMessage ?? "infrastructure retry",
+        infrastructureErrorCode: code,
+        ...providerAccountLeaseWriteOpts(session),
+      });
+      if (!requeued) return { ok: true };
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseScheduledLeaseLocal(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, {
+        ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
+        infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+        lastInfrastructureErrorCode: code,
+      });
+      emitInfrastructureRetry();
+      state.pendingAcks.delete(session.id);
+      await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+      return { ok: true, applied: true };
+    }
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
       state.providerAccounts.delete(providerAccountId);
@@ -1112,21 +1194,24 @@ async function applySessionStatusDurable(
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
       return { ok: true, applied: true };
     }
-    const completedAt = state.now();
+    const completedAt = finish?.completedAt ?? state.now();
+    const terminalStatus = finish?.status ?? msg.status;
+    const terminalErrorCode = finish?.errorCode ?? msg.errorCode;
+    const terminalErrorMessage = finish?.errorMessage ?? msg.errorMessage;
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
       attemptId: msg.attemptId,
-      status: msg.status,
+      status: terminalStatus,
       queueShard: session.queueShard,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+      ...(terminalErrorCode ? { errorCode: terminalErrorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
-      ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
+      ...(terminalErrorMessage ? { reason: terminalErrorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       ...providerAccountLeaseWriteOpts(session),
     });
@@ -1134,14 +1219,20 @@ async function applySessionStatusDurable(
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
+    if (
+      terminalErrorCode === "checkout_fetch_failed" &&
+      (session.infrastructureRetryCount ?? 0) >= 1
+    ) {
+      emitInfrastructureRetryExhausted();
+    }
     const { mainCheckoutLease: _, ...next } = {
       ...session,
-      status: msg.status,
+      status: terminalStatus,
       worktreeId: null,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
-      ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+      ...(terminalErrorCode ? { errorCode: terminalErrorCode } : {}),
+      ...(terminalErrorMessage ? { errorMessage: terminalErrorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
     };
@@ -1182,6 +1273,33 @@ async function applySessionStatusDurable(
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
   }
+  if (requeue?.reason === "infrastructure" && session.worktreeId) {
+    const code = requeue.errorCode as "checkout_fetch_failed" | "host_lost";
+    const committed = await storage.tryRequeueSession({
+      sessionId: session.id,
+      worktreeId: session.worktreeId,
+      attemptId: msg.attemptId,
+      queueShard: session.queueShard,
+      reason: requeue.errorMessage ?? "infrastructure retry",
+      ...(fence ? { fence } : {}),
+      ...providerAccountLeaseWriteOpts(session),
+      infrastructureErrorCode: code,
+    });
+    if (!committed) return { ok: true };
+    await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+    releaseProviderAccountLease(state, session);
+    const wt = state.worktrees.get(session.worktreeId);
+    if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
+    state.sessions.set(session.id, {
+      ...queueReconnectSession(session, requeue.errorMessage ?? "infrastructure retry"),
+      infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+      lastInfrastructureErrorCode: code,
+    });
+    emitInfrastructureRetry();
+    state.pendingAcks.delete(session.id);
+    await requestAssignmentAfterHostEvent(state, fence?.connectionId);
+    return { ok: true, applied: true };
+  }
   const shouldSuppressTarget = suppress !== undefined;
   if (shouldSuppressTarget && session.worktreeId) {
     const committed = await storage.suppressProviderlessUsageLimit(
@@ -1217,6 +1335,12 @@ async function applySessionStatusDurable(
   if (!committed) {
     return { ok: true };
   }
+  if (
+    finish?.errorCode === "checkout_fetch_failed" &&
+    (session.infrastructureRetryCount ?? 0) >= 1
+  ) {
+    emitInfrastructureRetryExhausted();
+  }
   await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
   releaseProviderAccountLease(state, session);
   const worktreeId = session.worktreeId;
@@ -1230,7 +1354,7 @@ async function applySessionStatusDurable(
       });
     }
   }
-  const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
+  const nextStatus = shouldSuppressTarget ? "queued" : (finish?.status ?? msg.status);
   const nextSession = {
     ...session,
     status: nextStatus,
@@ -1238,8 +1362,12 @@ async function applySessionStatusDurable(
     worktreeId: null,
     hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
-    ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
+    ...((finish?.errorCode ?? msg.errorCode) !== undefined
+      ? { errorCode: finish?.errorCode ?? msg.errorCode }
+      : {}),
+    ...((finish?.errorMessage ?? msg.errorMessage) !== undefined
+      ? { errorMessage: finish?.errorMessage ?? msg.errorMessage }
+      : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(reportedResult !== undefined && !shouldSuppressTarget ? { result: reportedResult } : {}),
     ...(shouldSuppressTarget && suppress
@@ -1302,6 +1430,26 @@ function applySessionStatus(
     plannerContext(state, "local", cachedProviderAccount(state, session)),
   );
   if (transitionEffect(plan, "ignore")) return { ok: true };
+
+  const infrastructureRetry = transitionEffect(plan, "requeue");
+  if (infrastructureRetry?.reason === "infrastructure") {
+    const code = infrastructureRetry.errorCode as "checkout_fetch_failed" | "host_lost";
+    const released = session.mainCheckoutLease
+      ? releaseScheduledLeaseLocal(state, session)
+      : session.worktreeId
+        ? (releaseWorktree(state, session.worktreeId), true)
+        : false;
+    if (!released) return { ok: true };
+    releaseProviderAccountLease(state, session);
+    state.sessions.set(session.id, {
+      ...queueReconnectSession(session, infrastructureRetry.errorMessage ?? "infrastructure retry"),
+      infrastructureRetryCount: (session.infrastructureRetryCount ?? 0) + 1,
+      lastInfrastructureErrorCode: code,
+    });
+    emitInfrastructureRetry();
+    state.pendingAcks.delete(session.id);
+    return { ok: true };
+  }
 
   const terminal = isTerminalSessionStatus(msg.status);
   const patch = transitionEffect(plan, "patch_report");
@@ -1407,6 +1555,14 @@ function applySessionStatus(
         void assignQueued(state);
       }
     } else if (finish) {
+      if (
+        finish.errorCode === "checkout_fetch_failed" &&
+        (session.infrastructureRetryCount ?? 0) >= 1
+      ) {
+        emitInfrastructureRetryExhausted();
+      }
+      if (finish.errorCode !== undefined) session.errorCode = finish.errorCode;
+      if (finish.errorMessage !== undefined) session.errorMessage = finish.errorMessage;
       session.worktreeId = null;
       // A continuation reference is single-use: a resumed command must report
       // a fresh one if it wants to support another native continuation.

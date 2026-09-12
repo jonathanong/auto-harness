@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Git command parsing and bounded diagnostics share one adapter. */
 import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { truncateUtf8 } from "./executor.ts";
@@ -139,6 +140,25 @@ export function gitFailure(category: string, stderr?: string): Error {
   return new Error(diagnostic.length > 0 ? `${category}: ${diagnostic}` : category);
 }
 
+/** Failure from one of the explicit checkout-stage fetch/repair operations. */
+export class CheckoutFetchError extends Error {
+  readonly checkoutFetchFailure = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "CheckoutFetchError";
+  }
+}
+
+export function checkoutFetchFailure(category: string, stderr?: string): CheckoutFetchError {
+  const failure = gitFailure(category, stderr);
+  return new CheckoutFetchError(failure.message);
+}
+
+export function isCheckoutFetchFailure(error: unknown): error is CheckoutFetchError {
+  return error instanceof CheckoutFetchError;
+}
+
 /**
  * `cwd` here is always the untrusted session worktree/checkout. `git` is
  * resolved to an absolute path via `resolveTrustedExecutable`, searching
@@ -215,6 +235,8 @@ export async function refetchConfiguredRemotes(
   runner: ProcessRunner,
   cwd: string,
   signal?: AbortSignal,
+  throwOnFetchFailure = false,
+  onFetchFailure?: (error: CheckoutFetchError) => void,
 ): Promise<boolean> {
   const listed = await runGit(runner, cwd, ["remote"], signal);
   if (listed.exitCode !== 0) {
@@ -225,8 +247,33 @@ export async function refetchConfiguredRemotes(
     return false;
   }
   for (const remote of remotes) {
-    const fetched = await runGit(runner, cwd, ["fetch", "--tags", "--refetch", remote], signal);
+    let fetched: GitResult;
+    try {
+      fetched = await runGit(runner, cwd, ["fetch", "--tags", "--refetch", remote], signal);
+    } catch (error) {
+      if (throwOnFetchFailure) {
+        const failure = checkoutFetchFailure(
+          `Failed to refetch remote ${remote}`,
+          error instanceof Error ? error.message : String(error),
+        );
+        onFetchFailure?.(failure);
+        throw failure;
+      }
+      onFetchFailure?.(
+        checkoutFetchFailure(
+          `Failed to refetch remote ${remote}`,
+          error instanceof Error ? error.message : String(error),
+        ),
+      );
+      return false;
+    }
     if (fetched.exitCode !== 0) {
+      if (throwOnFetchFailure) {
+        const failure = checkoutFetchFailure(`Failed to refetch remote ${remote}`, fetched.stderr);
+        onFetchFailure?.(failure);
+        throw failure;
+      }
+      onFetchFailure?.(checkoutFetchFailure(`Failed to refetch remote ${remote}`, fetched.stderr));
       return false;
     }
   }

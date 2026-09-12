@@ -1,8 +1,14 @@
+/* eslint-disable max-lines -- Git client operations share checkout safety invariants. */
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
-import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
+import {
+  checkoutFetchFailure,
+  gitFailure,
+  refetchConfiguredRemotes,
+  runGit,
+} from "./git-commands.ts";
 import {
   claimedLinkedWorktreeCommonDir,
   checkoutDetached,
@@ -109,13 +115,34 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         signal,
       );
       if (resolved.exitCode !== 0) {
-        await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-        resolved = await runGit(
-          runner,
-          cwd,
-          ["rev-parse", "--verify", "--end-of-options", commitRef],
-          signal,
-        );
+        let fetched: Awaited<ReturnType<typeof runGit>>;
+        try {
+          fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+        } catch (error) {
+          throw checkoutFetchFailure(
+            `Failed to fetch ref ${ref}`,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        if (fetched.exitCode !== 0) {
+          resolved = await runGit(
+            runner,
+            cwd,
+            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            signal,
+          );
+          if (resolved.exitCode !== 0) {
+            throw checkoutFetchFailure(`Failed to fetch ref ${ref}`, fetched.stderr);
+          }
+        }
+        if (fetched.exitCode === 0) {
+          resolved = await runGit(
+            runner,
+            cwd,
+            ["rev-parse", "--verify", "--end-of-options", commitRef],
+            signal,
+          );
+        }
       }
       if (resolved.exitCode !== 0) {
         throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
@@ -138,10 +165,21 @@ export function createGitClient(runner: ProcessRunner): GitClient {
           signal,
         );
         if (connectivity.exitCode !== 0) {
-          if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
+          let refetchFailure;
+          const refetched = await refetchConfiguredRemotes(
+            runner,
+            cwd,
+            signal,
+            false,
+            (failure) => {
+              refetchFailure = failure;
+            },
+          );
+          co = await checkoutDetached(runner, cwd, sha, signal);
+          if (co.exitCode !== 0 && refetchFailure) throw refetchFailure;
+          if (!refetched && co.exitCode !== 0) {
             throw new Error("Failed to fetch required checkout objects");
           }
-          co = await checkoutDetached(runner, cwd, sha, signal);
         }
       }
       if (co.exitCode !== 0) {
@@ -185,11 +223,24 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         if (localBranch.exitCode === 0) {
           throw gitFailure(`Failed to switch main checkout to branch ${ref}`, switched.stderr);
         }
-        const fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-        if (fetched.exitCode !== 0) {
-          throw gitFailure(`Failed to fetch branch ${ref}`, fetched.stderr);
+        let fetched: Awaited<ReturnType<typeof runGit>>;
+        try {
+          fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+        } catch (error) {
+          throw checkoutFetchFailure(
+            `Failed to fetch branch ${ref}`,
+            error instanceof Error ? error.message : String(error),
+          );
         }
-        switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
+        if (fetched.exitCode !== 0) {
+          switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
+          if (switched.exitCode !== 0) {
+            throw checkoutFetchFailure(`Failed to fetch branch ${ref}`, fetched.stderr);
+          }
+        }
+        if (fetched.exitCode === 0) {
+          switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
+        }
       }
       if (switched.exitCode !== 0) {
         throw gitFailure(`Failed to switch main checkout to branch ${ref}`, switched.stderr);

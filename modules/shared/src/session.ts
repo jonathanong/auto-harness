@@ -139,6 +139,8 @@ export type HostWireMessage =
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
   | { type: "session:acknowledged"; sessionId: string; attemptId?: string | undefined }
+  /** Sent only after the control plane durably authorizes the primary CLI to launch. */
+  | { type: "session:command-start-acknowledged"; sessionId: string; attemptId: string }
   /** Sent only after the control plane durably applies a `session:status`
    * report. A successful WebSocket write is not delivery: the daemon retains
    * and retries an unacknowledged terminal status until this arrives. */
@@ -197,6 +199,13 @@ export type HostToServerMessage =
       draining?: true;
     }
   | { type: "session:ack"; sessionId: string; worktreeId: string | null; attemptId: string }
+  /** Host asks the control plane to durably mark the primary CLI launch boundary. */
+  | {
+      type: "session:command-start";
+      sessionId: string;
+      worktreeId: string | null;
+      attemptId: string;
+    }
   | {
       type: "session:status";
       sessionId: string;

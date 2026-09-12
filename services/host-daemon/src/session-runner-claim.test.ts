@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
+import { checkoutFetchFailure } from "./git-commands.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { baseAssign, setup } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
@@ -99,5 +100,38 @@ describe("SessionRunner claim and checkout failures", () => {
       errorMessage: "co-nope",
       result: { summary: "Session failed", summarySource: "harness" },
     });
+  });
+
+  it("maps a checkout-stage fetch failure to checkout_fetch_failed", async () => {
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const worktrees = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => {
+        throw checkoutFetchFailure("Failed to fetch ref missing", "network unavailable");
+      },
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    });
+    const sessionRunner = new SessionRunner({
+      worktrees,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+    const result = await sessionRunner.run(baseAssign({ ref: "missing" }));
+    expect(result.errorCode).toBe("checkout_fetch_failed");
   });
 });

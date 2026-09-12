@@ -44,6 +44,7 @@ describe("disconnect durable fallback coverage", () => {
       worktreeId: "w",
       attemptId: "attempt",
       ackReceivedAt: NOW,
+      primaryCommandStartState: "pending",
       assignmentConnectionId: "connection",
     };
     const releaseLegacyHostAssignment = vi.fn(async () => false);
@@ -285,6 +286,7 @@ describe("disconnect durable fallback coverage", () => {
       worktreeId: "w",
       attemptId: "attempt",
       ackReceivedAt: NOW,
+      primaryCommandStartState: "pending",
       assignmentConnectionId: "connection",
     };
     const racedSession = { ...running, reconnectDeadlineAt: "2026-01-01T00:00:05.000Z" };
@@ -360,6 +362,7 @@ describe("disconnect durable fallback coverage", () => {
       worktreeId: "w",
       attemptId: "attempt",
       ackReceivedAt: NOW,
+      primaryCommandStartState: "pending",
       assignmentConnectionId: "connection",
     };
     const latestSession = { ...running, errorMessage: "raced" };

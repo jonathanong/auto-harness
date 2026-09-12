@@ -606,6 +606,13 @@ Account globally for its configured cooldown (default 5 hours), releases the wor
 immediately tries the next eligible account or fallback. Providerless and non-structured commands
 do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
+Infrastructure failures have a separate bounded retry policy. A checkout-stage fetch failure is
+reported as `checkout_fetch_failed`; a host lost after assignment but before the v3
+`session:command-start-acknowledged` checkpoint is reported as `host_lost`. The control plane
+automatically retries the same logical session once with a fresh `attemptId`, preserving its
+inputs, concurrency lock, and absolute `queueExpiresAt`. A second eligible failure, an
+ambiguous/post-launch host loss, or any ordinary CLI/setup failure is terminal.
+
 The concurrency identity is released for terminal states (`completed`, `failed`, `cancelled`, `timed_out`), allowing an explicit retry with the same id. A manual duplicate while the original is queued or running is deduplicated and returns the original session; it never creates a second queued run.
 
 #### `GET /sessions`
@@ -683,6 +690,8 @@ Get session details.
   "exitCode": 0,
   "errorCode": null,
   "errorMessage": null,
+  "infrastructureRetryCount": 0,
+  "lastInfrastructureErrorCode": null,
   "resumedFromSessionId": null,
   "pinnedHostId": null,
   "pinExpiresAt": null,
@@ -709,17 +718,19 @@ Get session details.
 }
 ```
 
-| Field                           | When set                                                                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                                             |
-| `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                                                 |
-| `errorMessage`                  | Optional short human excerpt from the match / logs (Git excerpts are bounded and redact credentials)                            |
-| `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                                                          |
-| `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing                                |
-| `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                              |
-| `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                                                |
-| `resolvedRoute`                 | Last assigned route: `targetIndex`, optional `providerAccountId`, `commandId`, `hostId`, `worktreeId`, `attemptId` (no secrets) |
-| `result`                        | Best-effort structured terminal outcome; absent for active, legacy, and unavailable-result sessions                             |
+| Field                           | When set                                                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                                                |
+| `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit`, `queue_expired`, `checkout_fetch_failed`, or `host_lost`             |
+| `errorMessage`                  | Optional short human excerpt from the match / logs (Git excerpts are bounded and redact credentials)                               |
+| `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                                                             |
+| `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing                                   |
+| `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                                 |
+| `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                                                   |
+| `resolvedRoute`                 | Last assigned route: `targetIndex`, optional `providerAccountId`, `commandId`, `hostId`, `worktreeId`, `attemptId` (no secrets)    |
+| `infrastructureRetryCount`      | Number of automatic infrastructure retries consumed for this logical session; absent/`0` means none, and the hard maximum is `1`   |
+| `lastInfrastructureErrorCode`   | Most recent retry cause: `checkout_fetch_failed` or `host_lost`; retained across attempts and reset only by creating a new session |
+| `result`                        | Best-effort structured terminal outcome; absent for active, legacy, and unavailable-result sessions                                |
 
 `result` is captured after the terminal hook and is untrusted agent/worktree-derived data. Its
 `summarySource` is `agent` only when a supported structured CLI result supplied the summary;

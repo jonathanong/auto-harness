@@ -7,6 +7,13 @@ import {
   releaseProviderAccountLease,
 } from "./control-plane-provider-account-leases.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import {
+  canRetryHostLoss,
+  finishHostLostSession,
+  HOST_LOSS_RETRY_REASON,
+  HOST_LOSS_TERMINAL_REASON,
+  queueHostLossRetry,
+} from "./control-plane-infrastructure-retry.ts";
 
 /**
  * Requeue every worktree-owned session this host is not currently reporting as
@@ -40,12 +47,77 @@ async function requeueOmittedWorktreeSessions(
       worktree.hostId !== hostId
     )
       continue;
+    const retryableHostLoss = Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+    const terminalHostLoss = Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, queueReconnectSession(session, reason));
+      state.sessions.set(
+        session.id,
+        retryableHostLoss
+          ? queueHostLossRetry(session)
+          : terminalHostLoss
+            ? finishHostLostSession(state, session)
+            : queueReconnectSession(session, reason),
+      );
       releaseWorktree(state, worktree.id);
       state.pendingAcks.delete(session.id);
+      if (!terminalHostLoss) requeued.push(session.id);
+    } else if (
+      retryableHostLoss &&
+      (await state.storage.tryRequeueSession({
+        sessionId: session.id,
+        worktreeId: worktree.id,
+        attemptId: session.attemptId!,
+        queueShard: session.queueShard,
+        reason: HOST_LOSS_RETRY_REASON,
+        forceOffline: false,
+        expectedHostId: hostId,
+        nextConnectionId: connectionId!,
+        ...(session.assignmentConnectionId
+          ? { expectedConnectionId: session.assignmentConnectionId }
+          : {}),
+        fence: { hostId, connectionId: connectionId! },
+        ...providerAccountLeaseWriteOpts(session),
+        infrastructureErrorCode: "host_lost",
+      }))
+    ) {
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, queueHostLossRetry(session));
+      state.worktrees.set(worktree.id, {
+        ...worktree,
+        status: "idle",
+        currentSessionId: null,
+        online: true,
+      });
+      state.pendingAcks.delete(session.id);
       requeued.push(session.id);
+    } else if (terminalHostLoss) {
+      if (typeof state.storage.finishSession !== "function") continue;
+      const finished = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: worktree.id,
+        attemptId: session.attemptId!,
+        status: "failed",
+        queueShard: session.queueShard,
+        completedAt: state.now(),
+        errorCode: "host_lost",
+        errorMessage: HOST_LOSS_TERMINAL_REASON,
+        fence: { hostId, connectionId: connectionId! },
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+      });
+      if (!finished) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, finishHostLostSession(state, session));
+      state.worktrees.set(worktree.id, {
+        ...worktree,
+        status: "idle",
+        currentSessionId: null,
+        online: true,
+      });
+      state.pendingAcks.delete(session.id);
     } else if (
       await state.storage.tryRequeueSession({
         sessionId: session.id,

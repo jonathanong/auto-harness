@@ -32,6 +32,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     assignmentConnectionId: "old",
     mainCheckoutLease: true,
     ackReceivedAt: NOW,
+    primaryCommandStartState: "pending",
     ...over,
   };
 }

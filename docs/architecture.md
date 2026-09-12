@@ -82,6 +82,9 @@ rules.
 4. **Assume duplicate delivery and uncertain execution.** Fence messages by attempt identity and
    make processing idempotent. After ambiguous host loss, require an explicit retry; do not promise
    exactly-once effects in GitHub or another external system.
+   The one automatic infrastructure retry is limited to checkout-fetch failure or a host loss
+   proven to precede the v3 command-start acknowledgement; post-launch and ambiguous loss is
+   terminal (D10).
 5. **Operational work scales with active work and new bytes.** Heartbeats, scheduling, recovery,
    and log reads use bounded access paths. Retaining more terminal history must not increase their
    routine cost.
@@ -216,6 +219,7 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-workt
 | Agent auto-update drains                     | Signed-manifest orchestration drains, waits, verifies, stages, activates, restarts the supervisor, and rolls back on failure; HTTPS fetch/install/supervisor adapters run when update env is set, and the manual runbook remains available                                                            |
 | Principal session drains                     | A durable DynamoDB `CURRENT` fence plus retained operation rows atomically blocks creation/assignment for one authenticated principal and repository while the scheduler cancels and reconciles only that scope                                                                                       |
 | Usage limits: account cooldown + fallback    | Validate a provider-aware CLI adapter's structured quota/rate-limit signal, report `usage_limit`, pause the assigned account globally (5h default/configurable), and route the queued session to the next eligible account or explicit fallback; providerless and non-structured commands are ungated |
+| Bounded infrastructure retry                 | Retry one checkout-stage fetch failure or pre-launch host loss with a fresh attempt fence while preserving the logical session, concurrency lock, and queue deadline; a second eligible failure is terminal (D10)                                                                                     |
 | Session resume prefers native placement      | Resume by session id → pin the source agent, re-check out the ref in any eligible worktree there, and use the native CLI ref; if unschedulable, clear pin/ref and route fresh through target/fallback order                                                                                           |
 | Subscriptions via non-interactive CLI        | Cost path is vendor seats/quota, not API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md))                                                                                                                                                                                     |
 | Native harness invocation                    | Spawn each vendor's own CLI directly—no intermediary Agent SDK, no universal harness. That interface is what every vendor ships and supports for unattended use, and stays stable across whatever a vendor's SDK/subscription licensing does next ([why.md](why.md))                                  |

@@ -191,6 +191,18 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               }),
             );
           } else if (
+            msg.type === "session:command-start" &&
+            result.sessionCommandStartAcknowledged?.sessionId === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            socket.send(
+              JSON.stringify({
+                type: "session:command-start-acknowledged",
+                sessionId: result.sessionCommandStartAcknowledged.sessionId,
+                attemptId: result.sessionCommandStartAcknowledged.attemptId,
+              }),
+            );
+          } else if (
             msg.type === "session:status" &&
             result.sessionStatusAcknowledged?.sessionId === msg.sessionId &&
             socket.readyState === socket.OPEN
@@ -502,6 +514,13 @@ export function parseHostMessage(
       return normalized;
     }
     if (message.type === "session:ack") {
+      return boundedText(message.sessionId) &&
+        (message.worktreeId === null || boundedText(message.worktreeId)) &&
+        boundedText(message.attemptId)
+        ? (message as HostToServerMessage)
+        : null;
+    }
+    if (message.type === "session:command-start") {
       return boundedText(message.sessionId) &&
         (message.worktreeId === null || boundedText(message.worktreeId)) &&
         boundedText(message.attemptId)

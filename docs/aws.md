@@ -507,7 +507,12 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 3. For sessions `running` on that agent:
    - Prefer **leave running briefly** (agent may reconnect and re-register in-progress sessions), or
    - After grace (e.g. 2 minutes) with no reconnect: mark `failed` or `timed_out`, clear worktree assignment so queue can move to other agents
-4. Do **not** auto-reassign an in-flight session to another agent (workspace state is on the original disk)
+4. For an acknowledged v3 assignment whose durable command-start checkpoint is still `pending`,
+   the control plane may retry the logical session once as `host_lost` after the disconnect grace
+   expires. A checkpoint in `authorized`, a legacy/v2 assignment, or any ambiguous/post-launch
+   loss is terminal; it is never silently duplicated. The retry keeps the original queue deadline
+   and concurrency identity but uses a fresh `attemptId`.
+5. Do **not** auto-reassign an in-flight session to another agent (workspace state is on the original disk)
 
 ### Agent reconnect
 
@@ -590,6 +595,8 @@ one-time, account-level API Gateway CloudWatch Logs role that `deploy`/`update` 
 | Log seq gaps (alarmed)  | EMF `LogSeqGaps`: lines missing from a session's stored transcript, detected from a discontinuity in the agent-assigned `seq` — silent loss the ingest pipeline itself caused, not one the agent reported                 |
 | Stale-attempt log drops | EMF `StaleAttemptLogDrops`: a log message discarded because it belonged to an attempt the session already moved past, while its batch-mates still committed — the one silent-discard site whose batch-mates commit anyway |
 | WS messages discarded   | EMF `WsMessagesDiscarded`: a host WebSocket message dropped because the connection was being closed (rate limit, invalid frame, stale/unauthorized connection) — logged with its specific reason                          |
+| Infrastructure retries  | EMF `InfrastructureRetries` when a bounded checkout-fetch or pre-launch host-loss retry is committed; expected recovery telemetry, not alarmed                                                                            |
+| Retry exhaustion        | EMF `InfrastructureRetryExhausted` when the one retry budget is exhausted and the logical session becomes terminal; alarmed                                                                                               |
 | Function logs           | CloudWatch Logs per Lambda; retention 14 days                                                                                                                                                                             |
 | Sentry (opt-in)         | Optional `HARNESS_API_SENTRY_DSN` / web client+server DSNs. Unhandled errors only; not a CloudWatch alarm source. Unset by default.                                                                                       |
 
@@ -600,7 +607,8 @@ and lower-frequency session/host control deliveries retain one structured succes
 
 Alarms in the runtime stack (namespace `AutoHarness`, dimension `Environment` = table prefix,
 missing data not breaching): Lambda errors, API 5xx, queue age ≥ 30 minutes, assignment failures,
-ACK timeouts, stale hosts, cooldowns, log drops, and log seq gaps. Stale-attempt log drops and
+ACK timeouts, stale hosts, cooldowns, log drops, log seq gaps, and infrastructure retry exhaustion.
+`InfrastructureRetries`, stale-attempt log drops, and
 discarded WS messages are metrics/logs only (not alarmed) — expected to occur occasionally during
 ordinary reconnects, unlike the others.
 

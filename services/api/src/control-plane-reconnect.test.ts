@@ -55,6 +55,7 @@ function durableRunning(id: string, worktreeId: string, assignmentConnectionId?:
     hostId: "h",
     worktreeId,
     ackReceivedAt: "t",
+    primaryCommandStartState: "pending" as const,
     reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     ...(assignmentConnectionId ? { assignmentConnectionId } : {}),
   };
@@ -104,6 +105,8 @@ describe("reconnect reconciliation", () => {
     expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);
     expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual(["s"]);
     expect(plane.getSession("s")?.status).toBe("queued");
+    expect(plane.getSession("s")?.infrastructureRetryCount).toBe(1);
+    expect(plane.getSession("s")?.lastInfrastructureErrorCode).toBe("host_lost");
 
     const second = runningPlane();
     // A stale local deadline tracker must be removed when the durable/local
@@ -124,6 +127,19 @@ describe("reconnect reconciliation", () => {
     expect(second.state.pendingAcks.has("s")).toBe(false);
   });
 
+  it("fails an authorized command rather than replaying it after reconnect grace", async () => {
+    const plane = runningPlane();
+    const internal = plane.state.sessions.get("s")!;
+    internal.primaryCommandStartState = "authorized";
+    const deadline = Date.parse(internal.reconnectDeadlineAt!);
+
+    expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual([]);
+    expect(plane.getSession("s")).toMatchObject({
+      status: "failed",
+      errorCode: "host_lost",
+    });
+  });
+
   it("uses durable fence-aware reconcile and no-lock deadline reclaim paths", async () => {
     const plane = new ControlPlane();
     plane.state.hostConnection.set("h", "c");
@@ -142,6 +158,7 @@ describe("reconnect reconciliation", () => {
       hostId: "h",
       worktreeId: "w",
       ackReceivedAt: "t",
+      primaryCommandStartState: "pending" as const,
       reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     };
     const worktree = {

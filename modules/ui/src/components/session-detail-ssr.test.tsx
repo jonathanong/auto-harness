@@ -32,6 +32,8 @@ describe("SessionDetail static markup", () => {
       errorMessage: "Retrying",
       resumeFallback: true,
       resumedFromSessionId: "session/old",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
     };
     const linked = render(
       <SessionDetail
@@ -76,6 +78,8 @@ describe("SessionDetail static markup", () => {
     expect(details).toContain('data-pw="session-detail-worktree"');
     expect(details).toContain("30s");
     expect(details).toContain('data-pw="session-detail-priority">0');
+    expect(details).toContain('data-pw="session-detail-infrastructure-retry-count">1 of 1');
+    expect(details).toContain("Checkout fetch failed");
     expect(details).toContain('data-pw="session-usage-summary"');
 
     const prompts = render(

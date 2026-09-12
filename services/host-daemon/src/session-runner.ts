@@ -4,6 +4,7 @@ import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { LogStreamer } from "./log-streamer.ts";
+import { isCheckoutFetchFailure } from "./git-commands.ts";
 import {
   failSession,
   finishClaimedSession,
@@ -30,6 +31,8 @@ export type SessionRunnerDeps = {
   identity?: PriorContextIdentity;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
+  /** Durable control-plane authorization immediately before the primary CLI starts. */
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>;
 };
 
 type SessionRunOptions = {
@@ -170,7 +173,7 @@ export class SessionRunner {
           {
             status: "failed",
             exitCode: null,
-            errorCode: "setup_failed",
+            errorCode: isCheckoutFetchFailure(err) ? "checkout_fetch_failed" : "setup_failed",
             errorMessage: thrownMessage(err),
           },
           this.deps.childEnvSource ?? process.env,
@@ -195,6 +198,7 @@ export class SessionRunner {
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
           this.deps.identity,
+          this.deps.authorizeCommandStart,
           baseline,
         );
       } catch (error) {

@@ -5,6 +5,8 @@ export const OPERATIONAL_METRIC_ENVIRONMENT_VAR = "HARNESS_METRIC_ENVIRONMENT";
 export const OPERATIONAL_METRICS = {
   ackTimeouts: "AckTimeouts",
   assignmentFailures: "AssignmentFailures",
+  infrastructureRetries: "InfrastructureRetries",
+  infrastructureRetryExhausted: "InfrastructureRetryExhausted",
   cooldowns: "Cooldowns",
   logDrops: "LogDrops",
   /** Log lines a session's stored transcript is missing, detected via a seq
@@ -85,6 +87,14 @@ export function emitCooldown(): void {
 
 export function emitAssignmentFailure(): void {
   emitOperationalMetric(OPERATIONAL_METRICS.assignmentFailures, 1);
+}
+
+export function emitInfrastructureRetry(): void {
+  emitOperationalMetric(OPERATIONAL_METRICS.infrastructureRetries, 1);
+}
+
+export function emitInfrastructureRetryExhausted(): void {
+  emitOperationalMetric(OPERATIONAL_METRICS.infrastructureRetryExhausted, 1);
 }
 
 export function emitCronSweepMetrics(input: {

@@ -42,6 +42,8 @@ export async function runClaimedSession(
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   /** Daemon identity used only to fetch `assign.priorContext`; never forwarded to the CLI. */
   identity?: PriorContextIdentity,
+  /** Durable control-plane authorization immediately before the primary CLI starts. */
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
   /** HEAD captured after checkout and before setup; used for post-session facts. */
   baseline?: string,
 ): Promise<SessionRunResult> {
@@ -146,6 +148,7 @@ export async function runClaimedSession(
     setup.environment,
     executionProfiles,
     identity,
+    authorizeCommandStart,
     baseline,
   );
 }
@@ -164,12 +167,9 @@ async function runProcessAndFinish(
   environment: NodeJS.ProcessEnv,
   executionProfiles: ExecutionProfiles = emptyExecutionProfiles(),
   identity?: PriorContextIdentity,
+  authorizeCommandStart?: (assign: SessionAssign, signal?: AbortSignal) => Promise<boolean>,
   baseline?: string,
 ): Promise<SessionRunResult> {
-  streamer.write(
-    "system",
-    `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
-  );
   const capturePolicy =
     commandRunner.outputStreams === "merged" && assign.resumeRefCapture
       ? { ...assign.resumeRefCapture, stream: "either" as const }
@@ -212,36 +212,6 @@ async function runProcessAndFinish(
   const spawnEnv = priorContextPath
     ? { ...commandEnv, HARNESS_PRIOR_CONTEXT_FILE: priorContextPath }
     : commandEnv;
-  let result: ProcessResult;
-  try {
-    result = await commandRunner.run({
-      argv,
-      cwd: claimed.cwd,
-      env: spawnEnv,
-      timeoutMs: remainingMs(),
-      ...(signal ? { signal } : {}),
-      onChunk: (c) => {
-        const safeContent = resumeRef.push(c.stream, c.data);
-        if (safeContent) streamer.write(c.stream, safeContent);
-      },
-    });
-  } finally {
-    // Must run even if the process rejects — otherwise the transcript of a
-    // *different* session lingers in this (likely reused) worktree.
-    await removePriorContextFile(priorContextPath);
-  }
-  const cliResumeRef = resumeRef.finish();
-  for (const trailing of resumeRef.drainTrailing()) {
-    streamer.write(trailing.stream, trailing.content);
-  }
-  if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
-  streamer.write(
-    "system",
-    result.exitCode === null
-      ? "Process exited without an exit code"
-      : `Process exited with code ${String(result.exitCode)}`,
-  );
-
   const finish = (outcome: Parameters<typeof finishClaimedSession>[5]) =>
     finishClaimedSession(
       processRunner,
@@ -254,61 +224,112 @@ async function runProcessAndFinish(
       baseline,
       true,
     );
-
-  if (result.timedOut || timedOut()) {
-    return await finish({
-      status: "timed_out",
-      exitCode: result.exitCode,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+  const executeAuthorized = async (): Promise<SessionRunResult> => {
+    try {
+      const authorized = (await authorizeCommandStart?.(assign, signal)) ?? !signal?.aborted;
+      if (!authorized || signal?.aborted) {
+        return await finish({
+          status: timedOut() ? "timed_out" : "cancelled",
+          exitCode: null,
+        });
+      }
+    } catch (error) {
+      return await finish({
+        status: "failed",
+        exitCode: null,
+        errorCode: "setup_failed",
+        errorMessage: thrownMessage(error),
+      });
+    }
+    streamer.write(
+      "system",
+      `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
+    );
+    const result: ProcessResult = await commandRunner.run({
+      argv,
+      cwd: claimed.cwd,
+      env: spawnEnv,
+      timeoutMs: remainingMs(),
+      ...(signal ? { signal } : {}),
+      onChunk: (c) => {
+        const safeContent = resumeRef.push(c.stream, c.data);
+        if (safeContent) streamer.write(c.stream, safeContent);
+      },
     });
-  }
+    const cliResumeRef = resumeRef.finish();
+    for (const trailing of resumeRef.drainTrailing()) {
+      streamer.write(trailing.stream, trailing.content);
+    }
+    if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
+    streamer.write(
+      "system",
+      result.exitCode === null
+        ? "Process exited without an exit code"
+        : `Process exited with code ${String(result.exitCode)}`,
+    );
 
-  if (result.cancelled || signal?.aborted) {
-    return await finish({
-      status: "cancelled",
-      exitCode: result.exitCode,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+    if (result.timedOut || timedOut()) {
+      return await finish({
+        status: "timed_out",
+        exitCode: result.exitCode,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+        ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      });
+    }
+
+    if (result.cancelled || signal?.aborted) {
+      return await finish({
+        status: "cancelled",
+        exitCode: result.exitCode,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+        ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      });
+    }
+
+    if (result.exitCode === 0) {
+      return await finish({
+        status: "completed",
+        exitCode: 0,
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+        ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      });
+    }
+
+    const usageLimit = detectUsageLimit({
+      argv,
+      failed: true,
+      ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
+      ...(result.usageLimit === true ? { adapterUsageLimit: true } : {}),
     });
-  }
+    if (usageLimit) {
+      return await finish({
+        status: "failed",
+        exitCode: result.exitCode,
+        errorCode: "usage_limit",
+        errorMessage: "Usage limit detected",
+        ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+        ...(result.usage !== undefined ? { usage: result.usage } : {}),
+        ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
+      });
+    }
 
-  if (result.exitCode === 0) {
-    return await finish({
-      status: "completed",
-      exitCode: 0,
-      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-      ...(result.usage !== undefined ? { usage: result.usage } : {}),
-      ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
-    });
-  }
-
-  const usageLimit = detectUsageLimit({
-    argv,
-    failed: true,
-    ...(assign.providerAccountId ? { providerAccountId: assign.providerAccountId } : {}),
-    ...(result.usageLimit === true ? { adapterUsageLimit: true } : {}),
-  });
-  if (usageLimit) {
     return await finish({
       status: "failed",
       exitCode: result.exitCode,
-      errorCode: "usage_limit",
-      errorMessage: "Usage limit detected",
+      errorMessage: `process exited with code ${String(result.exitCode)}`,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
       ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
     });
+  };
+  try {
+    return await executeAuthorized();
+  } finally {
+    // Must run for every authorization outcome as well as process failures — otherwise
+    // denied starts leave prior session context in the reused worktree.
+    await removePriorContextFile(priorContextPath);
   }
-
-  return await finish({
-    status: "failed",
-    exitCode: result.exitCode,
-    errorMessage: `process exited with code ${String(result.exitCode)}`,
-    ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
-    ...(result.usage !== undefined ? { usage: result.usage } : {}),
-    ...(result.agentSummary !== undefined ? { agentSummary: result.agentSummary } : {}),
-  });
 }

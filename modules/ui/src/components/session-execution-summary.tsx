@@ -1,6 +1,7 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { Alert } from "./alert.tsx";
+import { sessionErrorLabel } from "./session-status-cell.tsx";
 
 export type SessionExecutionSummaryProps = {
   status: string;
@@ -8,6 +9,8 @@ export type SessionExecutionSummaryProps = {
   errorMessage?: string | null | undefined;
   resumeFallback?: boolean | null | undefined;
   resumedFromSessionId?: string | null | undefined;
+  infrastructureRetryCount?: number | null | undefined;
+  lastInfrastructureErrorCode?: string | null | undefined;
 };
 
 /** Terminal error and fresh-resume notices shown above session detail tabs. */
@@ -17,16 +20,26 @@ export function SessionExecutionSummary({
   errorMessage,
   resumeFallback,
   resumedFromSessionId,
+  infrastructureRetryCount,
+  lastInfrastructureErrorCode,
 }: SessionExecutionSummaryProps) {
   const terminal = isTerminalSessionStatus(status);
   const showError = Boolean(errorMessage || (terminal && errorCode));
+  const retrying = status === "queued" && (infrastructureRetryCount ?? 0) > 0;
+  const retryReason = sessionErrorLabel(lastInfrastructureErrorCode) ?? "an infrastructure failure";
   return (
     <>
+      {retrying ? (
+        <Alert variant="warning" data-pw="session-detail-infrastructure-retry" role="status">
+          Automatic retry {infrastructureRetryCount} of 1 is in progress after {retryReason}. The
+          original queue deadline and session concurrency lock are preserved.
+        </Alert>
+      ) : null}
       {showError ? (
         <Alert variant="danger" data-pw="session-detail-error" role={terminal ? "alert" : "status"}>
           {errorCode ? (
             <span className="font-semibold">
-              {errorCode}
+              {sessionErrorLabel(errorCode)}
               {errorMessage ? ": " : ""}
             </span>
           ) : null}

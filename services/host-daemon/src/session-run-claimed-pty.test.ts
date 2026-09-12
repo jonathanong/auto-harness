@@ -45,4 +45,78 @@ describe("claimed session PTY output", () => {
     );
     expect(logs.some((chunk) => chunk.content.includes("opaque-native-ref"))).toBe(false);
   });
+
+  it("does not spawn until the command-start authorization callback resolves", async () => {
+    const logs = [];
+    const systemRunner: ProcessRunner = {
+      async run() {
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    let authorize!: () => void;
+    const authorization = new Promise<boolean>((resolve) => {
+      authorize = () => resolve(true);
+    });
+    let commandRuns = 0;
+    const commandRunner: ProcessRunner = {
+      async run() {
+        commandRuns += 1;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const work = runClaimedSession(
+      systemRunner,
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      claimed,
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      undefined,
+      async () => await authorization,
+    );
+
+    await Promise.resolve();
+    expect(commandRuns).toBe(0);
+    authorize();
+    await expect(work).resolves.toMatchObject({ status: "completed" });
+    expect(commandRuns).toBe(1);
+  });
+
+  it("reports cancellation from command-start authorization without spawning", async () => {
+    let commandRuns = 0;
+    const commandRunner: ProcessRunner = {
+      async run() {
+        commandRuns += 1;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs = [];
+    const outcome = await runClaimedSession(
+      {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
+      logs,
+      baseAssign(),
+      claimed,
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      undefined,
+      async () => false,
+    );
+
+    expect(outcome).toMatchObject({ status: "cancelled" });
+    expect(commandRuns).toBe(0);
+  });
 });

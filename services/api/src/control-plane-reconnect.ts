@@ -1,15 +1,14 @@
 /* eslint-disable max-lines -- attempt-fenced reconnect claims stay with this table. */
 import type { HostRunningAttempt } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { reconcileHostOwnedSessions } from "./control-plane-reconnect-omitted.ts";
+import { reclaimScheduledReconnect } from "./control-plane-reconnect-scheduled.ts";
 import {
   confirmScheduledReconnect,
-  reclaimScheduledReconnect,
   restoreScheduledReconnects,
   type ScheduledReconnectConfirmation,
-} from "./control-plane-reconnect-scheduled.ts";
+} from "./control-plane-reconnect-scheduled-confirm.ts";
 import {
   confirmReportedSession,
   ignoreStaleReconnectClaim,
@@ -23,6 +22,13 @@ import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
 } from "./control-plane-reconnect-rollback.ts";
+import {
+  canRetryHostLoss,
+  finishHostLostSession,
+  HOST_LOSS_RETRY_REASON,
+  HOST_LOSS_TERMINAL_REASON,
+  queueHostLossRetry,
+} from "./control-plane-infrastructure-retry.ts";
 
 export async function reconcileHostRunningSessions(
   state: ControlPlaneState,
@@ -134,20 +140,47 @@ export async function reclaimReconnectDeadlines(
       : undefined;
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
-      state.sessions.set(
-        session.id,
-        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
-      );
+      if (canRetryHostLoss(session)) {
+        state.sessions.set(session.id, queueHostLossRetry(session));
+        requeued.push(session.id);
+      } else {
+        state.sessions.set(session.id, finishHostLostSession(state, session));
+      }
       releaseWorktree(state, worktree.id);
       state.pendingAcks.delete(session.id);
-      requeued.push(session.id);
+    } else if (!canRetryHostLoss(session)) {
+      if (typeof state.storage.finishSession !== "function") continue;
+      const finished = await state.storage.finishSession({
+        sessionId: session.id,
+        worktreeId: worktree.id,
+        attemptId: session.attemptId!,
+        status: "failed",
+        queueShard: session.queueShard,
+        completedAt: state.now(),
+        errorCode: "host_lost",
+        errorMessage: HOST_LOSS_TERMINAL_REASON,
+        ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
+        ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+        ...providerAccountLeaseWriteOpts(session),
+      });
+      if (!finished) continue;
+      await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
+      releaseProviderAccountLease(state, session);
+      state.sessions.set(session.id, finishHostLostSession(state, session));
+      state.worktrees.set(worktree.id, {
+        ...worktree,
+        status: "idle",
+        currentSessionId: null,
+        online: false,
+      });
+      state.pendingAcks.delete(session.id);
     } else if (
       await state.storage.tryRequeueSession({
         sessionId: session.id,
         worktreeId: worktree.id,
         attemptId: session.attemptId!,
         queueShard: session.queueShard,
-        reason: "daemon reconnect deadline exceeded; requeued",
+        reason: HOST_LOSS_RETRY_REASON,
         forceOffline: true,
         expectedHostId: session.hostId,
         expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
@@ -157,14 +190,12 @@ export async function reclaimReconnectDeadlines(
         ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
         ...(!connectionId ? { requireNoHostLock: session.hostId } : {}),
         ...providerAccountLeaseWriteOpts(session),
+        infrastructureErrorCode: "host_lost",
       })
     ) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(
-        session.id,
-        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
-      );
+      state.sessions.set(session.id, queueHostLossRetry(session));
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",

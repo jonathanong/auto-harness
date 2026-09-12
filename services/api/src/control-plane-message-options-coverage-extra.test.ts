@@ -414,7 +414,7 @@ describe("host message optional-field coverage", () => {
         worktrees: [{ id: "w", name: "w", repositoryId: "repo", path: "/repo/w", labels: [] }],
       }),
     ).toEqual({ ok: true });
-    const row = session({ ackReceivedAt: NOW });
+    const row = session({ ackReceivedAt: NOW, primaryCommandStartState: "pending" });
     current.sessions.set(row.id, row);
     current.worktrees.set("w", {
       id: "w",

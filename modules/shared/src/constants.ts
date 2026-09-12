@@ -34,6 +34,8 @@ export const SESSION_ERROR_CODES = [
   "resume_failed",
   "unknown_command_profile",
   "setup_failed",
+  "checkout_fetch_failed",
+  "host_lost",
 ] as const satisfies readonly SessionErrorCode[];
 
 export const SESSION_TYPES = ["prompt", "scheduled"] as const satisfies readonly SessionType[];
@@ -86,6 +88,9 @@ export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
 /** Current host control-channel protocol advertised by modern daemons. */
 export const HOST_PROTOCOL_VERSION = 3;
+
+/** Daemons at this version require a durable command-start acknowledgement before spawning. */
+export const COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION = 3;
 
 /**
  * Daemons that negotiate this version on `host:registered` re-arm the keepalive

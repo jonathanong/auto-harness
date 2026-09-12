@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  CheckoutFetchError,
   gitFailure,
   MAX_CAPTURED_GIT_STDOUT_BYTES,
   MAX_GIT_DIAGNOSTIC_BYTES,
@@ -410,6 +411,23 @@ describe("refetchConfiguredRemotes", () => {
         "/repo",
       ),
     ).resolves.toBe(true);
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),
+        "/repo",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("brands an exact refetch failure only when checkout recovery requests it", async () => {
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),
+        "/repo",
+        undefined,
+        true,
+      ),
+    ).rejects.toBeInstanceOf(CheckoutFetchError);
     await expect(
       refetchConfiguredRemotes(
         runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),

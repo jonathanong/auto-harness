@@ -1,12 +1,14 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import { randomUUID } from "node:crypto";
 import {
+  COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
   KEEPALIVE_ACK_PROTOCOL_VERSION,
   SESSION_RESULT_PROTOCOL_VERSION,
   thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
   type HostWireMessage,
+  type SessionAssign,
   type SessionLogChunk,
 } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
@@ -124,6 +126,14 @@ type PendingTerminalStatus = {
   controller: AbortController;
 };
 
+type PendingCommandStart = {
+  message: Extract<HostToServerMessage, { type: "session:command-start" }>;
+  signal: AbortSignal;
+  resolve: (authorized: boolean) => void;
+  onAbort: () => void;
+  sending: boolean;
+};
+
 const DEFAULT_PENDING_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /**
  * Ceiling on retained terminal statuses, comfortably under the control
@@ -152,6 +162,7 @@ export class DaemonLoop {
   private readonly worktrees: WorktreeManager;
   private readonly inflight = new Map<string, InflightSession>();
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
+  private readonly pendingCommandStarts = new Map<string, PendingCommandStart>();
   private readonly pendingStatusMaxAgeMs: number;
   private readonly pendingStatusMaxCount: number;
   private readonly statusRetriesPerTick: number;
@@ -180,6 +191,8 @@ export class DaemonLoop {
   private readonly keepaliveTimeoutMs: number;
   private readonly keepaliveStallMs: number;
   private keepaliveStallTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Control-plane protocol negotiated by the latest accepted registration. */
+  private serverProtocolVersion = 0;
   /**
    * Set from `host:registered.protocolVersion`. When true, a local keepalive
    * write is not evidence the peer received it — only `host:keepalive-ack`
@@ -250,6 +263,7 @@ export class DaemonLoop {
         : {}),
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
+      authorizeCommandStart: (assign, signal) => this.authorizeCommandStart(assign, signal),
     });
   }
   async start(): Promise<void> {
@@ -273,6 +287,7 @@ export class DaemonLoop {
         for (const session of this.inflight.values()) session.controller.abort();
       },
       onRegistered: (protocolVersion) => {
+        this.serverProtocolVersion = protocolVersion ?? 0;
         // A reconnect registration carrying `draining: true` is itself a
         // durable acknowledgement. This covers a lost drain reply.
         if (this.drainRequested) this.confirmDrain();
@@ -280,6 +295,7 @@ export class DaemonLoop {
         // terminal status still unacknowledged now instead of waiting for
         // the next keepalive tick.
         this.retryPendingTerminalStatuses();
+        this.retryPendingCommandStarts();
         this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
         this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
         // A fresh registration is itself proof this connection is live —
@@ -476,6 +492,9 @@ export class DaemonLoop {
     if (this.keepaliveStallTimer) this.timers.clearTimeout(this.keepaliveStallTimer);
     this.keepaliveStallTimer = undefined;
     this.connectionEvents?.stop();
+    for (const key of this.pendingCommandStarts.keys()) {
+      this.finishCommandStart(key, false);
+    }
     this.transport.close();
   }
 
@@ -495,6 +514,9 @@ export class DaemonLoop {
         return;
       case "session:acknowledged":
         this.handleAcknowledged(msg);
+        return;
+      case "session:command-start-acknowledged":
+        this.handleCommandStartAcknowledged(msg);
         return;
       case "session:status-acknowledged":
         this.handleStatusAcknowledged(msg);
@@ -563,6 +585,78 @@ export class DaemonLoop {
       const resolve = current.resolveAcknowledgement;
       current.resolveAcknowledgement = undefined;
       resolve?.();
+    }
+  }
+
+  private handleCommandStartAcknowledged(
+    msg: Extract<HostWireMessage, { type: "session:command-start-acknowledged" }>,
+  ): void {
+    this.finishCommandStart(inflightKey(msg.sessionId, msg.attemptId), true);
+  }
+
+  /**
+   * Ask a protocol-3 control plane to durably authorize the primary CLI launch.
+   * Legacy peers have no launch checkpoint, so they retain the existing behavior.
+   */
+  private authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean> {
+    if (!signal) return Promise.resolve(true);
+    if (this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION) {
+      return Promise.resolve(!signal.aborted);
+    }
+    if (signal.aborted) return Promise.resolve(false);
+    const key = inflightKey(assign.sessionId, assign.attemptId);
+    return new Promise<boolean>((resolve) => {
+      const message: Extract<HostToServerMessage, { type: "session:command-start" }> = {
+        type: "session:command-start",
+        sessionId: assign.sessionId,
+        worktreeId: assign.worktreeId,
+        attemptId: assign.attemptId,
+      };
+      const pending: PendingCommandStart = {
+        message,
+        signal,
+        resolve,
+        onAbort: () => this.finishCommandStart(key, false),
+        sending: false,
+      };
+      this.pendingCommandStarts.set(key, pending);
+      signal.addEventListener("abort", pending.onAbort, { once: true });
+      this.sendCommandStart(key, pending);
+    });
+  }
+
+  private finishCommandStart(key: string, authorized: boolean): void {
+    const pending = this.pendingCommandStarts.get(key);
+    if (!pending) return;
+    this.pendingCommandStarts.delete(key);
+    pending.signal.removeEventListener("abort", pending.onAbort);
+    pending.resolve(authorized);
+  }
+
+  private sendCommandStart(key: string, pending: PendingCommandStart): void {
+    if (
+      pending.sending ||
+      pending.signal.aborted ||
+      this.pendingCommandStarts.get(key) !== pending ||
+      this.serverProtocolVersion < COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION
+    )
+      return;
+    pending.sending = true;
+    void this.outbound
+      .send(pending.message, { signal: pending.signal })
+      .catch((error: unknown) => {
+        this.onLog?.(
+          `session:command-start send failed for ${pending.message.sessionId}: ${thrownMessage(error)}`,
+        );
+      })
+      .finally(() => {
+        pending.sending = false;
+      });
+  }
+
+  private retryPendingCommandStarts(): void {
+    for (const [key, pending] of this.pendingCommandStarts) {
+      this.sendCommandStart(key, pending);
     }
   }
 

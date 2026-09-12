@@ -113,6 +113,8 @@ export function SessionsTable({
                 errorCode={s.errorCode}
                 errorMessage={s.errorMessage}
                 sessionId={s.id}
+                infrastructureRetryCount={s.infrastructureRetryCount}
+                lastInfrastructureErrorCode={s.lastInfrastructureErrorCode}
               />
             </TableCell>
             <TableCell data-pw={`session-repository-${s.id}`}>

@@ -225,6 +225,41 @@ describe("scheduled terminal and retry message branches", () => {
     expect(state.providerAccountLeases.size).toBe(0);
   });
 
+  it("archives a terminal leased run, clears its cache lease, and releases concurrency", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const archives: Record<string, unknown>[] = [];
+    const state = durable(session({ concurrencyId: "concurrency" }), {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return true;
+      },
+      putArchive: async (metadata: Record<string, unknown>) => archives.push(metadata),
+    });
+    state.mainCheckoutLeases.set("host\0repo", { sessionId: "s", connectionId: "old" });
+    state.pendingAcks.set("s", { sessionId: "s", worktreeId: null, assignedAtMs: 0 });
+
+    await expect(
+      handleHostMessageDurable(state, status("s", "completed", { exitCode: 0 })),
+    ).resolves.toMatchObject({
+      ok: true,
+      sessionStatusAcknowledged: { sessionId: "s", attemptId: "attempt" },
+    });
+
+    expect(calls[0]).toMatchObject({ status: "completed", concurrencyId: "concurrency" });
+    expect(state.sessions.get("s")).toMatchObject({ status: "completed", worktreeId: null });
+    expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
+    expect(state.sessions.get("s")).not.toHaveProperty("assignmentConnectionId");
+    expect(state.mainCheckoutLeases.size).toBe(0);
+    expect(state.pendingAcks.has("s")).toBe(false);
+    expect(archives).toEqual([
+      expect.objectContaining({
+        key: "sessions/s/logs.jsonl",
+        status: "pending",
+        objectStored: false,
+      }),
+    ]);
+  });
+
   it("cools a cached account when storage cannot load provider accounts", async () => {
     const row = session({
       resolvedRoute: {

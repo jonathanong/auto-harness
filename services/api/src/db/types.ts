@@ -58,6 +58,10 @@ export type SessionRecord = {
   cancelledByDrainOperationId?: string;
   errorCode?: string | undefined;
   errorMessage?: string | undefined;
+  /** Number of automatic retries consumed by transient infrastructure loss. */
+  infrastructureRetryCount?: number;
+  /** Most recent retryable infrastructure failure, retained across attempts. */
+  lastInfrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
   url?: string;
   type?: string | undefined;
   source?: string | undefined;
@@ -68,6 +72,8 @@ export type SessionRecord = {
   assignmentConnectionId?: string | undefined;
   /** Durable assignment timestamp used to reclaim an unacknowledged scheduled run after restart. */
   assignmentSentAt?: string;
+  /** Durable v3 command-launch checkpoint. Never expose this to browser clients. */
+  primaryCommandStartState?: "pending" | "authorized";
   /** Deadline after an acknowledged daemon disconnects before this work is requeued. */
   reconnectDeadlineAt?: string;
   exitCode?: number | null | undefined;

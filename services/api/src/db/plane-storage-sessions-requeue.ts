@@ -28,6 +28,8 @@ type RequeueOpts = {
   requireUnacknowledged?: boolean;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
   hostAssignmentLease?: HostAssignmentLease | undefined;
+  /** Bounded safe-replay marker for an infrastructure failure. */
+  infrastructureErrorCode?: "checkout_fetch_failed" | "host_lost";
 };
 
 function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<string, unknown>> {
@@ -91,6 +93,13 @@ function requeueSessionCondition(opts: RequeueOpts): string {
     condition +=
       " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)";
   }
+  if (opts.infrastructureErrorCode) {
+    condition +=
+      " AND (attribute_not_exists(infrastructureRetryCount) OR infrastructureRetryCount < :maxInfrastructureRetries)";
+  }
+  if (opts.infrastructureErrorCode === "host_lost") {
+    condition += " AND primaryCommandStartState = :pendingCommandStart";
+  }
   return condition;
 }
 
@@ -101,7 +110,11 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
       Key: { id: opts.sessionId },
       UpdateExpression:
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
-        ", worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease",
+        ", worktreeId = :null, hostId = :null, errorMessage = :reason" +
+        (opts.infrastructureErrorCode
+          ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode"
+          : "") +
+        " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, primaryCommandStartState",
       ConditionExpression: requeueSessionCondition(opts),
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -118,6 +131,17 @@ function requeueSessionUpdate(ctx: PlaneStorageCtx, opts: RequeueOpts, queueOrde
         ...(opts.expectedConnectionId ? { ":connectionId": opts.expectedConnectionId } : {}),
         ":worktreeId": opts.worktreeId,
         ":attemptId": opts.attemptId,
+        ...(opts.infrastructureErrorCode
+          ? {
+              ":zero": 0,
+              ":one": 1,
+              ":maxInfrastructureRetries": 1,
+              ":infrastructureErrorCode": opts.infrastructureErrorCode,
+            }
+          : {}),
+        ...(opts.infrastructureErrorCode === "host_lost"
+          ? { ":pendingCommandStart": "pending" }
+          : {}),
       },
     },
   };

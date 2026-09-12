@@ -17,6 +17,7 @@ type SessionReportFields = {
 
 export type SessionTransitionEvent =
   | { type: "ack"; worktreeId: string | null; attemptId: string }
+  | { type: "command_start"; worktreeId: string | null; attemptId: string }
   | ({
       type: "status";
       worktreeId: string | null;
@@ -26,6 +27,7 @@ export type SessionTransitionEvent =
   | { type: "cancel" }
   | { type: "timeout" }
   | { type: "disconnect"; acknowledged: boolean }
+  | { type: "infrastructure_failure"; code: "checkout_fetch_failed" | "host_lost" }
   | { type: "queue_expired" }
   | { type: "log"; attemptId: string }
   | { type: "reconnect_claim"; attemptId: string };
@@ -43,6 +45,7 @@ export type SessionTransitionEffect =
   | { type: "ignore"; reason: SessionTransitionIgnoreReason }
   | { type: "reject"; error: string }
   | { type: "ack" }
+  | { type: "authorize_command_start" }
   | { type: "retry_archive" }
   | ({
       type: "patch_report";
@@ -56,7 +59,7 @@ export type SessionTransitionEffect =
     } & SessionReportFields)
   | ({
       type: "requeue";
-      reason: "usage_limit" | "missing_account" | "providerless" | "disconnect";
+      reason: "usage_limit" | "missing_account" | "providerless" | "disconnect" | "infrastructure";
     } & SessionReportFields)
   | { type: "cooldown"; providerAccountId: string; usageLimitedUntil: string }
   | { type: "suppress_target"; targetIndex: number }
@@ -77,6 +80,9 @@ export type SessionTransitionContext = {
   providerAccount?: { usageLimitCooldownSeconds: number } | null;
   reconnectGraceMs?: number;
 };
+
+/** A session may replay a safe, pre-command infrastructure failure once. */
+const MAX_INFRASTRUCTURE_RETRIES = 1;
 
 export function transitionEffect<T extends SessionTransitionEffect["type"]>(
   plan: SessionTransitionPlan,
@@ -133,6 +139,62 @@ function planAck(
   if (session.ackReceivedAt !== undefined)
     return planOf({ type: "ignore", reason: "already_acked" });
   return planOf({ type: "ack" });
+}
+
+function planCommandStart(
+  session: SessionRecord,
+  event: Extract<SessionTransitionEvent, { type: "command_start" }>,
+): SessionTransitionPlan {
+  if (session.status !== "running" || !attemptMatches(session, event.worktreeId, event.attemptId)) {
+    return planOf({ type: "ignore", reason: "stale_attempt" });
+  }
+  // A duplicate command-start is a successful no-op. The durable writer owns
+  // the exact conditional fence; the planner keeps local workers idempotent.
+  if (session.primaryCommandStartState === "authorized") return planOf();
+  if (session.primaryCommandStartState !== "pending") {
+    return planOf({ type: "reject", error: "command start is not enabled for this assignment" });
+  }
+  return planOf({ type: "authorize_command_start" });
+}
+
+function planInfrastructureFailure(
+  session: SessionRecord,
+  code: "checkout_fetch_failed" | "host_lost",
+  ctx: SessionTransitionContext,
+  detail?: string,
+): SessionTransitionPlan {
+  if (session.status !== "running") return planOf({ type: "ignore", reason: "not_running" });
+  const baseMessage =
+    detail ??
+    (code === "checkout_fetch_failed"
+      ? "checkout fetch failed"
+      : "host was lost before command launch");
+  const replaySafe = code !== "host_lost" || session.primaryCommandStartState === "pending";
+  if (replaySafe && (session.infrastructureRetryCount ?? 0) < MAX_INFRASTRUCTURE_RETRIES) {
+    return planOf(
+      ...releaseEffects(session),
+      {
+        type: "requeue",
+        reason: "infrastructure",
+        errorCode: code,
+        errorMessage: `${baseMessage}; retrying once`,
+      },
+      { type: "reschedule", kind: scheduleKind(session) },
+    );
+  }
+  return planOf(
+    ...releaseEffects(session),
+    {
+      type: "finish",
+      status: "failed",
+      completedAt: ctx.now,
+      errorCode: code,
+      errorMessage: replaySafe
+        ? `${baseMessage}; automatic retry exhausted`
+        : "host lost after command authorization or without a replay-safe checkpoint",
+    },
+    { type: "archive" },
+  );
 }
 
 function planUsageLimit(
@@ -259,6 +321,9 @@ function planStatus(
   if (event.status === "failed" && event.errorCode === "usage_limit") {
     return planOf(...planUsageLimit(session, event, ctx));
   }
+  if (event.status === "failed" && event.errorCode === "checkout_fetch_failed") {
+    return planInfrastructureFailure(session, "checkout_fetch_failed", ctx, event.errorMessage);
+  }
   return planOf(
     ...releaseEffects(session),
     {
@@ -368,6 +433,8 @@ export function planSessionTransition(
   switch (event.type) {
     case "ack":
       return planAck(session, event);
+    case "command_start":
+      return planCommandStart(session, event);
     case "status":
       return planStatus(session, event, ctx);
     case "cancel":
@@ -376,6 +443,8 @@ export function planSessionTransition(
       return planTimeout(session, ctx);
     case "disconnect":
       return planDisconnect(session, event, ctx);
+    case "infrastructure_failure":
+      return planInfrastructureFailure(session, event.code, ctx);
     case "queue_expired":
       return planQueueExpired(session, ctx);
     case "log":

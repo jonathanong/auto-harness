@@ -40,7 +40,12 @@ export function SessionStatusBar({ session: s }: { session: SessionSummary }) {
       data-pw="session-status-bar"
     >
       <StatusItem label="Status">
-        <SessionStatusDetail status={s.status} errorCode={s.errorCode} />
+        <SessionStatusDetail
+          status={s.status}
+          errorCode={s.errorCode}
+          infrastructureRetryCount={s.infrastructureRetryCount}
+          lastInfrastructureErrorCode={s.lastInfrastructureErrorCode}
+        />
       </StatusItem>
       <StatusItem
         label="Provider"

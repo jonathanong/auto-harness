@@ -6,43 +6,18 @@ import {
 } from "./control-plane-provider-account-leases.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
+import {
+  canRetryHostLoss,
+  finishHostLostSession,
+  HOST_LOSS_RETRY_REASON,
+  HOST_LOSS_TERMINAL_REASON,
+  queueHostLossRetry,
+} from "./control-plane-infrastructure-retry.ts";
 
-export type ScheduledReconnectConfirmation = {
-  session: import("./db/types.ts").SessionRecord;
-};
-
-export async function confirmScheduledReconnect(
-  state: ControlPlaneState,
-  session: import("./db/types.ts").SessionRecord,
-  hostId: string,
-  connectionId: string | undefined,
-): Promise<boolean> {
-  const oldConnectionId = session.assignmentConnectionId;
-  if (!oldConnectionId || !connectionId || !session.ackReceivedAt || session.status !== "running") {
-    return false;
-  }
-  const confirmed =
-    !state.storage ||
-    (await state.storage.confirmMainCheckoutReconnect({
-      sessionId: session.id,
-      hostId,
-      repositoryId: session.repositoryId,
-      oldConnectionId,
-      connectionId,
-      ...(session.reconnectDeadlineAt ? { deadlineAt: session.reconnectDeadlineAt } : {}),
-    }));
-  if (!confirmed) return false;
-  const lease = state.mainCheckoutLeases.get(`${hostId}\0${session.repositoryId}`);
-  if (lease?.sessionId === session.id && lease.connectionId === oldConnectionId) {
-    state.mainCheckoutLeases.set(`${hostId}\0${session.repositoryId}`, {
-      ...lease,
-      connectionId,
-    });
-  }
-  const { reconnectDeadlineAt: _, ...next } = session;
-  state.sessions.set(session.id, { ...next, assignmentConnectionId: connectionId });
-  return true;
-}
+export {
+  confirmScheduledReconnect,
+  restoreScheduledReconnects,
+} from "./control-plane-reconnect-scheduled-confirm.ts";
 
 export async function requeueOmittedScheduled(
   state: ControlPlaneState,
@@ -66,60 +41,47 @@ export async function requeueOmittedScheduled(
       !session.assignmentConnectionId
     )
       continue;
+    const retryableHostLoss = Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+    const terminalHostLoss = Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
     const released = state.storage
       ? await state.storage.releaseMainCheckoutSession({
           sessionId: session.id,
           hostId,
           repositoryId: session.repositoryId,
           connectionId: session.assignmentConnectionId,
-          status: "queued",
+          status: terminalHostLoss ? "failed" : "queued",
           queueShard: session.queueShard,
-          reason,
+          reason: terminalHostLoss
+            ? HOST_LOSS_TERMINAL_REASON
+            : retryableHostLoss
+              ? HOST_LOSS_RETRY_REASON
+              : reason,
+          ...(terminalHostLoss
+            ? {
+                completedAt: state.now(),
+                errorCode: "host_lost",
+                ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+              }
+            : retryableHostLoss
+              ? { infrastructureErrorCode: "host_lost" as const }
+              : {}),
           ...providerAccountLeaseWriteOpts(session),
         })
       : releaseScheduledLeaseLocal(state, session);
     if (released) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
-      state.sessions.set(session.id, queueReconnectSession(session, reason));
+      state.sessions.set(
+        session.id,
+        retryableHostLoss
+          ? queueHostLossRetry(session)
+          : terminalHostLoss
+            ? finishHostLostSession(state, session)
+            : queueReconnectSession(session, reason),
+      );
       state.pendingAcks.delete(session.id);
-      requeued.push(session.id);
+      if (!terminalHostLoss) requeued.push(session.id);
     }
-  }
-}
-
-export async function restoreScheduledReconnects(
-  state: ControlPlaneState,
-  hostId: string,
-  connectionId: string | undefined,
-  confirmed: readonly ScheduledReconnectConfirmation[],
-): Promise<void> {
-  for (const item of confirmed.toReversed()) {
-    const prior = item.session;
-    const currentConnectionId = connectionId;
-    if (!currentConnectionId || !prior.assignmentConnectionId) continue;
-    // A forced replacement can report an active run before the old disconnect
-    // callback has persisted a grace deadline. Rollback must still leave that
-    // old fenced lease reclaimable after the new registration drops.
-    const previousDeadlineAt =
-      prior.reconnectDeadlineAt ??
-      new Date(Date.parse(state.now()) + state.reconnectGraceMs).toISOString();
-    const restored = state.storage
-      ? await state.storage.restoreMainCheckoutReconnect({
-          sessionId: prior.id,
-          hostId,
-          repositoryId: prior.repositoryId,
-          connectionId: currentConnectionId,
-          previousConnectionId: prior.assignmentConnectionId,
-          previousDeadlineAt,
-        })
-      : true;
-    if (!restored) continue;
-    state.sessions.set(prior.id, { ...prior, reconnectDeadlineAt: previousDeadlineAt });
-    state.mainCheckoutLeases.set(`${hostId}\0${prior.repositoryId}`, {
-      sessionId: prior.id,
-      connectionId: prior.assignmentConnectionId,
-    });
   }
 }
 
@@ -131,17 +93,34 @@ export async function reclaimScheduledReconnect(
   if (!session.mainCheckoutLease || !session.hostId || !session.assignmentConnectionId)
     return false;
   const cancelled = session.status === "cancelled";
+  const retryableHostLoss =
+    !cancelled && Boolean(session.ackReceivedAt) && canRetryHostLoss(session);
+  const terminalHostLoss =
+    !cancelled && Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
   const released = state.storage
     ? await state.storage.releaseMainCheckoutSession({
         sessionId: session.id,
         hostId: session.hostId,
         repositoryId: session.repositoryId,
         connectionId: session.assignmentConnectionId,
-        status: cancelled ? "cancelled" : "queued",
+        status: cancelled ? "cancelled" : terminalHostLoss ? "failed" : "queued",
         queueShard: session.queueShard,
         reason: cancelled
           ? (session.errorMessage ?? "cancelled by operator")
-          : "daemon reconnect deadline exceeded; requeued",
+          : terminalHostLoss
+            ? HOST_LOSS_TERMINAL_REASON
+            : retryableHostLoss
+              ? HOST_LOSS_RETRY_REASON
+              : "daemon reconnect deadline exceeded; requeued",
+        ...(terminalHostLoss
+          ? {
+              completedAt: state.now(),
+              errorCode: "host_lost",
+              ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+            }
+          : retryableHostLoss
+            ? { infrastructureErrorCode: "host_lost" as const }
+            : {}),
         ...(cancelled ? { expectedStatus: "cancelled" as const } : {}),
         ...(cancelled && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),
@@ -164,9 +143,13 @@ export async function reclaimScheduledReconnect(
     } else {
       state.sessions.set(
         session.id,
-        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
+        retryableHostLoss
+          ? queueHostLossRetry(session)
+          : terminalHostLoss
+            ? finishHostLostSession(state, session)
+            : queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
       );
-      requeued.push(session.id);
+      if (!terminalHostLoss) requeued.push(session.id);
     }
     state.pendingAcks.delete(session.id);
   }
