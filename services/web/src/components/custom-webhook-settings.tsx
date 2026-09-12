@@ -27,6 +27,7 @@ type Config = {
   requiredLabels: string[];
   enabled: boolean;
   version?: number;
+  generation?: string;
 };
 
 const emptyConfig: Config = {
@@ -63,9 +64,12 @@ export function CustomWebhookSettings() {
       });
       return;
     }
+    const requestedId = config.id;
+    const requestedEndpoint = endpoint;
     start(async () => {
       try {
-        const response = await apiFetch(endpoint, { cache: "no-store" });
+        const response = await apiFetch(requestedEndpoint, { cache: "no-store" });
+        if (latestId.current !== requestedId) return;
         if (response.status === 404) {
           setConfigured(false);
           setConfig((current) => ({ ...current, version: undefined }));
@@ -80,6 +84,7 @@ export function CustomWebhookSettings() {
           return;
         }
         const loaded = (await response.json()) as Config;
+        if (latestId.current !== requestedId || loaded.id !== requestedId) return;
         setConfig({
           id: loaded.id,
           repositoryId: loaded.repositoryId,
@@ -91,6 +96,7 @@ export function CustomWebhookSettings() {
           requiredLabels: loaded.requiredLabels ?? [],
           enabled: loaded.enabled,
           version: loaded.version,
+          generation: loaded.generation,
         });
         setSecret("");
         setConfigured(true);
@@ -124,8 +130,9 @@ export function CustomWebhookSettings() {
       const submittedEndpoint = endpoint;
       const submittedConfigured = configured;
       try {
-        const { id: _id, ...settings } = config;
+        const { id: _id, generation, ...settings } = config;
         const body: Record<string, unknown> = { ...settings };
+        if (submittedConfigured) body.generation = generation;
         if (secret) body.secret = secret;
         const response = await apiFetch(submittedEndpoint!, {
           method: submittedConfigured ? "PUT" : "POST",
@@ -140,9 +147,13 @@ export function CustomWebhookSettings() {
           });
           return;
         }
-        const saved = (await response.json()) as { version: number };
+        const saved = (await response.json()) as { version: number; generation?: string };
         if (latestId.current !== submittedId) return;
-        setConfig((current) => ({ ...current, version: saved.version }));
+        setConfig((current) => ({
+          ...current,
+          version: saved.version,
+          generation: saved.generation,
+        }));
         setConfigured(true);
         setSecret("");
         showToast("Custom webhook configuration saved.", { pw: "custom-webhook-success" });
@@ -159,7 +170,10 @@ export function CustomWebhookSettings() {
     try {
       const response = await apiFetch(endpoint!, {
         method: "DELETE",
-        headers: { "if-match": String(config.version!) },
+        headers: {
+          "if-match": String(config.version!),
+          "if-match-generation": config.generation ?? "legacy",
+        },
         cache: "no-store",
       });
       if (!response.ok) {
@@ -276,6 +290,7 @@ export function CustomWebhookSettings() {
                       ),
                     }))
                   }
+                  aria-label={`Required label ${index + 1}`}
                   data-pw={`custom-webhook-label-${index}`}
                 />
                 <Button

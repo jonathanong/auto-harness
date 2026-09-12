@@ -117,6 +117,30 @@ describe("custom webhook integration lifecycle", () => {
     expect(created.ok).toBe(true);
   });
 
+  it("fences observed generations across delete and recreate", async () => {
+    const value = plane();
+    const first = await value.createCustomWebhookIntegration(config());
+    if (!first.ok) throw new Error("expected integration");
+    const oldGeneration = first.integration.generation;
+    await expect(value.deleteCustomWebhookIntegration("deploy", 1, oldGeneration)).resolves.toEqual(
+      {
+        ok: true,
+      },
+    );
+    const recreated = await value.createCustomWebhookIntegration(config());
+    if (!recreated.ok) throw new Error("expected recreated integration");
+    expect(recreated.integration.generation).not.toBe(oldGeneration);
+    await expect(
+      value.updateCustomWebhookIntegration(config({ timeout: 90 }), 1, oldGeneration),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+    await expect(
+      value.deleteCustomWebhookIntegration("deploy", 1, oldGeneration),
+    ).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+  });
+
   it("uses the durable integration record for reads and rejects lifecycle writes with missing references", async () => {
     const source = plane();
     await expect(source.createCustomWebhookIntegration(config())).resolves.toMatchObject({

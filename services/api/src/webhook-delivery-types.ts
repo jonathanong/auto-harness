@@ -42,6 +42,8 @@ export type WebhookTransportRequest = {
   event: WebhookEvent;
   /** Exact bytes a future transport may sign and send. */
   body: string;
+  /** Exact durable-lease deadline; transport work must settle before it. */
+  leaseExpiresAt?: string;
 };
 
 export type WebhookTransportResult =
@@ -61,6 +63,8 @@ export const WEBHOOK_EVENT_HEADER = "x-auto-harness-event";
 export const WEBHOOK_DELIVERY_HEADER = "x-auto-harness-delivery";
 /** Leave time to record the outcome before the worker's 30-second delivery lease expires. */
 export const DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS = 25_000;
+/** Reserve time to conditionally record a result while the delivery lease is still live. */
+const WEBHOOK_LEASE_SETTLEMENT_MARGIN_MS = 1_000;
 
 export function signWebhookBody(secret: string, body: string): string {
   return `sha256=${createHmac("sha256", secret).update(body, "utf8").digest("hex")}`;
@@ -76,16 +80,37 @@ export type WebhookDestinationConfig = {
 export function createSignedWebhookTransport(options: {
   resolveDestination: (
     destination: WebhookDestinationRef,
+    signal: AbortSignal,
   ) => Promise<WebhookDestinationConfig | null>;
   fetch?: typeof globalThis.fetch;
+  /** Local development/test only; production always requires HTTPS. */
+  allowInsecureHttp?: boolean;
 }): WebhookTransport {
   const fetcher = options.fetch ?? globalThis.fetch;
   return {
     async deliver(request): Promise<WebhookTransportResult> {
-      const destination = await options.resolveDestination(request.destination);
+      const remaining = request.leaseExpiresAt
+        ? Date.parse(request.leaseExpiresAt) - Date.now() - WEBHOOK_LEASE_SETTLEMENT_MARGIN_MS
+        : DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS;
+      if (!Number.isFinite(remaining) || remaining <= 0) {
+        return { ok: false, failureCode: "transient-failure" };
+      }
+      const signal = AbortSignal.timeout(remaining);
+      let destination: WebhookDestinationConfig | null;
+      try {
+        destination = await abortable(
+          options.resolveDestination(request.destination, signal),
+          signal,
+        );
+      } catch {
+        return { ok: false, failureCode: "transient-failure" };
+      }
       if (!destination) return { ok: false, failureCode: "configuration-unavailable" };
       let response: Response;
-      if (process.env.NODE_ENV === "production" && !destination.url.startsWith("https://")) {
+      if (
+        !isHttps(destination.url) &&
+        !(options.allowInsecureHttp && process.env.NODE_ENV !== "production")
+      ) {
         return { ok: false, failureCode: "configuration-unavailable" };
       }
       if (
@@ -97,6 +122,14 @@ export function createSignedWebhookTransport(options: {
         return { ok: false, failureCode: "configuration-unavailable" };
       }
       try {
+        const requestTimeout = Math.min(
+          destination.timeoutMs ?? DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS,
+          request.leaseExpiresAt
+            ? Date.parse(request.leaseExpiresAt) - Date.now() - WEBHOOK_LEASE_SETTLEMENT_MARGIN_MS
+            : DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS,
+        );
+        if (!Number.isFinite(requestTimeout) || requestTimeout <= 0)
+          return { ok: false, failureCode: "transient-failure" };
         response = await fetcher(destination.url, {
           method: "POST",
           headers: {
@@ -106,11 +139,14 @@ export function createSignedWebhookTransport(options: {
             [WEBHOOK_DELIVERY_HEADER]: request.idempotencyKey,
           },
           body: request.body,
-          redirect: "error",
-          signal: AbortSignal.timeout(destination.timeoutMs ?? DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS),
+          redirect: "manual",
+          signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeout)]),
         });
       } catch {
         return { ok: false, failureCode: "transient-failure" };
+      }
+      if (response.status >= 300 && response.status < 400) {
+        return { ok: false, failureCode: "delivery-rejected" };
       }
       if (response.ok) return { ok: true };
       return {
@@ -122,6 +158,32 @@ export function createSignedWebhookTransport(options: {
       };
     },
   };
+}
+
+function isHttps(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
 }
 
 export type WebhookOutboxStore = {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- integration CAS and deletion-marker write fence stay co-located. */
 import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 import type { SlackIntegrationRecord } from "../slack-integration-types.ts";
@@ -13,8 +14,6 @@ export async function getSlackIntegration(
   );
   return (response.Item as SlackIntegrationRecord | undefined) ?? null;
 }
-
-/** Compare-and-swap prevents a stale worker from replacing a newer config. */
 export async function putSlackIntegration(
   ctx: PlaneStorageCtx,
   record: SlackIntegrationRecord,
@@ -66,7 +65,6 @@ export async function putSlackIntegration(
     throw error;
   }
 }
-
 export async function deleteSlackIntegration(
   ctx: PlaneStorageCtx,
   expectedVersion: number,
@@ -93,7 +91,6 @@ export async function deleteSlackIntegration(
     throw error;
   }
 }
-
 export async function getCustomWebhookIntegration(
   ctx: PlaneStorageCtx,
   id: string,
@@ -109,7 +106,6 @@ export async function getCustomWebhookIntegration(
   return item?.type === "custom-webhook" ? { ...item, id } : null;
 }
 
-/** Strongly read every custom integration before a catalog dependency delete. */
 export async function listCustomWebhookIntegrations(
   ctx: PlaneStorageCtx,
 ): Promise<CustomWebhookIntegrationRecord[]> {
@@ -134,12 +130,12 @@ export async function listCustomWebhookIntegrations(
   return records;
 }
 
-/** Compare-and-swap protects rotation and deletion from stale operator tabs. */
 export async function putCustomWebhookIntegration(
   ctx: PlaneStorageCtx,
   record: CustomWebhookIntegrationRecord,
   expectedVersion: number | null,
   markers?: readonly OwnedDeletionMarker[],
+  expectedGeneration?: string | null,
 ): Promise<boolean> {
   try {
     const put = {
@@ -148,10 +144,26 @@ export async function putCustomWebhookIntegration(
       ConditionExpression:
         expectedVersion === null
           ? "attribute_not_exists(id)"
-          : "attribute_exists(id) AND version = :expectedVersion",
+          : `attribute_exists(id) AND version = :expectedVersion${
+              expectedGeneration === undefined
+                ? ""
+                : expectedGeneration === null
+                  ? " AND attribute_not_exists(#generation)"
+                  : " AND #generation = :expectedGeneration"
+            }`,
       ...(expectedVersion === null
         ? {}
-        : { ExpressionAttributeValues: { ":expectedVersion": expectedVersion } }),
+        : {
+            ...(expectedGeneration === undefined
+              ? {}
+              : { ExpressionAttributeNames: { "#generation": "generation" } }),
+            ExpressionAttributeValues: {
+              ":expectedVersion": expectedVersion,
+              ...(typeof expectedGeneration === "string"
+                ? { ":expectedGeneration": expectedGeneration }
+                : {}),
+            },
+          }),
     };
     if (markers?.length) await ownedWrite(ctx, markers, { Put: put });
     else await ctx.doc.send(new PutCommand(put));
@@ -166,14 +178,29 @@ export async function deleteCustomWebhookIntegration(
   ctx: PlaneStorageCtx,
   id: string,
   expectedVersion: number,
+  expectedGeneration?: string | null,
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new DeleteCommand({
         TableName: ctx.tables.integrations,
         Key: { id: customWebhookStorageId(id) },
-        ConditionExpression: "attribute_exists(id) AND version = :expectedVersion",
-        ExpressionAttributeValues: { ":expectedVersion": expectedVersion },
+        ConditionExpression: `attribute_exists(id) AND version = :expectedVersion${
+          expectedGeneration === undefined
+            ? ""
+            : expectedGeneration === null
+              ? " AND attribute_not_exists(#generation)"
+              : " AND #generation = :expectedGeneration"
+        }`,
+        ...(expectedGeneration === undefined
+          ? {}
+          : { ExpressionAttributeNames: { "#generation": "generation" } }),
+        ExpressionAttributeValues: {
+          ":expectedVersion": expectedVersion,
+          ...(typeof expectedGeneration === "string"
+            ? { ":expectedGeneration": expectedGeneration }
+            : {}),
+        },
       }),
     );
     return true;

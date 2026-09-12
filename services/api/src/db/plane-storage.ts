@@ -202,12 +202,28 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     record: CustomWebhookIntegrationRecord,
     expectedVersion: number | null,
     markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+    expectedGeneration?: string | null,
   ): Promise<boolean> {
-    return integrations.putCustomWebhookIntegration(this.ctx, record, expectedVersion, markers);
+    return integrations.putCustomWebhookIntegration(
+      this.ctx,
+      record,
+      expectedVersion,
+      markers,
+      expectedGeneration,
+    );
   }
 
-  deleteCustomWebhookIntegration(id: string, expectedVersion: number): Promise<boolean> {
-    return integrations.deleteCustomWebhookIntegration(this.ctx, id, expectedVersion);
+  deleteCustomWebhookIntegration(
+    id: string,
+    expectedVersion: number,
+    expectedGeneration?: string | null,
+  ): Promise<boolean> {
+    return integrations.deleteCustomWebhookIntegration(
+      this.ctx,
+      id,
+      expectedVersion,
+      expectedGeneration,
+    );
   }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {

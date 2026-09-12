@@ -58,12 +58,13 @@ async function processCandidate(
   }
   const owner = options.owner ?? "webhook-worker";
   const leaseId = (options.leaseId ?? randomUUID)();
+  const leaseExpiresAt = addMs(now, options.leaseMs ?? 30_000);
   const claimed = await store.claimWebhookDelivery({
     id: candidate.id,
     owner,
     leaseId,
     now,
-    leaseExpiresAt: addMs(now, options.leaseMs ?? 30_000),
+    leaseExpiresAt,
   });
   if (!claimed) return null;
   const fence = { id: claimed.id, owner, leaseId, now };
@@ -74,6 +75,7 @@ async function processCandidate(
       destination: claimed.destination,
       event: claimed.event,
       body: JSON.stringify(claimed.event),
+      leaseExpiresAt,
     });
   } catch {
     result = { ok: false, failureCode: "unknown" };

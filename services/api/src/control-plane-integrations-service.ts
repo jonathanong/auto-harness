@@ -81,15 +81,27 @@ export class ControlPlaneIntegrationsService {
   updateCustomWebhookIntegration(
     input: CustomWebhookConfigInput,
     expectedVersion?: number,
+    expectedGeneration?: string | null,
   ): ReturnType<typeof customWebhooks.updateCustomWebhookIntegration> {
-    return customWebhooks.updateCustomWebhookIntegration(this.state, input, expectedVersion);
+    return customWebhooks.updateCustomWebhookIntegration(
+      this.state,
+      input,
+      expectedVersion,
+      expectedGeneration,
+    );
   }
 
   deleteCustomWebhookIntegration(
     id: string,
     expectedVersion?: number,
+    expectedGeneration?: string | null,
   ): ReturnType<typeof customWebhooks.deleteCustomWebhookIntegration> {
-    return customWebhooks.deleteCustomWebhookIntegration(this.state, id, expectedVersion);
+    return customWebhooks.deleteCustomWebhookIntegration(
+      this.state,
+      id,
+      expectedVersion,
+      expectedGeneration,
+    );
   }
 
   decryptCustomWebhookSecret(

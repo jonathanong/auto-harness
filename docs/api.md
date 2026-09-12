@@ -379,7 +379,7 @@ operator-configured custom webhook. The request body is strictly limited to `pro
 `idempotencyKey`, and optional `ref`; repository and target routing are never accepted from the
 caller. Send `x-auto-harness-signature-256: sha256=<64 lowercase hex characters>`, where the
 digest is HMAC-SHA256 of the exact request bytes using the integration secret. Valid requests
-create (or find) a `source: "webhook"` session using an integration-scoped concurrency key and
+create (or find) a `source: "webhook"` session using an integration-generation-scoped concurrency key and
 return a small `202` acknowledgment (`accepted`, `sessionId`, and `created`). Assignment dispatch
 is asynchronous after the durable session write. The concurrency key follows the session API's
 normal lifecycle: it deduplicates while active, then releases at terminal so a later delivery can
@@ -389,12 +389,14 @@ start a new run. Admin configuration is at
 Admin `POST` creates and `PUT` replaces routing with a body containing `secret`, `repositoryId`,
 `target`, and `timeout`, plus optional `fallbacks`, `queueTtlSeconds`, `priority`, `requiredLabels`,
 and `enabled`. `POST` requires `secret`. `PUT` may omit `secret` to retain the encrypted value,
-supplying it rotates the secret, and requires the last observed positive integer `version`.
-`DELETE` requires that same version in `If-Match`; stale writes and deletes return `409`.
+supplying it rotates the secret, and requires the last observed positive integer `version` plus
+opaque `generation`. `DELETE` requires those fences in `If-Match` and `If-Match-Generation`;
+stale writes and deletes (including a delete/recreate of the same integration ID) return `409`.
 
 Outbound HTTP deliveries use the same raw-body HMAC format in `x-auto-harness-signature-256`, plus
-stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. Production destinations must
-use HTTPS, redirects are rejected, and 408/429/5xx responses are retried by the bounded outbox.
+stable `x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the secure default;
+plain HTTP needs an explicit non-production development/test escape. Redirects are rejected, and
+408/429/5xx responses are retried by the bounded outbox.
 
 ### Integrations — Slack
 

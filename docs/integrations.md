@@ -334,15 +334,16 @@ x-auto-harness-signature-256: sha256=<lowercase hex digest>
 ```
 
 Unknown fields and invalid signatures are rejected. A successful request returns a small `202`
-acknowledgment after the session write and dispatch enqueue; `idempotencyKey` is scoped to the
-integration and uses the existing atomic session concurrency lock to make concurrent or
+acknowledgment after the durable session write; assignment is detached from that response.
+`idempotencyKey` is scoped to the integration generation and uses the existing atomic session concurrency lock to make concurrent or
 active-session redelivery safe. Terminal sessions release that identity, so a later delivery can
 intentionally start a new run; ingress does not add a second receipt store. The endpoint is
 intentionally unauthenticated because the HMAC secret is its credential.
 
 Outbound HTTP delivery signs the exact JSON event body with the same header and sends stable
-`x-auto-harness-event` and `x-auto-harness-delivery` headers. Production destinations must be
-HTTPS and redirects are disabled. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
+`x-auto-harness-event` and `x-auto-harness-delivery` headers. HTTPS is the default (plain HTTP
+needs an explicit non-production development/test escape), redirects are disabled, and resolver
+plus request work is bounded by the delivery lease with time reserved for settlement. HTTP 408, 429, and 5xx responses remain retryable; other 4xx
 responses are permanent failures.
 
 ### Custom Webhooks (Outbound)

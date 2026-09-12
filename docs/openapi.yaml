@@ -101,6 +101,11 @@ paths:
           required: true
           description: Positive integer version observed in the latest configuration response.
           schema: { type: integer, minimum: 1 }
+        - name: If-Match-Generation
+          in: header
+          required: true
+          description: Opaque generation observed in the latest configuration response (or `legacy` for an old record).
+          schema: { type: string, minLength: 1 }
       responses:
         "204": { description: Deleted }
         default: { $ref: "#/components/responses/Error" }
@@ -657,7 +662,7 @@ components:
         enabled: { type: boolean }
     CustomWebhookUpdateConfig:
       type: object
-      required: [repositoryId, target, timeout, version]
+      required: [repositoryId, target, timeout, version, generation]
       additionalProperties: false
       properties:
         secret: { type: string, minLength: 16, maxLength: 512, writeOnly: true }
@@ -673,6 +678,12 @@ components:
           items: { type: string, minLength: 1, maxLength: 64 }
         enabled: { type: boolean }
         version: { type: integer, minimum: 1 }
+        generation:
+          {
+            type: string,
+            minLength: 1,
+            description: Opaque observed-generation fence; use `legacy` only for records without one.,
+          }
     CustomWebhookIntegration:
       type: object
       required:
@@ -710,6 +721,12 @@ components:
         enabled: { type: boolean }
         secretConfigured: { type: boolean, const: true }
         version: { type: integer, minimum: 1 }
+        generation:
+          {
+            type: string,
+            minLength: 1,
+            description: Opaque generation for compare-and-swap writes.,
+          }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     CustomWebhookRequest:
@@ -724,7 +741,7 @@ components:
         idempotencyKey:
           type: string
           minLength: 1
-          description: At most 1,900 UTF-8 bytes.
+          description: At most 1,874 UTF-8 bytes (leaves room for the generation-scoped concurrency key).
         ref: { type: string, minLength: 1 }
     CustomWebhookAccepted:
       type: object

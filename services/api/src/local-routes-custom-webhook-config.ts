@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- config route keeps strict parsing and durable audit fences co-located. */
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import type { CustomWebhookConfigInput } from "./custom-webhook-types.ts";
@@ -33,8 +34,10 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   }
   if (ctx.method === "DELETE") {
     let expectedVersion: number;
+    let expectedGeneration: string | null;
     try {
       expectedVersion = parseExpectedVersion(ctx.req.headers["if-match"]);
+      expectedGeneration = parseExpectedGeneration(ctx.req.headers["if-match-generation"]);
     } catch (error) {
       if (!(await audit(ctx, id, "failed"))) return true;
       send(ctx.res, 400, {
@@ -46,13 +49,18 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
       return true;
     }
     try {
-      const result = await ctx.plane.deleteCustomWebhookIntegration(id, expectedVersion);
+      const current = await ctx.plane.getCustomWebhookIntegration(id);
+      const result = await ctx.plane.deleteCustomWebhookIntegration(
+        id,
+        expectedVersion,
+        expectedGeneration,
+      );
       if (!result.ok) {
-        if (!(await audit(ctx, id, "failed"))) return true;
+        if (!(await audit(ctx, id, "failed", current?.repositoryId))) return true;
         send(ctx.res, result.conflict ? 409 : 404, {
           error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
         });
-      } else if (await audit(ctx, id, "success")) send(ctx.res, 204, null);
+      } else if (await audit(ctx, id, "success", current?.repositoryId)) send(ctx.res, 204, null);
     } catch {
       if (!(await audit(ctx, id, "failed"))) return true;
       sendInternalError(ctx.res);
@@ -62,10 +70,14 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   if (ctx.method !== "POST" && ctx.method !== "PUT") return false;
   let input: CustomWebhookConfigInput;
   let expectedVersion: number | undefined;
+  let expectedGeneration: string | null | undefined;
   try {
     const value = await readJson(ctx.req);
     input = parseConfig(value, id, ctx.method === "POST");
-    if (ctx.method === "PUT") expectedVersion = parseBodyVersion(value);
+    if (ctx.method === "PUT") {
+      expectedVersion = parseBodyVersion(value);
+      expectedGeneration = parseBodyGeneration(value);
+    }
   } catch (error) {
     if (!(await audit(ctx, id, "failed"))) return true;
     send(ctx.res, 400, {
@@ -77,12 +89,21 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
     return true;
   }
   try {
+    // A failed replacement must remain visible to operators of the existing repository rather
+    // than trusting a caller-supplied replacement repository ID for audit scope.
+    const current =
+      ctx.method === "PUT" ? await ctx.plane.getCustomWebhookIntegration(id) : undefined;
     const result =
       ctx.method === "POST"
         ? await ctx.plane.createCustomWebhookIntegration(input)
-        : await ctx.plane.updateCustomWebhookIntegration(input, expectedVersion);
+        : await ctx.plane.updateCustomWebhookIntegration(
+            input,
+            expectedVersion,
+            expectedGeneration,
+          );
     if (!result.ok) {
-      if (!(await audit(ctx, id, "failed"))) return true;
+      if (!(await audit(ctx, id, "failed", current?.repositoryId ?? input.repositoryId)))
+        return true;
       const status = result.unavailable
         ? 500
         : result.conflict
@@ -104,7 +125,7 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
       });
       return true;
     }
-    if (await audit(ctx, id, "success"))
+    if (await audit(ctx, id, "success", result.integration.repositoryId))
       send(ctx.res, ctx.method === "POST" ? 201 : 200, result.integration);
   } catch {
     if (!(await audit(ctx, id, "failed"))) return true;
@@ -128,6 +149,7 @@ function parseConfig(value: unknown, id: string, requireSecret: boolean): Custom
     "requiredLabels",
     "enabled",
     "version",
+    "generation",
   ]);
   if (Object.keys(body).some((key) => !allowed.has(key)))
     throw new Error("configuration contains an unsupported field");
@@ -172,6 +194,14 @@ function parseBodyVersion(value: unknown): number {
   return version as number;
 }
 
+function parseBodyGeneration(value: unknown): string | null {
+  const generation = (value as { generation?: unknown }).generation;
+  if (generation === "legacy") return null;
+  if (typeof generation !== "string" || generation.length === 0)
+    throw new Error("generation must contain the observed integration generation");
+  return generation;
+}
+
 function parseExpectedVersion(value: string | string[] | undefined): number {
   if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value))
     throw new Error("If-Match must contain the observed positive integer version");
@@ -180,12 +210,25 @@ function parseExpectedVersion(value: string | string[] | undefined): number {
   return version;
 }
 
-function audit(ctx: RouteCtx, id: string, outcome: "success" | "failed"): Promise<boolean> {
+function parseExpectedGeneration(value: string | string[] | undefined): string | null {
+  if (value === "legacy") return null;
+  if (typeof value !== "string" || value.length === 0)
+    throw new Error("If-Match-Generation must contain the observed integration generation");
+  return value;
+}
+
+function audit(
+  ctx: RouteCtx,
+  id: string,
+  outcome: "success" | "failed",
+  repositoryId?: string,
+): Promise<boolean> {
   const verb = ctx.method === "POST" ? "create" : ctx.method === "PUT" ? "update" : "delete";
   return writeRouteAudit(ctx, {
     action: `integration:custom-webhook:${verb}`,
     resourceType: "integration",
     resourceId: id,
     outcome,
+    ...(repositoryId ? { repositoryId } : {}),
   });
 }

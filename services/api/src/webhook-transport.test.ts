@@ -28,7 +28,7 @@ describe("signed webhook transport", () => {
     const fetch = async (_url: string, init?: RequestInit) => {
       expect(init).toBeDefined();
       if (!init) throw new Error("missing request init");
-      expect(init.redirect).toBe("error");
+      expect(init.redirect).toBe("manual");
       expect(init.signal).toBeInstanceOf(AbortSignal);
       expect(init.body).toBe(request.body);
       const headers = init.headers as Record<string, string>;
@@ -144,5 +144,62 @@ describe("signed webhook transport", () => {
       if (previous === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = previous;
     }
+  });
+
+  it("defaults to HTTPS, permits explicit non-production local HTTP, and rejects manual redirects", async () => {
+    let called = false;
+    const blocked = createSignedWebhookTransport({
+      resolveDestination: async () => ({ url: "http://127.0.0.1/hook", secret: "secret" }),
+      fetch: async () => {
+        called = true;
+        return new Response(null, { status: 204 });
+      },
+    });
+    await expect(blocked.deliver(request)).resolves.toEqual({
+      ok: false,
+      failureCode: "configuration-unavailable",
+    });
+    expect(called).toBe(false);
+    const local = createSignedWebhookTransport({
+      allowInsecureHttp: true,
+      resolveDestination: async () => ({ url: "http://127.0.0.1/hook", secret: "secret" }),
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+    await expect(local.deliver(request)).resolves.toEqual({ ok: true });
+    const redirected = createSignedWebhookTransport({
+      resolveDestination: async () => ({ url: "https://example.test/hook", secret: "secret" }),
+      fetch: async (_url, init) => {
+        expect(init?.redirect).toBe("manual");
+        return new Response(null, { status: 302, headers: { location: "https://other.test" } });
+      },
+    });
+    await expect(redirected.deliver(request)).resolves.toEqual({
+      ok: false,
+      failureCode: "delivery-rejected",
+    });
+  });
+
+  it("aborts destination resolution before the lease settlement margin", async () => {
+    let aborted = false;
+    const transport = createSignedWebhookTransport({
+      resolveDestination: async (_destination, signal) =>
+        new Promise<null>((_resolve, reject) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          ),
+        ),
+    });
+    await expect(
+      transport.deliver({
+        ...request,
+        leaseExpiresAt: new Date(Date.now() + 1_010).toISOString(),
+      }),
+    ).resolves.toEqual({ ok: false, failureCode: "transient-failure" });
+    expect(aborted).toBe(true);
   });
 });

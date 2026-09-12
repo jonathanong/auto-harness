@@ -7,7 +7,9 @@ import { WEBHOOK_SIGNATURE_256_HEADER } from "./webhook-delivery-types.ts";
 import { isValidCustomWebhookId } from "./custom-webhook-types.ts";
 
 const CUSTOM_WEBHOOK_PATH = /^\/api\/v1\/webhooks\/custom\/([^/]+)$/;
-const MAX_IDEMPOTENCY_KEY_BYTES = 1_900;
+// `webhook:` + a maximum-length integration ID + UUID generation + separators consume 174 bytes
+// of the 2,048-byte DynamoDB concurrency-lock key.
+const MAX_IDEMPOTENCY_KEY_BYTES = 1_874;
 
 /** Public HMAC-verified receiver. It intentionally has no authenticated principal. */
 export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> {
@@ -75,7 +77,9 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
         priority: record.priority,
         requiredLabels: record.requiredLabels,
         ...(parsed.ref !== undefined ? { ref: parsed.ref } : {}),
-        concurrencyId: `webhook:${integrationId}:${parsed.idempotencyKey}`,
+        // Generation scopes delivery identity across delete/recreate. A stale sender can never
+        // collide with, or deduplicate against, the newly-created integration of the same ID.
+        concurrencyId: `webhook:${integrationId}:${record.generation ?? "legacy"}:${parsed.idempotencyKey}`,
         source: "webhook",
         type: "prompt",
         metadata: { integrationId },
@@ -107,7 +111,13 @@ export async function handleCustomWebhookRoute(ctx: RouteCtx): Promise<boolean> 
     }
     // Assignment is deliberately detached from the public ingress response. The durable session
     // and concurrency claim are the acknowledgment; a retry can safely observe the same claim.
-    await ctx.plane.enqueueAssignment();
+    // The durable create above is the acknowledgement. Assignment is explicitly detached so a
+    // slow or unavailable host sweep cannot hold public ingress open.
+    void ctx.plane
+      .enqueueAssignment()
+      .catch((error: unknown) =>
+        console.error("failed to enqueue custom webhook assignment", error),
+      );
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
     if (!(await audit(ctx, integrationId, "failed", undefined, repositoryId))) return true;

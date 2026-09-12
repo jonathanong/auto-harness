@@ -1,9 +1,10 @@
 /* eslint-disable max-lines -- ingress edge cases share the same signed fixture. */
 import { createHmac } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-server.ts";
 import { handleCustomWebhookConfigRoutes } from "./local-routes-custom-webhook-config.ts";
 import { handleCustomWebhookRoute } from "./local-routes-custom-webhooks.ts";
@@ -86,35 +87,66 @@ function directRoute(
 }
 
 describe("custom webhook receiver", () => {
+  it("keeps signed public ingress available while required auth protects configuration", async () => {
+    const { plane } = await fixture();
+    const handler = createLocalApp({
+      plane,
+      authService: new AuthService({
+        mode: "required",
+        secret: "s".repeat(32),
+        admins: Buffer.from(JSON.stringify([{ username: "admin", password: "admin" }])).toString(
+          "base64url",
+        ),
+      }),
+      rateLimitConfig: { enabled: false },
+    }).handler;
+    const body = { prompt: "run", idempotencyKey: "required-auth" };
+    await expect(
+      invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", body, {
+        "x-auto-harness-signature-256": signature(body),
+      }),
+    ).resolves.toMatchObject({ status: 202 });
+    await expect(
+      invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy"),
+    ).resolves.toMatchObject({
+      status: 401,
+      json: { error: { code: "UNAUTHENTICATED" } },
+    });
+  });
+
   it("exposes CRUD configuration without returning the encrypted secret", async () => {
     const { plane, handler } = await fixture();
     const loaded = await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy");
     expect(loaded).toMatchObject({ status: 200, json: { id: "deploy", secretConfigured: true } });
     expect(JSON.stringify(loaded.json)).not.toContain("encryptedSecret");
+    const generation = (loaded.json as { generation: string }).generation;
     const updated = await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
       repositoryId: "repo",
       target: { providerId: "provider" },
       timeout: 90,
       enabled: false,
       version: 1,
+      generation,
     });
     expect(updated).toMatchObject({ status: 200, json: { enabled: false, version: 2 } });
     expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
         "if-match": "1",
+        "if-match-generation": generation,
       }),
     ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
     expect(
       (
         await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
           "if-match": "2",
+          "if-match-generation": generation,
         })
       ).status,
     ).toBe(204);
     expect((await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).status).toBe(
       404,
     );
-    await expect(plane.listAuditLogs({})).resolves.toMatchObject({
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ action: "integration:custom-webhook:update" }),
         expect.objectContaining({ action: "integration:custom-webhook:delete" }),
@@ -124,6 +156,7 @@ describe("custom webhook receiver", () => {
 
   it("covers configuration CRUD validation, conflicts, and storage failures", async () => {
     const { plane, handler } = await fixture();
+    const generation = (await plane.getCustomWebhookIntegration("deploy"))!.generation!;
     const complete = {
       secret: "n".repeat(32),
       repositoryId: "repo",
@@ -146,6 +179,7 @@ describe("custom webhook receiver", () => {
         ...complete,
         secret: undefined,
         version: 1,
+        generation,
       }),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     for (const [id, body] of [
@@ -172,6 +206,7 @@ describe("custom webhook receiver", () => {
           ...complete,
           secret: undefined,
           version,
+          generation,
         }),
       ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
     }
@@ -180,6 +215,7 @@ describe("custom webhook receiver", () => {
         ...complete,
         secret: 1,
         version: 1,
+        generation,
       }),
     ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
 
@@ -201,6 +237,7 @@ describe("custom webhook receiver", () => {
     expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
       { status: 500, json: { error: { code: "INTERNAL_ERROR" } } },
     );
+    mutable.getCustomWebhookIntegration = async () => ({ repositoryId: "repo" }) as never;
     mutable.deleteCustomWebhookIntegration = async () => ({
       ok: false,
       error: "changed",
@@ -209,6 +246,7 @@ describe("custom webhook receiver", () => {
     expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
         "if-match": "1",
+        "if-match-generation": generation,
       }),
     ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
     for (const invalid of [undefined, "0", "1.5", "9007199254740992"]) {
@@ -218,7 +256,9 @@ describe("custom webhook receiver", () => {
           "DELETE",
           "/api/v1/integrations/custom/deploy",
           undefined,
-          invalid === undefined ? {} : { "if-match": invalid },
+          invalid === undefined
+            ? { "if-match-generation": generation }
+            : { "if-match": invalid, "if-match-generation": generation },
         ),
       ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
     }
@@ -228,6 +268,7 @@ describe("custom webhook receiver", () => {
     expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy", undefined, {
         "if-match": "1",
+        "if-match-generation": generation,
       }),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     mutable.createCustomWebhookIntegration = async () => {
@@ -298,6 +339,7 @@ describe("custom webhook receiver", () => {
     expect(
       await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/missing", undefined, {
         "if-match": "1",
+        "if-match-generation": "any-generation",
       }),
     ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     plane.appendAuditLog = async () => {
@@ -310,6 +352,7 @@ describe("custom webhook receiver", () => {
       undefined,
       {
         "if-match": "1",
+        "if-match-generation": (await plane.getCustomWebhookIntegration("optional"))!.generation!,
       },
     );
     await expect(handleCustomWebhookConfigRoutes(deleting.ctx as never)).resolves.toBe(true);
@@ -398,7 +441,7 @@ describe("custom webhook receiver", () => {
     expect(plane.getSession("session-1")).toMatchObject({
       repositoryId: "repo",
       source: "webhook",
-      concurrencyId: "webhook:deploy:delivery-1",
+      concurrencyId: expect.stringMatching(/^webhook:deploy:[^:]+:delivery-1$/),
       target: { providerId: "provider" },
     });
     await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
@@ -502,10 +545,33 @@ describe("custom webhook receiver", () => {
         )
       ).status,
     ).toBe(400);
+    const maximumIdempotencyKey = { prompt: "x", idempotencyKey: "k".repeat(1_874) };
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          "/api/v1/webhooks/custom/deploy",
+          maximumIdempotencyKey,
+          {
+            "x-auto-harness-signature-256": signature(maximumIdempotencyKey),
+          },
+        )
+      ).status,
+    ).toBe(202);
+    const oneByteTooLong = { prompt: "x", idempotencyKey: "k".repeat(1_875) };
+    expect(
+      (
+        await invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", oneByteTooLong, {
+          "x-auto-harness-signature-256": signature(oneByteTooLong),
+        })
+      ).status,
+    ).toBe(400);
   });
 
-  it("returns a durable failure when assignment cannot be queued", async () => {
+  it("acknowledges durably when detached assignment cannot be queued", async () => {
     const { plane, handler } = await fixture();
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     plane.setOnAssignmentRequested(async () => {
       throw new Error("assignment unavailable");
     });
@@ -514,8 +580,15 @@ describe("custom webhook receiver", () => {
       await invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", body, {
         "x-auto-harness-signature-256": signature(body),
       }),
-    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    ).toMatchObject({ status: 202, json: { accepted: true } });
     expect(plane.listSessions()).toHaveLength(1);
+    await vi.waitFor(() =>
+      expect(log).toHaveBeenCalledWith(
+        "failed to enqueue custom webhook assignment",
+        expect.any(Error),
+      ),
+    );
+    log.mockRestore();
   });
 
   it("maps durable session conflicts and fails closed when ingress auditing fails", async () => {

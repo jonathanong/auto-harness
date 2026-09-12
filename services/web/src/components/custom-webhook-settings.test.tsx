@@ -133,6 +133,29 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
   });
 
+  it("ignores a stale load response after the integration id changes", async () => {
+    let resolveLoad!: (response: Response) => void;
+    createApiFake(() => new Promise<Response>((resolve) => (resolveLoad = resolve)));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "other");
+    resolveLoad(json(existing));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-id").value).toBe("other");
+    expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("names dynamic required-label controls for assistive technology", async () => {
+    const view = mountForm(<CustomWebhookSettings />);
+    press(field(view.container, "custom-webhook-add-label"));
+    expect(view.container.querySelector('[aria-label="Required label 1"]')).toBeInstanceOf(
+      HTMLInputElement,
+    );
+    view.unmount();
+  });
+
   it("normalizes optional loaded routing fields and updates later dynamic rows", async () => {
     createApiFake(
       json({

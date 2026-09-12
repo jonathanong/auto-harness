@@ -81,6 +81,7 @@ export async function updateCustomWebhookIntegration(
   state: ControlPlaneState,
   input: CustomWebhookConfigInput,
   expectedVersion?: number,
+  expectedGeneration?: string | null,
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
@@ -92,7 +93,13 @@ export async function updateCustomWebhookIntegration(
       ? await state.storage.getCustomWebhookIntegration(input.id)
       : state.customWebhookIntegrations.get(input.id);
     if (!current) return { ok: false, error: "custom webhook integration not found" };
-    if (expectedVersion !== undefined && current.version !== expectedVersion) return conflict();
+    if (
+      (expectedVersion !== undefined && current.version !== expectedVersion) ||
+      (expectedGeneration === null
+        ? current.generation !== undefined
+        : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+    )
+      return conflict();
     const record = await makeRecord(
       state,
       input,
@@ -104,7 +111,12 @@ export async function updateCustomWebhookIntegration(
     );
     if (
       state.storage &&
-      !(await state.storage.putCustomWebhookIntegration(record, current.version, markers))
+      !(await state.storage.putCustomWebhookIntegration(
+        record,
+        current.version,
+        markers,
+        current.generation ?? null,
+      ))
     ) {
       return conflict();
     }
@@ -117,13 +129,27 @@ export async function deleteCustomWebhookIntegration(
   state: ControlPlaneState,
   id: string,
   expectedVersion?: number,
+  expectedGeneration?: string | null,
 ): Promise<{ ok: true } | Failure> {
   const current = state.storage
     ? await state.storage.getCustomWebhookIntegration(id)
     : state.customWebhookIntegrations.get(id);
   if (!current) return { ok: false, error: "custom webhook integration not found" };
-  if (expectedVersion !== undefined && current.version !== expectedVersion) return conflict();
-  if (state.storage && !(await state.storage.deleteCustomWebhookIntegration(id, current.version))) {
+  if (
+    (expectedVersion !== undefined && current.version !== expectedVersion) ||
+    (expectedGeneration === null
+      ? current.generation !== undefined
+      : expectedGeneration !== undefined && current.generation !== expectedGeneration)
+  )
+    return conflict();
+  if (
+    state.storage &&
+    !(await state.storage.deleteCustomWebhookIntegration(
+      id,
+      current.version,
+      current.generation ?? null,
+    ))
+  ) {
     return conflict();
   }
   state.customWebhookIntegrations.delete(id);
