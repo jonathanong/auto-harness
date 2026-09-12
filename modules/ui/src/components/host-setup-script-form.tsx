@@ -8,6 +8,7 @@ import {
   mutateExecConfig,
   mutateInventory,
   parseAllowedRoots,
+  thrownMessage,
   type HostExecConfigPatch,
   updateHostRequiredEnvironment,
 } from "@auto-harness/shared";
@@ -111,7 +112,7 @@ export function HostSetupScriptForm({
                         .filter((line) => line.length > 0),
                     )!;
                   } catch (error) {
-                    showToast(error instanceof Error ? error.message : String(error), {
+                    showToast(thrownMessage(error), {
                       variant: "destructive",
                       pw: "host-setup-script-error",
                     });
@@ -141,7 +142,7 @@ export function HostSetupScriptForm({
                 setExecSaved(true);
                 router.refresh();
               } catch (error) {
-                showToast(error instanceof Error ? error.message : String(error), {
+                showToast(thrownMessage(error), {
                   variant: "destructive",
                   pw: "host-setup-script-error",
                 });
@@ -242,7 +243,7 @@ export function HostSetupScriptForm({
                 setEnvironmentSaved(true);
                 router.refresh();
               } catch (error) {
-                showToast(error instanceof Error ? error.message : String(error), {
+                showToast(thrownMessage(error), {
                   variant: "destructive",
                   pw: "host-required-environment-error",
                 });

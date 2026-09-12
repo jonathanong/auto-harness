@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- host list route states share one API fixture. */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { renderPage, stubApi } from "../route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../../test-helpers/route-test-helpers.tsx";
 import HostsPage from "./page.tsx";
 
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;
@@ -241,6 +241,31 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="pagination-next"');
     expect(html).toContain("cursor=page%2Ftwo");
     expect(html).toContain("online=online");
+  });
+
+  it("ignores a non-string hosts cursor", async () => {
+    stubApi({
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(
+      HostsPage({ searchParams: Promise.resolve({ cursor: ["page/one"] }) }),
+    );
+    expect(html).not.toContain("cursor=page%2Fone");
+  });
+
+  it("hides drain controls for a read-only operator viewing hosts", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      "/api/v1/auth/me": { username: "viewer", role: "read-only", kind: "user" },
+      "/api/v1/hosts": { items: [{ hostId: "visible", online: true }] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="host-row-visible"');
+    expect(html).not.toContain('data-pw="host-drain-visible"');
   });
 
   it("hides Add host for a host-bound admin (daemon identity)", async () => {

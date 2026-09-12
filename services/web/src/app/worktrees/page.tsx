@@ -1,5 +1,5 @@
 import { CursorPagination, WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
-import type { HostRepository } from "@auto-harness/shared";
+import { thrownMessage, type HostRepository } from "@auto-harness/shared";
 
 import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
@@ -48,7 +48,7 @@ export default async function WorktreesPage({
     nextCursor = wts.nextCursor ?? null;
     namesById = Object.fromEntries(repos.map((r) => [r.id, r.name]));
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
   try {
     inventories =
@@ -58,7 +58,7 @@ export default async function WorktreesPage({
         }>("/api/v1/host-inventories?limit=100")
       ).items ?? [];
   } catch (e) {
-    inventoryError = e instanceof Error ? e.message : String(e);
+    inventoryError = thrownMessage(e);
   }
 
   const groups = groupWorktreesByRepo(
@@ -101,7 +101,7 @@ export default async function WorktreesPage({
           ) : (
             <AddWorktreeForRepo
               repositoryId={group.repositoryId}
-              repositoryName={group.repositoryName ?? group.repositoryId}
+              repositoryName={group.repositoryName!}
               attachments={attachmentsForRepo(inventories, group.repositoryId)}
               canWriteExecConfig={canWriteExecConfig}
             />

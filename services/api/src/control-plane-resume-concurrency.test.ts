@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 describe("durable resume concurrency", () => {

@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm } from "./form-test-helpers.tsx";
+import { field, mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import { SlackSettingsFields } from "./slack-settings-fields.tsx";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-settings.ts";
 

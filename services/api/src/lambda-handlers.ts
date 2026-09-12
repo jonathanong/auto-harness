@@ -10,6 +10,7 @@ import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import {
   HOST_PROTOCOL_VERSION,
   principalHas,
+  thrownMessage,
   type HostToServerMessage,
   type HostWireMessage,
 } from "@auto-harness/shared";
@@ -231,7 +232,7 @@ async function postToConnection(
         hostId,
         messageType: message.type,
         durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
+        error: thrownMessage(error),
       }),
     );
     if (error instanceof GoneException || (error as { name?: string }).name === "GoneException") {
@@ -272,7 +273,7 @@ async function closeReclaimedConnection(
         msg: "closeReclaimedConnection failure",
         hostId,
         connectionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: thrownMessage(error),
       }),
     );
   }
@@ -726,7 +727,7 @@ async function restUnhandledError(
       method,
       path,
       ...(startedAt === undefined ? {} : { durationMs: Date.now() - startedAt }),
-      error: error instanceof Error ? error.message : String(error),
+      error: thrownMessage(error),
     }),
   );
   captureSentryException(error, "rest");

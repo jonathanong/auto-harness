@@ -3,8 +3,8 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mount, reset } from "./action-form-test-helpers.ts";
-import { openRawTerminal } from "./session-terminal-raw-test-helpers.ts";
+import { mount, reset } from "../../test-helpers/action-form-test-helpers.ts";
+import { openRawTerminal } from "../../test-helpers/session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 

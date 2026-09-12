@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 
 import { assertPathWithinAllowedRoots, resolveHookPath } from "./allowed-roots.ts";
@@ -52,11 +53,7 @@ export async function runTerminalHook(
       scriptPath = await assertPathWithinAllowedRoots(scriptPath, input.allowedRoots);
     }
   } catch (err) {
-    log(
-      `terminal hook blocked for session ${input.sessionId}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    log(`terminal hook blocked for session ${input.sessionId}: ${thrownMessage(err)}`);
     return;
   }
 
@@ -74,10 +71,6 @@ export async function runTerminalHook(
       log(`terminal hook exited ${String(result.exitCode)} for session ${input.sessionId}`);
     }
   } catch (err) {
-    log(
-      `terminal hook failed for session ${input.sessionId}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    log(`terminal hook failed for session ${input.sessionId}: ${thrownMessage(err)}`);
   }
 }

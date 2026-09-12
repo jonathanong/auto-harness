@@ -13,7 +13,7 @@ import {
   readInstalledVersion,
   recoverPendingUpdateBoot,
 } from "./agent-updater-install.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 import {
   prepareDaemonUpdateBoot,
   prepareStableDaemonUpdateBoot,

@@ -5,7 +5,7 @@ import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

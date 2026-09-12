@@ -5,7 +5,10 @@ import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
-import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
+import {
+  createDynamoTestCtx,
+  putActiveTestRepository,
+} from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ScheduledMissingProvider");
 const NOW = "2026-01-01T00:00:00.000Z";

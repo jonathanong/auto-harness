@@ -96,11 +96,9 @@ export default defineConfig({
       thresholds: process.env.VITEST_SKIP_COVERAGE_THRESHOLDS
         ? undefined
         : {
-            // All aggregate metrics share the same project-wide coverage floor except
-            // branches: Vitest 4/5 AST remapping still lands at ~98.5%. Lines/functions/
-            // statements and patch coverage stay 99.
+            // All aggregate metrics share the same project-wide coverage floor.
             lines: 99,
-            branches: 98,
+            branches: 99,
             functions: 99,
             statements: 99,
             // Real argv-parsing/dispatch logic. The residual gap is the top-level

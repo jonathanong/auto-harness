@@ -18,7 +18,7 @@ import {
 } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { viewerTicketsTableDefinition } from "./ensure-viewer-tickets-table.ts";
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Cli");
 

@@ -4,7 +4,12 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserSessionsLive } from "./user-sessions-live.tsx";
-import { createRequestFake, field, json, mountForm } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 
@@ -104,5 +109,21 @@ describe("UserSessionsLive", () => {
     expect(resolvePoll).toBeDefined();
     view.unmount();
     await act(async () => resolvePoll?.(json({ items: [{ id: "late" }] })));
+  });
+
+  it("ignores a poll failure that settles after unmount", async () => {
+    vi.useFakeTimers();
+    let rejectPoll: ((reason: unknown) => void) | undefined;
+    const request = createRequestFake(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectPoll = reject;
+        }),
+    );
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<UserSessionsLive initialItems={[]} initialError={null} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    view.unmount();
+    await act(async () => rejectPoll?.("late-offline"));
   });
 });

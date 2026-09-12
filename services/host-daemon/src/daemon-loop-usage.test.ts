@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { DaemonLoop } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop session usage", () => {
   it("forwards terminal CLI usage in the daemon status report", async () => {

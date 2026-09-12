@@ -27,6 +27,7 @@ describe("application navigation coverage", () => {
     expect(activeNavHref("/sessions/import", groups, ["/sessions/import"])).toBe(
       "/sessions/import",
     );
+    expect(activeNavHref("/sessions/new", groups, ["/sessions"])).toBe("/sessions/new");
   });
 
   it("renders grouped and ungrouped active, inactive, tipped, and default navigation items", () => {
@@ -44,14 +45,17 @@ describe("application navigation coverage", () => {
             {
               items: [{ href: "/sessions/new", label: "New", pw: "new-session" }],
               label: "Operate Tools",
+              pw: "custom-operate",
             },
-            { items: [{ href: "/settings", label: "Settings" }], label: "" },
+            { items: [{ href: "/settings", label: "Settings" }], label: "Catalog" },
+            { items: [{ href: "/idle", label: "Idle" }], label: "" },
           ]}
         />
       </TooltipProvider>,
     );
     expect(html).toContain('data-pw="custom-home"');
-    expect(html).toContain('data-pw="nav-group-operate-tools"');
+    expect(html).toContain('data-pw="custom-operate"');
+    expect(html).toContain('data-pw="nav-group-catalog"');
     expect(html).toContain('data-state="closed"');
   });
 });

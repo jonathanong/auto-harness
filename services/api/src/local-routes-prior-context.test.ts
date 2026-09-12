@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import {
   finishedLoggedSessionPlane,
   minimalSession,
-} from "./control-plane-prior-context-test-helpers.ts";
+} from "../test-helpers/control-plane-prior-context-test-helpers.ts";
 
 describe("GET /sessions/:id/prior-context", () => {
   it("returns the rendered transcript of the resumed-from session", async () => {

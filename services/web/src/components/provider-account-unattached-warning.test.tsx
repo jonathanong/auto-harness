@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { renderPage } from "../app/route-test-helpers.tsx";
+import { renderPage } from "../../test-helpers/route-test-helpers.tsx";
 import { ProviderAccountUnattachedWarning } from "./provider-account-unattached-warning.tsx";
 
 describe("ProviderAccountUnattachedWarning", () => {

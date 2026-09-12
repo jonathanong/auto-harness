@@ -8,7 +8,11 @@ import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
+import { SpawnProcessRunner, type ProcessRunner } from "./executor.ts";
 
 type Inflight = {
   sessionId: string;
@@ -286,6 +290,54 @@ describe("DaemonLoop coverage guards", () => {
       await internals.handleServerMessage({ type: "session:cancel", sessionId: "session-1" });
       expect(controller.signal.aborted).toBe(true);
       expect(lines.some((line) => line.includes("cancel requested for session-1"))).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not drop a replacement inflight slot when the original assignment ends", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const fallback = new SpawnProcessRunner();
+      let releaseCommand: (() => void) | undefined;
+      const commandStarted = Promise.withResolvers<void>();
+      const processRunner: ProcessRunner = {
+        async run(options) {
+          const argv0 = options.argv[0] ?? "";
+          if (argv0.includes("printf") || options.argv.includes("%s")) {
+            commandStarted.resolve();
+            await new Promise<void>((resolve, reject) => {
+              releaseCommand = resolve;
+              options.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+                once: true,
+              });
+            }).catch(() => ({ exitCode: 1, timedOut: false, cancelled: true, signal: null }));
+            return { exitCode: 1, timedOut: false, cancelled: true, signal: null };
+          }
+          return fallback.run(options);
+        },
+      };
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport, processRunner });
+      await loop.start();
+      const internals = loop as unknown as LoopInternals;
+      const pending = internals.handleServerMessage(assign("keep-slot"));
+      await commandStarted.promise;
+      const key = `keep-slot\0${attemptIdFor("keep-slot")}`;
+      const original = internals.inflight.get(key)!;
+      const replacement: Inflight = {
+        sessionId: "keep-slot",
+        attemptId: attemptIdFor("keep-slot"),
+        controller: new AbortController(),
+        work: Promise.resolve(),
+        acknowledged: false,
+      };
+      internals.inflight.set(key, replacement);
+      original.controller.abort();
+      await pending;
+      expect(internals.inflight.get(key)).toBe(replacement);
+      releaseCommand?.();
       loop.stop();
     } finally {
       cleanup();

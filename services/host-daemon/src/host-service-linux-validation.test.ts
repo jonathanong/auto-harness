@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService } from "./host-service.ts";
-import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, recorder, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 import { LINUX_ENV_DEST } from "./host-service-templates.ts";
 
 describe("install-service linux validation boundary", () => {

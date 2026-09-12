@@ -7,6 +7,7 @@ import {
   mutateInventory,
   parseRequiredEnvironment,
   parseTerminalHookScript,
+  thrownMessage,
   upsertHostRepository,
   type HostRepository,
 } from "@auto-harness/shared";
@@ -93,7 +94,7 @@ export function HostRepoSettingsForm({
                 `repository.${repo.id}.requiredEnvironment`,
               );
             } catch (error) {
-              showToast(error instanceof Error ? error.message : String(error), {
+              showToast(thrownMessage(error), {
                 variant: "destructive",
                 pw: `repo-settings-error-${repo.id}`,
               });
@@ -114,7 +115,7 @@ export function HostRepoSettingsForm({
                   allowLegacyRelative: terminalHookScript === (repo.terminalHookScript ?? ""),
                 });
               } catch (error) {
-                showToast(error instanceof Error ? error.message : String(error), {
+                showToast(thrownMessage(error), {
                   variant: "destructive",
                   pw: `repo-settings-error-${repo.id}`,
                 });
@@ -145,7 +146,7 @@ export function HostRepoSettingsForm({
                 setOpen(false);
                 router.refresh();
               } catch (error) {
-                showToast(error instanceof Error ? error.message : String(error), {
+                showToast(thrownMessage(error), {
                   variant: "destructive",
                   pw: `repo-settings-error-${repo.id}`,
                 });

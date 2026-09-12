@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("P34DurCov");
 

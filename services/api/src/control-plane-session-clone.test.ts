@@ -2,7 +2,7 @@ import { MAX_PROMPT_BYTES, MAX_SESSION_TIMEOUT_SECONDS } from "@auto-harness/sha
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("session clone", () => {
   it("copies replayable inputs into a fresh queued session and drops runtime state", () => {
@@ -139,6 +139,17 @@ describe("session clone", () => {
     plane.state.commands.clear();
     expect(plane.cloneSession("clone")).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
     expect(plane.getSession("clone")?.status).toBe("queued");
+  });
+
+  it("skips override checks when the source omitted prompt, timeout, or priority", () => {
+    const plane = new ControlPlane({ idFactory: () => "clone" });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+    const source = plane.state.sessions.get("clone")!;
+    delete (source as { prompt?: string }).prompt;
+    delete (source as { timeout?: number }).timeout;
+    delete (source as { priority?: number }).priority;
+    expect(plane.cloneSession("clone")).toMatchObject({ ok: true, created: true });
   });
 
   it("uses the same clone contract without durable storage", async () => {

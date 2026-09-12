@@ -1,10 +1,18 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- host update form mutations share one mounted fixture. */
 
 import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type HostUpdateConfig, type mutateHostUpdateConfig } from "@auto-harness/shared";
 
-import { field, mount, press, reset, setValue, submit } from "./action-form-test-helpers.ts";
+import {
+  field,
+  mount,
+  press,
+  reset,
+  setValue,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 import { HostUpdateConfigForm } from "./host-update-config-form.tsx";
 
 afterEach(reset);

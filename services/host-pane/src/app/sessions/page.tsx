@@ -1,5 +1,10 @@
 import { Suspense } from "react";
-import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@auto-harness/shared";
+import {
+  buildSessionsApiPath,
+  parseSessionListQuery,
+  sessionListHref,
+  thrownMessage,
+} from "@auto-harness/shared";
 import { SessionFilters } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
@@ -54,7 +59,7 @@ export default async function SessionsPage({
       repositories.map((repository) => [repository.id, repository.name]),
     );
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
 
   const prioritySortHref = sessionListHref(

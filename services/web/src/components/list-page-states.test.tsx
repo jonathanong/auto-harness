@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { field, mountForm, press, router } from "../../test-helpers/form-test-helpers.tsx";
 import { ListApiError, ListLoadingSkeleton } from "./list-page-states.tsx";
 
 describe("list page states", () => {

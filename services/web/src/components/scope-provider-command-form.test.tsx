@@ -3,7 +3,14 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { createApiFake, field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  createApiFake,
+  field,
+  json,
+  mountForm,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { ScopeProviderCommandForm } from "./scope-provider-command-form.tsx";
 
 const inventory = {

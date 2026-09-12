@@ -6,9 +6,9 @@ import {
 } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const atCap = "x".repeat(MAX_PROMPT_BYTES);
 const overCap = "x".repeat(MAX_PROMPT_BYTES + 1);

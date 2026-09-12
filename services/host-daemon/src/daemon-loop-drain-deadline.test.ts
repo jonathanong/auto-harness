@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 /**
  * beginDrain() resolved only on a host:drain / host:draining message or a reconnect

@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { executionProfileFingerprint } from "./execution-profiles.ts";
 import type { ProcessRunner } from "./executor.ts";

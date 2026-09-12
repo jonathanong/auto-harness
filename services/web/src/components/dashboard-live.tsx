@@ -1,5 +1,6 @@
 "use client";
 
+import { thrownMessage } from "@auto-harness/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -69,7 +70,7 @@ export function DashboardLive({
       });
       setError(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(thrownMessage(reason));
     } finally {
       refreshing.current = false;
     }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { stubApi } from "../route-test-helpers.tsx";
+import { stubApi } from "../../../test-helpers/route-test-helpers.tsx";
 import { canManageAccounts, loadSettingsPrincipal } from "./settings-auth.ts";
 
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;

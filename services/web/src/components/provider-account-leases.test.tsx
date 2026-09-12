@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderAccountLeaseState } from "@auto-harness/shared";
 
-import { field, json, mountForm, press, router } from "./form-test-helpers.tsx";
+import { field, json, mountForm, press, router } from "../../test-helpers/form-test-helpers.tsx";
 import { ProviderAccountLeases } from "./provider-account-leases.tsx";
 
 function lease(

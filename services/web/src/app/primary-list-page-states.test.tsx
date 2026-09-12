@@ -7,7 +7,7 @@ import SchedulesLoading from "./schedules/loading.tsx";
 import SchedulesPage from "./schedules/page.tsx";
 import SessionsLoading from "./sessions/loading.tsx";
 import SessionsPage from "./sessions/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("primary list page states", () => {
   it.each([
@@ -46,6 +46,35 @@ describe("primary list page states", () => {
     expect(html).toContain('data-pw="session-row-session-1"');
     expect(html).toContain('href="/repositories/repo-1"');
     expect(html).toContain("Alpha");
+  });
+
+  it("ignores non-string session search params while keeping string filters", async () => {
+    stubApi({
+      "/api/v1/sessions?limit=50&repositoryId=repo-1": {
+        items: [{ id: "session-1", status: "queued", repositoryId: "repo-1" }],
+      },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Alpha" }] },
+    });
+    const html = await renderPage(
+      SessionsPage({
+        searchParams: Promise.resolve({ status: ["failed"], repositoryId: "repo-1" }),
+      }),
+    );
+    expect(html).toContain('data-pw="session-row-session-1"');
+    expect(html).not.toContain("No sessions match filters.");
+  });
+
+  it("treats a hosts catalog without items as an empty filter list", async () => {
+    stubApi({
+      "/api/v1/sessions?limit=50": {
+        items: [{ id: "session-1", status: "queued", repositoryId: "repo-1" }],
+      },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Alpha" }] },
+      "/api/v1/hosts?limit=100": {},
+    });
+    const html = await renderPage(SessionsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="session-row-session-1"');
+    expect(html).not.toContain("host-z");
   });
 
   it("keeps session rows with repository id fallback when the catalog is unavailable", async () => {

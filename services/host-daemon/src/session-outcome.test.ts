@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { finishClaimedSession } from "./session-outcome.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 describe("finishClaimedSession", () => {
   it("reports a terminal-hook revalidation failure before suppressing the hook", async () => {

@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { field, mountForm, press, router } from "../../test-helpers/form-test-helpers.tsx";
 import { RemoveProviderAccountButton } from "./remove-provider-account-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>, accountId = "account/one") {

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { closeDispatchActionServers, runAction, serve } from "./dispatch-action-test-helpers.ts";
+import {
+  closeDispatchActionServers,
+  runAction,
+  serve,
+} from "./test-helpers/dispatch-action-test-helpers.ts";
 
 afterEach(closeDispatchActionServers);
 

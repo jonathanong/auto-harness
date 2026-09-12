@@ -3,7 +3,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { mount, reset } from "./action-form-test-helpers.ts";
+import { mount, reset } from "../../test-helpers/action-form-test-helpers.ts";
 import { THEME_INIT_SCRIPT, ThemeToggle } from "./theme-toggle.tsx";
 
 /** happy-dom's window has no localStorage/matchMedia by default — a minimal stand-in for both. */

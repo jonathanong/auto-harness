@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop drain", () => {
   it("drain refuses new assigns without killing inflight tracking", async () => {

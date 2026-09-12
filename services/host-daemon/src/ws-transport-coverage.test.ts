@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket } from "./ws-transport-test-helpers.ts";
+import { FakeSocket } from "../test-helpers/ws-transport-test-helpers.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -183,6 +183,17 @@ describe("WebSocket transport residual runtime branches", () => {
     await transport.registered;
     await transport.send(register(["next"]));
     expect(sockets).toHaveLength(1);
+  });
+
+  it("records a disconnected log that never carried an attempt id", async () => {
+    await expectClosedInflight({
+      type: "session:log",
+      sessionId: "session-1",
+      stream: "stdout",
+      content: "line",
+      timestamp: "2026-08-11T00:00:00.000Z",
+      seq: 1,
+    });
   });
 });
 

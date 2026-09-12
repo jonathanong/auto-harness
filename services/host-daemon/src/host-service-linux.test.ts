@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 import { installHostService, uninstallHostService } from "./host-service.ts";
 import { resolveHostService } from "./host-service-io.ts";
 import { statusLinux } from "./host-service-linux.ts";
-import { baseOpts, recorder, seededFs, unitTemplate } from "./host-service-test-helpers.ts";
+import {
+  baseOpts,
+  recorder,
+  seededFs,
+  unitTemplate,
+} from "../test-helpers/host-service-test-helpers.ts";
 import {
   LINUX_ACTIVATION_HELPER_DEST,
   LINUX_ENABLE_NOW_COMMAND,

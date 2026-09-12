@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { supersedeSession } from "./control-plane-sessions.ts";
-import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: schedule fail usage limit supersede defaults", () => {
   it("schedule fail usage limit supersede defaults", async () => {

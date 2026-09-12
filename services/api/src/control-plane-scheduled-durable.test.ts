@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
-import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
+import {
+  createDynamoTestCtx,
+  putActiveTestRepository,
+} from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("SchedLease");
 

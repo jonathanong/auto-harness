@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 

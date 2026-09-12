@@ -1,0 +1,222 @@
+/* eslint-disable max-lines -- the complete authoritative storage fake is intentionally centralized. */
+import type { RepositoryAdmissionState } from "@auto-harness/shared";
+
+import type {
+  CommandRecord,
+  HostInventoryRecord,
+  ProviderAccountRecord,
+  ProviderRecord,
+  RepositoryRecord,
+} from "../src/db/plane-storage.ts";
+import type {
+  ArchiveMetadata,
+  LogQuery,
+  LogRecord,
+  ScheduleRecord,
+} from "../src/control-plane-types.ts";
+import type { SessionRecord, WorktreeRecord } from "../src/db/types.ts";
+import { selectLogs } from "../src/log-query.ts";
+import { repositoryAdmissionOpen } from "../src/control-plane-repository-admission-state.ts";
+
+function copy<T extends object>(records: Map<string, T>, id: string): T | null {
+  const record = records.get(id);
+  return record ? { ...record } : null;
+}
+
+function list<T extends object>(records: Map<string, T>): T[] {
+  return [...records.values()].map((record) => ({ ...record }));
+}
+
+/** Minimal shared storage double for cross-control-plane authoritative-read tests. */
+export function createAuthoritativeReadStorage() {
+  const repositories = new Map<string, RepositoryRecord>();
+  const schedules = new Map<string, ScheduleRecord>();
+  const commands = new Map<string, CommandRecord>();
+  const providers = new Map<string, ProviderRecord>();
+  const accounts = new Map<string, ProviderAccountRecord>();
+  const inventories = new Map<string, HostInventoryRecord>();
+  const sessions = new Map<string, SessionRecord>();
+  const logs = new Map<string, LogRecord[]>();
+  const worktrees = new Map<string, WorktreeRecord>();
+  const archives = new Map<string, ArchiveMetadata>();
+  const storage = {
+    putAuditLog: async () => undefined,
+    listAuditLogs: async () => ({ items: [] }),
+    listAllAuditLogs: async () => [],
+    putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
+    updateRepositorySettings: async (
+      id: string,
+      patch: Partial<RepositoryRecord>,
+      updatedAt: string,
+    ) => {
+      const current = repositories.get(id);
+      if (!current) return null;
+      const updated = { ...current, ...patch, updatedAt };
+      repositories.set(id, updated);
+      return { ...updated };
+    },
+    getRepository: async (id: string) => copy(repositories, id),
+    listRepositories: async () => list(repositories),
+    setRepositoryAdmissionState: async (
+      id: string,
+      admissionState: RepositoryAdmissionState,
+      now: string,
+      activationCutoffAt?: string,
+    ) => {
+      const current = repositories.get(id);
+      if (
+        !current ||
+        (admissionState !== "draining" && current.admissionState === "draining") ||
+        (activationCutoffAt !== undefined && current.admissionState !== "paused")
+      )
+        return null;
+      const updated = {
+        ...current,
+        admissionState,
+        admissionStateChangedAt: now,
+        updatedAt: now,
+        ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
+        ...(activationCutoffAt ? { activationCutoffAt } : {}),
+      };
+      if (admissionState === "draining") delete updated.drainCompletedAt;
+      if (admissionState === "active") {
+        delete updated.drainRequestedAt;
+        delete updated.drainCompletedAt;
+      }
+      repositories.set(id, updated);
+      return { ...updated };
+    },
+    deleteRepository: async (id: string) => repositories.delete(id),
+    putSchedule: async (record: ScheduleRecord) => schedules.set(record.id, { ...record }),
+    getSchedule: async (id: string) => copy(schedules, id),
+    listSchedules: async () => list(schedules),
+    deleteSchedule: async (id: string) => schedules.delete(id),
+    skipScheduleForClosedRepository: async ({
+      scheduleId,
+      repositoryId,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = schedules.get(scheduleId);
+      const repository = repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !repository ||
+        repositoryAdmissionOpen(repository.admissionState) ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt
+      )
+        return false;
+      schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
+    skipScheduleBeforeActivationCutoff: async ({
+      scheduleId,
+      repositoryId,
+      activationCutoffAt,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      activationCutoffAt: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = schedules.get(scheduleId);
+      const repository = repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !repository ||
+        !repositoryAdmissionOpen(repository.admissionState) ||
+        repository.activationCutoffAt !== activationCutoffAt ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt ||
+        Date.parse(expectedNextRunAt) >= Date.parse(activationCutoffAt)
+      ) {
+        return false;
+      }
+      schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
+    putCommand: async (record: CommandRecord) => commands.set(record.id, { ...record }),
+    getCommand: async (id: string) => copy(commands, id),
+    listCommands: async () => list(commands),
+    deleteCommand: async (id: string) => commands.delete(id),
+    putProvider: async (record: ProviderRecord) => providers.set(record.id, { ...record }),
+    getProvider: async (id: string) => copy(providers, id),
+    listProviders: async () => list(providers),
+    deleteProvider: async (id: string) => providers.delete(id),
+    putProviderAccount: async (record: ProviderAccountRecord) =>
+      accounts.set(record.id, { ...record }),
+    getProviderAccount: async (id: string) => copy(accounts, id),
+    listProviderAccounts: async () => list(accounts),
+    deleteProviderAccount: async (id: string) => accounts.delete(id),
+    putHostInventory: async (record: HostInventoryRecord) =>
+      inventories.set(record.hostId, { ...record }),
+    getHostInventory: async (id: string) => copy(inventories, id),
+    listHostInventories: async () => list(inventories),
+    deleteHostInventory: async (id: string) => inventories.delete(id),
+    createSession: async (record: SessionRecord) => {
+      sessions.set(record.id, { ...record });
+      return { created: true, session: record };
+    },
+    getSession: async (id: string) => copy(sessions, id),
+    listAllSessions: async () => list(sessions),
+    listSessionsByStatus: async (status: string, shard: number) =>
+      list(sessions).filter((record) => record.status === status && record.queueShard === shard),
+    putLog: async (record: LogRecord) =>
+      logs.set(record.sessionId, [...(logs.get(record.sessionId) ?? []), { ...record }]),
+    listLogs: async (id: string) => [...(logs.get(id) ?? [])].map((record) => ({ ...record })),
+    queryLogs: async (id: string, query: LogQuery) => selectLogs(logs.get(id) ?? [], query),
+    putWorktree: async (record: WorktreeRecord) => worktrees.set(record.id, { ...record }),
+    deleteWorktree: async (id: string) => worktrees.delete(id),
+    listAllWorktrees: async () => list(worktrees),
+    listWorktreesForRepo: async (id: string) =>
+      list(worktrees).filter((record) => record.repositoryId === id),
+    listConnections: async () => [],
+    putArchive: async (record: ArchiveMetadata) => archives.set(record.key, { ...record }),
+    getArchive: async (key: string) => copy(archives, key),
+    listArchives: async () => list(archives),
+    tryClaimScheduleAndCreateSession: async ({
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      lastRunAt,
+      activationCutoffAt,
+      session,
+    }: {
+      scheduleId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+      lastRunAt: string;
+      activationCutoffAt?: string;
+      session: SessionRecord;
+    }) => {
+      const schedule = schedules.get(scheduleId);
+      if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt)
+        return { kind: "lost" };
+      const repository = repositories.get(session.repositoryId);
+      if (!repository || !repositoryAdmissionOpen(repository.admissionState)) {
+        return { kind: "admission_closed" };
+      }
+      if (
+        activationCutoffAt !== undefined &&
+        repository.activationCutoffAt !== activationCutoffAt
+      ) {
+        return { kind: "admission_closed" };
+      }
+      schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
+      sessions.set(session.id, { ...session });
+      return { kind: "created" };
+    },
+  };
+  return storage as never;
+}

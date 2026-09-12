@@ -6,7 +6,7 @@ import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared"
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { createLoopbackTransport } from "./loopback-transport.ts";
-import { makeRepo, pendingTerminalStatusOf } from "./daemon-loop-test-helpers.ts";
+import { makeRepo, pendingTerminalStatusOf } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop reconnect", () => {
   it("uses the 75-second reconnect grace by default", () => {

@@ -11,7 +11,7 @@ import type {
   RepositoryRecord,
 } from "./db/plane-storage.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function rejectedStorage() {
   return new Proxy(

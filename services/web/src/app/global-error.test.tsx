@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { mountForm } from "../components/form-test-helpers.tsx";
+import { mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import GlobalError from "./global-error.tsx";
 
 vi.mock("../lib/sentry-client.ts", () => ({

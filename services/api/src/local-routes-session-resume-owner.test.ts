@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createResumeRouteFixture } from "./local-server-test-helpers.ts";
+import { createResumeRouteFixture } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("session resume ownership", () => {
   it("allows a replacement credential to resume visible terminal work and owns the descendant", async () => {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { run, stubGh, useFixtures } from "./harness-prompt-context-test-helpers.ts";
+import { run, stubGh, useFixtures } from "./test-helpers/harness-prompt-context-test-helpers.ts";
 
 const { make } = useFixtures();
 

@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { DaemonConfig, HostIdentity } from "./config-types.ts";
 import { assertDaemonPathsAllowed } from "./allowed-roots.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
@@ -26,11 +27,7 @@ export class HostInventoryPolicyError extends Error {
   readonly allowedRoots: string[] | undefined;
 
   constructor(cause: unknown, allowedRoots?: readonly string[]) {
-    super(
-      `host inventory violates its allowed-roots policy: ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-    );
+    super(`host inventory violates its allowed-roots policy: ${thrownMessage(cause)}`);
     this.name = "HostInventoryPolicyError";
     this.allowedRoots = allowedRoots === undefined ? undefined : [...allowedRoots];
   }

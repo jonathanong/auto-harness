@@ -250,5 +250,21 @@ describe("catalog delete references", () => {
       { key: "provider-account:account", now: "now" },
       { key: "repository:repo", now: "now" },
     ]);
+    expect(
+      inventoryReferenceMarkers("now", {
+        hostId: "host",
+        repositories: [
+          {
+            id: "repo",
+            providerAccountOverrides: { account: {} },
+            worktrees: [{ providerAccountOverrides: { account: {} } }],
+          },
+        ],
+        providerAccounts: [],
+      }),
+    ).toEqual([
+      { key: "provider-account:account", now: "now" },
+      { key: "repository:repo", now: "now" },
+    ]);
   });
 });

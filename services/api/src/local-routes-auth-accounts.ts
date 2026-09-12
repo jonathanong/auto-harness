@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isUserRole } from "@auto-harness/shared";
+import { isUserRole, thrownMessage } from "@auto-harness/shared";
 
 import { auditActor } from "./audit.ts";
 import { assertAccountGrant, parseRepositoryScope, validateCredential } from "./auth-accounts.ts";
@@ -135,7 +135,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: thrownMessage(error),
           },
         });
         return true;
@@ -158,7 +158,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, conflict ? 409 : 500, {
           error: {
             code: conflict ? "CONFLICT" : "INTERNAL_ERROR",
-            message: error instanceof Error ? error.message : "internal server error",
+            message: conflict ? "username already exists" : "unable to persist control-plane state",
           },
         });
       }
@@ -228,7 +228,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: thrownMessage(error),
           },
         });
         return true;
@@ -254,13 +254,13 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         )
           return true;
         send(res, 201, result);
-      } catch (error) {
+      } catch {
         if (!(await audit(ctx, "service-account:create", "service-account", "new", "failed")))
           return true;
         send(res, 500, {
           error: {
             code: "INTERNAL_ERROR",
-            message: error instanceof Error ? error.message : "internal server error",
+            message: "unable to persist control-plane state",
           },
         });
       }

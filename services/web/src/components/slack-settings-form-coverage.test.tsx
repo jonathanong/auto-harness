@@ -13,7 +13,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { SlackSettingsForm } from "./slack-settings-form.tsx";
 import type { PublicSlackIntegration } from "./slack-settings.ts";
 
@@ -176,6 +176,18 @@ describe("SlackSettingsForm", () => {
     resolveSave(json({ error: { message: "late" } }, 503));
     await settle();
     expect(document.body.textContent ?? "").not.toContain("late");
+  });
+
+  it("does not toast a late delete HTTP error after unmount", async () => {
+    let resolveDelete!: (response: Response) => void;
+    createApiFake(() => new Promise<Response>((resolve) => (resolveDelete = resolve)));
+    const view = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(view.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    view.unmount();
+    resolveDelete(json({ error: { message: "late-delete" } }, 503));
+    await settle();
+    expect(document.body.textContent ?? "").not.toContain("late-delete");
   });
 
   it("toasts a thrown save failure while the form is still mounted", async () => {

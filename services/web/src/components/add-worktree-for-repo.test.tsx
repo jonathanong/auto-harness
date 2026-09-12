@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 import type { HostRepository } from "@auto-harness/shared";
 
-import { field, mountForm, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, setValue } from "../../test-helpers/form-test-helpers.tsx";
 import { attachmentsForRepo } from "./add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "./add-worktree-for-repo.tsx";
 

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("session clone route", () => {
   it("validates every clone body shape and returns structured route errors", async () => {

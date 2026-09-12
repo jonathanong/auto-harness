@@ -5,7 +5,7 @@ import {
   redeliverPendingCancels,
 } from "./control-plane-cancel-redelivery.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import type { CancelRedeliveryRecord } from "./db/plane-storage-cancel-redeliveries.ts";
 
 function candidate(overrides: Partial<CancelRedeliveryRecord> = {}): CancelRedeliveryRecord {

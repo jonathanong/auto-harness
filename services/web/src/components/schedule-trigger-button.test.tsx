@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { mountForm, press, router } from "./form-test-helpers.tsx";
+import { mountForm, press, router } from "../../test-helpers/form-test-helpers.tsx";
 import { ScheduleTriggerButton } from "./schedule-trigger-button.tsx";
 
 function trigger(view: ReturnType<typeof mountForm>) {

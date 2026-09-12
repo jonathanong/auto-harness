@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import type { Principal } from "./auth.ts";
 import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 
 const scheduleBody = {

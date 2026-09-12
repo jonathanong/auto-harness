@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, press, setValue } from "../../test-helpers/form-test-helpers.tsx";
 import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
 
 describe("SessionPriorityLabelFields", () => {

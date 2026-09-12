@@ -5,7 +5,7 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "codemirror";
 
-import { mount, reset } from "./action-form-test-helpers.ts";
+import { mount, reset } from "../../test-helpers/action-form-test-helpers.ts";
 import { JsonEditor } from "./json-editor.tsx";
 
 afterEach(reset);

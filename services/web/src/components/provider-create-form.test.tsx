@@ -4,7 +4,14 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  json,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { ProviderCreateForm } from "./provider-create-form.tsx";
 
 type View = ReturnType<typeof mountForm>;

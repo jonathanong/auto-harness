@@ -16,7 +16,7 @@ import {
   shutdownLoggerFor,
   shutdownTimeoutMs,
 } from "./cli.ts";
-import { deps, sampleConfig } from "./cli-test-helpers.ts";
+import { deps, sampleConfig } from "../test-helpers/cli-test-helpers.ts";
 import type { DaemonConfig } from "./config.ts";
 import { installHostService, uninstallHostService } from "./host-service.ts";
 

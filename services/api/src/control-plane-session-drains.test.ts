@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- session-drain outcomes share one durable fixture. */
 import { describe, expect, it } from "vitest";
 
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import {
   createSessionDrainDurable,
   getSessionDrainDurable,

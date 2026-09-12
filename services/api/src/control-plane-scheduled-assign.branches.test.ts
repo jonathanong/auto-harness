@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,

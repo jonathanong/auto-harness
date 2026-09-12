@@ -14,7 +14,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { LoginForm } from "./login-form.tsx";
 import { LogoutButton } from "./logout-button.tsx";
 

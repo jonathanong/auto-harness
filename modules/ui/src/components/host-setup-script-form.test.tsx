@@ -10,7 +10,14 @@ import {
   type mutateInventory,
 } from "@auto-harness/shared";
 
-import { field, mount, reset, router, setValue, submit } from "./action-form-test-helpers.ts";
+import {
+  field,
+  mount,
+  reset,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 import { HostSetupScriptForm } from "./host-setup-script-form.tsx";
 
 afterEach(reset);
@@ -447,6 +454,20 @@ describe("HostSetupScriptForm", () => {
     await submit(field(env.container, "form-host-required-environment"));
     expect(field(document.body, "host-required-environment-error").textContent).toBe("env-offline");
     env.unmount();
+
+    const envError = mount(
+      <HostSetupScriptForm
+        hostId="host"
+        requiredEnvironment={["TOKEN"]}
+        mutateInv={async () => {
+          throw new Error("env-error");
+        }}
+        canWriteExecConfig={false}
+      />,
+    );
+    await submit(field(envError.container, "form-host-required-environment"));
+    expect(field(document.body, "host-required-environment-error").textContent).toBe("env-error");
+    envError.unmount();
   });
 
   it("keeps a script dirty when it changes during an in-flight save", async () => {

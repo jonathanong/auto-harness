@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonResponse, renderPage, stubApi } from "../route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../../test-helpers/route-test-helpers.tsx";
 import WorktreesPage from "./page.tsx";
 
 describe("worktrees page", () => {
@@ -117,5 +117,15 @@ describe("worktrees page", () => {
     );
     expect(html).toContain('data-pw="pagination-next"');
     expect(html).toContain("cursor=page%2Ftwo");
+
+    stubApi({
+      "/api/v1/worktrees": { items: [], nextCursor: null },
+      "/api/v1/repositories": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+    });
+    const skipped = await renderPage(
+      WorktreesPage({ searchParams: Promise.resolve({ cursor: ["page/one"] }) }),
+    );
+    expect(skipped).not.toContain("cursor=page%2Fone");
   });
 });

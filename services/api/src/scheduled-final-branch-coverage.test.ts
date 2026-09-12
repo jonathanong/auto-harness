@@ -7,7 +7,7 @@ import {
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { restoreScheduledReconnects } from "./control-plane-reconnect-scheduled.ts";
 import { resolveSessionTargetArgv } from "./control-plane-session-target.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 

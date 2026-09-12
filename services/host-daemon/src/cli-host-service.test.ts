@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { printUsage, runCli } from "./cli.ts";
-import { deps, sampleConfig } from "./cli-test-helpers.ts";
+import { deps, sampleConfig } from "../test-helpers/cli-test-helpers.ts";
 
 describe("install-service CLI", () => {
   it("dispatches install and uninstall", async () => {

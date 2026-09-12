@@ -8,7 +8,7 @@ import {
   makeRepo,
   pendingTerminalStatusOf,
   terminalStatusFixture as statusMessage,
-} from "./daemon-loop-test-helpers.ts";
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop terminal status bookkeeping limits", () => {
   it("does not double-report an attempt present in both inflight and pendingTerminalStatus", async () => {

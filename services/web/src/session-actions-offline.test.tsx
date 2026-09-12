@@ -4,7 +4,7 @@ import { SessionActions } from "@auto-harness/ui";
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, router } from "./components/form-test-helpers.tsx";
+import { field, mountForm, press, router } from "../test-helpers/form-test-helpers.tsx";
 
 describe("offline SessionActions", () => {
   it("requires confirmation before using ordinary cancellation", async () => {

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
-import { minimalSession } from "./control-plane-prior-context-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { minimalSession } from "../test-helpers/control-plane-prior-context-test-helpers.ts";
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

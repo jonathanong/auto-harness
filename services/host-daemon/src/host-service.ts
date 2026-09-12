@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { installDarwin, restartDarwin, uninstallDarwin } from "./host-service-darwin.ts";
 import type { HostServiceOpts } from "./host-service-io.ts";
 import { resolveHostService } from "./host-service-io.ts";
@@ -45,7 +46,7 @@ export function installHostService(opts: HostServiceOpts): number {
         return 1;
     }
   } catch (err) {
-    opts.error(err instanceof Error ? err.message : String(err));
+    opts.error(thrownMessage(err));
     return 1;
   }
 }
@@ -65,7 +66,7 @@ export function restartHostService(opts: HostServiceOpts): number {
         return 1;
     }
   } catch (err) {
-    opts.error(err instanceof Error ? err.message : String(err));
+    opts.error(thrownMessage(err));
     return 1;
   }
 }
@@ -85,7 +86,7 @@ export function uninstallHostService(opts: HostServiceOpts): number {
         return 1;
     }
   } catch (err) {
-    opts.error(err instanceof Error ? err.message : String(err));
+    opts.error(thrownMessage(err));
     return 1;
   }
 }

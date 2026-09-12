@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- message option cases share one state fixture. */
 import { describe, expect, it } from "vitest";
 
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import {
   appendLog,
   appendLogDurable,
@@ -525,6 +525,25 @@ describe("host message optional-field coverage", () => {
     ).resolves.toMatchObject({ ok: true });
     expect(current.worktrees.get("w")?.currentSessionId).toBe("other");
     expect(current.sessions.get("s")?.worktreeId).toBeNull();
+  });
+
+  it("keeps a cancelled durable session parked when worktree release loses", async () => {
+    const row = session({ status: "cancelled" });
+    const current = state(row);
+    setDurableReadStorage(current, {
+      getSession: async () => row,
+      releaseCancelledSessionWorktree: async () => false,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "completed",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("cancelled");
   });
 
   it("forwards a host assignment lease when a missing-account scheduled run requeues", async () => {

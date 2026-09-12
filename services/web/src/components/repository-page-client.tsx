@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { apiErrorMessage } from "@auto-harness/shared";
+import { useRef, useState } from "react";
+import { apiErrorMessage, thrownMessage } from "@auto-harness/shared";
 import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 import { Alert, Button } from "@auto-harness/ui";
 
@@ -35,10 +35,6 @@ type Wt = {
   labels?: string[];
 };
 
-function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
-}
-
 export function RepositoryPageClient({
   initialItems,
   initialNextCursor,
@@ -65,9 +61,11 @@ export function RepositoryPageClient({
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadingMoreRef = useRef(false);
 
   async function loadMore(): Promise<void> {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     setLoadError(null);
     try {
@@ -79,8 +77,9 @@ export function RepositoryPageClient({
       setAvailableAttachRepositories((current) => dedupeRepositories([...current, ...pageItems]));
       setNextCursor(page.nextCursor ?? null);
     } catch (reason) {
-      setLoadError(errorMessage(reason));
+      setLoadError(thrownMessage(reason));
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }

@@ -5,7 +5,13 @@ import type { SessionListQuery } from "@auto-harness/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsLive } from "./sessions-live.tsx";
-import { createRequestFake, field, json, mountForm, press } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+  press,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 
@@ -26,6 +32,12 @@ describe("SessionsLive", () => {
   it.each([
     ["source", { ...listState, source: "manual" }],
     ["agent", { ...listState, hostId: "host-1" }],
+    ["query", { ...listState, q: "needle" }],
+    ["concurrency", { ...listState, concurrencyId: "pr-1" }],
+    ["cursor", { ...listState, cursor: "page-2" }],
+    ["repository", { ...listState, repositoryId: "repo-1" }],
+    ["schedule", { ...listState, scheduleId: "sched-1" }],
+    ["status", { ...listState, status: "failed" }],
   ] satisfies ReadonlyArray<readonly [string, SessionListQuery]>)(
     "treats an active %s filter as a narrowed list",
     (_label, filteredState) => {
@@ -41,6 +53,30 @@ describe("SessionsLive", () => {
       expect(view.container.textContent).not.toContain("Create your first session");
     },
   );
+
+  it.each([
+    ["latest", "priority_desc", "oldest"],
+    ["oldest", "priority_desc", "latest"],
+    ["priority_desc", "priority_asc", "latest"],
+    ["priority_asc", "priority_desc", "latest"],
+  ] as const)("toggles %s sort links to the opposite order", (sort, nextPriority, nextCreated) => {
+    const view = mountForm(
+      <SessionsLive
+        initialItems={[{ id: "row", status: "queued" }]}
+        initialNextCursor={null}
+        listState={{ ...listState, sort }}
+        path="/api/v1/sessions"
+      />,
+    );
+    expect(
+      field<HTMLAnchorElement>(view.container, "session-sort-priority").getAttribute("href"),
+    ).toContain(`sort=${nextPriority}`);
+    const created = field<HTMLAnchorElement>(view.container, "session-sort-created").getAttribute(
+      "href",
+    );
+    if (nextCreated === "latest") expect(created).not.toContain("sort=");
+    else expect(created).toContain(`sort=${nextCreated}`);
+  });
 
   it("polls the bounded current page and updates session rows", async () => {
     vi.useFakeTimers();

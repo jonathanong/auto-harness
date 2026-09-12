@@ -40,6 +40,10 @@ describe("ControlPlane provider account CRUD", () => {
     expect(plane.getProviderAccount("missing")).toBeNull();
     expect(plane.listProviderAccounts().map((a) => a.label)).toEqual(["x@y.com"]);
 
+    const twin = plane.createProviderAccount({ providerId: "prov-2", label: "x@y.com" });
+    expect(twin.ok).toBe(true);
+    expect(plane.listProviderAccounts().map((a) => a.id)).toEqual(["acct-1", "acct-2"]);
+
     expect(plane.updateProviderAccount("missing", { label: "x" }).ok).toBe(false);
     expect(plane.updateProviderAccount("acct-1", { providerId: "missing" }).ok).toBe(false);
     expect(plane.updateProviderAccount("acct-1", { usageLimitCooldownSeconds: 1.5 }).ok).toBe(

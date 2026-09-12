@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { scripted } from "./git-test-helpers.ts";
+import { scripted } from "../test-helpers/git-test-helpers.ts";
 import { claimedLinkedWorktreeCommonDir, removeStaleIndexLock } from "./git-worktree-checkout.ts";
 
 function writeWorktreeIdentity(cwd: string, gitDir: string): void {

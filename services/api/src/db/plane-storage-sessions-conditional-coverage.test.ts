@@ -67,6 +67,15 @@ describe("session storage conditional outcomes", () => {
       const send = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(conditional);
       await expect(operation(ctx(send))).resolves.toBe(false);
     }
+    const failure = new Error("resume pin update failed");
+    const boom = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(failure);
+    await expect(
+      failExpiredResumeSession(ctx(boom), {
+        sessionId: "session",
+        queueShard: 0,
+        pinExpiresAt: "expiry",
+      }),
+    ).rejects.toBe(failure);
   });
 
   it("recognizes an already-committed terminal state after a transaction race", async () => {
@@ -126,6 +135,12 @@ describe("session storage conditional outcomes", () => {
     );
     const committed = vi.fn().mockResolvedValue({});
     await expect(requeueUsageLimitedSession(ctx(committed), requeue)).resolves.toBe(true);
+    await expect(
+      requeueUsageLimitedSession(ctx(vi.fn().mockResolvedValue({})), {
+        ...requeue,
+        hostAssignmentLease: { hostId: "host" },
+      }),
+    ).resolves.toBe(true);
     const sessionUpdate = committed.mock.calls[1][0].input.TransactItems.find(
       (entry: { Update?: { Key?: { id?: string } } }) => entry.Update?.Key?.id === "session",
     )?.Update?.UpdateExpression as string;

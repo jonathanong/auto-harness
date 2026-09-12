@@ -85,7 +85,6 @@ export function safeSettingsReturnPath(pathname: string, search = ""): string {
 }
 
 function redirectToLogin(): void {
-  if (typeof window === "undefined") return;
   const returnTo = safeSettingsReturnPath(window.location.pathname, window.location.search);
   window.location.assign(`/login?${new URLSearchParams({ returnTo })}`);
 }

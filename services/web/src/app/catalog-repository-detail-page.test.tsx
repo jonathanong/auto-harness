@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 
 import RepositoryDetailPage from "./repositories/[id]/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const noSearch = Promise.resolve({});
 

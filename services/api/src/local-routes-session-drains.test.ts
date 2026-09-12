@@ -9,10 +9,10 @@ import {
   SessionDrainLedgerUnavailableError,
   type SessionDrainRecord,
 } from "./db/plane-storage-session-drains.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

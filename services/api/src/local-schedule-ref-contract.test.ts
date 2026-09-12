@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("schedule ref REST contract", () => {
   it("rejects tag/SHA refs for schedules but retains prompt-session refs", async () => {

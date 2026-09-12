@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- claimed run covers setup, profile env, and terminal outcomes. */
+import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { ProcessResult, ProcessRunner } from "./executor.ts";
@@ -55,7 +56,7 @@ export async function runClaimedSession(
         status: "failed",
         exitCode: null,
         errorCode: "setup_failed",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: thrownMessage(error),
       },
       childEnvSource,
     );
@@ -86,7 +87,7 @@ export async function runClaimedSession(
         status: "failed",
         exitCode: null,
         errorCode: "setup_failed",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: thrownMessage(error),
       },
       childEnvSource,
     );

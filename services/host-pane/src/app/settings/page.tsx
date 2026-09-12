@@ -1,4 +1,9 @@
-import { type Command, type Provider, type ProviderAccount } from "@auto-harness/shared";
+import {
+  thrownMessage,
+  type Command,
+  type Provider,
+  type ProviderAccount,
+} from "@auto-harness/shared";
 import { DrainButton, HostConfigForm, HostSetupScriptForm } from "@auto-harness/ui";
 
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
@@ -29,7 +34,7 @@ export default async function SettingsPage() {
     providerAccounts = a.items ?? [];
     commands = c.items ?? [];
   } catch (error) {
-    catalogError = error instanceof Error ? error.message : String(error);
+    catalogError = thrownMessage(error);
   }
   const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
   const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));

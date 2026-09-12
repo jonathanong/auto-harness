@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import CommandDetailPage from "./commands/[commandId]/page.tsx";
 import ProviderDetailPage from "./providers/[providerId]/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const noSearch = Promise.resolve({});
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;
@@ -242,5 +242,24 @@ describe("control catalog detail routes", () => {
       }),
     );
     expect(missingArrays).toContain("No commands owned by this provider yet.");
+  });
+
+  it("uses a four-column empty accounts row when lease operations are hidden", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      "/api/v1/auth/me": { username: "author", role: "author", kind: "user" },
+      "/api/v1/providers/p-empty": { id: "p-empty", name: "Empty", defaultCommandId: null },
+      "/api/v1/provider-accounts": { items: [] },
+      "/api/v1/commands": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+    });
+    const html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-empty" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain("No accounts of this provider yet.");
+    expect(html).toContain('colSpan="4"');
   });
 });

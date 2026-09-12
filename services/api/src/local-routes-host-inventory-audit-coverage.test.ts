@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const scoped: Principal = {
   id: "service:host-1",

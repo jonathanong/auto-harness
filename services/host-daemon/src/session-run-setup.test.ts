@@ -8,7 +8,7 @@ import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 function claim(
   cwd: string,

@@ -102,8 +102,14 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   return item.tip ? <WithTooltip tip={item.tip}>{link}</WithTooltip> : link;
 }
 
-function NavGroupMenu({ group, activeHref }: { group: NavGroup; activeHref: string | null }) {
-  const label = group.label ?? "";
+function NavGroupMenu({
+  group,
+  activeHref,
+}: {
+  group: Omit<NavGroup, "label"> & { label: string };
+  activeHref: string | null;
+}) {
+  const label = group.label;
   const groupActive = group.items.some((item) => item.href === activeHref);
   return (
     <DropdownMenu modal={false}>
@@ -156,7 +162,13 @@ export function AppNav({ groups, activeHref }: { groups: NavGroup[]; activeHref:
             </span>
           );
         }
-        return <NavGroupMenu key={group.label} group={group} activeHref={activeHref} />;
+        return (
+          <NavGroupMenu
+            key={group.label}
+            group={{ ...group, label: group.label }}
+            activeHref={activeHref}
+          />
+        );
       })}
     </nav>
   );

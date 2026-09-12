@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { settleStorage } from "./control-plane-state.ts";
-import { seedBaseCommand, baseSessionBody } from "./control-plane-test-helpers.ts";
+import { seedBaseCommand, baseSessionBody } from "../test-helpers/control-plane-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";

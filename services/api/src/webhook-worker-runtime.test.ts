@@ -10,7 +10,7 @@ import {
   webhookTestDelivery,
   webhookTestDestination,
   webhookTestNow,
-} from "./webhook-worker-test-helpers.ts";
+} from "../test-helpers/webhook-worker-test-helpers.ts";
 
 function terminalSession(id = "session-worker"): SessionRecord {
   return {

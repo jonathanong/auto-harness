@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import { createChildEnv } from "./child-env.ts";
@@ -43,7 +44,7 @@ export async function runSetupIfNeeded(
       status: "failed",
       exitCode: null,
       errorCode: "setup_failed",
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: thrownMessage(error),
     });
   const stepFailure = (step: ProcessResult, failureMessage: string) => {
     if (step.timedOut || timedOut())

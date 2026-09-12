@@ -4,7 +4,7 @@ import DashboardPage from "./page.tsx";
 import RepositoriesPage from "./repositories/page.tsx";
 import SchedulesPage from "./schedules/page.tsx";
 import SessionsPage from "./sessions/page.tsx";
-import { renderPage, stubApi } from "./route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const emptySearchParams = { searchParams: Promise.resolve({}) };
 

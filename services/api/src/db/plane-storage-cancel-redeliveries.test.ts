@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 import {
   claimCancelRedeliveryAttempt,
   deferPendingCancelRedelivery,
@@ -42,6 +42,21 @@ describe("cancel redelivery outbox query response handling", () => {
     await expect(claimCancelRedeliveryAttempt(mockCtx, "session-a", t0, 3)).rejects.toThrow(
       "table unavailable",
     );
+  });
+
+  it("treats a claim condition loss as a lost attempt", async () => {
+    const mockCtx = {
+      doc: {
+        send: vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("lost"), { name: "ConditionalCheckFailedException" }),
+          ),
+      },
+      tables: { sessionCancelRedeliveries: "SessionCancelRedeliveries" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(claimCancelRedeliveryAttempt(mockCtx, "session-a", t0, 3)).resolves.toBe(false);
   });
 });
 

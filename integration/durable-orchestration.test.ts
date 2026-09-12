@@ -16,7 +16,7 @@ import {
   expectDurableFilamentsSource,
   expectDurableFilamentsResume,
   expectFilamentsSessionOutput,
-} from "./filaments-session-integration-test-helpers.ts";
+} from "./test-helpers/filaments-session-integration-test-helpers.ts";
 
 const TABLE_PREFIX = process.env.HARNESS_DDB_PREFIX ?? "AutoHarnessIntegration";
 const TERMINAL_POLL_ATTEMPTS = 200;

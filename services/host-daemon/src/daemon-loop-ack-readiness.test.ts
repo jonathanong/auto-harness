@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 
 describe("DaemonLoop readiness registration", () => {

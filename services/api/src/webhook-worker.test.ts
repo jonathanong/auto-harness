@@ -8,7 +8,7 @@ import {
   webhookTestDelivery,
   webhookTestDestination,
   webhookTestNow,
-} from "./webhook-worker-test-helpers.ts";
+} from "../test-helpers/webhook-worker-test-helpers.ts";
 
 describe("webhook outbox processor", () => {
   it("delivers exact secret-safe bytes and completes a live lease", async () => {

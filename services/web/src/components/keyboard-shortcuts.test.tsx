@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, router } from "./form-test-helpers.tsx";
+import { field, mountForm, router } from "../../test-helpers/form-test-helpers.tsx";
 import { ControlShell } from "./control-shell.tsx";
 
 function key(target: EventTarget, value: string, options: KeyboardEventInit = {}) {
@@ -47,6 +47,8 @@ describe("global keyboard shortcuts", () => {
     vi.useFakeTimers();
     const view = mountForm(<ControlShell>Dashboard</ControlShell>);
     key(document, "n");
+    expect(router.push).toHaveBeenLastCalledWith("/sessions/new");
+    key(document, "h");
     expect(router.push).toHaveBeenLastCalledWith("/sessions/new");
 
     key(document, "g");

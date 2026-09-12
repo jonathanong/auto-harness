@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket, register, registered } from "./ws-transport-test-helpers.ts";
+import { FakeSocket, register, registered } from "../test-helpers/ws-transport-test-helpers.ts";
 
 describe("reconnect resilience to a failing socket factory", () => {
   it("keeps backing off instead of crashing when the socket factory keeps throwing synchronously", async () => {

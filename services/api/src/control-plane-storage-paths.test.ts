@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { putScheduleOrThrow } from "./control-plane-test-helpers.ts";
+import { putScheduleOrThrow } from "../test-helpers/control-plane-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("StoPaths");
 

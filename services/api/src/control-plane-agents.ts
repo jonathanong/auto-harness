@@ -165,10 +165,10 @@ function validateReportedAttempts(opts: {
 function validateRunningSessions(
   state: ControlPlaneState,
   hostId: string,
-  reported: readonly string[] | undefined,
+  reported: readonly string[],
 ): string | null {
   const seen = new Set<string>();
-  for (const sessionId of reported ?? []) {
+  for (const sessionId of reported) {
     if (seen.has(sessionId)) return `duplicate running session ${sessionId}`;
     seen.add(sessionId);
     const session = state.sessions.get(sessionId);
@@ -206,10 +206,10 @@ function validateRunningSessions(
 async function validateRunningSessionsDurable(
   state: ControlPlaneState,
   hostId: string,
-  reported: readonly string[] | undefined,
+  reported: readonly string[],
 ): Promise<string | null> {
   const seen = new Set<string>();
-  for (const sessionId of reported ?? []) {
+  for (const sessionId of reported) {
     if (seen.has(sessionId)) return `duplicate running session ${sessionId}`;
     seen.add(sessionId);
     const session = await state.storage!.getSession(sessionId);

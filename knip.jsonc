@@ -13,27 +13,27 @@
       "project": ["src/**/*.ts"],
     },
     "modules/ui": {
-      "project": ["src/**/*.{ts,tsx,css}"],
+      "project": ["src/**/*.{ts,tsx,css}", "test-helpers/**/*.{ts,tsx}"],
     },
     "services/api": {
-      "project": ["src/**/*.ts"],
+      "project": ["src/**/*.ts", "test-helpers/**/*.ts"],
     },
     "services/host-daemon": {
-      "project": ["src/**/*.ts"],
+      "project": ["src/**/*.ts", "test-helpers/**/*.ts"],
     },
     "services/web": {
       "entry": ["src/index.ts", "src/app/**/page.tsx"],
-      "project": ["src/**/*.{ts,tsx,css}"],
+      "project": ["src/**/*.{ts,tsx,css}", "test-helpers/**/*.{ts,tsx}"],
     },
     "services/host-pane": {
       "entry": ["src/index.ts", "src/app/**/page.tsx"],
-      "project": ["src/**/*.{ts,tsx,css}"],
+      "project": ["src/**/*.{ts,tsx,css}", "test-helpers/**/*.ts"],
     },
     "services/cdk": {
       "entry": ["src/cli.ts", "src/apigateway-account-cli.ts"],
-      "project": ["src/**/*.ts"],
+      "project": ["src/**/*.ts", "test-helpers/**/*.ts"],
     },
   },
-  "ignore": ["**/*-test-helpers.ts"],
+  "ignore": ["**/test-helpers/**"],
   "ignoreBinaries": ["lychee", "systemd-analyze"],
 }

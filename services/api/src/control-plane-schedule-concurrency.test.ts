@@ -6,8 +6,8 @@ import {
   triggerScheduleDurable,
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
-import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 
 function makeDurableSchedulePlane() {
   const plane = new ControlPlane({

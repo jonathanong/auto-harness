@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SessionRow } from "./sessions-table.tsx";
@@ -191,5 +192,5 @@ function isCurrent(
 }
 
 function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
+  return thrownMessage(reason);
 }

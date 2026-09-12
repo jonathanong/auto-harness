@@ -63,6 +63,26 @@ describe("installCrashLogging report hook", () => {
       vi.useRealTimers();
     }
 
+    const scheduled: Array<() => void> = [];
+    const customClock = fakeProcess();
+    installCrashLogging({
+      process: customClock as never,
+      logger: () => {},
+      report: () => new Promise(() => {}),
+      reportTimeoutMs: 50,
+      setTimeout: ((fn: () => void) => {
+        scheduled.push(fn);
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as unknown as typeof setTimeout,
+      clearTimeout: vi.fn() as unknown as typeof clearTimeout,
+    });
+    customClock.emit("uncaughtException", new Error("bang"));
+    expect(customClock.exits).toEqual([]);
+    scheduled[0]!();
+    await vi.waitFor(() => {
+      expect(customClock.exits).toEqual([1]);
+    });
+
     const throwing = fakeProcess();
     installCrashLogging({
       process: throwing as never,

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { handleHostUpdateConfigRoutes } from "./local-routes-host-update-config.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const admin: Principal = { id: "user:admin", kind: "user", role: "admin" };
 const maintainer: Principal = { id: "user:maintainer", kind: "user", role: "maintainer" };

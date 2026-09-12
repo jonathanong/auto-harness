@@ -8,6 +8,7 @@ import {
   defaultWorktreePath,
   mutateInventory,
   newId,
+  thrownMessage,
   type HostRepository,
 } from "@auto-harness/shared";
 
@@ -122,7 +123,7 @@ export function AddWorktreeForm({
                 setSetupScript("");
                 router.refresh();
               } catch (err) {
-                showToast(err instanceof Error ? err.message : String(err), {
+                showToast(thrownMessage(err), {
                   variant: "destructive",
                 });
               }

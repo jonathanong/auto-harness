@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import CommandsPage from "./commands/page.tsx";
 import ProvidersPage from "./providers/page.tsx";
 import RepositoriesPage from "./repositories/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("control catalog list routes", () => {
   it("renders commands with provider names and links", async () => {
@@ -75,6 +75,18 @@ describe("control catalog list routes", () => {
     );
     expect(html).toContain('data-pw="pagination-next"');
     expect(html).toContain("cursor=page%2Ftwo");
+  });
+
+  it("ignores a non-string commands cursor", async () => {
+    stubApi({
+      "/api/v1/commands": { items: [] },
+      "/api/v1/providers": { items: [] },
+    });
+    const html = await renderPage(
+      CommandsPage({ searchParams: Promise.resolve({ cursor: ["page/one"] }) }),
+    );
+    expect(html).toContain("No commands registered yet.");
+    expect(html).not.toContain("cursor=page%2Fone");
   });
 
   it("renders providers with account, cooldown, and command counts", async () => {

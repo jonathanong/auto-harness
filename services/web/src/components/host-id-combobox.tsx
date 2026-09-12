@@ -51,14 +51,12 @@ export function HostIdCombobox({
 
   useEffect(() => {
     const input = rootRef.current?.querySelector("input");
-    if (!input) return;
-    input.setCustomValidity(listed ? "" : "Select a host from the list");
+    input?.setCustomValidity(listed ? "" : "Select a host from the list");
   }, [listed]);
 
   const select = (hostId: string) => {
     setValue(hostId);
-    const index = hostIds.indexOf(hostId);
-    if (index >= 0) setActive(index);
+    setActive(Math.max(0, hostIds.indexOf(hostId)));
     setFiltering(false);
     setOpen(false);
   };

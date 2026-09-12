@@ -7,7 +7,7 @@ import {
   busyWorktreeFixture,
   runningSessionFixture,
   seedConnectedHost,
-} from "./control-plane-keepalive-reconcile-test-helpers.ts";
+} from "../test-helpers/control-plane-keepalive-reconcile-test-helpers.ts";
 
 describe("keepalive-driven session reconciliation", () => {
   it("requeues a session the daemon no longer reports as running", async () => {

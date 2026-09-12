@@ -18,7 +18,7 @@ import {
   SESSIONS_QUEUE_ORDER_INDEX,
 } from "../control-plane-ordering.ts";
 import { createDynamoClients } from "./dynamo.ts";
-import { dynamoAvailable } from "./dynamo-test-helpers.ts";
+import { dynamoAvailable } from "../../test-helpers/dynamo-test-helpers.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   backfillQueuedSessionQueueOrder,

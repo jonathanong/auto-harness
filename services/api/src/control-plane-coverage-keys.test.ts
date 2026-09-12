@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: concurrency ids list and resume metadata", () => {
   it("concurrency ids list and resume metadata", () => {

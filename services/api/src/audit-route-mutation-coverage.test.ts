@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
-import { auditFixture } from "./audit-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { auditFixture } from "../test-helpers/audit-test-helpers.ts";
 
 describe("audited mutation route coverage", () => {
   it("accepts the optional mutation inputs that are persisted in audit-protected routes", async () => {

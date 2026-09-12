@@ -3,7 +3,13 @@
 import React, { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 const api = vi.hoisted(() => ({
   loadServiceAccountData: vi.fn(),
@@ -16,7 +22,11 @@ vi.mock("./service-account-api.ts", async (loadOriginal) => ({
   ...api,
 }));
 
-import { ServiceAccountSettings } from "./service-account-settings.tsx";
+import {
+  ServiceAccountSettings,
+  withReadyAccount,
+  withoutAccount,
+} from "./service-account-settings.tsx";
 
 const oldAccount = {
   id: "service:old",
@@ -43,6 +53,14 @@ beforeEach(() => {
 });
 
 describe("ServiceAccountSettings", () => {
+  it("ignores account updates until the list is ready", () => {
+    expect(withReadyAccount({ kind: "loading" }, oldAccount)).toEqual({ kind: "loading" });
+    expect(withoutAccount({ kind: "error", message: "nope" }, oldAccount.id)).toEqual({
+      kind: "error",
+      message: "nope",
+    });
+  });
+
   it("renders an admin-only boundary without making an account request", () => {
     const view = mountForm(<ServiceAccountSettings canManage={false} />);
     expect(field(view.container, "service-accounts-forbidden-error").textContent).toContain(

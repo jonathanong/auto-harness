@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostInventory } from "@auto-harness/shared";
 
 import { AddRepoForm } from "./add-repo-form.tsx";
-import { input, mount, reset, router, submit } from "./action-form-test-helpers.ts";
+import {
+  input,
+  mount,
+  reset,
+  router,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 
 afterEach(reset);
 

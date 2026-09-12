@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
-import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, recorder, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("supervisor restart installer", () => {
   it("hands Linux restart back to the authorized service process without systemctl", async () => {

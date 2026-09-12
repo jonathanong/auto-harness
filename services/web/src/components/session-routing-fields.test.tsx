@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, press, setValue } from "../../test-helpers/form-test-helpers.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 
 const targets = [

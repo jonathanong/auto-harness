@@ -7,7 +7,7 @@ import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const token = "xoxb-1234567890-abcdefghij";
 

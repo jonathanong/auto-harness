@@ -8,7 +8,7 @@ import {
   baseSessionBody,
   putScheduleOrThrow,
   seedBaseCommand,
-} from "./control-plane-test-helpers.ts";
+} from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane claim invariants", () => {
   it("hydrate and settle are no-ops without storage", async () => {

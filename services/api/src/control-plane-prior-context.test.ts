@@ -5,7 +5,7 @@ import {
   deterministicPlane,
   finishedLoggedSessionPlane,
   registerFixtureHost,
-} from "./control-plane-prior-context-test-helpers.ts";
+} from "../test-helpers/control-plane-prior-context-test-helpers.ts";
 import {
   loadPriorSessionContextDurable,
   loadPriorSessionContextLocal,

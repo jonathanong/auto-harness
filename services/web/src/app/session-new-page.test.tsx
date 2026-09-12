@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import NewSessionPage from "./sessions/new/page.tsx";
-import { renderPage, stubApi } from "./route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("new session route", () => {
   const blankSearchParams = { searchParams: Promise.resolve({}) };
@@ -93,6 +93,32 @@ describe("new session route", () => {
     expect(html).toContain('value="source/ref"');
     expect(html).not.toContain("excluded-concurrency");
     expect(html).not.toContain("excluded-resume");
+  });
+
+  it("keeps the clone source repository when it is already in the catalog", async () => {
+    stubApi({
+      "/api/v1/session-targets": {
+        items: [{ kind: "command", id: "command-1", label: "Run" }],
+      },
+      "/api/v1/repositories": { items: [{ id: "source-repository", name: "Source" }] },
+      "/api/v1/worktrees": { items: [] },
+      "/api/v1/sessions/source": {
+        repositoryId: "source-repository",
+        prompt: "again",
+        target: { commandId: "command-1" },
+        fallbacks: [],
+        queueTtlSeconds: 60,
+        timeout: 30,
+        priority: 0,
+        requiredLabels: [],
+      },
+    });
+    const html = await renderPage(
+      NewSessionPage({ searchParams: Promise.resolve({ cloneFrom: "source" }) }),
+    );
+    expect(html).toContain('data-pw="session-clone-source"');
+    expect(html).toContain(">Source</option>");
+    expect(html).not.toContain('value="source-repository">source-repository');
   });
 
   it("does not fetch an invalid id and keeps a failed clone source generic", async () => {

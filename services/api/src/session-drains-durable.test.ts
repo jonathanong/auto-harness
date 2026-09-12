@@ -8,9 +8,9 @@ import {
   createDynamoTestCtx,
   putActiveTestRepository,
   putTestPrincipal,
-} from "./db/dynamo-test-helpers.ts";
+} from "../test-helpers/dynamo-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 

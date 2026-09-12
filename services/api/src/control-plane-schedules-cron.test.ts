@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("schedule UTC cron validation", () => {
   it("rejects an internal deletion lease as a schedule concurrency id", () => {

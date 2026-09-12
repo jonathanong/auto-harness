@@ -7,7 +7,7 @@ import {
   httpBaseFromApiUrl,
   inventoryFingerprint,
 } from "./bootstrap.ts";
-import { valid } from "./config-test-helpers.ts";
+import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("httpBaseFromApiUrl", () => {
   it("normalizes http, https, ws, wss and trailing /ws", () => {
@@ -71,6 +71,12 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint({ ...empty, allowedRoots: ["/safe"] })).not.toBe(
       inventoryFingerprint(empty),
     );
+    expect(
+      inventoryFingerprint({
+        ...empty,
+        updateConfig: { enabled: true, pollMs: 60_000 },
+      }),
+    ).not.toBe(inventoryFingerprint(empty));
   });
 
   it("handles empty error bodies", async () => {

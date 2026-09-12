@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type { SessionLogChunk } from "@auto-harness/shared";
 
 import { OutboundQueue } from "./outbound-queue.ts";
@@ -23,6 +24,6 @@ export async function sendDaemonLog(
       chunk.stream === "system" ? { nonDroppable: true } : undefined,
     )
     .catch((err: unknown) => {
-      onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+      onLog?.(`log delivery failed: ${thrownMessage(err)}`);
     });
 }

@@ -3,7 +3,13 @@
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 
-import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  mountForm,
+  press,
+  router,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { DeleteRepoButton } from "./delete-repo-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {

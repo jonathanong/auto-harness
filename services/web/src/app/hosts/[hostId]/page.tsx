@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- host detail composes inventory and exec-config write gates. */
+import { thrownMessage } from "@auto-harness/shared";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 import { HostAdvancedTab } from "../../../components/host-advanced-tab.tsx";
@@ -11,7 +12,7 @@ import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return thrownMessage(error);
 }
 export const dynamic = "force-dynamic";
 type Agent = {

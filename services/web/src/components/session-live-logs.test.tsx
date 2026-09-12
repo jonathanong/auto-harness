@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SESSION_QUEUED_WAIT_COPY } from "@auto-harness/ui";
 
-import { field, mountForm, press } from "./form-test-helpers.tsx";
+import { field, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
 import { SessionLiveLogs } from "./session-live-logs.tsx";
 
 type Handler = (event: { code?: number; data?: string }) => void;
@@ -205,12 +205,41 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("stops reconnecting after a subscription-limit viewer error", async () => {
+    const { view, socket } = await mountLive("session-limited", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "SUBSCRIPTION_LIMIT" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain(
+      "unavailable for this session",
+    );
+    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
+    view.unmount();
+    act(() => socket.emit("close", { code: 1000 }));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
   it("ignores a stale queued status after the session has finished", async () => {
     const { view, socket } = await mountLive("session-stale", "failed");
     emitStatus(socket, "session:subscribed", "failed");
     emitStatus(socket, "session:status", "queued");
     expect(field(view.container, "session-logs-live-state").textContent).toBe("failed");
     expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
+    view.unmount();
+  });
+
+  it("ignores unrecognized viewer frames", async () => {
+    const { view, socket } = await mountLive("session-unknown", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:pong" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — running");
     view.unmount();
   });
 

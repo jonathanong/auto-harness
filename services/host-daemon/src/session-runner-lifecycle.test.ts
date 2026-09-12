@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { baseAssign, setup } from "./session-runner-test-helpers.ts";
+import { baseAssign, setup } from "../test-helpers/session-runner-test-helpers.ts";
 
 describe("SessionRunner lifecycle transcript", () => {
   it("emits successful setup and process markers without command arguments", async () => {

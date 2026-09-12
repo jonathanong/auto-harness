@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { SessionLogChunk } from "@auto-harness/shared";
 
 import { LogStreamer, type LogLimits } from "./log-streamer.ts";
-import { createStreamerClock, type StreamerClock } from "./log-streamer-test-helpers.ts";
+import {
+  createStreamerClock,
+  type StreamerClock,
+} from "../test-helpers/log-streamer-test-helpers.ts";
 
 function createOverflowStreamer(
   chunks: SessionLogChunk[],

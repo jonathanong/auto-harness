@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createWsTransport } from "./ws-transport.ts";
-import { FakeSocket } from "./ws-transport-test-helpers.ts";
+import { FakeSocket } from "../test-helpers/ws-transport-test-helpers.ts";
 
 /**
  * A whole fleet loses its sockets at the same instant when the control plane restarts.

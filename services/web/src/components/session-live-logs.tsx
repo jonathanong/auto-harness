@@ -48,7 +48,7 @@ export function SessionLiveLogs({
       retryTimer = setTimeout(connect, delay);
     };
     const connect = (): void => {
-      if (stopped || terminalError) return;
+      if (stopped) return;
       void viewerTicket()
         .then((ticket) => {
           if (stopped || terminalError) return;
@@ -121,7 +121,7 @@ export function SessionLiveLogs({
     connect();
     return () => {
       stopped = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "session:unsubscribe", sessionId }));
       }

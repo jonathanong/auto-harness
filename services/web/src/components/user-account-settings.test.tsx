@@ -3,7 +3,13 @@
 import React, { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 const api = vi.hoisted(() => ({
   loadUserAccounts: vi.fn(),
@@ -131,5 +137,17 @@ describe("UserAccountSettings", () => {
     const unauthorized = mountForm(<UserAccountSettings canManage />);
     await settle();
     expect(field(unauthorized.container, "user-accounts-loading")).toBeTruthy();
+  });
+
+  it("ignores a rejected load after unmount", async () => {
+    let fail!: (reason: unknown) => void;
+    api.loadUserAccounts.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    const view = mountForm(<UserAccountSettings canManage />);
+    view.unmount();
+    await act(async () => fail("offline"));
   });
 });

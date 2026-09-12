@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalManifest } from "./agent-updater.ts";
 import { createDaemonUpdater, withHostUpdateConfig } from "./agent-updater-runtime.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
-import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("daemon updater PEM configuration", () => {
   it("decodes a persisted single-line PEM before verifying its signed manifest", async () => {

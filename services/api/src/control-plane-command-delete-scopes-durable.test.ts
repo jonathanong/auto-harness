@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("CmdDelScope");
 const now = () => "2026-01-01T00:00:00.000Z";

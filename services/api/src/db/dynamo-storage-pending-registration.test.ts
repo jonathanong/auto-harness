@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("PendingReg");
 const at = "2026-01-01T00:00:00.000Z";

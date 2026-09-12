@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
+import {
+  apiBase,
+  apiErrorMessage,
+  apiGet,
+  resolveServerApiBase,
+  thrownMessage,
+} from "./api-client.ts";
 
 beforeEach(() => {
   vi.stubEnv("HARNESS_API_HTTP", undefined);
@@ -114,5 +120,12 @@ describe("apiErrorMessage", () => {
         text: async () => JSON.stringify({ error: { message: "nope" } }),
       }),
     ).resolves.toBe("nope");
+  });
+});
+
+describe("thrownMessage", () => {
+  it("prefers Error.message and stringifies other thrown values", () => {
+    expect(thrownMessage(new Error("offline"))).toBe("offline");
+    expect(thrownMessage("network-string")).toBe("network-string");
   });
 });

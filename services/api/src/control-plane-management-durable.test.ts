@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 
 describe("durable management writes", () => {
   it("preserves the durable management API in memory-only control planes", async () => {

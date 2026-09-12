@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
-import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const account = (label = "account"): ProviderAccountRecord => ({

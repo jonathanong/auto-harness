@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
   repositoryAdmissionFailure,
   repositoryAdmissionOpen,

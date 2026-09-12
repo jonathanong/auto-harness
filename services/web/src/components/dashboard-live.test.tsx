@@ -5,7 +5,13 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardLive, type DashboardSnapshot } from "./dashboard-live.tsx";
-import { createRequestFake, field, json, mountForm, press } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+  press,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 
@@ -199,5 +205,47 @@ describe("DashboardLive", () => {
     await act(async () => press(retryButton));
     expect(fetches).toBe(inFlight);
     view.unmount();
+  });
+
+  it("does not arm the next poll when unmounted during refresh", async () => {
+    vi.useFakeTimers();
+    let resolveSessions!: (response: Response) => void;
+    const sessions = new Promise<Response>((resolve) => {
+      resolveSessions = resolve;
+    });
+    const request = createRequestFake(
+      sessions,
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [], nextCursor: null }),
+      json({ items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<DashboardLive initial={emptySnapshot} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    view.unmount();
+    await act(async () => {
+      resolveSessions(json({ items: [] }));
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(20));
+    expect(request.requests.length).toBeLessThanOrEqual(5);
+  });
+
+  it("does not schedule another poll after unmount", async () => {
+    vi.useFakeTimers();
+    const request = createRequestFake(
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [], nextCursor: null }),
+      json({ items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(<DashboardLive initial={emptySnapshot} pollMs={10} />);
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    const inFlight = request.requests.length;
+    view.unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(20));
+    expect(request.requests).toHaveLength(inFlight);
   });
 });

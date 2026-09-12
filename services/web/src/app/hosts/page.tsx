@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import { Suspense } from "react";
 import { Alert, CursorPagination } from "@auto-harness/ui";
 
@@ -50,7 +51,7 @@ export default async function HostsPage({
     hostsNextCursor = h.nextCursor ?? null;
     inventories = inv.items ?? [];
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    error = thrownMessage(e);
   }
   try {
     const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees?limit=100");

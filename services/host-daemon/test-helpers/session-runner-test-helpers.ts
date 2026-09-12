@@ -1,0 +1,75 @@
+import { tmpdir } from "node:os";
+
+import type { SessionAssign } from "@auto-harness/shared";
+
+import { parseDaemonConfig } from "../src/config.ts";
+import type { ProcessRunner } from "../src/executor.ts";
+import type { GitClient } from "../src/git.ts";
+import type { ExecutionProfiles } from "../src/execution-profiles.ts";
+import { SessionRunner } from "../src/session-runner.ts";
+import { WorktreeManager } from "../src/worktree-manager.ts";
+
+export const testExecutionProfiles: ExecutionProfiles = {
+  maxConcurrentAssignments: 1,
+  profiles: new Map([["acct-1", { providerAccountId: "acct-1", home: tmpdir(), env: {} }]]),
+};
+
+export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
+  return {
+    sessionId: "sess-1",
+    attemptId: "attempt-1",
+    repositoryId: "repo-1",
+    prompt: "hello",
+    resolvedArgv: ["echo", "hello"],
+    timeout: 30,
+    worktreeId: "wt-1",
+    ...over,
+  };
+}
+
+export function setup(runner: ProcessRunner) {
+  const config = parseDaemonConfig({
+    hostId: "a1",
+    repositories: [
+      {
+        id: "repo-1",
+        path: "/repo",
+        defaultBranch: "main",
+        terminalHookScript: "/hook.sh",
+        worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["codex"] }],
+      },
+    ],
+  });
+  const git: GitClient = {
+    ensureRepo: async () => undefined,
+    ensureWorktree: async () => undefined,
+    checkoutRef: async () => undefined,
+    prepareMainCheckout: async () => undefined,
+    revParse: async () => "deadbeef",
+  };
+  const worktrees = new WorktreeManager(config, git);
+  const hooks: string[] = [];
+  const wrapped: ProcessRunner = {
+    async run(opts) {
+      if (opts.argv[0] === "/bin/sh" && opts.argv[1] === "/hook.sh") {
+        hooks.push(opts.env?.HARNESS_STATUS ?? "");
+        return { exitCode: 1, timedOut: false, signal: null };
+      }
+      const result = await runner.run(opts);
+      const isSetup = opts.argv[1] === "-c" && opts.argv[3] === "auto-harness-setup";
+      if (isSetup && result.exitCode === 0 && !result.timedOut && !result.cancelled) {
+        return { ...result, environment: result.environment ?? opts.env ?? {} };
+      }
+      return result;
+    },
+  };
+  return {
+    hooks,
+    sessionRunner: new SessionRunner({
+      worktrees,
+      processRunner: wrapped,
+      executionProfiles: testExecutionProfiles,
+      now: () => "2026-08-01T00:00:00.000Z",
+    }),
+  };
+}

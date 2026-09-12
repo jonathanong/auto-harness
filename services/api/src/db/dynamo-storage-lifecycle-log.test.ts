@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SESSION_LOGS_TTL_SECONDS } from "./dynamo.ts";
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("LifecycleLog");
 

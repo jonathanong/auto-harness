@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import type {
   SessionAssign,
   SessionErrorCode,
@@ -116,9 +117,7 @@ export async function finishClaimedSession(
   } catch (error) {
     streamer.write(
       "system",
-      `terminal hook revalidation failed for session ${assign.sessionId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `terminal hook revalidation failed for session ${assign.sessionId}: ${thrownMessage(error)}`,
     );
     refreshed = null;
   }

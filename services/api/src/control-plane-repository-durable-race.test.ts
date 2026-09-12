@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const ctx = createDynamoTestCtx("RepoCreateRace");

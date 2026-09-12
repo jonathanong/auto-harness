@@ -1,9 +1,13 @@
+/* eslint-disable max-lines -- assignment run outcomes share one daemon-loop fixture. */
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 import { SpawnProcessRunner, type ProcessRunner, type ProcessResult } from "./executor.ts";
 
 describe("DaemonLoop run", () => {

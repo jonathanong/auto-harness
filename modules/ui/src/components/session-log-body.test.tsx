@@ -4,7 +4,7 @@ import { createRef } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { SessionLogRecord } from "../lib/session-log-records.ts";
-import { field, mount, reset } from "./action-form-test-helpers.ts";
+import { field, mount, reset } from "../../test-helpers/action-form-test-helpers.ts";
 import { AnsiText, MarkedText } from "./session-log-ansi-text.tsx";
 import { SessionLogBody } from "./session-log-body.tsx";
 import { SessionLogViewer } from "./session-log-viewer.tsx";

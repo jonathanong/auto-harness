@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- signed update staging, activation, rollback, and post-activation pruning share one filesystem safety boundary. */
+import { thrownMessage } from "@auto-harness/shared";
 import { spawnSync } from "node:child_process";
 import {
   lstatSync,
@@ -181,9 +182,8 @@ function switchCurrent(
     try {
       renamePath(previousPointer, current);
     } catch (restoreError) {
-      const message = error instanceof Error ? error.message : String(error);
-      const restoreMessage =
-        restoreError instanceof Error ? restoreError.message : String(restoreError);
+      const message = thrownMessage(error);
+      const restoreMessage = thrownMessage(restoreError);
       throw new Error(
         `failed to switch current update pointer and restore the prior pointer: ${message}; ${restoreMessage}`,
         { cause: restoreError },

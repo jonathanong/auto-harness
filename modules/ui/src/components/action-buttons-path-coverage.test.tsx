@@ -4,7 +4,13 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostInventory } from "@auto-harness/shared";
 
-import { input, mount, reset, response, router } from "./action-form-test-helpers.ts";
+import {
+  input,
+  mount,
+  reset,
+  response,
+  router,
+} from "../../test-helpers/action-form-test-helpers.ts";
 import { DrainButton } from "./drain-button.tsx";
 import { PathInput } from "./path-input.tsx";
 import { RemoveRepoButton } from "./remove-repo-button.tsx";

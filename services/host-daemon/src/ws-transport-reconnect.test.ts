@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
-import { FakeSocket, transportFor } from "./ws-transport-test-helpers.ts";
+import { FakeSocket, transportFor } from "../test-helpers/ws-transport-test-helpers.ts";
 
 afterEach(() => vi.useRealTimers());
 describe("reconnecting WebSocket transport", () => {

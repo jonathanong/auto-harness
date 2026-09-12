@@ -103,12 +103,22 @@ describe("session live detail", () => {
         json: async () => ({ hostId: "other", online: true }),
       })
       .mockResolvedValueOnce(response(true, running))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => null,
+      })
+      .mockResolvedValueOnce(response(true, running))
       .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
       session: running,
       hosts: [{ hostId: "host-one", online: true }],
+    });
+    await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
+      session: running,
+      hosts: [],
     });
     await expect(fetchSessionLiveState("session/one")).resolves.toEqual({
       session: running,
@@ -174,6 +184,18 @@ describe("session live detail", () => {
     const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
     view.unmount();
     resolve(response(true, { ...running, status: "completed" }));
+    await Promise.resolve();
+  });
+
+  it("does not mark a refresh failure after unmount", async () => {
+    let reject!: (reason: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<never>((_, fail) => (reject = fail))),
+    );
+    const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
+    view.unmount();
+    reject(new Error("offline"));
     await Promise.resolve();
   });
 

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { awsArgs, awsCliEnv } from "./aws-cli.ts";
-import { config } from "./deployment-test-helpers.ts";
+import { config } from "../test-helpers/deployment-test-helpers.ts";
 
 describe("aws CLI helpers", () => {
   it("disables the AWS CLI pager so deploy output is not trapped in less", () => {

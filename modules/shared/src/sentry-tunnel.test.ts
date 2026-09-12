@@ -69,6 +69,18 @@ describe("evaluateSentryTunnel", () => {
       status: 400,
     });
   });
+
+  it("rejects when a configured DSN cannot be turned into an ingest URL", async () => {
+    const dsnModule = await import("./sentry-dsn.ts");
+    const spy = vi.spyOn(dsnModule, "sentryIngestEnvelopeUrl").mockReturnValue(undefined);
+    try {
+      expect(evaluateSentryTunnel({ method: "POST", configuredDsn: dsn, body: envelope })).toEqual({
+        status: 400,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("forwardSentryTunnel", () => {

@@ -1,4 +1,5 @@
 import {
+  thrownMessage,
   applyHostExecConfig,
   emptyHostInventory,
   EXEC_CONFIG_CAPABILITY,
@@ -99,7 +100,7 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
       send(res, 400, {
         error: {
           code: "VALIDATION_ERROR",
-          message: error instanceof Error ? error.message : String(error),
+          message: thrownMessage(error),
         },
       });
       return true;

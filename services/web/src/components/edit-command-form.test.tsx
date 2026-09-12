@@ -12,7 +12,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { EditCommandForm } from "./edit-command-form.tsx";
 
 const command = {

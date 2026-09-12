@@ -5,7 +5,7 @@ import {
   RUNNING_TIMEOUT_NOW as NOW,
   runningDeadlineMs,
   startAcknowledgedRunning,
-} from "./control-plane-running-timeout-test-helpers.ts";
+} from "../test-helpers/control-plane-running-timeout-test-helpers.ts";
 
 describe("acknowledged running sessions converge or time out", () => {
   it("applies a successful host completion to the public session and releases the worktree", () => {

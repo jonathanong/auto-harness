@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, setValue } from "../../test-helpers/form-test-helpers.tsx";
 import { PromptMarkdownPreview } from "./prompt-markdown-preview.tsx";
 import { SessionPromptField } from "./session-prompt-field.tsx";
 

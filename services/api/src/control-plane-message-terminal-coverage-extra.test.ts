@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- optional finish fields share the durable terminal fixture. */
 import { describe, expect, it } from "vitest";
 
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";

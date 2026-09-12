@@ -55,3 +55,8 @@ export async function apiErrorMessage(res: {
   }
   return `request failed (${res.status})`;
 }
+
+/** Prefer `Error.message`, otherwise stringify thrown non-Error values. */
+export function thrownMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

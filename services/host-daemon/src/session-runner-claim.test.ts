@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseDaemonConfig } from "./config.ts";
 import type { GitClient } from "./git.ts";
 import { SessionRunner } from "./session-runner.ts";
-import { baseAssign, setup } from "./session-runner-test-helpers.ts";
+import { baseAssign, setup } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("SessionRunner claim and checkout failures", () => {

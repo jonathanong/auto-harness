@@ -4,7 +4,7 @@ import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { handleSessionCloneRoute } from "./local-routes-session-clone.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 const source = {

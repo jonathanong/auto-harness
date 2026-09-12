@@ -8,7 +8,7 @@ import {
   uninstallHostService,
 } from "./host-service.ts";
 import type { HostServiceFs } from "./host-service-io.ts";
-import { baseOpts, memFs, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, memFs, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("unsupported platform / thrown failures", () => {
   it("dispatches service status through the platform adapter", () => {

@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, setValue, submit } from "./form-test-helpers.tsx";
+import { field, mountForm, setValue, submit } from "../../test-helpers/form-test-helpers.tsx";
 import { UserAccountCreateForm } from "./user-account-create-form.tsx";
 
 async function settle() {

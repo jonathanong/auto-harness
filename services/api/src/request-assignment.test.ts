@@ -3,9 +3,9 @@ import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { seedBaseCommand, baseSessionBody } from "./control-plane-test-helpers.ts";
+import { seedBaseCommand, baseSessionBody } from "../test-helpers/control-plane-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { enqueueAssignment, requestAssignment } from "./request-assignment.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

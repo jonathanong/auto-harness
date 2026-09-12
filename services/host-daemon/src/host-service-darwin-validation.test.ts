@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService } from "./host-service.ts";
-import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("install-service darwin validation and updates", () => {
   it("refuses an invalid existing env before writing or restarting", () => {

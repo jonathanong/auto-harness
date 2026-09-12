@@ -1,3 +1,4 @@
+import { thrownMessage } from "@auto-harness/shared";
 import Link from "next/link";
 import {
   resolveSessionDetailTab,
@@ -37,7 +38,7 @@ export default async function SessionDetailPage({
     // A 404 genuinely means the session doesn't exist. Anything else is a real
     // failure and must not be reported to the user as "no session found".
     if (!(error instanceof ApiError && error.status === 404)) {
-      sessionError = error instanceof Error ? error.message : String(error);
+      sessionError = thrownMessage(error);
     }
   }
 
@@ -70,7 +71,7 @@ export default async function SessionDetailPage({
     );
     logs = data.items ?? [];
   } catch (error) {
-    logsError = error instanceof Error ? error.message : String(error);
+    logsError = thrownMessage(error);
   }
 
   return (

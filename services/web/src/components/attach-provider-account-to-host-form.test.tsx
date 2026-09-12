@@ -3,7 +3,14 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  json,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { AttachProviderAccountToHostForm } from "./attach-provider-account-to-host-form.tsx";
 
 const accounts = [

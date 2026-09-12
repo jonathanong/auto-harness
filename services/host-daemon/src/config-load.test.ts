@@ -7,7 +7,7 @@ import {
   loadHostIdentity,
   parseDaemonConfig,
 } from "./config.ts";
-import { valid } from "./config-test-helpers.ts";
+import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("loadHostIdentity", () => {
   it("defaults to local agent id and API URL when env is empty", () => {
@@ -43,6 +43,11 @@ describe("loadDaemonConfig", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("keeps inline identity when env overrides are omitted", async () => {
+    const config = await loadDaemonConfig({ inline: valid, env: {} });
+    expect(config.hostId).toBe("local-1");
   });
 
   it("applies env overrides on inline config", async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const unavailable = async () => {
   throw new Error("storage unavailable");

@@ -5,7 +5,7 @@ import {
   run,
   stubGh,
   useFixtures,
-} from "./harness-prompt-context-test-helpers.ts";
+} from "./test-helpers/harness-prompt-context-test-helpers.ts";
 
 const { make } = useFixtures();
 

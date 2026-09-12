@@ -144,6 +144,10 @@ describe("webhook delivery storage branches", () => {
     await expect(
       claimWebhookDelivery(ctx(vi.fn().mockRejectedValue(conditional)), lease),
     ).resolves.toBeNull();
+    const failure = new Error("webhook table unavailable");
+    await expect(claimWebhookDelivery(ctx(vi.fn().mockRejectedValue(failure)), lease)).rejects.toBe(
+      failure,
+    );
   });
 
   it("rethrows a duplicate enqueue when the conditional winner cannot be read", async () => {
