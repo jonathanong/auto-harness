@@ -8,6 +8,30 @@ import {
 } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane API edges", () => {
+  it("reserves GitHub comment concurrency ids for the internal ingress creator", async () => {
+    const plane = new ControlPlane({
+      idFactory: () => "sess-github",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    seedBaseCommand(plane);
+    const body = baseSessionBody({ concurrencyId: "github-comment:issue_comment:42:99" });
+
+    expect(plane.createSession(body)).toEqual({
+      ok: false,
+      error: "concurrencyId uses a reserved internal prefix",
+    });
+    await expect(plane.createSessionDurable(body)).resolves.toEqual({
+      ok: false,
+      error: "concurrencyId uses a reserved internal prefix",
+    });
+    expect(plane.createGitHubIngressSession(body)).toMatchObject({ ok: true, created: true });
+    await expect(plane.createGitHubIngressSessionDurable(body)).resolves.toMatchObject({
+      ok: true,
+      created: false,
+      session: { id: "sess-github", concurrencyId: "github-comment:issue_comment:42:99" },
+    });
+  });
+
   it("POST fields include ref, target labels, concurrencyId, metadata, url", () => {
     const plane = new ControlPlane({
       publicBaseUrl: "http://ui",

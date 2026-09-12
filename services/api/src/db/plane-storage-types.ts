@@ -61,7 +61,7 @@ export type CustomWebhookIntegrationRecord = {
 };
 
 /** Singleton configuration for the GitHub App ingress receiver. */
-export type GitHubIngressBindingRecord = {
+type GitHubIngressBindingRecord = {
   githubRepositoryId: number;
   repositoryId: string;
   target: TargetRef;

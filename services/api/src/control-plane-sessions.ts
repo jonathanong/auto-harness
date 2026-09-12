@@ -149,6 +149,16 @@ export function createSession(
   return { ok: true, session: toPublic(state, session), created: true };
 }
 
+/** Trusted GitHub ingress alone may mint the comment-delivery concurrency namespace. */
+export function createGitHubIngressSession(
+  state: ControlPlaneState,
+  body: unknown,
+):
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: string } {
+  return createSession(state, body, { allowGitHubCommentConcurrencyId: true });
+}
+
 export function getSession(state: ControlPlaneState, id: string): PublicSession | null {
   const s = state.sessions.get(id);
   return s ? toPublic(state, s) : null;

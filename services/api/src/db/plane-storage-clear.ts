@@ -18,6 +18,7 @@ import {
   getSlackIntegration,
   listCustomWebhookIntegrations,
 } from "./plane-storage-integrations.ts";
+import { getGitHubIngressConfig } from "./plane-storage-github-ingress.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
@@ -149,6 +150,11 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   if (await getSlackIntegration(ctx)) {
     await ctx.doc.send(
       new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "slack" } }),
+    );
+  }
+  if (await getGitHubIngressConfig(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "github-ingress" } }),
     );
   }
   for (const integration of await listCustomWebhookIntegrations(ctx)) {

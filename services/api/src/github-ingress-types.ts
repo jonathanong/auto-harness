@@ -2,7 +2,7 @@ import type { TargetRef } from "@auto-harness/shared";
 
 import type { GitHubIngressConfigRecord } from "./db/plane-storage-types.ts";
 
-export type GitHubIngressBindingInput = {
+type GitHubIngressBindingInput = {
   githubRepositoryId: number;
   repositoryId: string;
   target: TargetRef;

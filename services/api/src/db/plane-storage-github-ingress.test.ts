@@ -41,6 +41,7 @@ describe("GitHub ingress integration storage", () => {
     await expect(putGitHubIngressConfig(storage, githubRecord, 1)).resolves.toBe(true);
     await expect(deleteGitHubIngressConfig(storage, 1)).resolves.toBe(true);
     expect(sends).toHaveLength(4);
+    expect(sends[0]).toEqual(expect.objectContaining({ ConsistentRead: true }));
   });
 
   it("exposes the singleton operations through the storage facade", async () => {
@@ -79,5 +80,28 @@ describe("GitHub ingress integration storage", () => {
     await expect(
       deleteGitHubIngressConfig(ctx(vi.fn().mockRejectedValue(failure)), 1),
     ).rejects.toBe(failure);
+  });
+
+  it("fences writes with owned catalog deletion markers", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      putGitHubIngressConfig(ctx(send), githubRecord, null, [
+        { key: "repository:repo", owner: "owner", now: "2026-09-12T00:00:00.000Z" },
+      ]),
+    ).resolves.toBe(true);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          TransactItems: expect.arrayContaining([
+            expect.objectContaining({
+              ConditionCheck: expect.objectContaining({
+                Key: { concurrencyId: "catalog-delete:repository:repo" },
+              }),
+            }),
+            expect.objectContaining({ Put: expect.anything() }),
+          ]),
+        }),
+      }),
+    );
   });
 });

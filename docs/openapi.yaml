@@ -878,17 +878,22 @@ components:
           maxItems: 100
           items: { $ref: "#/components/schemas/GitHubIngressBinding" }
     GitHubIngressConfig:
-      allOf:
-        - $ref: "#/components/schemas/GitHubIngressConfigInput"
-        - type: object
-          required: [id, type, enabled, secretConfigured, version, createdAt, updatedAt]
-          properties:
-            id: { type: string, const: github-ingress }
-            type: { type: string, const: github-ingress }
-            secretConfigured: { type: boolean, const: true }
-            version: { type: integer, minimum: 1 }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
+      type: object
+      required: [id, type, enabled, bindings, secretConfigured, version, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, const: github-ingress }
+        type: { type: string, const: github-ingress }
+        enabled: { type: boolean }
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/GitHubIngressBinding" }
+        secretConfigured: { type: boolean, const: true }
+        version: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     GitHubIngressAcknowledgement:
       type: object
       required: [accepted]

@@ -229,8 +229,12 @@ export function validateSessionCreate(
       ...(options.allowReservedConcurrencyId ? { allowReservedConcurrencyId: true } : {}),
     },
     {
-      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
-      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
+      ...(options.allowCustomWebhookConcurrencyId
+        ? { allowCustomWebhookConcurrencyId: true }
+        : {}),
+      ...(options.allowGitHubCommentConcurrencyId
+        ? { allowGitHubCommentConcurrencyId: true }
+        : {}),
     },
   );
   if (!validated.ok) return validated;

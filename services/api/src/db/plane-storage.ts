@@ -244,8 +244,9 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
   putGitHubIngressConfig(
     record: GitHubIngressConfigRecord,
     expectedVersion: number | null,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
   ): Promise<boolean> {
-    return githubIngress.putGitHubIngressConfig(this.ctx, record, expectedVersion);
+    return githubIngress.putGitHubIngressConfig(this.ctx, record, expectedVersion, markers);
   }
 
   deleteGitHubIngressConfig(expectedVersion: number): Promise<boolean> {

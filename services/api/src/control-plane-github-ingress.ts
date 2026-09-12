@@ -19,8 +19,14 @@ import {
   type PublicGitHubIngressConfig,
 } from "./github-ingress-types.ts";
 import type { GitHubIngressConfigRecord } from "./db/plane-storage-types.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 
 type Failure = { ok: false; error: string; conflict?: true; unavailable?: true };
+
+/** Leave headroom below DynamoDB's 400 KiB item limit for attribute overhead and evolution. */
+export const MAX_GITHUB_INGRESS_CONFIG_BYTES = 300 * 1024;
+/** One write plus at most 99 marker condition checks fits DynamoDB's 100-action limit. */
+export const MAX_GITHUB_INGRESS_CATALOG_REFS = 99;
 
 export async function getGitHubIngressConfig(
   state: ControlPlaneState,
@@ -49,18 +55,26 @@ export async function createGitHubIngressConfig(
 ): Promise<{ ok: true; integration: PublicGitHubIngressConfig } | Failure> {
   const valid = validateInput(input, true);
   if (!valid.ok) return valid;
-  const catalog = await validateConfiguredBindings(state, input);
-  if (!catalog.ok) return catalog;
   if (!state.secretEncryptor) return unavailable();
-  const current = await getGitHubIngressConfigRecord(state);
-  if (current)
-    return { ok: false, error: "GitHub ingress integration already exists", conflict: true };
-  const now = state.now();
-  const record = await makeRecord(state, input, 1, now, now);
-  if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null)))
-    return conflict();
-  state.githubIngressConfig = record;
-  return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+  return withGitHubIngressReferenceFence(state, input, async (markers) => {
+    const catalog = await validateConfiguredBindings(state, input);
+    if (!catalog.ok) return catalog;
+    const current = await getGitHubIngressConfigRecord(state);
+    if (current)
+      return {
+        ok: false,
+        error: "GitHub ingress integration already exists",
+        conflict: true as const,
+      };
+    const now = state.now();
+    const record = await makeRecord(state, input, 1, now, now);
+    const size = configSizeError(record);
+    if (size) return { ok: false, error: size };
+    if (state.storage && !(await state.storage.putGitHubIngressConfig(record, null, markers)))
+      return conflict();
+    state.githubIngressConfig = record;
+    return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+  });
 }
 
 export async function updateGitHubIngressConfig(
@@ -69,24 +83,31 @@ export async function updateGitHubIngressConfig(
 ): Promise<{ ok: true; integration: PublicGitHubIngressConfig } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
-  const catalog = await validateConfiguredBindings(state, input);
-  if (!catalog.ok) return catalog;
   if (!state.secretEncryptor) return unavailable();
-  const current = await getGitHubIngressConfigRecord(state);
-  if (!current) return { ok: false, error: "GitHub ingress integration not found" };
-  const record = await makeRecord(
-    state,
-    input,
-    current.version + 1,
-    current.createdAt,
-    state.now(),
-    input.secret === undefined ? current.encryptedSecret : undefined,
-  );
-  if (state.storage && !(await state.storage.putGitHubIngressConfig(record, current.version))) {
-    return conflict();
-  }
-  state.githubIngressConfig = record;
-  return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+  return withGitHubIngressReferenceFence(state, input, async (markers) => {
+    const catalog = await validateConfiguredBindings(state, input);
+    if (!catalog.ok) return catalog;
+    const current = await getGitHubIngressConfigRecord(state);
+    if (!current) return { ok: false, error: "GitHub ingress integration not found" };
+    const record = await makeRecord(
+      state,
+      input,
+      current.version + 1,
+      current.createdAt,
+      state.now(),
+      input.secret === undefined ? current.encryptedSecret : undefined,
+    );
+    const size = configSizeError(record);
+    if (size) return { ok: false, error: size };
+    if (
+      state.storage &&
+      !(await state.storage.putGitHubIngressConfig(record, current.version, markers))
+    ) {
+      return conflict();
+    }
+    state.githubIngressConfig = record;
+    return { ok: true, integration: toPublicGitHubIngressConfig(record) };
+  });
 }
 
 export async function deleteGitHubIngressConfig(
@@ -224,6 +245,12 @@ function validateInput(
       return { ok: false, error: "allowedLogins must be non-empty strings" };
     }
   }
+  if (githubIngressReferenceKeys(input).length > MAX_GITHUB_INGRESS_CATALOG_REFS) {
+    return {
+      ok: false,
+      error: `GitHub ingress configuration may reference at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
+    };
+  }
   return { ok: true };
 }
 
@@ -267,6 +294,42 @@ async function validateConfiguredBindings(
     if (!candidate.ok) return { ok: false, error: candidate.error };
   }
   return { ok: true };
+}
+
+/** Keep configuration writes alive only while all referenced catalog rows are undeleted. */
+async function withGitHubIngressReferenceFence<T extends { ok: boolean }>(
+  state: ControlPlaneState,
+  input: GitHubIngressConfigInput,
+  operation: (
+    markers:
+      | readonly import("./db/plane-storage-deletion-markers.ts").OwnedDeletionMarker[]
+      | undefined,
+  ) => Promise<T>,
+): Promise<T | Failure> {
+  const keys = githubIngressReferenceKeys(input);
+  return withDeletionMarkers(state, keys, async (owner) =>
+    operation(owner ? keys.map((key) => ({ key, owner, now: state.now() })) : undefined),
+  );
+}
+
+function githubIngressReferenceKeys(input: GitHubIngressConfigInput): string[] {
+  const keys = new Set<string>();
+  for (const binding of input.bindings) {
+    keys.add(`repository:${binding.repositoryId}`);
+    for (const route of [binding.target, ...(binding.fallbacks ?? [])]) {
+      keys.add(
+        "providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`,
+      );
+    }
+  }
+  return [...keys];
+}
+
+function configSizeError(record: GitHubIngressConfigRecord): string | null {
+  const bytes = new TextEncoder().encode(JSON.stringify(record)).length;
+  return bytes > MAX_GITHUB_INGRESS_CONFIG_BYTES
+    ? `GitHub ingress configuration must be at most ${MAX_GITHUB_INGRESS_CONFIG_BYTES} bytes`
+    : null;
 }
 
 function isSafeDefaultRef(value: string): boolean {

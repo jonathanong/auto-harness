@@ -413,6 +413,11 @@ and one or more numeric GitHub repository ID bindings to admitted Auto Harness r
 fixed routing. `PUT` may omit `secret` to retain it. A binding's default ref is used for issue
 comments; pull-request comments use `refs/pull/<number>/head`.
 
+The numeric repository and comment ID form a reserved session concurrency identity. Concurrent or
+active-session redelivery returns the existing session, while terminal sessions release the
+identity so a later redelivery can create a new run. This endpoint does not provide exactly-once
+execution or maintain a separate durable receipt.
+
 The ingress App is separate from the host credential App. The control plane stores only the
 ingress webhook secret. It never receives the credential App private key or installation tokens.
 

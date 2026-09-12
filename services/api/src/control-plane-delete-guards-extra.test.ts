@@ -193,6 +193,47 @@ describe("catalog delete references in every route shape", () => {
     });
   });
 
+  it("blocks deletion of catalog rows referenced by GitHub ingress bindings", () => {
+    const withGitHubIngress: DeleteReferences = {
+      ...refs,
+      githubIngress: {
+        id: "github-ingress",
+        type: "github-ingress",
+        encryptedSecret: "ciphertext",
+        enabled: true,
+        bindings: [
+          {
+            githubRepositoryId: 42,
+            repositoryId: "repository",
+            target: { providerId: "provider" },
+            fallbacks: [{ commandId: "command" }],
+            queueTtlSeconds: 60,
+            timeout: 60,
+            priority: 0,
+            requiredLabels: [],
+            defaultRef: "refs/heads/main",
+            allowedLogins: [],
+          },
+        ],
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    };
+    expect(dependenciesForProvider(withGitHubIngress, "provider")).toContainEqual({
+      kind: "integration",
+      id: "github-ingress",
+    });
+    expect(dependenciesForCommand(withGitHubIngress, "command")).toContainEqual({
+      kind: "integration",
+      id: "github-ingress",
+    });
+    expect(dependenciesForRepository(withGitHubIngress, "repository")).toContainEqual({
+      kind: "integration",
+      id: "github-ingress",
+    });
+  });
+
   it("treats absent override maps as no account dependency and reads in-memory references without storage", async () => {
     expect(
       dependenciesForAccount(

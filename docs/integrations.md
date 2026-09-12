@@ -363,9 +363,12 @@ MEMBER, and COLLABORATOR associations are accepted; extra bot or service logins 
 allowlisted per binding.
 
 Inline review comments run against `refs/pull/<number>/head`. Issue comments on pull requests use
-the same pull ref; issue comments on ordinary issues use the configured default ref. Redelivery is
-deduplicated by numeric repository and comment ID. Secret rotation, disablement, and deletion are
-version-fenced against session creation.
+the same pull ref; issue comments on ordinary issues use the configured default ref. Numeric
+repository and comment IDs form the existing session concurrency identity, so concurrent or
+active-session redelivery is deduplicated. Terminal sessions release that identity and a later
+redelivery can start a new run; ingress adds no second receipt store and does not promise
+exactly-once execution. Secret rotation, disablement, and deletion are version-fenced against
+session creation.
 
 The separate credential App described in [host daemon deployment](deploy-host-daemon.md#github-app-credentials-optional)
 has broader per-session API duties and keeps its private key exclusively on the host. Its key and

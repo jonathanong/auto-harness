@@ -61,6 +61,12 @@ export class ControlPlaneSessionsService {
     return sessions.createSession(this.state, body);
   }
 
+  createGitHubIngressSession(
+    body: unknown,
+  ): ReturnType<typeof sessions.createGitHubIngressSession> {
+    return sessions.createGitHubIngressSession(this.state, body);
+  }
+
   createSessionDurable(
     body: unknown,
     options: { principalId?: string; integrationFence?: IntegrationSessionFence } = {},

@@ -2,7 +2,11 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { decryptGitHubIngressSecret } from "./control-plane-github-ingress.ts";
+import {
+  decryptGitHubIngressSecret,
+  MAX_GITHUB_INGRESS_CATALOG_REFS,
+  MAX_GITHUB_INGRESS_CONFIG_BYTES,
+} from "./control-plane-github-ingress.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import type { GitHubIngressConfigRecord } from "./db/plane-storage-types.ts";
 
@@ -187,6 +191,89 @@ describe("GitHub ingress config", () => {
     );
     malformed.state.secretEncryptor.decrypt = async () => JSON.stringify({ secret: "ok" });
     await expect(decryptGitHubIngressSecret(malformed.state, record!)).resolves.toBe("ok");
+  });
+
+  it("bounds the aggregate item size and fenced catalog references", async () => {
+    const oversized = createPlane();
+    const largeLogins = Array.from({ length: 100 }, () => "x".repeat(39));
+    await expect(
+      oversized.createGitHubIngressConfig({
+        secret: "x".repeat(16),
+        bindings: Array.from({ length: 100 }, (_, index) => ({
+          ...binding,
+          githubRepositoryId: index + 1,
+          allowedLogins: largeLogins,
+        })),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`at most ${MAX_GITHUB_INGRESS_CONFIG_BYTES} bytes`),
+    });
+
+    const nearLimit = createPlane();
+    await expect(
+      nearLimit.createGitHubIngressConfig({
+        secret: "x".repeat(16),
+        bindings: Array.from({ length: 68 }, (_, index) => ({
+          ...binding,
+          githubRepositoryId: index + 1,
+          allowedLogins: largeLogins,
+        })),
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    const tooManyReferences = createPlane();
+    await expect(
+      tooManyReferences.createGitHubIngressConfig({
+        secret: "x".repeat(16),
+        bindings: Array.from({ length: 100 }, (_, index) => ({
+          ...binding,
+          githubRepositoryId: index + 1,
+          repositoryId: `repository-${index}`,
+        })),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        `at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
+      ),
+    });
+  });
+
+  it("fences durable writes against referenced catalog deletion", async () => {
+    const acquired: string[] = [];
+    const released: string[] = [];
+    let markers: unknown;
+    const storage = {
+      getRepository: async () => ({ id: "repo" }),
+      listProviders: async () => [],
+      listCommands: async () => [
+        { id: "command", name: "command", argv: ["echo"], providerId: null },
+      ],
+      listProviderAccounts: async () => [],
+      getGitHubIngressConfig: async () => null,
+      acquireDeletionMarker: async (key: string) => {
+        acquired.push(key);
+        return true;
+      },
+      releaseDeletionMarker: async (key: string) => void released.push(key),
+      putGitHubIngressConfig: async (_record: unknown, _version: unknown, value: unknown) => {
+        markers = value;
+        return true;
+      },
+    };
+    const plane = new ControlPlane({ secretEncryptor: encryptor, storage: storage as never });
+    const result = await plane.createGitHubIngressConfig({
+      secret: "x".repeat(16),
+      bindings: [binding],
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(acquired).toEqual(["command:command", "repository:repo"]);
+    expect(markers).toEqual([
+      { key: "repository:repo", owner: expect.any(String), now: expect.any(String) },
+      { key: "command:command", owner: expect.any(String), now: expect.any(String) },
+    ]);
+    expect(released).toEqual(["command:command", "repository:repo"]);
   });
 
   it("returns durable create, update, and delete CAS conflicts", async () => {

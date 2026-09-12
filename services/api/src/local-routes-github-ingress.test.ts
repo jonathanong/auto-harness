@@ -230,6 +230,27 @@ describe("GitHub App webhook ingress", () => {
     });
   });
 
+  it("reserves GitHub comment concurrency ids from the ordinary session API", async () => {
+    const { handler } = await fixture();
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/sessions", {
+        repositoryId: "repo",
+        target: { providerId: "provider" },
+        prompt: "bypass ingress",
+        timeout: 60,
+        concurrencyId: "github-comment:issue_comment:42:9",
+      }),
+    ).toMatchObject({
+      status: 400,
+      json: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "concurrencyId uses a reserved internal prefix",
+        },
+      },
+    });
+  });
+
   it("fails closed for invalid HMAC and acknowledges a verified unauthorized delivery without creating work", async () => {
     const { plane, handler } = await fixture();
     const payload = body();

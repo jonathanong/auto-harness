@@ -59,10 +59,18 @@ export async function createSessionDurable(
         code: "CONFLICT",
       };
     }
-    return createSession(state, body, {
-      ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
-      ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
-    });
+    return createSession(
+      state,
+      body,
+      {
+        ...(options.allowCustomWebhookConcurrencyId
+          ? { allowCustomWebhookConcurrencyId: true }
+          : {}),
+        ...(options.allowGitHubCommentConcurrencyId
+          ? { allowGitHubCommentConcurrencyId: true }
+          : {}),
+      },
+    );
   }
   await refreshTargetCatalogDurable(state);
   if (
@@ -78,10 +86,18 @@ export async function createSessionDurable(
   ) {
     await getWorkspacePoolDurable(state, (body as { workspacePoolId: string }).workspacePoolId);
   }
-  const prepared = validateSessionCreate(state, body, {
-    ...(options.allowCustomWebhookConcurrencyId ? { allowCustomWebhookConcurrencyId: true } : {}),
-    ...(options.allowGitHubCommentConcurrencyId ? { allowGitHubCommentConcurrencyId: true } : {}),
-  });
+  const prepared = validateSessionCreate(
+    state,
+    body,
+    {
+      ...(options.allowCustomWebhookConcurrencyId
+        ? { allowCustomWebhookConcurrencyId: true }
+        : {}),
+      ...(options.allowGitHubCommentConcurrencyId
+        ? { allowGitHubCommentConcurrencyId: true }
+        : {}),
+    },
+  );
   if (!prepared.ok) return prepared;
   if (options.integrationFence && !matchesIntegrationFence(state, options.integrationFence)) {
     return {
@@ -135,7 +151,7 @@ export function createCustomWebhookSessionDurable(
   });
 }
 
-/** Trusted GitHub ingress alone may mint comment-delivery concurrency identities. */
+/** Trusted GitHub ingress alone may mint the comment-delivery concurrency namespace. */
 export function createGitHubIngressSessionDurable(
   state: ControlPlaneState,
   body: unknown,
