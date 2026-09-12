@@ -175,6 +175,29 @@ describe("concurrent session admission conflicts", () => {
     ).resolves.toMatchObject({ created: true });
   });
 
+  it("continues lock conflict resolution when the concurrent integration fence holds", async () => {
+    const fence = {
+      id: "deploy",
+      type: "custom-webhook" as const,
+      storageId: "custom-webhook:deploy",
+      generation: "generation",
+      version: 2,
+      enabled: true,
+    };
+    await expect(
+      createSession(
+        ctx(async (command) => {
+          if (command instanceof TransactWriteCommand) throw cancelled(4);
+          expect(command).toBeInstanceOf(GetCommand);
+          return {};
+        }),
+        session,
+        [],
+        fence,
+      ),
+    ).rejects.toMatchObject({ name: "CreateSessionRetryExhaustedError" });
+  });
+
   it("distinguishes lock retries, active duplicates, and stale lock collisions", async () => {
     await expect(
       createSession(

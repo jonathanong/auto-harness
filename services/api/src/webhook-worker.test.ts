@@ -164,6 +164,14 @@ describe("webhook outbox processor", () => {
     expect(store.deadLetterExhaustedWebhookDelivery).toHaveBeenCalledTimes(2);
   });
 
+  it("uses the default clock when processing a live batch candidate", async () => {
+    const store = webhookProcessStore();
+    await expect(
+      processWebhookOutboxBatch(store, { deliver: async () => ({ ok: true }) }, {}, () => true),
+    ).resolves.toBeUndefined();
+    expect(store.claimWebhookDelivery).toHaveBeenCalledOnce();
+  });
+
   it("claims sequential batch candidates using their current time", async () => {
     const first = webhookTestDelivery({ id: "first", dueAt: webhookTestNow });
     const second = webhookTestDelivery({ id: "second", dueAt: webhookTestNow });

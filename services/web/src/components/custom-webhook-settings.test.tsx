@@ -176,6 +176,26 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
   });
 
+  it("ignores a load response whose payload belongs to another integration", async () => {
+    createApiFake(json({ ...existing, id: "other" }));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(view.container.querySelector('[data-pw="custom-webhook-delete"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("renders empty fallback rows without an identifier", async () => {
+    createApiFake(json({ ...existing, fallbacks: [{}] }));
+    const view = mountForm(<CustomWebhookSettings />);
+    setValue(field<HTMLInputElement>(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(field<HTMLInputElement>(view.container, "custom-webhook-fallback-id-0").value).toBe("");
+    view.unmount();
+  });
+
   it("names dynamic required-label controls for assistive technology", async () => {
     const view = mountForm(<CustomWebhookSettings />);
     press(field(view.container, "custom-webhook-add-label"));

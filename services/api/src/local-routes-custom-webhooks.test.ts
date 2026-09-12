@@ -231,12 +231,25 @@ describe("custom webhook receiver", () => {
       deleteCustomWebhookIntegration: (id: string) => Promise<unknown>;
       createCustomWebhookIntegration: (input: unknown) => Promise<unknown>;
     };
+    const appendAuditLog = plane.appendAuditLog;
     mutable.getCustomWebhookIntegration = async () => {
       throw new Error("storage unavailable");
     };
     expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
       { status: 500, json: { error: { code: "INTERNAL_ERROR" } } },
     );
+    plane.appendAuditLog = auditFailure;
+    const prefetchAuditFailure = directRoute(
+      plane,
+      "/api/v1/integrations/custom/deploy",
+      "PUT",
+      Buffer.from(JSON.stringify({ ...complete, secret: undefined, version: 1, generation })),
+    );
+    await expect(handleCustomWebhookConfigRoutes(prefetchAuditFailure.ctx as never)).resolves.toBe(
+      true,
+    );
+    expect(prefetchAuditFailure.status()).toBe(500);
+    plane.appendAuditLog = appendAuditLog;
     expect(
       await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
         ...complete,
@@ -290,6 +303,41 @@ describe("custom webhook receiver", () => {
         expect.objectContaining({ action: "integration:custom-webhook:create", outcome: "failed" }),
       ]),
     });
+  });
+
+  it("uses safe validation fallbacks for non-Error route failures", async () => {
+    const { plane } = await fixture();
+    const headers = new Proxy(
+      {},
+      {
+        get() {
+          throw "invalid fence";
+        },
+      },
+    );
+    const invalidFence = directRoute(
+      plane,
+      "/api/v1/integrations/custom/deploy",
+      "DELETE",
+      undefined,
+      headers as never,
+    );
+    await expect(handleCustomWebhookConfigRoutes(invalidFence.ctx as never)).resolves.toBe(true);
+    expect(invalidFence.status()).toBe(400);
+
+    const nonErrorBody = directRoute(
+      plane,
+      "/api/v1/integrations/custom/new-hook",
+      "POST",
+      Buffer.alloc(0),
+    );
+    nonErrorBody.ctx.req = {
+      on() {
+        throw "body stream failed";
+      },
+    } as never;
+    await expect(handleCustomWebhookConfigRoutes(nonErrorBody.ctx as never)).resolves.toBe(true);
+    expect(nonErrorBody.status()).toBe(400);
   });
 
   it("maps every configuration write outcome and fails closed when its audit cannot persist", async () => {

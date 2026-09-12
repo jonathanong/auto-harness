@@ -137,4 +137,40 @@ describe("marker-guarded session creation", () => {
       name: "SessionIdCollisionError",
     });
   });
+
+  it("maps a conditional transaction with no failed condition to a catalog conflict", async () => {
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [
+              { Code: "None" },
+              { Code: "None" },
+              { Code: "ConditionalCheckFailed" },
+            ],
+          };
+        },
+      } as never,
+      tables: { sessions: "Sessions", concurrencyLocks: "Locks" } as never,
+    };
+    await expect(
+      createSession(ctx, {
+        id: "session",
+        repositoryId: "repo",
+        prompt: "run",
+        target: { commandId: "command" },
+        fallbacks: [],
+        targetDisplayNames: [],
+        queueTtlSeconds: 1,
+        queueExpiresAt: "2026-01-01T00:00:01.000Z",
+        timeout: 1,
+        priority: 0,
+        requiredLabels: [],
+        status: "queued",
+        queueShard: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ name: "CatalogDeletionInProgressError" });
+  });
 });

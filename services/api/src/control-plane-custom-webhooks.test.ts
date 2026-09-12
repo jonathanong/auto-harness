@@ -168,6 +168,12 @@ describe("custom webhook integration lifecycle", () => {
     });
   });
 
+  it("accepts an explicitly empty fallback list", async () => {
+    await expect(
+      plane().createCustomWebhookIntegration(config({ fallbacks: [] })),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("fences observed generations across delete and recreate", async () => {
     const value = plane();
     const first = await value.createCustomWebhookIntegration(config());
