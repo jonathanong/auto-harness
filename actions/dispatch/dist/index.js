@@ -734,6 +734,9 @@ function validateResult(value) {
   if (result.summarySource !== "agent" && result.summarySource !== "harness") {
     throw new Error("Auto Harness returned a session result without a valid summarySource");
   }
+  if (result.summaryTruncated !== void 0 && result.summaryTruncated !== true) {
+    throw new Error("Auto Harness returned a session result with invalid summaryTruncated");
+  }
   if (result.branch !== void 0 && typeof result.branch !== "string") {
     throw new Error("Auto Harness returned a session result with an invalid branch");
   }
@@ -749,6 +752,7 @@ function validateResult(value) {
   return {
     summary: result.summary,
     summarySource: result.summarySource,
+    ...result.summaryTruncated === void 0 ? {} : { summaryTruncated: result.summaryTruncated },
     ...result.branch === void 0 ? {} : { branch: result.branch },
     ...result.filesChanged === void 0 ? {} : { filesChanged: result.filesChanged },
     ...result.filesChangedTruncated === void 0 ? {} : { filesChangedTruncated: result.filesChangedTruncated },
@@ -780,6 +784,7 @@ function isTerminalSessionStatus(status) {
 function setSessionResultOutputs(result) {
   setOutput("session-result", result === void 0 ? "" : JSON.stringify(result));
   setOutput("result-summary", result?.summary ?? "");
+  setOutput("result-summary-truncated", result?.summaryTruncated === true ? "true" : "");
   setOutput("result-summary-source", result?.summarySource ?? "");
   setOutput("result-branch", result?.branch ?? "");
   setOutput(

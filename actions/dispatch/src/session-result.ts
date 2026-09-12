@@ -13,6 +13,7 @@ const terminalSessionStatuses = new Set(["completed", "failed", "cancelled", "ti
 type ValidatedSessionResult = {
   summary: string;
   summarySource: "agent" | "harness";
+  summaryTruncated?: true;
   branch?: string;
   filesChanged?: string[];
   filesChangedTruncated?: true;
@@ -43,6 +44,9 @@ function validateResult(value: unknown): ValidatedSessionResult {
   if (result.summarySource !== "agent" && result.summarySource !== "harness") {
     throw new Error("Auto Harness returned a session result without a valid summarySource");
   }
+  if (result.summaryTruncated !== undefined && result.summaryTruncated !== true) {
+    throw new Error("Auto Harness returned a session result with invalid summaryTruncated");
+  }
   if (result.branch !== undefined && typeof result.branch !== "string") {
     throw new Error("Auto Harness returned a session result with an invalid branch");
   }
@@ -62,6 +66,7 @@ function validateResult(value: unknown): ValidatedSessionResult {
   return {
     summary: result.summary,
     summarySource: result.summarySource,
+    ...(result.summaryTruncated === undefined ? {} : { summaryTruncated: result.summaryTruncated }),
     ...(result.branch === undefined ? {} : { branch: result.branch }),
     ...(result.filesChanged === undefined ? {} : { filesChanged: result.filesChanged }),
     ...(result.filesChangedTruncated === undefined
@@ -99,6 +104,7 @@ export function isTerminalSessionStatus(status: string): boolean {
 export function setSessionResultOutputs(result: ValidatedSessionResult | undefined): void {
   setOutput("session-result", result === undefined ? "" : JSON.stringify(result));
   setOutput("result-summary", result?.summary ?? "");
+  setOutput("result-summary-truncated", result?.summaryTruncated === true ? "true" : "");
   setOutput("result-summary-source", result?.summarySource ?? "");
   setOutput("result-branch", result?.branch ?? "");
   setOutput(

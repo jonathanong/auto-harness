@@ -4,6 +4,7 @@ export type { Command, Provider, ResumeRefCapture, UsageRates } from "./catalog-
 export type SessionResult = {
   summary: string;
   summarySource: "agent" | "harness";
+  summaryTruncated?: true;
   branch?: string;
   filesChanged?: string[];
   filesChangedTruncated?: true;

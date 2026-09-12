@@ -30,6 +30,7 @@ describe("dispatch action one-shot session result", () => {
         result: {
           summary: "Changed parser\nand added coverage.",
           summarySource: "agent",
+          summaryTruncated: true,
           branch: "fix/parser",
           filesChanged: ["src/parser.ts", "src/parser.test.ts"],
           filesChangedTruncated: true,
@@ -53,6 +54,7 @@ describe("dispatch action one-shot session result", () => {
       "session-status": "completed",
       "session-terminal": "true",
       "result-summary": "Changed parser\nand added coverage.",
+      "result-summary-truncated": "true",
       "result-summary-source": "agent",
       "result-branch": "fix/parser",
       "result-files-changed": '["src/parser.ts","src/parser.test.ts"]',
@@ -62,6 +64,7 @@ describe("dispatch action one-shot session result", () => {
     expect(JSON.parse(result.output["session-result"]!)).toEqual({
       summary: "Changed parser\nand added coverage.",
       summarySource: "agent",
+      summaryTruncated: true,
       branch: "fix/parser",
       filesChanged: ["src/parser.ts", "src/parser.test.ts"],
       filesChangedTruncated: true,
@@ -81,6 +84,7 @@ describe("dispatch action one-shot session result", () => {
       "session-terminal": "false",
       "session-result": "",
       "result-summary": "",
+      "result-summary-truncated": "",
       "result-summary-source": "",
       "result-branch": "",
       "result-files-changed": "",
@@ -128,6 +132,19 @@ describe("dispatch action one-shot session result", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/result without a valid summarySource/);
+  });
+
+  it("rejects an invalid summary truncation marker", async () => {
+    const server = await serve(() => ({
+      body: session({
+        result: { summary: "done", summarySource: "agent", summaryTruncated: false },
+      }),
+    }));
+
+    const result = await runAction(resultInputs(server.origin));
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/invalid summaryTruncated/);
   });
 
   it("rejects an unknown session status instead of treating it as active", async () => {

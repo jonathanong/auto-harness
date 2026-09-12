@@ -33,9 +33,10 @@ To inspect an earlier dispatch without turning the original job into a poller, i
 action later with `operation: get-result` and `session-id`. It performs exactly one session-detail
 GET. `session-terminal` tells the caller whether the status is terminal; terminal failures still
 complete the action successfully so workflows can branch on `session-status`. The structured
-`session-result` JSON is also split into summary, summary-source, branch, changed-files JSON,
-truncation, and pull-request URL outputs. Active and result-unavailable sessions return empty result
-outputs. Callers choose their own later trigger or cadence; the action never polls.
+`session-result` JSON is also split into summary, summary-truncation, summary-source, branch,
+changed-files JSON, file-list truncation, and pull-request URL outputs. Active and
+result-unavailable sessions return empty result outputs. Callers choose their own later trigger or
+cadence; the action never polls.
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods
 cover session create/read/cancel/resume/list, principal session-drain start/read/release,

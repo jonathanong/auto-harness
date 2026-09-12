@@ -1,8 +1,8 @@
 /* eslint-disable max-lines -- result probe failures share one compact process-runner fixture. */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProcessRunner, RunProcessOptions } from "./executor.ts";
-import { collectSessionResult } from "./session-result.ts";
+import { collectSessionResult, SESSION_RESULT_PROBE_DEADLINE_MS } from "./session-result.ts";
 
 function runnerFor(responses: Record<string, string>): ProcessRunner {
   return {
@@ -24,6 +24,8 @@ function runnerWith(
 }
 
 describe("collectSessionResult", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("collects sorted NUL-delimited git facts and an exactly-one PR after a terminal hook", async () => {
     const result = await collectSessionResult({
       runner: runnerFor({
@@ -57,6 +59,23 @@ describe("collectSessionResult", () => {
     });
 
     expect(result).toEqual({ summary: "Session failed", summarySource: "harness" });
+  });
+
+  it("omits an oversized branch probe rather than recording a partial branch name", async () => {
+    const result = await collectSessionResult({
+      runner: runnerWith(async (options) => {
+        if (options.argv.includes("symbolic-ref")) {
+          options.onChunk({ stream: "stderr", data: "ignored diagnostic" });
+          options.onChunk({ stream: "stdout", data: "x".repeat(1_025) });
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      }),
+      cwd: process.cwd(),
+      status: "completed",
+      environment: process.env,
+    });
+
+    expect(result).toEqual({ summary: "Session completed", summarySource: "harness" });
   });
 
   it("bounds files and rejects ambiguous or invalid PR associations", async () => {
@@ -253,5 +272,47 @@ describe("collectSessionResult", () => {
     });
 
     expect(result.summary).toBe("Session completed; on branch; 1 file changed; pull request found");
+  });
+
+  it("uses one short deadline to omit stalled Git facts without delaying terminal status", async () => {
+    vi.useFakeTimers();
+    const calls: RunProcessOptions[] = [];
+    const runner: ProcessRunner = {
+      run(options) {
+        calls.push(options);
+        if (options.argv.includes("symbolic-ref")) {
+          options.onChunk({ stream: "stdout", data: "feature/result\n" });
+          return Promise.resolve({ exitCode: 0, timedOut: false, signal: null });
+        }
+        return new Promise((resolve) => {
+          options.signal?.addEventListener(
+            "abort",
+            () => resolve({ exitCode: null, timedOut: false, cancelled: true, signal: null }),
+            { once: true },
+          );
+        });
+      },
+    };
+
+    const collecting = collectSessionResult({
+      runner,
+      cwd: process.cwd(),
+      status: "completed",
+      baseline: "0123456789012345678901234567890123456789",
+      environment: process.env,
+    });
+    await vi.advanceTimersByTimeAsync(SESSION_RESULT_PROBE_DEADLINE_MS);
+
+    await expect(collecting).resolves.toEqual({
+      summary: "Session completed; on feature/result",
+      summarySource: "harness",
+      branch: "feature/result",
+    });
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.signal).toBe(calls[1]?.signal);
+    expect(calls[1]?.signal).toBe(calls[2]?.signal);
+    expect(calls.every((call) => call.timeoutMs <= SESSION_RESULT_PROBE_DEADLINE_MS)).toBe(true);
+    expect(calls.every((call) => call.signal?.aborted)).toBe(true);
+    expect(calls.some((call) => call.argv.includes("pr"))).toBe(false);
   });
 });

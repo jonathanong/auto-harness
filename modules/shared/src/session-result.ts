@@ -2,6 +2,7 @@
 export type SessionResult = {
   summary: string;
   summarySource: "agent" | "harness";
+  summaryTruncated?: true;
   branch?: string;
   filesChanged?: string[];
   filesChangedTruncated?: true;
@@ -48,6 +49,12 @@ export function normalizeSessionResult(value: unknown): SessionResult | undefine
   const summary = text(input.summary, MAX_SESSION_RESULT_SUMMARY_BYTES);
   if (summary === undefined || summary.length === 0) return undefined;
   const result: SessionResult = { summary, summarySource: input.summarySource };
+  if (
+    bytes(input.summary as string) > MAX_SESSION_RESULT_SUMMARY_BYTES ||
+    input.summaryTruncated === true
+  ) {
+    result.summaryTruncated = true;
+  }
   const branch = text(input.branch, MAX_SESSION_RESULT_BRANCH_BYTES);
   if (branch) result.branch = branch;
   if (
@@ -61,7 +68,11 @@ export function normalizeSessionResult(value: unknown): SessionResult | undefine
     const files = new Set<string>();
     for (const candidate of input.filesChanged) {
       if (typeof candidate !== "string" || candidate.length === 0) continue;
-      files.add(truncate(candidate, MAX_SESSION_RESULT_FILE_BYTES));
+      if (bytes(candidate) > MAX_SESSION_RESULT_FILE_BYTES) {
+        result.filesChangedTruncated = true;
+        continue;
+      }
+      files.add(candidate);
       if (files.size >= MAX_SESSION_RESULT_FILES) break;
     }
     if (files.size > 0 || input.filesChanged.length === 0)
@@ -82,5 +93,44 @@ export function normalizeSessionResult(value: unknown): SessionResult | undefine
 }
 
 export function isSessionResult(value: unknown): value is SessionResult {
-  return normalizeSessionResult(value) !== undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const input = value as Record<string, unknown>;
+  if (
+    typeof input.summary !== "string" ||
+    input.summary.length === 0 ||
+    bytes(input.summary) > MAX_SESSION_RESULT_SUMMARY_BYTES
+  ) {
+    return false;
+  }
+  if (input.summarySource !== "agent" && input.summarySource !== "harness") return false;
+  if (input.summaryTruncated !== undefined && input.summaryTruncated !== true) return false;
+  if (
+    input.branch !== undefined &&
+    (typeof input.branch !== "string" || bytes(input.branch) > MAX_SESSION_RESULT_BRANCH_BYTES)
+  ) {
+    return false;
+  }
+  if (
+    input.pullRequestUrl !== undefined &&
+    (typeof input.pullRequestUrl !== "string" ||
+      bytes(input.pullRequestUrl) > MAX_SESSION_RESULT_URL_BYTES ||
+      !validHttpUrl(input.pullRequestUrl))
+  ) {
+    return false;
+  }
+  if (input.filesChanged !== undefined) {
+    if (
+      !Array.isArray(input.filesChanged) ||
+      input.filesChanged.length > MAX_SESSION_RESULT_FILES ||
+      input.filesChanged.some(
+        (file) =>
+          typeof file !== "string" ||
+          file.length === 0 ||
+          bytes(file) > MAX_SESSION_RESULT_FILE_BYTES,
+      )
+    ) {
+      return false;
+    }
+  }
+  return input.filesChangedTruncated === undefined || input.filesChangedTruncated === true;
 }

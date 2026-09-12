@@ -35,6 +35,10 @@ branch association, not proof the session created that pull request. Every probe
 failure omits the affected field and never changes the session's terminal status. Terminal-status
 retries resend the identical result payload.
 
+The summary is bounded to 4 KiB; when a summary is shortened, the result includes
+`summaryTruncated: true`. Paths that individually exceed their 4 KiB bound are omitted and cause
+`filesChangedTruncated: true`, preserving the fact that the changed-file list is incomplete.
+
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
 | Install / config / systemd | [setup.md](setup.md)                         |

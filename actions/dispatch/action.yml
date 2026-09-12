@@ -85,6 +85,8 @@ outputs:
     description: JSON structured session result returned by get-result, when available
   result-summary:
     description: Structured session-result summary, when available
+  result-summary-truncated:
+    description: Whether the structured session-result summary was truncated
   result-summary-source:
     description: Whether the result summary came from the agent or harness, when available
   result-branch:

@@ -720,6 +720,8 @@ otherwise the daemon produces a deterministic `harness` summary. `branch`, `file
 `pullRequestUrl` are optional because their probes may fail. An observed clean checkout is
 represented by `filesChanged: []`; an omitted field means it was unavailable. When more than 256
 sorted paths are observed, the stored prefix is accompanied by `filesChangedTruncated: true`.
+When the original summary exceeds 4 KiB, the bounded summary is accompanied by
+`summaryTruncated: true`.
 The result is bounded to 32 KiB overall: summary 4 KiB, branch 1 KiB, pull-request URL 2 KiB,
 and each file path 4 KiB. Pull-request discovery is an association with the final named branch,
 not proof that this session created the PR. Existing sessions are not backfilled.

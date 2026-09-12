@@ -118,10 +118,13 @@ describe("session result normalization", () => {
     const result = normalizeSessionResult({
       summary: "x".repeat(10_000),
       summarySource: "harness",
-      filesChanged: Array.from(
-        { length: MAX_SESSION_RESULT_FILES + 10 },
-        (_, i) => `${i}-${"x".repeat(10_000)}`,
-      ),
+      filesChanged: [
+        "ok.ts",
+        ...Array.from(
+          { length: MAX_SESSION_RESULT_FILES + 10 },
+          (_, i) => `${i}-${"x".repeat(10_000)}`,
+        ),
+      ],
       filesChangedTruncated: true,
     });
     expect(result).toBeDefined();
@@ -132,8 +135,43 @@ describe("session result normalization", () => {
     );
   });
 
-  it("recognizes only normalizable result values", () => {
+  it("drops oversized paths and marks the changed-file list as truncated", () => {
+    expect(
+      normalizeSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        filesChanged: [`${"x".repeat(4 * 1024 + 1)}`, "kept.ts"],
+      }),
+    ).toEqual({
+      summary: "done",
+      summarySource: "harness",
+      filesChanged: ["kept.ts"],
+      filesChangedTruncated: true,
+    });
+  });
+
+  it("marks an oversized summary instead of hiding the truncation", () => {
+    const result = normalizeSessionResult({
+      summary: "x".repeat(10_000),
+      summarySource: "agent",
+    });
+    expect(result).toMatchObject({ summaryTruncated: true });
+    expect(new TextEncoder().encode(result!.summary).byteLength).toBeLessThanOrEqual(4 * 1024);
+  });
+
+  it("recognizes only strictly valid result values without normalizing them", () => {
     expect(isSessionResult({ summary: "done", summarySource: "harness" })).toBe(true);
     expect(isSessionResult({ summary: "done", summarySource: "other" })).toBe(false);
+    expect(isSessionResult({ summary: "done", summarySource: "harness", branch: 42 })).toBe(false);
+    expect(isSessionResult({ summary: "done", summarySource: "harness", filesChanged: [42] })).toBe(
+      false,
+    );
+    expect(
+      isSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        filesChanged: [`${"x".repeat(4 * 1024 + 1)}`],
+      }),
+    ).toBe(false);
   });
 });

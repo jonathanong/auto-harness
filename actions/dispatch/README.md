@@ -93,7 +93,8 @@ successfully for active, completed, failed, cancelled, and timed-out sessions. T
 workflow choose its own wait/retry policy and branch on `session-terminal` or `session-status`.
 When a terminal session has a structured result, the action exposes it as `session-result` JSON
 and as the individual `result-summary`, `result-summary-source`, `result-branch`,
-`result-files-changed` JSON, `result-files-changed-truncated`, and `result-pull-request-url`
+`result-summary-truncated`, `result-files-changed` JSON, `result-files-changed-truncated`, and
+`result-pull-request-url`
 outputs. Active sessions and legacy sessions without a result leave those result outputs empty.
 
 ```yaml

@@ -475,6 +475,10 @@ components:
         summary:
           type: string
           description: Agent- or harness-produced terminal summary, at most 4,096 UTF-8 bytes.
+        summaryTruncated:
+          type: boolean
+          const: true
+          description: Present only when the original summary exceeded the bounded size.
         summarySource:
           type: string
           enum: [agent, harness]
