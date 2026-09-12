@@ -116,7 +116,12 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     state.storage.listProviders(),
     state.storage.listProviderAccounts(),
     state.storage.listCommands(),
-    state.storage.listCustomWebhookIntegrations(),
+    // Older narrow storage adapters and test doubles predate custom integrations. Their in-memory
+    // mirror remains authoritative for that unsupported capability; production Dynamo storage
+    // implements the strong consistent scan used by catalog deletes.
+    typeof state.storage.listCustomWebhookIntegrations === "function"
+      ? state.storage.listCustomWebhookIntegrations()
+      : [...state.customWebhookIntegrations.values()],
   ]);
   return {
     schedules,
