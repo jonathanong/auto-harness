@@ -14,6 +14,36 @@ function cancelled(index: number) {
 }
 
 describe("marker-guarded session creation", () => {
+  it("does not translate non-conditional transaction failures", async () => {
+    const failure = new Error("Dynamo unavailable");
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async () => {
+          throw failure;
+        },
+      } as never,
+      tables: { sessions: "Sessions", concurrencyLocks: "Locks" } as never,
+    };
+    await expect(
+      createSession(ctx, {
+        id: "session",
+        repositoryId: "repo",
+        prompt: "run",
+        target: { commandId: "command" },
+        fallbacks: [],
+        targetDisplayNames: [],
+        queueTtlSeconds: 1,
+        queueExpiresAt: "2026-01-01T00:00:01.000Z",
+        timeout: 1,
+        priority: 0,
+        requiredLabels: [],
+        status: "queued",
+        queueShard: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).rejects.toBe(failure);
+  });
+
   it("keeps a session-id collision distinct from a catalog deletion conflict", async () => {
     const ctx: PlaneStorageCtx = {
       doc: {

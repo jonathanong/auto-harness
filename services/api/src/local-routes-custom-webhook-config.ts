@@ -71,15 +71,21 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   let input: CustomWebhookConfigInput;
   let expectedVersion: number | undefined;
   let expectedGeneration: string | null | undefined;
+  let currentForAudit:
+    | Awaited<ReturnType<RouteCtx["plane"]["getCustomWebhookIntegration"]>>
+    | undefined;
   try {
     const value = await readJson(ctx.req);
+    if (ctx.method === "PUT") {
+      currentForAudit = await ctx.plane.getCustomWebhookIntegration(id);
+    }
     input = parseConfig(value, id, ctx.method === "POST");
     if (ctx.method === "PUT") {
       expectedVersion = parseBodyVersion(value);
       expectedGeneration = parseBodyGeneration(value);
     }
   } catch (error) {
-    if (!(await audit(ctx, id, "failed"))) return true;
+    if (!(await audit(ctx, id, "failed", currentForAudit?.repositoryId))) return true;
     send(ctx.res, 400, {
       error: {
         code: "VALIDATION_ERROR",
@@ -91,8 +97,7 @@ export async function handleCustomWebhookConfigRoutes(ctx: RouteCtx): Promise<bo
   try {
     // A failed replacement must remain visible to operators of the existing repository rather
     // than trusting a caller-supplied replacement repository ID for audit scope.
-    const current =
-      ctx.method === "PUT" ? await ctx.plane.getCustomWebhookIntegration(id) : undefined;
+    const current = ctx.method === "PUT" ? currentForAudit : undefined;
     const result =
       ctx.method === "POST"
         ? await ctx.plane.createCustomWebhookIntegration(input)

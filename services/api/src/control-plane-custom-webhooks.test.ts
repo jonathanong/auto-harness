@@ -132,6 +132,30 @@ describe("custom webhook integration lifecycle", () => {
     ).resolves.toMatchObject({ ok: false, error: "commandId missing not found" });
   });
 
+  it("persists normalized routing references", async () => {
+    const value = plane();
+    const created = await value.createCustomWebhookIntegration(
+      config({
+        target: { providerId: "provider", unexpected: "discarded" },
+        fallbacks: [{ commandId: "command", unexpected: "discarded" }],
+        queueTtlSeconds: undefined,
+      }),
+    );
+    expect(created).toMatchObject({
+      ok: true,
+      integration: {
+        target: { providerId: "provider" },
+        fallbacks: [{ commandId: "command" }],
+        queueTtlSeconds: 691_200,
+      },
+    });
+    expect(await value.getCustomWebhookIntegration("deploy")).toMatchObject({
+      target: { providerId: "provider" },
+      fallbacks: [{ commandId: "command" }],
+      queueTtlSeconds: 691_200,
+    });
+  });
+
   it("fences observed generations across delete and recreate", async () => {
     const value = plane();
     const first = await value.createCustomWebhookIntegration(config());
@@ -171,6 +195,9 @@ describe("custom webhook integration lifecycle", () => {
       ok: false,
       conflict: true,
     });
+    await expect(
+      value.updateCustomWebhookIntegration(config({ timeout: 90 }), 1, null),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
   });
 
   it("uses the durable integration record for reads and rejects lifecycle writes with missing references", async () => {

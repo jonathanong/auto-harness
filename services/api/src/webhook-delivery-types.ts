@@ -115,7 +115,7 @@ export function createSignedWebhookTransport(options: {
       }
       if (
         destination.timeoutMs !== undefined &&
-        (!Number.isFinite(destination.timeoutMs) ||
+        (!Number.isSafeInteger(destination.timeoutMs) ||
           destination.timeoutMs <= 0 ||
           destination.timeoutMs > DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS)
       ) {

@@ -109,7 +109,7 @@ describe("signed webhook transport", () => {
   });
 
   it("rejects invalid or lease-exceeding timeout overrides before sending", async () => {
-    for (const timeoutMs of [0, -1, Number.NaN, DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS + 1]) {
+    for (const timeoutMs of [0, -1, 0.5, Number.NaN, DEFAULT_WEBHOOK_REQUEST_TIMEOUT_MS + 1]) {
       let called = false;
       const transport = createSignedWebhookTransport({
         resolveDestination: async () => ({

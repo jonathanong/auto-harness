@@ -51,13 +51,14 @@ export async function createCustomWebhookIntegration(
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, true);
   if (!valid.ok) return valid;
+  const normalizedInput = valid.input;
   if (!state.secretEncryptor) return unavailable();
-  return withCustomWebhookReferenceFence(state, input, async (markers) => {
-    const references = await validateConfiguredReferences(state, input);
+  return withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
+    const references = await validateConfiguredReferences(state, normalizedInput);
     if (!references.ok) return references;
     const current = state.storage
-      ? await state.storage.getCustomWebhookIntegration(input.id)
-      : state.customWebhookIntegrations.get(input.id);
+      ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
+      : state.customWebhookIntegrations.get(normalizedInput.id);
     if (current)
       return {
         ok: false as const,
@@ -65,14 +66,14 @@ export async function createCustomWebhookIntegration(
         conflict: true as const,
       };
     const now = state.now();
-    const record = await makeRecord(state, input, now, 1, now, randomUUID());
+    const record = await makeRecord(state, normalizedInput, now, 1, now, randomUUID());
     if (
       state.storage &&
       !(await state.storage.putCustomWebhookIntegration(record, null, markers))
     ) {
       return conflict();
     }
-    state.customWebhookIntegrations.set(input.id, record);
+    state.customWebhookIntegrations.set(normalizedInput.id, record);
     return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
   });
 }
@@ -85,13 +86,14 @@ export async function updateCustomWebhookIntegration(
 ): Promise<{ ok: true; integration: PublicCustomWebhookIntegration } | Failure> {
   const valid = validateInput(input, false);
   if (!valid.ok) return valid;
+  const normalizedInput = valid.input;
   if (!state.secretEncryptor) return unavailable();
-  return withCustomWebhookReferenceFence(state, input, async (markers) => {
-    const references = await validateConfiguredReferences(state, input);
+  return withCustomWebhookReferenceFence(state, normalizedInput, async (markers) => {
+    const references = await validateConfiguredReferences(state, normalizedInput);
     if (!references.ok) return references;
     const current = state.storage
-      ? await state.storage.getCustomWebhookIntegration(input.id)
-      : state.customWebhookIntegrations.get(input.id);
+      ? await state.storage.getCustomWebhookIntegration(normalizedInput.id)
+      : state.customWebhookIntegrations.get(normalizedInput.id);
     if (!current) return { ok: false, error: "custom webhook integration not found" };
     if (
       (expectedVersion !== undefined && current.version !== expectedVersion) ||
@@ -102,12 +104,12 @@ export async function updateCustomWebhookIntegration(
       return conflict();
     const record = await makeRecord(
       state,
-      input,
+      normalizedInput,
       current.createdAt,
       current.version + 1,
       state.now(),
       current.generation ?? randomUUID(),
-      input.secret === undefined ? current.encryptedSecret : undefined,
+      normalizedInput.secret === undefined ? current.encryptedSecret : undefined,
     );
     if (
       state.storage &&
@@ -120,7 +122,7 @@ export async function updateCustomWebhookIntegration(
     ) {
       return conflict();
     }
-    state.customWebhookIntegrations.set(input.id, record);
+    state.customWebhookIntegrations.set(normalizedInput.id, record);
     return { ok: true, integration: toPublicCustomWebhookIntegration(record) };
   });
 }
@@ -219,7 +221,7 @@ async function makeRecord(
 function validateInput(
   input: CustomWebhookConfigInput,
   requireSecret: boolean,
-): { ok: true } | Failure {
+): { ok: true; input: CustomWebhookConfigInput } | Failure {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.id)) {
     return {
       ok: false,
@@ -274,7 +276,15 @@ function validateInput(
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
     return { ok: false, error: "enabled must be a boolean" };
   }
-  return { ok: true };
+  return {
+    ok: true,
+    input: {
+      ...input,
+      target: routing.value.target,
+      fallbacks: routing.value.fallbacks,
+      queueTtlSeconds: routing.value.queueTtlSeconds,
+    },
+  };
 }
 
 function unavailable(): Failure {

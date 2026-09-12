@@ -640,6 +640,24 @@ describe("custom webhook receiver", () => {
     });
   });
 
+  it("scopes malformed existing PUT audits to the stored repository", async () => {
+    const { plane, handler } = await fixture();
+    const response = await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      timeout: 60,
+    });
+    expect(response).toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR" } },
+    });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ action: "integration:custom-webhook:update", outcome: "failed" }),
+      ],
+    });
+  });
+
   it("does not send a second ingress response after each denied or failed audit", async () => {
     const request = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-failure" }));
     const signedHeaders = {
