@@ -1448,6 +1448,12 @@ function applySessionStatus(
     });
     emitInfrastructureRetry();
     state.pendingAcks.delete(session.id);
+    const reschedule = transitionEffect(plan, "reschedule");
+    if (reschedule?.kind === "scheduled") {
+      void assignScheduledQueuedDurable(state).catch(() => undefined);
+    } else if (reschedule) {
+      void assignQueued(state);
+    }
     return { ok: true };
   }
 

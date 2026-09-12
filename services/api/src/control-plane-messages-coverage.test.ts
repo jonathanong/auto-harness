@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
+import { ControlPlane } from "./control-plane.ts";
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
@@ -182,6 +184,107 @@ describe("control-plane host message coverage paths", () => {
     expect(worktreeState.sessions.get(worktreeRun.id)).toMatchObject({
       status: "queued",
       infrastructureRetryCount: 1,
+    });
+  });
+
+  it("immediately reschedules local infrastructure retries for prompts and schedules", async () => {
+    const promptPlane = new ControlPlane({
+      now: () => NOW,
+      idFactory: () => "prompt-session",
+      attemptIdFactory: (() => {
+        let attempt = 0;
+        return () => `prompt-attempt-${++attempt}`;
+      })(),
+    });
+    seedBaseCommand(promptPlane);
+    expect(
+      promptPlane.registerHost({
+        hostId: "prompt-host",
+        worktrees: [
+          {
+            id: "prompt-worktree",
+            name: "prompt-worktree",
+            repositoryId: "repo-1",
+            path: "/prompt-worktree",
+            labels: [],
+          },
+        ],
+        commandProfiles: ["echo-prompt"],
+      }),
+    ).toMatchObject({ ok: true });
+    const promptCreated = promptPlane.createSession(baseSessionBody());
+    if (!promptCreated.ok) throw new Error(promptCreated.error);
+    const [promptAssignment] = promptPlane.assignQueued();
+    if (!promptAssignment) throw new Error("prompt was not assigned");
+
+    expect(
+      promptPlane.handleHostMessage({
+        type: "session:status",
+        sessionId: promptCreated.session.id,
+        worktreeId: "prompt-worktree",
+        attemptId: promptAssignment.session.attemptId!,
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+      }),
+    ).toEqual({ ok: true });
+    expect(promptPlane.getSession(promptCreated.session.id)).toMatchObject({
+      status: "running",
+      worktreeId: "prompt-worktree",
+      infrastructureRetryCount: 1,
+      attemptId: "prompt-attempt-2",
+    });
+
+    const scheduledPlane = new ControlPlane({
+      now: () => NOW,
+      idFactory: () => "scheduled-session",
+      attemptIdFactory: (() => {
+        let attempt = 0;
+        return () => `scheduled-attempt-${++attempt}`;
+      })(),
+    });
+    seedBaseCommand(scheduledPlane);
+    expect(
+      scheduledPlane.registerHost({
+        hostId: "scheduled-host",
+        worktrees: [],
+        repositories: [{ id: "repo-1", path: "/repo", defaultBranch: "main" }],
+        commandProfiles: [],
+        capabilities: ["scheduled-main-checkout"],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).toMatchObject({ ok: true });
+    const scheduled = scheduledPlane.putSchedule({
+      id: "schedule",
+      repositoryId: "repo-1",
+      name: "nightly",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 30,
+    });
+    if (!scheduled.ok) throw new Error(scheduled.error);
+    const scheduledCreated = scheduledPlane.triggerSchedule(scheduled.schedule.id);
+    if (!scheduledCreated.ok) throw new Error(scheduledCreated.error);
+    await scheduledPlane.assignScheduledQueuedDurable();
+    const scheduledAttempt = scheduledPlane.getSession(scheduledCreated.session.id)?.attemptId;
+    if (!scheduledAttempt) throw new Error("schedule was not assigned");
+
+    expect(
+      scheduledPlane.handleHostMessage({
+        type: "session:status",
+        sessionId: scheduledCreated.session.id,
+        worktreeId: null,
+        attemptId: scheduledAttempt,
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+      }),
+    ).toEqual({ ok: true });
+    await vi.waitFor(() => {
+      expect(scheduledPlane.getSession(scheduledCreated.session.id)).toMatchObject({
+        status: "running",
+        worktreeId: null,
+        infrastructureRetryCount: 1,
+        attemptId: "scheduled-attempt-2",
+      });
     });
   });
 

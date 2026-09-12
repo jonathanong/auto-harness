@@ -9,6 +9,7 @@ import { tryAcquireHostLock } from "./plane-storage-locks.ts";
 import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
 import {
   deleteWorktree,
+  getSession,
   getWorktree,
   listActiveSessionsByHost,
   listAllWorktrees,
@@ -263,6 +264,52 @@ describe("DynamoDB Local session assignment", () => {
       }),
     ).toBe(true);
     expect(await listActiveSessionsByHost(ctx, "host")).toEqual([]);
+  });
+
+  it("clears transient retry errors while preserving infrastructure retry history", async () => {
+    await putSession(ctx, {
+      ...session,
+      id: "clears-retry-error",
+      errorCode: "checkout_fetch_failed",
+      errorMessage: "Failed to fetch branch feature",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
+    });
+    await putWorktree(ctx, {
+      ...worktree,
+      id: "clears-retry-error-worktree",
+    });
+
+    expect(
+      await tryAssignSession(ctx, {
+        sessionId: "clears-retry-error",
+        repositoryId: "repo",
+        worktreeId: "clears-retry-error-worktree",
+        hostId: "host",
+        hostInventoryVersion: 2,
+        connectionId: "one",
+        now: "2025-01-01T00:00:00.000Z",
+        attemptId: "retry-attempt",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: "clears-retry-error-worktree",
+          attemptId: "retry-attempt",
+        },
+        queueShard: 0,
+      }),
+    ).toBe(true);
+
+    const assigned = await getSession(ctx, "clears-retry-error", true);
+    expect(assigned).toMatchObject({
+      status: "running",
+      infrastructureRetryCount: 1,
+      lastInfrastructureErrorCode: "checkout_fetch_failed",
+    });
+    expect(assigned).not.toHaveProperty("errorCode");
+    expect(assigned).not.toHaveProperty("errorMessage");
   });
 
   it("rejects a scheduled main-checkout claim after queue expiry", async () => {
