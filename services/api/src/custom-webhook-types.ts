@@ -2,13 +2,9 @@ import type { TargetRef } from "@auto-harness/shared";
 
 import type { CustomWebhookIntegrationRecord } from "./db/plane-storage-types.ts";
 
-export const CUSTOM_WEBHOOK_TYPE = "custom-webhook" as const;
-
 export function isValidCustomWebhookId(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
 }
-
-export type CustomWebhookSecretConfig = { secret: string };
 
 export type PublicCustomWebhookIntegration = Omit<
   CustomWebhookIntegrationRecord,

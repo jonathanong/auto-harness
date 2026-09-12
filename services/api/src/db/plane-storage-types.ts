@@ -67,10 +67,6 @@ export type IntegrationSessionFence = {
   enabled: boolean;
 };
 
-export type CustomWebhookIntegrationFence = IntegrationSessionFence & {
-  type: "custom-webhook";
-};
-
 /** Hashed one-time browser viewer ticket. The raw ticket is never persisted. */
 export type ViewerTicketRecord = {
   ticketHash: string;
