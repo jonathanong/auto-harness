@@ -3,6 +3,7 @@ import {
   type WorkspacePoolOption,
 } from "../../../components/create-session-form.tsx";
 import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import {
   cloneSourceId,
@@ -25,6 +26,7 @@ export default async function NewSessionPage({
   let workspacePools: WorkspacePoolOption[] = [];
   let draft: SessionCloneDraft | null = null;
   const errors: string[] = [];
+  const canWriteExecConfig = can(await loadPrincipal(), "fleet:exec-config");
   const query = await searchParams;
   const requestedCloneId = cloneSourceId(query.cloneFrom);
   if (query.cloneFrom !== undefined && !requestedCloneId) errors.push("clone source: invalid id");
@@ -100,6 +102,7 @@ export default async function NewSessionPage({
         workspacePools={workspacePools}
         availableLabels={availableLabels}
         initialValues={draft}
+        canWriteExecConfig={canWriteExecConfig}
       />
     </div>
   );

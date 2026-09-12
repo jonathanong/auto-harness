@@ -432,6 +432,63 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
         updateConfig: { enabled: false },
       }),
     ).toBe(true);
+    expect(
+      inventoryHasExecConfig({
+        repositories: [],
+        providerAccounts: [],
+        workspacePools: [{ workspacePoolId: "pool-1", slots: [] }],
+      }),
+    ).toBe(true);
+  });
+
+  it("treats workspace attachments and slot paths as exec-config edits", () => {
+    const empty = emptyHostInventory();
+    const attached: HostInventory = {
+      ...empty,
+      workspacePools: [
+        {
+          workspacePoolId: "pool-1",
+          slots: [{ id: "slot-1", name: "one", path: "/srv/workspaces/one" }],
+        },
+      ],
+    };
+    expect(listExecConfigEdits(empty, attached)).toEqual([
+      "workspacePools.pool-1",
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    expect(listExecConfigEdits(attached, empty)).toEqual([
+      "workspacePools.pool-1",
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    const attachedWithoutSlots: HostInventory = {
+      ...empty,
+      workspacePools: [{ workspacePoolId: "pool-1", slots: [] }],
+    };
+    expect(listExecConfigEdits(attachedWithoutSlots, attached)).toEqual([
+      "workspacePools.pool-1.slots.slot-1.path",
+    ]);
+    expect(
+      reconcileInventoryWrite({
+        existing: attachedWithoutSlots,
+        incoming: attached,
+        allowExecConfig: false,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      execEdits: ["workspacePools.pool-1.slots.slot-1.path"],
+    });
+    expect(
+      listExecConfigEdits(attached, {
+        ...attached,
+        workspacePools: [
+          {
+            ...attached.workspacePools![0]!,
+            slots: [{ id: "slot-1", name: "renamed", path: "/srv/workspaces/renamed" }],
+          },
+        ],
+      }),
+    ).toEqual(["workspacePools.pool-1.slots.slot-1.path"]);
   });
 
   it("names each changed exec-config field", () => {

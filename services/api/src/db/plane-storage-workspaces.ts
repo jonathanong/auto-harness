@@ -167,6 +167,29 @@ export async function deleteWorkspaceSlot(ctx: PlaneStorageCtx, id: string): Pro
   await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.workspaceSlots, Key: { id } }));
 }
 
+/** Delete an inventory projection only while it is still unclaimed. */
+export async function deleteWorkspaceSlotIfIdle(
+  ctx: PlaneStorageCtx,
+  id: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.workspaceSlots,
+        Key: { id },
+        ConditionExpression:
+          "(attribute_not_exists(currentSessionId) OR currentSessionId = :null) AND #status <> :busy",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":null": null, ":busy": "busy" },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 export async function getWorkspaceSlot(
   ctx: PlaneStorageCtx,
   id: string,

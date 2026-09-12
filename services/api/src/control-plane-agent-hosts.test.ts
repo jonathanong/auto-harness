@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+/* eslint-disable max-lines -- inventory lifecycle cases share durable/local fixtures. */
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 
@@ -26,6 +27,86 @@ describe("agent host inventory", () => {
       ok: true,
     });
     expect(plane.getHostInventory(inventory.hostId)).toBeNull();
+  });
+
+  it("blocks local and durable inventory deletion while a workspace slot is active", async () => {
+    const plane = new ControlPlane();
+    const inventory = {
+      hostId: "busy-host",
+      version: 1,
+      updatedAt: "t",
+      repositories: [],
+      providerAccounts: [],
+    };
+    plane.state.hostInventories.set(inventory.hostId, inventory);
+    const busySlot = {
+      id: "busy-slot",
+      name: "busy",
+      hostId: inventory.hostId,
+      workspacePoolId: "pool",
+      path: "/pool/busy",
+      status: "busy",
+      online: true,
+      currentSessionId: "session",
+    } as const;
+    plane.state.workspaceSlots.set("busy-slot", busySlot);
+    expect(plane.deleteHostInventory(inventory.hostId)).toMatchObject({
+      ok: false,
+      error: "host has active workspace slots",
+    });
+    const deleteInventory = vi.fn(async () => true);
+    plane.state.storage = {
+      getHostInventory: async () => inventory,
+      listAllWorktrees: async () => [],
+      listWorkspaceSlots: async () => [busySlot],
+      listWorkspaceSlotsByPool: async () => [busySlot],
+      deleteHostInventory: deleteInventory,
+    } as never;
+    plane.state.workspaceSlots.clear();
+    await expect(plane.deleteHostInventoryDurable(inventory.hostId)).resolves.toMatchObject({
+      ok: false,
+      error: "host has active workspace slots",
+    });
+    expect(deleteInventory).not.toHaveBeenCalled();
+  });
+
+  it("retains a slot when assignment wins during durable inventory deletion", async () => {
+    const plane = new ControlPlane();
+    const inventory = {
+      hostId: "racing-host",
+      version: 1,
+      updatedAt: "t",
+      repositories: [],
+      providerAccounts: [],
+    };
+    const idleSlot = {
+      id: "racing-slot",
+      name: "slot",
+      hostId: inventory.hostId,
+      workspacePoolId: "pool",
+      path: "/pool/slot",
+      status: "idle" as const,
+      online: true,
+      currentSessionId: null,
+    };
+    const assignedSlot = { ...idleSlot, status: "busy" as const, currentSessionId: "session" };
+    const deleteSlot = vi.fn(async () => false);
+    plane.state.storage = {
+      getHostInventory: async () => inventory,
+      listAllWorktrees: async () => [],
+      listWorkspaceSlots: async () => [idleSlot],
+      listWorkspaceSlotsByPool: async () => [idleSlot],
+      deleteHostInventory: async () => true,
+      deleteWorkspaceSlotIfIdle: deleteSlot,
+      getWorkspaceSlot: async () => assignedSlot,
+    } as never;
+    const result = await plane.deleteHostInventoryDurable(inventory.hostId);
+    expect(result.ok).toBe(true);
+    expect(deleteSlot).toHaveBeenCalledWith(idleSlot.id);
+    expect(plane.state.workspaceSlots.get(idleSlot.id)).toMatchObject({
+      ...assignedSlot,
+      online: false,
+    });
   });
 
   it("stores config and syncs worktrees", () => {

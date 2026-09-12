@@ -76,7 +76,7 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
     if (wt?.currentSessionId === session.id) {
       releaseWorktree(state, session.worktreeId);
     }
-  } else {
+  } else if (!session.workspaceSlotId) {
     releaseWorkspaceSlot(state, session);
   }
   session.worktreeId = null;
@@ -108,17 +108,8 @@ function rememberDurableTimeout(
     }
   }
   const workspaceSlotId = session.workspaceSlotId;
-  if (workspaceSlotId) {
-    const slot = state.workspaceSlots.get(workspaceSlotId);
-    if (slot?.currentSessionId === session.id) {
-      const { errorMessage: _, ...cleanSlot } = slot;
-      state.workspaceSlots.set(workspaceSlotId, {
-        ...cleanSlot,
-        status: "idle",
-        currentSessionId: null,
-      });
-    }
-  }
+  // Keep a workspace slot busy until the timed-out daemon reports terminal or
+  // disconnect recovery proves that its connection is gone.
   if (session.mainCheckoutLease) releaseScheduledLeaseLocal(state, session);
   if (session.hostId) {
     state.onHostMessage?.(session.hostId, {
@@ -134,7 +125,7 @@ function rememberDurableTimeout(
     errorMessage: TIMEOUT_ERROR,
     completedAt,
     worktreeId: null,
-    workspaceSlotId: null,
+    ...(workspaceSlotId ? { workspaceSlotId } : {}),
     hostId: null,
     ...(timedOutHostId ? { timedOutHostId } : {}),
     ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
@@ -144,7 +135,6 @@ function rememberDurableTimeout(
   delete next.assignmentSentAt;
   delete next.ackReceivedAt;
   delete next.reconnectDeadlineAt;
-  delete next.workspaceSlotLease;
   state.sessions.set(session.id, next);
   queueSessionArchive(state, session.id);
   noteSlackSessionLifecycle(state, next);
@@ -204,6 +194,7 @@ async function commitDurableTimeout(
     preserveHostAssignmentLease: true,
     ...(timedOutHostId ? { timedOutHostId } : {}),
     ...(timedOutAssignmentConnectionId ? { timedOutAssignmentConnectionId } : {}),
+    ...(session.workspaceSlotId ? { preserveWorkspaceSlotLease: true } : {}),
   });
 }
 

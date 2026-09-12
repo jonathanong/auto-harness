@@ -5,7 +5,7 @@ import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.t
 import { createWorkspaceSession, workspacePlane } from "./test-helpers/workspace-session.ts";
 
 describe("workspace session lifecycle recovery", () => {
-  it("releases its exact slot when the control-plane running timeout wins", async () => {
+  it("retains its exact slot when the control-plane running timeout wins", async () => {
     const { plane } = workspacePlane();
     const session = createWorkspaceSession(plane);
     await assignWorkspaceQueuedDurable(plane.state);
@@ -24,11 +24,11 @@ describe("workspace session lifecycle recovery", () => {
     ]);
     expect(plane.getSession(session.id)).toMatchObject({
       status: "timed_out",
-      workspaceSlotId: null,
+      workspaceSlotId: "slot-1",
     });
     expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
-      status: "idle",
-      currentSessionId: null,
+      status: "busy",
+      currentSessionId: session.id,
     });
   });
 
@@ -62,10 +62,11 @@ describe("workspace session lifecycle recovery", () => {
       worktreeId: null,
       workspaceSlotId: "slot-1",
       status: "timed_out",
+      preserveWorkspaceSlotLease: true,
     });
     expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
-      status: "idle",
-      currentSessionId: null,
+      status: "busy",
+      currentSessionId: session.id,
     });
   });
 

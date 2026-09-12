@@ -817,7 +817,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           send(res, 400, { error: { code: "VALIDATION_ERROR", message: workspaceError } });
           return true;
         }
-        if (typeof body.repositoryId === "string" && !scoped(ctx, body.repositoryId)) {
+        const destinationRepositoryId =
+          workspacePatch.repositoryId === null || workspacePatch.repositoryId === ""
+            ? ""
+            : workspacePatch.repositoryId;
+        if (!scoped(ctx, destinationRepositoryId)) {
           hidden(res);
           return true;
         }

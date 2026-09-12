@@ -393,6 +393,13 @@ export function deleteHostInventory(
   }
   const expected = expectedVersion ?? existing.version ?? 0;
   if ((existing.version ?? 0) !== expected) return inventoryVersionConflict();
+  if (
+    [...state.workspaceSlots.values()].some(
+      (slot) => slot.hostId === hostId && (slot.status === "busy" || slot.currentSessionId != null),
+    )
+  ) {
+    return { ok: false, error: "host has active workspace slots" };
+  }
   state.hostInventories.delete(hostId);
   state.hostInventoryRevision += 1;
   if (state.storage) {
@@ -423,6 +430,16 @@ export async function deleteHostInventoryDurable(
     return { ok: false, error: "agent host config not found" };
   }
   const expected = expectedVersion ?? existing.version ?? 0;
+  if (typeof state.storage.listWorkspaceSlots === "function") {
+    await listWorkspaceSlotsDurable(state);
+  }
+  if (
+    [...state.workspaceSlots.values()].some(
+      (slot) => slot.hostId === hostId && (slot.status === "busy" || slot.currentSessionId != null),
+    )
+  ) {
+    return { ok: false, error: "host has active workspace slots" };
+  }
   await listWorktreesDurable(state);
   const worktreeIds = [...state.worktrees.values()]
     .filter((worktree) => worktree.hostId === hostId)
@@ -432,17 +449,30 @@ export async function deleteHostInventoryDurable(
     .map((slot) => slot.id);
   const deleted = await state.storage.deleteHostInventory(hostId, expected);
   if (deleted === false) return inventoryVersionConflict();
-  await Promise.all([
-    ...worktreeIds.map((id) => state.storage!.deleteWorktree(id)),
-    ...workspaceSlotIds.map((id) => state.storage!.deleteWorkspaceSlot(id)),
-  ]);
+  const deleteSlot = (id: string): Promise<unknown> =>
+    typeof state.storage!.deleteWorkspaceSlotIfIdle === "function"
+      ? state.storage!.deleteWorkspaceSlotIfIdle(id)
+      : state.storage!.deleteWorkspaceSlot(id);
+  const slotDeletes = await Promise.all(
+    workspaceSlotIds.map(async (id) => ({ id, slotDeleted: await deleteSlot(id) })),
+  );
+  const deletedSlotIds = new Set(
+    slotDeletes.filter(({ slotDeleted }) => slotDeleted !== false).map(({ id }) => id),
+  );
+  await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
   state.hostInventoryRevision += 1;
   state.hostInventories.delete(hostId);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === hostId) state.worktrees.delete(id);
   }
   for (const [id, slot] of state.workspaceSlots) {
-    if (slot.hostId === hostId) state.workspaceSlots.delete(id);
+    if (slot.hostId !== hostId) continue;
+    if (deletedSlotIds.has(id)) {
+      state.workspaceSlots.delete(id);
+    } else if (typeof state.storage.getWorkspaceSlot === "function") {
+      const latest = await state.storage.getWorkspaceSlot(id);
+      if (latest) state.workspaceSlots.set(id, { ...latest, online: false });
+    }
   }
   return { ok: true };
 }

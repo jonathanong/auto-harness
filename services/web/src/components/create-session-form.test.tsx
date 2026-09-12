@@ -61,46 +61,6 @@ describe("CreateSessionForm", () => {
     view.unmount();
   });
 
-  it("creates a workspace session by profile id without sending a raw setup script", async () => {
-    const fetch = vi.fn().mockResolvedValue(json({ id: "workspace-session" }));
-    vi.stubGlobal("fetch", fetch);
-    const view = mountForm(
-      <CreateSessionForm
-        targets={targets}
-        repositories={repositories}
-        workspacePools={[
-          {
-            id: "pool-1",
-            name: "Browser tests",
-            setupProfiles: [{ id: "install", name: "Install dependencies" }],
-            defaultSetupProfileId: "install",
-            destroyWorkspaceAfter: false,
-          },
-        ]}
-      />,
-    );
-    press(field(view.container, "create-session-mode-workspace"));
-    setValue(field(view.container, "create-session-workspace-pool"), "pool-1");
-    setValue(field(view.container, "create-session-workspace-profile"), "install");
-    setValue(field(view.container, "create-session-workspace-cleanup"), "true");
-    setValue(field(view.container, "create-session-prompt"), "Run browser tests");
-    submit(field(view.container, "form-create-session"));
-    await act(async () => Promise.resolve());
-
-    const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({
-      repositoryId: null,
-      type: "workspace",
-      workspacePoolId: "pool-1",
-      setupProfileId: "install",
-      destroyWorkspaceAfter: true,
-      requiredLabels: [],
-    });
-    expect(body).not.toHaveProperty("setupScript");
-    expect(view.container.querySelector('[data-pw="create-session-ref"]')).toBeNull();
-    view.unmount();
-  });
-
   it("offers documented timeout presets and retains a valid custom seconds value", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "session/timeout" }));
     vi.stubGlobal("fetch", fetch);

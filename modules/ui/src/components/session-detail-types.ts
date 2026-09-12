@@ -1,6 +1,6 @@
 export type SessionSummary = {
   id: string;
-  type?: "prompt" | "scheduled" | null;
+  type?: "prompt" | "scheduled" | "workspace" | null;
   status: string;
   repositoryId?: string | null;
   hostId?: string | null;

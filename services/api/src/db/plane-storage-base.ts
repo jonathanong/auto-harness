@@ -294,6 +294,10 @@ export class DynamoPlaneStorageBase {
     return workspaces.deleteWorkspaceSlot(this.ctx, id);
   }
 
+  deleteWorkspaceSlotIfIdle(id: string): Promise<boolean> {
+    return workspaces.deleteWorkspaceSlotIfIdle(this.ctx, id);
+  }
+
   getWorkspaceSlot(id: string): Promise<WorkspaceSlotRecord | null> {
     return workspaces.getWorkspaceSlot(this.ctx, id);
   }

@@ -34,6 +34,14 @@ const schedule: EditableSchedule = {
   activeSessionId: null,
   prompt: "review the repo",
 };
+const workspacePools = [
+  {
+    id: "pool-1",
+    name: "Workspace",
+    setupProfiles: [{ id: "setup-1", name: "Trusted setup" }],
+    destroyWorkspaceAfter: false,
+  },
+];
 
 describe("ScheduleEditForm", () => {
   it("submits edited fields and refreshes after saving", async () => {
@@ -105,6 +113,44 @@ describe("ScheduleEditForm", () => {
     submit(field(view.container, "form-edit-schedule"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ prompt: "" });
+    view.unmount();
+  });
+
+  it("initializes and preserves an existing workspace schedule through structured fields", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ScheduleEditForm
+        schedule={{
+          ...schedule,
+          repositoryId: "",
+          workspacePoolId: "pool-1",
+          setupProfileId: "setup-1",
+          destroyWorkspaceAfter: true,
+        }}
+        targets={targets}
+        workspacePools={workspacePools}
+        canWriteExecConfig
+      />,
+    );
+    expect(field<HTMLSelectElement>(view.container, "edit-schedule-workspace-pool").value).toBe(
+      "pool-1",
+    );
+    expect(field<HTMLSelectElement>(view.container, "edit-schedule-workspace-profile").value).toBe(
+      "setup-1",
+    );
+    submit(field(view.container, "form-edit-schedule"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "setup-1",
+      destroyWorkspaceAfter: true,
+      timeout: 900,
+    });
+    const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
+    expect(body).not.toHaveProperty("setupScript");
+    expect(body).not.toHaveProperty("ref");
     view.unmount();
   });
 });

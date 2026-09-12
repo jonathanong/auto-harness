@@ -20,6 +20,7 @@ import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 import { describeCron, routeLabel } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
+import type { WorkspacePoolOption } from "../../components/workspace-session-fields.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,9 @@ type Schedule = {
   concurrencyId?: string | null;
   activeSessionId?: string | null;
   prompt?: string;
+  workspacePoolId?: string | null;
+  setupProfileId?: string | null;
+  destroyWorkspaceAfter?: boolean | null;
 };
 
 export default async function SchedulesPage({
@@ -50,11 +54,14 @@ export default async function SchedulesPage({
   const rawSearchParams = await searchParams;
   const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
   const cursor = typeof rawSearchParams.cursor === "string" ? rawSearchParams.cursor : null;
-  const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
+  const principal = await loadPrincipal();
+  const canWriteSchedules = can(principal, "schedules:write");
+  const canWriteExecConfig = can(principal, "fleet:exec-config");
   let items: Schedule[] = [];
   let schedulesNextCursor: string | null = null;
   let targets: SessionTarget[] = [];
   let repositories: Array<{ id: string; name: string }> = [];
+  let workspacePools: WorkspacePoolOption[] = [];
   let error: string | null = null;
   const schedulesPath = `/api/v1/schedules?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   try {
@@ -71,6 +78,12 @@ export default async function SchedulesPage({
     );
   } catch (e) {
     error = thrownMessage(e);
+  }
+  try {
+    workspacePools =
+      (await apiGet<{ items?: WorkspacePoolOption[] }>("/api/v1/workspace-pools")).items ?? [];
+  } catch {
+    workspacePools = [];
   }
 
   const requestedEditId = editId;
@@ -241,6 +254,8 @@ export default async function SchedulesPage({
               <ScheduleCreateForm
                 targets={targets}
                 repositories={repositories}
+                workspacePools={workspacePools}
+                canWriteExecConfig={canWriteExecConfig}
                 schedule={editing}
               />
             </div>

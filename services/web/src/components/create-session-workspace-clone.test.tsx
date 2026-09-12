@@ -38,6 +38,7 @@ it("initializes Clone and Edit in workspace mode with the source pool policy", (
         priority: 0,
         requiredLabels: [],
       }}
+      canWriteExecConfig
     />,
   );
   expect(view.container.querySelector('[data-pw="create-session-repository-id"]')).toBeNull();

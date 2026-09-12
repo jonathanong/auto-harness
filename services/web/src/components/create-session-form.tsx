@@ -21,12 +21,14 @@ export function CreateSessionForm({
   workspacePools = [],
   availableLabels = [],
   initialValues,
+  canWriteExecConfig = false,
 }: {
   targets: SessionTarget[];
   repositories: Array<{ id: string; name: string }>;
   workspacePools?: WorkspacePoolOption[];
   availableLabels?: string[];
   initialValues?: SessionCloneDraft | null;
+  canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -68,9 +70,9 @@ export function CreateSessionForm({
                 ...(String(fd.get("setupProfileId") ?? "")
                   ? { setupProfileId: String(fd.get("setupProfileId")) }
                   : {}),
-                ...(destroyWorkspaceAfter === "inherit"
-                  ? {}
-                  : { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }),
+                ...(canWriteExecConfig && destroyWorkspaceAfter !== "inherit"
+                  ? { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }
+                  : {}),
               }
             : {}),
         };
@@ -151,6 +153,7 @@ export function CreateSessionForm({
           initialPoolId={initialValues?.workspacePoolId}
           initialProfileId={initialValues?.setupProfileId}
           initialDestroyWorkspaceAfter={initialValues?.destroyWorkspaceAfter}
+          canWriteExecConfig={canWriteExecConfig}
         />
       )}
       {mode === "repository" ? (

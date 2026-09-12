@@ -203,13 +203,19 @@ export async function offlineHostAndRequeueDurableImpl(
     const session = slot.currentSessionId
       ? await state.storage.getSession(slot.currentSessionId)
       : null;
-    if (session && (session.status === "running" || session.status === "cancelled")) {
+    if (
+      session &&
+      (session.status === "running" ||
+        session.status === "cancelled" ||
+        session.status === "timed_out")
+    ) {
+      const timedOut = session.status === "timed_out";
       const released = await state.storage.finishSession({
         sessionId: session.id,
         worktreeId: null,
         workspaceSlotId: slot.id,
         attemptId: session.attemptId!,
-        status: session.status === "running" ? "queued" : "cancelled",
+        status: timedOut ? "timed_out" : session.status === "running" ? "queued" : "cancelled",
         expectedStatus: session.status,
         queueShard: session.queueShard,
         ...(session.status === "running" ? { errorMessage: reason } : {}),

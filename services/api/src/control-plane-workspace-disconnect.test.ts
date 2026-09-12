@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- disconnect fencing cases share one storage fixture shape. */
 import { expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -64,6 +65,73 @@ it("requeues a running workspace slot and takes the slot offline on durable disc
   });
   expect(writes).toEqual([expect.objectContaining({ id: slot.id, online: false })]);
   expect(state.workspaceSlots.get(slot.id)).toMatchObject({ online: false });
+});
+
+it("releases timeout-preserved workspace and host leases on durable disconnect", async () => {
+  const state = createControlPlaneState();
+  const session: SessionRecord = {
+    id: "timed-out",
+    repositoryId: "",
+    workspacePoolId: "pool",
+    workspaceSlotId: "slot",
+    workspaceSlotLease: true,
+    prompt: "inspect",
+    target: { commandId: "command" },
+    fallbacks: [],
+    targetDisplayNames: [],
+    queueTtlSeconds: 300,
+    queueExpiresAt: "later",
+    timeout: 60,
+    priority: 0,
+    requiredLabels: [],
+    status: "timed_out",
+    queueShard: 0,
+    createdAt: "now",
+    completedAt: "later",
+    worktreeId: null,
+    hostId: null,
+    timedOutHostId: "host",
+    attemptId: "attempt",
+    hostAssignmentLease: { hostId: "host" },
+  };
+  const slot: WorkspaceSlotRecord = {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "host",
+    workspacePoolId: "pool",
+    status: "busy",
+    online: true,
+    currentSessionId: session.id,
+    connectionId: "connection",
+  };
+  const finishSession = vi.fn(async () => true);
+  state.storage = {
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => [slot],
+    getSession: async () => session,
+    getWorkspaceSlot: async () => slot,
+    finishSession,
+    putWorkspaceSlot: async () => undefined,
+  } as never;
+
+  await offlineHostAndRequeueDurableImpl(state, "host", "connection", "offline", () => []);
+
+  expect(finishSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: session.id,
+      expectedStatus: "timed_out",
+      workspaceSlotId: slot.id,
+      hostAssignmentLease: { hostId: "host" },
+    }),
+  );
+  expect(finishSession.mock.calls[0]?.[0]).not.toHaveProperty("preserveWorkspaceSlotLease");
+  expect(finishSession.mock.calls[0]?.[0]).not.toHaveProperty("preserveHostAssignmentLease");
+  expect(state.sessions.get(session.id)).toMatchObject({
+    status: "timed_out",
+    workspaceSlotId: null,
+    hostId: null,
+  });
 });
 
 it("ignores workspace slots when durable slot storage is unavailable", async () => {

@@ -1,7 +1,8 @@
+/* eslint-disable max-lines -- schedule submission and structured execution controls share one form. */
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
@@ -12,6 +13,8 @@ import {
 } from "../session-target.ts";
 import { SchedulePromptField } from "./schedule-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
+import { SessionExecutionMode } from "./session-execution-mode.tsx";
+import { WorkspaceSessionFields, type WorkspacePoolOption } from "./workspace-session-fields.tsx";
 
 export type EditableSchedule = {
   id: string;
@@ -28,17 +31,42 @@ export type EditableSchedule = {
   concurrencyId?: string | null;
   activeSessionId?: string | null;
   prompt?: string;
+  workspacePoolId?: string | null;
+  setupProfileId?: string | null;
+  destroyWorkspaceAfter?: boolean | null;
 };
 
 export function ScheduleEditForm({
   schedule,
   targets,
+  workspacePools = [],
+  canWriteExecConfig = false,
 }: {
   schedule: EditableSchedule;
   targets: SessionTarget[];
+  workspacePools?: WorkspacePoolOption[];
+  canWriteExecConfig?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [mode, setMode] = useState<"repository" | "workspace">(
+    schedule.workspacePoolId ? "workspace" : "repository",
+  );
+  const [workspacePoolId, setWorkspacePoolId] = useState(schedule.workspacePoolId ?? "");
+  const pools =
+    schedule.workspacePoolId && !workspacePools.some((pool) => pool.id === workspacePoolId)
+      ? [
+          ...workspacePools,
+          {
+            id: schedule.workspacePoolId,
+            name: schedule.workspacePoolId,
+            setupProfiles: schedule.setupProfileId
+              ? [{ id: schedule.setupProfileId, name: schedule.setupProfileId }]
+              : [],
+            destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false,
+          },
+        ]
+      : workspacePools;
 
   return (
     <form
@@ -48,8 +76,9 @@ export function ScheduleEditForm({
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
+        const destroyWorkspaceAfter = String(fd.get("destroyWorkspaceAfter") ?? "inherit");
         const body = {
-          repositoryId: String(fd.get("repositoryId") ?? ""),
+          repositoryId: mode === "workspace" ? null : String(fd.get("repositoryId") ?? ""),
           name: String(fd.get("name") ?? ""),
           target,
           fallbacks,
@@ -57,9 +86,20 @@ export function ScheduleEditForm({
           cron: String(fd.get("cron") ?? ""),
           timeout: Number(fd.get("timeout") ?? 600),
           enabled: fd.get("enabled") === "on",
-          ref: String(fd.get("ref") ?? "") || undefined,
+          ref: mode === "workspace" ? undefined : String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim(),
           prompt: String(fd.get("prompt") ?? ""),
+          ...(mode === "workspace"
+            ? {
+                workspacePoolId,
+                ...(String(fd.get("setupProfileId") ?? "")
+                  ? { setupProfileId: String(fd.get("setupProfileId")) }
+                  : {}),
+                ...(destroyWorkspaceAfter === "inherit"
+                  ? {}
+                  : { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }),
+              }
+            : {}),
         };
         start(async () => {
           const res = await fetch(
@@ -81,18 +121,32 @@ export function ScheduleEditForm({
         });
       }}
     >
-      <div className="space-y-1">
-        <Label htmlFor="repositoryId" tip="Catalog repository id">
-          Repository ID
-        </Label>
-        <Input
-          id="repositoryId"
-          name="repositoryId"
-          required
-          defaultValue={schedule.repositoryId}
-          data-pw="edit-schedule-repository-id"
+      <SessionExecutionMode mode={mode} onModeChange={setMode} selectorPrefix="edit-schedule" />
+      {mode === "repository" ? (
+        <div className="space-y-1">
+          <Label htmlFor="repositoryId" tip="Catalog repository id">
+            Repository ID
+          </Label>
+          <Input
+            id="repositoryId"
+            name="repositoryId"
+            required
+            defaultValue={schedule.repositoryId}
+            data-pw="edit-schedule-repository-id"
+          />
+        </div>
+      ) : (
+        <WorkspaceSessionFields
+          pools={pools}
+          poolId={workspacePoolId}
+          onPoolIdChange={setWorkspacePoolId}
+          initialPoolId={schedule.workspacePoolId ?? undefined}
+          initialProfileId={schedule.setupProfileId ?? undefined}
+          initialDestroyWorkspaceAfter={schedule.destroyWorkspaceAfter ?? undefined}
+          canWriteExecConfig={canWriteExecConfig}
+          selectorPrefix="edit-schedule"
         />
-      </div>
+      )}
       <div className="space-y-1">
         <Label htmlFor="name" tip="Display name for this schedule">
           Name
@@ -150,17 +204,19 @@ export function ScheduleEditForm({
             data-pw="edit-schedule-timeout"
           />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="ref" tip="Git ref checked out for scheduled sessions">
-            Ref
-          </Label>
-          <Input
-            id="ref"
-            name="ref"
-            defaultValue={schedule.ref ?? ""}
-            data-pw="edit-schedule-ref"
-          />
-        </div>
+        {mode === "repository" ? (
+          <div className="space-y-1">
+            <Label htmlFor="ref" tip="Git ref checked out for scheduled sessions">
+              Ref
+            </Label>
+            <Input
+              id="ref"
+              name="ref"
+              defaultValue={schedule.ref ?? ""}
+              data-pw="edit-schedule-ref"
+            />
+          </div>
+        ) : null}
       </div>
       <div className="space-y-1">
         <Label htmlFor="concurrencyId" tip="Stable ID shared by scheduled runs">

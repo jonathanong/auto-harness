@@ -122,4 +122,43 @@ describe("workspace route scope", () => {
       ).status,
     ).toBe(404);
   });
+
+  it("does not let a repository-scoped principal convert its schedule to a workspace schedule", async () => {
+    const plane = new ControlPlane({ workspacePoolIdFactory: () => "pool-1" });
+    plane.createCommand({ id: "command-1", name: "echo", argv: ["echo"], providerId: null });
+    expect(plane.createWorkspacePool({ name: "pool" }).ok).toBe(true);
+    expect(
+      plane.putSchedule({
+        id: "schedule-1",
+        repositoryId: "repo-1",
+        name: "repository schedule",
+        target: { commandId: "command-1" },
+        cron: "* * * * *",
+        timeout: 30,
+      }).ok,
+    ).toBe(true);
+    const admins = Buffer.from(
+      JSON.stringify([{ username: "root", password: "password" }]),
+    ).toString("base64url");
+    const auth = new AuthService({ mode: "required", secret: "s".repeat(32), admins });
+    const { apiKey } = await auth.createServiceAccount({
+      name: "scoped-admin",
+      role: "admin",
+      allowedRepositoryIds: ["repo-1"],
+    });
+    const { handler } = createLocalApp({
+      plane,
+      authService: auth,
+      rateLimitConfig: { enabled: false },
+    });
+    const response = await invokeHandler(
+      handler,
+      "PATCH",
+      "/api/v1/schedules/schedule-1",
+      { repositoryId: null, workspacePoolId: "pool-1" },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    expect(response.status).toBe(404);
+    expect(plane.getSchedule("schedule-1")?.repositoryId).toBe("repo-1");
+  });
 });

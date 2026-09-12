@@ -5,6 +5,7 @@ import {
   createWorkspacePool,
   deleteWorkspacePool,
   deleteWorkspaceSlot,
+  deleteWorkspaceSlotIfIdle,
   getWorkspacePool,
   getWorkspaceSlot,
   listWorkspacePools,
@@ -185,6 +186,18 @@ describe("workspace storage", () => {
     await expect(putWorkspaceSlotFenced(conditionalStorage, slot, "connection")).resolves.toBe(
       false,
     );
+  });
+
+  it("conditionally deletes only an unclaimed workspace slot", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(deleteWorkspaceSlotIfIdle(ctx(send), "slot")).resolves.toBe(true);
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      ConditionExpression: expect.stringContaining("currentSessionId = :null"),
+      ExpressionAttributeValues: { ":busy": "busy", ":null": null },
+    });
+    await expect(
+      deleteWorkspaceSlotIfIdle(ctx(vi.fn().mockRejectedValue(conditional())), "slot"),
+    ).resolves.toBe(false);
   });
 
   it("handles conditional catalog outcomes and owned deletion", async () => {

@@ -7,6 +7,7 @@ import {
   field,
   json,
   mountForm,
+  press,
   router,
   setValue,
   submit,
@@ -15,6 +16,14 @@ import { ScheduleCreateForm } from "./schedule-create-form.tsx";
 
 const targets = [{ kind: "command" as const, id: "cmd/1", label: "Review" }];
 const repositories = [{ id: "repo-1", name: "Repo" }];
+const workspacePools = [
+  {
+    id: "pool-1",
+    name: "Workspace",
+    setupProfiles: [{ id: "setup-1", name: "Trusted setup" }],
+    destroyWorkspaceAfter: false,
+  },
+];
 const schedule = {
   id: "schedule/1",
   repositoryId: "repo-1",
@@ -139,6 +148,35 @@ describe("ScheduleCreateForm", () => {
       repositoryId: "",
       prompt: "",
     });
+    view.unmount();
+  });
+
+  it("creates a workspace schedule with only structured pool configuration", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "workspace-schedule" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <ScheduleCreateForm
+        targets={targets}
+        repositories={repositories}
+        workspacePools={workspacePools}
+        canWriteExecConfig
+      />,
+    );
+    press(field(view.container, "schedule-mode-workspace"));
+    setValue(field(view.container, "schedule-workspace-pool"), "pool-1");
+    setValue(field(view.container, "schedule-workspace-profile"), "setup-1");
+    setValue(field(view.container, "schedule-workspace-cleanup"), "true");
+    setValue(field(view.container, "schedule-name"), "Workspace nightly");
+    setValue(field(view.container, "schedule-cron"), "0 1 * * *");
+    submit(field(view.container, "form-create-schedule"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "setup-1",
+      destroyWorkspaceAfter: true,
+    });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).not.toHaveProperty("setupScript");
     view.unmount();
   });
 });

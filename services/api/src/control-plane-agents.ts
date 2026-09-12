@@ -93,6 +93,14 @@ function offlineWorkspaceSlotsLocal(
       delete session.ackReceivedAt;
       delete session.reconnectDeadlineAt;
       persistSession(state, session);
+    } else if (session?.status === "timed_out") {
+      session.workspaceSlotId = null;
+      delete session.workspaceSlotLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
+      persistSession(state, session);
     }
     state.workspaceSlots.set(slot.id, {
       ...slot,

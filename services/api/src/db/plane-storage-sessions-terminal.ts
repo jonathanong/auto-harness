@@ -40,6 +40,8 @@ type FinishSessionOpts = {
   preserveProviderAccountLease?: boolean;
   /** Timeout keeps host capacity until terminal/disconnect cleanup. */
   preserveHostAssignmentLease?: boolean;
+  /** Timeout keeps a workspace slot until terminal/disconnect cleanup. */
+  preserveWorkspaceSlotLease?: boolean;
   timedOutHostId?: string;
   timedOutAssignmentConnectionId?: string;
   expectedStatus?: string;
@@ -83,7 +85,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     "#s = :status",
     "statusShard = :statusShard",
     "worktreeId = :null",
-    "workspaceSlotId = :null",
+    ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotId = :null"]),
     ...(opts.status === "queued" ? ["hostId = :null"] : []),
   ];
   setOptional(sets, values, "completedAt", opts.completedAt);
@@ -110,7 +112,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
       ...(opts.preserveHostAssignmentLease ? [] : ["activeHostId", "activeHostOrder"]),
       ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
-      "workspaceSlotLease",
+      ...(opts.preserveWorkspaceSlotLease ? [] : ["workspaceSlotLease"]),
     ],
   };
 }
@@ -161,7 +163,7 @@ function finishSessionItems(
       },
     });
   }
-  if (opts.workspaceSlotId) {
+  if (opts.workspaceSlotId && !opts.preserveWorkspaceSlotLease) {
     const failed = opts.workspaceSlotError !== undefined;
     items.push({
       Update: {

@@ -865,6 +865,40 @@ async function applySessionStatusDurable(
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
+    session.workspaceSlotId &&
+    session.attemptId === msg.attemptId
+  ) {
+    const slotId = session.workspaceSlotId;
+    const releasedLease = await releaseTimedOutProviderAccountLease(state, session);
+    if (!releasedLease) return { ok: true };
+    const released = await storage.finishSession({
+      sessionId: session.id,
+      worktreeId: null,
+      workspaceSlotId: slotId,
+      attemptId: msg.attemptId,
+      status: "timed_out",
+      expectedStatus: "timed_out",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+    });
+    if (!released) return { ok: true };
+    const slot = state.workspaceSlots.get(slotId);
+    if (slot?.currentSessionId === session.id) {
+      state.workspaceSlots.set(slotId, {
+        ...slot,
+        status: msg.workspaceSlotError ? "error" : "idle",
+        currentSessionId: null,
+        ...(msg.workspaceSlotError ? { errorMessage: msg.workspaceSlotError } : {}),
+      });
+    }
+    session.workspaceSlotId = null;
+    delete session.workspaceSlotLease;
+    persistSession(state, session);
+    return { ok: true, applied: true };
+  }
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
     (session.providerAccountLease?.attemptId === msg.attemptId ||
       (!session.providerAccountLease &&
         session.timedOutHostId != null &&
