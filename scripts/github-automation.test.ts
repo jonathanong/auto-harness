@@ -91,8 +91,8 @@ describe("pull request labeler", () => {
     expect(labelerConfig).toContain('- "**/*.md"');
   });
 
-  it("labels same-repo pull requests with a SHA-pinned action", () => {
-    expect(labelerWorkflow).toContain("pull_request:\n    branches: [main]");
+  it("labels same-repo pull requests against any base branch with a SHA-pinned action", () => {
+    expect(labelerWorkflow).toContain("on:\n  pull_request:\n\nconcurrency:");
     expect(labelerWorkflow).not.toContain("pull_request_target");
     expect(labelerWorkflow).toContain("pull-requests: write");
     expect(labelerWorkflow).toContain("issues: write");
