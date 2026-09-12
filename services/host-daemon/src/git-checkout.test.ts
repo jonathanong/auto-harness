@@ -135,7 +135,7 @@ describe("createGitClient checkout and revParse", () => {
     );
     await expect(
       git.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("partial-sha");
   });
 
   it("checkoutRef retries when an index lock appears after preparation", async () => {
@@ -405,7 +405,7 @@ describe("createGitClient checkout and revParse", () => {
     );
     await expect(
       checkout.checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref: "main" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("abc");
   });
 
   it("fails closed when no remote can be refetched and checkout remains incomplete", async () => {
