@@ -344,8 +344,13 @@ export class SessionRunner {
           this.deps.commandRunner ?? this.deps.processRunner,
           this.deps.childEnvSource ?? process.env,
           this.deps.executionProfiles,
-          // Workspace sessions intentionally never fetch/write prior context.
-          undefined,
+          // Workspace validation rejects priorContext, so retaining the daemon
+          // identity here cannot fetch/write one. It does preserve the
+          // one-attempt child credential environment for the workspace CLI.
+          this.deps.identity,
+          // This positional argument follows identity: protocol-v4 peers must
+          // durably authorize before the workspace CLI can spawn.
+          this.deps.authorizeCommandStart,
         );
       } catch (error) {
         result = await failSession(streamer, logs, "setup_failed", thrownMessage(error), null);

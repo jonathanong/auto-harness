@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace lifecycle and authorization cases share one fixture. */
 import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,6 +121,54 @@ describe("SessionRunner workspace sessions", () => {
       status: "completed",
     });
     expect(calls).toContainEqual(["job"]);
+  });
+
+  it("waits for command-start authorization before spawning with the child-session credential", async () => {
+    const test = await workspaceRunner();
+    let allow!: () => void;
+    const authorization = new Promise<boolean>((resolve) => {
+      allow = () => resolve(true);
+    });
+    let authorizationAssign: SessionAssign | undefined;
+    let commandEnv: NodeJS.ProcessEnv | undefined;
+    let commandRuns = 0;
+    const runner = new SessionRunner({
+      worktrees: {} as never,
+      workspaces: new WorkspaceManager(test.config),
+      processRunner: test.processRunner,
+      commandRunner: {
+        async run(options) {
+          commandRuns += 1;
+          commandEnv = options.env;
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+      childEnvSource: { HARNESS_API_KEY: "host-credential" },
+      identity: { apiUrl: "https://api.example.test", apiKey: "host-credential" },
+      async authorizeCommandStart(assign) {
+        authorizationAssign = assign;
+        return await authorization;
+      },
+    });
+    const assign = {
+      ...test.assign,
+      destroyWorkspaceAfter: false,
+      sessionApiKey: "child-session-credential",
+    };
+
+    const work = runner.run(assign);
+    await expect.poll(() => authorizationAssign).toBe(assign);
+    expect(commandRuns).toBe(0);
+
+    allow();
+    await expect(work).resolves.toMatchObject({ status: "completed" });
+    expect(commandRuns).toBe(1);
+    expect(commandEnv).toMatchObject({
+      HARNESS_API_URL: "https://api.example.test",
+      HARNESS_SESSION_ID: assign.sessionId,
+      HARNESS_SESSION_API_KEY: "child-session-credential",
+    });
+    expect(commandEnv?.HARNESS_API_KEY).toBeUndefined();
   });
 
   it("turns a successful command into a cleanup failure and retains the slot error", async () => {

@@ -200,6 +200,12 @@ function inflightKey(sessionId: string, attemptId: string): string {
 }
 
 function assignmentTargetKey(msg: Extract<HostWireMessage, { type: "session:assign" }>): string {
+  // Workspace sessions have no repository checkout. Their configured pool/slot
+  // pair identifies the physical target, so separate slots must not inherit
+  // the `main\0null` fence while repeated assignments to one slot stay ordered.
+  if (msg.workspacePoolId && msg.workspaceSlotId) {
+    return `workspace\0${msg.workspacePoolId}\0${msg.workspaceSlotId}`;
+  }
   // Worktree ids are currently host inventory identifiers, but repository
   // scope avoids coupling this daemon-side fence to that representation. Main
   // checkout assignments are serialized by their repository lock as well.
@@ -1177,6 +1183,7 @@ export class DaemonLoop {
       cwd: current.cwd,
       status: msg.status,
       environment: this.childEnvSource,
+      deadlineAtMs: expiresAtMs,
     });
   }
 
