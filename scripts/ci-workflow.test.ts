@@ -69,6 +69,7 @@ describe("required CI check contract", () => {
     // the load-bearing coverage gate. No DynamoDB is needed to merge blobs.
     const fanIn = job("vitest");
     expect(fanIn).toContain("run: pnpm test:merge");
+    expect(fanIn).toContain("path: .vitest/blob");
     expect(fanIn).toContain("name: Download supplemental patch coverage");
     expect(fanIn).toContain("pattern: vitest-patch-*");
     expect(fanIn.match(/merge-multiple: true/g)).toHaveLength(1);
@@ -111,7 +112,7 @@ describe("required CI check contract", () => {
     expect(shard).toContain(
       "--shard=${{ matrix.shard }}/${{ needs.test-shard-config.outputs.vitest_count }}",
     );
-    expect(shard).toContain("--outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json");
+    expect(shard).toContain("--outputFile.blob=.vitest/blob/blob-${{ matrix.shard }}.json");
     expect(shard).toContain("name: vitest-blob-${{ matrix.shard }}");
     expect(shard).toContain("path: coverage/supplemental/lcov.info");
   });
