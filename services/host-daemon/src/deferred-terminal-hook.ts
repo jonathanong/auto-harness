@@ -75,16 +75,28 @@ export function retainClaimForDeferredTerminalHook(
   release: () => void,
 ): SessionRunResult {
   let settled = false;
+  let settlement: ReturnType<typeof result.settleDeferredTerminalHook> | undefined;
   return {
     ...result,
-    settleDeferredTerminalHook: async (runHook) => {
-      if (settled) return;
+    settleDeferredTerminalHook: (runHook) => {
+      // Shutdown and the retry disposition can arrive while the hook is still
+      // running. They must wait for, and report, the same terminal result.
+      if (settlement) return settlement;
+      if (settled) return Promise.resolve(undefined);
       settled = true;
+      let pending: ReturnType<typeof result.settleDeferredTerminalHook>;
       try {
-        return await result.settleDeferredTerminalHook(runHook);
-      } finally {
-        release();
+        pending = result.settleDeferredTerminalHook(runHook);
+      } catch (error) {
+        pending = Promise.reject(error);
       }
+      const current = pending.finally(release);
+      settlement = current;
+      const clear = () => {
+        if (settlement === current) settlement = undefined;
+      };
+      void current.then(clear, clear);
+      return current;
     },
   };
 }

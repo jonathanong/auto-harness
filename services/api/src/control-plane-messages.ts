@@ -262,6 +262,28 @@ function deferredCheckoutFailureHandoff(
   };
 }
 
+/**
+ * A terminal-status transaction may lose its conditional write to an
+ * overlapping copy of the same status report. `finishSession` treats that as
+ * success once the row has the requested terminal status, but the winning
+ * invocation may have generated a different handoff id. Read the durable row
+ * before acknowledging so the daemon can only complete the handoff that was
+ * actually stored.
+ */
+async function committedDeferredCheckoutFailureHandoff(
+  state: ControlPlaneState,
+  sessionId: string,
+  proposed: NonNullable<SessionRecord["terminalHookHandoff"]>,
+): Promise<NonNullable<SessionRecord["terminalHookHandoff"]> | undefined> {
+  const current = await state.storage?.getSession(sessionId, true);
+  const handoff = current?.terminalHookHandoff;
+  return current?.status === proposed.status &&
+    handoff?.hostId === proposed.hostId &&
+    handoff.errorCode === "checkout_fetch_failed"
+    ? handoff
+    : undefined;
+}
+
 /** Keep a deferred hook's retry decision stable across a resent moot report. */
 function settledCheckoutFetchRetryDisposition(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
@@ -1461,6 +1483,10 @@ async function applySessionStatusDurable(
       ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
     });
     if (!committed) return { ok: true };
+    const committedDeferredHandoff = deferredHandoff
+      ? await committedDeferredCheckoutFailureHandoff(state, session.id, deferredHandoff)
+      : undefined;
+    if (deferredHandoff && !committedDeferredHandoff) return { ok: true };
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
@@ -1480,7 +1506,7 @@ async function applySessionStatusDurable(
       ...(terminalErrorMessage ? { errorMessage: terminalErrorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(reportedResult ? { result: reportedResult } : {}),
-      ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
+      ...(committedDeferredHandoff ? { terminalHookHandoff: committedDeferredHandoff } : {}),
     };
     delete next.assignmentConnectionId;
     delete next.assignmentSentAt;
@@ -1488,15 +1514,17 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    if (!deferredHandoff) await archiveSessionLogs(state, session.id, undefined, true);
+    if (!committedDeferredHandoff) await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return {
       ok: true,
       applied: true,
-      ...(isFirstCheckoutFetchFailure(msg, session) || deferredHandoff
+      ...(isFirstCheckoutFetchFailure(msg, session) || committedDeferredHandoff
         ? { retryAccepted: false }
         : {}),
-      ...(deferredHandoff ? { terminalHookHandoffId: deferredHandoff.handoffId } : {}),
+      ...(committedDeferredHandoff
+        ? { terminalHookHandoffId: committedDeferredHandoff.handoffId }
+        : {}),
     };
   }
   if (cooldown && requeue && session.worktreeId) {
@@ -1601,9 +1629,11 @@ async function applySessionStatusDurable(
     }),
     ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
   });
-  if (!committed) {
-    return { ok: true };
-  }
+  if (!committed) return { ok: true };
+  const committedDeferredHandoff = deferredHandoff
+    ? await committedDeferredCheckoutFailureHandoff(state, session.id, deferredHandoff)
+    : undefined;
+  if (deferredHandoff && !committedDeferredHandoff) return { ok: true };
   if (
     finish?.errorCode === "checkout_fetch_failed" &&
     (session.infrastructureRetryCount ?? 0) >= 1
@@ -1639,7 +1669,7 @@ async function applySessionStatusDurable(
       : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(reportedResult !== undefined && !shouldSuppressTarget ? { result: reportedResult } : {}),
-    ...(deferredHandoff ? { terminalHookHandoff: deferredHandoff } : {}),
+    ...(committedDeferredHandoff ? { terminalHookHandoff: committedDeferredHandoff } : {}),
     ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
@@ -1651,7 +1681,7 @@ async function applySessionStatusDurable(
   };
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
-  if (!shouldSuppressTarget && !deferredHandoff) {
+  if (!shouldSuppressTarget && !committedDeferredHandoff) {
     await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
@@ -1659,10 +1689,12 @@ async function applySessionStatusDurable(
   return {
     ok: true,
     applied: true,
-    ...(isFirstCheckoutFetchFailure(msg, session) || deferredHandoff
+    ...(isFirstCheckoutFetchFailure(msg, session) || committedDeferredHandoff
       ? { retryAccepted: false }
       : {}),
-    ...(deferredHandoff ? { terminalHookHandoffId: deferredHandoff.handoffId } : {}),
+    ...(committedDeferredHandoff
+      ? { terminalHookHandoffId: committedDeferredHandoff.handoffId }
+      : {}),
   };
 }
 

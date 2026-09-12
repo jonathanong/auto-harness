@@ -1,5 +1,10 @@
 /* eslint-disable max-lines */
-import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
+import {
+  isSessionErrorCode,
+  isTerminalSessionStatus,
+  type HostToServerMessage,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 import WebSocket from "ws";
 
 import type { DaemonTransport, SendOptions } from "./daemon-transport-types.ts";
@@ -345,6 +350,25 @@ export function createWsTransport(options: Options): DaemonTransport & {
               (typeof message.terminalHookHandoffId === "string" &&
                 message.terminalHookHandoffId.length > 0 &&
                 message.terminalHookHandoffId.length <= 512))) ||
+            (message.type === "session:terminal-hook" &&
+              "handoffId" in message &&
+              "repositoryId" in message &&
+              "worktreeId" in message &&
+              boundedWireText(message.handoffId) &&
+              boundedWireText(message.sessionId) &&
+              boundedWireText(message.repositoryId) &&
+              (message.worktreeId === null || boundedWireText(message.worktreeId)) &&
+              isTerminalSessionStatus(message.status) &&
+              (message.errorCode === undefined || isSessionErrorCode(message.errorCode)) &&
+              optionalWireText(message.ref, 4_096) &&
+              (message.metadata === undefined ||
+                (typeof message.metadata === "object" &&
+                  message.metadata !== null &&
+                  !Array.isArray(message.metadata)))) ||
+            (message.type === "session:terminal-hook-acknowledged" &&
+              "handoffId" in message &&
+              boundedWireText(message.handoffId) &&
+              boundedWireText(message.sessionId)) ||
             message.type === "session:assign" ||
             message.type === "host:draining" ||
             message.type === "host:drain" ||
@@ -419,4 +443,12 @@ export function createWsTransport(options: Options): DaemonTransport & {
       registeredReject?.(closeError);
     },
   };
+}
+
+function boundedWireText(candidate: unknown, max = 512): candidate is string {
+  return typeof candidate === "string" && candidate.length > 0 && candidate.length <= max;
+}
+
+function optionalWireText(candidate: unknown, max = 512): boolean {
+  return candidate === undefined || (typeof candidate === "string" && candidate.length <= max);
 }
