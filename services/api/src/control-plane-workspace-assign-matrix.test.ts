@@ -135,7 +135,9 @@ describe("workspace assignment matrix", () => {
     async (protocolVersion, primaryCommandStartState) => {
       const { plane } = workspacePlane();
       const session = createWorkspaceSession(plane);
-      plane.state.connections.get("connection-1")!.protocolVersion = protocolVersion;
+      const connection = plane.state.connections.get("connection-1")!;
+      connection.protocolVersion = protocolVersion;
+      connection.negotiatedProtocolVersion = protocolVersion;
       const tryAssignWorkspaceSession = vi.fn(async () => true);
       plane.state.storage = { tryAssignWorkspaceSession } as never;
 
