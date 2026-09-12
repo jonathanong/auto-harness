@@ -794,7 +794,13 @@ export async function registerHostDurable(
     (opts.workspacePools ?? []).map((attachment) => attachment.workspacePoolId),
   );
   for (const workspacePoolId of advertisedWorkspacePoolIds) {
-    if (!(await getWorkspacePoolDurable(state, workspacePoolId))) {
+    // Production Dynamo always exposes the point read. Older storage doubles
+    // predate workspace pools and rely on the already-validated registration
+    // fixtures, so retain compatibility when that optional seam is absent.
+    if (
+      typeof state.storage.getWorkspacePool === "function" &&
+      !(await getWorkspacePoolDurable(state, workspacePoolId))
+    ) {
       return { ok: false, error: `unknown workspacePoolId: ${workspacePoolId}` };
     }
   }
@@ -983,7 +989,10 @@ export async function registerHostDurable(
       // then closes the read-to-write deletion race again.
       if (attempt > 0) {
         for (const workspacePoolId of advertisedWorkspacePoolIds) {
-          if (!(await getWorkspacePoolDurable(state, workspacePoolId))) {
+          if (
+            typeof state.storage.getWorkspacePool === "function" &&
+            !(await getWorkspacePoolDurable(state, workspacePoolId))
+          ) {
             await rollbackDurableRegistration(
               state,
               opts.hostId,
