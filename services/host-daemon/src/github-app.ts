@@ -188,12 +188,15 @@ function responseToken(value: unknown, expectedRepositoryId: number): Installati
     }
   }
   const repositories = response.repositories;
-  if (
-    !Array.isArray(repositories) ||
-    repositories.length !== 1 ||
-    record(repositories[0], "GitHub App token response.repositories[0]").id !== expectedRepositoryId
-  ) {
-    throw new Error("GitHub App token response is not scoped to the assigned repository");
+  if (repositories !== undefined) {
+    if (
+      !Array.isArray(repositories) ||
+      repositories.length !== 1 ||
+      record(repositories[0], "GitHub App token response.repositories[0]").id !==
+        expectedRepositoryId
+    ) {
+      throw new Error("GitHub App token response is not scoped to the assigned repository");
+    }
   }
   return { token, expiresAtMs: expiresAt };
 }

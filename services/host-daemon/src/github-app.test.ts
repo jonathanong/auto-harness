@@ -74,6 +74,23 @@ describe("GitHub App credentials", () => {
     expect(GITHUB_APP_TOKEN_MARGIN_MS).toBe(300_000);
   });
 
+  it("accepts a successful token response without an optional repositories field", async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            token: "ghs_exact-token",
+            expires_at: "2026-09-12T01:00:00.000Z",
+            permissions: { contents: "write", pull_requests: "write", issues: "write" },
+          }),
+          { status: 201 },
+        ),
+    );
+    await expect(
+      mintInstallationToken(config(), "repo-1", undefined, fetchFn),
+    ).resolves.toMatchObject({ token: "ghs_exact-token" });
+  });
+
   it("rejects a token response that is not restricted to the assigned repository", async () => {
     const fetchFn = vi.fn(
       async () =>
