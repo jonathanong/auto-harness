@@ -21,7 +21,7 @@ export type GitClient = {
     signal?: AbortSignal;
   }): Promise<string | undefined>;
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
-  revParse(cwd: string, rev: string): Promise<string>;
+  revParse(cwd: string, rev: string, signal?: AbortSignal): Promise<string>;
 };
 
 async function canonicalPath(path: string): Promise<string> {
@@ -205,8 +205,8 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
     },
 
-    async revParse(cwd, rev) {
-      const result = await runGit(runner, cwd, ["rev-parse", rev]);
+    async revParse(cwd, rev, signal) {
+      const result = await runGit(runner, cwd, ["rev-parse", rev], signal);
       if (result.exitCode !== 0) {
         throw gitFailure(`git rev-parse ${rev} failed`, result.stderr);
       }

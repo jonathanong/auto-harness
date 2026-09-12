@@ -93,6 +93,7 @@ async function finishSession(
   allowedRoots: readonly string[] = [],
   baseline?: string,
   canProbeResult = true,
+  environmentIsChild = false,
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -119,6 +120,7 @@ async function finishSession(
           ...(baseline !== undefined ? { baseline } : {}),
           ...(outcome.agentSummary !== undefined ? { agentSummary: outcome.agentSummary } : {}),
           environment: childEnvSource,
+          ...(environmentIsChild ? { environmentIsChild: true } : {}),
         })
       : canProbeResult
         ? harnessSessionResult(outcome.status)
@@ -145,6 +147,7 @@ export async function finishClaimedSession(
   outcome: SessionOutcome,
   childEnvSource: NodeJS.ProcessEnv = process.env,
   baseline?: string,
+  environmentIsChild = false,
 ): Promise<SessionRunResult> {
   let refreshed: Awaited<ReturnType<ClaimedHookTarget["currentHookTarget"]>> | undefined;
   try {
@@ -170,5 +173,6 @@ export async function finishClaimedSession(
     target?.allowedRoots ?? [],
     baseline,
     target !== null && target !== undefined,
+    environmentIsChild,
   );
 }

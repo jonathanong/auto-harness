@@ -406,7 +406,7 @@ export class WorktreeManager {
       ref: target,
       ...(signal ? { signal } : {}),
     });
-    const baseline = await this.git.revParse(claimed.cwd, "HEAD").catch(() => undefined);
+    const baseline = await this.git.revParse(claimed.cwd, "HEAD", signal).catch(() => undefined);
     return baseline && FULL_COMMIT_ID.test(baseline) ? baseline : undefined;
   }
 }

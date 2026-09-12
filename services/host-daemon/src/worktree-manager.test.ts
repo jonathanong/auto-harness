@@ -210,6 +210,7 @@ describe("WorktreeManager", () => {
     await mgr.prepareMainCheckout(claimed, "release", undefined);
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "main", signal });
     expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "release" });
+    expect(git.revParse).toHaveBeenCalledWith("/repo", "HEAD", signal);
   });
 
   it("refuses to claim a worktree outside allowed roots and does not mark it busy", async () => {

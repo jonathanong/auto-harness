@@ -276,13 +276,17 @@ export async function collectSessionResult(options: {
   baseline?: string;
   agentSummary?: string;
   environment: NodeJS.ProcessEnv;
+  /** Setup has already applied the child allowlist; do not apply it a second time. */
+  environmentIsChild?: boolean;
 }): Promise<SessionResult> {
   // Result probes execute inside a repository checkout, so they receive the
   // same deliberately small environment as every other repository-owned
   // process. In particular, daemon-only HARNESS_* credentials stay local.
   let environment: NodeJS.ProcessEnv;
   try {
-    environment = createChildEnv(options.environment);
+    environment = options.environmentIsChild
+      ? options.environment
+      : createChildEnv(options.environment);
   } catch {
     const summary = options.agentSummary?.trim();
     return normalizeSessionResult(

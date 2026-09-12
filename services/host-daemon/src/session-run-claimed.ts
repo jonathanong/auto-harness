@@ -93,8 +93,9 @@ export async function runClaimedSession(
         errorCode: "setup_failed",
         errorMessage: thrownMessage(error),
       },
-      childEnvSource,
+      setup.environment,
       baseline,
+      true,
     );
   }
 
@@ -106,8 +107,9 @@ export async function runClaimedSession(
       assign,
       claimed,
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
-      childEnvSource,
+      setup.environment,
       baseline,
+      true,
     );
   }
 
@@ -124,8 +126,9 @@ export async function runClaimedSession(
         errorCode: "unknown_command_profile",
         errorMessage: "no resolved command argv for this session",
       },
-      childEnvSource,
+      setup.environment,
       baseline,
+      true,
     );
   }
 
@@ -187,6 +190,7 @@ async function runProcessAndFinish(
       },
       environment,
       baseline,
+      true,
     );
   }
   const commandEnv = profile ? applyExecutionProfile(environment, profile) : environment;
@@ -248,6 +252,7 @@ async function runProcessAndFinish(
       outcome,
       environment,
       baseline,
+      true,
     );
 
   if (result.timedOut || timedOut()) {

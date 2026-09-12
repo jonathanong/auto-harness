@@ -102,6 +102,29 @@ describe("collectSessionResult", () => {
     }
   });
 
+  it("preserves allowlisted GitHub credentials from an already-sanitized child environment", async () => {
+    const probeEnvironments: NodeJS.ProcessEnv[] = [];
+    await collectSessionResult({
+      runner: runnerWith(async (options) => {
+        probeEnvironments.push(options.env ?? {});
+        if (options.argv.includes("symbolic-ref")) {
+          options.onChunk({ stream: "stdout", data: "feature/result\n" });
+        }
+        return { exitCode: options.argv.includes("pr") ? 1 : 0, timedOut: false, signal: null };
+      }),
+      cwd: process.cwd(),
+      status: "completed",
+      environment: { PATH: process.env.PATH, GH_TOKEN: "allowed" },
+      environmentIsChild: true,
+    });
+
+    expect(probeEnvironments).not.toHaveLength(0);
+    for (const environment of probeEnvironments) {
+      expect(environment).toMatchObject({ GH_TOKEN: "allowed" });
+      expect(environment).not.toHaveProperty("HARNESS_API_KEY");
+    }
+  });
+
   it("retains only the summary when probe-environment sanitization rejects its source", async () => {
     const runner: ProcessRunner = { run: vi.fn() };
     const result = await collectSessionResult({
