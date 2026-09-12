@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- durable admission, error mapping, pagination, and auth share fixtures. */
 import { createHash } from "node:crypto";
+import { MAX_FALLBACKS } from "@auto-harness/shared";
 import { describe, expect, it, vi } from "vitest";
 
 const mapping = vi.hoisted(() => ({ drain: null as string | null }));
@@ -208,6 +209,22 @@ describe("durable child session branches", () => {
     await expect(
       createSessionChildDurable(plane.state, "parent", { prompt: "child", spawnKey: "key" }),
     ).resolves.toMatchObject({ ok: false });
+  });
+
+  it("keeps the 90-fallback general limit while bounding child transactions to 89", async () => {
+    const source = parent({
+      fallbacks: Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
+        commandId: `fallback-${index}`,
+      })),
+    });
+    const plane = planeWithStorage({ getSession: async () => source }, source);
+
+    await expect(
+      createSessionChildDurable(plane.state, "parent", { prompt: "child", spawnKey: "key" }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "child sessions support at most 89 inherited fallbacks",
+    });
   });
 
   it("uses storage pagination with and without a next key", async () => {

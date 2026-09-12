@@ -93,11 +93,7 @@ const MAX_REQUIRED_LABEL_LENGTH = 64;
 const MAX_METADATA_KEYS = 32;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
-// Child admission combines reference-marker checks for every route with the
-// principal, repository, drain, parent, root-budget, session, activity, and
-// concurrency-lock actions. 89 fallbacks keeps that authenticated descendant
-// worst case within DynamoDB's 100-action limit.
-export const MAX_FALLBACKS = 89;
+export const MAX_FALLBACKS = 90;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;

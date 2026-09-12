@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   isActiveSessionStatus,
   isTerminalSessionStatus,
+  MAX_FALLBACKS,
   sessionPriorityError,
 } from "@auto-harness/shared";
 
@@ -29,6 +30,9 @@ import {
 } from "./control-plane-id-page.ts";
 
 const SPAWN_KEY_MAX_BYTES = 256;
+// Child admission adds a lineage-root budget update to the ordinary session
+// transaction, leaving room for one fewer reference marker.
+const MAX_CHILD_FALLBACKS = MAX_FALLBACKS - 1;
 
 type ChildResult =
   | { ok: true; session: import("./control-plane-types.ts").PublicSession; created: boolean }
@@ -107,6 +111,12 @@ function prepareChild(
   }
   const input = childInput(parent, body);
   if (!input.ok) return input;
+  if (Array.isArray(input.input.fallbacks) && input.input.fallbacks.length > MAX_CHILD_FALLBACKS) {
+    return {
+      ok: false,
+      error: `child sessions support at most ${MAX_CHILD_FALLBACKS} inherited fallbacks`,
+    };
+  }
   const prepared = validateSessionCreate(state, input.input, { allowReservedConcurrencyId: true });
   if (!prepared.ok) return prepared;
   const child = buildSessionRecord(state, prepared, parent.principalId);

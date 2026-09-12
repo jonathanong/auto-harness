@@ -426,11 +426,8 @@ describe("validateCreateSessionInput", () => {
     ).toEqual({ ok: false, error: "fallbacks[0].commandId must be a non-empty string" });
   });
 
-  it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
-    // 90 route markers (target + 89 fallbacks) + repository/principal markers +
-    // repository/drain/principal/parent checks + root-budget/session/activity/
-    // concurrency writes = DynamoDB's 100-action maximum.
-    expect(MAX_FALLBACKS).toBe(89);
+  it("caps general session fallback routing", () => {
+    expect(MAX_FALLBACKS).toBe(90);
     const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
       commandId: `fallback-${index}`,
     }));

@@ -807,7 +807,9 @@ for the per-assignment service-account credential delivered to the host; it is n
 replacement for `POST /sessions`. The credential is scoped to the assigned parent and is accepted
 only for this endpoint. The child inherits the parent's repository, target/fallback policy, and
 timeout. Callers may override `priority` and `queueTtlSeconds`. The parent remains independent of
-its children and may finish before them.
+its children and may finish before them. Child admission supports at most 89 inherited fallbacks
+so its additional lineage-budget write remains within DynamoDB's 100-action transaction limit;
+root sessions retain the general 90-fallback limit.
 
 **Request:**
 

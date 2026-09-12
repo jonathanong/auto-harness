@@ -81,8 +81,9 @@ describe("session command credential", () => {
       { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
     );
     const transcript = logs.map((chunk) => chunk.content).join("");
-    expect(transcript).toContain(credential.slice(0, -1));
+    expect(transcript).not.toContain(credential.slice(0, -1));
     expect(transcript).not.toContain(credential);
+    expect(transcript).toContain("[session credential redacted]");
   });
 
   it("does not reconstruct a credential whose final character overlaps its prefix", async () => {

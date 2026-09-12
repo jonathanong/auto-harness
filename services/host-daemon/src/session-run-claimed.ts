@@ -56,10 +56,9 @@ class SessionCredentialRedactor {
   }
 
   drain(): Array<{ stream: string; content: string }> {
-    const trailing = [...this.pending].map(([stream, content]) => ({
-      stream,
-      content: this.redact(content),
-    }));
+    const trailing = [...this.pending].flatMap(([stream, content]) =>
+      content ? [{ stream, content: SESSION_CREDENTIAL_REDACTION }] : [],
+    );
     this.pending.clear();
     return trailing;
   }
