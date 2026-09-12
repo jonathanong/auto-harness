@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- transport edge cases share one signed request fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -91,7 +92,12 @@ describe("signed webhook transport", () => {
       }),
       fetch: async (_url, init) => {
         signal = init?.signal ?? undefined;
-        throw new DOMException("timed out", "TimeoutError");
+        if (!signal) throw new Error("missing request signal");
+        return new Promise<never>((_resolve, reject) => {
+          const rejectOnAbort = () => reject(signal!.reason);
+          if (signal!.aborted) rejectOnAbort();
+          else signal!.addEventListener("abort", rejectOnAbort, { once: true });
+        });
       },
     });
     await expect(timeout.deliver(request)).resolves.toEqual({
@@ -99,6 +105,7 @@ describe("signed webhook transport", () => {
       failureCode: "transient-failure",
     });
     expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(true);
   });
 
   it("rejects invalid or lease-exceeding timeout overrides before sending", async () => {

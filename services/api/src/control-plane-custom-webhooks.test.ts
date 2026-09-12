@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- lifecycle branch coverage shares focused fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -117,6 +118,20 @@ describe("custom webhook integration lifecycle", () => {
     expect(created.ok).toBe(true);
   });
 
+  it("validates both provider and command fallback references", async () => {
+    const value = plane();
+    await expect(
+      value.createCustomWebhookIntegration(
+        config({ target: { commandId: "command" }, fallbacks: [{ providerId: "provider" }] }),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      value.createCustomWebhookIntegration(
+        config({ id: "missing-fallback", fallbacks: [{ commandId: "missing" }] }),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: "commandId missing not found" });
+  });
+
   it("fences observed generations across delete and recreate", async () => {
     const value = plane();
     const first = await value.createCustomWebhookIntegration(config());
@@ -136,6 +151,23 @@ describe("custom webhook integration lifecycle", () => {
     await expect(
       value.deleteCustomWebhookIntegration("deploy", 1, oldGeneration),
     ).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+  });
+
+  it("accepts legacy delete fences and rejects them for generated records", async () => {
+    const value = plane();
+    await value.createCustomWebhookIntegration(config());
+    const legacy = await value.getCustomWebhookIntegrationRecord("deploy");
+    expect(legacy).not.toBeNull();
+    delete legacy!.generation;
+    await expect(value.deleteCustomWebhookIntegration("deploy", 1, null)).resolves.toEqual({
+      ok: true,
+    });
+
+    await value.createCustomWebhookIntegration(config());
+    await expect(value.deleteCustomWebhookIntegration("deploy", 1, null)).resolves.toMatchObject({
       ok: false,
       conflict: true,
     });
@@ -195,5 +227,50 @@ describe("custom webhook integration lifecycle", () => {
       ok: false,
       conflict: true,
     });
+  });
+
+  it("passes a null generation fence for legacy durable records", async () => {
+    const source = plane();
+    await source.createCustomWebhookIntegration(config());
+    const stored = await source.getCustomWebhookIntegrationRecord("deploy");
+    expect(stored).not.toBeNull();
+    delete stored!.generation;
+    let putGeneration: string | null | undefined;
+    let deleteGeneration: string | null | undefined;
+    const storage = {
+      getRepository: async () => ({ id: "repo" }),
+      listProviders: async () => [{ id: "provider" }],
+      listCommands: async () => [{ id: "command" }],
+      getCustomWebhookIntegration: async () => stored,
+      putCustomWebhookIntegration: async (
+        _record: unknown,
+        _version: number | null,
+        _markers: unknown,
+        generation: string | null,
+      ) => {
+        putGeneration = generation;
+        return false;
+      },
+      deleteCustomWebhookIntegration: async (
+        _id: string,
+        _version: number,
+        generation: string | null,
+      ) => {
+        deleteGeneration = generation;
+        return false;
+      },
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => undefined,
+    };
+    const durable = new ControlPlane({ secretEncryptor: encryptor(), storage: storage as never });
+    await expect(
+      durable.updateCustomWebhookIntegration(config({ secret: undefined })),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+    await expect(durable.deleteCustomWebhookIntegration("deploy")).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(putGeneration).toBeNull();
+    expect(deleteGeneration).toBeNull();
   });
 });

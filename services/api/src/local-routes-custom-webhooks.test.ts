@@ -620,6 +620,26 @@ describe("custom webhook receiver", () => {
     expect(rejected.status()).toBe(500);
   });
 
+  it("returns an internal error when durable session creation throws", async () => {
+    const { plane } = await fixture();
+    (
+      plane as unknown as {
+        createCustomWebhookSessionDurable: () => Promise<never>;
+      }
+    ).createCustomWebhookSessionDurable = async () => {
+      throw new Error("session storage unavailable");
+    };
+    const body = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "throws" }));
+    const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, {
+      "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+    });
+    await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+    expect(route.status()).toBe(500);
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ action: "webhook:custom:receive", outcome: "failed" })],
+    });
+  });
+
   it("does not send a second ingress response after each denied or failed audit", async () => {
     const request = Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit-failure" }));
     const signedHeaders = {
