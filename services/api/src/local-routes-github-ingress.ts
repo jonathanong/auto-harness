@@ -110,7 +110,7 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
       ctx,
       "success",
       { delivery, created: result.created },
-      result.session.repositoryId,
+      result.session.repositoryId ?? undefined,
     );
     await assignmentEnqueue;
     if (!audited) return true;
