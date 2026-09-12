@@ -257,7 +257,9 @@ at most 65 seconds. **Archived transcript is ready to download** exposes a JSONL
 performs a fresh `GET /api/v1/sessions/:id/archive` before each download so the signed S3 URL is
 short-lived and reflects current availability. **Archived transcript is unavailable for retrieval**
 means archive metadata exists but the verified S3 object cannot currently be read. Refresh archive
-rechecks any state manually, and a successful Archive logs action triggers an immediate recheck.
+rechecks any state manually, and a successful Archive logs action on a terminal session triggers an
+immediate recheck. Active sessions cannot be manually archived; they remain on the recent-log path
+until their terminal transition queues the archive.
 **Archived transcript failed integrity verification** means S3's version-pinned object identity,
 length, or content type differs from the verified DynamoDB metadata; it is withheld from download
 until repaired.

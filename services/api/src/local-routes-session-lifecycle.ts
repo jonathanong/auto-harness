@@ -1,6 +1,7 @@
 import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { may } from "./auth-policy.ts";
+import { isTerminalSessionStatus } from "@auto-harness/shared";
 import {
   canAccessSession,
   canAccessSessionHost,
@@ -99,6 +100,22 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
     )
       return true;
     sendSessionForbidden(res);
+    return true;
+  }
+  if (!isTerminalSessionStatus(session.status)) {
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: "session:archive",
+        resourceType: "session",
+        resourceId: id,
+        repositoryId: session.repositoryId,
+        outcome: "failed",
+      }))
+    )
+      return true;
+    send(res, 409, {
+      error: { code: "CONFLICT", message: "session must be terminal before archiving" },
+    });
     return true;
   }
   try {
