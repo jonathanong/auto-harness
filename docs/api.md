@@ -1122,7 +1122,8 @@ a fresh five-minute presigned attachment URL for `session-logs.jsonl`. `incomple
 version-pinned S3 object was found, but its immutable version, content length, or content type differs
 from the verified DynamoDB metadata; `reason` is `version-id-missing`, `version-id-mismatch`,
 `content-length-mismatch`, `content-type-mismatch`, or `content-length-and-type-mismatch`. `expired` means archival did not complete before the terminal
-session's seven-day recent-log retention elapsed. `unavailable` means an archive record exists but
+session's seven-day recent-log retention elapsed and a strongly consistent bounded probe found no
+recent log row remaining. `unavailable` means an archive record exists but
 the object cannot currently be retrieved, including a cold Glacier object that has not been
 restored. The API does not initiate restores. Clients must request a new URL immediately before
 each download and must not persist or log it.

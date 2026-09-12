@@ -131,6 +131,19 @@ function archiveVersionId(result: ArchiveWriteResult | void | undefined): string
     : undefined;
 }
 
+/** A TTL cutoff is only evidence of expiry after a bounded read confirms no log remains. */
+async function recentLogsRemain(state: ControlPlaneState, sessionId: string): Promise<boolean> {
+  if (!state.storage) return (state.logs.get(sessionId)?.length ?? 0) > 0;
+  try {
+    return (
+      (await state.storage.queryLogs(sessionId, { limit: 1, consistentRead: true })).length > 0
+    );
+  } catch {
+    // A failed existence check must retain the conservative recent state.
+    return true;
+  }
+}
+
 async function archiveBody(state: ControlPlaneState, sessionId: string): Promise<string> {
   const logs = state.storage
     ? await state.storage.listLogs(sessionId)
@@ -266,15 +279,18 @@ export async function getArchiveDownloadDurable(
   const metadata = state.storage ? await state.storage.getArchive(key) : state.archives.get(key);
   if (metadata) state.archives.set(key, metadata);
   if (!metadata || metadata.status !== "complete") {
-    const retentionAnchor = terminalAt ?? metadata?.updatedAt;
-    const retainedAtMs = retentionAnchor === undefined ? Number.NaN : Date.parse(retentionAnchor);
+    const parsedAnchors = [metadata?.updatedAt, terminalAt]
+      .filter((anchor): anchor is string => anchor !== undefined)
+      .map(Date.parse)
+      .filter(Number.isFinite);
+    const retainedAtMs = parsedAnchors.length ? Math.max(...parsedAnchors) : Number.NaN;
     const nowMs = Date.parse(state.now());
     if (
       Number.isFinite(retainedAtMs) &&
       Number.isFinite(nowMs) &&
       nowMs >= retainedAtMs + SESSION_LOGS_TTL_SECONDS * 1_000
     ) {
-      return { state: "expired" };
+      if (!(await recentLogsRemain(state, sessionId))) return { state: "expired" };
     }
     return { state: "dynamodb" };
   }

@@ -14,10 +14,21 @@ describe("durable archive reads", () => {
       objectStored: false,
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
+    plane.state.logs.set(key.split("/")[1]!, [
+      {
+        sessionId: "session",
+        timestampSeq: "2026-01-01T00:00:00.000Z#000000000001",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        stream: "stdout",
+        content: "retained",
+        seq: 1,
+      },
+    ]);
 
     await expect(
       plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
-    ).resolves.toEqual({ state: "expired" });
+    ).resolves.toEqual({ state: "dynamodb" });
+    plane.state.logs.delete("session");
     plane.state.archives.delete(key);
     await expect(
       plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
@@ -69,5 +80,31 @@ describe("durable archive reads", () => {
       reason: "version-id-missing",
     });
     expect(createDownload).not.toHaveBeenCalled();
+  });
+
+  it("uses one bounded durable log read before declaring an old row expired", async () => {
+    const queryLogs = vi
+      .fn(async (_sessionId: string, query: { limit: number; consistentRead: boolean }) => {
+        expect(query).toEqual({ limit: 1, consistentRead: true });
+        return [];
+      })
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("read unavailable"));
+    const plane = new ControlPlane({
+      now: () => "2026-01-08T00:00:00.000Z",
+      storage: { getArchive: async () => null, queryLogs } as never,
+    });
+
+    await expect(
+      plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
+    ).resolves.toEqual({ state: "dynamodb" });
+    await expect(
+      plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
+    ).resolves.toEqual({ state: "expired" });
+    await expect(
+      plane.getArchiveDownloadDurable("session", "2026-01-01T00:00:00.000Z"),
+    ).resolves.toEqual({ state: "dynamodb" });
+    expect(queryLogs).toHaveBeenCalledTimes(3);
   });
 });

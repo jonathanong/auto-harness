@@ -298,6 +298,7 @@ export async function queryLogs(
               ExpressionAttributeNames: { "#stream": "stream" },
             }
           : {}),
+        ...(query.consistentRead ? { ConsistentRead: true } : {}),
         ScanIndexForward: true,
         Limit: query.limit,
       }),
@@ -324,6 +325,7 @@ export async function queryLogs(
               ExpressionAttributeNames: { "#stream": "stream" },
             }
           : {}),
+        ...(query.consistentRead ? { ConsistentRead: true } : {}),
         ScanIndexForward: query.order !== "desc",
         Limit: query.limit - records.length,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),

@@ -143,6 +143,8 @@ export type LogQuery = {
   since?: string;
   /** Exact durable cursor used by viewer reconnects. */
   after?: string;
+  /** Internal only: use a strongly consistent read for security/retention decisions. */
+  consistentRead?: boolean;
   limit: number;
   /** Internal read shape only — never exposed via `parseLogQuery`. Ignored when `after`
    * is set (a viewer reconnect cursor is always forward). Defaults to ascending. */
