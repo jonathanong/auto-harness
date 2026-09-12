@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import {
   decryptGitHubIngressSecret,
+  getGitHubIngressConfig,
   MAX_GITHUB_INGRESS_CATALOG_REFS,
   MAX_GITHUB_INGRESS_CONFIG_BYTES,
 } from "./control-plane-github-ingress.ts";
@@ -47,6 +48,12 @@ function conflictStorage(record: GitHubIngressConfigRecord | null) {
 }
 
 describe("GitHub ingress config", () => {
+  it("reads a missing durable configuration instead of the in-memory cache", async () => {
+    const plane = createPlane();
+    plane.state.storage = { getGitHubIngressConfig: async () => null } as never;
+    await expect(getGitHubIngressConfig(plane.state)).resolves.toBeNull();
+  });
+
   it("retains a secret on update and exposes no plaintext", async () => {
     const plane = createPlane();
     await expect(
@@ -384,6 +391,41 @@ describe("GitHub ingress config", () => {
       error: expect.stringContaining(
         `at most ${MAX_GITHUB_INGRESS_CATALOG_REFS} unique catalog entries`,
       ),
+    });
+
+    const oversizedUpdate = createPlane();
+    await oversizedUpdate.createGitHubIngressConfig({
+      secret: "x".repeat(16),
+      bindings: [binding],
+    });
+    await expect(
+      oversizedUpdate.updateGitHubIngressConfig({
+        bindings: Array.from({ length: 100 }, (_, index) => ({
+          ...binding,
+          githubRepositoryId: index + 1,
+          allowedLogins: largeLogins,
+        })),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`at most ${MAX_GITHUB_INGRESS_CONFIG_BYTES} bytes`),
+    });
+  });
+
+  it("accepts a legacy generation fence and rejects legacy deletion of current config", async () => {
+    const legacy = createPlane();
+    await legacy.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    const record = await legacy.getGitHubIngressConfigRecord();
+    delete record!.generation;
+    await expect(
+      legacy.updateGitHubIngressConfig({ bindings: [binding] }, 1, null),
+    ).resolves.toMatchObject({ ok: true });
+
+    const current = createPlane();
+    await current.createGitHubIngressConfig({ secret: "x".repeat(16), bindings: [binding] });
+    await expect(current.deleteGitHubIngressConfig(1, null)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
     });
   });
 

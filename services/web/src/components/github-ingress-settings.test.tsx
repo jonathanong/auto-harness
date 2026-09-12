@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+/* eslint-disable max-lines -- form scenarios share one focused API fixture. */
 
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
@@ -122,6 +123,62 @@ describe("GitHubIngressSettings", () => {
     expect(saved.bindings[0]?.requiredLabels).toEqual(["needs,review"]);
   });
 
+  it("uses legacy generation headers when an older config omits generation", async () => {
+    const legacy = { ...existing, generation: undefined };
+    const fake = createApiFake(json(legacy), json({ version: 3 }), json({}, 204));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    setValue(labelled(view.container, "Timeout seconds"), "240");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as Record<string, unknown>;
+    expect(saved).toMatchObject({ version: 2, generation: "legacy" });
+    press(field(view.container, "github-ingress-delete"));
+    press(field(view.container, "github-ingress-delete-confirm-submit"));
+    await settle();
+    expect(fake.requests[2]?.[1]?.headers).toMatchObject({
+      "if-match": "3",
+      "if-match-generation": "legacy",
+    });
+  });
+
+  it("loads command targets and provider fallbacks across multiple bindings", async () => {
+    const alternate = {
+      ...existing,
+      bindings: [
+        existing.bindings[0],
+        {
+          ...existing.bindings[0],
+          githubRepositoryId: 43,
+          repositoryId: "repo-two",
+          target: { commandId: "command-two" },
+          fallbacks: [{ providerId: "provider-two" }],
+          requiredLabels: [],
+          allowedLogins: [],
+        },
+      ],
+    };
+    const fake = createApiFake(json(alternate), json({ ...alternate, version: 3 }));
+    const view = mountForm(<GitHubIngressSettings />);
+    await settle();
+    const targetTypes = [...view.container.querySelectorAll("select")];
+    expect(targetTypes[1]?.value).toBe("commandId");
+    const fallbacks = [...view.container.querySelectorAll('[aria-label="Fallback targets"]')];
+    expect((fallbacks[1] as HTMLInputElement | undefined)?.value).toBe("provider:provider-two");
+    const timeouts = [...view.container.querySelectorAll('[aria-label="Timeout seconds"]')];
+    setValue(timeouts[1] as HTMLInputElement, "300");
+    press(field(view.container, "github-ingress-save"));
+    await settle();
+    const saved = JSON.parse(String(fake.requests[1]?.[1]?.body)) as {
+      bindings: Array<{ timeout: number; target: unknown; fallbacks: unknown[] }>;
+    };
+    expect(saved.bindings[1]).toMatchObject({
+      timeout: 300,
+      target: { commandId: "command-two" },
+      fallbacks: [{ providerId: "provider-two" }],
+    });
+  });
+
   it("validates required values and rejects malformed fallback prefixes", async () => {
     const fake = createApiFake(json({}, 404));
     const view = mountForm(<GitHubIngressSettings />);
@@ -134,6 +191,12 @@ describe("GitHubIngressSettings", () => {
     setValue(labelled(view.container, "Target id"), "provider");
     setValue(labelled(view.container, "Fallback targets"), "typo:fallback");
     await settle();
+    press(field(view.container, "github-ingress-save"));
+    expect(document.body.textContent).toContain("provider:id or command:id");
+    setValue(labelled(view.container, "Fallback targets"), "missing-prefix");
+    press(field(view.container, "github-ingress-save"));
+    expect(document.body.textContent).toContain("provider:id or command:id");
+    setValue(labelled(view.container, "Fallback targets"), "provider:");
     press(field(view.container, "github-ingress-save"));
     expect(document.body.textContent).toContain("provider:id or command:id");
     expect(fake.requests).toHaveLength(1);

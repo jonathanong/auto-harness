@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
+import { handleGitHubIngressRoute } from "./local-routes-github-ingress.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
@@ -79,7 +80,49 @@ function headers(value: unknown, delivery = "delivery-1") {
   };
 }
 
+async function invokeRequestError(
+  handler: (req: never, res: never) => void | Promise<void>,
+  path: string,
+  error: unknown,
+): Promise<{ status: number; json: unknown }> {
+  let status = 0;
+  let raw = "";
+  const req = {
+    method: "POST",
+    url: path,
+    headers: {},
+    on(event: string, cb: (...args: unknown[]) => void) {
+      if (event === "error") cb(error);
+      return req;
+    },
+  };
+  const res = {
+    setHeader() {},
+    writeHead(code: number) {
+      status = code;
+    },
+    end(payload?: string) {
+      raw = payload ?? "";
+    },
+  };
+  await handler(req as never, res as never);
+  return { status, json: raw ? JSON.parse(raw) : null };
+}
+
 describe("GitHub App webhook ingress", () => {
+  it("returns false when called for a different path", async () => {
+    const { plane } = await fixture(false);
+    await expect(
+      handleGitHubIngressRoute({
+        plane,
+        req: {} as never,
+        res: {} as never,
+        url: new URL("http://localhost/not-webhook"),
+        method: "POST",
+      }),
+    ).resolves.toBe(false);
+  });
+
   it("rejects unsupported methods, missing configuration, malformed bodies, and headers", async () => {
     const absent = await fixture(false);
     expect(await invokeHandler(absent.handler, "GET", "/api/v1/webhooks/github")).toMatchObject({
@@ -230,6 +273,23 @@ describe("GitHub App webhook ingress", () => {
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     expect(enqueue).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
+
+    const validationFailure = await fixture();
+    vi.spyOn(validationFailure.plane, "createGitHubIngressSessionDurable").mockResolvedValueOnce({
+      ok: false,
+      error: "invalid session input",
+    });
+    const invalidResult = body({ comment: { ...body().comment, id: 15 } });
+    expect(
+      await invokeHandler(
+        validationFailure.handler,
+        "POST",
+        "/api/v1/webhooks/github",
+        invalidResult,
+        headers(invalidResult),
+      ),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    vi.restoreAllMocks();
   });
 
   it("verifies GitHub HMAC, persists the configured intent, and acknowledges without host assignment", async () => {
@@ -269,6 +329,25 @@ describe("GitHub App webhook ingress", () => {
         }),
       ],
     });
+  });
+
+  it("omits optional fallbacks and generation from the durable delivery intent", async () => {
+    const { plane, handler } = await fixture(false);
+    const config = configBody();
+    await expect(plane.createGitHubIngressConfig(config)).resolves.toMatchObject({ ok: true });
+    const record = await plane.getGitHubIngressConfigRecord();
+    delete record!.bindings[0]!.fallbacks;
+    delete record!.generation;
+    const create = vi.spyOn(plane, "createGitHubIngressSessionDurable");
+    const payload = body({ comment: { ...body().comment, id: 16 } });
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({ status: 202, json: { accepted: true } });
+    expect(create).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fallbacks: expect.anything() }),
+      expect.objectContaining({ integrationFence: expect.objectContaining({ version: 1 }) }),
+    );
+    expect(create.mock.calls[0]?.[1]).not.toHaveProperty("integrationFence.generation");
   });
 
   it("tracks assignment enqueue through the webhook response lifecycle", async () => {
@@ -403,6 +482,71 @@ describe("GitHub App webhook ingress", () => {
       status: 409,
       json: { error: { code: "REPOSITORY_ADMISSION_CLOSED" } },
     });
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed when an internal error is followed by an audit failure", async () => {
+    const failing = await fixture();
+    vi.spyOn(failing.plane, "getGitHubIngressConfigRecord").mockRejectedValueOnce(
+      new Error("read"),
+    );
+    failing.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invokeHandler(
+        failing.handler,
+        "POST",
+        "/api/v1/webhooks/github",
+        body({ comment: { ...body().comment, id: 17 } }),
+        headers(body({ comment: { ...body().comment, id: 17 } })),
+      ),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+
+    const audited = await fixture();
+    vi.spyOn(audited.plane, "getGitHubIngressConfigRecord").mockRejectedValueOnce(
+      new Error("read"),
+    );
+    const payload = body({ comment: { ...body().comment, id: 19 } });
+    expect(
+      await invokeHandler(
+        audited.handler,
+        "POST",
+        "/api/v1/webhooks/github",
+        payload,
+        headers(payload),
+      ),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+  });
+
+  it("fails closed on validation errors when the validation audit cannot be written", async () => {
+    const failing = await fixture();
+    failing.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const payload = body({ comment: { ...body().comment, id: 18 } });
+    expect(
+      await invokeHandler(failing.handler, "POST", "/api/v1/webhooks/github", payload, {
+        ...headers(payload),
+        "x-hub-signature-256": "invalid",
+      }),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+  });
+
+  it("fails closed if a configured binding disappears between parsing and execution", async () => {
+    const { plane, handler } = await fixture();
+    const record = await plane.getGitHubIngressConfigRecord();
+    const bindings = record!.bindings;
+    let reads = 0;
+    Object.defineProperty(record!, "bindings", {
+      configurable: true,
+      get: () => (reads++ === 0 ? bindings : []),
+    });
+    vi.spyOn(plane, "getGitHubIngressConfigRecord").mockResolvedValueOnce(record);
+    const payload = body({ comment: { ...body().comment, id: 20 } });
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/github", payload, headers(payload)),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
     vi.restoreAllMocks();
   });
 
@@ -754,5 +898,68 @@ describe("GitHub App ingress configuration routes", () => {
         },
       ),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+  });
+
+  it("reports audit failure for invalid headers and thrown deletes without leaking a second response", async () => {
+    const invalidHeaders = await fixture(false);
+    invalidHeaders.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invokeHandler(
+        invalidHeaders.handler,
+        "DELETE",
+        "/api/v1/integrations/github-ingress",
+        undefined,
+        { "if-match": "invalid", "if-match-generation": "generation" },
+      ),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+
+    const thrownDelete = await fixture();
+    vi.spyOn(thrownDelete.plane, "deleteGitHubIngressConfig").mockRejectedValueOnce(
+      new Error("storage unavailable"),
+    );
+    thrownDelete.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const current = await thrownDelete.plane.getGitHubIngressConfig();
+    expect(
+      await invokeHandler(
+        thrownDelete.handler,
+        "DELETE",
+        "/api/v1/integrations/github-ingress",
+        undefined,
+        {
+          "if-match": String(current!.version),
+          "if-match-generation": current!.generation!,
+        },
+      ),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    vi.restoreAllMocks();
+  });
+
+  it("uses a generic validation message for non-Error request failures", async () => {
+    const { handler } = await fixture(false);
+    await expect(
+      invokeRequestError(handler, "/api/v1/integrations/github-ingress", "body stream failed"),
+    ).resolves.toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR", message: "invalid configuration" } },
+    });
+  });
+
+  it("fails closed when a configuration response audit cannot be written", async () => {
+    const { plane, handler } = await fixture(false);
+    vi.spyOn(plane, "createGitHubIngressConfig").mockResolvedValueOnce({
+      ok: false,
+      error: "invalid configuration",
+    });
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/integrations/github-ingress", configBody()),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    vi.restoreAllMocks();
   });
 });

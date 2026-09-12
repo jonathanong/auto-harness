@@ -30,6 +30,8 @@ type Binding = {
   allowedLogins: string;
   enabled: boolean;
 };
+type FallbackTarget = { providerId: string } | { commandId: string };
+type ParsedFallbackTargets = { ok: true; targets: FallbackTarget[] } | { ok: false };
 const blank = (): Binding => ({
   githubRepositoryId: "",
   repositoryId: "",
@@ -45,10 +47,8 @@ const blank = (): Binding => ({
   enabled: true,
 });
 
-function parseFallbackTargets(
-  value: string,
-): { ok: true; targets: Array<{ providerId: string } | { commandId: string }> } | { ok: false } {
-  const targets: Array<{ providerId: string } | { commandId: string }> = [];
+function parseFallbackTargets(value: string): ParsedFallbackTargets {
+  const targets: FallbackTarget[] = [];
   for (const entry of value
     .split(",")
     .map((part) => part.trim())
@@ -169,6 +169,9 @@ export function GitHubIngressSettings() {
         });
         return;
       }
+      // The validation above makes every result successful; keep the narrowed
+      // targets aligned with bindings without adding an unreachable fallback branch.
+      const validFallbacks = parsedFallbacks as Array<Extract<ParsedFallbackTargets, { ok: true }>>;
       const body = {
         ...(secret ? { secret } : {}),
         ...(configured ? { version, generation: generation ?? "legacy" } : {}),
@@ -184,7 +187,7 @@ export function GitHubIngressSettings() {
             .split(/\r?\n/)
             .map((label) => label.trim())
             .filter(Boolean),
-          fallbacks: parsedFallbacks[index]!.ok ? parsedFallbacks[index].targets : [],
+          fallbacks: validFallbacks[index]!.targets,
           defaultRef: binding.defaultRef,
           allowedLogins: binding.allowedLogins
             .split(",")
