@@ -32,11 +32,11 @@ function runningSession(over: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 describe("command-start assignment gating", () => {
-  it.each([undefined, 0, 2])("authorizes legacy protocol %s assignments", (version) => {
+  it.each([undefined, 0, 2, 3])("authorizes legacy protocol %s assignments", (version) => {
     expect(commandStartStateForProtocol(version)).toBe("authorized");
   });
 
-  it.each([3, 4])("leaves protocol %s assignments pending", (version) => {
+  it.each([4, 5])("leaves protocol %s assignments pending", (version) => {
     expect(commandStartStateForProtocol(version)).toBe("pending");
   });
 

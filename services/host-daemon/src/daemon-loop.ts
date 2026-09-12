@@ -526,7 +526,7 @@ export class DaemonLoop {
     this.serverProtocolVersion = protocolVersion ?? 0;
     // A reconnect can negotiate an older peer than the connection that
     // created these checkpoints.  The older peer cannot acknowledge a
-    // v3 command-start, so leave the authorization gate closed rather
+    // v4 command-start, so leave the authorization gate closed rather
     // than leaving the session-runner waiting forever.  This also wins
     // over any late ACK from the superseded connection; stop() and abort
     // use the same false settlement through finishCommandStart().
@@ -631,7 +631,7 @@ export class DaemonLoop {
   }
 
   /**
-   * Ask a protocol-3 control plane to durably authorize the primary CLI launch.
+   * Ask a protocol-4 control plane to durably authorize the primary CLI launch.
    * Legacy peers have no launch checkpoint, so they retain the existing behavior.
    */
   private authorizeCommandStart(assign: SessionAssign, signal?: AbortSignal): Promise<boolean> {

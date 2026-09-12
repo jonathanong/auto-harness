@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- command-start authorization timing cases share one daemon fixture. */
 import { describe, expect, it } from "vitest";
 
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import type { HostToServerMessage, HostWireMessage, SessionAssign } from "@auto-harness/shared";
 
 import { createLoopbackTransport, DaemonLoop, type DaemonTransport } from "./daemon-loop.ts";
@@ -106,9 +107,13 @@ describe("DaemonLoop command-start authorization", () => {
     await loop.start();
     try {
       expect(sent).toContainEqual(
-        expect.objectContaining({ type: "host:register", protocolVersion: 3 }),
+        expect.objectContaining({ type: "host:register", protocolVersion: HOST_PROTOCOL_VERSION }),
       );
-      transport.deliver({ type: "host:registered", hostId: "host-1", protocolVersion: 3 });
+      transport.deliver({
+        type: "host:registered",
+        hostId: "host-1",
+        protocolVersion: HOST_PROTOCOL_VERSION,
+      });
 
       const pending = authorize(loop);
       expect(sent.filter((message) => message.type === "session:command-start")).toHaveLength(1);
@@ -151,7 +156,11 @@ describe("DaemonLoop command-start authorization", () => {
     });
     await loop.start();
     try {
-      receive?.({ type: "host:registered", hostId: "host-1", protocolVersion: 3 });
+      receive?.({
+        type: "host:registered",
+        hostId: "host-1",
+        protocolVersion: HOST_PROTOCOL_VERSION,
+      });
       const pending = authorize(loop);
       expect(sent.filter((message) => message.type === "session:command-start")).toHaveLength(1);
       receive?.({
@@ -165,11 +174,11 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("sends v3 command-start and waits for the matching acknowledgement", async () => {
+  it("sends v4 command-start and waits for the matching acknowledgement", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
@@ -191,17 +200,17 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("replays pending v3 authorization after reconnect registration", async () => {
+  it("replays pending v4 authorization after reconnect registration", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
       ).toHaveLength(1);
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
       ).toHaveLength(2);
@@ -220,7 +229,7 @@ describe("DaemonLoop command-start authorization", () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
@@ -244,11 +253,11 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("rejects pending v3 authorization when reconnect downgrades the protocol", async () => {
+  it("rejects pending v4 authorization when reconnect downgrades the protocol", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
@@ -257,7 +266,7 @@ describe("DaemonLoop command-start authorization", () => {
       transport.negotiate(2);
       await expect(pending).resolves.toBe(false);
 
-      // An ACK from the superseded v3 connection must not reopen the gate.
+      // An ACK from the superseded v4 connection must not reopen the gate.
       transport.deliver({
         type: "session:command-start-acknowledged",
         sessionId: assign.sessionId,
@@ -271,11 +280,11 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("bypasses command-start authorization for protocol 2", async () => {
+  it.each([2, 3])("bypasses command-start authorization for protocol %s", async (version) => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(2);
+      transport.negotiate(version);
       await expect(authorizeWithoutSignal(loop)).resolves.toBe(true);
       expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
         false,
@@ -285,12 +294,12 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("allows legacy callers without a cancellation signal and refuses an already-aborted v3 launch", async () => {
+  it("allows legacy callers without a cancellation signal and refuses an already-aborted v4 launch", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
       await expect(authorize(loop)).resolves.toBe(true);
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       await expect(authorize(loop, AbortSignal.abort())).resolves.toBe(false);
       expect(transport.sent.some((message) => message.type === "session:command-start")).toBe(
         false,
@@ -300,11 +309,11 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("refuses a pending v3 launch when its assignment is cancelled", async () => {
+  it("refuses a pending v4 launch when its assignment is cancelled", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const controller = new AbortController();
       const pending = authorize(loop, controller.signal);
       expect(
@@ -319,10 +328,10 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
-  it("refuses every pending v3 launch when the daemon stops", async () => {
+  it("refuses every pending v4 launch when the daemon stops", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);
-    transport.negotiate(3);
+    transport.negotiate(HOST_PROTOCOL_VERSION);
     const pending = authorize(loop);
     expect(
       transport.sent.filter((message) => message.type === "session:command-start"),
@@ -359,7 +368,7 @@ describe("DaemonLoop command-start authorization", () => {
         loop as unknown as {
           handleRegistered(protocolVersion?: number): void;
         }
-      ).handleRegistered(3);
+      ).handleRegistered(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
 
       await expect
@@ -377,13 +386,13 @@ describe("DaemonLoop command-start authorization", () => {
     transport.deferCommandStarts = true;
     const loop = await startedLoop(transport);
     try {
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       const pending = authorize(loop);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
       ).toHaveLength(1);
 
-      transport.negotiate(3);
+      transport.negotiate(HOST_PROTOCOL_VERSION);
       expect(
         transport.sent.filter((message) => message.type === "session:command-start"),
       ).toHaveLength(1);

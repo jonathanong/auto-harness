@@ -49,7 +49,11 @@ function hostLockChecks(ctx: PlaneStorageCtx, opts: RequeueOpts): Array<Record<s
       ConditionCheck: {
         TableName: ctx.tables.hostLocks,
         Key: { hostId: opts.requireNoHostLock },
-        ConditionExpression: "attribute_not_exists(hostId)",
+        // A disconnect retains its row for alerts and reconnect bookkeeping.
+        // Treat that retained row as absent, but let a concurrent replacement
+        // registration make this transition lose its fence.
+        ConditionExpression: "attribute_not_exists(hostId) OR disconnected = :true",
+        ExpressionAttributeValues: { ":true": true },
       },
     });
   }

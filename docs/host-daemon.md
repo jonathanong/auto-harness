@@ -341,13 +341,13 @@ The resumed session's prompt already carries a fixed pointer sentence naming `.a
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. On POSIX, running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`. On Windows, `SpawnProcessRunner` (git, setup scripts, terminal hooks) kills the full descendant process tree via a single forceful `taskkill /PID <pid> /T /F` instead — Windows has no signal-ignoring equivalent to escalate past, and a delayed second `taskkill` against the same numeric pid risks hitting a process Windows has since recycled that pid to.                                                                                                                                                                                                                                                                                           |
 | Cancel            | `session:cancel { sessionId, attemptId }` aborts only that attempt through the same platform-specific termination path described under Timeout; delayed cancels for an old attempt are ignored. Report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-For protocol version 3, the daemon sends `session:command-start { sessionId, worktreeId,
+For protocol version 4, the daemon sends `session:command-start { sessionId, worktreeId,
 attemptId }` after checkout, setup, execution-profile validation, and prior-context preparation,
 but immediately before `commandRunner.run`. It must not spawn the primary CLI until the control
 plane durably replies `session:command-start-acknowledged { sessionId, attemptId }`; duplicate
 requests and acknowledgements for an old attempt are ignored. The daemon retains the pending
 request across reconnects and cancels without spawning if the session deadline or cancellation
-arrives first. Protocol v2 and legacy daemons do not participate in this checkpoint, so their
+arrives first. Protocol v3 and legacy daemons do not participate in this checkpoint, so their
 ambiguous host loss is never automatically retried.
 
 A repository-principal session drain uses this same cancel path. The control plane fences the

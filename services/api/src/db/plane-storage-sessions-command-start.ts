@@ -12,7 +12,7 @@ type CommandStart = {
 
 /**
  * Durably authorize the primary command immediately before it starts. The
- * assignment and connection fences make duplicated/replayed v3 frames safe.
+ * assignment and connection fences make duplicated/replayed v4 frames safe.
  */
 export async function authorizePrimaryCommandStart(
   ctx: PlaneStorageCtx,

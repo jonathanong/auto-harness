@@ -162,6 +162,7 @@ function planInfrastructureFailure(
   code: "checkout_fetch_failed" | "host_lost",
   ctx: SessionTransitionContext,
   detail?: string,
+  fields: SessionReportFields = {},
 ): SessionTransitionPlan {
   if (session.status !== "running") return planOf({ type: "ignore", reason: "not_running" });
   const baseMessage =
@@ -188,6 +189,7 @@ function planInfrastructureFailure(
       type: "finish",
       status: "failed",
       completedAt: ctx.now,
+      ...fields,
       errorCode: code,
       errorMessage: replaySafe
         ? `${baseMessage}; automatic retry exhausted`
@@ -322,7 +324,13 @@ function planStatus(
     return planOf(...planUsageLimit(session, event, ctx));
   }
   if (event.status === "failed" && event.errorCode === "checkout_fetch_failed") {
-    return planInfrastructureFailure(session, "checkout_fetch_failed", ctx, event.errorMessage);
+    return planInfrastructureFailure(
+      session,
+      "checkout_fetch_failed",
+      ctx,
+      event.errorMessage,
+      report(event),
+    );
   }
   return planOf(
     ...releaseEffects(session),

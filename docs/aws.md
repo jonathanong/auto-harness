@@ -507,9 +507,9 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 3. For sessions `running` on that agent:
    - Prefer **leave running briefly** (agent may reconnect and re-register in-progress sessions), or
    - After grace (e.g. 2 minutes) with no reconnect: mark `failed` or `timed_out`, clear worktree assignment so queue can move to other agents
-4. For an acknowledged v3 assignment whose durable command-start checkpoint is still `pending`,
+4. For an acknowledged v4 assignment whose durable command-start checkpoint is still `pending`,
    the control plane may retry the logical session once as `host_lost` after the disconnect grace
-   expires. A checkpoint in `authorized`, a legacy/v2 assignment, or any ambiguous/post-launch
+   expires. A checkpoint in `authorized`, a legacy/v3 assignment, or any ambiguous/post-launch
    loss is terminal; it is never silently duplicated. The retry keeps the original queue deadline
    and concurrency identity but uses a fresh `attemptId`.
 5. Do **not** auto-reassign an in-flight session to another agent (workspace state is on the original disk)

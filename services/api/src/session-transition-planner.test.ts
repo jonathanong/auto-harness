@@ -156,6 +156,25 @@ describe("session-transition planner", () => {
       reason: "infrastructure",
       errorCode: "checkout_fetch_failed",
     });
+    const exhaustedCheckout = planSessionTransition(
+      session({ infrastructureRetryCount: 1 }),
+      status({
+        status: "failed",
+        errorCode: "checkout_fetch_failed",
+        exitCode: 1,
+        cliResumeRef: "resume-after-checkout-failure",
+        result: { summary: "checkout failed", summarySource: "harness" },
+      }),
+      ctx(),
+    );
+    expect(transitionEffect(exhaustedCheckout, "finish")).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      errorMessage: "checkout fetch failed; automatic retry exhausted",
+      exitCode: 1,
+      cliResumeRef: "resume-after-checkout-failure",
+      result: { summary: "checkout failed", summarySource: "harness" },
+    });
     const exhausted = planSessionTransition(
       session({ infrastructureRetryCount: 1, primaryCommandStartState: "pending" }),
       { type: "infrastructure_failure", code: "host_lost" },

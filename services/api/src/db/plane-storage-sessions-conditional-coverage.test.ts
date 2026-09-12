@@ -383,6 +383,28 @@ describe("session storage conditional outcomes", () => {
     );
   });
 
+  it("treats a retained disconnected host lock as offline while fencing a live replacement", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      tryRequeueSession(ctx(send), {
+        sessionId: "session",
+        worktreeId: "worktree",
+        attemptId: "attempt",
+        queueShard: 0,
+        requireNoHostLock: "host",
+      }),
+    ).resolves.toBe(true);
+    const request = send.mock.calls.at(-1)?.[0] as { input: { TransactItems: unknown[] } };
+    expect(request.input.TransactItems).toContainEqual({
+      ConditionCheck: {
+        TableName: "HostLocks",
+        Key: { hostId: "host" },
+        ConditionExpression: "attribute_not_exists(hostId) OR disconnected = :true",
+        ExpressionAttributeValues: { ":true": true },
+      },
+    });
+  });
+
   it("deletes a concurrency lock while finishing a terminal assignment", async () => {
     const send = vi.fn().mockResolvedValue({});
     await expect(

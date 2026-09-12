@@ -72,7 +72,7 @@ export type SessionRecord = {
   assignmentConnectionId?: string | undefined;
   /** Durable assignment timestamp used to reclaim an unacknowledged scheduled run after restart. */
   assignmentSentAt?: string;
-  /** Durable v3 command-launch checkpoint. Never expose this to browser clients. */
+  /** Durable v4 command-launch checkpoint. Never expose this to browser clients. */
   primaryCommandStartState?: "pending" | "authorized";
   /** Deadline after an acknowledged daemon disconnects before this work is requeued. */
   reconnectDeadlineAt?: string;

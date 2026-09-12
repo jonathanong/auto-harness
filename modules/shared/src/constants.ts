@@ -87,10 +87,10 @@ export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
 /** Current host control-channel protocol advertised by modern daemons. */
-export const HOST_PROTOCOL_VERSION = 3;
+export const HOST_PROTOCOL_VERSION = 4;
 
 /** Daemons at this version require a durable command-start acknowledgement before spawning. */
-export const COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION = 3;
+export const COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION = 4;
 
 /**
  * Daemons that negotiate this version on `host:registered` re-arm the keepalive

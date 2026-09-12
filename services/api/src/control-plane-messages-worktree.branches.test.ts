@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- terminal variants share one durable worktree fixture. */
 import { describe, expect, it, vi } from "vitest";
+import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
@@ -57,7 +58,7 @@ const terminal = (sessionId: string, status: "completed" | "failed" | "timed_out
 });
 
 describe("durable worktree terminal branches", () => {
-  it("accepts structured results only from protocol-v3 host connections", async () => {
+  it("accepts structured results only from protocol-v3-or-newer host connections", async () => {
     const connection = {
       hostId: "host",
       connectionId: "connection",
@@ -81,7 +82,10 @@ describe("durable worktree terminal branches", () => {
     expect(legacy.sessions.get("legacy")?.status).toBe("running");
 
     const current = run(row("current"), { getHostLock: async () => "connection" });
-    current.connections.set("connection", { ...connection, protocolVersion: 3 });
+    current.connections.set("connection", {
+      ...connection,
+      protocolVersion: HOST_PROTOCOL_VERSION,
+    });
     await expect(
       handleHostMessageDurable(current, terminal("current", "completed", { result }), "connection"),
     ).resolves.toMatchObject({ ok: true });

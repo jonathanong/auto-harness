@@ -2,7 +2,7 @@ import { COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION } from "@auto-harness/shar
 
 /**
  * Only daemons that support the durable command-start handshake can safely be
- * replayed after a host loss. Legacy/v2 assignments are already authorized at
+ * replayed after a host loss. Legacy/v3 assignments are already authorized at
  * delivery time, so replaying them could execute the command twice.
  */
 export function commandStartStateForProtocol(

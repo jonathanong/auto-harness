@@ -7,7 +7,11 @@ import { queueOrderKey } from "../control-plane-ordering.ts";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
-import { tryAcquireHostLock } from "./plane-storage-locks.ts";
+import {
+  releaseHostConnection,
+  tryAcquireHostLock,
+  tryRegisterHost,
+} from "./plane-storage-locks.ts";
 import {
   acknowledgeSession,
   getSession,
@@ -49,6 +53,101 @@ afterAll(async () => {
 });
 
 describe("DynamoDB Local requeue and acknowledgement races", () => {
+  it("requeues after a retained disconnected host lock but fences a replacement registration", async () => {
+    const hostId = "reconnect-host";
+    await tryAcquireHostLock(ctx, {
+      hostId,
+      connectionId: "disconnected-connection",
+      replaceExisting: false,
+    });
+    expect(
+      await releaseHostConnection(ctx, {
+        hostId,
+        connectionId: "disconnected-connection",
+      }),
+    ).toBe(true);
+    expect(
+      (await ctx.doc.send(new GetCommand({ TableName: tables.hostLocks, Key: { hostId } }))).Item,
+    ).toMatchObject({
+      hostId,
+      connectionId: "disconnected-connection",
+      disconnected: true,
+    });
+
+    await putSession(ctx, {
+      ...base,
+      id: "retained-disconnected-lock",
+      status: "running",
+      worktreeId: "retained-disconnected-worktree",
+      hostId,
+      attemptId: "attempt",
+    });
+    await putWorktree(ctx, {
+      id: "retained-disconnected-worktree",
+      name: "retained-disconnected-worktree",
+      hostId,
+      repositoryId: "repo",
+      path: "/repo",
+      labels: [],
+      status: "busy",
+      online: false,
+      currentSessionId: "retained-disconnected-lock",
+    });
+    expect(
+      await tryRequeueSession(ctx, {
+        sessionId: "retained-disconnected-lock",
+        worktreeId: "retained-disconnected-worktree",
+        attemptId: "attempt",
+        queueShard: 0,
+        requireNoHostLock: hostId,
+      }),
+    ).toBe(true);
+
+    await putSession(ctx, {
+      ...base,
+      id: "replacement-fenced-lock",
+      status: "running",
+      worktreeId: "replacement-fenced-worktree",
+      hostId,
+      attemptId: "attempt",
+    });
+    await putWorktree(ctx, {
+      id: "replacement-fenced-worktree",
+      name: "replacement-fenced-worktree",
+      hostId,
+      repositoryId: "repo",
+      path: "/repo",
+      labels: [],
+      status: "busy",
+      online: false,
+      currentSessionId: "replacement-fenced-lock",
+    });
+    expect(
+      await tryRegisterHost(ctx, {
+        hostId,
+        connection: {
+          connectionId: "replacement-connection",
+          type: "host",
+          hostId,
+          connectedAt: base.createdAt,
+          lastHeartbeatAt: base.createdAt,
+          commandProfiles: [],
+        },
+        replaceExisting: false,
+      }),
+    ).toBe(true);
+    expect(
+      await tryRequeueSession(ctx, {
+        sessionId: "replacement-fenced-lock",
+        worktreeId: "replacement-fenced-worktree",
+        attemptId: "attempt",
+        queueShard: 0,
+        requireNoHostLock: hostId,
+      }),
+    ).toBe(false);
+    expect((await getSession(ctx, "replacement-fenced-lock"))?.status).toBe("running");
+  });
+
   it("requeues only the exact running attempt and can fence a reconnect", async () => {
     await putSession(ctx, {
       ...base,

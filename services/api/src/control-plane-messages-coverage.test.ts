@@ -376,17 +376,31 @@ describe("control-plane host message coverage paths", () => {
     });
 
     const exhaustedRun = running({ infrastructureRetryCount: 1 });
-    const exhausted = durable(exhaustedRun);
+    const finishSession = vi.fn(async () => true);
+    const exhausted = durable(exhaustedRun, { finishSession });
     exhausted.worktrees.set("worktree", worktree());
+    const result = { summary: "checkout failed", summarySource: "harness" as const };
     await expect(
       handleHostMessageDurable(
         exhausted,
-        status(exhaustedRun.id, "failed", { errorCode: "checkout_fetch_failed" }),
+        status(exhaustedRun.id, "failed", {
+          errorCode: "checkout_fetch_failed",
+          exitCode: 1,
+          result,
+        }),
       ),
     ).resolves.toMatchObject({ sessionStatusAcknowledged: { sessionId: exhaustedRun.id } });
+    expect(finishSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exitCode: 1,
+        result,
+      }),
+    );
     expect(exhausted.sessions.get(exhaustedRun.id)).toMatchObject({
       status: "failed",
       errorCode: "checkout_fetch_failed",
+      exitCode: 1,
+      result,
       worktreeId: null,
     });
   });

@@ -131,7 +131,7 @@ describe("assignment optional-field coverage", () => {
       }
     }
 
-    // Losing the connection at assignment must not retain a protocol-3 pending
+    // Losing the connection at assignment must not retain a protocol-4 pending
     // launch gate, while losing it only for prior-context capability lookup does
     // not change the negotiated command-start state.
     expect(statesAfterOneLostRead).toContain("authorized");
