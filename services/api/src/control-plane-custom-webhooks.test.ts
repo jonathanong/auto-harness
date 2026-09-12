@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { decryptCustomWebhookSecret } from "./control-plane-custom-webhooks.ts";
+import {
+  decryptCustomWebhookSecret,
+  validateConfiguredTargetReferences,
+} from "./control-plane-custom-webhooks.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
 
 const secret = "s".repeat(32);
@@ -55,6 +58,9 @@ describe("custom webhook integration lifecycle", () => {
     ]) {
       expect((await value.createCustomWebhookIntegration(config(invalid))).ok).toBe(false);
     }
+    await expect(
+      value.updateCustomWebhookIntegration(config({ secret: "short" })),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("secret") });
   });
 
   it("redacts secrets, retains them on routing updates, rotates explicitly, and deletes", async () => {
@@ -103,5 +109,78 @@ describe("custom webhook integration lifecycle", () => {
       "invalid",
     );
     expect(created.ok).toBe(true);
+  });
+
+  it("uses durable reads and writes, including compare-and-swap delete and update failures", async () => {
+    let stored: Awaited<ReturnType<ControlPlane["getCustomWebhookIntegrationRecord"]>> = null;
+    let writeAllowed = true;
+    const storage = {
+      getRepository: async () => ({ id: "repo" }),
+      listProviders: async () => [{ id: "provider" }],
+      listCommands: async () => [{ id: "command" }],
+      getCustomWebhookIntegration: async () => stored,
+      putCustomWebhookIntegration: async (record: NonNullable<typeof stored>) => {
+        if (writeAllowed) stored = record;
+        return writeAllowed;
+      },
+      deleteCustomWebhookIntegration: async () => {
+        if (writeAllowed) stored = null;
+        return writeAllowed;
+      },
+    };
+    const value = new ControlPlane({ secretEncryptor: encryptor(), storage: storage as never });
+
+    expect(await value.getCustomWebhookIntegration("deploy")).toBeNull();
+    expect(await value.createCustomWebhookIntegration(config())).toMatchObject({ ok: true });
+    expect(await value.getCustomWebhookIntegration("deploy")).toMatchObject({ id: "deploy" });
+
+    writeAllowed = false;
+    expect(await value.updateCustomWebhookIntegration(config())).toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(await value.deleteCustomWebhookIntegration("deploy")).toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+
+    writeAllowed = true;
+    expect(await value.updateCustomWebhookIntegration(config({ secret: undefined }))).toMatchObject(
+      {
+        ok: true,
+        integration: { version: 2 },
+      },
+    );
+    expect(await value.deleteCustomWebhookIntegration("deploy")).toEqual({ ok: true });
+  });
+
+  it("rejects absent catalog references and every malformed encrypted-secret shape", async () => {
+    const value = plane();
+    await expect(
+      validateConfiguredTargetReferences(value.state, "missing", { providerId: "provider" }),
+    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
+    await expect(
+      validateConfiguredTargetReferences(value.state, "repo", { providerId: "missing" }),
+    ).resolves.toMatchObject({ ok: false, error: "providerId missing not found" });
+    await expect(
+      validateConfiguredTargetReferences(value.state, "repo", { commandId: "missing" }),
+    ).resolves.toMatchObject({ ok: false, error: "commandId missing not found" });
+
+    const created = await value.createCustomWebhookIntegration(config());
+    expect(created.ok).toBe(true);
+    const record = await value.getCustomWebhookIntegrationRecord("deploy");
+    expect(record).not.toBeNull();
+    value.state.secretEncryptor = undefined;
+    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
+      "unavailable",
+    );
+    value.state.secretEncryptor = encryptor({ decrypt: async () => "{}" });
+    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
+      "invalid",
+    );
+    value.state.secretEncryptor = encryptor({ decrypt: async () => '{"secret": 1}' });
+    await expect(decryptCustomWebhookSecret(value.state, "deploy", record!)).rejects.toThrow(
+      "invalid",
+    );
   });
 });

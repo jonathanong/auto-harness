@@ -14,6 +14,7 @@ import {
   submit,
 } from "../../test-helpers/form-test-helpers.tsx";
 import { CustomWebhookSettings } from "./custom-webhook-settings.tsx";
+import CustomWebhookSettingsPage from "../app/settings/custom-webhooks/page.tsx";
 
 const existing = {
   id: "deploy",
@@ -43,8 +44,22 @@ describe("CustomWebhookSettings", () => {
     press(field(view.container, "custom-webhook-load"));
     await settle();
     expect(field<HTMLInputElement>(view.container, "custom-webhook-repository").value).toBe("repo");
+    setValue(field(view.container, "custom-webhook-queue-ttl"), "7200");
+    setValue(field(view.container, "custom-webhook-priority"), "7");
+    setValue(field(view.container, "custom-webhook-target-type"), "commandId");
+    setValue(field(view.container, "custom-webhook-target"), "command");
+    setValue(field(view.container, "custom-webhook-label-0"), "ready");
+    setValue(field(view.container, "custom-webhook-fallback-type-0"), "providerId");
+    setValue(field(view.container, "custom-webhook-fallback-id-0"), "backup");
+    setValue(field(view.container, "custom-webhook-timeout"), "240");
+    press(field(view.container, "custom-webhook-enabled"));
     press(field(view.container, "custom-webhook-add-label"));
     press(field(view.container, "custom-webhook-add-fallback"));
+    const addedLabel = field(view.container, "custom-webhook-label-1").parentElement;
+    const addedFallback = field(view.container, "custom-webhook-fallback-id-1").parentElement;
+    if (!addedLabel || !addedFallback) throw new Error("missing dynamic rows");
+    press(addedLabel.querySelector("button")!);
+    press(addedFallback.querySelector("button")!);
     submit(view.container.querySelector("form")!);
     await settle();
     const save = fake.requests[1]?.[1];
@@ -71,5 +86,42 @@ describe("CustomWebhookSettings", () => {
     view.unmount();
     resolve(json(existing));
     await settle();
+  });
+
+  it("reports load, save, and delete failures", async () => {
+    const fake = createApiFake(
+      json({}, 404),
+      json({ error: { code: "NO" } }, 500),
+      json(existing),
+      json({ error: { code: "NO" } }, 400),
+      json(existing),
+      json({ error: { code: "NO" } }, 409),
+    );
+    const view = mountForm(<CustomWebhookSettings />);
+    press(field(view.container, "custom-webhook-load"));
+    expect(document.body.textContent).toContain("Enter an integration id");
+    setValue(field(view.container, "custom-webhook-id"), "deploy");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(document.body.textContent).toContain("No configuration exists");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    expect(document.body.textContent).toContain("Unable to load");
+    press(field(view.container, "custom-webhook-load"));
+    await settle();
+    submit(view.container.querySelector("form")!);
+    await settle();
+    expect(document.body.textContent).toContain("Unable to save");
+    submit(view.container.querySelector("form")!);
+    await settle();
+    press(field(view.container, "custom-webhook-delete"));
+    await settle();
+    expect(document.body.textContent).toContain("Unable to delete");
+    expect(fake.requests).toHaveLength(6);
+  });
+
+  it("renders the settings page wrapper", () => {
+    const view = mountForm(<CustomWebhookSettingsPage />);
+    expect(field(view.container, "custom-webhook-settings-card")).toBeInstanceOf(HTMLElement);
   });
 });

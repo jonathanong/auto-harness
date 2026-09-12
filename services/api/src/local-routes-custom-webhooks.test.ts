@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
+import { handleCustomWebhookConfigRoutes } from "./local-routes-custom-webhook-config.ts";
+import { handleCustomWebhookRoute } from "./local-routes-custom-webhooks.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
-import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const secret = "s".repeat(32);
 
@@ -41,6 +43,44 @@ function signature(body: unknown): string {
   return `sha256=${createHmac("sha256", secret).update(bytes).digest("hex")}`;
 }
 
+function directRoute(
+  plane: ControlPlane,
+  path: string,
+  method: string,
+  body = Buffer.alloc(0),
+  headers: Record<string, string> = {},
+  throwWhenWriting = false,
+) {
+  let status = 0;
+  const req = {
+    headers,
+    destroy() {
+      /* simulate a terminated oversized request */
+    },
+    on(event: string, callback: (value?: Buffer) => void) {
+      if (event === "data" && body.length) callback(body);
+      if (event === "end") callback();
+      return req;
+    },
+  };
+  const res = {
+    setHeader() {
+      if (throwWhenWriting) throw new Error("response unavailable");
+      /* response payload is not material to direct route guards */
+    },
+    writeHead(value: number) {
+      status = value;
+    },
+    end() {
+      /* response payload is not material to direct route guards */
+    },
+  };
+  return {
+    ctx: { plane, req, res, url: new URL(`http://local.test${path}`), method },
+    status: () => status,
+  };
+}
+
 describe("custom webhook receiver", () => {
   it("exposes CRUD configuration without returning the encrypted secret", async () => {
     const { handler } = await fixture();
@@ -60,6 +100,94 @@ describe("custom webhook receiver", () => {
     expect((await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).status).toBe(
       404,
     );
+  });
+
+  it("covers configuration CRUD validation, conflicts, and storage failures", async () => {
+    const { plane, handler } = await fixture();
+    const complete = {
+      secret: "n".repeat(32),
+      repositoryId: "repo",
+      target: { providerId: "provider" },
+      fallbacks: [{ commandId: "command" }],
+      queueTtlSeconds: 120,
+      timeout: 60,
+      priority: 1,
+      requiredLabels: ["release"],
+      enabled: true,
+    };
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/integrations/custom/new-hook", complete),
+    ).toMatchObject({ status: 201, json: { id: "new-hook" } });
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/integrations/custom/new-hook", complete),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/missing", {
+        ...complete,
+        secret: undefined,
+      }),
+    ).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
+    for (const [id, body] of [
+      ["not-object", null],
+      ["unknown", { ...complete, surprise: true }],
+      ["missing-secret", { ...complete, secret: undefined }],
+      ["secret-type", { ...complete, secret: 1 }],
+      ["missing-repository", { ...complete, repositoryId: undefined }],
+      ["missing-target", { ...complete, target: undefined }],
+      ["missing-timeout", { ...complete, timeout: undefined }],
+      ["bad-fallbacks", { ...complete, fallbacks: {} }],
+      ["bad-labels", { ...complete, requiredLabels: {} }],
+    ]) {
+      expect(
+        await invokeHandler(handler, "POST", `/api/v1/integrations/custom/${id}`, body),
+      ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    }
+    expect(await invokeBadJson(handler, "POST", "/api/v1/integrations/custom/bad-json")).toBe(400);
+    expect(
+      await invokeHandler(handler, "PUT", "/api/v1/integrations/custom/deploy", {
+        ...complete,
+        secret: 1,
+      }),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+
+    const malformedConfig = directRoute(plane, "/api/v1/integrations/custom/%E0%A4%A", "GET");
+    await expect(handleCustomWebhookConfigRoutes(malformedConfig.ctx as never)).resolves.toBe(true);
+    expect(malformedConfig.status()).toBe(404);
+    const invalidConfig = directRoute(plane, "/api/v1/integrations/custom/bad%20id", "GET");
+    await expect(handleCustomWebhookConfigRoutes(invalidConfig.ctx as never)).resolves.toBe(true);
+    expect(invalidConfig.status()).toBe(404);
+
+    const mutable = plane as unknown as {
+      getCustomWebhookIntegration: (id: string) => Promise<never>;
+      deleteCustomWebhookIntegration: (id: string) => Promise<unknown>;
+      createCustomWebhookIntegration: (input: unknown) => Promise<unknown>;
+    };
+    mutable.getCustomWebhookIntegration = async () => {
+      throw new Error("storage unavailable");
+    };
+    expect(await invokeHandler(handler, "GET", "/api/v1/integrations/custom/deploy")).toMatchObject(
+      { status: 500, json: { error: { code: "INTERNAL_ERROR" } } },
+    );
+    mutable.deleteCustomWebhookIntegration = async () => ({
+      ok: false,
+      error: "changed",
+      conflict: true,
+    });
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy"),
+    ).toMatchObject({ status: 409, json: { error: { code: "CONFLICT" } } });
+    mutable.deleteCustomWebhookIntegration = async () => {
+      throw new Error("storage unavailable");
+    };
+    expect(
+      await invokeHandler(handler, "DELETE", "/api/v1/integrations/custom/deploy"),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    mutable.createCustomWebhookIntegration = async () => {
+      throw new Error("storage unavailable");
+    };
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/integrations/custom/throws", complete),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });
 
   it("verifies the raw body, applies operator routing, and asynchronously acknowledges", async () => {
@@ -147,6 +275,101 @@ describe("custom webhook receiver", () => {
         })
       ).status,
     ).toBe(400);
+    const wrongIdempotencyKey = { prompt: "x", idempotencyKey: 1 };
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          "/api/v1/webhooks/custom/deploy",
+          wrongIdempotencyKey,
+          {
+            "x-auto-harness-signature-256": signature(wrongIdempotencyKey),
+          },
+        )
+      ).status,
+    ).toBe(400);
+    const oversizedIdempotencyKey = { prompt: "x", idempotencyKey: "é".repeat(951) };
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          "/api/v1/webhooks/custom/deploy",
+          oversizedIdempotencyKey,
+          { "x-auto-harness-signature-256": signature(oversizedIdempotencyKey) },
+        )
+      ).status,
+    ).toBe(400);
+  });
+
+  it("returns a durable failure when assignment cannot be queued", async () => {
+    const { plane, handler } = await fixture();
+    plane.setOnAssignmentRequested(async () => {
+      throw new Error("assignment unavailable");
+    });
+    const body = { prompt: "x", idempotencyKey: "queue-failure" };
+    expect(
+      await invokeHandler(handler, "POST", "/api/v1/webhooks/custom/deploy", body, {
+        "x-auto-harness-signature-256": signature(body),
+      }),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    expect(plane.listSessions()).toHaveLength(1);
+  });
+
+  it("rejects malformed raw payloads and malformed encoded integration ids", async () => {
+    const { plane } = await fixture();
+    for (const body of [Buffer.from("{bad"), Buffer.from("null")]) {
+      const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", body, {
+        "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+      });
+      await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(400);
+    }
+    for (const body of [
+      { idempotencyKey: "missing-prompt" },
+      { prompt: "x" },
+      { prompt: "x", idempotencyKey: "one", ref: 1 },
+    ]) {
+      const raw = Buffer.from(JSON.stringify(body));
+      const route = directRoute(plane, "/api/v1/webhooks/custom/deploy", "POST", raw, {
+        "x-auto-harness-signature-256": `sha256=${createHmac("sha256", secret).update(raw).digest("hex")}`,
+      });
+      await expect(handleCustomWebhookRoute(route.ctx as never)).resolves.toBe(true);
+      expect(route.status()).toBe(400);
+    }
+    const malformedId = directRoute(plane, "/api/v1/webhooks/custom/%E0%A4%A", "POST");
+    await expect(handleCustomWebhookRoute(malformedId.ctx as never)).resolves.toBe(true);
+    expect(malformedId.status()).toBe(404);
+    const invalidId = directRoute(plane, "/api/v1/webhooks/custom/bad%20id", "POST");
+    await expect(handleCustomWebhookRoute(invalidId.ctx as never)).resolves.toBe(true);
+    expect(invalidId.status()).toBe(404);
+  });
+
+  it("rejects oversized raw requests and does not create work when audit response persistence fails", async () => {
+    const { plane } = await fixture();
+    const oversized = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/deploy",
+      "POST",
+      Buffer.alloc(1024 * 1024 + 1),
+    );
+    await expect(handleCustomWebhookRoute(oversized.ctx as never)).resolves.toBe(true);
+    expect(oversized.status()).toBe(400);
+
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const badSignature = directRoute(
+      plane,
+      "/api/v1/webhooks/custom/deploy",
+      "POST",
+      Buffer.from(JSON.stringify({ prompt: "x", idempotencyKey: "audit" })),
+      { "x-auto-harness-signature-256": "sha256=" + "0".repeat(64) },
+      true,
+    );
+    await expect(handleCustomWebhookRoute(badSignature.ctx as never)).resolves.toBe(true);
+    expect(plane.listSessions()).toHaveLength(0);
   });
 
   it("does not accept disabled integrations and fails closed when audit persistence fails", async () => {
