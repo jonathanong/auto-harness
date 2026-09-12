@@ -463,6 +463,7 @@ describe("DynamoDB Local main-checkout release", () => {
         hostId: "main-terminal-host",
         repositoryId: "main-terminal-repo",
         worktreeId: null,
+        mainCheckoutLease: true,
         status: "failed" as const,
         errorCode: "host_lost" as const,
         expiresAt: "2026-01-02T00:00:00.000Z",
@@ -521,7 +522,21 @@ describe("DynamoDB Local main-checkout release", () => {
       )
     ).Item;
     expect(session).not.toHaveProperty("terminalHookHandoffSettled");
-    expect(session).not.toHaveProperty("mainCheckoutLease");
+    expect(session).toMatchObject({
+      mainCheckoutLease: true,
+      assignmentConnectionId: opts.connectionId,
+    });
     expect(session).not.toHaveProperty("primaryCommandStartState");
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: opts.hostId } }),
+        )
+      ).Item,
+    ).toMatchObject({
+      mainCheckoutLeases: {
+        [opts.repositoryId]: { sessionId: opts.sessionId, connectionId: opts.connectionId },
+      },
+    });
   });
 });

@@ -251,6 +251,7 @@ function deferredCheckoutFailureHandoff(
     hostId: session.hostId,
     repositoryId: session.repositoryId,
     worktreeId: session.worktreeId ?? null,
+    ...(session.mainCheckoutLease ? { mainCheckoutLease: true as const } : {}),
     status: msg.status as Extract<
       SessionRecord["status"],
       "completed" | "failed" | "cancelled" | "timed_out"

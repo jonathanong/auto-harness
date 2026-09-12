@@ -119,6 +119,8 @@ export type SessionRecord = {
     hostId: string;
     repositoryId: string;
     worktreeId: string | null;
+    /** Retains this host/repository's main checkout lease until disposition. */
+    mainCheckoutLease?: true;
     status: Extract<
       import("@auto-harness/shared").SessionStatus,
       "completed" | "failed" | "cancelled" | "timed_out"

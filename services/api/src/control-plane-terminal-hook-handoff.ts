@@ -66,7 +66,12 @@ export async function pendingTerminalHookHandoffs(
     const handoff = session.terminalHookHandoff;
     if (!handoff || handoff.hostId !== hostId) continue;
     if (Date.parse(handoff.expiresAt) <= nowMs) {
-      await expireTerminalHookHandoffIfNeeded(state, session, nowMs);
+      await expireTerminalHookHandoffIfNeeded(
+        state,
+        session,
+        nowMs,
+        connectionId === undefined ? {} : { connectionId },
+      );
       continue;
     }
     pending.push({
@@ -119,16 +124,25 @@ export async function settleTerminalHookHandoff(
         hostId: input.hostId,
         connectionId: input.connectionId,
         worktreeId: handoff.worktreeId,
+        ...(handoff.mainCheckoutLease ? { mainCheckoutRepositoryId: handoff.repositoryId } : {}),
         ...(input.result ? { result: input.result } : {}),
       }))
     : input.connectionId !== undefined &&
       state.hostConnection.get(input.hostId) === input.connectionId;
   if (!settled) return false;
   releaseReservedWorktree(state, session.id, handoff.worktreeId);
+  releaseReservedMainCheckout(state, session.id, handoff);
   const next = { ...session, ...(input.result ? { result: input.result } : {}) };
   delete next.terminalHookHandoff;
   delete next.activeHostId;
   delete next.activeHostOrder;
+  if (handoff.mainCheckoutLease) {
+    delete next.mainCheckoutLease;
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.reconnectDeadlineAt;
+    delete next.ackReceivedAt;
+  }
   next.terminalHookHandoffSettled = { handoffId: input.handoffId, hostId: input.hostId };
   state.sessions.set(next.id, next);
   queueSessionArchive(state, next.id);
@@ -140,24 +154,49 @@ export async function expireTerminalHookHandoffIfNeeded(
   state: ControlPlaneState,
   session: import("./db/types.ts").SessionRecord,
   nowMs: number,
+  options: { connectionId?: string } = {},
 ): Promise<boolean> {
   const handoff = session.terminalHookHandoff;
   if (!handoff || Date.parse(handoff.expiresAt) > nowMs) return false;
+  const connectionId = options.connectionId ?? state.hostConnection.get(handoff.hostId);
   const expired = state.storage
     ? await state.storage.expireTerminalHookHandoff({
         sessionId: session.id,
         handoffId: handoff.handoffId,
         expiresAt: handoff.expiresAt,
         worktreeId: handoff.worktreeId,
+        hostId: handoff.hostId,
+        ...(handoff.mainCheckoutLease ? { mainCheckoutRepositoryId: handoff.repositoryId } : {}),
+        ...(connectionId !== undefined ? { connectionId } : {}),
       })
     : true;
   if (!expired) return false;
   releaseReservedWorktree(state, session.id, handoff.worktreeId);
+  releaseReservedMainCheckout(state, session.id, handoff);
   const next = { ...session, terminalHookHandoffExpiredAt: handoff.expiresAt };
   delete next.terminalHookHandoff;
   delete next.activeHostId;
   delete next.activeHostOrder;
+  if (handoff.mainCheckoutLease) {
+    delete next.mainCheckoutLease;
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.reconnectDeadlineAt;
+    delete next.ackReceivedAt;
+  }
   state.sessions.set(next.id, next);
   queueSessionArchive(state, next.id);
   return true;
+}
+
+function releaseReservedMainCheckout(
+  state: ControlPlaneState,
+  sessionId: string,
+  handoff: NonNullable<import("./db/types.ts").SessionRecord["terminalHookHandoff"]>,
+): void {
+  if (!handoff.mainCheckoutLease) return;
+  const key = `${handoff.hostId}\0${handoff.repositoryId}`;
+  if (state.mainCheckoutLeases.get(key)?.sessionId === sessionId) {
+    state.mainCheckoutLeases.delete(key);
+  }
 }

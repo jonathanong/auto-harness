@@ -106,6 +106,8 @@ describe("DynamoDB terminal-hook worktree reservation", () => {
     await expect(getWorktree(ctx, worktree.id)).resolves.toMatchObject({
       status: "idle",
       currentSessionId: null,
+      online: true,
+      connectionId: "reserved-connection",
     });
 
     const expiringWorktree = { ...worktree, id: "expiring-worktree", currentSessionId: "expired" };

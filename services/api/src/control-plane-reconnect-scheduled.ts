@@ -20,6 +20,17 @@ export {
   restoreScheduledReconnects,
 } from "./control-plane-reconnect-scheduled-confirm.ts";
 
+function retainsMainCheckoutLease(
+  state: ControlPlaneState,
+  session: import("./db/types.ts").SessionRecord,
+  handoff: import("./db/types.ts").SessionRecord["terminalHookHandoff"],
+): boolean {
+  if (!handoff?.mainCheckoutLease || !session.hostId || !session.assignmentConnectionId)
+    return false;
+  const lease = state.mainCheckoutLeases.get(`${session.hostId}\0${session.repositoryId}`);
+  return lease?.sessionId === session.id && lease.connectionId === session.assignmentConnectionId;
+}
+
 export async function requeueOmittedScheduled(
   state: ControlPlaneState,
   hostId: string,
@@ -72,7 +83,9 @@ export async function requeueOmittedScheduled(
               : {}),
           ...providerAccountLeaseWriteOpts(session),
         })
-      : releaseScheduledLeaseLocal(state, session);
+      : handoff?.mainCheckoutLease
+        ? retainsMainCheckoutLease(state, session, handoff)
+        : releaseScheduledLeaseLocal(state, session);
     if (released) {
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
@@ -134,10 +147,12 @@ export async function reclaimScheduledReconnect(
         ...(cancelled && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),
       })
-    : releaseScheduledLeaseLocal(state, session);
+    : handoff?.mainCheckoutLease
+      ? retainsMainCheckoutLease(state, session, handoff)
+      : releaseScheduledLeaseLocal(state, session);
   if (released) {
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
-    if (state.storage) releaseScheduledLeaseLocal(state, session);
+    if (state.storage && !handoff?.mainCheckoutLease) releaseScheduledLeaseLocal(state, session);
     releaseProviderAccountLease(state, session);
     if (cancelled) {
       const next = { ...session };

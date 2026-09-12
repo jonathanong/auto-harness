@@ -90,6 +90,34 @@ describe("terminal hook handoff", () => {
     });
   });
 
+  it("keeps a main-checkout lease reserved through handoff, then releases it locally", async () => {
+    const state = connectedState(5);
+    const finished = finishHostLostSession(state, {
+      ...running(),
+      worktreeId: null,
+      mainCheckoutLease: true,
+      assignmentConnectionId: "connection",
+    });
+    state.sessions.set(finished.id, finished);
+    state.mainCheckoutLeases.set("host\0repo", {
+      sessionId: "session",
+      connectionId: "connection",
+    });
+
+    expect(finished.terminalHookHandoff?.mainCheckoutLease).toBe(true);
+    expect(state.mainCheckoutLeases.get("host\0repo")?.sessionId).toBe("session");
+    await expect(
+      settleTerminalHookHandoff(state, {
+        sessionId: "session",
+        handoffId: "handoff",
+        hostId: "host",
+        connectionId: "connection",
+      }),
+    ).resolves.toBe(true);
+    expect(state.mainCheckoutLeases.has("host\0repo")).toBe(false);
+    expect(state.sessions.get("session")).not.toHaveProperty("mainCheckoutLease");
+  });
+
   it("withholds a handoff from v4 and expires it before a later v5 registration", async () => {
     const state = connectedState(4, "2026-01-02T00:00:00.001Z");
     const finished = finishHostLostSession(

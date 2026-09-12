@@ -71,6 +71,7 @@ export async function releaseMainCheckoutSession(
   opts: ReleaseMainCheckoutOptions,
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
+  const retainsMainCheckoutLease = opts.terminalHookHandoff?.mainCheckoutLease === true;
   const queueOrder = isQueued
     ? opts.queueOrder && opts.queueOrder.length > 0
       ? opts.queueOrder
@@ -89,29 +90,66 @@ export async function releaseMainCheckoutSession(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            Update: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              UpdateExpression:
-                (opts.hostAssignmentLease ? "SET assignmentCount = assignmentCount - :one " : "") +
-                "REMOVE mainCheckoutLeases.#repo",
-              ConditionExpression:
-                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
-                (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
-              ExpressionAttributeNames: { "#repo": opts.repositoryId },
-              ExpressionAttributeValues: {
-                ":sessionId": opts.sessionId,
-                ":connectionId": opts.connectionId,
-                ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
-              },
-            },
-          },
+          ...(retainsMainCheckoutLease
+            ? opts.hostAssignmentLease
+              ? [
+                  {
+                    Update: {
+                      TableName: ctx.tables.hostLocks,
+                      Key: { hostId: opts.hostId },
+                      UpdateExpression: "SET assignmentCount = assignmentCount - :one",
+                      ConditionExpression:
+                        "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId AND assignmentCount >= :one",
+                      ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                      ExpressionAttributeValues: {
+                        ":sessionId": opts.sessionId,
+                        ":connectionId": opts.connectionId,
+                        ":one": 1,
+                      },
+                    },
+                  },
+                ]
+              : [
+                  {
+                    ConditionCheck: {
+                      TableName: ctx.tables.hostLocks,
+                      Key: { hostId: opts.hostId },
+                      ConditionExpression:
+                        "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId",
+                      ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                      ExpressionAttributeValues: {
+                        ":sessionId": opts.sessionId,
+                        ":connectionId": opts.connectionId,
+                      },
+                    },
+                  },
+                ]
+            : [
+                {
+                  Update: {
+                    TableName: ctx.tables.hostLocks,
+                    Key: { hostId: opts.hostId },
+                    UpdateExpression:
+                      (opts.hostAssignmentLease
+                        ? "SET assignmentCount = assignmentCount - :one "
+                        : "") + "REMOVE mainCheckoutLeases.#repo",
+                    ConditionExpression:
+                      "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
+                      (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
+                    ExpressionAttributeNames: { "#repo": opts.repositoryId },
+                    ExpressionAttributeValues: {
+                      ":sessionId": opts.sessionId,
+                      ":connectionId": opts.connectionId,
+                      ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
+                    },
+                  },
+                },
+              ]),
           {
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: updateExpression(opts, isQueued),
+              UpdateExpression: updateExpression(opts, isQueued, retainsMainCheckoutLease),
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
@@ -174,7 +212,11 @@ export async function releaseMainCheckoutSession(
   }
 }
 
-function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): string {
+function updateExpression(
+  opts: ReleaseMainCheckoutOptions,
+  isQueued: boolean,
+  retainsMainCheckoutLease: boolean,
+): string {
   return (
     "SET #s = :status, statusShard = :statusShard" +
     (isQueued ? ", queueOrder = :queueOrder" : "") +
@@ -198,7 +240,10 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
       ? ", infrastructureRetryCount = if_not_exists(infrastructureRetryCount, :zero) + :one, lastInfrastructureErrorCode = :infrastructureErrorCode" +
         (opts.attemptId ? ", infrastructureRetryAttemptId = :attemptId" : "")
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState" +
+    " REMOVE " +
+    (retainsMainCheckoutLease
+      ? "primaryCommandStartState"
+      : "assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, primaryCommandStartState") +
     (opts.terminalHookHandoff ? ", terminalHookHandoffSettled" : "") +
     (opts.preserveHostAssignmentLease || opts.terminalHookHandoff
       ? ""

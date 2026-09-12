@@ -203,15 +203,87 @@ function reservedWorktreeReleaseItem(
   ctx: PlaneStorageCtx,
   worktreeId: string,
   sessionId: string,
+  connectionId?: string,
 ): Record<string, unknown> {
+  const hasCurrentConnection = connectionId !== undefined;
   return {
     Update: {
       TableName: ctx.tables.worktrees,
       Key: { id: worktreeId },
-      UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+      UpdateExpression: `SET #s = :idle, currentSessionId = :null${hasCurrentConnection ? ", #o = :online, connectionId = :connectionId" : ""}`,
       ConditionExpression: "currentSessionId = :sid",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": sessionId },
+      ExpressionAttributeNames: {
+        "#s": "status",
+        ...(hasCurrentConnection ? { "#o": "online" } : {}),
+      },
+      ExpressionAttributeValues: {
+        ":idle": "idle",
+        ":null": null,
+        ":sid": sessionId,
+        ...(hasCurrentConnection ? { ":online": true, ":connectionId": connectionId } : {}),
+      },
+    },
+  };
+}
+
+function terminalHandoffHostLockItem(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    hostId: string;
+    connectionId?: string;
+    mainCheckoutRepositoryId?: string;
+  },
+): Record<string, unknown> {
+  if (!opts.mainCheckoutRepositoryId) {
+    return {
+      ConditionCheck: {
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        ConditionExpression: "connectionId = :connectionId",
+        ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+      },
+    };
+  }
+  return {
+    Update: {
+      TableName: ctx.tables.hostLocks,
+      Key: { hostId: opts.hostId },
+      UpdateExpression: "REMOVE mainCheckoutLeases.#repo",
+      ConditionExpression:
+        "connectionId = :connectionId AND mainCheckoutLeases.#repo.sessionId = :sessionId",
+      ExpressionAttributeNames: { "#repo": opts.mainCheckoutRepositoryId },
+      ExpressionAttributeValues: {
+        ":connectionId": opts.connectionId,
+        ":sessionId": opts.sessionId,
+      },
+    },
+  };
+}
+
+function expiredTerminalHandoffHostLockItem(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    hostId: string;
+    connectionId?: string;
+    mainCheckoutRepositoryId?: string;
+  },
+): Record<string, unknown> | undefined {
+  if (!opts.mainCheckoutRepositoryId) {
+    return opts.connectionId === undefined ? undefined : terminalHandoffHostLockItem(ctx, opts);
+  }
+  return {
+    Update: {
+      TableName: ctx.tables.hostLocks,
+      Key: { hostId: opts.hostId },
+      UpdateExpression: "REMOVE mainCheckoutLeases.#repo",
+      ConditionExpression: `${opts.connectionId === undefined ? "" : "connectionId = :connectionId AND "}mainCheckoutLeases.#repo.sessionId = :sessionId`,
+      ExpressionAttributeNames: { "#repo": opts.mainCheckoutRepositoryId },
+      ExpressionAttributeValues: {
+        ":sessionId": opts.sessionId,
+        ...(opts.connectionId === undefined ? {} : { ":connectionId": opts.connectionId }),
+      },
     },
   };
 }
@@ -263,25 +335,20 @@ export async function settleTerminalHookHandoff(
     result?: import("@auto-harness/shared").SessionResult;
     /** Worktree reserved by the matching terminal handoff, if any. */
     worktreeId?: string | null;
+    /** Main-checkout repository lease reserved by the matching handoff, if any. */
+    mainCheckoutRepositoryId?: string;
   },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.hostLocks,
-              Key: { hostId: opts.hostId },
-              ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
-            },
-          },
+          terminalHandoffHostLockItem(ctx, opts),
           {
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: `SET terminalHookHandoffSettled = :settled${opts.result ? ", #result = :result" : ""} REMOVE terminalHookHandoff, activeHostId, activeHostOrder`,
+              UpdateExpression: `SET terminalHookHandoffSettled = :settled${opts.result ? ", #result = :result" : ""} REMOVE terminalHookHandoff, activeHostId, activeHostOrder${opts.mainCheckoutRepositoryId ? ", mainCheckoutLease, assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, ackReceivedAt" : ""}`,
               ConditionExpression:
                 "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.hostId = :hostId",
               ExpressionAttributeNames: opts.result ? { "#result": "result" } : undefined,
@@ -294,7 +361,7 @@ export async function settleTerminalHookHandoff(
             },
           },
           ...(opts.worktreeId
-            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId)]
+            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId, opts.connectionId)]
             : []),
         ],
       }),
@@ -313,18 +380,39 @@ export async function settleTerminalHookHandoff(
 /** Expire an unreachable replacement-daemon handoff without leaving its host index forever. */
 export async function expireTerminalHookHandoff(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; handoffId: string; expiresAt: string; worktreeId?: string | null },
+  opts: {
+    sessionId: string;
+    handoffId: string;
+    expiresAt: string;
+    worktreeId?: string | null;
+    hostId?: string;
+    connectionId?: string;
+    mainCheckoutRepositoryId?: string;
+  },
 ): Promise<boolean> {
   try {
+    const currentConnectionFence =
+      opts.hostId === undefined
+        ? []
+        : [
+            expiredTerminalHandoffHostLockItem(ctx, {
+              sessionId: opts.sessionId,
+              hostId: opts.hostId,
+              ...(opts.connectionId !== undefined ? { connectionId: opts.connectionId } : {}),
+              ...(opts.mainCheckoutRepositoryId !== undefined
+                ? { mainCheckoutRepositoryId: opts.mainCheckoutRepositoryId }
+                : {}),
+            }),
+          ].filter((item): item is Record<string, unknown> => item !== undefined);
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...currentConnectionFence,
           {
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "SET terminalHookHandoffExpiredAt = :expiredAt REMOVE terminalHookHandoff, activeHostId, activeHostOrder",
+              UpdateExpression: `SET terminalHookHandoffExpiredAt = :expiredAt REMOVE terminalHookHandoff, activeHostId, activeHostOrder${opts.mainCheckoutRepositoryId ? ", mainCheckoutLease, assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, ackReceivedAt" : ""}`,
               ConditionExpression:
                 "terminalHookHandoff.handoffId = :handoffId AND terminalHookHandoff.expiresAt = :expiresAt",
               ExpressionAttributeValues: {
@@ -335,7 +423,7 @@ export async function expireTerminalHookHandoff(
             },
           },
           ...(opts.worktreeId
-            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId)]
+            ? [reservedWorktreeReleaseItem(ctx, opts.worktreeId, opts.sessionId, opts.connectionId)]
             : []),
         ],
       }),

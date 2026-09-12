@@ -43,14 +43,16 @@ export function finishHostLostSession(
     errorCode: "host_lost",
     errorMessage: HOST_LOSS_TERMINAL_REASON,
     worktreeId: null,
-    hostId: null,
+    hostId: handoff?.mainCheckoutLease ? (session.hostId ?? null) : null,
     ...(handoff ? { terminalHookHandoff: handoff } : {}),
   };
-  delete next.mainCheckoutLease;
-  delete next.assignmentConnectionId;
-  delete next.assignmentSentAt;
-  delete next.ackReceivedAt;
-  delete next.reconnectDeadlineAt;
+  if (!handoff?.mainCheckoutLease) {
+    delete next.mainCheckoutLease;
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.ackReceivedAt;
+    delete next.reconnectDeadlineAt;
+  }
   if (!handoff) {
     delete next.activeHostId;
     delete next.activeHostOrder;
@@ -76,6 +78,7 @@ export function hostLostTerminalHookHandoff(
     hostId: session.hostId,
     repositoryId: session.repositoryId,
     worktreeId: session.worktreeId ?? null,
+    ...(session.mainCheckoutLease ? { mainCheckoutLease: true as const } : {}),
     status: "failed",
     errorCode: "host_lost",
     expiresAt: new Date(Date.parse(state.now()) + TERMINAL_HOOK_HANDOFF_MAX_AGE_MS).toISOString(),
