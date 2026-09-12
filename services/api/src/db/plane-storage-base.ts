@@ -711,6 +711,8 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     result?: SessionResult;
     fence?: { hostId: string; connectionId: string };
+    expectedReconnectDeadlineAt?: string;
+    expectedConnectionId?: string;
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;

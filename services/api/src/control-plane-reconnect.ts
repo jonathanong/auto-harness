@@ -159,6 +159,10 @@ export async function reclaimReconnectDeadlines(
         completedAt: state.now(),
         errorCode: "host_lost",
         errorMessage: HOST_LOSS_TERMINAL_REASON,
+        expectedReconnectDeadlineAt: session.reconnectDeadlineAt,
+        ...(session.assignmentConnectionId
+          ? { expectedConnectionId: session.assignmentConnectionId }
+          : {}),
         ...(connectionId ? { fence: { hostId: session.hostId, connectionId } } : {}),
         ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
         ...providerAccountLeaseWriteOpts(session),

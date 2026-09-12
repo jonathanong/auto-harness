@@ -252,6 +252,33 @@ describe("reconnect reconciliation", () => {
     expect(calls.some((call) => call.sessionId === "failed")).toBe(true);
   });
 
+  it("fences terminal host-loss reclaim to the observed reconnect deadline and connection", async () => {
+    const plane = new ControlPlane();
+    const terminal = {
+      ...durableRunning("terminal", "wt", "expired-connection"),
+      primaryCommandStartState: "authorized" as const,
+    };
+    const worktree = durableWorktree("wt", terminal.id);
+    let finishOptions: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listAllSessions: async () => [terminal],
+      getWorktree: async () => worktree,
+      getHostLock: async () => "replacement-connection",
+      finishSession: async (options: Record<string, unknown>) => {
+        finishOptions = options;
+        return false;
+      },
+    } as never;
+
+    expect(await reclaimReconnectDeadlines(plane.state, Date.now())).toEqual([]);
+    expect(finishOptions).toMatchObject({
+      sessionId: terminal.id,
+      expectedReconnectDeadlineAt: terminal.reconnectDeadlineAt,
+      expectedConnectionId: "expired-connection",
+      fence: { hostId: "h", connectionId: "replacement-connection" },
+    });
+  });
+
   it("restores earlier durable confirmations when a later reported session loses reconciliation", async () => {
     const plane = new ControlPlane();
     plane.state.hostConnection.set("h", "new");

@@ -102,6 +102,40 @@ describe("DynamoDB Local terminal options", () => {
     });
   });
 
+  it("does not terminally reclaim a reconnect that was renewed on another connection", async () => {
+    for (const [id, reconnectDeadlineAt, assignmentConnectionId] of [
+      ["renewed-deadline", "renewed-deadline", "expired-connection"],
+      ["renewed-connection", "expired-deadline", "renewed-connection"],
+    ]) {
+      await putSession(ctx, {
+        ...base,
+        id,
+        status: "running",
+        worktreeId: null,
+        hostId: "host-renewed",
+        attemptId: "attempt-renewed",
+        reconnectDeadlineAt,
+        assignmentConnectionId,
+      });
+      expect(
+        await finishSession(ctx, {
+          sessionId: id,
+          worktreeId: null,
+          attemptId: "attempt-renewed",
+          status: "failed",
+          queueShard: 0,
+          expectedReconnectDeadlineAt: "expired-deadline",
+          expectedConnectionId: "expired-connection",
+        }),
+      ).toBe(false);
+      expect(await getSession(ctx, id)).toMatchObject({
+        status: "running",
+        reconnectDeadlineAt,
+        assignmentConnectionId,
+      });
+    }
+  });
+
   it("reconciles legacy host capacity without failing a zero-count row", async () => {
     const hostId = "legacy-host";
     const connectionId = "legacy-connection";

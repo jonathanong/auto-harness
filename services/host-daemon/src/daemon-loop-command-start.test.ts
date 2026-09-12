@@ -121,6 +121,34 @@ describe("DaemonLoop command-start authorization", () => {
     }
   });
 
+  it("retries an unacknowledged authorization on a healthy keepalive", async () => {
+    const transport = new ProtocolTransport();
+    const loop = await startedLoop(transport);
+    try {
+      transport.negotiate(3);
+      const pending = authorize(loop);
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(1);
+
+      // Let the first local write settle without delivering its server ACK.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await loop.keepalive();
+      expect(
+        transport.sent.filter((message) => message.type === "session:command-start"),
+      ).toHaveLength(2);
+
+      transport.deliver({
+        type: "session:command-start-acknowledged",
+        sessionId: assign.sessionId,
+        attemptId: assign.attemptId,
+      });
+      await expect(pending).resolves.toBe(true);
+    } finally {
+      loop.stop();
+    }
+  });
+
   it("rejects pending v3 authorization when reconnect downgrades the protocol", async () => {
     const transport = new ProtocolTransport();
     const loop = await startedLoop(transport);

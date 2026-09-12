@@ -30,6 +30,8 @@ type FinishSessionOpts = {
   cliResumeRef?: string;
   result?: SessionResult;
   fence?: { hostId: string; connectionId: string };
+  expectedReconnectDeadlineAt?: string;
+  expectedConnectionId?: string;
   concurrencyId?: string;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
   hostAssignmentLease?: HostAssignmentLease | undefined;
@@ -75,6 +77,10 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     ":null": null,
     ":worktreeId": opts.worktreeId ?? null,
     ":attemptId": opts.attemptId,
+    ...(opts.expectedReconnectDeadlineAt
+      ? { ":reconnectDeadlineAt": opts.expectedReconnectDeadlineAt }
+      : {}),
+    ...(opts.expectedConnectionId ? { ":connectionId": opts.expectedConnectionId } : {}),
   };
   const sets = [
     "#s = :status",
@@ -110,6 +116,10 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   };
 }
 
+function finishSessionCondition(opts: FinishSessionOpts): string {
+  return `#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId${opts.expectedReconnectDeadlineAt ? " AND reconnectDeadlineAt = :reconnectDeadlineAt" : ""}${opts.expectedConnectionId ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)" : ""}`;
+}
+
 function finishSessionItems(
   ctx: PlaneStorageCtx,
   opts: FinishSessionOpts,
@@ -134,8 +144,7 @@ function finishSessionItems(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${update.sets.join(", ")} REMOVE ${update.removes.join(", ")}`,
-        ConditionExpression:
-          "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
+        ConditionExpression: finishSessionCondition(opts),
         ExpressionAttributeNames: update.names,
         ExpressionAttributeValues: update.values,
       },

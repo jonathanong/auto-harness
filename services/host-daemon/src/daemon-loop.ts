@@ -396,6 +396,11 @@ export class DaemonLoop {
       return false;
     }
     this.retryPendingTerminalStatuses();
+    // A successful command-start write only proves the frame reached the local
+    // socket buffer. The control plane's acknowledgement can still be lost
+    // while the connection remains healthy, so retry pending authorizations on
+    // the next keepalive as well as after reconnect registration.
+    this.retryPendingCommandStarts();
     // Bounded: an outbound write stalled on a connection the transport still
     // considers open (registration wedged, dead epoch fencing) otherwise
     // leaves this promise pending forever — it never resolves *or* rejects,
