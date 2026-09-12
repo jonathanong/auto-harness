@@ -404,16 +404,25 @@ describe("GitHub App ingress configuration routes", () => {
     );
     for (const invalid of [
       null,
+      "not-an-object",
+      [],
       { extra: true },
+      { bindings: [] },
       { secret, bindings: "not-array" },
       { secret, bindings: [{ ...configBody().bindings[0], extra: true }] },
       { secret, bindings: [{ ...configBody().bindings[0], githubRepositoryId: "42" }] },
       { secret, bindings: [{ ...configBody().bindings[0], repositoryId: 42 }] },
       { secret, bindings: [null] },
+      { secret, bindings: ["not-an-object"] },
+      { secret, bindings: [[]] },
       { secret, bindings: [{ ...configBody().bindings[0], target: null }] },
+      { secret, bindings: [{ ...configBody().bindings[0], target: "provider" }] },
+      { secret, bindings: [{ ...configBody().bindings[0], target: [] }] },
       { secret, bindings: [{ ...configBody().bindings[0], timeout: "60" }] },
       { secret, bindings: [{ ...configBody().bindings[0], fallbacks: "bad" }] },
       { secret, bindings: [{ ...configBody().bindings[0], fallbacks: [null] }] },
+      { secret, bindings: [{ ...configBody().bindings[0], fallbacks: ["provider"] }] },
+      { secret, bindings: [{ ...configBody().bindings[0], fallbacks: [[]] }] },
       { secret, bindings: [{ ...configBody().bindings[0], requiredLabels: "bad" }] },
       { secret, bindings: [{ ...configBody().bindings[0], requiredLabels: [42] }] },
       { secret, bindings: [{ ...configBody().bindings[0], allowedLogins: "bad" }] },
@@ -421,6 +430,8 @@ describe("GitHub App ingress configuration routes", () => {
       { secret, bindings: [{ ...configBody().bindings[0], queueTtlSeconds: "bad" }] },
       { secret, bindings: [{ ...configBody().bindings[0], priority: "bad" }] },
       { secret, bindings: [{ ...configBody().bindings[0], defaultRef: 42 }] },
+      { secret, bindings: [{ ...configBody().bindings[0], target: {} }] },
+      { secret, bindings: [{ ...configBody().bindings[0], target: { unknown: "provider" } }] },
       { secret, bindings: [{ ...configBody().bindings[0], target: { providerId: 42 } }] },
       configBody({ version: 1 }),
     ]) {
@@ -473,6 +484,22 @@ describe("GitHub App ingress configuration routes", () => {
         secret: 42,
       }),
     ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+
+    const minimal = await fixture(false);
+    expect(
+      await invokeHandler(minimal.handler, "POST", "/api/v1/integrations/github-ingress", {
+        secret,
+        bindings: [
+          {
+            githubRepositoryId: 42,
+            repositoryId: "repo",
+            target: { commandId: "command" },
+            timeout: 60,
+            defaultRef: "refs/heads/main",
+          },
+        ],
+      }),
+    ).toMatchObject({ status: 201, json: { enabled: true } });
 
     const getFailure = await fixture();
     vi.spyOn(getFailure.plane, "getGitHubIngressConfig").mockRejectedValueOnce(new Error("read"));
@@ -595,6 +622,98 @@ describe("GitHub App ingress configuration routes", () => {
         "if-match": String(current!.version),
         "if-match-generation": current!.generation ?? "legacy",
       }),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+  });
+
+  it("covers bounded mutation headers, response classes, and fail-closed audits", async () => {
+    const invalidHeaders = await fixture(false);
+    for (const requestHeaders of [
+      { "if-match": "9007199254740992", "if-match-generation": "generation" },
+      { "if-match": "1", "if-match-generation": "" },
+    ]) {
+      expect(
+        await invokeHandler(
+          invalidHeaders.handler,
+          "DELETE",
+          "/api/v1/integrations/github-ingress",
+          undefined,
+          requestHeaders,
+        ),
+      ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    }
+
+    const responses = await fixture(false);
+    vi.spyOn(responses.plane, "createGitHubIngressConfig")
+      .mockResolvedValueOnce({ ok: false, error: "storage unavailable", unavailable: true })
+      .mockResolvedValueOnce({ ok: false, error: "invalid configuration" });
+    expect(
+      await invokeHandler(
+        responses.handler,
+        "POST",
+        "/api/v1/integrations/github-ingress",
+        configBody(),
+      ),
+    ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+    expect(
+      await invokeHandler(
+        responses.handler,
+        "POST",
+        "/api/v1/integrations/github-ingress",
+        configBody(),
+      ),
+    ).toMatchObject({ status: 400, json: { error: { code: "VALIDATION_ERROR" } } });
+    vi.restoreAllMocks();
+
+    for (const arrange of [
+      async (plane: ControlPlane) => {
+        vi.spyOn(plane, "createGitHubIngressConfig").mockResolvedValueOnce({
+          ok: true,
+          integration: {
+            id: "github-ingress",
+            type: "github-ingress",
+            enabled: true,
+            version: 1,
+            secretConfigured: true,
+            bindings: [],
+          },
+        });
+      },
+      async (plane: ControlPlane) => {
+        vi.spyOn(plane, "createGitHubIngressConfig").mockRejectedValueOnce(new Error("storage"));
+      },
+    ]) {
+      const auditFailure = await fixture(false);
+      await arrange(auditFailure.plane);
+      auditFailure.plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      expect(
+        await invokeHandler(
+          auditFailure.handler,
+          "POST",
+          "/api/v1/integrations/github-ingress",
+          configBody(),
+        ),
+      ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
+      vi.restoreAllMocks();
+    }
+
+    const deleteAuditFailure = await fixture();
+    const current = await deleteAuditFailure.plane.getGitHubIngressConfig();
+    deleteAuditFailure.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invokeHandler(
+        deleteAuditFailure.handler,
+        "DELETE",
+        "/api/v1/integrations/github-ingress",
+        undefined,
+        {
+          "if-match": String(current!.version),
+          "if-match-generation": current!.generation!,
+        },
+      ),
     ).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });
 });
