@@ -1,4 +1,4 @@
-import { thrownMessage } from "@auto-harness/shared";
+import { normalizeSessionResult, thrownMessage } from "@auto-harness/shared";
 import type {
   SessionAssign,
   SessionErrorCode,
@@ -52,6 +52,14 @@ export function harnessSessionResult(status: SessionTerminalStatus): SessionResu
   return { summary: `Session ${status}`, summarySource: "harness" };
 }
 
+/** A stale claim can still report the agent's own outcome without probing its old checkout. */
+function summaryOnlySessionResult(outcome: SessionOutcome): SessionResult {
+  const summary = outcome.agentSummary?.trim();
+  return summary
+    ? normalizeSessionResult({ summary, summarySource: "agent" })!
+    : harnessSessionResult(outcome.status);
+}
+
 export async function failSession(
   streamer: LogStreamer,
   logs: SessionLogChunk[],
@@ -84,6 +92,7 @@ async function finishSession(
   childEnvSource: NodeJS.ProcessEnv = process.env,
   allowedRoots: readonly string[] = [],
   baseline?: string,
+  canProbeResult = true,
 ): Promise<SessionRunResult> {
   streamer.flush();
   if (hookScript) {
@@ -102,7 +111,7 @@ async function finishSession(
   }
   streamer.writeTimestampedSystem(`Session ${outcome.status}`);
   const result =
-    baseline !== undefined || outcome.agentSummary !== undefined
+    canProbeResult && (baseline !== undefined || outcome.agentSummary !== undefined)
       ? await collectSessionResult({
           runner: processRunner,
           cwd: worktreePath,
@@ -111,7 +120,9 @@ async function finishSession(
           ...(outcome.agentSummary !== undefined ? { agentSummary: outcome.agentSummary } : {}),
           environment: childEnvSource,
         })
-      : harnessSessionResult(outcome.status);
+      : canProbeResult
+        ? harnessSessionResult(outcome.status)
+        : summaryOnlySessionResult(outcome);
   void worktreeId;
   return {
     status: outcome.status,
@@ -158,5 +169,6 @@ export async function finishClaimedSession(
     childEnvSource,
     target?.allowedRoots ?? [],
     baseline,
+    target !== null && target !== undefined,
   );
 }

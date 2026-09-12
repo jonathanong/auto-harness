@@ -199,8 +199,16 @@ export class ControlPlaneSessionsService {
     msg: HostToServerMessage,
     sourceConnectionId?: string,
     replaceExisting = false,
+    sourceProtocolVersion?: number,
   ): Promise<Awaited<ReturnType<typeof messages.handleHostMessageDurable>>> {
-    return messages.handleHostMessageDurable(this.state, msg, sourceConnectionId, replaceExisting);
+    return messages.handleHostMessageDurable(
+      this.state,
+      msg,
+      sourceConnectionId,
+      replaceExisting,
+      false,
+      sourceProtocolVersion,
+    );
   }
 
   handlePendingHostMessageDurable(msg: HostToServerMessage, connectionId: string) {

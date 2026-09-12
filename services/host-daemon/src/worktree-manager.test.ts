@@ -66,6 +66,23 @@ describe("WorktreeManager", () => {
     mgr.release("wt-1");
   });
 
+  it.each(["a".repeat(40), "b".repeat(64)])(
+    "retains a full checkout baseline for either Git object format",
+    async (baseline) => {
+      const git = fakeGit();
+      git.checkoutRef.mockResolvedValue(baseline);
+      git.revParse.mockResolvedValue(baseline);
+      const mgr = new WorktreeManager(config, git);
+      const claimed = await mgr.claim("repo-1", "wt-1");
+      const mainClaim = await mgr.mainClaim("repo-1");
+
+      await expect(mgr.prepareCheckout(claimed, undefined)).resolves.toBe(baseline);
+      await expect(mgr.prepareMainCheckout(mainClaim, undefined)).resolves.toBe(baseline);
+
+      mgr.release("wt-1");
+    },
+  );
+
   it("ensureAll probes repo and worktrees", async () => {
     const git = fakeGit();
     const mgr = new WorktreeManager(config, git);

@@ -31,13 +31,15 @@ Git inspection records the final named branch and combines the baseline diff wit
 non-ignored paths. Paths are NUL-delimited at the git boundary, sorted, and bounded. For a named
 branch only, the daemon may run trusted `gh pr list --head <branch> --state all --json url --limit 2`
 with a short timeout; it accepts a single valid HTTP(S) URL and otherwise omits the field. This is
-branch association, not proof the session created that pull request. Every probe is best-effort:
-failure omits the affected field and never changes the session's terminal status. Terminal-status
-retries resend the identical result payload.
+branch association, not proof the session created that pull request. All result probes share one
+five-second deadline. Every probe is best-effort: expiry or failure omits the affected field and
+never changes the session's terminal status. Terminal-status retries resend the identical result
+payload.
 
 The summary is bounded to 4 KiB; when a summary is shortened, the result includes
 `summaryTruncated: true`. Paths that individually exceed their 4 KiB bound are omitted and cause
-`filesChangedTruncated: true`, preserving the fact that the changed-file list is incomplete.
+`filesChangedTruncated: true`, preserving the fact that the changed-file list is incomplete. An
+oversized branch is omitted rather than shortened into a different identifier.
 
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |

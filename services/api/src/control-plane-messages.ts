@@ -537,6 +537,8 @@ export async function handleHostMessageDurable(
   sourceConnectionId?: string,
   replaceExisting = false,
   consumePendingConnection = false,
+  /** Protocol from the transport's already-authenticated durable connection row. */
+  sourceProtocolVersion?: number,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -591,7 +593,7 @@ export async function handleHostMessageDurable(
     msg.type === "session:status" &&
     msg.result !== undefined &&
     sourceConnectionId !== undefined &&
-    (state.connections.get(sourceConnectionId)?.protocolVersion ?? 0) <
+    (sourceProtocolVersion ?? state.connections.get(sourceConnectionId)?.protocolVersion ?? 0) <
       SESSION_RESULT_PROTOCOL_VERSION
   ) {
     return { ok: false, error: "session result requires host protocol 3" };

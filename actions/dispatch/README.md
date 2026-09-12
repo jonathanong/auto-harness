@@ -96,6 +96,8 @@ and as the individual `result-summary`, `result-summary-source`, `result-branch`
 `result-summary-truncated`, `result-files-changed` JSON, `result-files-changed-truncated`, and
 `result-pull-request-url`
 outputs. Active sessions and legacy sessions without a result leave those result outputs empty.
+When `result-files-changed` is available, its truncation output is `true` for an incomplete list or
+`false` for a complete list; it is empty only when the list is unavailable.
 
 ```yaml
 - name: Read one session result

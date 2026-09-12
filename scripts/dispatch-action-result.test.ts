@@ -93,6 +93,24 @@ describe("dispatch action one-shot session result", () => {
     });
   });
 
+  it("reports false when the changed-file list is present and complete", async () => {
+    const server = await serve(() => ({
+      body: session({
+        result: {
+          summary: "done",
+          summarySource: "harness",
+          filesChanged: ["src/parser.ts"],
+        },
+      }),
+    }));
+
+    const result = await runAction(resultInputs(server.origin));
+
+    expect(result.code).toBe(0);
+    expect(result.output["result-files-changed"]).toBe('["src/parser.ts"]');
+    expect(result.output["result-files-changed-truncated"]).toBe("false");
+  });
+
   it.each(["failed", "cancelled", "timed_out"])(
     "returns a terminal %s session successfully so workflows can branch on it",
     async (status) => {

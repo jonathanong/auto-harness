@@ -111,6 +111,13 @@ export function setSessionResultOutputs(result: ValidatedSessionResult | undefin
     "result-files-changed",
     result?.filesChanged === undefined ? "" : JSON.stringify(result.filesChanged),
   );
-  setOutput("result-files-changed-truncated", result?.filesChangedTruncated === true ? "true" : "");
+  setOutput(
+    "result-files-changed-truncated",
+    result?.filesChanged === undefined
+      ? ""
+      : result.filesChangedTruncated === true
+        ? "true"
+        : "false",
+  );
   setOutput("result-pull-request-url", result?.pullRequestUrl ?? "");
 }

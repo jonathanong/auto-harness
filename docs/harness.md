@@ -35,7 +35,9 @@ GET. `session-terminal` tells the caller whether the status is terminal; termina
 complete the action successfully so workflows can branch on `session-status`. The structured
 `session-result` JSON is also split into summary, summary-truncation, summary-source, branch,
 changed-files JSON, file-list truncation, and pull-request URL outputs. Active and
-result-unavailable sessions return empty result outputs. Callers choose their own later trigger or
+result-unavailable sessions return empty result outputs. When changed files are available, the
+file-list truncation output is `true` for an incomplete list and `false` for a complete list.
+Callers choose their own later trigger or
 cadence; the action never polls.
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods

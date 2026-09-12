@@ -94,7 +94,7 @@ outputs:
   result-files-changed:
     description: JSON array of changed files, when available
   result-files-changed-truncated:
-    description: Whether result-files-changed was truncated
+    description: Whether result-files-changed was truncated (true or false when available)
   result-pull-request-url:
     description: Pull request URL associated with the result, when available
   operation-id:

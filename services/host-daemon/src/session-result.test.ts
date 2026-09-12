@@ -61,6 +61,64 @@ describe("collectSessionResult", () => {
     expect(result).toEqual({ summary: "Session failed", summarySource: "harness" });
   });
 
+  it("uses the child-environment allowlist for every repository result probe", async () => {
+    const probeEnvironments: NodeJS.ProcessEnv[] = [];
+    const source: NodeJS.ProcessEnv = {
+      PATH: process.env.PATH,
+      HOME: "/safe-home",
+      HARNESS_API_KEY: "daemon-secret",
+      HARNESS_CHILD_ENV_ALLOWLIST: "VISIBLE_TO_REPOSITORY",
+      VISIBLE_TO_REPOSITORY: "allowed",
+      UNRELATED_DAEMON_VALUE: "not-forwarded",
+    };
+    const result = await collectSessionResult({
+      runner: runnerWith(async (options) => {
+        probeEnvironments.push(options.env ?? {});
+        if (options.argv.includes("symbolic-ref")) {
+          options.onChunk({ stream: "stdout", data: "feature/result\n" });
+        }
+        return {
+          exitCode: options.argv.includes("pr") ? 1 : 0,
+          timedOut: false,
+          signal: null,
+        };
+      }),
+      cwd: process.cwd(),
+      status: "completed",
+      environment: source,
+    });
+
+    expect(result).toMatchObject({ branch: "feature/result" });
+    expect(probeEnvironments).toHaveLength(2);
+    for (const environment of probeEnvironments) {
+      expect(environment).toMatchObject({
+        PATH: source.PATH,
+        HOME: "/safe-home",
+        VISIBLE_TO_REPOSITORY: "allowed",
+      });
+      expect(environment).not.toHaveProperty("HARNESS_API_KEY");
+      expect(environment).not.toHaveProperty("HARNESS_CHILD_ENV_ALLOWLIST");
+      expect(environment).not.toHaveProperty("UNRELATED_DAEMON_VALUE");
+    }
+  });
+
+  it("retains only the summary when probe-environment sanitization rejects its source", async () => {
+    const runner: ProcessRunner = { run: vi.fn() };
+    const result = await collectSessionResult({
+      runner,
+      cwd: process.cwd(),
+      status: "failed",
+      agentSummary: "The agent reported a failure.",
+      environment: { HARNESS_CHILD_ENV_ALLOWLIST: "not-a-valid-name!" },
+    });
+
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      summary: "The agent reported a failure.",
+      summarySource: "agent",
+    });
+  });
+
   it("omits an oversized branch probe rather than recording a partial branch name", async () => {
     const result = await collectSessionResult({
       runner: runnerWith(async (options) => {

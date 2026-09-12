@@ -603,6 +603,7 @@ export async function createLambdaRuntime(
                 message,
                 connectionId,
                 message.type === "host:register",
+                authenticated.protocolVersion ?? 0,
               );
         if (result.ok && message.type === "host:register") {
           trackDelivery(message.hostId, {

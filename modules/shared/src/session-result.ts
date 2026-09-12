@@ -55,8 +55,15 @@ export function normalizeSessionResult(value: unknown): SessionResult | undefine
   ) {
     result.summaryTruncated = true;
   }
-  const branch = text(input.branch, MAX_SESSION_RESULT_BRANCH_BYTES);
-  if (branch) result.branch = branch;
+  // Branch names are identifiers. Unlike summaries, they must never be
+  // truncated into a different identifier; an oversized name is unavailable.
+  if (
+    typeof input.branch === "string" &&
+    input.branch.length > 0 &&
+    bytes(input.branch) <= MAX_SESSION_RESULT_BRANCH_BYTES
+  ) {
+    result.branch = input.branch;
+  }
   if (
     typeof input.pullRequestUrl === "string" &&
     bytes(input.pullRequestUrl) <= MAX_SESSION_RESULT_URL_BYTES &&

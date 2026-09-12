@@ -791,7 +791,10 @@ function setSessionResultOutputs(result) {
     "result-files-changed",
     result?.filesChanged === void 0 ? "" : JSON.stringify(result.filesChanged)
   );
-  setOutput("result-files-changed-truncated", result?.filesChangedTruncated === true ? "true" : "");
+  setOutput(
+    "result-files-changed-truncated",
+    result?.filesChanged === void 0 ? "" : result.filesChangedTruncated === true ? "true" : "false"
+  );
   setOutput("result-pull-request-url", result?.pullRequestUrl ?? "");
 }
 

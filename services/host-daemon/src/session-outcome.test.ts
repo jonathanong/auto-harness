@@ -22,10 +22,21 @@ describe("finishClaimedSession", () => {
           throw new Error("path is outside allowed roots");
         },
       },
-      { status: "failed", exitCode: 1, errorCode: "setup_failed" },
+      {
+        status: "failed",
+        exitCode: 1,
+        errorCode: "setup_failed",
+        agentSummary: "The agent reported a failure.",
+      },
+      process.env,
+      "0123456789012345678901234567890123456789",
     );
 
-    expect(result).toMatchObject({ status: "failed", errorCode: "setup_failed" });
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      result: { summary: "The agent reported a failure.", summarySource: "agent" },
+    });
     expect(runner.run).not.toHaveBeenCalled();
     expect(logs.map((chunk) => chunk.content)).toContain(
       "terminal hook revalidation failed for session sess-1: path is outside allowed roots",
@@ -53,6 +64,28 @@ describe("finishClaimedSession", () => {
     expect(logs.map((chunk) => chunk.content)).toContain(
       "terminal hook revalidation failed for session sess-1: hook-offline",
     );
+  });
+
+  it("does not probe a stale checkout when terminal-hook revalidation returns null", async () => {
+    const runner: ProcessRunner = { run: vi.fn() };
+    const result = await finishClaimedSession(
+      runner,
+      new LogStreamer("session-1", "attempt-1", () => undefined),
+      [],
+      baseAssign(),
+      {
+        worktree: { id: "wt-1" },
+        cwd: "/repo/stale-worktree",
+        repository: { terminalHookScript: "/repo/hook.sh" },
+        currentHookTarget: async () => null,
+      },
+      { status: "completed", exitCode: 0, agentSummary: "Finished safely." },
+      process.env,
+      "0123456789012345678901234567890123456789",
+    );
+
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(result.result).toEqual({ summary: "Finished safely.", summarySource: "agent" });
   });
 
   it("collects the result only after the terminal hook has completed", async () => {

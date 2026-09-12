@@ -14,6 +14,7 @@ import {
   type ProcessRunner,
   type RunProcessOptions,
 } from "./executor.ts";
+import { createChildEnv } from "./child-env.ts";
 import { resolveTrustedExecutable } from "./resolve-executable.ts";
 
 const GH_CAPTURE_BYTES = 8 * 1024;
@@ -276,25 +277,33 @@ export async function collectSessionResult(options: {
   agentSummary?: string;
   environment: NodeJS.ProcessEnv;
 }): Promise<SessionResult> {
+  // Result probes execute inside a repository checkout, so they receive the
+  // same deliberately small environment as every other repository-owned
+  // process. In particular, daemon-only HARNESS_* credentials stay local.
+  let environment: NodeJS.ProcessEnv;
+  try {
+    environment = createChildEnv(options.environment);
+  } catch {
+    const summary = options.agentSummary?.trim();
+    return normalizeSessionResult(
+      summary
+        ? { summary, summarySource: "agent" }
+        : { summary: `Session ${options.status}`, summarySource: "harness" },
+    )!;
+  }
   const deadline = createProbeDeadline();
   try {
-    const branch = await branchFor(options.runner, deadline, options.cwd, options.environment);
+    const branch = await branchFor(options.runner, deadline, options.cwd, environment);
     const files =
       options.baseline && !deadline.signal.aborted
-        ? await changedFiles(
-            options.runner,
-            deadline,
-            options.cwd,
-            options.baseline,
-            options.environment,
-          )
+        ? await changedFiles(options.runner, deadline, options.cwd, options.baseline, environment)
         : {};
     const pullRequestUrl = await pullRequestFor(
       options.runner,
       deadline,
       options.cwd,
       branch,
-      options.environment,
+      environment,
     );
     const result: SessionResult = options.agentSummary?.trim()
       ? { summary: options.agentSummary.trim(), summarySource: "agent" }

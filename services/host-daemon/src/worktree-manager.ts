@@ -36,6 +36,8 @@ const mainWorktree = (repository: RepositoryConfig): WorktreeConfig => ({
   labels: [],
 });
 
+const FULL_COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
 function sameOptionalString(left: string | undefined, right: string | undefined): boolean {
   return (left ?? "") === (right ?? "");
 }
@@ -389,7 +391,7 @@ export class WorktreeManager {
       ref: target,
       ...(signal ? { signal } : {}),
     });
-    return baseline && /^[0-9a-f]{40}$/i.test(baseline) ? baseline : undefined;
+    return baseline && FULL_COMMIT_ID.test(baseline) ? baseline : undefined;
   }
 
   async prepareMainCheckout(
@@ -405,6 +407,6 @@ export class WorktreeManager {
       ...(signal ? { signal } : {}),
     });
     const baseline = await this.git.revParse(claimed.cwd, "HEAD").catch(() => undefined);
-    return baseline && /^[0-9a-f]{40}$/i.test(baseline) ? baseline : undefined;
+    return baseline && FULL_COMMIT_ID.test(baseline) ? baseline : undefined;
   }
 }

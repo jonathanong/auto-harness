@@ -723,8 +723,10 @@ sorted paths are observed, the stored prefix is accompanied by `filesChangedTrun
 When the original summary exceeds 4 KiB, the bounded summary is accompanied by
 `summaryTruncated: true`.
 The result is bounded to 32 KiB overall: summary 4 KiB, branch 1 KiB, pull-request URL 2 KiB,
-and each file path 4 KiB. Pull-request discovery is an association with the final named branch,
-not proof that this session created the PR. Existing sessions are not backfilled.
+and each file path 4 KiB. Oversized branch and path identifiers are omitted rather than shortened;
+an omitted oversized path also sets `filesChangedTruncated: true`. Pull-request discovery is an
+association with the final named branch, not proof that this session created the PR. Existing
+sessions are not backfilled.
 
 Accepted terminal status owns the result atomically with the session transition. Duplicate or
 stale attempt reports cannot replace it, and a `usage_limit` report that requeues onto a fallback

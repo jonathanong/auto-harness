@@ -60,6 +60,17 @@ describe("session result normalization", () => {
     ).toEqual({ summary: "done", summarySource: "agent" });
   });
 
+  it("omits oversized branch names instead of truncating the identifier", () => {
+    const oversizedBranch = `feature/${"x".repeat(2_000)}`;
+    expect(
+      normalizeSessionResult({
+        summary: "done",
+        summarySource: "harness",
+        branch: oversizedBranch,
+      }),
+    ).toEqual({ summary: "done", summarySource: "harness" });
+  });
+
   it("filters, deduplicates, sorts, and handles empty changed-file lists", () => {
     expect(
       normalizeSessionResult({
