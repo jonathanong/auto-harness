@@ -9,6 +9,7 @@ import { fetchGitHubPullRequestRef } from "./git-github-pull-ref.ts";
 import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 const pullSha = "0123456789abcdef0123456789abcdef01234567";
+const remoteHeadSha = "89abcdef0123456789abcdef0123456789abcdef";
 const materializerGitDirs = {
   sha1: "/etc/auto-harness/pull-ref-materializers/sha1.git",
   sha256: "/etc/auto-harness/pull-ref-materializers/sha256.git",
@@ -66,6 +67,10 @@ function hardReset(sha: string) {
   return { match: ["reset", "--hard", sha], exitCode: 0 };
 }
 
+function objectId(objectFormat: string, sha: string): string {
+  return objectFormat === "sha1" ? sha : `${sha}${"0123456789abcdef01234567"}`;
+}
+
 function pullRefPolicy(remoteUrl = "https://github.com/example/repository.git") {
   return new Map([[resolve(checkoutRepo), { materializerGitDirs, remoteUrl, transport: {} }]]);
 }
@@ -77,6 +82,8 @@ function pullRefCheckoutSteps(
   submoduleExitCode = 0,
   deleteExitCode = 0,
 ) {
+  const head = objectId(objectFormat, pullSha);
+  const base = objectId(objectFormat, remoteHeadSha);
   return [
     ...lockProbe(),
     {
@@ -84,7 +91,7 @@ function pullRefCheckoutSteps(
       exitCode: 0,
       stdout: `${objectFormat}\n`,
     },
-    ...fetchesGitHubPullRef(ref, remoteUrl, undefined, objectFormat),
+    ...fetchesGitHubPullRef(ref, remoteUrl, objectFormat, head, base),
     {
       match: [
         "--git-dir",
@@ -95,10 +102,10 @@ function pullRefCheckoutSteps(
       exitCode: 0,
       stdout: `${objectFormat}\n`,
     },
-    { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", pullSha], exitCode: 0 },
-    { match: ["update-ref", "--no-deref", "HEAD", pullSha], exitCode: 0 },
+    { match: ["read-tree", "--reset", "-u", "--no-sparse-checkout", head], exitCode: 0 },
+    { match: ["update-ref", "--no-deref", "HEAD", head], exitCode: 0 },
     checksPullRefSubmodules(submoduleExitCode),
-    { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${pullSha}\n` },
+    { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: `${head}\n` },
     { match: ["symbolic-ref", "--quiet", "HEAD"], exitCode: 1 },
     deletesFetchedPullRef(deleteExitCode),
   ];
@@ -107,23 +114,30 @@ function pullRefCheckoutSteps(
 function advertisesGitHubPullRef(
   ref: string,
   remoteUrl = "https://github.com/example/repository.git",
+  head = pullSha,
+  base = remoteHeadSha,
 ) {
   return {
-    match: ["ls-remote", "--exit-code", remoteUrl, ref],
+    match: ["ls-remote", "--exit-code", remoteUrl, ref, "HEAD"],
     exitCode: 0,
-    stdout: `${pullSha}\t${ref}\n`,
+    stdout: `${head}\t${ref}\n${base}\tHEAD\n`,
   };
 }
 
 function fetchesGitHubPullRef(
   ref: string,
   remoteUrl = "https://github.com/example/repository.git",
-  baseSha: string | undefined = undefined,
   objectFormat = "sha1",
+  head = objectId(objectFormat, pullSha),
+  base = objectId(objectFormat, remoteHeadSha),
 ) {
   return [
-    advertisesGitHubPullRef(ref, remoteUrl),
+    { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+    { match: ["config", "--local", "--get", "extensions.partialClone"], exitCode: 1 },
+    { match: ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"], exitCode: 1 },
+    advertisesGitHubPullRef(ref, remoteUrl, head, base),
     { match: ["init", "--bare", `--object-format=${objectFormat}`, "*"], exitCode: 0 },
+    { match: ["--git-dir", "*", "cat-file", "-e", `${base}^{commit}`], exitCode: 0 },
     {
       match: [
         "--git-dir",
@@ -131,6 +145,7 @@ function fetchesGitHubPullRef(
         "fetch",
         "--no-write-fetch-head",
         "--no-tags",
+        `--negotiation-tip=${base}`,
         remoteUrl,
         `+${ref}:refs/auto-harness/pull-fetch/source`,
       ],
@@ -145,16 +160,13 @@ function fetchesGitHubPullRef(
         "refs/auto-harness/pull-fetch/source^{commit}",
       ],
       exitCode: 0,
-      stdout: `${pullSha}\n`,
+      stdout: `${head}\n`,
     },
-    ...(baseSha === undefined
-      ? []
-      : [
-          {
-            match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, baseSha],
-            exitCode: 1,
-          },
-        ]),
+    { match: ["--git-dir", "*", "merge-base", head, base], exitCode: 0, stdout: `${base}\n` },
+    {
+      match: ["--git-dir", "*", "merge-base", "--is-ancestor", head, base],
+      exitCode: 1,
+    },
     {
       match: [
         "--git-dir",
@@ -163,13 +175,13 @@ function fetchesGitHubPullRef(
         "create",
         "*",
         "refs/auto-harness/pull-fetch/source",
-        pullSha,
-        ...(baseSha === undefined ? [] : [`^${baseSha}`]),
+        head,
+        `^${base}`,
       ],
       exitCode: 0,
     },
     { match: ["bundle", "unbundle", "*"], exitCode: 0 },
-    { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+    { match: ["update-ref", "--no-deref", "*", head], exitCode: 0 },
   ];
 }
 
@@ -199,10 +211,15 @@ describe("createGitClient checkout and revParse", () => {
     const runner = {
       async run(options: import("./executor.ts").RunProcessOptions) {
         const args = options.argv.slice(1);
+        if (args[0] === "rev-parse") {
+          options.onChunk({ stream: "stdout", data: "false\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        if (args[0] === "config") return { exitCode: 1, timedOut: false, signal: null };
         if (args[0] === "ls-remote") {
           options.onChunk({
             stream: "stdout",
-            data: `${pullSha}\trefs/pull/130/head\n`,
+            data: `${pullSha}\trefs/pull/130/head\n${remoteHeadSha}\tHEAD\n`,
           });
           return {
             exitCode: 0,
@@ -213,6 +230,7 @@ describe("createGitClient checkout and revParse", () => {
         if (args[0] === "init") {
           return { exitCode: 0, timedOut: false, signal: null };
         }
+        if (args.includes("cat-file")) return { exitCode: 0, timedOut: false, signal: null };
         if (args.includes("fetch")) {
           fetchEnvironment = options.env;
           return { exitCode: 1, timedOut: false, signal: null };
@@ -227,6 +245,7 @@ describe("createGitClient checkout and revParse", () => {
         checkoutCwd,
         "refs/pull/130/head",
         "https://github.com/example/repository.git",
+        join(checkoutRepo, ".git", "objects"),
       ),
     ).resolves.toBeNull();
     expect(fetchEnvironment?.GIT_CONFIG_NOSYSTEM).toBe("1");
@@ -325,6 +344,9 @@ describe("createGitClient checkout and revParse", () => {
         exitCode: 0,
         stdout: "sha1\n",
       },
+      { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+      { match: ["config", "--local", "--get", "extensions.partialClone"], exitCode: 1 },
+      { match: ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"], exitCode: 1 },
       {
         match: [
           "-c",
@@ -337,11 +359,13 @@ describe("createGitClient checkout and revParse", () => {
           "--exit-code",
           remoteUrl,
           ref,
+          "HEAD",
         ],
         exitCode: 0,
-        stdout: `${pullSha}\t${ref}\n`,
+        stdout: `${pullSha}\t${ref}\n${remoteHeadSha}\tHEAD\n`,
       },
       { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+      { match: ["--git-dir", "*", "cat-file", "-e", `${remoteHeadSha}^{commit}`], exitCode: 0 },
       {
         match: [
           "-c",
@@ -355,6 +379,7 @@ describe("createGitClient checkout and revParse", () => {
           "fetch",
           "--no-write-fetch-head",
           "--no-tags",
+          `--negotiation-tip=${remoteHeadSha}`,
           remoteUrl,
           `+${ref}:refs/auto-harness/pull-fetch/source`,
         ],
@@ -372,6 +397,15 @@ describe("createGitClient checkout and revParse", () => {
         stdout: `${pullSha}\n`,
       },
       {
+        match: ["--git-dir", "*", "merge-base", pullSha, remoteHeadSha],
+        exitCode: 0,
+        stdout: `${remoteHeadSha}\n`,
+      },
+      {
+        match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, remoteHeadSha],
+        exitCode: 1,
+      },
+      {
         match: [
           "--git-dir",
           "*",
@@ -380,6 +414,7 @@ describe("createGitClient checkout and revParse", () => {
           "*",
           "refs/auto-harness/pull-fetch/source",
           pullSha,
+          `^${remoteHeadSha}`,
         ],
         exitCode: 0,
       },
@@ -465,7 +500,7 @@ describe("createGitClient checkout and revParse", () => {
       ref,
     });
 
-    expect(fetchEnvironment).not.toHaveProperty("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+    expect(fetchEnvironment?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toMatch(/\/repo\/\.git\/objects$/);
   });
 
   it("fails closed before pull-ref materialization with interrupted worktree state", async () => {
@@ -659,8 +694,12 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         ...lockProbe(),
         { match: ["rev-parse", "--show-object-format=storage"], exitCode: 0, stdout: "sha1\n" },
+        { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+        { match: ["config", "--local", "--get", "extensions.partialClone"], exitCode: 1 },
+        { match: ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"], exitCode: 1 },
         advertisesGitHubPullRef(ref),
         { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+        { match: ["--git-dir", "*", "cat-file", "-e", `${remoteHeadSha}^{commit}`], exitCode: 0 },
         {
           match: [
             "--git-dir",
@@ -668,6 +707,7 @@ describe("createGitClient checkout and revParse", () => {
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
+            `--negotiation-tip=${remoteHeadSha}`,
             "https://github.com/example/repository.git",
             `+${ref}:refs/auto-harness/pull-fetch/source`,
           ],
@@ -688,8 +728,12 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         ...lockProbe(),
         { match: ["rev-parse", "--show-object-format=storage"], exitCode: 0, stdout: "sha1\n" },
+        { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" },
+        { match: ["config", "--local", "--get", "extensions.partialClone"], exitCode: 1 },
+        { match: ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"], exitCode: 1 },
         advertisesGitHubPullRef(ref),
         { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 },
+        { match: ["--git-dir", "*", "cat-file", "-e", `${remoteHeadSha}^{commit}`], exitCode: 0 },
         {
           match: [
             "--git-dir",
@@ -697,6 +741,7 @@ describe("createGitClient checkout and revParse", () => {
             "fetch",
             "--no-write-fetch-head",
             "--no-tags",
+            `--negotiation-tip=${remoteHeadSha}`,
             "https://github.com/example/repository.git",
             `+${ref}:refs/auto-harness/pull-fetch/source`,
           ],

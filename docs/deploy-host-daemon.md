@@ -421,6 +421,12 @@ string or fragment. The optional
 transport fields preserve only the explicit HTTPS settings needed by that host. `httpProxy` must
 also be credential-free and have no query string or fragment so proxy secrets are never exposed in
 a Git command line; URL rewrites and shell helpers are deliberately unsupported.
+The remote's advertised default `HEAD` must already be a complete local object in the mapped
+repository and share ancestry with each pull head the host will accept. Shallow and partial/promisor
+repositories are rejected for pull-head checkout; update the normal repository clone first. An
+unrelated or orphan pull head is rejected before its objects are imported into the claimed
+repository. Because Git cannot prove ancestry for a remote-only pull head before negotiation, that
+isolated rejected transfer can still contain the pull head's complete graph.
 
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.

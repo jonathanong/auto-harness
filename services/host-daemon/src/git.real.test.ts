@@ -82,13 +82,15 @@ async function createTwoCommitWorktree(
 async function createPinnedPullHead(
   root: string,
   files: Readonly<Record<string, string>>,
+  baseRepository: string,
   objectFormat: "sha1" | "sha256" = "sha1",
 ): Promise<{ remote: string; sha: string }> {
   const remote = join(root, "remote.git");
   const source = join(root, "source");
   await git(root, ["init", "--bare", `--object-format=${objectFormat}`, remote]);
-  mkdirSync(source);
-  await git(source, ["init", `--object-format=${objectFormat}`]);
+  await git(baseRepository, ["push", remote, "HEAD:refs/heads/main"]);
+  await git(root, ["--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
+  await git(root, ["clone", remote, source]);
   await git(source, ["config", "user.email", "t@example.com"]);
   await git(source, ["config", "user.name", "t"]);
   for (const [path, contents] of Object.entries(files)) {
@@ -177,15 +179,16 @@ describe("createGitClient real git", () => {
   it("fetches a pinned pull head without applying a later local URL rewrite", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-ref-"));
     roots.push(root);
-    const { repo, worktree } = await createTwoCommitWorktree(root);
+    const { repo, targetSha, worktree } = await createTwoCommitWorktree(root);
     const remote = join(root, "remote.git");
     const source = join(root, "source");
     const attackerRemote = join(root, "attacker.git");
     const attacker = join(root, "attacker-source");
     await git(root, ["init", "--bare", remote]);
     await git(root, ["init", "--bare", attackerRemote]);
-    mkdirSync(source);
-    await git(source, ["init"]);
+    await git(repo, ["push", remote, "HEAD:refs/heads/main"]);
+    await git(root, ["--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
+    await git(root, ["clone", remote, source]);
     await git(source, ["config", "user.email", "t@example.com"]);
     await git(source, ["config", "user.name", "t"]);
     writeFileSync(join(source, "from.txt"), "trusted\n");
@@ -204,8 +207,16 @@ describe("createGitClient real git", () => {
 
     await git(repo, ["remote", "add", "origin", remote]);
     const materializer = await createTrustedMaterializer(root);
+    const processRunner = new SpawnProcessRunner();
+    let bundleArguments: readonly string[] | undefined;
+    const runner = {
+      async run(options: import("./executor.ts").RunProcessOptions) {
+        if (options.argv.slice(1).includes("create")) bundleArguments = options.argv.slice(1);
+        return processRunner.run(options);
+      },
+    };
     const client = createGitClient(
-      new SpawnProcessRunner(),
+      runner,
       new Map([[resolvePath(repo), pullRefPolicy(remote, materializer)]]),
     );
     // Models a prior untrusted session mutating the shared local Git config after policy load.
@@ -221,13 +232,14 @@ describe("createGitClient real git", () => {
         "refs/worktree/auto-harness/pull-fetch",
       ]),
     ).resolves.toBe("");
+    expect(bundleArguments).toContain(`^${targetSha}`);
   });
 
   it("disables a prior session's fsmonitor before pull-ref checkout commands", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-fsmonitor-"));
     roots.push(root);
     const { repo, worktree } = await createTwoCommitWorktree(root);
-    const { remote, sha } = await createPinnedPullHead(root, { "trusted.txt": "trusted\n" });
+    const { remote, sha } = await createPinnedPullHead(root, { "trusted.txt": "trusted\n" }, repo);
     const materializer = await createTrustedMaterializer(root);
 
     const fsmonitorLog = join(root, "fsmonitor.log");
@@ -259,6 +271,7 @@ describe("createGitClient real git", () => {
     const { remote, sha } = await createPinnedPullHead(
       root,
       { "trusted.txt": "trusted SHA-256 pull head\n" },
+      repo,
       "sha256",
     );
     const sha1Materializer = await createTrustedMaterializer(root);
@@ -278,10 +291,11 @@ describe("createGitClient real git", () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-sparse-"));
     roots.push(root);
     const { repo, worktree } = await createTwoCommitWorktree(root);
-    const { remote, sha } = await createPinnedPullHead(root, {
-      "included.txt": "included\n",
-      "omitted.txt": "omitted\n",
-    });
+    const { remote, sha } = await createPinnedPullHead(
+      root,
+      { "included.txt": "included\n", "omitted.txt": "omitted\n" },
+      repo,
+    );
     const materializer = await createTrustedMaterializer(root);
     const commonDir = (await git(repo, ["rev-parse", "--git-common-dir"])).trim();
     await git(repo, ["config", "core.sparseCheckout", "true"]);
@@ -306,7 +320,7 @@ describe("createGitClient real git", () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-pull-filter-race-"));
     roots.push(root);
     const { repo, worktree } = await createTwoCommitWorktree(root);
-    const { remote, sha } = await createPinnedPullHead(root, { "race.txt": "trusted\n" });
+    const { remote, sha } = await createPinnedPullHead(root, { "race.txt": "trusted\n" }, repo);
     const materializer = await createTrustedMaterializer(root);
     const filterLog = join(root, "filter.log");
     const filter = join(root, "filter.sh");
@@ -354,8 +368,9 @@ describe("createGitClient real git", () => {
     const remote = join(root, "remote.git");
     const source = join(root, "source");
     await git(root, ["init", "--bare", remote]);
-    mkdirSync(source);
-    await git(source, ["init"]);
+    await git(repo, ["push", remote, "HEAD:refs/heads/main"]);
+    await git(root, ["--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
+    await git(root, ["clone", remote, source]);
     await git(source, ["config", "user.email", "t@example.com"]);
     await git(source, ["config", "user.name", "t"]);
     writeFileSync(
@@ -381,7 +396,7 @@ describe("createGitClient real git", () => {
     await expect(client.revParse(worktree, "HEAD")).resolves.not.toBe(before.trim());
   });
 
-  it("fetches a complete pinned pull graph for a shallow claimed checkout", async () => {
+  it("fails closed before transfer for a shallow claimed checkout", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-shallow-pull-ref-"));
     roots.push(root);
     const remote = join(root, "remote.git");
@@ -420,13 +435,14 @@ describe("createGitClient real git", () => {
       new SpawnProcessRunner(),
       new Map([[resolvePath(shallowRepo), pullRefPolicy(`file://${remote}`, materializer)]]),
     );
-    await client.checkoutRef({
-      cwd: shallowWorktree,
-      repoPath: shallowRepo,
-      ref: "refs/pull/42/head",
-    });
-
-    await expect(client.revParse(shallowWorktree, "HEAD")).resolves.toBe(pullSha);
+    await expect(
+      client.checkoutRef({
+        cwd: shallowWorktree,
+        repoPath: shallowRepo,
+        ref: "refs/pull/42/head",
+      }),
+    ).rejects.toThrow("Failed to fetch GitHub pull-request ref");
+    await expect(client.revParse(shallowWorktree, "HEAD")).resolves.not.toBe(pullSha);
   });
 
   it("recycles tracked state while preserving unrelated untracked files", async () => {

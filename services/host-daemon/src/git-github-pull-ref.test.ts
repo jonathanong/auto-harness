@@ -32,12 +32,27 @@ const cwd = "/tmp/auto-harness-github-pull-ref-test";
 const remoteUrl = "https://github.com/example/repository.git";
 const ref = "refs/pull/42/head";
 const pullSha = "0123456789abcdef0123456789abcdef01234567";
+const baseSha = "89abcdef0123456789abcdef0123456789abcdef";
+const objectDirectory = "/srv/repository/.git/objects";
 
 const initialized = { match: ["init", "--bare", "--object-format=sha1", "*"], exitCode: 0 };
 const advertised = {
-  match: ["ls-remote", "--exit-code", remoteUrl, ref],
+  match: ["ls-remote", "--exit-code", remoteUrl, ref, "HEAD"],
   exitCode: 0,
-  stdout: `${pullSha}\t${ref}\n`,
+  stdout: `${pullSha}\t${ref}\n${baseSha}\tHEAD\n`,
+};
+const shallow = { match: ["rev-parse", "--is-shallow-repository"], exitCode: 0, stdout: "false\n" };
+const notPartial = {
+  match: ["config", "--local", "--get", "extensions.partialClone"],
+  exitCode: 1,
+};
+const notPromisor = {
+  match: ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"],
+  exitCode: 1,
+};
+const basePresent = {
+  match: ["--git-dir", "*", "cat-file", "-e", `${baseSha}^{commit}`],
+  exitCode: 0,
 };
 const fetched = {
   match: [
@@ -46,6 +61,7 @@ const fetched = {
     "fetch",
     "--no-write-fetch-head",
     "--no-tags",
+    `--negotiation-tip=${baseSha}`,
     remoteUrl,
     `+${ref}:refs/auto-harness/pull-fetch/source`,
   ],
@@ -62,6 +78,15 @@ const resolved = {
   exitCode: 0,
   stdout: `${pullSha}\n`,
 };
+const commonBase = {
+  match: ["--git-dir", "*", "merge-base", pullSha, baseSha],
+  exitCode: 0,
+  stdout: `${baseSha}\n`,
+};
+const pullNotPresent = {
+  match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, baseSha],
+  exitCode: 1,
+};
 const bundled = {
   match: [
     "--git-dir",
@@ -71,6 +96,7 @@ const bundled = {
     "*",
     "refs/auto-harness/pull-fetch/source",
     pullSha,
+    `^${baseSha}`,
   ],
   exitCode: 0,
 };
@@ -105,32 +131,63 @@ describe("isolated GitHub pull-ref fetch", () => {
     ["malformed advertisement", [{ ...advertised, stdout: "not-a-ref\n" }]],
     ["ambiguous advertisement", [{ ...advertised, stdout: `${pullSha}\t${ref}\tunexpected\n` }]],
     ["initialization", [advertised, { ...initialized, exitCode: 1 }]],
-    ["resolution", [advertised, initialized, fetched, { ...resolved, exitCode: 1, stdout: "" }]],
+    ["missing local remote HEAD", [advertised, initialized, { ...basePresent, exitCode: 1 }]],
+    [
+      "resolution",
+      [advertised, initialized, basePresent, fetched, { ...resolved, exitCode: 1, stdout: "" }],
+    ],
     [
       "mismatched resolutions after the bounded retry",
       [
         advertised,
         initialized,
+        basePresent,
         fetched,
         { ...resolved, stdout: "f".repeat(40) },
         advertised,
         initialized,
+        basePresent,
         fetched,
         { ...resolved, stdout: "e".repeat(40) },
       ],
     ],
-    ["bundle creation", [advertised, initialized, fetched, resolved, { ...bundled, exitCode: 1 }]],
+    [
+      "bundle creation",
+      [
+        advertised,
+        initialized,
+        basePresent,
+        fetched,
+        resolved,
+        commonBase,
+        pullNotPresent,
+        { ...bundled, exitCode: 1 },
+      ],
+    ],
     [
       "bundle import",
-      [advertised, initialized, fetched, resolved, bundled, { ...imported, exitCode: 1 }],
+      [
+        advertised,
+        initialized,
+        basePresent,
+        fetched,
+        resolved,
+        commonBase,
+        pullNotPresent,
+        bundled,
+        { ...imported, exitCode: 1 },
+      ],
     ],
     [
       "scratch-ref update",
       [
         advertised,
         initialized,
+        basePresent,
         fetched,
         resolved,
+        commonBase,
+        pullNotPresent,
         bundled,
         imported,
         { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 1 },
@@ -138,7 +195,156 @@ describe("isolated GitHub pull-ref fetch", () => {
     ],
   ])("returns null after failed %s", async (_stage, steps) => {
     await expect(
-      fetchGitHubPullRequestRef(scripted(steps), cwd, ref, remoteUrl),
+      fetchGitHubPullRequestRef(
+        scripted([shallow, notPartial, notPromisor, ...steps]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    ["shallow", [{ ...shallow, stdout: "true\n" }]],
+    ["partial clone", [shallow, { ...notPartial, exitCode: 0 }]],
+    ["promisor remote", [shallow, notPartial, { ...notPromisor, exitCode: 0 }]],
+    [
+      "missing remote HEAD",
+      [shallow, notPartial, notPromisor, { ...advertised, stdout: `${pullSha}\t${ref}\n` }],
+    ],
+    [
+      "wrong SHA-1 object width",
+      [
+        shallow,
+        notPartial,
+        notPromisor,
+        {
+          ...advertised,
+          stdout: `${pullSha}${"0123456789abcdef01234567"}\t${ref}\n${baseSha}\tHEAD\n`,
+        },
+      ],
+    ],
+  ])("fails closed before transfer for %s", async (_description, steps) => {
+    await expect(
+      fetchGitHubPullRequestRef(scripted(steps), cwd, ref, remoteUrl, objectDirectory),
+    ).resolves.toBeNull();
+  });
+
+  it("uses remote HEAD as the delta prerequisite after proving a diverged pull has a common base", async () => {
+    const commonAncestor = "fedcba9876543210fedcba9876543210fedcba98";
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          shallow,
+          notPartial,
+          notPromisor,
+          advertised,
+          initialized,
+          basePresent,
+          fetched,
+          resolved,
+          {
+            match: ["--git-dir", "*", "merge-base", pullSha, baseSha],
+            exitCode: 0,
+            stdout: `${commonAncestor}\n`,
+          },
+          pullNotPresent,
+          bundled,
+          imported,
+          { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+        ]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
+    ).resolves.toMatchObject({ sha: pullSha });
+  });
+
+  it("does not consult the session worktree HEAD when selecting the negotiation tip", async () => {
+    const runner = scripted([
+      shallow,
+      notPartial,
+      notPromisor,
+      advertised,
+      initialized,
+      basePresent,
+      fetched,
+      resolved,
+      commonBase,
+      pullNotPresent,
+      bundled,
+      imported,
+      { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
+    ]);
+    const originalRun = runner.run.bind(runner);
+    runner.run = async (options) => {
+      if (options.argv.slice(1).join(" ") === "rev-parse HEAD") {
+        throw new Error("session HEAD must not select the transfer base");
+      }
+      return originalRun(options);
+    };
+
+    await expect(
+      fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl, objectDirectory),
+    ).resolves.toMatchObject({ sha: pullSha });
+  });
+
+  it("fails closed without a common ancestor instead of writing a full bundle", async () => {
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          shallow,
+          notPartial,
+          notPromisor,
+          advertised,
+          initialized,
+          basePresent,
+          fetched,
+          resolved,
+          { match: ["--git-dir", "*", "merge-base", pullSha, baseSha], exitCode: 1 },
+        ]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    [
+      "cannot root an already-present pull head",
+      [
+        commonBase,
+        { ...pullNotPresent, exitCode: 0 },
+        { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 1 },
+      ],
+    ],
+    [
+      "cannot determine whether a pull head is already present",
+      [commonBase, { ...pullNotPresent, exitCode: 128 }],
+    ],
+  ])("fails closed when it %s", async (_description, tail) => {
+    await expect(
+      fetchGitHubPullRequestRef(
+        scripted([
+          shallow,
+          notPartial,
+          notPromisor,
+          advertised,
+          initialized,
+          basePresent,
+          fetched,
+          resolved,
+          ...tail,
+        ]),
+        cwd,
+        ref,
+        remoteUrl,
+        objectDirectory,
+      ),
     ).resolves.toBeNull();
   });
 
@@ -147,9 +353,14 @@ describe("isolated GitHub pull-ref fetch", () => {
     const runner = {
       async run(options: import("./executor.ts").RunProcessOptions) {
         const args = options.argv.slice(1);
+        if (args[0] === "rev-parse") {
+          options.onChunk({ stream: "stdout", data: "false\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        if (args[0] === "config") return { exitCode: 1, timedOut: false, signal: null };
         if (args[0] === "ls-remote") {
           lsRemoteCwd = options.cwd;
-          options.onChunk({ stream: "stdout", data: `${pullSha}\t${ref}\n` });
+          options.onChunk({ stream: "stdout", data: `${pullSha}\t${ref}\n${baseSha}\tHEAD\n` });
           return { exitCode: 0, timedOut: false, signal: null };
         }
         if (args[0] === "init") return { exitCode: 1, timedOut: false, signal: null };
@@ -157,7 +368,9 @@ describe("isolated GitHub pull-ref fetch", () => {
       },
     };
 
-    await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).resolves.toBeNull();
+    await expect(
+      fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl, objectDirectory),
+    ).resolves.toBeNull();
     expect(lsRemoteCwd).toBe(parse(tmpdir()).root);
   });
 
@@ -166,11 +379,17 @@ describe("isolated GitHub pull-ref fetch", () => {
     const runner = {
       async run(options: import("./executor.ts").RunProcessOptions) {
         const args = options.argv.slice(1);
+        if (args[0] === "rev-parse") {
+          options.onChunk({ stream: "stdout", data: "false\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
+        if (args[0] === "config") return { exitCode: 1, timedOut: false, signal: null };
         if (args[0] === "ls-remote") {
-          options.onChunk({ stream: "stdout", data: `${pullSha}\t${ref}\n` });
+          options.onChunk({ stream: "stdout", data: `${pullSha}\t${ref}\n${baseSha}\tHEAD\n` });
           return { exitCode: 0, timedOut: false, signal: null };
         }
         if (args[0] === "init") return { exitCode: 0, timedOut: false, signal: null };
+        if (args.includes("cat-file")) return { exitCode: 0, timedOut: false, signal: null };
         if (args.includes("fetch")) {
           fetchEnvironment = options.env;
           return { exitCode: 1, timedOut: false, signal: null };
@@ -185,11 +404,11 @@ describe("isolated GitHub pull-ref fetch", () => {
         cwd,
         ref,
         remoteUrl,
-        "/srv/repos/team:project/.git/objects",
+        '/srv/repos/team:"project/.git/objects',
       ),
     ).resolves.toBeNull();
     expect(fetchEnvironment?.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe(
-      '"/srv/repos/team:project/.git/objects"',
+      '"/srv/repos/team:\\"project/.git/objects"',
     );
   });
 
@@ -285,10 +504,16 @@ describe("isolated GitHub pull-ref fetch", () => {
     let importEnvironment: NodeJS.ProcessEnv | undefined;
     let scratchRefEnvironment: NodeJS.ProcessEnv | undefined;
     const runner = scripted([
+      shallow,
+      notPartial,
+      notPromisor,
       advertised,
       initialized,
+      basePresent,
       fetched,
       resolved,
+      commonBase,
+      pullNotPresent,
       bundled,
       imported,
       { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
@@ -300,7 +525,9 @@ describe("isolated GitHub pull-ref fetch", () => {
       return originalRun(options);
     };
 
-    await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).resolves.toMatchObject({
+    await expect(
+      fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl, objectDirectory),
+    ).resolves.toMatchObject({
       sha: pullSha,
     });
     expect(importEnvironment).toMatchObject({
@@ -317,14 +544,28 @@ describe("isolated GitHub pull-ref fetch", () => {
     const movedSha = "fedcba9876543210fedcba9876543210fedcba98";
     const destination = await fetchGitHubPullRequestRef(
       scripted([
+        shallow,
+        notPartial,
+        notPromisor,
         advertised,
         initialized,
+        basePresent,
         fetched,
         { ...resolved, stdout: `${movedSha}\n` },
-        { ...advertised, stdout: `${movedSha}\t${ref}\n` },
+        { ...advertised, stdout: `${movedSha}\t${ref}\n${baseSha}\tHEAD\n` },
         initialized,
+        basePresent,
         fetched,
         { ...resolved, stdout: `${movedSha}\n` },
+        {
+          match: ["--git-dir", "*", "merge-base", movedSha, baseSha],
+          exitCode: 0,
+          stdout: `${baseSha}\n`,
+        },
+        {
+          match: ["--git-dir", "*", "merge-base", "--is-ancestor", movedSha, baseSha],
+          exitCode: 1,
+        },
         {
           match: [
             "--git-dir",
@@ -334,6 +575,7 @@ describe("isolated GitHub pull-ref fetch", () => {
             "*",
             "refs/auto-harness/pull-fetch/source",
             movedSha,
+            `^${baseSha}`,
           ],
           exitCode: 0,
         },
@@ -343,6 +585,7 @@ describe("isolated GitHub pull-ref fetch", () => {
       cwd,
       ref,
       remoteUrl,
+      objectDirectory,
     );
 
     expect(destination).toMatchObject({ sha: movedSha });
@@ -352,14 +595,19 @@ describe("isolated GitHub pull-ref fetch", () => {
     await expect(
       fetchGitHubPullRequestRef(
         scripted([
-          advertised,
+          shallow,
+          notPartial,
+          notPromisor,
+          {
+            ...advertised,
+            stdout: `${pullSha}${"0123456789abcdef01234567"}\t${ref}\n${baseSha}${"0123456789abcdef01234567"}\tHEAD\n`,
+          },
           { ...initialized, match: ["init", "--bare", "--object-format=sha256", "*"], exitCode: 1 },
         ]),
         cwd,
         ref,
         remoteUrl,
-        undefined,
-        undefined,
+        objectDirectory,
         undefined,
         "sha256",
       ),
@@ -369,12 +617,21 @@ describe("isolated GitHub pull-ref fetch", () => {
   it("roots an already-present pull head without creating an empty bundle", async () => {
     const destination = await fetchGitHubPullRequestRef(
       scripted([
+        shallow,
+        notPartial,
+        notPromisor,
         advertised,
         initialized,
+        basePresent,
         fetched,
         resolved,
         {
-          match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, "base-sha"],
+          match: ["--git-dir", "*", "merge-base", pullSha, baseSha],
+          exitCode: 0,
+          stdout: `${baseSha}\n`,
+        },
+        {
+          match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, baseSha],
           exitCode: 0,
         },
         { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
@@ -382,8 +639,7 @@ describe("isolated GitHub pull-ref fetch", () => {
       cwd,
       ref,
       { remoteUrl, transport: {} },
-      "/srv/repository/.git/objects",
-      "base-sha",
+      objectDirectory,
     );
 
     expect(destination).toMatchObject({
@@ -397,10 +653,16 @@ describe("isolated GitHub pull-ref fetch", () => {
     const sessionController = new AbortController();
     let cleanupSignal: AbortSignal | undefined;
     const runner = scripted([
+      shallow,
+      notPartial,
+      notPromisor,
       advertised,
       initialized,
+      basePresent,
       fetched,
       resolved,
+      commonBase,
+      pullNotPresent,
       bundled,
       imported,
       { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
@@ -422,8 +684,7 @@ describe("isolated GitHub pull-ref fetch", () => {
         cwd,
         ref,
         remoteUrl,
-        undefined,
-        undefined,
+        objectDirectory,
         sessionController.signal,
       ),
     ).rejects.toThrow("temporary directory cleanup failed");
@@ -435,46 +696,24 @@ describe("isolated GitHub pull-ref fetch", () => {
   it("preserves the directory cleanup error when scratch-ref deletion also fails", async () => {
     state.failNextTemporaryDirectoryRemoval = true;
     const runner = scripted([
+      shallow,
+      notPartial,
+      notPromisor,
       advertised,
       initialized,
+      basePresent,
       fetched,
       resolved,
+      commonBase,
+      pullNotPresent,
       bundled,
       imported,
       { match: ["update-ref", "--no-deref", "*", pullSha], exitCode: 0 },
       { match: ["update-ref", "--no-deref", "-d", "*"], exitCode: 1, stderr: "locked" },
     ]);
 
-    await expect(fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl)).rejects.toThrow(
-      "temporary directory cleanup failed",
-    );
-  });
-
-  it.each([
-    ["fails to root an already-present head", 0, 1],
-    ["cannot determine whether a head is already present", 128, 0],
-  ])("fails closed when it %s", async (_description, mergeBaseExitCode, updateRefExitCode) => {
     await expect(
-      fetchGitHubPullRequestRef(
-        scripted([
-          advertised,
-          initialized,
-          fetched,
-          resolved,
-          {
-            match: ["--git-dir", "*", "merge-base", "--is-ancestor", pullSha, "base-sha"],
-            exitCode: mergeBaseExitCode,
-          },
-          ...(mergeBaseExitCode === 0
-            ? [{ match: ["update-ref", "--no-deref", "*", pullSha], exitCode: updateRefExitCode }]
-            : []),
-        ]),
-        cwd,
-        ref,
-        { remoteUrl, transport: {} },
-        "/srv/repository/.git/objects",
-        "base-sha",
-      ),
-    ).resolves.toBeNull();
+      fetchGitHubPullRequestRef(runner, cwd, ref, remoteUrl, objectDirectory),
+    ).rejects.toThrow("temporary directory cleanup failed");
   });
 });

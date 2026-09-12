@@ -185,8 +185,7 @@ export function createGitClient(
                 cwd,
                 ref,
                 pullConfig,
-                undefined,
-                undefined,
+                resolve(claimedWorktree.commonDir, "objects"),
                 signal,
                 targetObjectFormat,
               )

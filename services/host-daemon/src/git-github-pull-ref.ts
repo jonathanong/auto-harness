@@ -70,6 +70,10 @@ function gitAlternateObjectDirectory(path: string): string {
     .replaceAll("\t", "\\t")}"`;
 }
 
+function objectIdPattern(objectFormat: GitObjectFormat): RegExp {
+  return objectFormat === "sha1" ? /^[0-9a-f]{40}$/ : /^[0-9a-f]{64}$/;
+}
+
 function scratchRefEnvironment(): NodeJS.ProcessEnv {
   return {
     ...createChildEnv(),
@@ -125,21 +129,28 @@ function normalizedConfig(
   return value;
 }
 
-function advertisedPullRequestHead(output: string, ref: string): string | undefined {
-  const [line, ...additionalLines] = output
-    .split(/\r?\n/)
-    .filter((candidate) => candidate.length > 0);
-  if (line === undefined || additionalLines.length > 0) return undefined;
-  const [sha, advertisedRef, ...rest] = line.split("\t");
-  if (
-    rest.length > 0 ||
-    advertisedRef !== ref ||
-    sha === undefined ||
-    !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(sha)
-  ) {
-    return undefined;
+function advertisedPullRequestBase(
+  output: string,
+  ref: string,
+  objectFormat: GitObjectFormat,
+): Readonly<{ base: string; head: string }> | undefined {
+  const advertised = new Map<string, string>();
+  for (const line of output.split(/\r?\n/).filter((candidate) => candidate.length > 0)) {
+    const [sha, advertisedRef, ...rest] = line.split("\t");
+    if (
+      rest.length > 0 ||
+      sha === undefined ||
+      (advertisedRef !== ref && advertisedRef !== "HEAD") ||
+      !objectIdPattern(objectFormat).test(sha) ||
+      advertised.has(advertisedRef)
+    ) {
+      return undefined;
+    }
+    advertised.set(advertisedRef, sha);
   }
-  return sha;
+  const head = advertised.get(ref);
+  const base = advertised.get("HEAD");
+  return head === undefined || base === undefined ? undefined : { base, head };
 }
 
 async function cleanupTemporaryDirectory(
@@ -179,13 +190,42 @@ export async function fetchGitHubPullRequestRef(
   cwd: string,
   ref: string,
   config: GitHubPullRefConfig | string | undefined,
-  objectDirectory?: string,
-  baseCommit?: string,
+  objectDirectory: string | undefined,
   signal?: AbortSignal,
   objectFormat: GitObjectFormat = "sha1",
 ): Promise<GitHubPullRequestFetch | null> {
   const configured = normalizedConfig(config);
-  if (!isGitHubPullRequestRef(ref) || !configured) return null;
+  if (!isGitHubPullRequestRef(ref) || !configured || objectDirectory === undefined) return null;
+  // A shallow checkout cannot prove that the remote default branch is a complete reusable base.
+  // This query is bounded and uses the claimed linked-worktree path only; a concurrent session can
+  // turn it into a failure, but cannot select the negotiation tip.
+  const shallow = await runGit(
+    runner,
+    cwd,
+    ["rev-parse", "--is-shallow-repository"],
+    signal,
+    isolatedFetchEnvironment(undefined),
+  );
+  if (shallow.exitCode !== 0 || shallow.stdout.trim() !== "false") return null;
+  // A promisor is a promise to lazily consult a repository-configured remote for missing objects.
+  // Pull-ref checkout never allows that mutable configuration boundary, so reject it before
+  // transfer. A concurrent session can remove this marker only into a later object failure.
+  const partial = await runGit(
+    runner,
+    cwd,
+    ["config", "--local", "--get", "extensions.partialClone"],
+    signal,
+    isolatedFetchEnvironment(undefined),
+  );
+  if (partial.exitCode !== 1) return null;
+  const promisor = await runGit(
+    runner,
+    cwd,
+    ["config", "--local", "--get-regexp", "^remote\\..*\\.promisor$"],
+    signal,
+    isolatedFetchEnvironment(undefined),
+  );
+  if (promisor.exitCode !== 1) return null;
   // The URL and narrowly scoped transport options are loaded from an operator-owned file, never
   // mutable repository, global, or system Git configuration.
   // Fetch it in a fresh bare repository with URL-rewrite configuration disabled, then import a
@@ -214,13 +254,13 @@ export async function fetchGitHubPullRequestRef(
       const advertised = await runGit(
         runner,
         transportCwd,
-        [...transport, "ls-remote", "--exit-code", configured.remoteUrl, ref],
+        [...transport, "ls-remote", "--exit-code", configured.remoteUrl, ref, "HEAD"],
         signal,
         environment,
       );
       if (advertised.exitCode !== 0) return null;
-      const advertisedSha = advertisedPullRequestHead(advertised.stdout, ref);
-      if (advertisedSha === undefined) return null;
+      const advertisedRefs = advertisedPullRequestBase(advertised.stdout, ref, objectFormat);
+      if (advertisedRefs === undefined) return null;
       const temporaryRepository = join(temporaryDirectory, `repository-${attempt}.git`);
       const initialized = await runGit(
         runner,
@@ -230,6 +270,19 @@ export async function fetchGitHubPullRequestRef(
         environment,
       );
       if (initialized.exitCode !== 0) return null;
+      // A remote-advertised HEAD is outside a session's control. Probe it through the claimed
+      // object store before negotiation, rather than using the worktree's mutable HEAD and risking
+      // an unrelated session commit forcing a full-history transfer. This is deliberately an
+      // object probe, not a repository-wide fsck: missing partial objects are fail-closed by the
+      // negotiated fetch's prerequisite and the delta bundle import.
+      const basePresent = await runGit(
+        runner,
+        transportCwd,
+        ["--git-dir", temporaryRepository, "cat-file", "-e", `${advertisedRefs.base}^{commit}`],
+        signal,
+        environment,
+      );
+      if (basePresent.exitCode !== 0) return null;
       const fetched = await runGit(
         runner,
         transportCwd,
@@ -240,6 +293,7 @@ export async function fetchGitHubPullRequestRef(
           "fetch",
           "--no-write-fetch-head",
           "--no-tags",
+          `--negotiation-tip=${advertisedRefs.base}`,
           configured.remoteUrl,
           `+${ref}:${fetchedRef}`,
         ],
@@ -258,33 +312,43 @@ export async function fetchGitHubPullRequestRef(
       const sha = resolved.stdout.trim();
       // A force-push can race the advertisement. Retry the whole immutable advertisement/fetch
       // pair once, then fail closed rather than accepting a different object identity.
-      if (sha !== advertisedSha) continue;
-      // When the requested pull head is already reachable from the current checkout, `bundle
-      // create fetchedRef ^baseCommit` correctly refuses to create an empty bundle. The object is
-      // already present through the alternate object directory, so root it directly instead.
-      const excludesPresentBase = objectDirectory !== undefined && baseCommit !== undefined;
-      if (excludesPresentBase) {
-        const alreadyPresent = await runGit(
+      if (sha !== advertisedRefs.head) continue;
+      // The configured remote's default branch can have diverged from a valid pull-request base.
+      // Prove they share an ancestor, but retain the verified remote HEAD itself as the bundle
+      // prerequisite: the claimed repository already has it, so Git need not duplicate objects
+      // that are new on the default branch after that common ancestor.
+      const commonBase = await runGit(
+        runner,
+        transportCwd,
+        ["--git-dir", temporaryRepository, "merge-base", sha, advertisedRefs.base],
+        signal,
+        environment,
+      );
+      const base = commonBase.stdout.trim();
+      if (commonBase.exitCode !== 0 || !objectIdPattern(objectFormat).test(base)) return null;
+      // When the requested pull head is already reachable from the trusted remote base, creating
+      // an empty bundle would fail. Root it directly; every object is already in the verified
+      // alternate store.
+      const alreadyPresent = await runGit(
+        runner,
+        transportCwd,
+        ["--git-dir", temporaryRepository, "merge-base", "--is-ancestor", sha, advertisedRefs.base],
+        signal,
+        environment,
+      );
+      if (alreadyPresent.exitCode === 0) {
+        const recorded = await runGit(
           runner,
-          transportCwd,
-          ["--git-dir", temporaryRepository, "merge-base", "--is-ancestor", sha, baseCommit],
+          cwd,
+          ["update-ref", "--no-deref", destination, sha],
           signal,
-          environment,
+          scratchRefEnvironment(),
         );
-        if (alreadyPresent.exitCode === 0) {
-          const recorded = await runGit(
-            runner,
-            cwd,
-            ["update-ref", "--no-deref", destination, sha],
-            signal,
-            scratchRefEnvironment(),
-          );
-          if (recorded.exitCode !== 0) return null;
-          scratchRefCreated = true;
-          return { ref: destination, sha };
-        }
-        if (alreadyPresent.exitCode !== 1) return null;
+        if (recorded.exitCode !== 0) return null;
+        scratchRefCreated = true;
+        return { ref: destination, sha };
       }
+      if (alreadyPresent.exitCode !== 1) return null;
       const bundled = await runGit(
         runner,
         transportCwd,
@@ -299,7 +363,7 @@ export async function fetchGitHubPullRequestRef(
           // same-UID session replaces the temporary named ref after the comparison above.
           fetchedRef,
           sha,
-          ...(excludesPresentBase ? [`^${baseCommit}`] : []),
+          `^${advertisedRefs.base}`,
         ],
         signal,
         environment,

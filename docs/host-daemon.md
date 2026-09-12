@@ -560,13 +560,20 @@ non-writable, regular-file/directory-only, and symlink-free.
 Pull-ref policy is currently unsupported on Windows: Auto Harness fails closed rather than relying
 on POSIX ownership checks that cannot prove equivalent native ACL immutability.
 
-A pull-head checkout fetches only that pinned URL in a fresh temporary bare repository with
-system/global URL-rewrite configuration disabled, importing the complete pinned graph rather than
-reusing objects selected by the claimed checkout's local configuration. Replacement refs and
-filesystem monitors are disabled throughout fetch, import, materialization, verification, and
-cleanup. The imported commit is rooted in a fresh worktree-private scratch ref. That ref remains
-reachable through detached checkout and `HEAD` verification, then is deleted with its own bounded
-cleanup signal; it is never a shared predictable ref or `FETCH_HEAD`.
+A pull-head checkout pins both the requested head and that remote's advertised `HEAD`, then reuses
+only the claimed repository's object store. The advertised remote `HEAD` must already be present
+locally and share ancestry with the requested pull head. Git negotiates from that pinned object and
+imports a delta bundle with it as the prerequisite; it does not enumerate session-controlled refs
+or use the worktree's mutable `HEAD` as a base. This bounds the transferred graph to objects new
+relative to the verified remote head, but is not an absolute byte cap. Shallow repositories and
+known partial/promisor repositories and missing bases fail closed before transfer. An unrelated or
+orphan pull head is rejected before bundle import and materialization, but its isolated fetch can
+still receive the complete pull graph because Git cannot prove remote-only ancestry before
+negotiation completes. System/global URL-rewrite configuration, replacement refs, and filesystem
+monitors are disabled throughout fetch, import, materialization, verification, and cleanup. The
+imported commit is rooted in a fresh worktree-private scratch ref. That ref remains reachable
+through detached checkout and `HEAD` verification, then is deleted with its own bounded cleanup
+signal; it is never a shared predictable ref or `FETCH_HEAD`.
 
 The worktree materialization itself runs from the root-owned bare Git directory selected by the
 policy's validated object format, never from a session-discoverable temporary repository. The daemon
