@@ -194,6 +194,43 @@ sudo install -o root -g harness -m 0640 /path/to/your/execution-profiles.json \
 Point `HARNESS_EXECUTION_PROFILES` at that final root-owned path, not the working copy, before
 running `install-service`.
 
+#### Attaching two accounts of the same Provider to one host
+
+`HARNESS_EXECUTION_PROFILES` maps **Provider Account ID → execution profile**, not Provider ID, so
+one host can hold multiple accounts of the same Provider (two Claude accounts, say) as long as
+each entry's `home` is a genuinely distinct directory — the daemon rejects two profiles that reuse
+one `home`. Each profile's `HOME`/`USERPROFILE` is applied only to the assigned provider CLI; git
+and setup scripts always keep the daemon's own home. Once both accounts are attached to this
+host's inventory and both entries are present, the control plane treats them as independent
+capacity — separate `maxConcurrentSessions` leases, separate usage-limit cooldowns, and
+round-robin between them (see [comparison.md](comparison.md#capacity-and-routing)).
+
+This is different from the single-operator symlink-farm workaround in
+[host-daemon.md](host-daemon.md#sessions-stay-queued-host-reports-healthy), which covers the
+opposite case — one real account running every provider CLI — and explicitly does not isolate
+credentials between accounts. Reach for genuinely distinct `home` directories, not a symlink farm,
+when the accounts actually need separating.
+
+**Provisioning caveat — drain first.** The `home` uniqueness check only guarantees the two
+profiles' _storage paths_ don't collide; it says nothing about the _process_ of populating a second
+account's credential store, which is the vendor CLI's own login flow (sign out of one account, sign
+in as the other, under the new profile's `HOME`). Whether a given CLI's login touches anything
+outside that `HOME` — an OS keychain, a lock file — is not something to assume either way: this repo
+has already hit exactly that failure class for a different credential (the Docker/ECR credential
+helper defaulting to the macOS keychain, which is scoped to the OS user account, not to `$HOME` —
+see [qa-production.md](qa-production.md#5-docker-ecr-login-can-fail-non-interactively-on-macos)).
+
+Sidestep the question entirely by draining the host before provisioning a second account, so there
+is no other active session for a keychain-scoped collision to disrupt regardless of the CLI's
+actual storage mechanism:
+
+1. `POST /hosts/:id/drain` the target host and wait for its running sessions to finish.
+2. Create the new profile's `home` directory, then run the vendor CLI's login under
+   `HOME=<new profile's home>` (and `USERPROFILE` on Windows).
+3. Verify the new credential store in isolation — e.g. a one-off non-interactive prompt run with
+   that same `HOME` — before wiring it into `HARNESS_EXECUTION_PROFILES`.
+4. Add the entry, reinstall as above, then undrain the host.
+
 ### VPS install path
 
 Keep this when you are installing onto a dedicated Linux VPS by hand (create the

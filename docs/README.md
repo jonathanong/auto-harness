@@ -49,3 +49,4 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [integrations.md](integrations.md) | Slack (+ future)                                      |
 | [plan.md](plan.md)                 | Phases + data model                                   |
 | [costs.md](costs.md)               | Cost notes                                            |
+| [comparison.md](comparison.md)     | vs. background-agents: sandboxes, Cloudflare, cost    |

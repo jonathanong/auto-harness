@@ -13,11 +13,11 @@ separately.
 
 Auto Harness is built to run coding agents on **vendor subscription plans** (ChatGPT/Codex Plus–style seats, Claude Pro/Team CLI access, etc.)—**not** as a first-class **API / pay-per-token** agent platform.
 
-| Intent                              | Implication                                                                                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Subscriptions, not API metering** | Marginal model cost is mostly **seat + plan quota**, already budgeted for humans, reused for automation. You are not designed around `$/1M tokens` as the control variable. |
+| Intent                              | Implication                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Subscriptions, not API metering** | Marginal model cost is mostly **seat + plan quota**, already budgeted for humans, reused for automation. You are not designed around `$/1M tokens` as the control variable.                                                                                                                    |
 | **Native CLI, no intermediary SDK** | Auto Harness drives each vendor's own CLI directly in **non-interactive mode**—not an Agent SDK or a universal harness wrapping it. That interface is what every vendor ships and supports for unattended use, independent of whatever a given SDK's subscription licensing allows this month. |
-| **Harness AWS bill stays tiny**     | Coordination (API, queue, logs) should stay **dollars**, so the cost conversation stays on **plan seats, quota, and VPS size**—not Lambda.                                  |
+| **Harness AWS bill stays tiny**     | Coordination (API, queue, logs) should stay **dollars**, so the cost conversation stays on **plan seats, quota, and VPS size**—not Lambda.                                                                                                                                                     |
 
 Deep “why product”: [why.md](why.md).
 
@@ -227,14 +227,14 @@ then compare them with the measured inputs above. The repository has no evidence
 
 The VPS running the auto harness agent is a separate cost. This depends on your provider and the workload:
 
-| Provider     | Tier      | vCPU | RAM  | Cost                |
-| ------------ | --------- | ---- | ---- | ------------------- |
-| Hetzner      | CX22      | 2    | 4 GB | ~€4.35/month (2026) |
+| Provider     | Tier      | vCPU | RAM  | Cost                               |
+| ------------ | --------- | ---- | ---- | ---------------------------------- |
+| Hetzner      | CX22      | 2    | 4 GB | ~€4.35/month (2026)                |
 | Hetzner      | CPX22     | 3    | 4 GB | ~€7.99/month (2026, up from €5.99) |
-| DigitalOcean | Basic     | 2    | 4 GB | ~$24/month          |
-| AWS EC2      | t4g.small | 2    | 2 GB | ~$12.26/month (ARM, on-demand) |
-| AWS EC2      | t3.medium | 2    | 4 GB | ~$30/month          |
-| Self-hosted  | —         | —    | —    | Electricity         |
+| DigitalOcean | Basic     | 2    | 4 GB | ~$24/month                         |
+| AWS EC2      | t4g.small | 2    | 2 GB | ~$12.26/month (ARM, on-demand)     |
+| AWS EC2      | t3.medium | 2    | 4 GB | ~$30/month                         |
+| Self-hosted  | —         | —    | —    | Electricity                        |
 
 Prices above are unmetered-hours quotes as of 2026-09; verify current pricing before budgeting—these
 are illustrative inputs, not contract terms, same as the AWS unit prices elsewhere on this page. AI
