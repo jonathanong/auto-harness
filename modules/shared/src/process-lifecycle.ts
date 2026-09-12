@@ -59,6 +59,9 @@ export function installCrashLogging(
             timer = schedule(() => resolve(), timeoutMs);
           }),
         ]);
+      } catch {
+        // A rejecting timeout constructor must not become an unhandled rejection on
+        // the way to exit(1). Report failures are already swallowed above.
       } finally {
         if (timer !== undefined) cancel(timer);
         target.exit(1);
@@ -119,7 +122,8 @@ export function onShutdownSignal(
       target.exit(1);
     }, timeoutMs);
     // Never hold the event loop open on behalf of the deadline itself.
-    forced.unref?.();
+    // Timer ids can be `0` (DOM-like clocks); only `undefined` means "not armed".
+    forced?.unref?.();
     // Cancel the deadline only on success. A failed stop() still needs the deadline to
     // force the process down — cancelling it unconditionally (as a blanket .finally()
     // once did) disarmed the one guarantee that made the failure recoverable: the caller
@@ -127,7 +131,7 @@ export function onShutdownSignal(
     // rejection the process must fall back to the timer, not the caller's resolve.
     running = stop()
       .then(() => {
-        if (forced) cancel(forced);
+        cancel(forced!);
         forced = undefined;
       })
       .catch((error: unknown) => {
@@ -145,7 +149,7 @@ export function onShutdownSignal(
     shutdown,
     dispose: () => {
       for (const signal of signals) target.off(signal, onSignal);
-      if (forced) cancel(forced);
+      if (forced !== undefined) cancel(forced);
       forced = undefined;
     },
   };

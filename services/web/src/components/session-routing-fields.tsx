@@ -131,6 +131,6 @@ type FallbackRow = { key: number; defaultValue?: string };
 function move(items: FallbackRow[], from: number, to: number): FallbackRow[] {
   const next = [...items];
   const [item] = next.splice(from, 1);
-  if (item !== undefined) next.splice(to, 0, item);
+  next.splice(to, 0, item!);
   return next;
 }

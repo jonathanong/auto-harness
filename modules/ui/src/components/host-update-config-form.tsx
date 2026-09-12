@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   mutateHostUpdateConfig,
   parseHostUpdateConfig,
+  thrownMessage,
   type HostUpdateConfig,
 } from "@auto-harness/shared";
 import { Alert } from "./alert.tsx";
@@ -85,7 +86,7 @@ export function HostUpdateConfigForm({
               : { enabled: false },
           );
         } catch (error) {
-          showToast(error instanceof Error ? error.message : String(error), {
+          showToast(thrownMessage(error), {
             variant: "destructive",
             pw: "host-update-config-error",
           });
@@ -101,7 +102,7 @@ export function HostUpdateConfigForm({
             dirty.current = false;
             setSaved(true);
           } catch (error) {
-            showToast(error instanceof Error ? error.message : String(error), {
+            showToast(thrownMessage(error), {
               variant: "destructive",
               pw: "host-update-config-error",
             });

@@ -209,7 +209,13 @@ export {
   type SessionListQuery,
 } from "./list-query.ts";
 
-export { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
+export {
+  apiBase,
+  apiErrorMessage,
+  apiGet,
+  resolveServerApiBase,
+  thrownMessage,
+} from "./api-client.ts";
 
 export {
   attachProviderAccountToHost,

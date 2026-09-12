@@ -110,7 +110,7 @@ function stageLinux(
   paths: LinuxPaths,
   unit: string,
   launcher: string,
-  envContents?: string,
+  envContents: string,
 ): number {
   const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
   const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
@@ -129,10 +129,8 @@ function stageLinux(
   ctx.log(`Wrote ${stagedUnit}`);
   ctx.log(`Wrote ${stagedLauncher}`);
   ctx.log(`Wrote ${stagedHelper}`);
-  if (envContents !== undefined) {
-    writeMode(ctx.fs, stagedEnv, envContents, 0o600, true);
-    ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
-  }
+  writeMode(ctx.fs, stagedEnv, envContents, 0o600, true);
+  ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
   ctx.log(`Staged in ephemeral directory ${stagedDir}`);
   ctx.log("Not running as root. Run:");
   ctx.log(`  sudo install -d -m 0755 ${shellQuote(LINUX_ENV_DIR)}`);
@@ -144,9 +142,7 @@ function stageLinux(
     `  sudo install -d -o ${LINUX_SERVICE_USER} -g ${LINUX_SERVICE_USER} -m 0700 ${shellQuote(paths.stagingRoot)}`,
   );
   ctx.log(`  sudo install -d -o root -g root -m 0755 ${shellQuote(dirname(paths.launcher))}`);
-  if (envContents !== undefined) {
-    ctx.log(`  sudo install -m 0600 ${shellQuote(stagedEnv)} ${shellQuote(LINUX_ENV_DEST)}`);
-  }
+  ctx.log(`  sudo install -m 0600 ${shellQuote(stagedEnv)} ${shellQuote(LINUX_ENV_DEST)}`);
   ctx.log(`  sudo install -m 0755 ${shellQuote(stagedLauncher)} ${shellQuote(paths.launcher)}`);
   ctx.log(
     `  sudo install -m 0755 ${shellQuote(stagedHelper)} ${shellQuote(LINUX_ACTIVATION_HELPER_DEST)}`,
@@ -327,9 +323,11 @@ function writeLinuxServiceFiles(ctx: HostServiceContext, install: LinuxInstall):
 export function installLinux(ctx: HostServiceContext): number {
   const install = prepareLinuxInstall(ctx);
   if (!install) return 1;
-  const { envExists, preparedEnv, paths, unit, launcher, writeEnv } = install;
+  const { envExists, preparedEnv, paths, unit, launcher } = install;
   if (ctx.uid !== 0) {
-    return stageLinux(ctx, paths, unit, launcher, writeEnv ? preparedEnv.contents : undefined);
+    // Non-root installs never see an existing env file (prepareLinuxInstall
+    // refuses that case), so writeEnv is always true on this path.
+    return stageLinux(ctx, paths, unit, launcher, preparedEnv.contents);
   }
 
   ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });

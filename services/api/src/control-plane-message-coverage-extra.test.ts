@@ -367,4 +367,42 @@ describe("host message residual coverage", () => {
     expect(current.sessions.get("s")?.status).toBe("queued");
     expect(current.providerAccounts.get("account")?.usageLimitedUntil).toBeDefined();
   });
+
+  it("does not mutate a missing local provider account on a usage-limit cooldown", () => {
+    const current = state(
+      session({
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "cmd",
+          providerAccountId: "missing-account",
+          hostId: "host",
+          worktreeId: "w",
+          attemptId: "attempt",
+        },
+      }),
+    );
+    current.worktrees.set("w", {
+      id: "w",
+      name: "w",
+      hostId: "host",
+      repositoryId: "repo",
+      path: "/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "s",
+    });
+    expect(
+      handleHostMessage(current, {
+        type: "session:status",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        status: "failed",
+        errorCode: "usage_limit",
+      }),
+    ).toEqual({ ok: true });
+    expect(current.sessions.get("s")?.status).toBe("queued");
+    expect(current.providerAccounts.size).toBe(0);
+  });
 });

@@ -205,6 +205,23 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("stops reconnecting after a subscription-limit viewer error", async () => {
+    const { view, socket } = await mountLive("session-limited", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:error", code: "SUBSCRIPTION_LIMIT" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-error").textContent).toContain(
+      "unavailable for this session",
+    );
+    expect(socket.close).toHaveBeenCalledWith(1000, "viewer error");
+    view.unmount();
+    act(() => socket.emit("close", { code: 1000 }));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
   it("ignores a stale queued status after the session has finished", async () => {
     const { view, socket } = await mountLive("session-stale", "failed");
     emitStatus(socket, "session:subscribed", "failed");

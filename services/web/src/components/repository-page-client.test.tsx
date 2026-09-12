@@ -109,4 +109,36 @@ describe("RepositoryPageClient", () => {
     );
     errorView.unmount();
   });
+
+  it("ignores overlapping load-more retries while a page is in flight", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(json({ items: [repo("second")], nextCursor: null }))
+      .mockResolvedValueOnce(json({ items: [repo("third")], nextCursor: null }));
+    vi.stubGlobal("fetch", request);
+    const view = mountForm(
+      <RepositoryPageClient
+        initialItems={[repo("first")]}
+        initialNextCursor="next"
+        initialPath="/api/v1/repositories?limit=1"
+        attachRepositories={[repo("first")]}
+        hostIds={["host"]}
+        worktrees={[]}
+        canWriteInventory
+        canWriteCatalog={false}
+      />,
+    );
+    await act(async () => press(field(view.container, "repositories-load-more")));
+    expect(field(view.container, "repositories-load-more-error").textContent).toContain("503");
+    const retry = field(view.container, "repositories-load-more-retry");
+    await act(async () => {
+      retry.click();
+      retry.click();
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(field(view.container, "repo-link-second")).toBeTruthy();
+    expect(view.container.querySelector('[data-pw="repo-link-third"]')).toBeNull();
+    view.unmount();
+  });
 });

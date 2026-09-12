@@ -45,6 +45,9 @@ describe("catalog storage pages", () => {
     const providers = await plane.listProvidersPageDurable({ limit: 1, cursor: null });
     expect(providers.items.map((provider) => provider.id)).toEqual(["p-1"]);
     expect(providers.nextCursor).toBe("p-1");
+    await expect(
+      plane.listProvidersPageDurable({ limit: 1, cursor: providers.nextCursor }),
+    ).resolves.toMatchObject({ items: [{ id: "p-2" }], nextCursor: null });
   });
 
   it("returns a storage page and rejects an invalid limit on GET /commands", async () => {
@@ -85,6 +88,25 @@ describe("catalog storage pages", () => {
       status: 200,
       json: { items: [{ id: "p-1" }], nextCursor: null },
     });
+  });
+
+  it("pages providers through a storage start key", async () => {
+    const listProvidersFromStorage = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [{ id: "p-1" }], nextKey: { id: "p-1" } })
+      .mockResolvedValueOnce({ items: [{ id: "p-2" }], nextKey: null });
+    const plane = new ControlPlane({
+      storage: {
+        listProvidersPage: listProvidersFromStorage,
+      } as never,
+    });
+    const first = await plane.listProvidersPageDurable({ limit: 1, cursor: null });
+    expect(first.items.map((provider) => provider.id)).toEqual(["p-1"]);
+    expect(first.nextCursor).toMatch(/^s1\./);
+    await expect(
+      plane.listProvidersPageDurable({ limit: 1, cursor: first.nextCursor }),
+    ).resolves.toMatchObject({ items: [{ id: "p-2" }], nextCursor: null });
+    expect(listProvidersFromStorage).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a storage cursor that is not a catalog id key", async () => {

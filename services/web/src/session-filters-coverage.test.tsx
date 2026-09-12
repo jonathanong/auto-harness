@@ -104,6 +104,13 @@ describe("SessionFilters", () => {
     expect(router.push).toHaveBeenLastCalledWith(
       "/runs?status=failed&q=next&concurrencyId=old&sort=priority_desc",
     );
+    keyDown(
+      view.container.querySelector('[data-pw="session-filter-concurrency-id"]') as HTMLInputElement,
+      "Tab",
+    );
+    expect(router.push).toHaveBeenLastCalledWith(
+      "/runs?status=failed&q=next&concurrencyId=old&sort=priority_desc",
+    );
 
     view.unmount();
     const cleared = mount("status=running&q=needle&concurrencyId=old", router);
@@ -146,8 +153,8 @@ describe("SessionFilters", () => {
     });
     expect(router.push).toHaveBeenCalledWith("/runs");
     router.push.mockClear();
-    act(() => q.dispatchEvent(new FocusEvent("blur", { bubbles: true })));
-    act(() => concurrency.dispatchEvent(new FocusEvent("blur", { bubbles: true })));
+    act(() => q.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+    act(() => concurrency.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
     expect(router.push).not.toHaveBeenCalled();
 
     act(() => {

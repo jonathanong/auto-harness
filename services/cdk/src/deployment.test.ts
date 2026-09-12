@@ -28,12 +28,23 @@ describe("runDeployment", () => {
   it("passes optional Sentry DSNs through CDK context", async () => {
     const deps = dependencies([]);
     await applySessionPriorityIndexStage(
-      config({ apiSentryDsn: "https://abc123@o1.ingest.sentry.io/450" }),
+      config({
+        apiSentryDsn: "https://abc123@o1.ingest.sentry.io/450",
+        webSentryDsnClient: "https://web-client@o1.ingest.sentry.io/450",
+        webSentryDsnServer: "https://web-server@o1.ingest.sentry.io/450",
+      }),
       deps,
       "status",
     );
     expect(deps.runs[0]).toEqual(
-      expect.arrayContaining(["-c", "apiSentryDsn=https://abc123@o1.ingest.sentry.io/450"]),
+      expect.arrayContaining([
+        "-c",
+        "apiSentryDsn=https://abc123@o1.ingest.sentry.io/450",
+        "-c",
+        "webSentryDsnClient=https://web-client@o1.ingest.sentry.io/450",
+        "-c",
+        "webSentryDsnServer=https://web-server@o1.ingest.sentry.io/450",
+      ]),
     );
   });
 
@@ -182,6 +193,15 @@ describe("runDeployment", () => {
     const deps = dependencies([true, true, true, true, true, true]);
     deps.fetch = async () => new Response("no", { status: 503 });
     await expect(runDeployment("update", config(), deps)).rejects.toThrow("HTTP 503");
+
+    const webHealth = dependencies([true, true, true, true, true, true]);
+    webHealth.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"ok":true}'))
+      .mockResolvedValueOnce(new Response("no", { status: 503 }));
+    await expect(runDeployment("update", config(), webHealth)).rejects.toThrow(
+      "web health check failed with HTTP 503",
+    );
 
     const unexpectedBody = dependencies([true, true, true, true, true, true]);
     unexpectedBody.fetch = async () => new Response('{"ok":false}');

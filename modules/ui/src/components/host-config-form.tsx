@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { apiBase, apiErrorMessage, parseHostInventory } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage, parseHostInventory, thrownMessage } from "@auto-harness/shared";
 import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
@@ -107,7 +107,7 @@ export function HostConfigForm({
               parseHostInventory(value);
               return null;
             } catch (error) {
-              return error instanceof Error ? error.message : String(error);
+              return thrownMessage(error);
             }
           }}
           onValidationChange={setValidationError}

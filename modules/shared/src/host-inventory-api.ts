@@ -1,4 +1,4 @@
-import { apiBase, apiErrorMessage } from "./api-client.ts";
+import { apiBase, apiErrorMessage, thrownMessage } from "./api-client.ts";
 import { parseRequiredEnvironment } from "./environment-requirements.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
@@ -147,7 +147,7 @@ async function mutateWithFence<T>(
     try {
       ({ inventory, version } = await readInventory(hostId));
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, error: thrownMessage(error) };
     }
     const result = await write(hostId, mutate(inventory), version);
     if (result.ok) return result;

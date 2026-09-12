@@ -132,4 +132,16 @@ describe("UserAccountSettings", () => {
     await settle();
     expect(field(unauthorized.container, "user-accounts-loading")).toBeTruthy();
   });
+
+  it("ignores a rejected load after unmount", async () => {
+    let fail!: (reason: unknown) => void;
+    api.loadUserAccounts.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    const view = mountForm(<UserAccountSettings canManage />);
+    view.unmount();
+    await act(async () => fail("offline"));
+  });
 });

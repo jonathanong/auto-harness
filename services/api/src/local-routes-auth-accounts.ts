@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isUserRole } from "@auto-harness/shared";
+import { isUserRole, thrownMessage } from "@auto-harness/shared";
 
 import { auditActor } from "./audit.ts";
 import { assertAccountGrant, parseRepositoryScope, validateCredential } from "./auth-accounts.ts";
@@ -135,7 +135,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: thrownMessage(error),
           },
         });
         return true;
@@ -158,7 +158,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, conflict ? 409 : 500, {
           error: {
             code: conflict ? "CONFLICT" : "INTERNAL_ERROR",
-            message: error instanceof Error ? error.message : "internal server error",
+            message: thrownMessage(error),
           },
         });
       }
@@ -228,7 +228,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: thrownMessage(error),
           },
         });
         return true;
@@ -260,7 +260,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
         send(res, 500, {
           error: {
             code: "INTERNAL_ERROR",
-            message: error instanceof Error ? error.message : "internal server error",
+            message: thrownMessage(error),
           },
         });
       }

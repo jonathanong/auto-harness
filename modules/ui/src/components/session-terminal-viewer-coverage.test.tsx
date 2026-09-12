@@ -73,6 +73,8 @@ describe("SessionTerminalViewer remaining branches", () => {
       configurable: true,
       get: () => document.body,
     });
+    act(() => document.dispatchEvent(new Event("fullscreenchange")));
+    expect(terminal.getAttribute("data-fullscreen")).toBe("true");
     document.exitFullscreen = vi.fn(async () => undefined);
     press(field(view.container, "session-terminal-fullscreen"));
     expect(document.exitFullscreen).toHaveBeenCalled();

@@ -118,7 +118,7 @@ async function persistOfflineAlertCandidate(
  * bind to a zombie agent.
  */
 export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date.now()): string[] {
-  const reclaimed: string[] = [];
+  const reclaimed = new Set<string>();
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
 
   for (const [hostId, connectionId] of state.hostConnection.entries()) {
@@ -144,11 +144,8 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
       continue;
     }
     const reason = "agent heartbeat stale; requeued";
-    const freed = offlineHostAndRequeue(state, hostId, reason);
-    for (const sid of freed) {
-      if (!reclaimed.includes(sid)) {
-        reclaimed.push(sid);
-      }
+    for (const sid of offlineHostAndRequeue(state, hostId, reason)) {
+      reclaimed.add(sid);
     }
     if (meta.connectionId) {
       state.connections.delete(meta.connectionId);
@@ -161,7 +158,7 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
       lastHeartbeatAt: meta.lastHeartbeatAt,
     });
   }
-  return reclaimed;
+  return [...reclaimed];
 }
 
 /** Durable stale recovery. Each host lease is released conditionally and each
@@ -199,7 +196,7 @@ export async function reclaimStaleHostsDurable(
       // not block stale leases and sessions from being reclaimed below.
     }
   }
-  const reclaimed: string[] = [];
+  const reclaimed = new Set<string>();
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
   for (const [hostId, connectionId] of state.hostConnection.entries()) {
     const conn = state.connections.get(connectionId);
@@ -224,9 +221,13 @@ export async function reclaimStaleHostsDurable(
       }
       continue;
     }
-    const freed = await offlineHostAndRequeueDurable(state, hostId, meta.connectionId, reason);
-    for (const sid of freed) {
-      if (!reclaimed.includes(sid)) reclaimed.push(sid);
+    for (const sid of await offlineHostAndRequeueDurable(
+      state,
+      hostId,
+      meta.connectionId,
+      reason,
+    )) {
+      reclaimed.add(sid);
     }
     const candidate = { hostId, reason, lastHeartbeatAt: meta.lastHeartbeatAt };
     const released = await state.storage.releaseHostConnection(hostId, meta.connectionId, {
@@ -248,5 +249,5 @@ export async function reclaimStaleHostsDurable(
     await enqueueOfflineAlertCandidate(state, candidate, alertStore);
     onReclaimed?.(hostId, meta.connectionId);
   }
-  return reclaimed;
+  return [...reclaimed];
 }

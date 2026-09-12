@@ -121,7 +121,7 @@ export function SessionLiveLogs({
     connect();
     return () => {
       stopped = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "session:unsubscribe", sessionId }));
       }

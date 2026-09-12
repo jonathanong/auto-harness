@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import {
   KEEPALIVE_ACK_PROTOCOL_VERSION,
+  thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
   type HostWireMessage,
@@ -417,9 +418,7 @@ export class DaemonLoop {
       // leave this daemon. In particular, a signal-triggered shutdown must
       // not reject and let Node exit while in-flight work is still running.
       // Retrying (or reconnect registration) resolves this exact promise.
-      this.onLog?.(
-        `drain notification failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.onLog?.(`drain notification failed: ${thrownMessage(error)}`);
     }
     // A lost acknowledgement needs the same retry path as a failed initial
     // write, and the promise above remains pending until either path commits.
@@ -667,7 +666,7 @@ export class DaemonLoop {
         .catch((error: unknown) => {
           this.onLog?.(
             `terminal status retry failed for ${pending.message.sessionId}: ` +
-              `${error instanceof Error ? error.message : String(error)}`,
+              `${thrownMessage(error)}`,
           );
         })
         .finally(() => {
@@ -756,9 +755,7 @@ export class DaemonLoop {
       this.drainRetry = undefined;
       void this.sendDrainStatus()
         .catch((error: unknown) => {
-          this.onLog?.(
-            `drain notification retry failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          this.onLog?.(`drain notification retry failed: ${thrownMessage(error)}`);
         })
         .finally(() => this.scheduleDrainRetry());
     }, this.drainRetryMs);
@@ -851,7 +848,7 @@ export class DaemonLoop {
       .catch((error: unknown) => {
         this.onLog?.(
           `session:status send failed for ${msg.sessionId}, will retry via keepalive: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
+            `${thrownMessage(error)}`,
         );
       })
       .finally(() => {

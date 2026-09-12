@@ -45,8 +45,8 @@ export function parseJsonLine(line: string): object | undefined {
   const trimmed = stripAnsi(line).trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
   try {
-    const value: unknown = JSON.parse(trimmed);
-    return typeof value === "object" && value !== null ? value : undefined;
+    // `{` / `[` prefixes only parse to objects or arrays.
+    return JSON.parse(trimmed) as object;
   } catch {
     return undefined;
   }

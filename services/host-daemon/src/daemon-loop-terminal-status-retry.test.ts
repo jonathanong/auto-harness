@@ -241,6 +241,32 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("leaves pending terminal statuses for other sessions when an ack omits attemptId", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = createLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport, now: () => "now" });
+      await loop.start();
+      pendingTerminalStatusOf(loop).set("done-session\0attempt-1", {
+        message: statusMessage,
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
+      pendingTerminalStatusOf(loop).set("other-session\0attempt-1", {
+        message: { ...statusMessage, sessionId: "other-session" },
+        firstAttemptedAtMs: Date.now(),
+        sending: false,
+        controller: new AbortController(),
+      });
+      transport.deliver({ type: "session:status-acknowledged", sessionId: "done-session" });
+      expect([...pendingTerminalStatusOf(loop).keys()]).toEqual(["other-session\0attempt-1"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("logs a primitive terminal-status retry failure", async () => {
     const { config, cleanup } = await makeRepo();
     try {

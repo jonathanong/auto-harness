@@ -68,11 +68,13 @@ describe("agent registration branch boundaries", () => {
         ],
         commandProfiles: [],
         runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+        protocolVersion: 1,
       }),
     ).toEqual({ ok: true, connectionId: "runtime" });
     expect(plane.state.connections.get("runtime")?.runtime).toMatchObject({
       daemonVersion: "test",
     });
+    expect(plane.state.connections.get("runtime")?.protocolVersion).toBe(1);
     expect(plane.getHostInventory("runtime-host")).toMatchObject({
       repositories: [{ worktrees: [{ labels: ["daemon"] }] }],
     });

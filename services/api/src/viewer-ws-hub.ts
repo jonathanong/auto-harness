@@ -79,7 +79,6 @@ export function attachViewerWsHub(
   plane.state.onLogCommitted = onLogCommitted;
 
   const drain = async (socket: WebSocket, subscription: Subscription): Promise<void> => {
-    if (subscription.replaying) return;
     subscription.replaying = true;
     try {
       for (let page = 0; page < MAX_DRAIN_PAGES; page += 1) {
@@ -277,7 +276,7 @@ async function loadTail(
 ): Promise<LogRecord[]> {
   if (plane.state.storage) {
     return await plane.state.storage.queryLogs(sessionId, {
-      ...(after ? { after } : {}),
+      after,
       limit: TAIL_PAGE_SIZE,
     });
   }

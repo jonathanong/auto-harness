@@ -100,4 +100,15 @@ describe("SettingsPageClient", () => {
     cleaned.unmount();
     await act(async () => finish(new Response(null, { status: 404 })));
   });
+
+  it("ignores a rejected Slack load after unmount", async () => {
+    let fail!: (reason: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((_, reject) => (fail = reject))),
+    );
+    const view = mountForm(<SettingsPageClient />);
+    view.unmount();
+    await act(async () => fail(new Error("offline")));
+  });
 });

@@ -177,6 +177,18 @@ describe("session live detail", () => {
     await Promise.resolve();
   });
 
+  it("does not mark a refresh failure after unmount", async () => {
+    let reject!: (reason: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<never>((_, fail) => (reject = fail))),
+    );
+    const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
+    view.unmount();
+    reject(new Error("offline"));
+    await Promise.resolve();
+  });
+
   it("waits for an in-flight refresh before scheduling the next poll", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

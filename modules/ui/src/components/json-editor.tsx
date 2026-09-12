@@ -45,8 +45,7 @@ export function JsonEditor({
   validationChangeRef.current = onValidationChange;
 
   useEffect(() => {
-    const parent = parentRef.current;
-    if (!parent) return;
+    const parent = parentRef.current!;
 
     const reportValidation = (raw: string) => {
       const nextError = validationError(raw, validateRef.current);

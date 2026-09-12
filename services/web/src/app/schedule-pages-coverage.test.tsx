@@ -334,6 +334,40 @@ describe("schedule pages", () => {
     expect(html).not.toContain("schedule-detail-active-session");
   });
 
+  it("ignores a non-string edit id and keeps a string cursor", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules?limit=50&cursor=page%2Fone": {
+        items: [
+          {
+            id: "schedule-1",
+            name: "Paged",
+            repositoryId: "repo-1",
+            target: { commandId: "command-1" },
+            fallbacks: [],
+            cron: "0 * * * *",
+            enabled: true,
+            timeout: 60,
+            queueTtlSeconds: 120,
+            nextRunAt: "tomorrow",
+            lastRunAt: null,
+          },
+        ],
+        nextCursor: "page/two",
+      },
+      "/api/v1/session-targets": { items: [] },
+      "/api/v1/repositories": { items: [] },
+    });
+    const html = await renderPage(
+      SchedulesPage({
+        searchParams: Promise.resolve({ edit: ["schedule-1"], cursor: "page/one" }),
+      }),
+    );
+    expect(html).toContain("Paged");
+    expect(html).toContain("cursor=page%2Ftwo");
+    expect(html).toContain("Add schedule");
+  });
+
   it("renders not found and propagates non-not-found schedule failures", async () => {
     vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
     stubApi({ "/api/v1/schedules/missing": jsonResponse({}, 404) });

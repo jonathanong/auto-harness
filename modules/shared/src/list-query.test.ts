@@ -46,6 +46,12 @@ describe("list-query", () => {
   it("uses supplied defaults and falls back from an unsupported sort", () => {
     expect(parseSessionListQuery(new URLSearchParams(), { limit: 25 }).limit).toBe(25);
     expect(parseSessionListQuery(new URLSearchParams("sort=not-supported")).sort).toBe("latest");
+    expect(parseSessionListQuery(new URLSearchParams("sort=priority_desc")).sort).toBe(
+      "priority_desc",
+    );
+    expect(parseSessionListQuery(new URLSearchParams("sort=priority_asc")).sort).toBe(
+      "priority_asc",
+    );
   });
 
   it("builds session list hrefs", () => {
@@ -65,12 +71,12 @@ describe("list-query", () => {
       sessionListHref({
         repositoryId: "repo-1",
         scheduleId: "schedule-1",
-        sort: "oldest",
+        sort: "priority_asc",
         hostId: "host-1",
         source: "ui",
       }),
     ).toBe(
-      "/sessions?repositoryId=repo-1&scheduleId=schedule-1&hostId=host-1&source=ui&sort=oldest",
+      "/sessions?repositoryId=repo-1&scheduleId=schedule-1&hostId=host-1&source=ui&sort=priority_asc",
     );
   });
 

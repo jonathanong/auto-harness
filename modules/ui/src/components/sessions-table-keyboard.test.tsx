@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsTable } from "./sessions-table.tsx";
+import { useSessionTableKeyboard } from "./use-session-table-keyboard.ts";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,6 +31,16 @@ function mount(hrefBase: string | undefined = "/sessions") {
   const root = createRoot(container);
   act(() => root.render(<SessionsTable items={[...items]} hrefBase={hrefBase} />));
   return { container, root };
+}
+
+function GhostRowProbe() {
+  useSessionTableKeyboard(["ghost"], "/sessions");
+  return null;
+}
+
+function SparseIdProbe() {
+  useSessionTableKeyboard([undefined as unknown as string], "/sessions");
+  return null;
 }
 
 afterEach(() => {
@@ -123,6 +134,28 @@ describe("sessions table keyboard navigation", () => {
     ).toBe("true");
     expect(press(document, "Enter").defaultPrevented).toBe(false);
     act(() => root.unmount());
+  });
+
+  it("ignores Enter before a row is selected and skips a missing focused row", async () => {
+    const { container, root } = mount();
+    expect(press(container, "Enter").defaultPrevented).toBe(false);
+    act(() => root.unmount());
+
+    const probe = document.createElement("div");
+    document.body.append(probe);
+    const probeRoot = createRoot(probe);
+    act(() => probeRoot.render(<GhostRowProbe />));
+    expect(press(document, "j").defaultPrevented).toBe(true);
+    await act(async () => Promise.resolve());
+    act(() => probeRoot.unmount());
+
+    const sparse = document.createElement("div");
+    document.body.append(sparse);
+    const sparseRoot = createRoot(sparse);
+    act(() => sparseRoot.render(<SparseIdProbe />));
+    expect(press(document, "j").defaultPrevented).toBe(true);
+    await act(async () => Promise.resolve());
+    act(() => sparseRoot.unmount());
   });
 
   it("ignores row shortcuts while a modal is open and preserves descendant controls", async () => {

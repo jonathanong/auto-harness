@@ -77,6 +77,18 @@ describe("control catalog list routes", () => {
     expect(html).toContain("cursor=page%2Ftwo");
   });
 
+  it("ignores a non-string commands cursor", async () => {
+    stubApi({
+      "/api/v1/commands": { items: [] },
+      "/api/v1/providers": { items: [] },
+    });
+    const html = await renderPage(
+      CommandsPage({ searchParams: Promise.resolve({ cursor: ["page/one"] }) }),
+    );
+    expect(html).toContain("No commands registered yet.");
+    expect(html).not.toContain("cursor=page%2Fone");
+  });
+
   it("renders providers with account, cooldown, and command counts", async () => {
     stubApi({
       "/api/v1/providers": {

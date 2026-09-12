@@ -48,6 +48,8 @@ describe("global keyboard shortcuts", () => {
     const view = mountForm(<ControlShell>Dashboard</ControlShell>);
     key(document, "n");
     expect(router.push).toHaveBeenLastCalledWith("/sessions/new");
+    key(document, "h");
+    expect(router.push).toHaveBeenLastCalledWith("/sessions/new");
 
     key(document, "g");
     expect(field(view.container, "shortcut-sequence-status").textContent).toContain("choose");
