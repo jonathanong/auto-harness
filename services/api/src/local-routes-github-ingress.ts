@@ -83,14 +83,22 @@ export async function handleGitHubIngressRoute(ctx: RouteCtx): Promise<boolean> 
       },
     );
     if (!result.ok) {
-      if (!(await audit(ctx, "failed", { delivery, code: result.code ?? "VALIDATION_ERROR" })))
+      if (
+        !(await audit(
+          ctx,
+          "failed",
+          { delivery, code: result.code ?? "VALIDATION_ERROR" },
+          session.repositoryId,
+        ))
+      )
         return true;
       send(ctx.res, result.code === "CONFLICT" ? 409 : 400, {
         error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
       });
       return true;
     }
-    if (!(await audit(ctx, "success", { delivery, created: result.created }))) return true;
+    if (!(await audit(ctx, "success", { delivery, created: result.created }, session.repositoryId)))
+      return true;
     await ctx.plane.enqueueAssignment();
     send(ctx.res, 202, { accepted: true, sessionId: result.session.id, created: result.created });
   } catch {
@@ -152,12 +160,14 @@ function audit(
   ctx: RouteCtx,
   outcome: "success" | "failed" | "denied",
   metadata?: Record<string, unknown>,
+  repositoryId?: string,
 ): Promise<boolean> {
   return writeRouteAudit(ctx, {
     action: "webhook:github:receive",
     resourceType: "integration",
     resourceId: "github-ingress",
     outcome,
+    ...(repositoryId ? { repositoryId } : {}),
     ...(metadata ? { metadata } : {}),
   });
 }

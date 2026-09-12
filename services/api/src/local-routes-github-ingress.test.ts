@@ -228,6 +228,15 @@ describe("GitHub App webhook ingress", () => {
       concurrencyId: "github-comment:issue_comment:42:9",
       prompt: " fix this",
     });
+    await expect(plane.listAuditLogs({ repositoryId: "repo" })).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          action: "webhook:github:receive",
+          outcome: "success",
+          repositoryId: "repo",
+        }),
+      ],
+    });
   });
 
   it("reserves GitHub comment concurrency ids from the ordinary session API", async () => {
