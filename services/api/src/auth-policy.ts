@@ -85,6 +85,7 @@ export function requiredCapability(
 
 const BOUND_KEY_HANDLER_DENIALS = new Set<Capability>([
   "sessions:write",
+  "sessions:spawn",
   "sessions:archive",
   "schedules:write",
 ]);

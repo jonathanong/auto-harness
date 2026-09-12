@@ -1,10 +1,11 @@
+/* eslint-disable max-lines -- route validation, authorization, audit, and pagination share one harness. */
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-app.ts";
-import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 async function harness() {
   let sequence = 0;
@@ -42,7 +43,7 @@ async function harness() {
     rateLimitConfig: { enabled: false },
   }).handler;
   const path = `/api/v1/sessions/${parent.session.id}/children`;
-  return { plane, parent: parent.session, sessionKey, apiKey, handler, path };
+  return { plane, parent: parent.session, sessionKey, apiKey, auth, handler, path };
 }
 
 describe("child session route", () => {
@@ -152,5 +153,202 @@ describe("child session route", () => {
         })
       ).status,
     ).toBe(400);
+  });
+
+  it("validates every child-only request field", async () => {
+    const { handler, path, apiKey } = await harness();
+    const invalidBodies: unknown[] = [
+      null,
+      [],
+      { prompt: "child", spawnKey: "key", repositoryId: "repo" },
+      { spawnKey: "key" },
+      { prompt: "child", spawnKey: 1 },
+      { prompt: "child", spawnKey: "" },
+      { prompt: "child", spawnKey: "x".repeat(257) },
+      { prompt: "child", spawnKey: "line\nbreak" },
+      { prompt: "child", spawnKey: "key", priority: "urgent" },
+      { prompt: "child", spawnKey: "key", queueTtlSeconds: 1.5 },
+      { prompt: "child", spawnKey: "key", queueTtlSeconds: 0 },
+      { prompt: "child", spawnKey: "key", queueTtlSeconds: 2_592_001 },
+    ];
+
+    for (const body of invalidBodies) {
+      const response = await invokeHandler(handler, "POST", path, body, {
+        authorization: `Bearer ${apiKey}`,
+      });
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect(response.json).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    }
+  });
+
+  it("rejects missing parents, malformed bodies, unsupported methods, and queued parents", async () => {
+    const { handler, path, apiKey, plane, parent } = await harness();
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          "/api/v1/sessions/missing/children",
+          {},
+          {
+            authorization: `Bearer ${apiKey}`,
+          },
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invokeHandler(handler, "POST", path, undefined, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(400);
+    expect(await invokeBadJson(handler, "POST", path, { authorization: `Bearer ${apiKey}` })).toBe(
+      400,
+    );
+    expect(
+      (
+        await invokeHandler(handler, "DELETE", path, undefined, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(404);
+    plane.forceStatus(parent.id, "queued");
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          path,
+          { prompt: "child", spawnKey: "queued" },
+          { authorization: `Bearer ${apiKey}` },
+        )
+      ).status,
+    ).toBe(409);
+  });
+
+  it("requires repository access and spawn permission", async () => {
+    const { handler, path, auth } = await harness();
+    const { apiKey: viewerKey } = await auth.createServiceAccount({
+      name: "reader",
+      role: "read-only",
+      allowedRepositoryIds: ["repo"],
+    });
+    const { apiKey: otherRepoKey } = await auth.createServiceAccount({
+      name: "other-repo",
+      role: "author",
+      allowedRepositoryIds: ["other"],
+    });
+    const { apiKey: daemonKey } = await auth.createServiceAccount({
+      name: "daemon",
+      role: "agent",
+      boundHostId: "host-1",
+    });
+
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          path,
+          { prompt: "child", spawnKey: "viewer" },
+          { authorization: `Bearer ${viewerKey}` },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await invokeHandler(handler, "GET", path, undefined, {
+          authorization: `Bearer ${otherRepoKey}`,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          path,
+          { prompt: "child", spawnKey: "daemon" },
+          { authorization: `Bearer ${daemonKey}` },
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it("maps durable admission failures and unexpected failures", async () => {
+    const cases = [
+      [{ code: "NOT_FOUND", error: "gone" }, 404],
+      [{ code: "DRAINING", error: "draining" }, 409],
+      [{ code: "REPOSITORY_ADMISSION_CLOSED", error: "closed" }, 400],
+    ] as const;
+
+    for (const [failure, status] of cases) {
+      const { handler, path, apiKey, plane } = await harness();
+      plane.createSessionChildDurable = async () => ({ ok: false, ...failure });
+      expect(
+        (
+          await invokeHandler(
+            handler,
+            "POST",
+            path,
+            { prompt: "child", spawnKey: failure.code },
+            { authorization: `Bearer ${apiKey}` },
+          )
+        ).status,
+      ).toBe(status);
+    }
+
+    const { handler, path, apiKey, plane } = await harness();
+    plane.listSessionChildrenDurable = async () => {
+      throw new Error("unexpected");
+    };
+    expect(
+      (
+        await invokeHandler(handler, "GET", path, undefined, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(500);
+  });
+
+  it("fails closed when the mutation audit cannot be persisted", async () => {
+    const { handler, path, apiKey, plane } = await harness();
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "POST",
+          path,
+          { prompt: "child", spawnKey: "audit-failure" },
+          { authorization: `Bearer ${apiKey}` },
+        )
+      ).status,
+    ).toBe(500);
+
+    const failed = await harness();
+    failed.plane.createSessionChildDurable = async () => ({
+      ok: false,
+      code: "CONFLICT",
+      error: "conflict",
+    });
+    failed.plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      (
+        await invokeHandler(
+          failed.handler,
+          "POST",
+          failed.path,
+          { prompt: "child", spawnKey: "failed-audit" },
+          { authorization: `Bearer ${failed.apiKey}` },
+        )
+      ).status,
+    ).toBe(500);
   });
 });
