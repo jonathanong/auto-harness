@@ -15,7 +15,7 @@ function admins(): string {
 describe("GET /sessions/:id/prior-context host scoping", () => {
   it("scopes access to the running session's own bound host", async () => {
     const plane = new ControlPlane({ shardCount: 1 });
-    plane.createRepository({ id: "repo-a", name: "repo-a", url: "/a" });
+    plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
     plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
     plane.state.sessions.set(
       "source",

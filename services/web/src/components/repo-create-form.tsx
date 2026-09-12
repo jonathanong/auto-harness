@@ -12,7 +12,7 @@ import {
   withToast,
 } from "@auto-harness/ui";
 
-import { apiBase, apiErrorMessage } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage, repositoryUrlError } from "@auto-harness/shared";
 
 export function RepoCreateForm() {
   const router = useRouter();
@@ -27,10 +27,15 @@ export function RepoCreateForm() {
         const fd = new FormData(e.currentTarget);
         const body: Record<string, string> = {
           name: String(fd.get("name") ?? ""),
-          url: String(fd.get("url") ?? ""),
+          url: String(fd.get("url") ?? "").trim(),
           defaultBranch: String(fd.get("defaultBranch") ?? "main"),
           setupScript: String(fd.get("setupScript") ?? ""),
         };
+        const urlError = repositoryUrlError(body.url);
+        if (urlError) {
+          showToast(urlError, { variant: "destructive", pw: "repo-catalog-error" });
+          return;
+        }
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/repositories`, {
             method: "POST",
@@ -61,9 +66,9 @@ export function RepoCreateForm() {
       <div className="space-y-1">
         <Label
           htmlFor="url"
-          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
+          tip="Credential-free HTTPS URL or SCP-style SSH remote (git@host:path). Host filesystem paths are set when attaching the repository."
         >
-          URL / Path
+          Git URL
         </Label>
         <Input
           id="url"
@@ -73,8 +78,8 @@ export function RepoCreateForm() {
           data-pw="repo-catalog-url"
         />
         <p className="text-xs text-muted-foreground">
-          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path
-          on the host — that is set when attaching the repo to a host.
+          Credential-free HTTPS URL or SCP-style SSH remote (git@host:path). Host filesystem paths
+          are set when attaching the repository.
         </p>
       </div>
       <div className="space-y-1">

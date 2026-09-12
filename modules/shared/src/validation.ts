@@ -48,6 +48,39 @@ export function concurrencyIdByteLengthError(concurrencyId: string): string | nu
   }
   return null;
 }
+
+const INVALID_REPOSITORY_URL_ERROR = "url must be an HTTPS or SCP-style SSH Git remote";
+
+/** Validate the credential-free Git remote URL stored for a catalog repository. */
+export function repositoryUrlError(url: string): string | null {
+  if (/[\s\p{Cc}]/u.test(url)) return INVALID_REPOSITORY_URL_ERROR;
+
+  // Inspect the authority directly so even empty userinfo (`https://@host`) is
+  // rejected; URL.username/password alone cannot distinguish that from no userinfo.
+  const schemeSeparator = url.indexOf("://");
+  if (schemeSeparator >= 0) {
+    const authorityStart = schemeSeparator + 3;
+    const remainder = url.slice(authorityStart);
+    const authorityEnd = remainder.search(/[/?#]/u);
+    const authority = authorityEnd < 0 ? remainder : remainder.slice(0, authorityEnd);
+    if (authority.includes("@")) return "url must not include credentials";
+  }
+  if (url.includes("?") || url.includes("#")) {
+    return "url must not include query parameters or fragments";
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:" && parsed.hostname) return null;
+  } catch {
+    // SCP-style SSH remotes are not URLs and are handled below.
+  }
+
+  // Git's SCP syntax is deliberately narrower than shell-style host aliases:
+  // the user must be Git, and both the host and remote path must be present.
+  if (/^git@(?:\[[^\]\s]+\]|[^:@\s]+):[^\s]+$/u.test(url)) return null;
+  return INVALID_REPOSITORY_URL_ERROR;
+}
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */
 export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */

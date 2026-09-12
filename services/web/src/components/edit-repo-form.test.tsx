@@ -31,11 +31,11 @@ describe("EditRepoForm", () => {
     press(field(view.container, "edit-repo-open"));
     expect(field(document, "edit-repo-dialog")).not.toBeNull();
     const url = field<HTMLInputElement>(document, "edit-repo-url");
-    expect(url.labels?.[0]?.textContent).toBe("URL / Path");
+    expect(url.labels?.[0]?.textContent).toBe("Git URL");
     expect(url.placeholder).toBe("https://github.com/org/repo.git");
     expect(url.value).toBe(repository.url);
     expect(document.body.textContent).toContain(
-      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
+      "Credential-free HTTPS URL or SCP-style SSH remote (git@host:path). Host filesystem paths are set when attaching the repository.",
     );
     expect(field<HTMLTextAreaElement>(document, "edit-repo-setup").value).toBe("install");
     expect(field<HTMLButtonElement>(document, "edit-repo-submit").textContent).toBe("Save");
@@ -50,11 +50,14 @@ describe("EditRepoForm", () => {
     const view = mountForm(<EditRepoForm repository={repository} />);
     press(field(view.container, "edit-repo-open"));
     const form = field<HTMLFormElement>(document, "form-edit-repo");
-    setValue(field(document, "edit-repo-url"), "/repo");
+    setValue(field(document, "edit-repo-url"), "https://user:secret@example.test/repo.git");
+    submit(form);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(field(document, "edit-repo-error").textContent).toBe("url must not include credentials");
     setValue(field(document, "edit-repo-url"), "   ");
     submit(form);
     expect(field(document, "edit-repo-error").textContent).toBe("url is required");
-    setValue(field(document, "edit-repo-url"), " /new ");
+    setValue(field(document, "edit-repo-url"), " https://example.test/new.git ");
     setValue(field(document, "edit-repo-branch"), " ");
     submit(form);
     await act(async () => Promise.resolve());
@@ -63,7 +66,7 @@ describe("EditRepoForm", () => {
       expect.objectContaining({ method: "PUT" }),
     );
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
-      url: "/new",
+      url: "https://example.test/new.git",
       defaultBranch: "main",
       setupScript: "install",
       terminalHookScript: "hook",
@@ -84,7 +87,7 @@ describe("EditRepoForm", () => {
     const view = mountForm(<EditRepoForm repository={{ id: "repo", url: null }} />);
     press(field(view.container, "edit-repo-open"));
     const form = field<HTMLFormElement>(document, "form-edit-repo");
-    setValue(field(document, "edit-repo-url"), "/repo");
+    setValue(field(document, "edit-repo-url"), "https://example.test/repo.git");
     setValue(field(document, "edit-repo-branch"), "feature");
     submit(form);
     expect(field<HTMLButtonElement>(document, "edit-repo-submit").disabled).toBe(true);
@@ -106,14 +109,14 @@ describe("EditRepoForm", () => {
     const view = mountForm(<EditRepoForm repository={{ id: "repo" }} />);
     press(field(view.container, "edit-repo-open"));
     const form = field<HTMLFormElement>(document, "form-edit-repo");
-    setValue(field(document, "edit-repo-url"), "/repo");
+    setValue(field(document, "edit-repo-url"), "https://example.test/repo.git");
     field(document, "edit-repo-branch").remove();
     field(document, "edit-repo-setup").remove();
     field(document, "edit-repo-hook").remove();
     submit(form);
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
-      url: "/repo",
+      url: "https://example.test/repo.git",
       defaultBranch: "main",
       setupScript: "",
       terminalHookScript: "",

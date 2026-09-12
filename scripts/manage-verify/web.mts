@@ -47,7 +47,7 @@ export async function manageWeb(scratch: string): Promise<void> {
       body: JSON.stringify({
         id: "demo",
         name: MANAGE_REPOSITORY_NAME,
-        url: "/tmp/demo",
+        url: "https://example.test/demo.git",
         defaultBranch: "main",
       }),
     });

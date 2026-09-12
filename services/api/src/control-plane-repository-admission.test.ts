@@ -72,7 +72,7 @@ describe("repository admission", () => {
       ok: false,
       code: "NOT_FOUND",
     });
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     plane.state.repositories.get("repo-1")!.admissionState = "draining";
     expect(await plane.activateRepositoryDurable("repo-1")).toMatchObject({
       ok: false,
@@ -84,7 +84,7 @@ describe("repository admission", () => {
     const messages: unknown[] = [];
     const plane = new ControlPlane({ onHostMessage: (_hostId, message) => messages.push(message) });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     const created = plane.createSession({
       repositoryId: "repo-1",
       prompt: "run",
@@ -129,7 +129,11 @@ describe("repository admission", () => {
       onHostMessage: () => undefined,
     });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-main", name: "repo", url: "url" });
+    plane.createRepository({
+      id: "repo-main",
+      name: "repo",
+      url: "https://example.test/repo.git",
+    });
     const created = plane.createSession({
       repositoryId: "repo-main",
       prompt: "run",
@@ -158,7 +162,7 @@ describe("repository admission", () => {
   it("advances due closed schedule cursors before activation", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:05:00.000Z" });
     seedBaseCommand(plane);
-    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    plane.createRepository({ id: "repo-1", name: "repo", url: "https://example.test/repo.git" });
     await plane.pauseRepositoryDurable("repo-1");
     expect(
       plane.putSchedule({

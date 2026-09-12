@@ -25,7 +25,7 @@ async function harness() {
       return () => `session-${++n}`;
     })(),
   });
-  plane.createRepository({ id: "repo-a", name: "repo-a", url: "/a" });
+  plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
   plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
   plane.putSchedule({
     id: "schedule-a",

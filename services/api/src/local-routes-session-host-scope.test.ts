@@ -24,7 +24,7 @@ describe("host-bound session mutations stay on the bound host", () => {
         return () => `session-${++n}`;
       })(),
     });
-    plane.createRepository({ id: "repo-a", name: "repo-a", url: "/a" });
+    plane.createRepository({ id: "repo-a", name: "repo-a", url: "https://example.test/a.git" });
     plane.createCommand({ id: "cmd-a", name: "echo", argv: ["echo"], providerId: null });
     const own = plane.createSession({
       repositoryId: "repo-a",

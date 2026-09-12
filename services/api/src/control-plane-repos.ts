@@ -1,4 +1,10 @@
-import { isValidSlugName, repositoryAdmissionState, SLUG_NAME_HINT } from "@auto-harness/shared";
+/* eslint-disable max-lines -- repository CRUD and durable persistence share one boundary. */
+import {
+  isValidSlugName,
+  repositoryAdmissionState,
+  repositoryUrlError,
+  SLUG_NAME_HINT,
+} from "@auto-harness/shared";
 
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -56,6 +62,8 @@ function prepareCreateRepository(
   if (!input.name || !input.url) {
     return { ok: false, error: "name and url are required" };
   }
+  const urlError = repositoryUrlError(input.url);
+  if (urlError) return { ok: false, error: urlError };
   if (!isValidSlugName(input.name)) {
     return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
   }
@@ -176,6 +184,10 @@ function prepareUpdateRepository(
     if (findRepositoryByName(state, patch.name, id)) {
       return { ok: false, error: `repository name already in use: ${patch.name}` };
     }
+  }
+  if (patch.url !== undefined) {
+    const urlError = repositoryUrlError(patch.url);
+    if (urlError) return { ok: false, error: urlError };
   }
   const next: RepositoryRecord = {
     ...existing,

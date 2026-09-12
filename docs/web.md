@@ -406,8 +406,9 @@ repository cursors internally so pagination never truncates an operator's availa
 
 ### Add/Edit Repository
 
-Both Add and Edit forms include name, git URL, default branch, and an optional multiline setup
-script.
+Both Add and Edit forms include name, Git URL, default branch, and an optional multiline setup
+script. Git URLs accept credential-free HTTPS or SCP-style SSH (`git@host:path`) remotes only;
+filesystem paths belong to host repository attachments.
 
 **Attach a repository to a host** picks the host with a filterable combobox of `GET /hosts` hostIds;
 typed values that are not in that list are rejected (they do not create a new host).

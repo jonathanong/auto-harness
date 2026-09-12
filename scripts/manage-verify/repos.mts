@@ -24,7 +24,7 @@ export async function manageRepos(scratch: string): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: MANAGE_REPOSITORY_NAME,
-        url: "/tmp/demo",
+        url: "https://example.test/demo.git",
         defaultBranch: "main",
         setupScript: "s.sh",
       }),
@@ -42,7 +42,7 @@ export async function manageRepos(scratch: string): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: MANAGE_REPOSITORY_UPDATED_NAME,
-        url: "/tmp/d2",
+        url: "https://example.test/demo-2.git",
         defaultBranch: "dev",
       }),
     });

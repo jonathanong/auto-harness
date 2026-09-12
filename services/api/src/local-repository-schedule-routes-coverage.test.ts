@@ -134,7 +134,7 @@ describe("repository and schedule route coverage", () => {
       (
         await invoke(plane, "POST", "/api/v1/repositories", {
           name: "second",
-          url: "/second",
+          url: "https://example.test/second.git",
           defaultBranch: "trunk",
           setupScript: "setup",
           terminalHookScript: "hook",

@@ -66,6 +66,12 @@ function scheduleTriggerError(error: string): { status: number; code: string } {
   return { status: 400, code: "TRIGGER_ERROR" };
 }
 
+function repositoryUpdateError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/already (?:in use|exists)/i.test(error)) return { status: 409, code: "CONFLICT" };
+  return { status: 400, code: "VALIDATION_ERROR" };
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -248,13 +254,22 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
-      let body: Record<string, unknown>;
+      let parsedBody: unknown;
       try {
-        body = (await readJson(req)) as Record<string, unknown>;
+        parsedBody = await readJson(req);
       } catch {
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
         });
+        return true;
+      }
+      if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+        sendRouteError(res, 400, "VALIDATION_ERROR", "repository update body must be an object");
+        return true;
+      }
+      const body = parsedBody as Record<string, unknown>;
+      if (Object.hasOwn(body, "url") && typeof body.url !== "string") {
+        sendRouteError(res, 400, "VALIDATION_ERROR", "url must be a string");
         return true;
       }
       try {
@@ -278,7 +293,8 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
             }))
           )
             return true;
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const { status, code } = repositoryUpdateError(result.error);
+          send(res, status, { error: { code, message: result.error } });
           return true;
         }
         if (

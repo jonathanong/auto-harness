@@ -11,6 +11,9 @@ the permission matrix:** [roles.md](roles.md).
 3. **Trusted execution environment.** The VPS agent runs directly on a secure server — no Docker isolation wrapping the agent (D9). The AI agents themselves may use Docker for development work within repositories.
 4. **Principle of least privilege.** Users and service accounts are scoped by named role and optionally by repository; daemon keys use the `agent` role plus `boundHostId` ([roles.md](roles.md)).
 
+Repository catalog admission enforces this boundary by accepting only credential-free HTTPS or
+SCP-style SSH Git remotes; embedded userinfo, query parameters, and fragments are rejected.
+
 ## Threat model (prompt influence)
 
 Session **prompts are attacker-influenced input**: they may originate from issue comments, CI failure text, or other untrusted sources. Design consequences (see also [plan.md](plan.md) D1/D4/D7):

@@ -71,7 +71,11 @@ test.describe("control plane repositories", () => {
     const repositoryIds: string[] = [];
     for (const name of names) {
       const response = await request.post("/api/v1/repositories", {
-        data: { name, url: `/tmp/${name}`, defaultBranch: "main" },
+        data: {
+          name,
+          url: `https://example.test/${name}.git`,
+          defaultBranch: "main",
+        },
       });
       expect(response.ok()).toBe(true);
       repositoryIds.push(((await response.json()) as { id: string }).id);
@@ -123,8 +127,9 @@ test.describe("control plane repositories", () => {
   test("pauses, drains, and activates repository admission", async ({ page, request }) => {
     const name = `pw-repo-admission-${test.info().parallelIndex}-${Date.now()}`;
     const created = await request.post("/api/v1/repositories", {
-      data: { name, url: `/tmp/${name}`, defaultBranch: "main" },
+      data: { name, url: `https://example.test/${name}.git`, defaultBranch: "main" },
     });
+    expect(created.ok()).toBe(true);
     const repositoryId = ((await created.json()) as { id: string }).id;
     try {
       await page.goto(`/repositories/${repositoryId}?tab=settings`);
@@ -153,8 +158,8 @@ test.describe("control plane repositories", () => {
     await page.goto("/repositories");
     await page.getByTestId("add-repo-open").click();
     await expect(page.getByTestId("form-repo-catalog")).toBeVisible();
-    await expect(page.getByTestId("add-repo-dialog")).toContainText("URL / Path");
-    await expect(page.getByTestId("add-repo-dialog")).toContainText("Git remote URL");
+    await expect(page.getByTestId("add-repo-dialog")).toContainText("Git URL");
+    await expect(page.getByTestId("add-repo-dialog")).toContainText("Credential-free HTTPS URL");
     await expect(page.getByTestId("add-repo-dialog")).not.toContainText(/agent/i);
     await expect(page.getByTestId("repo-catalog-url")).toHaveAttribute(
       "placeholder",
@@ -164,7 +169,8 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repo-catalog-setup")).toHaveValue("");
     await expect(page.getByTestId("repo-catalog-error")).toBeHidden();
     await page.getByTestId("repo-catalog-name").fill(name);
-    await page.getByTestId("repo-catalog-url").fill(`/tmp/${name}`);
+    const gitUrl = `https://example.test/${name}.git`;
+    await page.getByTestId("repo-catalog-url").fill(gitUrl);
     await page.getByTestId("repo-catalog-setup").fill("pnpm install\npnpm build");
     await page.getByTestId("repo-catalog-submit").click();
 
@@ -176,16 +182,16 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("page-repository-detail")).toBeVisible();
     await expect(page.getByTestId("repository-settings")).toBeVisible();
     await expect(page.getByTestId("repository-attached-hosts")).toHaveCount(0);
-    await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
+    await expect(page.getByTestId("repository-detail-path")).toHaveText(gitUrl);
     await page.getByTestId("edit-repo-open").click();
     await expect(page.getByTestId("edit-repo-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-repo")).toBeVisible();
-    await expect(page.getByTestId("form-edit-repo")).toContainText("URL / Path");
+    await expect(page.getByTestId("form-edit-repo")).toContainText("Git URL");
     await expect(page.getByTestId("edit-repo-url")).toHaveAttribute(
       "placeholder",
       "https://github.com/org/repo.git",
     );
-    await expect(page.getByTestId("edit-repo-url")).toHaveValue(`/tmp/${name}`);
+    await expect(page.getByTestId("edit-repo-url")).toHaveValue(gitUrl);
     await expect(page.getByTestId("edit-repo-branch")).toHaveValue("main");
     await expect(page.getByTestId("edit-repo-setup")).toBeVisible();
     await expect(page.getByTestId("edit-repo-setup")).toHaveValue("pnpm install\npnpm build");
@@ -211,11 +217,15 @@ test.describe("control plane repositories", () => {
   }) => {
     const hostId = `pw-attach-host-${test.info().parallelIndex}-${Date.now()}`;
     const repoName = `pw-attach-repo-${test.info().parallelIndex}-${Date.now()}`;
-    const repo = await (
-      await request.post("/api/v1/repositories", {
-        data: { name: repoName, url: `/tmp/${repoName}`, defaultBranch: "main" },
-      })
-    ).json();
+    const response = await request.post("/api/v1/repositories", {
+      data: {
+        name: repoName,
+        url: `https://example.test/${repoName}.git`,
+        defaultBranch: "main",
+      },
+    });
+    expect(response.ok()).toBe(true);
+    const repo = await response.json();
     const repoId = repo.id as string;
     await request.put(`/api/v1/hosts/${hostId}/inventory`, {
       data: { repositories: [], providerAccounts: [], commandProfiles: {} },

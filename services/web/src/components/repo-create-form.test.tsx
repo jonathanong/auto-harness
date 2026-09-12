@@ -23,10 +23,10 @@ describe("RepoCreateForm", () => {
     expect(form.checkValidity()).toBe(false);
     expect(name.labels?.[0]?.textContent).toBe("Name");
     const url = field<HTMLInputElement>(view.container, "repo-catalog-url");
-    expect(url.labels?.[0]?.textContent).toBe("URL / Path");
+    expect(url.labels?.[0]?.textContent).toBe("Git URL");
     expect(url.placeholder).toBe("https://github.com/org/repo.git");
     expect(view.container.textContent).toContain(
-      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
+      "Credential-free HTTPS URL or SCP-style SSH remote (git@host:path). Host filesystem paths are set when attaching the repository.",
     );
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
       "Create repository",
@@ -59,7 +59,7 @@ describe("RepoCreateForm", () => {
     const view = mountForm(<RepoCreateForm />);
     const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
     setValue(field(view.container, "repo-catalog-name"), "catalog-repo");
-    setValue(field(view.container, "repo-catalog-url"), "/repo");
+    setValue(field(view.container, "repo-catalog-url"), "https://example.test/repo.git");
     submit(form);
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").disabled).toBe(true);
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
@@ -74,20 +74,21 @@ describe("RepoCreateForm", () => {
     view.unmount();
   });
 
-  it("uses empty catalog values and main when fields are absent", async () => {
+  it("rejects a credential-bearing URL before sending a request", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "repo-empty" }));
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<RepoCreateForm />);
     const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
-    form.querySelectorAll("input, textarea").forEach((input) => input.remove());
+    setValue(field(view.container, "repo-catalog-name"), "catalog-repo");
+    setValue(
+      field(view.container, "repo-catalog-url"),
+      "https://user:secret@example.test/repo.git",
+    );
     submit(form);
-    await act(async () => Promise.resolve());
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
-      name: "",
-      url: "",
-      defaultBranch: "main",
-      setupScript: "",
-    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(field(view.container, "repo-catalog-error").textContent).toBe(
+      "url must not include credentials",
+    );
     view.unmount();
   });
 });

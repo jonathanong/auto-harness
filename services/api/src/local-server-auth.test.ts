@@ -388,7 +388,11 @@ describe("createLocalApp authentication routes", () => {
     }
 
     const conflict = setup();
-    conflict.plane.createRepository({ id: "repo", name: "repo", url: "url" });
+    conflict.plane.createRepository({
+      id: "repo",
+      name: "repo",
+      url: "https://example.test/repo.git",
+    });
     conflict.plane.createCommand({ id: "cmd", name: "cmd", argv: ["echo"], providerId: null });
     const owner = await conflict.auth.createUser({
       username: "owner",

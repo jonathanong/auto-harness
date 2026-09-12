@@ -151,8 +151,8 @@ describe("local route authorization and outcomes", () => {
 
   it("hides repositories outside a service account's scope during writes", async () => {
     const plane = new ControlPlane();
-    plane.createRepository({ id: "repo-a", name: "a", url: "/a" });
-    plane.createRepository({ id: "repo-b", name: "b", url: "/b" });
+    plane.createRepository({ id: "repo-a", name: "a", url: "https://example.test/a.git" });
+    plane.createRepository({ id: "repo-b", name: "b", url: "https://example.test/b.git" });
     const principal: Principal = {
       id: "service:scoped",
       kind: "service-account",
