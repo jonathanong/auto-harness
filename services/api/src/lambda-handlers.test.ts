@@ -743,6 +743,67 @@ describe("Lambda runtime adapters", () => {
     ]);
   });
 
+  it("redelivers a registration handoff on a later keepalive after a transient post failure", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "failed",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      terminalHookHandoff: {
+        handoffId: "handoff",
+        hostId: "host-1",
+        repositoryId: "repo-active",
+        worktreeId: "worktree-1",
+        status: "failed",
+        errorCode: "host_lost",
+        expiresAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    const runtime = await fixture.runtime;
+    await runtime.websocket({
+      requestContext: { connectionId: "gateway-1", routeKey: "$connect" },
+    });
+    fixture.management.send
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("transient PostToConnection failure"));
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:register",
+          hostId: "host-1",
+          worktrees: [],
+          commandProfiles: [],
+          protocolVersion: HOST_PROTOCOL_VERSION,
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).rejects.toThrow("transient PostToConnection failure");
+
+    fixture.management.send.mockReset();
+    fixture.management.send.mockResolvedValue({});
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "host-1",
+        at: "2026-08-12T00:00:20.000Z",
+      },
+      expect.objectContaining({ type: "session:terminal-hook", handoffId: "handoff" }),
+    ]);
+  });
+
   it("acknowledges a terminal-hook completion on its submitting connection", async () => {
     const fixture = runtimeFixture();
     fixture.sessions.set("lost", {

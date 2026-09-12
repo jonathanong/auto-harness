@@ -926,12 +926,32 @@ export async function handleHostMessageDurable(
       terminalHookHandoffSessionIds,
     );
     if (!heartbeatAccepted) return { ok: false, error: "agent not connected" };
-    if (terminalHookHandoffSessionIds.length === 0) return { ok: true };
-    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+    // Re-list every still-pending handoff on each modern keepalive. Registration
+    // commits the handoff before the first PostToConnection delivery, so a
+    // transient delivery failure must not strand it until a replacement
+    // registration. The result is bounded by TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT
+    // and the daemon deduplicates an already-retained handoff.
+    const handoffOptions = {
       ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
       ...(sourceProtocolVersion !== undefined ? { protocolVersion: sourceProtocolVersion } : {}),
-      sessionIds: terminalHookHandoffSessionIds,
-    });
+    };
+    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, handoffOptions);
+    // A reconciliation pass can create a new handoff while an earlier one is
+    // still pending. Some storage adapters return the pre-reconciliation page
+    // for the broad host query, so explicitly include the newly-created IDs as
+    // well and de-duplicate by handoff ID.
+    if (terminalHookHandoffSessionIds.length > 0) {
+      const newlyCreated = await pendingTerminalHookHandoffs(state, msg.hostId, {
+        ...handoffOptions,
+        sessionIds: terminalHookHandoffSessionIds,
+      });
+      const byId = new Map(handoffs.map((handoff) => [handoff.handoffId, handoff]));
+      for (const handoff of newlyCreated) byId.set(handoff.handoffId, handoff);
+      return {
+        ok: true,
+        ...(byId.size > 0 ? { terminalHookHandoffs: [...byId.values()] } : {}),
+      };
+    }
     return { ok: true, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
   }
   if (msg.type === "host:status") {

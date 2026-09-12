@@ -188,6 +188,14 @@ export async function reconcileHostOwnedSessions(
     activeSessions,
     terminalHookHandoffSessionIds,
   );
-  await requeueOmittedScheduled(state, hostId, new Set(running), requeued, reason, activeSessions);
+  await requeueOmittedScheduled(
+    state,
+    hostId,
+    new Set(running),
+    requeued,
+    reason,
+    activeSessions,
+    terminalHookHandoffSessionIds,
+  );
   return requeued;
 }

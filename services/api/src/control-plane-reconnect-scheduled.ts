@@ -27,6 +27,7 @@ export async function requeueOmittedScheduled(
   requeued: string[],
   reason = "daemon did not report session after reconnect; requeued",
   activeSessions?: readonly import("./db/types.ts").SessionRecord[],
+  terminalHookHandoffSessionIds?: string[],
 ): Promise<void> {
   const storage = state.storage;
   const sessions =
@@ -84,6 +85,7 @@ export async function requeueOmittedScheduled(
             : queueReconnectSession(session, reason),
       );
       state.pendingAcks.delete(session.id);
+      if (handoff) terminalHookHandoffSessionIds?.push(session.id);
       if (!terminalHostLoss) requeued.push(session.id);
     }
   }
