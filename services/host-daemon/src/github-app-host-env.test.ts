@@ -15,5 +15,8 @@ describe("GitHub App host environment", () => {
       }),
     ).toEqual({ contents: original, errors: ["HARNESS_GITHUB_APP_CONFIG"] });
     expect(persistedEnvError(["HARNESS_GITHUB_APP_CONFIG"])).toContain("absolute path");
+    expect(
+      persistedEnvError(["HARNESS_EXECUTION_PROFILES", "HARNESS_GITHUB_APP_CONFIG"]),
+    ).toContain("must be absolute paths");
   });
 });
