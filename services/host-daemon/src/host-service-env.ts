@@ -34,10 +34,10 @@ export function loadEnvFileIfPresent(
 export function applyEnvFile(contents: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };
   for (const [key, value] of Object.entries(parseEnvFile(contents))) {
-    // An explicitly blank updater value disables an already-persisted update
-    // configuration. Other historical identity fields retain their existing
-    // "empty means load the env file" behavior.
-    if (out[key] === undefined || (out[key] === "" && !UPDATER_ENV_KEYS.has(key))) {
+    // An explicitly blank clearable setting disables an already-persisted
+    // optional configuration. Other historical identity fields retain their
+    // existing "empty means load the env file" behavior.
+    if (out[key] === undefined || (out[key] === "" && !BLANK_PRESERVING_ENV_KEYS.has(key))) {
       out[key] = value;
     }
   }
@@ -176,7 +176,8 @@ export const PERSISTED_DAEMON_ENV_KEYS = [
   "HARNESS_DAEMON_VERSION",
 ] as const;
 
-const UPDATER_ENV_KEYS = new Set<string>([
+const BLANK_PRESERVING_ENV_KEYS = new Set<string>([
+  "HARNESS_GITHUB_APP_CONFIG",
   "HARNESS_HOST_SENTRY_DSN",
   "HARNESS_UPDATE_MANIFEST_URL",
   "HARNESS_UPDATE_PUBLIC_KEY",

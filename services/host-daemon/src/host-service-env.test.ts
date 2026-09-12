@@ -48,6 +48,14 @@ describe("parseEnvFile / applyEnvFile", () => {
       ),
     ).toEqual({ HARNESS_UPDATE_MANIFEST_URL: "", HARNESS_UPDATE_PUBLIC_KEY: "" });
   });
+
+  it("keeps an explicitly blank GitHub App config instead of restoring a persisted value", () => {
+    expect(
+      applyEnvFile("HARNESS_GITHUB_APP_CONFIG=/etc/auto-harness/github-app.json\n", {
+        HARNESS_GITHUB_APP_CONFIG: "",
+      }),
+    ).toEqual({ HARNESS_GITHUB_APP_CONFIG: "" });
+  });
 });
 
 describe("renderEnvFile", () => {
