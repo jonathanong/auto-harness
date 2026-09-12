@@ -4,7 +4,6 @@ import {
   assertExistingDirectoryWithinAllowedRoots,
   assertDaemonPathsAllowed,
   assertPathWithinAllowedRoots,
-  isWithinRoot,
 } from "./allowed-roots.ts";
 import type { DaemonConfig, WorkspacePoolConfig, WorkspaceSlotConfig } from "./config.ts";
 
@@ -121,13 +120,6 @@ export class WorkspaceManager {
     if (rootPaths.some((root) => root !== null && root === checked)) {
       throw new Error(`workspace path must be a strict descendant of an allowed root: ${path}`);
     }
-    // assertPathWithinAllowedRoots already rejects sibling volumes and parents. This
-    // explicit check documents the destructive-operation invariant.
-    if (
-      !rootPaths.some((root) => root !== null && isWithinRoot(root, checked) && root !== checked)
-    ) {
-      throw new Error(`workspace path must be a strict descendant of an allowed root: ${path}`);
-    }
     return await assertExistingDirectoryWithinAllowedRoots(checked, roots);
   }
 
@@ -143,12 +135,17 @@ export class WorkspaceManager {
     for (const pool of this.config.workspacePools ?? []) {
       for (const slot of pool.slots) {
         if (!this.busy.has(`${pool.workspacePoolId}\0${slot.id}`)) continue;
+        const sameIdentity = candidate.find(
+          (next) => next.poolId === pool.workspacePoolId && next.slot.id === slot.id,
+        );
+        if (sameIdentity && sameIdentity.slot.path !== slot.path) {
+          throw new Error(`cannot change the path of busy workspace slot: ${slot.id}`);
+        }
         const currentPath = await this.checkedPath(slot.path, roots);
         const next = candidateByPath.get(workspacePathKey(currentPath));
         if (!next) continue;
         if (next.poolId === pool.workspacePoolId && next.slot.id === slot.id) {
-          if (next.slot.path === slot.path) continue;
-          throw new Error(`cannot change the path of busy workspace slot: ${slot.id}`);
+          continue;
         }
         throw new Error(`workspace path aliases leased slot: ${slot.id}`);
       }

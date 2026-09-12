@@ -92,6 +92,14 @@ describe("webhook outbox contract", () => {
     expect(() => createWebhookDelivery({ ...input, workspacePoolId: " " })).toThrow(
       "workspacePoolId must",
     );
+    expect(() =>
+      createWebhookDelivery({
+        ...input,
+        repositoryId: null,
+        workspacePoolId: "workspace-pool-1",
+        workspaceSlotId: " ",
+      }),
+    ).toThrow("workspaceSlotId must");
     expect(() => createWebhookDelivery({ ...input, repositoryId: null })).toThrow(
       "requires repositoryId or workspacePoolId",
     );
@@ -125,6 +133,7 @@ describe("webhook outbox contract", () => {
     for (const maxAttempts of [0, MAX_WEBHOOK_ATTEMPTS + 1, 1.5]) {
       expect(() => createWebhookDelivery({ ...input, maxAttempts })).toThrow("maxAttempts");
     }
+    expect(createWebhookDelivery({ ...input, maxAttempts: 1 }).maxAttempts).toBe(1);
   });
 
   it("validates canonical queue timestamps and bounded query sizes", () => {

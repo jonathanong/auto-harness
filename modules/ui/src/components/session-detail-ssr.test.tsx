@@ -181,4 +181,18 @@ describe("SessionDetail static markup", () => {
     expect(detail).not.toContain("Repository</dt>");
     expect(detail).not.toContain("Worktree</dt>");
   });
+
+  it("renders unassigned workspace fallback placement without a host", () => {
+    const detail = render(
+      <SessionDetail
+        session={{ id: "workspace-unassigned", type: "workspace", status: "queued" }}
+        breadcrumbs={[]}
+        defaultTab="details"
+      />,
+    );
+    expect(detail).toContain('data-pw="session-detail-workspace-pool">—');
+    expect(detail).toContain('data-pw="session-detail-setup-profile">Pool default');
+    expect(detail).toContain('data-pw="session-detail-workspace-slot">—');
+    expect(detail).not.toContain("Host</dt>");
+  });
 });

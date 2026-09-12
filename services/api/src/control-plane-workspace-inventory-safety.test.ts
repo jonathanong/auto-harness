@@ -66,6 +66,26 @@ describe("workspace inventory safety", () => {
         workspacePools: attachment("replacement", "c:/work/slot/."),
       }),
     ).toMatchObject({ ok: false, error: expect.stringContaining("replace the id") });
+
+    const caseSensitive = new ControlPlane();
+    expect(caseSensitive.createWorkspacePool({ id: "pool-a", name: "pool-a" }).ok).toBe(true);
+    caseSensitive.state.workspaceSlots.set("posix-slot", {
+      id: "posix-slot",
+      name: "posix-slot",
+      path: "/work/slot",
+      hostId: "host",
+      workspacePoolId: "pool-a",
+      status: "busy",
+      online: true,
+      currentSessionId: "posix-session",
+    });
+    expect(
+      caseSensitive.putHostInventory("host", {
+        version: 0,
+        repositories: [],
+        workspacePools: attachment("replacement", "/work/SLOT"),
+      }),
+    ).toMatchObject({ ok: true });
   });
 
   it("keeps new and edited slots offline until the daemon advertises the exact slot", () => {

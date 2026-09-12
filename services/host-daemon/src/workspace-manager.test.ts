@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- workspace lifecycle and path fences share one fixture. */
 import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -201,6 +202,62 @@ describe("WorkspaceManager", () => {
     };
 
     await expect(manager.ensureAll(candidate)).rejects.toThrow("aliases leased slot");
+    await expect(
+      manager.ensureAll({
+        ...config,
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: alias }],
+          },
+        ],
+      }),
+    ).rejects.toThrow("cannot change the path of busy workspace slot");
+    manager.release(claimed);
+  });
+
+  it("permits an unchanged busy slot and a candidate that removes it", async () => {
+    const { config } = await fixture();
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+
+    await expect(manager.ensureAll(config)).resolves.toBeUndefined();
+    await expect(manager.ensureAll({ ...config, workspacePools: [] })).resolves.toBeUndefined();
+    manager.release(claimed);
+  });
+
+  it("keeps case-distinct POSIX workspace paths distinct", async () => {
+    if (process.platform !== "linux") return;
+    const { root, config } = await fixture();
+    const upper = join(root, "pool", "Slot");
+    await mkdir(upper);
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+
+    await expect(
+      manager.ensureAll({
+        ...config,
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "replacement", name: "replacement", path: upper }],
+          },
+        ],
+      }),
+    ).resolves.toBeUndefined();
+    manager.release(claimed);
+  });
+
+  it("reopens claims after an inventory update fence is rolled back", async () => {
+    const { config } = await fixture();
+    const manager = new WorkspaceManager(config);
+    manager.beginInventoryUpdate();
+    await expect(manager.claim("pool", "slot")).rejects.toThrow(
+      "host inventory update in progress",
+    );
+    manager.endInventoryUpdate();
+    const claimed = await manager.claim("pool", "slot");
+    expect(claimed.slot.id).toBe("slot");
     manager.release(claimed);
   });
 

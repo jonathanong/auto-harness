@@ -12,6 +12,33 @@ import {
 } from "./control-plane-workspace-slot-retirement.ts";
 
 describe("agent host inventory", () => {
+  it("fences a busy workspace slot from a UNC path alias", () => {
+    const plane = new ControlPlane();
+    expect(plane.createWorkspacePool({ id: "pool", name: "pool" }).ok).toBe(true);
+    plane.state.workspaceSlots.set("leased", {
+      id: "leased",
+      name: "leased",
+      hostId: "host",
+      workspacePoolId: "pool",
+      path: "\\\\server\\share\\slot",
+      status: "busy",
+      online: true,
+      currentSessionId: "session",
+    });
+
+    expect(
+      plane.putHostInventory("host", {
+        repositories: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "replacement", name: "replacement", path: "\\\\server\\share\\slot\\." }],
+          },
+        ],
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("replace the id") });
+  });
+
   it("projects local workspace slots and queues storage updates", async () => {
     const plane = new ControlPlane();
     const writes: string[] = [];

@@ -292,3 +292,41 @@ it("atomically suppresses a providerless workspace target and requeues it", asyn
     currentSessionId: null,
   });
 });
+
+it("fences workspace suppression cleanup when the slot ownership or lease metadata differs", async () => {
+  const mismatched = workspacePlane();
+  const mismatchedSession = createWorkspaceSession(mismatched.plane);
+  await assignWorkspaceQueuedDurable(mismatched.plane.state);
+  const mismatchedCurrent = mismatched.plane.state.sessions.get(mismatchedSession.id)!;
+  mismatchedCurrent.hostAssignmentLease = { hostId: "host-1" };
+  mismatched.plane.state.sessions.set(mismatchedSession.id, mismatchedCurrent);
+  mismatched.plane.state.workspaceSlots.get("slot-1")!.currentSessionId = "another-session";
+  const mismatchedSuppress = vi.fn(async () => true);
+  mismatched.plane.state.storage = {
+    getSession: async () => mismatchedCurrent,
+    suppressProviderlessUsageLimitWorkspace: mismatchedSuppress,
+  } as never;
+
+  await expect(
+    handleHostMessageDurable(mismatched.plane.state, {
+      type: "session:status",
+      sessionId: mismatchedSession.id,
+      worktreeId: null,
+      attemptId: mismatchedCurrent.attemptId!,
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "workspace quota",
+      workspaceSlotError: "cleanup failed",
+    }),
+  ).resolves.toMatchObject({ ok: true });
+  expect(mismatchedSuppress).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostAssignmentLease: { hostId: "host-1" },
+      workspaceSlotError: "cleanup failed",
+    }),
+  );
+  expect(mismatched.plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+    status: "busy",
+    currentSessionId: "another-session",
+  });
+});
