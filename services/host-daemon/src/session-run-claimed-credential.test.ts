@@ -52,6 +52,40 @@ describe("session command credential", () => {
     expect(transcript.match(/\[session credential redacted\]/g)).toHaveLength(2);
   });
 
+  it("redacts a credential split across stdout and stderr", async () => {
+    cwd = await mkdtemp(join(tmpdir(), "session-credential-streams-"));
+    const credential = "hns_session_ephemeral";
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        options.onChunk?.({ stream: "stdout", data: "hns_session_" });
+        options.onChunk?.({ stream: "stderr", data: "ephemeral" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const logs: Array<{ content: string }> = [];
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-streams", "attempt-1", (chunk) => logs.push(chunk)),
+      logs as never,
+      baseAssign({ sessionApiKey: credential }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
+    );
+    const transcript = logs.map((chunk) => chunk.content).join("");
+    expect(transcript).not.toContain(credential);
+    expect(transcript).toContain("[session credential redacted]");
+  });
+
   it("drains an output chunk that ends with only a credential prefix", async () => {
     cwd = await mkdtemp(join(tmpdir(), "session-credential-prefix-"));
     const credential = "hns_session_ephemeral";

@@ -24,7 +24,8 @@ import {
 const SESSION_CREDENTIAL_REDACTION = "[session credential redacted]";
 
 class SessionCredentialRedactor {
-  private readonly pending = new Map<string, string>();
+  private pending = "";
+  private pendingStream = "stdout";
   private readonly credential: string | undefined;
 
   constructor(credential?: string) {
@@ -33,7 +34,19 @@ class SessionCredentialRedactor {
 
   push(stream: string, content: string): string {
     if (!this.credential) return content;
-    const combined = (this.pending.get(stream) ?? "") + content;
+    let prefixRedaction = "";
+    let combined = this.pending + content;
+    if (this.pending && !combined.startsWith(this.credential)) {
+      if (this.credential.startsWith(combined)) {
+        this.pending = combined;
+        this.pendingStream = stream;
+        return "";
+      }
+      // Never release a previously matched credential prefix when the next
+      // chunk diverges; it contains enough entropy to make guessing practical.
+      prefixRedaction = SESSION_CREDENTIAL_REDACTION;
+      combined = content;
+    }
     let heldLength = 0;
     // A complete credential can itself have a suffix matching its first
     // character(s). Do not retain such an overlap: otherwise the safe prefix
@@ -51,15 +64,16 @@ class SessionCredentialRedactor {
       }
     }
     const safe = heldLength === 0 ? combined : combined.slice(0, -heldLength);
-    this.pending.set(stream, heldLength === 0 ? "" : combined.slice(-heldLength));
-    return this.redact(safe);
+    this.pending = heldLength === 0 ? "" : combined.slice(-heldLength);
+    if (this.pending) this.pendingStream = stream;
+    return prefixRedaction + this.redact(safe);
   }
 
   drain(): Array<{ stream: string; content: string }> {
-    const trailing = [...this.pending].flatMap(([stream, content]) =>
-      content ? [{ stream, content: SESSION_CREDENTIAL_REDACTION }] : [],
-    );
-    this.pending.clear();
+    const trailing = this.pending
+      ? [{ stream: this.pendingStream, content: SESSION_CREDENTIAL_REDACTION }]
+      : [];
+    this.pending = "";
     return trailing;
   }
 
