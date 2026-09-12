@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./git.ts";
-import { scripted } from "./git-test-helpers.ts";
+import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 function resolvesCommit(ref: string, sha = "abc") {
   return {

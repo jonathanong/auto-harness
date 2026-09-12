@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { installHostService, restartHostService, uninstallHostService } from "./host-service.ts";
 import { resolveHostService } from "./host-service-io.ts";
 import { statusDarwin } from "./host-service-darwin.ts";
-import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, recorder, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("install-service darwin", () => {
   it("writes LaunchAgent + env and kickstarts without -k", () => {

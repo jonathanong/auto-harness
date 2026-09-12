@@ -3,8 +3,17 @@
 import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, mount, press, reset as resetHelper, setValue } from "./action-form-test-helpers.ts";
-import { openRawTerminal, settleTerminal } from "./session-terminal-raw-test-helpers.ts";
+import {
+  field,
+  mount,
+  press,
+  reset as resetHelper,
+  setValue,
+} from "../../test-helpers/action-form-test-helpers.ts";
+import {
+  openRawTerminal,
+  settleTerminal,
+} from "../../test-helpers/session-terminal-raw-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 

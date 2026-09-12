@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { settleStorage } from "./control-plane-state.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import {
   RUNNING_TIMEOUT_NOW as NOW,
   RUNNING_TIMEOUT_SECONDS as TIMEOUT_SECONDS,
   runningDeadlineMs,
   startAcknowledgedRunning,
-} from "./control-plane-running-timeout-test-helpers.ts";
+} from "../test-helpers/control-plane-running-timeout-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 function scheduledRunning(over: Partial<SessionRecord> = {}): SessionRecord {

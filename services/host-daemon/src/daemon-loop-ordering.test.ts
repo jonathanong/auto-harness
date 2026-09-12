@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 
 function seqAssign(attemptId: string): HostWireMessage {
   return {

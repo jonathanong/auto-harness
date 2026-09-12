@@ -11,7 +11,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { EditRepoForm } from "./edit-repo-form.tsx";
 
 const repository = {

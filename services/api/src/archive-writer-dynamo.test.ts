@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-lifecycle.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ArcWr");
 

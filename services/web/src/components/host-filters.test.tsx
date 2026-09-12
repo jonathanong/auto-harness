@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, router, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, router, setValue } from "../../test-helpers/form-test-helpers.tsx";
 import { HostFilters } from "./host-filters.tsx";
 
 describe("HostFilters", () => {

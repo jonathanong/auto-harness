@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { baseAssign } from "./session-runner-test-helpers.ts";
-import { deferred, makeRunner, viTick } from "./session-runner-main-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
+import { deferred, makeRunner, viTick } from "../test-helpers/session-runner-main-test-helpers.ts";
 
 describe("SessionRunner main checkout lock cleanup", () => {
   it("times out a queued session without running its terminal hook", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 import {
   claimCancelRedeliveryAttempt,
   deferPendingCancelRedelivery,

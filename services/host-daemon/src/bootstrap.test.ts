@@ -7,7 +7,7 @@ import {
   httpBaseFromApiUrl,
   inventoryFingerprint,
 } from "./bootstrap.ts";
-import { valid } from "./config-test-helpers.ts";
+import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("httpBaseFromApiUrl", () => {
   it("normalizes http, https, ws, wss and trailing /ws", () => {

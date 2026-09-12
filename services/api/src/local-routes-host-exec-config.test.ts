@@ -6,7 +6,7 @@ import { ControlPlane } from "./control-plane.ts";
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import { handleHostExecConfigRoutes } from "./local-routes-host-exec-config.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const maintainer: Principal = {
   id: "user:maintainer",

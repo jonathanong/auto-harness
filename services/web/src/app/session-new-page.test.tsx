@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import NewSessionPage from "./sessions/new/page.tsx";
-import { renderPage, stubApi } from "./route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("new session route", () => {
   const blankSearchParams = { searchParams: Promise.resolve({}) };

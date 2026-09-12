@@ -1,6 +1,6 @@
-import { AuthService } from "./auth.ts";
-import { ControlPlane } from "./control-plane.ts";
-import { createLocalApp } from "./local-server.ts";
+import { AuthService } from "../src/auth.ts";
+import { ControlPlane } from "../src/control-plane.ts";
+import { createLocalApp } from "../src/local-server.ts";
 
 function base64Admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

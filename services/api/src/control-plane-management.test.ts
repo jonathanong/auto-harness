@@ -8,7 +8,7 @@ import {
   baseSessionBody,
   putScheduleOrThrow,
   seedBaseCommand,
-} from "./control-plane-test-helpers.ts";
+} from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane operator management", () => {
   it("repository CRUD", () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
-import { scripted } from "./git-test-helpers.ts";
+import { scripted } from "../test-helpers/git-test-helpers.ts";
 
 function gitWithListedWorktrees(output: string, followUp: Parameters<typeof scripted>[0] = []) {
   return createGitClient(

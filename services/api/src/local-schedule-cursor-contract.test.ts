@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
-import { seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("schedule cursor route contract", () => {
   it("derives omitted cursors and rejects non-string legacy cursor inputs", async () => {

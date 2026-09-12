@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 
-import { ControlPlane } from "./control-plane.ts";
+import { ControlPlane } from "../src/control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 export const RUNNING_TIMEOUT_NOW = "2026-08-21T16:19:39.015Z";

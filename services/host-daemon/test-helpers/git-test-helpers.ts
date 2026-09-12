@@ -1,4 +1,4 @@
-import type { ProcessRunner } from "./executor.ts";
+import type { ProcessRunner } from "../src/executor.ts";
 
 export function scripted(
   responses: Array<{

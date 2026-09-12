@@ -11,7 +11,7 @@ import {
   makeRepo,
   pendingTerminalStatusOf,
   terminalStatusFixture as statusMessage,
-} from "./daemon-loop-test-helpers.ts";
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop terminal status retry", () => {
   it("reports a session with an unacknowledged terminal status as still owned, resends it on keepalive, and stops once acked", async () => {

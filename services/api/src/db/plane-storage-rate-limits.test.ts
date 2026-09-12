@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createDynamoClients, tableNames } from "./dynamo.ts";
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 import { DynamoPlaneStorage } from "./plane-storage.ts";
 
 const dynamo = createDynamoTestCtx("RateLimits");

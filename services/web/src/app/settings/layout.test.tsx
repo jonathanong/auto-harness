@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderPage } from "../route-test-helpers.tsx";
+import { renderPage } from "../../../test-helpers/route-test-helpers.tsx";
 import SettingsLayout from "./layout.tsx";
 
 describe("settings layout", () => {

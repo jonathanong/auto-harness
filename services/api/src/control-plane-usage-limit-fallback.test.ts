@@ -3,7 +3,7 @@ import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { ConnectionRecord } from "./db/plane-storage-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";

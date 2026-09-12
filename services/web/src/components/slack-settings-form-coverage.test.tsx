@@ -13,7 +13,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { SlackSettingsForm } from "./slack-settings-form.tsx";
 import type { PublicSlackIntegration } from "./slack-settings.ts";
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SESSION_QUEUED_WAIT_COPY } from "@auto-harness/ui";
 
-import { field, mountForm, press } from "./form-test-helpers.tsx";
+import { field, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
 import { SessionLiveLogs } from "./session-live-logs.tsx";
 
 type Handler = (event: { code?: number; data?: string }) => void;

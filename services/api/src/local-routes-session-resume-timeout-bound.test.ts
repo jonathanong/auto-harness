@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createResumeRouteFixture } from "./local-server-test-helpers.ts";
+import { createResumeRouteFixture } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("session resume timeout upper bound", () => {
   it("rejects a resume timeout override above 604800 seconds and accepts exactly 604800", async () => {

@@ -7,7 +7,7 @@ import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
 import { SessionRunner } from "./session-runner.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 const PROJECT_MARKERS = [

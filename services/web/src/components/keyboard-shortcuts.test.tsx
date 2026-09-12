@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, router } from "./form-test-helpers.tsx";
+import { field, mountForm, router } from "../../test-helpers/form-test-helpers.tsx";
 import { ControlShell } from "./control-shell.tsx";
 
 function key(target: EventTarget, value: string, options: KeyboardEventInit = {}) {

@@ -4,7 +4,10 @@ import type { SessionLogChunk } from "@auto-harness/shared";
 
 import { formatDroppedLogNotice } from "./log-coalesce.ts";
 import { LogStreamer, type LogLimits } from "./log-streamer.ts";
-import { createStreamerClock, type StreamerClock } from "./log-streamer-test-helpers.ts";
+import {
+  createStreamerClock,
+  type StreamerClock,
+} from "../test-helpers/log-streamer-test-helpers.ts";
 
 function createDropStreamer(chunks: SessionLogChunk[], limits: LogLimits, clock?: StreamerClock) {
   return new LogStreamer(

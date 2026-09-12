@@ -6,7 +6,7 @@ import { KEEPALIVE_ACK_PROTOCOL_VERSION } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { DaemonLoop } from "./daemon-loop.ts";
-import { flushMicrotasks, makeRepo } from "./daemon-loop-test-helpers.ts";
+import { flushMicrotasks, makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 import type { ExecutionProfiles } from "./execution-profiles.ts";
 import { createLoopbackTransport } from "./loopback-transport.ts";
 

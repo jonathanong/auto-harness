@@ -5,7 +5,7 @@ import { encodeStorageCursor, InvalidListPageQueryError } from "./control-plane-
 import { listCommandsPage, listProvidersPage } from "./db/plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./db/plane-storage-types.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("catalog storage pages", () => {
   it("pages commands and providers from a bounded Scan", async () => {

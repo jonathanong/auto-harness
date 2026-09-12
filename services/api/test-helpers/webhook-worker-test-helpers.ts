@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 
-import type { WebhookOutboxStore } from "./webhook-delivery-types.ts";
-import { createWebhookDelivery, type DurableWebhookDelivery } from "./webhook-outbox.ts";
+import type { WebhookOutboxStore } from "../src/webhook-delivery-types.ts";
+import { createWebhookDelivery, type DurableWebhookDelivery } from "../src/webhook-outbox.ts";
 
 export const webhookTestNow = "2026-08-15T12:00:00.000Z";
 export const webhookTestDestination = {

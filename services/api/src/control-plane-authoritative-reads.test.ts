@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createAuthoritativeReadStorage } from "./control-plane-authoritative-read-test-helpers.ts";
+import { createAuthoritativeReadStorage } from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
 
 const now = () => "2026-01-01T00:00:00.000Z";
 

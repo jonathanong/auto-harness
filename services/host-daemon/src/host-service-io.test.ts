@@ -15,7 +15,7 @@ import {
   spawnStatus,
   writeMode,
 } from "./host-service-io.ts";
-import { memFs, seededFs } from "./host-service-test-helpers.ts";
+import { memFs, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("resolveHostService / defaults", () => {
   it("fills omitted paths from the process and checkout", () => {

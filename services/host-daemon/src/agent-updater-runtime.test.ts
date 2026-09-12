@@ -19,8 +19,8 @@ import {
 } from "./agent-updater-runtime.ts";
 import { canonicalManifest } from "./agent-updater.ts";
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
-import { baseOpts, seededFs } from "./host-service-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
+import { baseOpts, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("daemon updater runtime", () => {
   it("gives host-scoped update settings precedence over the service environment", () => {

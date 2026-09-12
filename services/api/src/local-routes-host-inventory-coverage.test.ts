@@ -7,7 +7,7 @@ import {
   handleHostInventoryRoutes,
   mergeHiddenRepositories,
 } from "./local-routes-host-inventory.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const scoped: Principal = {
   id: "service:host-1",

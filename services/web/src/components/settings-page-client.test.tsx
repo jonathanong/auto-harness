@@ -3,7 +3,12 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { createRequestFake, field, json, mountForm } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { safeSettingsReturnPath, SettingsPageClient } from "./settings-page-client.tsx";
 
 async function settle(): Promise<void> {

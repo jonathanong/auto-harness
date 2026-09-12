@@ -6,7 +6,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleSelfServiceAuthRoutes } from "./local-routes-auth-self-service.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

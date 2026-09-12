@@ -4,7 +4,7 @@ import { ControlPlane } from "./control-plane.ts";
 import {
   finishedCommandSwapSourcePlane,
   minimalSession,
-} from "./control-plane-prior-context-test-helpers.ts";
+} from "../test-helpers/control-plane-prior-context-test-helpers.ts";
 
 describe("resume target/fallbacks override", () => {
   it("rebinds to the new command and drops every native-resume pin field", () => {

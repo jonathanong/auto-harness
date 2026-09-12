@@ -14,7 +14,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { EditWorktreeForm } from "./edit-worktree-form.tsx";
 
 const worktree = {

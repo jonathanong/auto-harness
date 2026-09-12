@@ -3,7 +3,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mount, reset, response, router } from "./action-form-test-helpers.ts";
+import { mount, reset, response, router } from "../../test-helpers/action-form-test-helpers.ts";
 import { DrainButton } from "./drain-button.tsx";
 
 afterEach(reset);

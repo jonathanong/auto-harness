@@ -12,7 +12,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 import { emptyDaemonConfig } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 import { startDaemon } from "./start-daemon.ts";
 import * as updaterRuntime from "./agent-updater-runtime.ts";
 

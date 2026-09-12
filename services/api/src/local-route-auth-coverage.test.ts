@@ -7,7 +7,7 @@ import { errorMessage } from "./local-route-errors.ts";
 import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
 import { handleRepositoryRoutes } from "./local-routes-repos-schedules.ts";
 import { createLocalApp, startLocalServer } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 

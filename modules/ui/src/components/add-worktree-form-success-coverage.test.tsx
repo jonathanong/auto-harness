@@ -4,7 +4,14 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
-import { input, mount, repo, reset, router, submit } from "./action-form-test-helpers.ts";
+import {
+  input,
+  mount,
+  repo,
+  reset,
+  router,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 
 afterEach(reset);
 

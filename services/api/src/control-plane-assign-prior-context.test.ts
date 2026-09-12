@@ -4,7 +4,7 @@ import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import {
   finishedCommandSwapSourcePlane,
   registerFixtureHost,
-} from "./control-plane-prior-context-test-helpers.ts";
+} from "../test-helpers/control-plane-prior-context-test-helpers.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
 
 describe("assign wiring for prior-session context", () => {

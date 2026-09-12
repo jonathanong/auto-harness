@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import CommandsPage from "./commands/page.tsx";
 import ProvidersPage from "./providers/page.tsx";
 import RepositoriesPage from "./repositories/page.tsx";
-import { renderPage, stubApi } from "./route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;
 

@@ -1,4 +1,4 @@
-import type { createControlPlaneState } from "./control-plane-state.ts";
+import type { createControlPlaneState } from "../src/control-plane-state.ts";
 
 export const NOW = "2026-01-01T00:00:00.000Z";
 

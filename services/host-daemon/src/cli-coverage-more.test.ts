@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { runCli } from "./cli.ts";
-import { deps } from "./cli-test-helpers.ts";
+import { deps } from "../test-helpers/cli-test-helpers.ts";
 
 describe("CLI defensive error rendering", () => {
   it("keeps installing when update settings loading rejects with a non-Error", async () => {

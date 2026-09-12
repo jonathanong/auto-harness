@@ -1,8 +1,8 @@
-import type { ProcessRunner } from "./executor.ts";
-import { SessionRunner } from "./session-runner.ts";
-import type { DaemonConfig } from "./config.ts";
-import type { GitClient } from "./git.ts";
-import { WorktreeManager } from "./worktree-manager.ts";
+import type { ProcessRunner } from "../src/executor.ts";
+import { SessionRunner } from "../src/session-runner.ts";
+import type { DaemonConfig } from "../src/config.ts";
+import type { GitClient } from "../src/git.ts";
+import { WorktreeManager } from "../src/worktree-manager.ts";
 
 export function deferred<T = void>() {
   let resolve!: (value: T) => void;

@@ -6,7 +6,7 @@ import {
   NOW,
   connectionRecord,
   seedConnectedHost,
-} from "./control-plane-keepalive-reconcile-test-helpers.ts";
+} from "../test-helpers/control-plane-keepalive-reconcile-test-helpers.ts";
 
 describe("keepalive-driven session reconciliation (local mode and scheduled sessions)", () => {
   it("reconciles a keepalive-omitted session in local (non-durable) mode too", async () => {

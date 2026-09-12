@@ -1,5 +1,5 @@
-import type { DaemonConfig } from "./config.ts";
-import type { RunSessionDeps } from "./cli.ts";
+import type { DaemonConfig } from "../src/config.ts";
+import type { RunSessionDeps } from "../src/cli.ts";
 
 export const sampleConfig: DaemonConfig = {
   hostId: "a1",

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { field, mount, reset } from "./action-form-test-helpers.ts";
+import { field, mount, reset } from "../../test-helpers/action-form-test-helpers.ts";
 import { useLogStickBottom } from "./use-log-stick-bottom.ts";
 
 afterEach(reset);

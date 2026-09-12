@@ -3,7 +3,13 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, mount, press, reset, setValue } from "./action-form-test-helpers.ts";
+import {
+  field,
+  mount,
+  press,
+  reset,
+  setValue,
+} from "../../test-helpers/action-form-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
-import { auditAppendFailureRequests } from "./audit-route-failure-test-helpers.ts";
-import { auditFixture } from "./audit-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { auditAppendFailureRequests } from "../test-helpers/audit-route-failure-test-helpers.ts";
+import { auditFixture } from "../test-helpers/audit-test-helpers.ts";
 
 describe("audit route acknowledgement", () => {
   it("fails closed when each route's durable audit append is unavailable", async () => {

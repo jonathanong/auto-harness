@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { putHostInventory, putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 
 function planeWithAccounts() {
   const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });

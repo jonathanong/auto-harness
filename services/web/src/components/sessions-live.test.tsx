@@ -5,7 +5,13 @@ import type { SessionListQuery } from "@auto-harness/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsLive } from "./sessions-live.tsx";
-import { createRequestFake, field, json, mountForm, press } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+  press,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 

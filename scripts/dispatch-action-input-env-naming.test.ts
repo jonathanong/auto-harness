@@ -6,7 +6,7 @@ import {
   inputEnvName,
   runActionWithEnv,
   serve,
-} from "./dispatch-action-test-helpers.ts";
+} from "./test-helpers/dispatch-action-test-helpers.ts";
 
 afterEach(closeDispatchActionServers);
 

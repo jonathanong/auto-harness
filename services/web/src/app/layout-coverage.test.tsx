@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import RootLayout from "./layout.tsx";
-import { renderPage, stubApi } from "./route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const headerState = vi.hoisted(() => ({ pathname: null as string | null, throws: true }));
 vi.mock("next/headers", () => ({

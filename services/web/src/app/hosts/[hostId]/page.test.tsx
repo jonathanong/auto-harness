@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- host route states are covered through one shared fixture. */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { jsonResponse, renderPage, stubApi } from "../../route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../../../test-helpers/route-test-helpers.tsx";
 import HostDetailPage from "./page.tsx";
 
 const catalogOk = {

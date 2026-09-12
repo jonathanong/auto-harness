@@ -1,8 +1,8 @@
 /* eslint-disable max-lines -- durable storage defaults stay centralized for consistent test semantics. */
-import type { ControlPlaneState } from "./control-plane-state.ts";
-import type { AuditLogRecord } from "./audit-types.ts";
-import type { ScheduleRecord } from "./control-plane-types.ts";
-import type { SessionRecord } from "./db/types.ts";
+import type { ControlPlaneState } from "../src/control-plane-state.ts";
+import type { AuditLogRecord } from "../src/audit-types.ts";
+import type { ScheduleRecord } from "../src/control-plane-types.ts";
+import type { SessionRecord } from "../src/db/types.ts";
 
 /** Complete partial storage doubles with reads reflecting their owning state. */
 export function addDurableReadDefaults(state: ControlPlaneState): void {

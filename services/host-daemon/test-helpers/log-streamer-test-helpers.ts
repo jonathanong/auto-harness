@@ -1,4 +1,4 @@
-import type { LogStreamerTimers } from "./log-streamer.ts";
+import type { LogStreamerTimers } from "../src/log-streamer.ts";
 
 export type StreamerClock = {
   timers: LogStreamerTimers;

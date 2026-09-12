@@ -12,8 +12,8 @@ import {
 import { vi } from "vitest";
 import { type HostInventory, type HostRepository } from "@auto-harness/shared";
 
-import { Toast, dismissToast } from "./toast.tsx";
-import { TooltipProvider } from "./tooltip.tsx";
+import { Toast, dismissToast } from "../src/components/toast.tsx";
+import { TooltipProvider } from "../src/components/tooltip.tsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mountedRoots = new Set<() => void>();

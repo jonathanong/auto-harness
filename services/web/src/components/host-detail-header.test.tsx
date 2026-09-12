@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm } from "./form-test-helpers.tsx";
+import { field, mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import { HostDetailHeader } from "./host-detail-header.tsx";
 
 describe("HostDetailHeader", () => {

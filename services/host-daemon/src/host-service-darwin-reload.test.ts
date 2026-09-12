@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { restartHostService } from "./host-service.ts";
-import { baseOpts, errRun, okRun, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, errRun, okRun, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 import {
   missing,
   replacement,
   running,
   steps,
   stopped,
-} from "./host-service-darwin-reload-test-helpers.ts";
+} from "../test-helpers/host-service-darwin-reload-test-helpers.ts";
 
 describe("install-service darwin reload", () => {
   it("accepts a new running pid after bootstrap without kickstart", () => {

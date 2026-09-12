@@ -2,7 +2,7 @@ import { MAX_PROMPT_BYTES, MAX_SESSION_TIMEOUT_SECONDS } from "@auto-harness/sha
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("session clone", () => {
   it("copies replayable inputs into a fresh queued session and drops runtime state", () => {

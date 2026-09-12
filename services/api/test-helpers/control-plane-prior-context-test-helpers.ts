@@ -1,5 +1,5 @@
-import type { SessionRecord } from "./db/types.ts";
-import { ControlPlane } from "./control-plane.ts";
+import type { SessionRecord } from "../src/db/types.ts";
+import { ControlPlane } from "../src/control-plane.ts";
 
 /** A minimal terminal-or-running session record for prior-context route tests,
  * with just enough fields to satisfy `SessionRecord` and the route's access checks. */

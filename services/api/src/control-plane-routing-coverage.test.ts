@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { enforceAckDeadlinesDurable } from "./control-plane-assign.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";

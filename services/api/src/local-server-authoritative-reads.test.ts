@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createAuthoritativeReadStorage } from "./control-plane-authoritative-read-test-helpers.ts";
+import { createAuthoritativeReadStorage } from "../test-helpers/control-plane-authoritative-read-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("durable session routes", () => {
   it("reads ordered log history written by a different control plane", async () => {

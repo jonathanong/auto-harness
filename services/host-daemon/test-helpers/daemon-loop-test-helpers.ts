@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-import type { DaemonConfig } from "./config.ts";
+import type { DaemonConfig } from "../src/config.ts";
 import type { HostToServerMessage } from "@auto-harness/shared";
-import type { DaemonLoop } from "./daemon-loop.ts";
-import { createLoopbackTransport } from "./loopback-transport.ts";
+import type { DaemonLoop } from "../src/daemon-loop.ts";
+import { createLoopbackTransport } from "../src/loopback-transport.ts";
 
 export type PendingTerminalStatusMap = Map<
   string,

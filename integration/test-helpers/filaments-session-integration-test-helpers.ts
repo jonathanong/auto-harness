@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
-import type { LogRecord } from "../services/api/src/control-plane-types.ts";
-import { filamentsResumeSessionBody } from "./filaments-session-contract.ts";
+import type { LogRecord } from "../../services/api/src/control-plane-types.ts";
+import { filamentsResumeSessionBody } from "../filaments-session-contract.ts";
 
 type JsonRequest = <T>(
   base: string,

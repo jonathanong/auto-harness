@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 function errorCode(response: Awaited<ReturnType<typeof invokeHandler>>): string | undefined {
   return (response.json as { error?: { code?: string } }).error?.code;

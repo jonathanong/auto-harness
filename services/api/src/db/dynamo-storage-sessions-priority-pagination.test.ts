@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ControlPlane } from "../control-plane.ts";
 import { compareSessions } from "../control-plane-session-order.ts";
 import type { SessionRecord } from "./types.ts";
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 
 const dynamo = createDynamoTestCtx("PriorityPage");
 

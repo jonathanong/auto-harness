@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const actionPath = fileURLToPath(new URL("../actions/dispatch/dist/index.js", import.meta.url));
+const actionPath = fileURLToPath(new URL("../../actions/dispatch/dist/index.js", import.meta.url));
 const servers: ReturnType<typeof createServer>[] = [];
 
 type Response = { body: unknown; bodyDelayMs?: number; delayMs?: number; status?: number };

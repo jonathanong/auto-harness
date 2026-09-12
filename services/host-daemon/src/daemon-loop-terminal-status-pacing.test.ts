@@ -8,7 +8,7 @@ import {
   makeRepo,
   pendingTerminalStatusOf,
   terminalStatusFixture,
-} from "./daemon-loop-test-helpers.ts";
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 
 function statusFor(sessionId: string): Extract<HostToServerMessage, { type: "session:status" }> {
   return { ...terminalStatusFixture, sessionId, attemptId: `attempt-${sessionId}` };

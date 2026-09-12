@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import CommandsPage from "./commands/page.tsx";
 import ProvidersPage from "./providers/page.tsx";
 import RepositoriesPage from "./repositories/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("control catalog list routes", () => {
   it("renders commands with provider names and links", async () => {

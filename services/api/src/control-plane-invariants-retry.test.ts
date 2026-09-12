@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane retry and resume invariants", () => {
   it("usage_limit on a providerless command suppresses that target", () => {

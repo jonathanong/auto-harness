@@ -3,7 +3,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, mountForm } from "./form-test-helpers.tsx";
+import { field, mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import { ConnectHostPanel } from "./connect-host-panel.tsx";
 
 afterEach(() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createResumeRouteFixture } from "./local-server-test-helpers.ts";
+import { createResumeRouteFixture } from "../test-helpers/local-server-test-helpers.ts";
 
 async function resumableSource(fixture: Awaited<ReturnType<typeof createResumeRouteFixture>>) {
   const { plane, accounts, invoke } = fixture;

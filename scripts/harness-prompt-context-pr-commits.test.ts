@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   stubPrCommits,
   stubPrCommitsJq,
-} from "./harness-prompt-context-pr-commits-test-helpers.ts";
-import { readGithubOutput, run, useFixtures } from "./harness-prompt-context-test-helpers.ts";
+} from "./test-helpers/harness-prompt-context-pr-commits-test-helpers.ts";
+import {
+  readGithubOutput,
+  run,
+  useFixtures,
+} from "./test-helpers/harness-prompt-context-test-helpers.ts";
 
 const { make } = useFixtures();
 

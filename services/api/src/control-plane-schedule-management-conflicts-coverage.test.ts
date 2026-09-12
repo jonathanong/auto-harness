@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { addDurableReadDefaults } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

@@ -4,7 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { mountForm } from "../components/form-test-helpers.tsx";
+import { mountForm } from "../../test-helpers/form-test-helpers.tsx";
 import { reportClientError } from "../lib/sentry-client.ts";
 import ErrorPage from "./error.tsx";
 import Loading from "./loading.tsx";

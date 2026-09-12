@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { makeRepo } from "../test-helpers/daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop Git readiness", () => {
   it("registers an unready daemon without initializing worktrees", async () => {

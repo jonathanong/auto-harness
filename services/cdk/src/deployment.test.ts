@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- deployment lifecycle cases share one command harness. */
 import { describe, expect, it, vi } from "vitest";
 
-import { config, dependencies } from "./deployment-test-helpers.ts";
+import { config, dependencies } from "../test-helpers/deployment-test-helpers.ts";
 import {
   applySessionCreatedOrderIndexStage,
   applySessionPriorityIndexStage,

@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop } from "./daemon-loop.ts";
-import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import {
+  createAcknowledgingLoopbackTransport,
+  makeRepo,
+} from "../test-helpers/daemon-loop-test-helpers.ts";
 import { SpawnProcessRunner, type ProcessRunner } from "./executor.ts";
 
 describe("DaemonLoop errors", () => {

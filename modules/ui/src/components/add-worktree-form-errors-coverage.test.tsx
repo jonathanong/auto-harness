@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type HostInventory, type mutateInventory } from "@auto-harness/shared";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
-import { input, mount, repo, reset, setValue, submit } from "./action-form-test-helpers.ts";
+import {
+  input,
+  mount,
+  repo,
+  reset,
+  setValue,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 
 afterEach(reset);
 

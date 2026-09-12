@@ -3,7 +3,14 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { ProviderAccountConcurrencyForm } from "./provider-account-concurrency-form.tsx";
 
 describe("ProviderAccountConcurrencyForm", () => {

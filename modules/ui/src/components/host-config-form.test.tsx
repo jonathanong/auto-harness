@@ -3,7 +3,7 @@
 import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { mount, reset, router } from "./action-form-test-helpers.ts";
+import { mount, reset, router } from "../../test-helpers/action-form-test-helpers.ts";
 import { HostConfigForm } from "./host-config-form.tsx";
 
 type Reply = Response | Promise<Response>;

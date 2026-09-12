@@ -3,7 +3,13 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { HostAddRepoForm } from "./host-add-repo-form.tsx";
 
 describe("HostAddRepoForm", () => {

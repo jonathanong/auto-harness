@@ -6,7 +6,7 @@ import { afterEach } from "vitest";
 import { WRITE_MULTILINE_OUTPUT_SH } from "./harness-prompt-context-write-multiline-output-fixture.ts";
 
 const actionYml = readFileSync(
-  new URL("../actions/harness-prompt-context/action.yml", import.meta.url),
+  new URL("../../actions/harness-prompt-context/action.yml", import.meta.url),
   "utf8",
 );
 

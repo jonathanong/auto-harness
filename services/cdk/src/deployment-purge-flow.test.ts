@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { config, dependencies } from "./deployment-test-helpers.ts";
+import { config, dependencies } from "../test-helpers/deployment-test-helpers.ts";
 import { runDeployment } from "./deployment.ts";
 
 describe("runDeployment purge", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Webhook");
 const t0 = "2026-08-12T20:00:00.000Z";

@@ -5,7 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { assignQueued } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
-import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 import {
   explainPromptPlacement,

@@ -5,7 +5,13 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardLive, type DashboardSnapshot } from "./dashboard-live.tsx";
-import { createRequestFake, field, json, mountForm, press } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+  press,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 

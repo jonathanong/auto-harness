@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { runClaimedSession } from "./session-run-claimed.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
 
 const claimed = {
   repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },

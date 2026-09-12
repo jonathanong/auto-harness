@@ -10,7 +10,14 @@ import {
   type mutateInventory,
 } from "@auto-harness/shared";
 
-import { field, mount, reset, router, setValue, submit } from "./action-form-test-helpers.ts";
+import {
+  field,
+  mount,
+  reset,
+  router,
+  setValue,
+  submit,
+} from "../../test-helpers/action-form-test-helpers.ts";
 import { HostSetupScriptForm } from "./host-setup-script-form.tsx";
 
 afterEach(reset);

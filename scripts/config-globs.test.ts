@@ -22,6 +22,9 @@ describe("config file globs", () => {
     const { scope } = config;
     expect(scope).toBeDefined();
     expect(scope?.include).toEqual(["modules/*/src/**/*.{ts,tsx}", "services/*/src/**/*.{ts,tsx}"]);
+    expect(scope?.ignored).toEqual(
+      expect.arrayContaining(["**/test-helpers/**", "**/*.test.{ts,tsx}"]),
+    );
     expect(config.rules).toEqual([
       { paths: "modules/**", patch_coverage_min: 99 },
       { paths: "services/**", patch_coverage_min: 99 },
@@ -53,8 +56,10 @@ describe("config file globs", () => {
 
   it("uses a scripts/*.mts glob for knip root entries", () => {
     const knip = parseJsonc(readFileSync(new URL("../knip.jsonc", import.meta.url), "utf8")) as {
+      ignore?: string[];
       workspaces?: { "."?: { entry?: string[] } };
     };
+    expect(knip.ignore).toEqual(["**/test-helpers/**"]);
     const entry = knip.workspaces?.["."]?.entry ?? [];
     expect(entry).toContain("scripts/*.mts");
     expect(entry.some((pattern) => /^scripts\/[^*/]+\.mts$/.test(pattern))).toBe(false);

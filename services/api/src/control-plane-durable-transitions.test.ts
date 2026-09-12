@@ -16,7 +16,7 @@ import {
   createDynamoTestCtx,
   putActiveTestRepository,
   putTestPrincipal,
-} from "./db/dynamo-test-helpers.ts";
+} from "../test-helpers/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Durable");
 

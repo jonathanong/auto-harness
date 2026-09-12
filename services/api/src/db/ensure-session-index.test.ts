@@ -12,7 +12,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients } from "./dynamo.ts";
-import { dynamoAvailable } from "./dynamo-test-helpers.ts";
+import { dynamoAvailable } from "../../test-helpers/dynamo-test-helpers.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
 
 const tableName = `AhIndex${process.pid}`;

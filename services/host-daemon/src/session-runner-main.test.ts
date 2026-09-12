@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import { createGitClient } from "./git.ts";
-import { baseAssign } from "./session-runner-test-helpers.ts";
-import { scripted } from "./git-test-helpers.ts";
+import { baseAssign } from "../test-helpers/session-runner-test-helpers.ts";
+import { scripted } from "../test-helpers/git-test-helpers.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
-import { deferred, makeRunner, viTick } from "./session-runner-main-test-helpers.ts";
+import { deferred, makeRunner, viTick } from "../test-helpers/session-runner-main-test-helpers.ts";
 
 describe("SessionRunner main checkout", () => {
   it("propagates a bounded redacted Git failure without leaking credentials", async () => {

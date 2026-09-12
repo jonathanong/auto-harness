@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 
-import type { DeploymentConfig } from "./deployment-config.ts";
-import type { DeploymentDependencies } from "./deployment-support.ts";
+import type { DeploymentConfig } from "../src/deployment-config.ts";
+import type { DeploymentDependencies } from "../src/deployment-support.ts";
 
 export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
   accessLogsEnabled: false,

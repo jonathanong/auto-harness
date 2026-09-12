@@ -162,7 +162,13 @@ export function AppNav({ groups, activeHref }: { groups: NavGroup[]; activeHref:
             </span>
           );
         }
-        return <NavGroupMenu key={group.label} group={group} activeHref={activeHref} />;
+        return (
+          <NavGroupMenu
+            key={group.label}
+            group={{ ...group, label: group.label }}
+            activeHref={activeHref}
+          />
+        );
       })}
     </nav>
   );

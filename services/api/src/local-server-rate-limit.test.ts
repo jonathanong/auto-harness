@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-app.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 
 describe("local API rate limits", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
-import { valid } from "./config-test-helpers.ts";
+import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("parseDaemonConfig", () => {
   it("parses a valid config", () => {

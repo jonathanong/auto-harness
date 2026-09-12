@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ScheduleDetailPage from "./schedules/[id]/page.tsx";
 import SchedulesPage from "./schedules/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const writablePrincipal = {
   id: "admin-1",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 const STALE = "2000-01-01T00:00:00.000Z";

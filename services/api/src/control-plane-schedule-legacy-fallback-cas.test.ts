@@ -1,7 +1,7 @@
 import { MAX_FALLBACKS } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
-import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setInMemoryScheduleStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { triggerScheduleDurable } from "./control-plane-schedule-fire.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 

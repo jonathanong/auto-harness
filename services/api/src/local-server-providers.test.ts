@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("createLocalApp providers/provider-accounts/commands REST", () => {
   it("providers, provider accounts, and commands via handlers", async () => {

@@ -6,6 +6,7 @@ scope:
     - "services/*/src/**/*.{ts,tsx}"
   ignored:
     - "**/*.test.{ts,tsx}"
+    - "**/test-helpers/**"
     - "**/*-test-helpers.{ts,tsx}"
     - "**/*.d.ts"
     - "**/dist/**"

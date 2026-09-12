@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import CommandDetailPage from "./commands/[commandId]/page.tsx";
 import ProviderDetailPage from "./providers/[providerId]/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 const noSearch = Promise.resolve({});
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;

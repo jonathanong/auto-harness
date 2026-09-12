@@ -3,7 +3,12 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { createRequestFake, field, mountForm, press } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  mountForm,
+  press,
+} from "../../test-helpers/form-test-helpers.tsx";
 import { DeleteCommandButton } from "./delete-command-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {

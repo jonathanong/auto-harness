@@ -7,7 +7,7 @@ import {
   loadHostIdentity,
   parseDaemonConfig,
 } from "./config.ts";
-import { valid } from "./config-test-helpers.ts";
+import { valid } from "../test-helpers/config-test-helpers.ts";
 
 describe("loadHostIdentity", () => {
   it("defaults to local agent id and API URL when env is empty", () => {

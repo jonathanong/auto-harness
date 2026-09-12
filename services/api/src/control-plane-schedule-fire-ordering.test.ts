@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { queueWrite, settleStorage } from "./control-plane-state.ts";
-import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 
 describe("queued schedule fire writes", () => {

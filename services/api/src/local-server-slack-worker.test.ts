@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx } from "../test-helpers/dynamo-test-helpers.ts";
 import { startLocalServer } from "./local-server.ts";
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
 

@@ -275,10 +275,10 @@ async function loadTail(
   after: string | undefined,
 ): Promise<LogRecord[]> {
   if (plane.state.storage) {
-    return await plane.state.storage.queryLogs(sessionId, {
-      after,
-      limit: TAIL_PAGE_SIZE,
-    });
+    return await plane.state.storage.queryLogs(
+      sessionId,
+      after === undefined ? { limit: TAIL_PAGE_SIZE } : { after, limit: TAIL_PAGE_SIZE },
+    );
   }
   return plane
     .getLogs(sessionId)

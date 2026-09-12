@@ -1,5 +1,5 @@
-import { installHostService } from "./host-service.ts";
-import type { HostServiceRun, HostServiceRunResult } from "./host-service-io.ts";
+import { installHostService } from "../src/host-service.ts";
+import type { HostServiceRun, HostServiceRunResult } from "../src/host-service-io.ts";
 import { baseOpts, errRun, launchctlByStep, okRun, seededFs } from "./host-service-test-helpers.ts";
 
 export const missing = errRun(1, "Could not find service");

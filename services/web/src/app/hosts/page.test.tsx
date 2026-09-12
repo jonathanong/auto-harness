@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- host list route states share one API fixture. */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { renderPage, stubApi } from "../route-test-helpers.tsx";
+import { renderPage, stubApi } from "../../../test-helpers/route-test-helpers.tsx";
 import HostsPage from "./page.tsx";
 
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;

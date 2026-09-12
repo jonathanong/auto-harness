@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press } from "./form-test-helpers.tsx";
+import { field, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
 import { AddRepoDialog } from "./add-repo-dialog.tsx";
 
 describe("AddRepoDialog", () => {

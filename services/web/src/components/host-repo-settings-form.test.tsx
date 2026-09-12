@@ -13,7 +13,7 @@ import {
   router,
   setValue,
   submit,
-} from "./form-test-helpers.tsx";
+} from "../../test-helpers/form-test-helpers.tsx";
 import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 
 const repo = {

@@ -3,7 +3,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press } from "./form-test-helpers.tsx";
+import { field, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
 import { AddCommandDialog } from "./add-command-dialog.tsx";
 
 const providers = [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonResponse, renderPage, stubApi } from "../route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../../test-helpers/route-test-helpers.tsx";
 import WorktreesPage from "./page.tsx";
 
 describe("worktrees page", () => {

@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import type { HostServiceFs, HostServiceOpts, HostServiceRunResult } from "./host-service-io.ts";
+import type {
+  HostServiceFs,
+  HostServiceOpts,
+  HostServiceRunResult,
+} from "../src/host-service-io.ts";
 
 export const unitTemplate = readFileSync(
   new URL("../systemd/auto-harness-host-daemon.service", import.meta.url),

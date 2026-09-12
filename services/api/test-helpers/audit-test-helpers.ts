@@ -1,5 +1,5 @@
-import { ControlPlane } from "./control-plane.ts";
-import { handleRepositoryRoutes } from "./local-routes-repos-schedules.ts";
+import { ControlPlane } from "../src/control-plane.ts";
+import { handleRepositoryRoutes } from "../src/local-routes-repos-schedules.ts";
 
 export function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(

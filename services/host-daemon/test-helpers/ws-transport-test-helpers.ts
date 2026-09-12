@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import WebSocket from "ws";
 
-import { createWsTransport } from "./ws-transport.ts";
+import { createWsTransport } from "../src/ws-transport.ts";
 
 export class FakeSocket extends EventEmitter {
   // Without an explicit union, TS infers the literal `0` from this initializer alone,

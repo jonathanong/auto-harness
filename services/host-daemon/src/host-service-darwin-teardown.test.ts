@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { errRun, okRun } from "./host-service-test-helpers.ts";
+import { errRun, okRun } from "../test-helpers/host-service-test-helpers.ts";
 import {
   missing,
   replacement,
   running,
   steps,
   stopped,
-} from "./host-service-darwin-reload-test-helpers.ts";
+} from "../test-helpers/host-service-darwin-reload-test-helpers.ts";
 
 describe("install-service darwin launchd teardown race", () => {
   // Regression test for a real outage: `launchctl bootout` only signals a

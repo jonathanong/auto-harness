@@ -6,7 +6,7 @@ import {
   resetRouteTestState,
   setApiReplies,
   startRouteTestServer,
-} from "../../detail-route-test-helpers.ts";
+} from "../../../../test-helpers/detail-route-test-helpers.ts";
 import RepositoryDetailPage from "./page.tsx";
 
 beforeEach(startRouteTestServer);

@@ -6,7 +6,7 @@ import {
   baseSessionBody,
   putScheduleOrThrow,
   seedBaseCommand,
-} from "./control-plane-test-helpers.ts";
+} from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("ControlPlane remaining branches", () => {
   it("covers remaining branches: disabled cron, future fire, limit suppression, register replace, disconnect", () => {

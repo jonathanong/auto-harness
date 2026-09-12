@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LogStreamer } from "./log-streamer.ts";
-import { createStreamerClock } from "./log-streamer-test-helpers.ts";
+import { createStreamerClock } from "../test-helpers/log-streamer-test-helpers.ts";
 import type { SessionLogChunk } from "@auto-harness/shared";
 
 describe("LogStreamer coalescing", () => {

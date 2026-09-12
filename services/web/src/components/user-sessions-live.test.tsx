@@ -4,7 +4,12 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserSessionsLive } from "./user-sessions-live.tsx";
-import { createRequestFake, field, json, mountForm } from "./form-test-helpers.tsx";
+import {
+  createRequestFake,
+  field,
+  json,
+  mountForm,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 afterEach(() => vi.useRealTimers());
 

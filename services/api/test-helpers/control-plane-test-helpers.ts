@@ -1,4 +1,4 @@
-import type { ControlPlane, ScheduleRecord } from "./control-plane.ts";
+import type { ControlPlane, ScheduleRecord } from "../src/control-plane.ts";
 
 export const BASE_COMMAND_ID = "cmd-base";
 

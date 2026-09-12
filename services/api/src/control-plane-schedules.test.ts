@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { putScheduleOrThrow, seedBaseCommand } from "../test-helpers/control-plane-test-helpers.ts";
 
 describe("schedule routing policy", () => {
   it("allows one legacy ownership claim but rejects ownership transfer", () => {

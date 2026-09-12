@@ -3,7 +3,13 @@
 import React, { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  setValue,
+  submit,
+} from "../../test-helpers/form-test-helpers.tsx";
 
 const api = vi.hoisted(() => ({
   loadUserAccounts: vi.fn(),

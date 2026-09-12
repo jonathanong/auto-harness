@@ -6,7 +6,7 @@ import {
   assignQueuedDurable,
   enforceAckDeadlinesDurable,
 } from "./control-plane-assign.ts";
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 

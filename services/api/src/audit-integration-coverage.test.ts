@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
-import { admins, auditFixture, basic } from "./audit-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
+import { admins, auditFixture, basic } from "../test-helpers/audit-test-helpers.ts";
 
 describe("audit integration coverage", () => {
   it("fails closed when rejected mutation outcomes cannot be audited", async () => {

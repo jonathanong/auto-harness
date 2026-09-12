@@ -7,16 +7,16 @@ import type {
   ProviderAccountRecord,
   ProviderRecord,
   RepositoryRecord,
-} from "./db/plane-storage.ts";
+} from "../src/db/plane-storage.ts";
 import type {
   ArchiveMetadata,
   LogQuery,
   LogRecord,
   ScheduleRecord,
-} from "./control-plane-types.ts";
-import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
-import { selectLogs } from "./log-query.ts";
-import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
+} from "../src/control-plane-types.ts";
+import type { SessionRecord, WorktreeRecord } from "../src/db/types.ts";
+import { selectLogs } from "../src/log-query.ts";
+import { repositoryAdmissionOpen } from "../src/control-plane-repository-admission-state.ts";
 
 function copy<T extends object>(records: Map<string, T>, id: string): T | null {
   const record = records.get(id);

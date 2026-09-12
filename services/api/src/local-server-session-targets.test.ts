@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { sessionTargetListKey } from "./local-routes-session-targets.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeHandler } from "../test-helpers/local-server-test-helpers.ts";
 
 describe("createLocalApp session-targets", () => {
   it("keys picker rows by kind and id", () => {

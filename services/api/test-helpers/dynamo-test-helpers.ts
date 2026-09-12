@@ -1,9 +1,9 @@
 import { ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { afterAll, beforeAll } from "vitest";
 
-import { createDynamoClients } from "./dynamo.ts";
-import { ensureControlPlaneTables } from "./ensure-tables.ts";
-import { DynamoPlaneStorage } from "./plane-storage.ts";
+import { createDynamoClients } from "../src/db/dynamo.ts";
+import { ensureControlPlaneTables } from "../src/db/ensure-tables.ts";
+import { DynamoPlaneStorage } from "../src/db/plane-storage.ts";
 
 export async function dynamoAvailable(): Promise<boolean> {
   try {

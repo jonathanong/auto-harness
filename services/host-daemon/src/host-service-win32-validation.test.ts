@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService } from "./host-service.ts";
-import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
+import { baseOpts, recorder, seededFs } from "../test-helpers/host-service-test-helpers.ts";
 
 describe("install-service win32 validation", () => {
   it("refuses an invalid existing env before filesystem or task mutation", () => {

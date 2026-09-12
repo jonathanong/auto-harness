@@ -7,7 +7,7 @@ import SchedulesLoading from "./schedules/loading.tsx";
 import SchedulesPage from "./schedules/page.tsx";
 import SessionsLoading from "./sessions/loading.tsx";
 import SessionsPage from "./sessions/page.tsx";
-import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
+import { jsonResponse, renderPage, stubApi } from "../../test-helpers/route-test-helpers.tsx";
 
 describe("primary list page states", () => {
   it.each([

@@ -2,12 +2,12 @@ import { tmpdir } from "node:os";
 
 import type { SessionAssign } from "@auto-harness/shared";
 
-import { parseDaemonConfig } from "./config.ts";
-import type { ProcessRunner } from "./executor.ts";
-import type { GitClient } from "./git.ts";
-import type { ExecutionProfiles } from "./execution-profiles.ts";
-import { SessionRunner } from "./session-runner.ts";
-import { WorktreeManager } from "./worktree-manager.ts";
+import { parseDaemonConfig } from "../src/config.ts";
+import type { ProcessRunner } from "../src/executor.ts";
+import type { GitClient } from "../src/git.ts";
+import type { ExecutionProfiles } from "../src/execution-profiles.ts";
+import { SessionRunner } from "../src/session-runner.ts";
+import { WorktreeManager } from "../src/worktree-manager.ts";
 
 export const testExecutionProfiles: ExecutionProfiles = {
   maxConcurrentAssignments: 1,

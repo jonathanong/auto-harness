@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, press } from "./form-test-helpers.tsx";
+import { field, json, mountForm, press } from "../../test-helpers/form-test-helpers.tsx";
 import { RepositoryPageClient } from "./repository-page-client.tsx";
 
 const repo = (id: string) => ({
