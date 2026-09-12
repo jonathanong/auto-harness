@@ -17,6 +17,10 @@ describe("isSessionArchiveReadResponse", () => {
     },
   );
 
+  it("rejects a non-string download URL", () => {
+    expect(isSessionArchiveReadResponse({ ...archive, downloadUrl: null })).toBe(false);
+  });
+
   it("accepts an HTTPS download URL", () => {
     expect(
       isSessionArchiveReadResponse({
