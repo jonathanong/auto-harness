@@ -75,7 +75,8 @@ function planeWithStorage(storage: Record<string, unknown>, source = parent()): 
 
 describe("durable child session branches", () => {
   it("revalidates an in-memory session credential against the current running parent", async () => {
-    const plane = planeWithStorage({}, parent({ sessionApiKeyHash: "new-hash" }));
+    const source = parent({ rootSessionId: undefined, sessionApiKeyHash: "new-hash" });
+    const plane = planeWithStorage({}, source);
     plane.state.storage = undefined;
     await expect(
       createSessionChildDurable(
@@ -84,8 +85,31 @@ describe("durable child session branches", () => {
         { prompt: "child", spawnKey: "key" },
         { sessionCredentialHash: "old-hash" },
       ),
-    ).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    ).resolves.toEqual({
+      ok: false,
+      error: "parent session attempt is no longer running",
+      code: "CONFLICT",
+    });
     expect(plane.state.sessions.has("child")).toBe(false);
+  });
+
+  it("rejects a credential when the in-memory parent disappears before admission", async () => {
+    const source = parent({ rootSessionId: undefined, sessionApiKeyHash: "hash" });
+    const plane = planeWithStorage({}, source);
+    plane.state.storage = undefined;
+    vi.spyOn(plane.state.sessions, "get")
+      .mockReturnValueOnce(source)
+      .mockReturnValueOnce(source)
+      .mockReturnValueOnce(undefined);
+
+    await expect(
+      createSessionChildDurable(
+        plane.state,
+        "parent",
+        { prompt: "child", spawnKey: "key" },
+        { sessionCredentialHash: "hash" },
+      ),
+    ).resolves.toMatchObject({ error: "parent session attempt is no longer running" });
   });
 
   it("creates and dedupes through storage while inheriting owner, ref, and root", async () => {
@@ -268,6 +292,26 @@ describe("durable child session branches", () => {
     await expect(
       listSessionChildrenDurable(plane.state, "parent", { limit: 1, cursor: first.nextCursor }),
     ).resolves.toMatchObject({ items: [{ id: "child-Z" }], nextCursor: null });
+
+    const reverse = new ControlPlane({ sessionCursorSecret: "test-secret" });
+    reverse.state.sessions.set(
+      "child_a",
+      parent({ id: "child_a", parentSessionId: "parent", createdAt }),
+    );
+    reverse.state.sessions.set(
+      "child-Z",
+      parent({ id: "child-Z", parentSessionId: "parent", createdAt }),
+    );
+    await expect(
+      listSessionChildrenDurable(reverse.state, "parent", { limit: 2, cursor: null }),
+    ).resolves.toMatchObject({ items: [{ id: "child_a" }, { id: "child-Z" }] });
+
+    const equal = new ControlPlane({ sessionCursorSecret: "test-secret" });
+    equal.state.sessions.set("one", parent({ id: "same", parentSessionId: "parent", createdAt }));
+    equal.state.sessions.set("two", parent({ id: "same", parentSessionId: "parent", createdAt }));
+    await expect(
+      listSessionChildrenDurable(equal.state, "parent", { limit: 2, cursor: null }),
+    ).resolves.toMatchObject({ items: [{ id: "same" }, { id: "same" }] });
   });
 
   it("authenticates only a current durable session credential", async () => {

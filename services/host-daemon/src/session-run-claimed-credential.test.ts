@@ -84,6 +84,32 @@ describe("session command credential", () => {
     expect(transcript).not.toContain(credential.slice(0, -1));
     expect(transcript).not.toContain(credential);
     expect(transcript).toContain("[session credential redacted]");
+
+    const capturedLogs: Array<{ content: string }> = [];
+    await runClaimedSession(
+      commandRunner,
+      new LogStreamer("sess-prefix-capture", "attempt-1", (chunk) => capturedLogs.push(chunk)),
+      capturedLogs as never,
+      baseAssign({
+        sessionApiKey: credential,
+        resumeRefCapture: { stream: "stdout", linePrefix: "resume: " },
+      }),
+      {
+        repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+        worktree: { id: "wt-1", name: "wt", path: cwd, labels: [] },
+        cwd,
+      },
+      undefined,
+      () => false,
+      () => 1_000,
+      commandRunner,
+      process.env,
+      undefined,
+      { apiUrl: "http://127.0.0.1:7420", apiKey: "host-secret" },
+    );
+    expect(capturedLogs.map((chunk) => chunk.content).join("")).toContain(
+      "[session credential redacted]",
+    );
   });
 
   it("does not reconstruct a credential whose final character overlaps its prefix", async () => {

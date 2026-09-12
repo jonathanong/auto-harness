@@ -143,7 +143,7 @@ export async function createSessionChildDurable(
   }
   const prepared = prepareChild(state, parent, body);
   if (!prepared.ok) return prepared;
-  const rootId = prepared.child.rootSessionId ?? parent.id;
+  const rootId = prepared.child.rootSessionId!;
   const owner = options.principalId ?? parent.principalId ?? parent.metadata?.createdBy;
   if (typeof owner === "string" && owner) {
     prepared.child.principalId = owner;

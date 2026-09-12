@@ -21,6 +21,7 @@ import {
 describe("repositoryUrlError", () => {
   it("accepts credential-free HTTPS and SCP-style SSH remotes", () => {
     for (const url of [
+      "https://example.test",
       "https://example.test/repository.git",
       "https://example.test:8443/repository.git",
       "https://example.test",

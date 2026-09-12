@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- usage-limit classifications share one claimed-session fixture. */
 import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
@@ -153,6 +154,32 @@ describe("claimed session usage-limit classification", () => {
       status: "failed",
       errorCode: "usage_limit",
       errorMessage: "Usage limit detected",
+    });
+  });
+
+  it("redacts a session credential from a usage-limit summary", async () => {
+    await expect(
+      runClaimed(
+        baseAssign({
+          resolvedArgv: ["claude", "-p"],
+          providerAccountId: "acct-1",
+          sessionApiKey: "hns_session_ephemeral",
+        }),
+        {
+          async run() {
+            return {
+              exitCode: 1,
+              timedOut: false,
+              signal: null,
+              usageLimit: true,
+              agentSummary: "Retry with hns_session_ephemeral",
+            };
+          },
+        },
+      ),
+    ).resolves.toMatchObject({
+      errorCode: "usage_limit",
+      result: { summary: "Retry with [session credential redacted]" },
     });
   });
 
