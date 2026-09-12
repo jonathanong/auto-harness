@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- archive route scope and retrieval coverage share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -128,6 +129,14 @@ describe("POST /api/v1/sessions/:id/archive", () => {
     const { invoke } = await harness();
 
     expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(404);
+  });
+
+  it("fails closed when an archive denial cannot be audited", async () => {
+    const { plane, invoke, other } = await harness();
+    plane.appendAuditLog = async () => Promise.reject(new Error("audit unavailable"));
+
+    expect((await invoke("POST", `/api/v1/sessions/${other.id}/archive`)).status).toBe(500);
+    expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(500);
   });
 
   it("fails closed when cancel and archive outcome audits cannot be stored", async () => {

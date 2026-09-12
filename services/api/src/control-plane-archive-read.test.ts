@@ -82,6 +82,25 @@ describe("durable archive reads", () => {
     expect(createDownload).not.toHaveBeenCalled();
   });
 
+  it("maps a reader without an integrity reason to unavailable", async () => {
+    const plane = new ControlPlane({
+      archiveReader: { createDownload: async () => ({ available: false }) },
+    });
+    plane.state.archives.set("sessions/session/logs.jsonl", {
+      key: "sessions/session/logs.jsonl",
+      contentType: "application/x-ndjson",
+      bodyBytes: 42,
+      status: "complete",
+      objectStored: true,
+      versionId: "archive-v1",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(plane.getArchiveDownloadDurable("session")).resolves.toEqual({
+      state: "unavailable",
+    });
+  });
+
   it("uses one bounded durable log read before declaring an old row expired", async () => {
     const queryLogs = vi
       .fn(async (_sessionId: string, query: { limit: number; consistentRead: boolean }) => {
