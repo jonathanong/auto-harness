@@ -13,11 +13,11 @@ separately.
 
 Auto Harness is built to run coding agents on **vendor subscription plans** (ChatGPT/Codex Plus–style seats, Claude Pro/Team CLI access, etc.)—**not** as a first-class **API / pay-per-token** agent platform.
 
-| Intent                              | Implication                                                                                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Subscriptions, not API metering** | Marginal model cost is mostly **seat + plan quota**, already budgeted for humans, reused for automation. You are not designed around `$/1M tokens` as the control variable. |
-| **No Agent SDK on those plans**     | Subscription products typically **do not** expose Agent SDKs / full programmatic agent APIs. Automation must drive the **CLI in non-interactive mode** instead.             |
-| **Harness AWS bill stays tiny**     | Coordination (API, queue, logs) should stay **dollars**, so the cost conversation stays on **plan seats, quota, and VPS size**—not Lambda.                                  |
+| Intent                              | Implication                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Subscriptions, not API metering** | Marginal model cost is mostly **seat + plan quota**, already budgeted for humans, reused for automation. You are not designed around `$/1M tokens` as the control variable.                                                                                                                    |
+| **Native CLI, no intermediary SDK** | Auto Harness drives each vendor's own CLI directly in **non-interactive mode**—not an Agent SDK or a universal harness wrapping it. That interface is what every vendor ships and supports for unattended use, independent of whatever a given SDK's subscription licensing allows this month. |
+| **Harness AWS bill stays tiny**     | Coordination (API, queue, logs) should stay **dollars**, so the cost conversation stays on **plan seats, quota, and VPS size**—not Lambda.                                                                                                                                                     |
 
 Deep “why product”: [why.md](why.md).
 
@@ -32,7 +32,7 @@ Deep “why product”: [why.md](why.md).
 
 ### Non-interactive CLI (required by this cost path)
 
-Because subscriptions do not support Agent SDKs for this automation path:
+Because this is the interface every vendor actually ships and supports for unattended use:
 
 1. Install the vendor **CLI** on the agent host and authenticate under the **subscription** account/profile.
 2. Sessions invoke that CLI in **non-interactive** form (e.g. print/quiet flags, prompt as argv).
@@ -227,14 +227,24 @@ then compare them with the measured inputs above. The repository has no evidence
 
 The VPS running the auto harness agent is a separate cost. This depends on your provider and the workload:
 
-| Provider     | Tier      | vCPU | RAM  | Cost        |
-| ------------ | --------- | ---- | ---- | ----------- |
-| Hetzner      | CPX21     | 3    | 4 GB | ~$7/month   |
-| DigitalOcean | Basic     | 2    | 4 GB | ~$24/month  |
-| AWS EC2      | t3.medium | 2    | 4 GB | ~$30/month  |
-| Self-hosted  | —         | —    | —    | Electricity |
+| Provider     | Tier      | vCPU | RAM  | Cost                               |
+| ------------ | --------- | ---- | ---- | ---------------------------------- |
+| Hetzner      | CX22      | 2    | 4 GB | ~€4.35/month (2026)                |
+| Hetzner      | CPX22     | 3    | 4 GB | ~€7.99/month (2026, up from €5.99) |
+| DigitalOcean | Basic     | 2    | 4 GB | ~$24/month                         |
+| AWS EC2      | t4g.small | 2    | 2 GB | ~$12.26/month (ARM, on-demand)     |
+| AWS EC2      | t3.medium | 2    | 4 GB | ~$30/month                         |
+| Self-hosted  | —         | —    | —    | Electricity                        |
 
-AI CLI tools (Codex, Claude Code) can be CPU and memory intensive. For running 2–4 concurrent sessions, a **4 GB RAM / 2 vCPU** instance is a reasonable minimum.
+Prices above are unmetered-hours quotes as of 2026-09; verify current pricing before budgeting—these
+are illustrative inputs, not contract terms, same as the AWS unit prices elsewhere on this page. AI
+CLI tools (Codex, Claude Code) can be CPU and memory intensive. For running 2–4 concurrent sessions, a
+**4 GB RAM / 2 vCPU** instance is a reasonable minimum.
+
+An owned VPS bills unmetered hours regardless of utilization; a managed agent sandbox (Modal, E2B,
+Daytona, Vercel Sandbox) bills per second the sandbox is alive. Whether that trade favors an owned
+host depends entirely on utilization—see the break-even math in
+[comparison.md](comparison.md#cost-comparison).
 
 ## The real cost: subscriptions + hosts (not API tokens)
 
@@ -252,7 +262,7 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 | API-metered agent stack                  | Subscription + non-interactive CLI (this project) |
 | ---------------------------------------- | ------------------------------------------------- |
 | Cost ≈ tokens × price                    | Cost ≈ seats + quota fit + host size              |
-| Agent SDK / HTTP APIs                    | CLI non-interactive mode only                     |
+| Agent SDK / HTTP APIs                    | Native CLI, non-interactive mode, no intermediary |
 | Easy to explode invoice with concurrency | Concurrency capped by plan + hardware             |
 | Good for pure programmatic agents        | Good for “we already pay for the tools” factories |
 
@@ -260,6 +270,9 @@ If you deliberately point a CLI at **API keys**, treat that as a separate budget
 
 **Target AWS infrastructure should be a rounding error next to seats and machines.** Verify that
 goal with deployed measurements before presenting a dollar estimate.
+
+For how this cost shape compares to a managed-sandbox platform, and to a Cloudflare Workers control
+plane, see [comparison.md](comparison.md#cost-comparison).
 
 ## Cost Optimization Tips
 
