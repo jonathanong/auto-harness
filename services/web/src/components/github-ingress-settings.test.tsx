@@ -194,9 +194,11 @@ describe("GitHubIngressSettings", () => {
     press(field(view.container, "github-ingress-save"));
     expect(document.body.textContent).toContain("provider:id or command:id");
     setValue(labelled(view.container, "Fallback targets"), "missing-prefix");
+    await settle();
     press(field(view.container, "github-ingress-save"));
     expect(document.body.textContent).toContain("provider:id or command:id");
     setValue(labelled(view.container, "Fallback targets"), "provider:");
+    await settle();
     press(field(view.container, "github-ingress-save"));
     expect(document.body.textContent).toContain("provider:id or command:id");
     expect(fake.requests).toHaveLength(1);
