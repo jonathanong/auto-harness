@@ -255,12 +255,26 @@ describe("createGitClient checkout and revParse", () => {
         exitCode: 0,
       },
       {
-        match: ["--git-dir", "*", "rev-parse", "--verify", "refs/auto-harness/pull-fetch/source^{commit}"],
+        match: [
+          "--git-dir",
+          "*",
+          "rev-parse",
+          "--verify",
+          "refs/auto-harness/pull-fetch/source^{commit}",
+        ],
         exitCode: 0,
         stdout: "pr-sha\n",
       },
       {
-        match: ["--git-dir", "*", "bundle", "create", "*", "refs/auto-harness/pull-fetch/source", "^base-sha"],
+        match: [
+          "--git-dir",
+          "*",
+          "bundle",
+          "create",
+          "*",
+          "refs/auto-harness/pull-fetch/source",
+          "^base-sha",
+        ],
         exitCode: 0,
       },
       { match: ["bundle", "unbundle", "*"], exitCode: 0 },
