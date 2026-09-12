@@ -318,6 +318,24 @@ describe("createGitClient checkout and revParse", () => {
     });
   });
 
+  it("fails closed under configured policy when the repository has no pinned entry", async () => {
+    const ref = "refs/pull/127/head";
+    const checkout = createGitClient(
+      scripted([
+        ...resetsPriorState(),
+        {
+          match: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+          exitCode: 0,
+          stdout: `${join(checkoutRepo, ".git", "objects")}\n`,
+        },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "base-sha\n" },
+      ]),
+      new Map(),
+    ).checkoutRef({ cwd: checkoutCwd, repoPath: checkoutRepo, ref });
+
+    await expect(checkout).rejects.toThrow(`Failed to fetch GitHub pull-request ref ${ref}`);
+  });
+
   it("uses the origin URL captured before an untrusted session can mutate repository config", async () => {
     const ref = "refs/pull/124/head";
     const remoteUrl = "https://github.com/example/repository.git";
