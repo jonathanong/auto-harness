@@ -11,6 +11,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { resolveTargetDisplayNames } from "./control-plane-session-target-display-name.ts";
+import { workspaceCreatePayloadError } from "./control-plane-session-create.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 export { resumeSession, type ResumeOptions } from "./control-plane-session-resume.ts";
@@ -74,6 +75,10 @@ export function createSession(
   const targets = resolveTargetDisplayNames(state, v.target, v.fallbacks);
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
+  }
+  const workspacePayloadError = workspaceCreatePayloadError(state, v);
+  if (workspacePayloadError) {
+    return { ok: false, error: workspacePayloadError, code: "VALIDATION_ERROR" };
   }
   if (v.concurrencyId) {
     const active = [...state.sessions.values()].filter(

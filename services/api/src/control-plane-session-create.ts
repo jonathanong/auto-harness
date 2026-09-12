@@ -144,9 +144,19 @@ export function workspaceAssignmentPayloadError(
   };
   const targets = [fields.target, ...fields.fallbacks];
   for (const [targetIndex, target] of targets.entries()) {
-    for (const route of workspaceAdmissionRoutes(state, fields.workspacePoolId, target)) {
+    const routes = workspaceAdmissionRoutes(state, fields.workspacePoolId, target);
+    // A provider target can acquire a default command or host-account route
+    // after this session is queued. With no route to serialize now, there is
+    // no bounded frame to freeze, so admitting it would let a later catalog
+    // change turn this already-accepted session into an oversized assignment.
+    if (routes.length === 0) {
+      return "workspace session has no currently routable assignment";
+    }
+    let measuredRoute = false;
+    for (const route of routes) {
       const command = state.commands.get(route.commandId);
       if (!command) continue;
+      measuredRoute = true;
       const resolvedArgv = command.appendPrompt
         ? [...command.argv, ...(command.appendPromptSeparator ? ["--"] : []), fields.prompt]
         : [...command.argv];
@@ -159,8 +169,20 @@ export function workspaceAssignmentPayloadError(
         return `workspace session assignment exceeds ${String(MAX_WORKSPACE_ASSIGN_BYTES)} byte WebSocket limit`;
       }
     }
+    if (!measuredRoute) {
+      return "workspace session has no currently routable assignment";
+    }
   }
   return null;
+}
+
+export function workspaceCreatePayloadError(
+  state: ControlPlaneState,
+  fields: ValidatedFields,
+): string | null {
+  return fields.workspacePoolId
+    ? workspaceAssignmentPayloadError(state, { ...fields, workspacePoolId: fields.workspacePoolId })
+    : null;
 }
 
 export function validateSessionCreate(
@@ -219,12 +241,7 @@ export function validateSessionCreate(
     validated.value.fallbacks,
   );
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
-  const workspacePayloadError = validated.value.workspacePoolId
-    ? workspaceAssignmentPayloadError(state, {
-        ...validated.value,
-        workspacePoolId: validated.value.workspacePoolId,
-      })
-    : null;
+  const workspacePayloadError = workspaceCreatePayloadError(state, validated.value);
   if (workspacePayloadError) {
     return { ok: false, error: workspacePayloadError, code: "VALIDATION_ERROR" };
   }

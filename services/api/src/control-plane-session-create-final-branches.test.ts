@@ -79,7 +79,7 @@ it("uses false when a legacy workspace pool lacks a cleanup default", () => {
   expect(buildSessionRecord(state, result)).toMatchObject({ destroyWorkspaceAfter: false });
 });
 
-it("treats command records removed during synchronous workspace admission as unroutable", () => {
+it("rejects a workspace route whose command disappears during synchronous admission", () => {
   const state = workspaceState();
   const read = state.commands.get.bind(state.commands);
   let reads = 0;
@@ -87,10 +87,13 @@ it("treats command records removed during synchronous workspace admission as unr
     reads += 1;
     return reads === 2 ? undefined : read(id);
   };
-  expect(validateSessionCreate(state, workspaceInput())).toMatchObject({ ok: true });
+  expect(validateSessionCreate(state, workspaceInput())).toMatchObject({
+    ok: false,
+    error: "workspace session has no currently routable assignment",
+  });
 });
 
-it("skips a provider default command removed while checking its workspace route", () => {
+it("rejects a provider target whose current default command disappeared", () => {
   const state = workspaceState();
   state.providers.set("provider", {
     id: "provider",
@@ -103,6 +106,9 @@ it("skips a provider default command removed while checking its workspace route"
   state.commands.get = () => undefined;
   expect(
     validateSessionCreate(state, workspaceInput({ target: { providerId: "provider" } })),
-  ).toMatchObject({ ok: true });
+  ).toMatchObject({
+    ok: false,
+    error: "workspace session has no currently routable assignment",
+  });
   state.commands.get = read;
 });

@@ -104,7 +104,7 @@ it("sizes every provider-account admission route that a workspace pool can expos
   ).toMatchObject({ ok: true });
 });
 
-it("allows a pool admission check to skip stale provider defaults and missing command targets", () => {
+it("rejects provider targets whose current routes cannot be frozen into a bounded frame", () => {
   const state = createControlPlaneState();
   state.workspacePools.set("pool", {
     id: "pool",
@@ -131,7 +131,10 @@ it("allows a pool admission check to skip stale provider defaults and missing co
       timeout: 30,
       type: "workspace",
     }),
-  ).toMatchObject({ ok: true });
+  ).toMatchObject({
+    ok: false,
+    error: "workspace session has no currently routable assignment",
+  });
   expect(
     validateSessionCreate(state, {
       repositoryId: null,

@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parseHostInventory } from "./host-inventory-parse.ts";
+import { MAX_HOST_REGISTRATION_BYTES } from "./host-registration.ts";
+import { MAX_WORKSPACE_SLOT_ID_BYTES } from "./workspace.ts";
 
 const valid = {
   setupScript: "source ~/.zshrc",
@@ -164,6 +166,47 @@ describe("parseHostInventory", () => {
     expect(() =>
       parseHostInventory({ workspacePools: [{ workspacePoolId: "pool" }], repositories: [] }),
     ).toThrow("workspacePools.pool.slots must be an array");
+  });
+
+  it("bounds slot IDs in UTF-8 bytes and serialized registrations", () => {
+    const atLimit = "é".repeat(MAX_WORKSPACE_SLOT_ID_BYTES / 2);
+    expect(
+      parseHostInventory({
+        workspacePools: [
+          { workspacePoolId: "pool", slots: [{ id: atLimit, name: "slot", path: "/slot" }] },
+        ],
+        repositories: [],
+      }).workspacePools?.[0]?.slots[0]?.id,
+    ).toBe(atLimit);
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: `${atLimit}é`, name: "slot", path: "/slot" }],
+          },
+        ],
+        repositories: [],
+      }),
+    ).toThrow("workspace slot id must be at most 1024 bytes");
+
+    expect(() =>
+      parseHostInventory({
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [
+              {
+                id: "slot",
+                name: "slot",
+                path: "x".repeat(MAX_HOST_REGISTRATION_BYTES),
+              },
+            ],
+          },
+        ],
+        repositories: [],
+      }),
+    ).toThrow("host registration must be at most 122880 serialized bytes");
   });
 
   it.each([
