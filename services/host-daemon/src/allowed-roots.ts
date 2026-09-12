@@ -191,31 +191,33 @@ export async function assertDaemonPathsAllowed(
   const workspacePaths = (config.workspacePools ?? []).flatMap((pool) =>
     pool.slots.map((slot) => ({ id: slot.id, path: slot.path })),
   );
-  const repositoryPaths = config.repositories.flatMap((repository) => [
-    { id: repository.id, path: repository.path },
-    ...repository.worktrees.map((worktree) => ({ id: worktree.id, path: worktree.path })),
-  ]);
-  const canonical = async (path: string): Promise<string> =>
-    roots.length
-      ? await assertPathWithinAllowedRoots(path, roots, realpathFn)
-      : await resolvePathForRootCheck(path, realpathFn);
-  const canonicalWorkspacePaths = await Promise.all(
-    workspacePaths.map(async (slot) => ({ ...slot, path: await canonical(slot.path) })),
-  );
-  const canonicalRepositoryPaths = await Promise.all(
-    repositoryPaths.map(async (target) => ({ ...target, path: await canonical(target.path) })),
-  );
-  for (const slot of canonicalWorkspacePaths) {
-    for (const target of canonicalRepositoryPaths) {
-      if (isWithinRoot(slot.path, target.path) || isWithinRoot(target.path, slot.path)) {
-        throw new Error(`workspace slot overlaps repository execution path: ${slot.id}`);
+  if (workspacePaths.length) {
+    const repositoryPaths = config.repositories.flatMap((repository) => [
+      { id: repository.id, path: repository.path },
+      ...repository.worktrees.map((worktree) => ({ id: worktree.id, path: worktree.path })),
+    ]);
+    const canonical = async (path: string): Promise<string> =>
+      roots.length
+        ? await assertPathWithinAllowedRoots(path, roots, realpathFn)
+        : await resolvePathForRootCheck(path, realpathFn);
+    const canonicalWorkspacePaths = await Promise.all(
+      workspacePaths.map(async (slot) => ({ ...slot, path: await canonical(slot.path) })),
+    );
+    const canonicalRepositoryPaths = await Promise.all(
+      repositoryPaths.map(async (target) => ({ ...target, path: await canonical(target.path) })),
+    );
+    for (const slot of canonicalWorkspacePaths) {
+      for (const target of canonicalRepositoryPaths) {
+        if (isWithinRoot(slot.path, target.path) || isWithinRoot(target.path, slot.path)) {
+          throw new Error(`workspace slot overlaps repository execution path: ${slot.id}`);
+        }
       }
     }
-  }
-  for (const [index, slot] of canonicalWorkspacePaths.entries()) {
-    for (const other of canonicalWorkspacePaths.slice(index + 1)) {
-      if (isWithinRoot(slot.path, other.path) || isWithinRoot(other.path, slot.path)) {
-        throw new Error(`workspace slots overlap: ${slot.id} and ${other.id}`);
+    for (const [index, slot] of canonicalWorkspacePaths.entries()) {
+      for (const other of canonicalWorkspacePaths.slice(index + 1)) {
+        if (isWithinRoot(slot.path, other.path) || isWithinRoot(other.path, slot.path)) {
+          throw new Error(`workspace slots overlap: ${slot.id} and ${other.id}`);
+        }
       }
     }
   }
