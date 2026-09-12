@@ -156,7 +156,9 @@ function createWebhookWorker(
       transport: options.webhookTransport,
       selectDestinations: options.webhookDestinationSelector,
       listSessions: async () =>
-        [...plane.state.sessions.values()].filter((session) => Boolean(session.repositoryId)),
+        [...plane.state.sessions.values()].filter(
+          (session) => Boolean(session.repositoryId) || Boolean(session.workspacePoolId),
+        ),
     },
     options.webhookWorker,
   );

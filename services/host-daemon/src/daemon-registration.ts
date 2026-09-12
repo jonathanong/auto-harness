@@ -96,6 +96,7 @@ export async function applyDaemonInventory(
   const previousRepositories = config.repositories;
   const previousWorkspacePools = config.workspacePools;
   // Older test-only managers may not expose the generation hook; real managers always do.
+  workspaces?.beginInventoryUpdate?.();
   worktrees.noteInventoryChange?.();
   try {
     // Validate and register the candidate without replacing the live config or
@@ -130,5 +131,7 @@ export async function applyDaemonInventory(
     worktrees.noteInventoryChange?.();
     workspaces?.noteInventoryChange();
     throw err;
+  } finally {
+    workspaces?.endInventoryUpdate?.();
   }
 }

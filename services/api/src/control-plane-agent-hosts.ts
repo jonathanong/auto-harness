@@ -1,4 +1,6 @@
 /* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
+import { posix, win32 } from "node:path";
+
 import { thrownMessage } from "@auto-harness/shared";
 import type { DynamoPlaneStorage, HostInventoryRecord } from "./db/plane-storage.ts";
 import type { WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
@@ -306,6 +308,20 @@ function inventoryVersionConflict(): InventoryVersionConflict {
 }
 
 /**
+ * Compare paths using the spelling rules of the host platform they advertise.
+ * The control plane cannot resolve a host's symlinks, but it can still fence
+ * lexical aliases before replacing a leased slot identity. Windows paths are
+ * case-insensitive; POSIX paths are intentionally case-sensitive here.
+ */
+function workspacePathAliasKey(path: string): string {
+  const windowsPath = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\");
+  const normalized = windowsPath ? win32.normalize(path) : posix.normalize(path);
+  const root = windowsPath ? /^[A-Za-z]:[\\/]$/.test(normalized) : normalized === "/";
+  const trimmed = root ? normalized : normalized.replace(/[\\/]+$/, "");
+  return windowsPath ? trimmed.toLowerCase() : trimmed;
+}
+
+/**
  * The version a caller read, when it has one. Routes that receive a versionless
  * request supply the freshly read version before calling this storage boundary.
  */
@@ -351,7 +367,7 @@ function prepareHostInventory(
           (candidate) =>
             candidate.hostId === hostId &&
             candidate.id !== slot.id &&
-            candidate.path === slot.path &&
+            workspacePathAliasKey(candidate.path) === workspacePathAliasKey(slot.path) &&
             (candidate.status === "busy" || candidate.currentSessionId != null),
         );
         if (leasedPath) {

@@ -1,13 +1,24 @@
 /* eslint-disable max-lines -- registration rollback and reconnect barriers share one fixture. */
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { HOST_PROTOCOL_VERSION } from "@auto-harness/shared";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
 import { parseExecutionProfiles } from "./execution-profiles.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import { WorkspaceManager } from "./workspace-manager.ts";
 
 describe("daemon registration", () => {
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
   it("omits optional identity and runtime while preserving drain intent", async () => {
     const messages: unknown[] = [];
     await registerDaemon(
@@ -223,6 +234,64 @@ describe("daemon registration", () => {
     await expect(claimed!.currentExecutionTarget!()).rejects.toThrow(
       "host inventory changed after this checkout was claimed",
     );
+  });
+
+  it("blocks workspace claims for the whole candidate registration fence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ah-registration-workspace-"));
+    roots.push(root);
+    const slot = join(root, "slot");
+    await mkdir(slot);
+    const config = parseDaemonConfig({
+      hostId: "h",
+      allowedRoots: [root],
+      repositories: [],
+      workspacePools: [
+        { workspacePoolId: "pool", slots: [{ id: "slot", name: "slot", path: slot }] },
+      ],
+    });
+    const next = parseDaemonConfig({
+      ...config,
+      workspacePools: [
+        { workspacePoolId: "pool", slots: [{ id: "slot", name: "slot", path: slot }] },
+      ],
+    });
+    const manager = new WorktreeManager(config, {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "abc",
+    });
+    const workspaces = new WorkspaceManager(config);
+    let releaseRegistration!: () => void;
+    const registrationEntered = new Promise<void>((resolve) => {
+      releaseRegistration = resolve;
+    });
+    let registrationStarted!: () => void;
+    const registrationStartedPromise = new Promise<void>((resolve) => {
+      registrationStarted = resolve;
+    });
+
+    const applying = applyDaemonInventory(
+      config,
+      next,
+      manager,
+      async () => {
+        registrationStarted();
+        await registrationEntered;
+      },
+      undefined,
+      workspaces,
+    );
+    await registrationStartedPromise;
+    await expect(workspaces.claim("pool", "slot")).rejects.toThrow(
+      "host inventory update in progress",
+    );
+    releaseRegistration();
+    await applying;
+    await expect(workspaces.claim("pool", "slot")).resolves.toMatchObject({
+      slot: { id: "slot" },
+    });
   });
 
   it("removes a host setup script when the next inventory omits it", async () => {

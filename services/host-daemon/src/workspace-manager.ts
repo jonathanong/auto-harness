@@ -29,6 +29,16 @@ export type ClaimedWorkspace = {
   currentExecutionTarget: () => Promise<void>;
 };
 
+type CheckedWorkspaceSlot = {
+  poolId: string;
+  slot: WorkspaceSlotConfig;
+  checkedPath: string;
+};
+
+function workspacePathKey(path: string): string {
+  return process.platform === "win32" || process.platform === "darwin" ? path.toLowerCase() : path;
+}
+
 /**
  * Owns the in-daemon serialization and destructive reset of host workspaces.
  * Unlike a worktree, a slot is intentionally not a Git checkout.
@@ -39,6 +49,7 @@ export class WorkspaceManager {
   private readonly fs: WorkspaceFs;
   private policyRoots: string[] | undefined;
   private generation = 0;
+  private inventoryUpdateInProgress = false;
 
   constructor(config: DaemonConfig, fs: WorkspaceFs = nodeFs) {
     this.config = config;
@@ -47,6 +58,18 @@ export class WorkspaceManager {
 
   noteInventoryChange(): void {
     this.generation += 1;
+  }
+
+  /** Fence new claims while a candidate inventory is being validated and registered. */
+  beginInventoryUpdate(): void {
+    this.inventoryUpdateInProgress = true;
+    this.noteInventoryChange();
+  }
+
+  /** Re-open claims after the candidate has either committed or been rolled back. */
+  endInventoryUpdate(): void {
+    this.inventoryUpdateInProgress = false;
+    this.noteInventoryChange();
   }
 
   setAllowedRootsPolicy(roots?: readonly string[]): void {
@@ -76,7 +99,10 @@ export class WorkspaceManager {
     return { pool, slot };
   }
 
-  private async checkedPath(path: string, roots = this.roots()): Promise<string> {
+  private async checkedPath(
+    path: string,
+    roots: readonly string[] = this.roots(),
+  ): Promise<string> {
     // Workspace execution is never unrestricted: an omitted or emptied root policy
     // must fail before a destructive reset or process spawn.
     if (roots.length === 0) throw new Error("workspace sessions require non-empty allowedRoots");
@@ -105,17 +131,49 @@ export class WorkspaceManager {
     return await assertExistingDirectoryWithinAllowedRoots(checked, roots);
   }
 
+  /** Reject a candidate that aliases a path still owned by a live claim. */
+  private async assertBusyWorkspacePaths(
+    candidate: readonly CheckedWorkspaceSlot[],
+    roots: readonly string[],
+  ): Promise<void> {
+    const candidateByPath = new Map<string, CheckedWorkspaceSlot>();
+    for (const slot of candidate) {
+      candidateByPath.set(workspacePathKey(slot.checkedPath), slot);
+    }
+    for (const pool of this.config.workspacePools ?? []) {
+      for (const slot of pool.slots) {
+        if (!this.busy.has(`${pool.workspacePoolId}\0${slot.id}`)) continue;
+        const currentPath = await this.checkedPath(slot.path, roots);
+        const next = candidateByPath.get(workspacePathKey(currentPath));
+        if (!next) continue;
+        if (next.poolId === pool.workspacePoolId && next.slot.id === slot.id) {
+          if (next.slot.path === slot.path) continue;
+          throw new Error(`cannot change the path of busy workspace slot: ${slot.id}`);
+        }
+        throw new Error(`workspace path aliases leased slot: ${slot.id}`);
+      }
+    }
+  }
+
   async ensureAll(candidate?: DaemonConfig): Promise<void> {
     const config = candidate ?? this.config;
     const pools = config.workspacePools ?? [];
     const roots = candidate === undefined ? this.roots() : (candidate.allowedRoots ?? []);
     await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
+    const checked = [] as CheckedWorkspaceSlot[];
     for (const pool of pools)
-      for (const slot of pool.slots) await this.checkedPath(slot.path, roots);
+      for (const slot of pool.slots)
+        checked.push({
+          poolId: pool.workspacePoolId,
+          slot,
+          checkedPath: await this.checkedPath(slot.path, roots),
+        });
+    await this.assertBusyWorkspacePaths(checked, roots);
   }
 
   async claim(poolId: string, slotId: string, signal?: AbortSignal): Promise<ClaimedWorkspace> {
     signal?.throwIfAborted();
+    if (this.inventoryUpdateInProgress) throw new Error("host inventory update in progress");
     const key = `${poolId}\0${slotId}`;
     if (this.busy.has(key)) throw new Error(`Workspace slot already busy: ${slotId}`);
     this.busy.add(key);
@@ -162,8 +220,7 @@ export class WorkspaceManager {
   async destroyWorkspaceAfter(claimed: ClaimedWorkspace): Promise<void> {
     try {
       await claimed.currentExecutionTarget();
-      // The canonical, checked path is used for both operations; never clean a
-      // value supplied by the assignment frame.
+      // Use the canonical checked path for both operations, never the assignment frame value.
       await this.fs.rm(claimed.cwd, { recursive: true, force: true });
       await this.fs.mkdir(claimed.cwd, { recursive: true });
       await claimed.currentExecutionTarget();

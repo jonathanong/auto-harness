@@ -12,7 +12,12 @@ import type {
 /** The only session fields visible to destination selection. */
 export type WebhookLifecycleSnapshot = {
   sessionId: string;
-  repositoryId: string;
+  /** Null for a non-Git workspace session. */
+  repositoryId: string | null;
+  /** Null for repository-backed work. */
+  workspacePoolId: string | null;
+  /** Null before assignment; completed attempts retain their final slot through resolvedRoute. */
+  workspaceSlotId: string | null;
   attemptId: string | null;
   status: SessionTerminalStatus;
   occurredAt: string;

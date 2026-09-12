@@ -43,7 +43,27 @@ describe("workspace inventory safety", () => {
       plane.putHostInventory("host", {
         version: 1,
         repositories: [],
-        workspacePools: attachment("replacement"),
+        workspacePools: attachment("replacement", "/work/slot/../slot"),
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("replace the id") });
+
+    const windows = new ControlPlane();
+    expect(windows.createWorkspacePool({ id: "pool-a", name: "pool-a" }).ok).toBe(true);
+    windows.state.workspaceSlots.set("windows-slot", {
+      id: "windows-slot",
+      name: "windows-slot",
+      path: "C:\\Work\\Slot",
+      hostId: "host",
+      workspacePoolId: "pool-a",
+      status: "busy",
+      online: true,
+      currentSessionId: "windows-session",
+    });
+    expect(
+      windows.putHostInventory("host", {
+        version: 0,
+        repositories: [],
+        workspacePools: attachment("replacement", "c:/work/slot/."),
       }),
     ).toMatchObject({ ok: false, error: expect.stringContaining("replace the id") });
   });

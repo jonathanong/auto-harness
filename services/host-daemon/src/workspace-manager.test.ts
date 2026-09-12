@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -180,6 +180,27 @@ describe("WorkspaceManager", () => {
     manager.noteInventoryChange();
 
     await expect(claimed.currentExecutionTarget()).rejects.toThrow("inventory changed");
+    manager.release(claimed);
+  });
+
+  it("rejects a candidate that aliases a path held by a leased slot", async () => {
+    const { root, config } = await fixture();
+    const slot = config.workspacePools![0]!.slots[0]!;
+    const alias = join(root, "pool", "alias");
+    await symlink(slot.path, alias);
+    const manager = new WorkspaceManager(config);
+    const claimed = await manager.claim("pool", "slot");
+    const candidate = {
+      ...config,
+      workspacePools: [
+        {
+          workspacePoolId: "pool",
+          slots: [{ id: "replacement", name: "replacement", path: alias }],
+        },
+      ],
+    };
+
+    await expect(manager.ensureAll(candidate)).rejects.toThrow("aliases leased slot");
     manager.release(claimed);
   });
 
