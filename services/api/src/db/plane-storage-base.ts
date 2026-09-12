@@ -784,6 +784,20 @@ export class DynamoPlaneStorageBase {
     return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
   }
 
+  suppressProviderlessUsageLimitWorkspace(opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    queueShard: number;
+    targetIndex: number;
+    errorMessage?: string;
+    workspaceSlotError?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+  }): Promise<boolean> {
+    return sessions.suppressProviderlessUsageLimitWorkspace(this.ctx, opts);
+  }
+
   acknowledgeSession(
     sessionId: string,
     acknowledgedAt: string,

@@ -10,6 +10,7 @@ import {
   requeueUsageLimitedSession,
   requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
+  suppressProviderlessUsageLimitWorkspace,
   tryAssignSession,
 } from "./plane-storage-sessions.ts";
 import { tryAssignMainCheckoutSession } from "./plane-storage-main-checkout.ts";
@@ -179,6 +180,81 @@ describe("session storage conditional outcomes", () => {
     expect(sessionUpdate).toContain("REMOVE");
     expect(sessionUpdate).toContain("assignmentConnectionId");
     expect(sessionUpdate).toContain("assignmentSentAt");
+
+    const workspaceSuppress = {
+      sessionId: "workspace-session",
+      workspaceSlotId: "workspace-slot",
+      attemptId: "workspace-attempt",
+      queueShard: 0,
+      targetIndex: 1,
+    };
+    const lostWorkspaceSuppress = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(conditional);
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(lostWorkspaceSuppress), workspaceSuppress),
+    ).resolves.toBe(false);
+    const failedWorkspaceSuppress = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("dynamo unavailable"));
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(failedWorkspaceSuppress), workspaceSuppress),
+    ).rejects.toThrow("dynamo unavailable");
+
+    const committedWorkspaceSuppress = vi.fn().mockResolvedValue({});
+    await expect(
+      suppressProviderlessUsageLimitWorkspace(ctx(committedWorkspaceSuppress), {
+        ...workspaceSuppress,
+        errorMessage: "workspace quota",
+        workspaceSlotError: "cleanup failed",
+        providerAccountLease: {
+          concurrencyId: "account-lock",
+          providerAccountId: "account",
+          slot: 0,
+          attemptId: "workspace-attempt",
+        },
+        hostAssignmentLease: { hostId: "host" },
+      }),
+    ).resolves.toBe(true);
+    const workspaceWrites = committedWorkspaceSuppress.mock.calls[1][0].input
+      .TransactItems as Array<{
+      Update?: {
+        TableName: string;
+        Key: { id?: string; hostId?: string; concurrencyId?: string };
+        ConditionExpression?: string;
+        UpdateExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    }>;
+    expect(workspaceWrites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            Key: { id: "workspace-slot" },
+            ConditionExpression: "currentSessionId = :sid",
+            UpdateExpression: expect.stringContaining("#s = :error"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":errorMessage": "cleanup failed",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "Sessions",
+            Key: { id: "workspace-session" },
+            ConditionExpression: expect.stringContaining("workspaceSlotId = :workspaceSlotId"),
+            UpdateExpression: expect.stringContaining("suppressedTargetIndexes"),
+            ExpressionAttributeValues: expect.objectContaining({
+              ":message": "workspace quota",
+              ":index": [1],
+            }),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("atomically cools down an account, releases its workspace slot, and requeues", async () => {

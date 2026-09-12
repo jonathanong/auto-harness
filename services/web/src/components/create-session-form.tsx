@@ -156,13 +156,12 @@ export function CreateSessionForm({
           canWriteExecConfig={canWriteExecConfig}
         />
       )}
-      {mode === "repository" ? (
-        <SessionPriorityLabelFields
-          availableLabels={availableLabels}
-          initialPriority={initialValues?.priority}
-          initialRequiredLabels={initialValues?.requiredLabels}
-        />
-      ) : null}
+      <SessionPriorityLabelFields
+        availableLabels={availableLabels}
+        initialPriority={initialValues?.priority}
+        initialRequiredLabels={initialValues?.requiredLabels}
+        showLabels={mode === "repository"}
+      />
       <div className="space-y-1">
         <SessionRoutingFields
           targets={targets}

@@ -182,9 +182,12 @@ describe("ScheduleEditForm", () => {
     await act(async () => Promise.resolve());
 
     const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({ repositoryId: null, workspacePoolId: "retired-pool" });
-    expect(body).not.toHaveProperty("setupProfileId");
-    expect(body).not.toHaveProperty("destroyWorkspaceAfter");
+    expect(body).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "retired-pool",
+      setupProfileId: null,
+    });
+    expect(body).toMatchObject({ destroyWorkspaceAfter: null });
     expect(body).not.toHaveProperty("ref");
     view.unmount();
   });
@@ -201,14 +204,17 @@ describe("ScheduleEditForm", () => {
     await act(async () => Promise.resolve());
 
     const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({ repositoryId: null, workspacePoolId: "pool-1" });
-    expect(body).not.toHaveProperty("setupProfileId");
-    expect(body).not.toHaveProperty("destroyWorkspaceAfter");
+    expect(body).toMatchObject({
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: null,
+    });
+    expect(body).toMatchObject({ destroyWorkspaceAfter: null });
     expect(body).not.toHaveProperty("ref");
     view.unmount();
   });
 
-  it("keeps a removed setup profile visible while omitting an absent profile field", async () => {
+  it("submits explicit clear values when returning a workspace schedule to pool policy", async () => {
     const fetch = vi.fn().mockResolvedValue(json({}));
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(
@@ -221,13 +227,21 @@ describe("ScheduleEditForm", () => {
         }}
         targets={targets}
         workspacePools={[]}
+        canWriteExecConfig
       />,
     );
-    field(view.container, "edit-schedule-workspace-profile").removeAttribute("name");
+    setValue(field<HTMLSelectElement>(view.container, "edit-schedule-workspace-profile"), "");
+    setValue(
+      field<HTMLSelectElement>(view.container, "edit-schedule-workspace-cleanup"),
+      "inherit",
+    );
     submit(field(view.container, "form-edit-schedule"));
     await act(async () => Promise.resolve());
 
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).not.toHaveProperty("setupProfileId");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      setupProfileId: null,
+      destroyWorkspaceAfter: null,
+    });
     view.unmount();
   });
 });

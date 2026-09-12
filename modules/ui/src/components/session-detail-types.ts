@@ -3,6 +3,10 @@ export type SessionSummary = {
   type?: "prompt" | "scheduled" | "workspace" | null;
   status: string;
   repositoryId?: string | null;
+  /** Workspace sessions have no repository or worktree; they run in a pool slot. */
+  workspacePoolId?: string | null;
+  workspaceSlotId?: string | null;
+  setupProfileId?: string | null;
   hostId?: string | null;
   worktreeId?: string | null;
   targetLabel?: string | null;
@@ -20,6 +24,8 @@ export type SessionSummary = {
     commandId?: string | null;
     hostId?: string | null;
     worktreeId?: string | null;
+    workspacePoolId?: string | null;
+    workspaceSlotId?: string | null;
   } | null;
   resumedFromSessionId?: string | null;
   resumeFallback?: boolean | null;

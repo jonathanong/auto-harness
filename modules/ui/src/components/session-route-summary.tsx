@@ -14,9 +14,13 @@ export type SessionRouteSummaryProps = {
     commandId?: string | null;
     hostId?: string | null;
     worktreeId?: string | null;
+    workspacePoolId?: string | null;
+    workspaceSlotId?: string | null;
   } | null;
   hostId?: string | null;
   worktreeId?: string | null;
+  workspacePoolId?: string | null;
+  workspaceSlotId?: string | null;
 };
 
 /** Human-readable primary target, matching status-bar and table route labels. */
@@ -57,6 +61,18 @@ export function SessionRouteSummary({ session: s }: { session: SessionRouteSumma
           host: {s.resolvedHostId ?? s.resolvedRoute?.hostId ?? s.hostId ?? "CLI"}
           <br />
           worktree: {s.resolvedRoute?.worktreeId ?? s.worktreeId ?? "—"}
+          {s.workspacePoolId || s.resolvedRoute?.workspacePoolId ? (
+            <>
+              <br />
+              workspace pool: {s.resolvedRoute?.workspacePoolId ?? s.workspacePoolId}
+            </>
+          ) : null}
+          {s.workspaceSlotId || s.resolvedRoute?.workspaceSlotId ? (
+            <>
+              <br />
+              workspace slot: {s.resolvedRoute?.workspaceSlotId ?? s.workspaceSlotId}
+            </>
+          ) : null}
         </dd>
       </div>
     </>

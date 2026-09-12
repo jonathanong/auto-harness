@@ -1310,26 +1310,63 @@ async function applySessionStatusDurable(
     return { ok: true, applied: true };
   }
   const shouldSuppressTarget = suppress !== undefined;
-  if (shouldSuppressTarget && session.worktreeId) {
-    const committed = await storage.suppressProviderlessUsageLimit(
-      suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
-    );
+  if (shouldSuppressTarget && (session.worktreeId || session.workspaceSlotId)) {
+    const committed = session.workspaceSlotId
+      ? await storage.suppressProviderlessUsageLimitWorkspace({
+          sessionId: session.id,
+          workspaceSlotId: session.workspaceSlotId,
+          attemptId: msg.attemptId,
+          queueShard: session.queueShard,
+          targetIndex: suppress!.targetIndex,
+          ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+          ...(msg.workspaceSlotError !== undefined
+            ? { workspaceSlotError: msg.workspaceSlotError }
+            : {}),
+          ...(session.providerAccountLease
+            ? { providerAccountLease: session.providerAccountLease }
+            : {}),
+          ...(session.hostAssignmentLease
+            ? { hostAssignmentLease: session.hostAssignmentLease }
+            : {}),
+        })
+      : await storage.suppressProviderlessUsageLimit(
+          suppressProviderlessUsageLimitOptsFromPlan(session, plan, { attemptId: msg.attemptId }),
+        );
     if (!committed) return { ok: true };
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     releaseProviderAccountLease(state, session);
-    const worktree = state.worktrees.get(session.worktreeId);
+    const worktree = session.worktreeId ? state.worktrees.get(session.worktreeId) : undefined;
     if (worktree)
       state.worktrees.set(worktree.id, { ...worktree, status: "idle", currentSessionId: null });
+    const slot = session.workspaceSlotId
+      ? state.workspaceSlots.get(session.workspaceSlotId)
+      : undefined;
+    if (slot?.currentSessionId === session.id) {
+      const { errorMessage: _errorMessage, ...cleanSlot } = slot;
+      state.workspaceSlots.set(slot.id, {
+        ...cleanSlot,
+        status: msg.workspaceSlotError === undefined ? "idle" : "error",
+        currentSessionId: null,
+        ...(msg.workspaceSlotError === undefined ? {} : { errorMessage: msg.workspaceSlotError }),
+      });
+      await removeReleasedRetiredWorkspaceSlotDurable(state, slot.id);
+    }
     state.sessions.set(session.id, {
       ...session,
       status: "queued",
       worktreeId: null,
+      workspaceSlotId: null,
       hostId: null,
       suppressedTargetIndexes: [...(session.suppressedTargetIndexes ?? []), suppress.targetIndex],
     });
     const queued = state.sessions.get(session.id)!;
     delete queued.activeHostId;
     delete queued.activeHostOrder;
+    delete queued.assignmentConnectionId;
+    delete queued.assignmentSentAt;
+    delete queued.ackReceivedAt;
+    delete queued.startedAt;
+    delete queued.workspaceSlotLease;
     delete queued.result;
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);

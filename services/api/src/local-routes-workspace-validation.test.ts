@@ -56,7 +56,7 @@ describe("workspace schedule route validation", () => {
   });
 
   it("validates workspace fields while patching an existing schedule", async () => {
-    const { invoke } = workspaceRoutes();
+    const { invoke, plane } = workspaceRoutes();
     expect((await invoke("POST", "/api/v1/schedules", schedule)).status).toBe(201);
     expect(
       await invoke("PATCH", "/api/v1/schedules/schedule-1", { repositoryId: { id: "repo" } }),
@@ -73,6 +73,13 @@ describe("workspace schedule route validation", () => {
     expect(
       await invoke("PATCH", "/api/v1/schedules/schedule-1", { destroyWorkspaceAfter: true }),
     ).toMatchObject({ status: 200, json: { destroyWorkspaceAfter: true } });
+    expect(
+      await invoke("PATCH", "/api/v1/schedules/schedule-1", {
+        setupProfileId: null,
+        destroyWorkspaceAfter: null,
+      }),
+    ).toMatchObject({ status: 200, json: { destroyWorkspaceAfter: false } });
+    expect(plane.getSchedule("schedule-1")).not.toHaveProperty("setupProfileId");
   });
 
   it("drops an inherited repository ref when converting a schedule to a workspace", async () => {

@@ -35,6 +35,7 @@ function publicSchedule<T extends { repositoryId: string }>(
 function cleanupOverrideAllowed(ctx: RouteCtx, body: Record<string, unknown>): boolean {
   return (
     body.destroyWorkspaceAfter === undefined ||
+    body.destroyWorkspaceAfter === null ||
     !ctx.principal ||
     may(ctx.principal, "fleet:exec-config")
   );
@@ -55,11 +56,16 @@ function workspaceScheduleBodyInvalid(body: Record<string, unknown>): string | u
   if (body.setupScript !== undefined) return "setupScript is not supported for workspace schedules";
   if (
     body.setupProfileId !== undefined &&
+    body.setupProfileId !== null &&
     (typeof body.setupProfileId !== "string" || !body.setupProfileId.trim())
   ) {
     return "setupProfileId must be a non-empty string";
   }
-  if (body.destroyWorkspaceAfter !== undefined && typeof body.destroyWorkspaceAfter !== "boolean") {
+  if (
+    body.destroyWorkspaceAfter !== undefined &&
+    body.destroyWorkspaceAfter !== null &&
+    typeof body.destroyWorkspaceAfter !== "boolean"
+  ) {
     return "destroyWorkspaceAfter must be a boolean";
   }
   return undefined;
@@ -559,8 +565,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.workspacePoolId === "string"
           ? { workspacePoolId: body.workspacePoolId }
           : {}),
-        ...(typeof body.setupProfileId === "string" ? { setupProfileId: body.setupProfileId } : {}),
-        ...(typeof body.destroyWorkspaceAfter === "boolean"
+        ...(typeof body.setupProfileId === "string" || body.setupProfileId === null
+          ? { setupProfileId: body.setupProfileId }
+          : {}),
+        ...(typeof body.destroyWorkspaceAfter === "boolean" || body.destroyWorkspaceAfter === null
           ? { destroyWorkspaceAfter: body.destroyWorkspaceAfter }
           : {}),
         ...(body.requiredLabels !== undefined ? { requiredLabels: body.requiredLabels } : {}),
@@ -864,10 +872,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.workspacePoolId === "string"
             ? { workspacePoolId: body.workspacePoolId }
             : {}),
-          ...(typeof body.setupProfileId === "string"
+          ...(typeof body.setupProfileId === "string" || body.setupProfileId === null
             ? { setupProfileId: body.setupProfileId }
             : {}),
-          ...(typeof body.destroyWorkspaceAfter === "boolean"
+          ...(typeof body.destroyWorkspaceAfter === "boolean" || body.destroyWorkspaceAfter === null
             ? { destroyWorkspaceAfter: body.destroyWorkspaceAfter }
             : {}),
           ...(body.requiredLabels !== undefined ? { requiredLabels: body.requiredLabels } : {}),

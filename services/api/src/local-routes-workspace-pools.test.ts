@@ -43,6 +43,39 @@ describe("workspace-pool routes", () => {
     expect((await invoke(plane, "GET", "/api/v1/workspace-pools/pool-1")).status).toBe(404);
   });
 
+  it("does not acknowledge successful mutations when their audit write fails", async () => {
+    const create = new ControlPlane({ workspacePoolIdFactory: () => "create-pool" });
+    create.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      (await invoke(create, "POST", "/api/v1/workspace-pools", { name: "created" })).status,
+    ).toBe(500);
+
+    const update = new ControlPlane({ workspacePoolIdFactory: () => "update-pool" });
+    expect(
+      (await invoke(update, "POST", "/api/v1/workspace-pools", { name: "before" })).status,
+    ).toBe(201);
+    update.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      (await invoke(update, "PATCH", "/api/v1/workspace-pools/update-pool", { name: "after" }))
+        .status,
+    ).toBe(500);
+
+    const remove = new ControlPlane({ workspacePoolIdFactory: () => "delete-pool" });
+    expect(
+      (await invoke(remove, "POST", "/api/v1/workspace-pools", { name: "to-delete" })).status,
+    ).toBe(201);
+    remove.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect((await invoke(remove, "DELETE", "/api/v1/workspace-pools/delete-pool")).status).toBe(
+      500,
+    );
+  });
+
   it("maps validation, missing resources, and scoped access to safe responses", async () => {
     const plane = new ControlPlane({ workspacePoolIdFactory: () => "pool-1" });
     expect((await invoke(plane, "POST", "/api/v1/workspace-pools", {})).status).toBe(400);

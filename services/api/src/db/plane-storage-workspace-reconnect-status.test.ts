@@ -19,17 +19,14 @@ it("fences cancelled workspace reconnect grace with the cancelled status", async
   };
 
   await expect(
-    markWorkspaceReconnectPending(
-      ctx,
-      {
-        sessionId: "session",
-        hostId: "host",
-        workspaceSlotId: "slot",
-        deadlineAt: "2026-09-12T00:00:10.000Z",
-        connectionId: "connection",
-        expectedStatus: "cancelled",
-      },
-    ),
+    markWorkspaceReconnectPending(ctx, {
+      sessionId: "session",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      deadlineAt: "2026-09-12T00:00:10.000Z",
+      connectionId: "connection",
+      expectedStatus: "cancelled",
+    }),
   ).resolves.toBe(true);
 
   expect(send).toHaveBeenCalledWith(expect.any(TransactWriteCommand));
@@ -40,12 +37,12 @@ it("fences cancelled workspace reconnect grace with the cancelled status", async
 
   await expect(
     confirmWorkspaceReconnect(ctx, {
-        sessionId: "session",
-        hostId: "host",
-        workspaceSlotId: "slot",
-        deadlineAt: "2026-09-12T00:00:10.000Z",
-        connectionId: "replacement",
-        expectedStatus: "cancelled",
+      sessionId: "session",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      deadlineAt: "2026-09-12T00:00:10.000Z",
+      connectionId: "replacement",
+      expectedStatus: "cancelled",
     }),
   ).resolves.toBe(true);
   const confirmed = send.mock.calls[1]![0] as TransactWriteCommand;
@@ -55,11 +52,11 @@ it("fences cancelled workspace reconnect grace with the cancelled status", async
 
   await expect(
     restoreWorkspaceReconnectPending(ctx, {
-        sessionId: "session",
-        hostId: "host",
-        workspaceSlotId: "slot",
-        connectionId: "replacement",
-        expectedStatus: "cancelled",
+      sessionId: "session",
+      hostId: "host",
+      workspaceSlotId: "slot",
+      connectionId: "replacement",
+      expectedStatus: "cancelled",
     }),
   ).resolves.toBe(true);
   const restored = send.mock.calls[2]![0] as TransactWriteCommand;

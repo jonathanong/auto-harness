@@ -172,6 +172,7 @@ describe("restoreConfirmedSessions", () => {
       hostId: "h",
       workspaceSlotId: workspacePlain.workspaceSlot.id,
       connectionId: "current",
+      expectedStatus: "running",
     });
     expect(restoreWorkspaceReconnectPending).toHaveBeenNthCalledWith(2, {
       sessionId: workspaceFenced.session.id,
@@ -181,6 +182,7 @@ describe("restoreConfirmedSessions", () => {
       previousDeadlineAt: "2026-01-01T00:00:00.000Z",
       previousAssignmentConnectionId: "prior-assignment",
       previousWorkspaceSlotConnectionId: "prior-slot",
+      expectedStatus: "running",
     });
     expect(plane.state.workspaceSlots.has(workspacePlain.workspaceSlot.id)).toBe(false);
     expect(plane.state.workspaceSlots.get(workspaceFenced.workspaceSlot.id)).toEqual(

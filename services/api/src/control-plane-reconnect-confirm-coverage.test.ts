@@ -157,6 +157,7 @@ describe("reconnect confirmation helpers", () => {
       workspaceSlotId: reportedSlot.id,
       deadlineAt: row.reconnectDeadlineAt,
       connectionId: "connection",
+      expectedStatus: "running",
     });
     expect(state.workspaceSlots.get(reportedSlot.id)).toMatchObject({
       online: true,

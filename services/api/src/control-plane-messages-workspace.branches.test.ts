@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- workspace terminal branches share one assignment fixture. */
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { assignWorkspaceQueuedDurable } from "./control-plane-workspace-assign.ts";
@@ -247,4 +247,48 @@ it("requeues a usage-limited workspace session and releases its exact slot", asy
       usageLimitedUntil: "2026-09-12T00:01:00.000Z",
     });
   }
+});
+
+it("atomically suppresses a providerless workspace target and requeues it", async () => {
+  const { plane } = workspacePlane();
+  const session = createWorkspaceSession(plane);
+  await assignWorkspaceQueuedDurable(plane.state);
+  const current = plane.state.sessions.get(session.id)!;
+  const suppress = vi.fn(async () => true);
+  plane.state.storage = {
+    getSession: async () => current,
+    suppressProviderlessUsageLimitWorkspace: suppress,
+  } as never;
+
+  await expect(
+    handleHostMessageDurable(plane.state, {
+      type: "session:status",
+      sessionId: session.id,
+      worktreeId: null,
+      attemptId: current.attemptId!,
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "workspace quota",
+    }),
+  ).resolves.toMatchObject({ ok: true });
+  expect(suppress).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: session.id,
+      workspaceSlotId: "slot-1",
+      attemptId: current.attemptId,
+      targetIndex: 0,
+      errorMessage: "workspace quota",
+    }),
+  );
+  expect(plane.state.sessions.get(session.id)).toMatchObject({
+    status: "queued",
+    workspaceSlotId: null,
+    hostId: null,
+    suppressedTargetIndexes: [0],
+  });
+  expect(plane.state.sessions.get(session.id)).not.toHaveProperty("workspaceSlotLease");
+  expect(plane.state.workspaceSlots.get("slot-1")).toMatchObject({
+    status: "idle",
+    currentSessionId: null,
+  });
 });

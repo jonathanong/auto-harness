@@ -148,4 +148,37 @@ describe("SessionDetail static markup", () => {
       ),
     ).toContain('data-pw="session-detail-worktree">Main checkout');
   });
+
+  it("uses workspace-specific placement and resolved-route fields", () => {
+    const detail = render(
+      <SessionDetail
+        session={{
+          id: "workspace-session",
+          type: "workspace",
+          status: "running",
+          workspacePoolId: "pool/a",
+          setupProfileId: "setup/a",
+          workspaceSlotId: "slot/a",
+          hostId: "host/a",
+          resolvedRoute: {
+            hostId: "host/a",
+            commandId: "command/a",
+            workspacePoolId: "pool/a",
+            workspaceSlotId: "slot/a",
+          },
+        }}
+        breadcrumbs={[]}
+        defaultTab="details"
+        hostHrefBase="/hosts"
+      />,
+    );
+    expect(detail).toContain('data-pw="session-detail-workspace-pool">pool/a');
+    expect(detail).toContain('data-pw="session-detail-setup-profile">setup/a');
+    expect(detail).toContain('data-pw="session-detail-workspace-slot">slot/a');
+    expect(detail).toContain('href="/hosts/host%2Fa"');
+    expect(detail).toContain("workspace pool: pool/a");
+    expect(detail).toContain("workspace slot: slot/a");
+    expect(detail).not.toContain("Repository</dt>");
+    expect(detail).not.toContain("Worktree</dt>");
+  });
 });

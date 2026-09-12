@@ -92,12 +92,13 @@ export function ScheduleEditForm({
           ...(mode === "workspace"
             ? {
                 workspacePoolId,
-                ...(String(fd.get("setupProfileId") ?? "")
-                  ? { setupProfileId: String(fd.get("setupProfileId")) }
-                  : {}),
-                ...(destroyWorkspaceAfter === "inherit"
-                  ? {}
-                  : { destroyWorkspaceAfter: destroyWorkspaceAfter === "true" }),
+                // Unlike creation, editing must explicitly clear a prior
+                // profile or cleanup override when the operator selects the
+                // pool policy. Omitting those fields would retain the stored
+                // override in the service merge.
+                setupProfileId: String(fd.get("setupProfileId") ?? "") || null,
+                destroyWorkspaceAfter:
+                  destroyWorkspaceAfter === "inherit" ? null : destroyWorkspaceAfter === "true",
               }
             : {}),
         };

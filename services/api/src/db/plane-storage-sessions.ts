@@ -44,6 +44,7 @@ export {
   requeueUsageLimitedSession,
   requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
+  suppressProviderlessUsageLimitWorkspace,
 } from "./plane-storage-sessions-usage-limit.ts";
 export {
   releaseWorktree,

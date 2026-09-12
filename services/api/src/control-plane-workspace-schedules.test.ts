@@ -170,4 +170,28 @@ describe("workspace schedules", () => {
     expect(updated).toMatchObject({ ok: true, schedule: { repositoryId: "repo-1" } });
     if (updated.ok) expect(updated.schedule).not.toHaveProperty("workspacePoolId");
   });
+
+  it("clears profile and cleanup overrides back to the current pool policy", () => {
+    const plane = workspacePlane();
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: null,
+      workspacePoolId: "pool-1",
+      setupProfileId: "default",
+      destroyWorkspaceAfter: true,
+      name: "workspace policy",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 30,
+    });
+
+    const result = plane.updateSchedule(schedule.id, {
+      setupProfileId: null,
+      destroyWorkspaceAfter: null,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      schedule: { workspacePoolId: "pool-1", destroyWorkspaceAfter: false },
+    });
+    if (result.ok) expect(result.schedule).not.toHaveProperty("setupProfileId");
+  });
 });

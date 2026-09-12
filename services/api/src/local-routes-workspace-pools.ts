@@ -3,6 +3,10 @@ import { readJsonBody, sendHiddenNotFound, sendRouteError } from "./local-audite
 import { writeRouteAudit } from "./local-audit.ts";
 import type { WorkspacePoolInput } from "./control-plane-workspace-pools.ts";
 
+function auditPoolMutation(ctx: RouteCtx, action: string, resourceId: string): Promise<boolean> {
+  return writeRouteAudit(ctx, { action, resourceType: "workspace-pool", resourceId });
+}
+
 function poolInput(
   body: Record<string, unknown>,
   requireName: boolean,
@@ -103,11 +107,8 @@ export async function handleWorkspacePoolRoutes(ctx: RouteCtx): Promise<boolean>
           sendRouteError(res, 400, "VALIDATION_ERROR", result.error);
           return true;
         }
-        await writeRouteAudit(ctx, {
-          action: "workspace-pool:create",
-          resourceType: "workspace-pool",
-          resourceId: result.workspacePool.id,
-        });
+        if (!(await auditPoolMutation(ctx, "workspace-pool:create", result.workspacePool.id)))
+          return true;
         send(res, 201, result.workspacePool);
       } catch {
         sendInternalError(res);
@@ -164,11 +165,7 @@ export async function handleWorkspacePoolRoutes(ctx: RouteCtx): Promise<boolean>
           result.error,
         );
       } else {
-        await writeRouteAudit(ctx, {
-          action: "workspace-pool:update",
-          resourceType: "workspace-pool",
-          resourceId: id,
-        });
+        if (!(await auditPoolMutation(ctx, "workspace-pool:update", id))) return true;
         send(res, 200, result.workspacePool);
       }
     } catch {
@@ -187,11 +184,7 @@ export async function handleWorkspacePoolRoutes(ctx: RouteCtx): Promise<boolean>
           result.error,
         );
       } else {
-        await writeRouteAudit(ctx, {
-          action: "workspace-pool:delete",
-          resourceType: "workspace-pool",
-          resourceId: id,
-        });
+        if (!(await auditPoolMutation(ctx, "workspace-pool:delete", id))) return true;
         send(res, 204, null);
       }
     } catch {

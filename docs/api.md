@@ -1115,6 +1115,9 @@ For a workspace schedule, set `repositoryId: null`, `workspacePoolId`, and optio
 requires a host advertising `workspace-sessions`; placement is host/slot-based and performs no
 Git checkout. Workspace schedules cannot be resumed, but their sessions can be cloned. The same
 pool deletion dependency applies: delete is blocked while a schedule references the pool.
+When updating a workspace schedule, send `setupProfileId: null` to return to the pool's default
+profile and `destroyWorkspaceAfter: null` to return to the pool's cleanup policy. Omitting either
+field leaves the schedule's current selection unchanged.
 
 **Response:** `201 Created`
 

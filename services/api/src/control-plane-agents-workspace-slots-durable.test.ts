@@ -204,6 +204,7 @@ it("accepts an exact durable workspace ownership claim before confirming its rec
     workspaceSlotId: slot.id,
     deadlineAt: session.reconnectDeadlineAt,
     connectionId: "replacement",
+    expectedStatus: "running",
   });
   expect(plane.state.sessions.get(session.id)).not.toHaveProperty("reconnectDeadlineAt");
   expect(plane.state.workspaceSlots.get(slot.id)).toMatchObject({

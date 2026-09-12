@@ -258,12 +258,31 @@ export function prepareUpdateSchedule(
     routing.value.fallbacks,
   );
   if (!displayNames.ok) return displayNames;
-  const schedulePatch = { ...patch };
-  delete (schedulePatch as Record<string, unknown>).requiredLabels;
-  delete (schedulePatch as Record<string, unknown>).setupScript;
+  const {
+    setupProfileId: requestedSetupProfileId,
+    destroyWorkspaceAfter: requestedCleanup,
+    ...schedulePatch
+  } = patch;
+  const normalizedPatch: Partial<
+    Omit<ScheduleInput, "id" | "setupProfileId" | "destroyWorkspaceAfter">
+  > & {
+    setupProfileId?: string;
+    destroyWorkspaceAfter?: boolean;
+  } = schedulePatch;
+  delete (normalizedPatch as Record<string, unknown>).requiredLabels;
+  delete (normalizedPatch as Record<string, unknown>).setupScript;
+  // `null` is the API's explicit request to inherit again. It affects
+  // `mergedInput` above, but must not be copied into the persisted optional
+  // fields before the normalized workspace branch removes/resolves it.
+  if (typeof requestedSetupProfileId === "string") {
+    normalizedPatch.setupProfileId = requestedSetupProfileId;
+  }
+  if (typeof requestedCleanup === "boolean") {
+    normalizedPatch.destroyWorkspaceAfter = requestedCleanup;
+  }
   const next: ScheduleRecord = {
     ...existing,
-    ...schedulePatch,
+    ...normalizedPatch,
     repositoryId: mode.repositoryId,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
@@ -337,11 +356,16 @@ function validateScheduleMode(
   }
   if (input.ref !== undefined)
     return { ok: false, error: "ref is not supported for workspace schedules" };
-  if (input.setupProfileId !== undefined && !input.setupProfileId.trim()) {
+  if (
+    input.setupProfileId !== undefined &&
+    input.setupProfileId !== null &&
+    !input.setupProfileId.trim()
+  ) {
     return { ok: false, error: "setupProfileId must not be empty" };
   }
   if (
     input.destroyWorkspaceAfter !== undefined &&
+    input.destroyWorkspaceAfter !== null &&
     typeof input.destroyWorkspaceAfter !== "boolean"
   ) {
     return { ok: false, error: "destroyWorkspaceAfter must be a boolean" };
