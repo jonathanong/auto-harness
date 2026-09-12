@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host-only App parsing and token minting share one key fixture. */
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
