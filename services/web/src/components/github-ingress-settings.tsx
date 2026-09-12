@@ -305,6 +305,7 @@ export function GitHubIngressSettings() {
               placeholder="Auto Harness repository id"
             />
             <select
+              aria-label="Target type"
               value={binding.targetType}
               onChange={(event) => change(index, "targetType", event.target.value)}
             >
