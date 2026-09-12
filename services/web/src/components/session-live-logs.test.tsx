@@ -231,6 +231,18 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("ignores unrecognized viewer frames", async () => {
+    const { view, socket } = await mountLive("session-unknown", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    act(() =>
+      socket.emit("message", {
+        data: JSON.stringify({ type: "session:pong" }),
+      }),
+    );
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — running");
+    view.unmount();
+  });
+
   it("resumes from the last live cursor and ignores subscribe frames without a status", async () => {
     const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
     vi.stubGlobal("fetch", fetch);

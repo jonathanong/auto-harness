@@ -45,6 +45,11 @@ describe("loadDaemonConfig", () => {
     }
   });
 
+  it("keeps inline identity when env overrides are omitted", async () => {
+    const config = await loadDaemonConfig({ inline: valid, env: {} });
+    expect(config.hostId).toBe("local-1");
+  });
+
   it("applies env overrides on inline config", async () => {
     const config = await loadDaemonConfig({
       inline: valid,

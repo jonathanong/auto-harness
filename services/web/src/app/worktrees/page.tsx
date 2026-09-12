@@ -101,7 +101,7 @@ export default async function WorktreesPage({
           ) : (
             <AddWorktreeForRepo
               repositoryId={group.repositoryId}
-              repositoryName={group.repositoryName ?? group.repositoryId}
+              repositoryName={group.repositoryName!}
               attachments={attachmentsForRepo(inventories, group.repositoryId)}
               canWriteExecConfig={canWriteExecConfig}
             />

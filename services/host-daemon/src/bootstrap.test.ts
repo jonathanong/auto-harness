@@ -71,6 +71,12 @@ describe("fetchHostInventory", () => {
     expect(inventoryFingerprint({ ...empty, allowedRoots: ["/safe"] })).not.toBe(
       inventoryFingerprint(empty),
     );
+    expect(
+      inventoryFingerprint({
+        ...empty,
+        updateConfig: { enabled: true, pollMs: 60_000 },
+      }),
+    ).not.toBe(inventoryFingerprint(empty));
   });
 
   it("handles empty error bodies", async () => {
