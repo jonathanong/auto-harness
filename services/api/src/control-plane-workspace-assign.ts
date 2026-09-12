@@ -244,7 +244,14 @@ export async function assignWorkspaceQueuedDurable(
       });
       state.onHostMessage?.(
         slot.hostId,
-        assignMessage(session, slot, route, attemptId, now, setupScriptFor(state, session)),
+        assignMessage(
+          session,
+          slot,
+          route,
+          attemptId,
+          now,
+          session.workspaceSetupScript ?? setupScriptFor(state, session),
+        ),
       );
       assigned.push({ session: toPublic(state, updatedSession), workspaceSlot: updatedSlot });
       break;

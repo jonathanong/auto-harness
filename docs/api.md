@@ -1184,13 +1184,15 @@ pool contains trusted setup profiles and a default `destroyWorkspaceAfter` polic
 `false`). Profile `script` bodies are accepted only by the workspace-pool create/update APIs;
 they are never accepted in session or schedule inputs and public pool reads return profile ids and
 names without script bodies.
+Each script is limited to 65,536 UTF-8 bytes, with at most 32 profiles and 327,680 UTF-8 bytes
+across the serialized profile list so the pool remains safely within the DynamoDB item limit.
 
 `GET /api/v1/workspace-pools` lists pools. `POST /api/v1/workspace-pools` creates one with
 `name`, optional `setupProfiles: [{ id, name, script }]`, optional
 `defaultSetupProfileId`, and optional `destroyWorkspaceAfter`. `GET` and `PATCH`
 `/api/v1/workspace-pools/:workspacePoolId` read/update a pool; `DELETE` removes it only when no
 host attachment, schedule, or queued/running session references it. Updating active pool settings
-does not rewrite an already admitted session's selected profile or cleanup policy. Callers with
+does not rewrite an already admitted session's selected profile, frozen setup content, or cleanup policy. Callers with
 `fleet:exec-config` may read the full configured scripts from
 `GET /api/v1/workspace-pools/:workspacePoolId/exec-config`; ordinary reads remain redacted.
 

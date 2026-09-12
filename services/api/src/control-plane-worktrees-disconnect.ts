@@ -241,7 +241,16 @@ export async function offlineHostAndRequeueDurableImpl(
     }
     const current = (await state.storage.getWorkspaceSlot(slot.id)) ?? slot;
     const offline = { ...current, online: false };
-    await state.storage.putWorkspaceSlot(offline);
+    if (typeof state.storage.putWorkspaceSlotFenced === "function") {
+      const expectedConnectionId = slot.connectionId ? connectionId : undefined;
+      if (
+        !(await state.storage.putWorkspaceSlotFenced(offline, connectionId, expectedConnectionId))
+      ) {
+        continue;
+      }
+    } else {
+      await state.storage.putWorkspaceSlot(offline);
+    }
     state.workspaceSlots.set(slot.id, offline);
   }
   return requeued;

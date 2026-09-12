@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- pagination and conditional storage cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,6 +13,8 @@ import {
   listWorkspaceSlotsByPool,
   putWorkspacePool,
   putWorkspaceSlot,
+  putWorkspaceSlotFenced,
+  updateWorkspacePool,
   tryAssignWorkspaceSession,
 } from "./plane-storage-workspaces.ts";
 import type { PlaneStorageCtx, WorkspacePoolRecord } from "./plane-storage-types.ts";
@@ -124,6 +127,64 @@ describe("workspace storage", () => {
       IndexName: "workspacePoolId-id",
       ExpressionAttributeValues: { ":value": "pool" },
     });
+  });
+
+  it("paginates pool/slot scans and both slot queries", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const send = vi.fn(async (command: { input: Record<string, unknown> }) => {
+      calls.push(command.input);
+      const input = command.input;
+      if (input.TableName === "WorkspacePools") {
+        return calls.filter((call) => call.TableName === "WorkspacePools").length === 1
+          ? { Items: [pool], LastEvaluatedKey: { id: "pool-next" } }
+          : { Items: [{ ...pool, id: "pool-2" }] };
+      }
+      if (input.IndexName === "workspacePoolId-id") {
+        return calls.filter((call) => call.IndexName === "workspacePoolId-id").length === 1
+          ? { Items: [slot], LastEvaluatedKey: { workspacePoolId: "pool", id: "slot-next" } }
+          : { Items: [{ ...slot, id: "slot-2" }] };
+      }
+      if (input.IndexName === "hostId-id") {
+        return calls.filter((call) => call.IndexName === "hostId-id").length === 1
+          ? { Items: [slot], LastEvaluatedKey: { hostId: "host", id: "slot-next" } }
+          : { Items: [{ ...slot, id: "slot-3" }] };
+      }
+      return calls.filter((call) => call.TableName === "WorkspaceSlots").length === 1
+        ? { Items: [slot], LastEvaluatedKey: { id: "slot-next" } }
+        : { Items: [{ ...slot, id: "slot-4" }] };
+    });
+    const storage = ctx(send);
+    await expect(listWorkspacePools(storage)).resolves.toHaveLength(2);
+    await expect(listWorkspaceSlots(storage)).resolves.toHaveLength(2);
+    await expect(listWorkspaceSlotsByPool(storage, pool.id)).resolves.toHaveLength(2);
+    await expect(listWorkspaceSlotsByHost(storage, slot.hostId)).resolves.toHaveLength(2);
+    expect(calls[1]).toMatchObject({ ExclusiveStartKey: { id: "pool-next" } });
+    expect(calls[3]).toMatchObject({ ExclusiveStartKey: { id: "slot-next" } });
+    expect(calls[5]).toMatchObject({
+      ExclusiveStartKey: { workspacePoolId: "pool", id: "slot-next" },
+    });
+    expect(calls[7]).toMatchObject({ ExclusiveStartKey: { hostId: "host", id: "slot-next" } });
+  });
+
+  it("conditionally updates existing pools and publishes idle slots for one connection", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const storage = ctx(send);
+    await expect(updateWorkspacePool(storage, pool)).resolves.toBe(true);
+    await expect(putWorkspaceSlotFenced(storage, slot, "connection", "connection")).resolves.toBe(
+      true,
+    );
+    expect(send.mock.calls[0]?.[0].input).toMatchObject({
+      ConditionExpression: "attribute_exists(id)",
+    });
+    expect(send.mock.calls[1]?.[0].input).toMatchObject({
+      ConditionExpression: expect.stringContaining("currentSessionId = :null"),
+      ExpressionAttributeValues: expect.objectContaining({ ":expectedConnectionId": "connection" }),
+    });
+    const conditionalStorage = ctx(vi.fn().mockRejectedValue(conditional()));
+    await expect(updateWorkspacePool(conditionalStorage, pool)).resolves.toBe(false);
+    await expect(putWorkspaceSlotFenced(conditionalStorage, slot, "connection")).resolves.toBe(
+      false,
+    );
   });
 
   it("handles conditional catalog outcomes and owned deletion", async () => {

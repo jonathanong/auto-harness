@@ -14,10 +14,16 @@ export function WorkspaceSessionFields({
   pools,
   poolId,
   onPoolIdChange,
+  initialPoolId,
+  initialProfileId,
+  initialDestroyWorkspaceAfter,
 }: {
   pools: WorkspacePoolOption[];
   poolId: string;
   onPoolIdChange: (poolId: string) => void;
+  initialPoolId?: string;
+  initialProfileId?: string;
+  initialDestroyWorkspaceAfter?: boolean;
 }) {
   const pool = pools.find((candidate) => candidate.id === poolId);
   return (
@@ -53,8 +59,8 @@ export function WorkspaceSessionFields({
         <select
           id="setupProfileId"
           name="setupProfileId"
-          defaultValue=""
-          key={pool?.id ?? "none"}
+          defaultValue={poolId === initialPoolId ? (initialProfileId ?? "") : ""}
+          key={`${pool?.id ?? "none"}:${initialProfileId ?? ""}`}
           data-pw="create-session-workspace-profile"
           className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
         >
@@ -76,7 +82,11 @@ export function WorkspaceSessionFields({
         <select
           id="destroyWorkspaceAfter"
           name="destroyWorkspaceAfter"
-          defaultValue="inherit"
+          defaultValue={
+            initialDestroyWorkspaceAfter === undefined
+              ? "inherit"
+              : String(initialDestroyWorkspaceAfter)
+          }
           data-pw="create-session-workspace-cleanup"
           className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
         >

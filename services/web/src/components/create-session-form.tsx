@@ -30,8 +30,10 @@ export function CreateSessionForm({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [mode, setMode] = useState<"repository" | "workspace">("repository");
-  const [workspacePoolId, setWorkspacePoolId] = useState("");
+  const [mode, setMode] = useState<"repository" | "workspace">(
+    initialValues?.workspacePoolId ? "workspace" : "repository",
+  );
+  const [workspacePoolId, setWorkspacePoolId] = useState(initialValues?.workspacePoolId ?? "");
   const canSubmit =
     targets.length > 0 &&
     (mode === "repository"
@@ -146,6 +148,9 @@ export function CreateSessionForm({
           pools={workspacePools}
           poolId={workspacePoolId}
           onPoolIdChange={setWorkspacePoolId}
+          initialPoolId={initialValues?.workspacePoolId}
+          initialProfileId={initialValues?.setupProfileId}
+          initialDestroyWorkspaceAfter={initialValues?.destroyWorkspaceAfter}
         />
       )}
       {mode === "repository" ? (

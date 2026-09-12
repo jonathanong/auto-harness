@@ -49,6 +49,14 @@ export async function registerDaemon(
     repositories: config.repositories
       .map(({ id, path, defaultBranch }) => ({ id, path, defaultBranch }))
       .toSorted((a, b) => a.id.localeCompare(b.id)),
+    ...(config.workspacePools !== undefined
+      ? {
+          workspacePools: config.workspacePools.map((pool) => ({
+            workspacePoolId: pool.workspacePoolId,
+            slots: pool.slots.map((slot) => ({ ...slot })),
+          })),
+        }
+      : {}),
     capabilities: {
       features: ["scheduled-main-checkout", "workspace-sessions"],
       maxConcurrentAssignments: executionProfiles.maxConcurrentAssignments,

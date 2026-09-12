@@ -1,7 +1,8 @@
+/* eslint-disable max-lines -- profile editing and trusted configuration submit share stable client row identity. */
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Button,
   Input,
@@ -24,11 +25,18 @@ export type WorkspacePoolConfig = {
 };
 
 const emptyProfile = (): WorkspaceSetupProfile => ({ id: "", name: "", script: "" });
+type ProfileRow = WorkspaceSetupProfile & { key: string };
 
 export function WorkspacePoolForm({ pool }: { pool?: WorkspacePoolConfig }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [profiles, setProfiles] = useState<WorkspaceSetupProfile[]>(pool?.setupProfiles ?? []);
+  const profileKey = useRef(0);
+  const [profiles, setProfiles] = useState<ProfileRow[]>(() =>
+    (pool?.setupProfiles ?? []).map((profile) => ({
+      ...profile,
+      key: `saved-${profileKey.current++}`,
+    })),
+  );
   const [defaultProfileId, setDefaultProfileId] = useState(pool?.defaultSetupProfileId ?? "");
   const [destroyWorkspaceAfter, setDestroyWorkspaceAfter] = useState(
     pool?.destroyWorkspaceAfter ?? false,
@@ -110,7 +118,7 @@ export function WorkspacePoolForm({ pool }: { pool?: WorkspacePoolConfig }) {
           session creation. They are never entered on an execution form.
         </p>
         {profiles.map((profile, index) => (
-          <div key={`${index}-${profile.id}`} className="grid gap-2 rounded-md border p-3">
+          <div key={profile.key} className="grid gap-2 rounded-md border p-3">
             <div className="grid grid-cols-2 gap-2">
               <Input
                 aria-label={`Setup profile ${index + 1} ID`}
@@ -154,7 +162,12 @@ export function WorkspacePoolForm({ pool }: { pool?: WorkspacePoolConfig }) {
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => setProfiles((current) => [...current, emptyProfile()])}
+          onClick={() =>
+            setProfiles((current) => [
+              ...current,
+              { ...emptyProfile(), key: `new-${profileKey.current++}` },
+            ])
+          }
           data-pw="workspace-pool-profile-add"
         >
           Add setup profile

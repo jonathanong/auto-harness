@@ -67,7 +67,10 @@ export default async function NewSessionPage({
   targets = includeDraftTargets(targets, draft);
   if (draft) {
     availableLabels = [...new Set([...availableLabels, ...draft.requiredLabels])].toSorted();
-    if (!repositories.some((repository) => repository.id === draft.repositoryId)) {
+    if (
+      draft.repositoryId &&
+      !repositories.some((repository) => repository.id === draft.repositoryId)
+    ) {
       repositories = [{ id: draft.repositoryId, name: draft.repositoryId }, ...repositories];
     }
   }

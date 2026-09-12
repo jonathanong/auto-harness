@@ -51,6 +51,10 @@ describe("workspace schedules", () => {
         source: "schedule",
       },
     });
+    expect(plane.state.sessions.get("session-1")).toMatchObject({
+      workspaceSetupScript: "npm install",
+    });
+    expect(plane.getSession("session-1")).not.toHaveProperty("workspaceSetupScript");
   });
 
   it("rejects repository-only and raw execution fields", () => {

@@ -1,10 +1,12 @@
-import { lstat, realpath } from "node:fs/promises";
+/* eslint-disable max-lines -- canonical root and execution-path validation share one boundary. */
+import { lstat, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { DaemonConfig } from "./config-types.ts";
 
 type RealpathFn = (path: string) => Promise<string>;
 type LstatFn = (path: string) => Promise<{ isSymbolicLink(): boolean }>;
+type StatFn = (path: string) => Promise<{ isDirectory(): boolean }>;
 
 /** Path primitives used by containment so Windows-style fixtures can inject `path.win32`. */
 type PathContainmentApi = {
@@ -96,6 +98,30 @@ async function assertExistingPathWithinAllowedRoots(
   }
 }
 
+/** Resolve a workspace slot to an existing canonical directory before it is advertised. */
+export async function assertExistingDirectoryWithinAllowedRoots(
+  path: string,
+  allowedRoots: readonly string[],
+  realpathFn: RealpathFn = realpath,
+  statFn: StatFn = stat,
+): Promise<string> {
+  const resolved = await assertPathWithinAllowedRoots(path, allowedRoots, realpathFn);
+  let canonical: string;
+  try {
+    canonical = await realpathFn(resolved);
+  } catch (error) {
+    throw new Error(`workspace slot path must exist: ${path}`, { cause: error });
+  }
+  let details: { isDirectory(): boolean };
+  try {
+    details = await statFn(canonical);
+  } catch (error) {
+    throw new Error(`workspace slot path must exist: ${path}`, { cause: error });
+  }
+  if (!details.isDirectory()) throw new Error(`workspace slot path must be a directory: ${path}`);
+  return canonical;
+}
+
 export function resolveHookPath(repositoryPath: string, terminalHookScript: string): string {
   // The control plane accepts both POSIX and Windows spellings because it cannot
   // know the host OS. Once a value reaches the daemon, however, a foreign
@@ -162,6 +188,37 @@ export async function assertDaemonPathsAllowed(
   realpathFn: RealpathFn = realpath,
 ): Promise<void> {
   const roots = config.allowedRoots ?? [];
+  const workspacePaths = (config.workspacePools ?? []).flatMap((pool) =>
+    pool.slots.map((slot) => ({ id: slot.id, path: slot.path })),
+  );
+  const repositoryPaths = config.repositories.flatMap((repository) => [
+    { id: repository.id, path: repository.path },
+    ...repository.worktrees.map((worktree) => ({ id: worktree.id, path: worktree.path })),
+  ]);
+  const canonical = async (path: string): Promise<string> =>
+    roots.length
+      ? await assertPathWithinAllowedRoots(path, roots, realpathFn)
+      : await resolvePathForRootCheck(path, realpathFn);
+  const canonicalWorkspacePaths = await Promise.all(
+    workspacePaths.map(async (slot) => ({ ...slot, path: await canonical(slot.path) })),
+  );
+  const canonicalRepositoryPaths = await Promise.all(
+    repositoryPaths.map(async (target) => ({ ...target, path: await canonical(target.path) })),
+  );
+  for (const slot of canonicalWorkspacePaths) {
+    for (const target of canonicalRepositoryPaths) {
+      if (isWithinRoot(slot.path, target.path) || isWithinRoot(target.path, slot.path)) {
+        throw new Error(`workspace slot overlaps repository execution path: ${slot.id}`);
+      }
+    }
+  }
+  for (const [index, slot] of canonicalWorkspacePaths.entries()) {
+    for (const other of canonicalWorkspacePaths.slice(index + 1)) {
+      if (isWithinRoot(slot.path, other.path) || isWithinRoot(other.path, slot.path)) {
+        throw new Error(`workspace slots overlap: ${slot.id} and ${other.id}`);
+      }
+    }
+  }
   if (!roots.length) return;
   for (const repository of config.repositories) {
     await assertPathWithinAllowedRoots(repository.path, roots, realpathFn);

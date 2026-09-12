@@ -25,6 +25,10 @@ import {
   resolveRegisteredRepositories,
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
+import {
+  syncHostWorkspaceSlots,
+  syncHostWorkspaceSlotsDurable,
+} from "./control-plane-agent-hosts.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
 import {
@@ -105,12 +109,12 @@ async function publishWorkspaceSlotsDurable(
   hostId: string,
   connectionId: string,
   online: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (
     typeof state.storage?.listWorkspaceSlotsByHost !== "function" ||
     typeof state.storage.putWorkspaceSlot !== "function"
   ) {
-    return;
+    return true;
   }
   const slots = await state.storage!.listWorkspaceSlotsByHost(hostId);
   for (const slot of slots) {
@@ -119,9 +123,16 @@ async function publishWorkspaceSlotsDurable(
       continue;
     }
     const next = { ...slot, online, connectionId };
-    await state.storage!.putWorkspaceSlot(next);
+    if (typeof state.storage!.putWorkspaceSlotFenced === "function") {
+      if (!(await state.storage!.putWorkspaceSlotFenced(next, connectionId, slot.connectionId))) {
+        return false;
+      }
+    } else {
+      await state.storage!.putWorkspaceSlot(next);
+    }
     state.workspaceSlots.set(slot.id, next);
   }
+  return true;
 }
 
 /** Undo a registration after its lease committed but its reconciliation did
@@ -174,7 +185,12 @@ async function rollbackDurableRegistration(
       }
       for (const slot of ownedSlots.values()) {
         const offline = { ...slot, online: false };
-        await storage.putWorkspaceSlot(offline);
+        const fenced =
+          typeof storage.putWorkspaceSlotFenced === "function" && slot.connectionId
+            ? await storage.putWorkspaceSlotFenced(offline, slot.connectionId)
+            : undefined;
+        if (fenced === false) continue;
+        if (fenced === undefined) await storage.putWorkspaceSlot(offline);
         state.workspaceSlots.set(offline.id, offline);
       }
     }
@@ -495,6 +511,7 @@ export function registerHost(
       labels: string[];
     }>;
     repositories?: HostRepositoryRegistration[];
+    workspacePools?: import("@auto-harness/shared").WorkspacePoolAttachment[];
     capabilities?: HostCapability[];
     maxConcurrentAssignments?: number;
     providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
@@ -603,8 +620,10 @@ export function registerHost(
     previousInventory,
     opts.daemonIdentity,
     opts.runtime,
+    opts.workspacePools,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
+  syncHostWorkspaceSlots(state, registrationInventory);
   state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putHostInventory(registrationInventory));
@@ -664,6 +683,7 @@ export async function registerHostDurable(
       labels: string[];
     }>;
     repositories?: HostRepositoryRegistration[];
+    workspacePools?: import("@auto-harness/shared").WorkspacePoolAttachment[];
     capabilities?: HostCapability[];
     maxConcurrentAssignments?: number;
     providerAccountReadiness?: import("@auto-harness/shared").ProviderAccountReadiness[];
@@ -764,6 +784,7 @@ export async function registerHostDurable(
     previousInventory,
     opts.daemonIdentity,
     opts.runtime,
+    opts.workspacePools,
   );
   // The transaction committed. Finish all related row writes before changing
   // this process's cache; a failed inventory/worktree write must not make the
@@ -821,7 +842,10 @@ export async function registerHostDurable(
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
   try {
-    await publishWorkspaceSlotsDurable(state, opts.hostId, connectionId, !opts.draining);
+    if (!(await publishWorkspaceSlotsDurable(state, opts.hostId, connectionId, !opts.draining))) {
+      await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+      return { ok: false, error: "host connection changed while publishing workspace slots" };
+    }
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;
@@ -890,6 +914,7 @@ export async function registerHostDurable(
         previousInventory,
         opts.daemonIdentity,
         opts.runtime,
+        opts.workspacePools,
       );
       // The worktree projection was published before the inventory fence. If a
       // UI edit won that fence, republish the reconciled effective labels too;
@@ -920,6 +945,12 @@ export async function registerHostDurable(
   // leave a failed draining registration excluded in this process.
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
+  try {
+    await syncHostWorkspaceSlotsDurable(state, registrationInventory);
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+    throw err;
+  }
   state.hostInventories.set(opts.hostId, registrationInventory);
   state.hostInventoryRevision += 1;
   return { ok: true, connectionId };

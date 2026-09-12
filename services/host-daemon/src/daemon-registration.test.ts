@@ -41,6 +41,12 @@ describe("daemon registration", () => {
           },
         ],
         providerAccounts: [],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: "/workspace/slot" }],
+          },
+        ],
       },
       { send: async (message: unknown) => void messages.push(message) } as never,
       ["z", "a"],
@@ -68,6 +74,12 @@ describe("daemon registration", () => {
         repositories: [
           { id: "r", path: "/repo", defaultBranch: "main" },
           { id: "r2", path: "/repo-2", defaultBranch: "main" },
+        ],
+        workspacePools: [
+          {
+            workspacePoolId: "pool",
+            slots: [{ id: "slot", name: "slot", path: "/workspace/slot" }],
+          },
         ],
         protocolVersion: HOST_PROTOCOL_VERSION,
         runningSessions: ["a", "z"],

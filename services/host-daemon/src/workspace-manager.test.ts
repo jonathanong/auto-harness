@@ -63,6 +63,21 @@ describe("WorkspaceManager", () => {
     );
   });
 
+  it("validates a candidate's cleared roots and requires an existing slot directory", async () => {
+    const { root, slot, config } = await fixture();
+    const manager = new WorkspaceManager(config);
+    await expect(manager.ensureAll({ ...config, allowedRoots: [] })).rejects.toThrow(
+      "non-empty allowedRoots",
+    );
+
+    config.workspacePools![0]!.slots[0]!.path = join(root, "missing");
+    await expect(manager.ensureAll()).rejects.toThrow("workspace slot path must exist");
+    await rm(slot, { recursive: true, force: true });
+    await writeFile(slot, "not a directory");
+    config.workspacePools![0]!.slots[0]!.path = slot;
+    await expect(manager.ensureAll()).rejects.toThrow("workspace slot path must be a directory");
+  });
+
   it("rejects unknown and aborted claims without leaving the slot busy", async () => {
     const { config } = await fixture();
     const manager = new WorkspaceManager(config);

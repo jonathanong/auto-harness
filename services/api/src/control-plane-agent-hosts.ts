@@ -16,7 +16,10 @@ import {
   listProviderAccountsDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { listWorkspacePoolsDurable } from "./control-plane-workspace-pools.ts";
-import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
+import {
+  listWorkspaceSlotsDurable,
+  listWorktreesDurable,
+} from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
@@ -27,7 +30,7 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
   for (const id of removedIds) state.worktrees.delete(id);
 }
 
-function projectHostWorkspaceSlots(
+export function projectHostWorkspaceSlots(
   state: ControlPlaneState,
   host: HostInventoryRecord,
 ): { slots: WorkspaceSlotRecord[]; removedIds: string[] } {
@@ -38,6 +41,7 @@ function projectHostWorkspaceSlots(
     for (const slot of attachment.slots) {
       configuredIds.add(slot.id);
       const previous = state.workspaceSlots.get(slot.id);
+      const connectionId = state.hostConnection.get(host.hostId) ?? previous?.connectionId;
       slots.push({
         id: slot.id,
         name: slot.name,
@@ -49,6 +53,7 @@ function projectHostWorkspaceSlots(
         online: previous?.online ?? online,
         currentSessionId: previous?.currentSessionId ?? null,
         lastAssignedAt: previous?.lastAssignedAt ?? null,
+        ...(connectionId ? { connectionId } : {}),
         ...(previous?.errorMessage ? { errorMessage: previous.errorMessage } : {}),
       });
     }
@@ -60,6 +65,51 @@ function projectHostWorkspaceSlots(
     )
     .map((slot) => slot.id);
   return { slots, removedIds };
+}
+
+/** Project a locally accepted inventory snapshot into its workspace-slot read model. */
+export function syncHostWorkspaceSlots(state: ControlPlaneState, host: HostInventoryRecord): void {
+  const projection = projectHostWorkspaceSlots(state, host);
+  for (const slot of projection.slots) {
+    state.workspaceSlots.set(slot.id, slot);
+    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
+  }
+  for (const id of projection.removedIds) {
+    state.workspaceSlots.delete(id);
+    if (state.storage) queueWrite(state, (storage) => storage!.deleteWorkspaceSlot(id));
+  }
+}
+
+/** Persist a durable registration's workspace-slot projection before acknowledging it. */
+export async function syncHostWorkspaceSlotsDurable(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+): Promise<void> {
+  if (!state.storage) return syncHostWorkspaceSlots(state, host);
+  const projection = projectHostWorkspaceSlots(state, host);
+  await Promise.all([
+    ...projection.slots.map(async (slot) => {
+      if (slot.status === "busy") return;
+      const connectionId = state.hostConnection.get(host.hostId);
+      if (connectionId && typeof state.storage!.putWorkspaceSlotFenced === "function") {
+        const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
+        if (
+          !(await state.storage!.putWorkspaceSlotFenced(
+            { ...slot },
+            connectionId,
+            expectedConnectionId,
+          ))
+        ) {
+          throw new Error("host connection changed while publishing workspace slots");
+        }
+      } else {
+        await state.storage!.putWorkspaceSlot({ ...slot });
+      }
+    }),
+    ...projection.removedIds.map(async (id) => await state.storage!.deleteWorkspaceSlot(id)),
+  ]);
+  for (const slot of projection.slots) state.workspaceSlots.set(slot.id, slot);
+  for (const id of projection.removedIds) state.workspaceSlots.delete(id);
 }
 
 function projectHostWorktrees(
@@ -120,15 +170,7 @@ export function putHostInventory(
     );
   }
   syncWorktreesFromHost(state, rec);
-  const workspaceProjection = projectHostWorkspaceSlots(state, rec);
-  for (const slot of workspaceProjection.slots) {
-    state.workspaceSlots.set(slot.id, slot);
-    if (state.storage) queueWrite(state, (storage) => storage!.putWorkspaceSlot({ ...slot }));
-  }
-  for (const id of workspaceProjection.removedIds) {
-    state.workspaceSlots.delete(id);
-    if (state.storage) queueWrite(state, (storage) => storage!.deleteWorkspaceSlot(id));
-  }
+  syncHostWorkspaceSlots(state, rec);
   return { ok: true, config: withoutDaemonLabelProvenance(rec) };
 }
 
@@ -237,6 +279,9 @@ export async function putHostInventoryDurable(
   await Promise.all([
     listHostInventoriesDurable(state),
     listWorktreesDurable(state),
+    typeof state.storage.listWorkspaceSlots === "function"
+      ? listWorkspaceSlotsDurable(state)
+      : Promise.resolve(),
     typeof state.storage.listProviderAccounts === "function"
       ? listProviderAccountsDurable(state)
       : Promise.resolve(),
@@ -262,10 +307,24 @@ export async function putHostInventoryDurable(
   // Older storage doubles return void; only an explicit false means the conditional write lost.
   if (stored === false) return inventoryVersionConflict();
   const writeProjection = async (storage: DynamoPlaneStorage | undefined): Promise<void> => {
+    const writeSlot = async (slot: WorkspaceSlotRecord): Promise<void> => {
+      if (slot.status === "busy") return;
+      const connectionId = slot.connectionId;
+      if (connectionId && typeof storage!.putWorkspaceSlotFenced === "function") {
+        const expectedConnectionId = state.workspaceSlots.get(slot.id)?.connectionId;
+        if (
+          !(await storage!.putWorkspaceSlotFenced({ ...slot }, connectionId, expectedConnectionId))
+        ) {
+          throw new Error("host connection changed while publishing workspace slots");
+        }
+        return;
+      }
+      await storage!.putWorkspaceSlot({ ...slot });
+    };
     await Promise.all([
       ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
       ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
-      ...workspaceProjection.slots.map((slot) => storage!.putWorkspaceSlot({ ...slot })),
+      ...workspaceProjection.slots.map((slot) => writeSlot(slot)),
       ...workspaceProjection.removedIds.map((id) => storage!.deleteWorkspaceSlot(id)),
     ]);
   };

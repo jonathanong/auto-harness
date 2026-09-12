@@ -335,6 +335,7 @@ export function toPublic(
 ): PublicSession {
   const {
     principalId: _principalId,
+    workspaceSetupScript: _workspaceSetupScript,
     cancelledByDrainOperationId: _cancelledByDrainOperationId,
     activeHostId: _activeHostId,
     activeHostOrder: _activeHostOrder,

@@ -16,6 +16,8 @@ export type SessionRecord = {
   workspaceSlotId?: string | null;
   /** Approved pool-local setup profile selected for this run. */
   setupProfileId?: string;
+  /** Trusted setup content frozen from the selected pool profile at admission; never public input. */
+  workspaceSetupScript?: string;
   /** Resolved cleanup policy, frozen when the session is admitted. */
   destroyWorkspaceAfter?: boolean;
   prompt: string;

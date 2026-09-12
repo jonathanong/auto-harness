@@ -27,8 +27,9 @@ it("hydrates workspace pools for durable schedule transitions and retains worksp
     cron: "* * * * *",
     timeout: 30,
   });
+  const persistedPool = plane.state.workspacePools.get("pool")!;
   setInMemoryScheduleStorage(plane.state, {
-    getWorkspacePool: async (id: string) => plane.state.workspacePools.get(id) ?? null,
+    getWorkspacePool: async (id: string) => (id === "pool" ? persistedPool : null),
     listWorkspacePools: async () => [...plane.state.workspacePools.values()],
   });
 
@@ -48,6 +49,7 @@ it("hydrates workspace pools for durable schedule transitions and retains worksp
       destroyWorkspaceAfter: false,
     },
   });
+  plane.state.workspacePools.clear();
   await expect(plane.triggerScheduleDurable(schedule.id)).resolves.toMatchObject({
     ok: true,
     session: {
@@ -57,6 +59,9 @@ it("hydrates workspace pools for durable schedule transitions and retains worksp
       setupProfileId: "setup",
       destroyWorkspaceAfter: false,
     },
+  });
+  expect(plane.state.sessions.get("session")).toMatchObject({
+    workspaceSetupScript: "pnpm install",
   });
   await expect(
     plane.updateScheduleDurable(schedule.id, {

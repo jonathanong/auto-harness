@@ -70,4 +70,21 @@ describe("workspace-pool routes", () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it.each([
+    null,
+    [],
+    { name: 1 },
+    { setupProfiles: {} },
+    { setupProfiles: [null] },
+    { setupProfiles: [{ id: "valid", name: 1, script: "echo ok" }] },
+    { defaultSetupProfileId: 1 },
+    { destroyWorkspaceAfter: "yes" },
+  ])("rejects malformed pool input with a structured validation response", async (body) => {
+    const plane = new ControlPlane({ workspacePoolIdFactory: () => "pool-1" });
+    expect(await invoke(plane, "POST", "/api/v1/workspace-pools", body)).toMatchObject({
+      status: 400,
+      json: { error: { code: "VALIDATION_ERROR" } },
+    });
+  });
 });

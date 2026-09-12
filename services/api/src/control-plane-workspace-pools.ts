@@ -9,6 +9,7 @@ import { refreshDeleteReferences } from "./control-plane-delete-guards.ts";
 
 const MAX_SETUP_PROFILES = 32;
 const MAX_SETUP_SCRIPT_LENGTH = 65_536;
+const MAX_SETUP_PROFILES_BYTES = 320 * 1_024;
 
 export type WorkspacePoolInput = {
   id?: string;
@@ -36,6 +37,9 @@ function validateProfiles(
   if (profiles.length > MAX_SETUP_PROFILES) {
     return `a workspace pool supports at most ${MAX_SETUP_PROFILES} setup profiles`;
   }
+  if (Buffer.byteLength(JSON.stringify(profiles), "utf8") > MAX_SETUP_PROFILES_BYTES) {
+    return "workspace pool setup profiles are too large";
+  }
   const ids = new Set<string>();
   for (const profile of profiles) {
     if (!isValidSlugName(profile.id)) return `setup profile id must be ${SLUG_NAME_HINT}`;
@@ -43,7 +47,7 @@ function validateProfiles(
     if (ids.has(profile.id)) return "setup profile ids must be unique";
     ids.add(profile.id);
     if (!profile.script.trim()) return `setup profile script is required: ${profile.id}`;
-    if (profile.script.length > MAX_SETUP_SCRIPT_LENGTH) {
+    if (Buffer.byteLength(profile.script, "utf8") > MAX_SETUP_SCRIPT_LENGTH) {
       return `setup profile script is too long: ${profile.id}`;
     }
   }
@@ -176,9 +180,15 @@ export async function updateWorkspacePoolDurable(
   if (!existing) return { ok: false as const, error: "workspace pool not found" };
   const prepared = prepareWorkspacePool(state, { ...existing, ...patch }, existing);
   if (!prepared.ok) return prepared;
-  await state.storage.putWorkspacePool(prepared.workspacePool);
-  state.workspacePools.set(id, prepared.workspacePool);
-  return { ok: true as const, workspacePool: { ...prepared.workspacePool } };
+  return withDeletionMarkers(state, [`workspace-pool:${id}`], async () => {
+    const updated =
+      typeof state.storage!.updateWorkspacePool === "function"
+        ? await state.storage!.updateWorkspacePool(prepared.workspacePool)
+        : (await state.storage!.putWorkspacePool(prepared.workspacePool), true);
+    if (!updated) return { ok: false as const, error: "workspace pool not found" };
+    state.workspacePools.set(id, prepared.workspacePool);
+    return { ok: true as const, workspacePool: { ...prepared.workspacePool } };
+  });
 }
 
 function poolDependency(

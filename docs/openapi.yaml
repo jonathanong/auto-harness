@@ -650,7 +650,7 @@ components:
           type: string
           minLength: 1
           maxLength: 65536
-          description: Trusted administrator script; never accepted on a session or schedule.
+          description: Trusted administrator script, limited to 65,536 UTF-8 bytes; never accepted on a session or schedule.
       additionalProperties: false
     WorkspaceSetupProfile:
       type: object
@@ -666,6 +666,8 @@ components:
         name: { type: string, minLength: 1 }
         setupProfiles:
           type: array
+          maxItems: 32
+          description: Serialized profile data is limited to 327,680 UTF-8 bytes in aggregate.
           items: { $ref: "#/components/schemas/WorkspaceSetupProfileInput" }
         defaultSetupProfileId: { type: [string, "null"] }
         destroyWorkspaceAfter:

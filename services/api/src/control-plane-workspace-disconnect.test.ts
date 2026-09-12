@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
@@ -148,4 +148,38 @@ it("fences stale slots and preserves or releases each durable session state", as
     workspaceSlotId: null,
     hostId: null,
   });
+});
+
+it("does not take a replacement connection's workspace slot offline", async () => {
+  const state = createControlPlaneState();
+  const slot: WorkspaceSlotRecord = {
+    id: "slot",
+    name: "slot",
+    path: "/workspace",
+    hostId: "host",
+    workspacePoolId: "pool",
+    status: "idle",
+    online: true,
+    connectionId: "old",
+  };
+  const replacement = { ...slot, connectionId: "new" };
+  const putWorkspaceSlotFenced = vi.fn(async () => false);
+  state.storage = {
+    listWorktreesByHost: async () => [],
+    listWorkspaceSlotsByHost: async () => [slot],
+    getSession: async () => null,
+    getWorkspaceSlot: async () => replacement,
+    putWorkspaceSlot: async () => undefined,
+    putWorkspaceSlotFenced,
+  } as never;
+
+  await expect(
+    offlineHostAndRequeueDurableImpl(state, "host", "old", "offline", () => []),
+  ).resolves.toEqual([]);
+  expect(putWorkspaceSlotFenced).toHaveBeenCalledWith(
+    expect.objectContaining({ connectionId: "new", online: false }),
+    "old",
+    "old",
+  );
+  expect(state.workspaceSlots.has(slot.id)).toBe(false);
 });

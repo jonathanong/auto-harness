@@ -87,11 +87,19 @@ export function createSession(
   const id = state.idFactory();
   const createdAt = state.now();
   const queueShard = Math.abs(hashString(id)) % state.shardCount;
+  const workspacePool = v.workspacePoolId ? state.workspacePools.get(v.workspacePoolId) : undefined;
+  const setupProfileId = v.workspacePoolId
+    ? (v.setupProfileId ?? workspacePool?.defaultSetupProfileId)
+    : undefined;
+  const workspaceSetupScript = setupProfileId
+    ? workspacePool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
+    : undefined;
   const session: SessionRecord = {
     id,
     repositoryId: v.repositoryId ?? "",
     ...(v.workspacePoolId ? { workspacePoolId: v.workspacePoolId } : {}),
-    ...(v.setupProfileId ? { setupProfileId: v.setupProfileId } : {}),
+    ...(setupProfileId ? { setupProfileId } : {}),
+    ...(workspaceSetupScript ? { workspaceSetupScript } : {}),
     ...(v.workspacePoolId
       ? {
           destroyWorkspaceAfter:

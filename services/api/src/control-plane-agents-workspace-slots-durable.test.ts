@@ -29,6 +29,7 @@ it("rolls back durable registration when workspace-slot publication fails", asyn
   ];
   plane.state.storage = {
     tryRegisterHost: async () => true,
+    putHostInventoryFenced: async () => ({ ok: true }),
     getHostInventory: async () => null,
     listWorktreesByHost: async () => [],
     listWorkspaceSlotsByHost: async () => slots,
@@ -37,6 +38,7 @@ it("rolls back durable registration when workspace-slot publication fails", asyn
       const index = slots.findIndex((candidate) => candidate.id === slot.id);
       slots[index] = slot;
     },
+    deleteWorkspaceSlot: async () => undefined,
     releaseHostConnection: async (_hostId: string, connectionId: string) => (
       released.push(connectionId),
       true

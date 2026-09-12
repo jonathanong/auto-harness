@@ -1,6 +1,11 @@
 import { mkdir, rm } from "node:fs/promises";
 
-import { assertPathWithinAllowedRoots, isWithinRoot } from "./allowed-roots.ts";
+import {
+  assertExistingDirectoryWithinAllowedRoots,
+  assertDaemonPathsAllowed,
+  assertPathWithinAllowedRoots,
+  isWithinRoot,
+} from "./allowed-roots.ts";
 import type { DaemonConfig, WorkspacePoolConfig, WorkspaceSlotConfig } from "./config.ts";
 
 type WorkspaceFs = {
@@ -97,12 +102,14 @@ export class WorkspaceManager {
     ) {
       throw new Error(`workspace path must be a strict descendant of an allowed root: ${path}`);
     }
-    return checked;
+    return await assertExistingDirectoryWithinAllowedRoots(checked, roots);
   }
 
   async ensureAll(candidate?: DaemonConfig): Promise<void> {
-    const pools = candidate?.workspacePools ?? this.config.workspacePools ?? [];
-    const roots = candidate?.allowedRoots ?? this.roots();
+    const config = candidate ?? this.config;
+    const pools = config.workspacePools ?? [];
+    const roots = candidate === undefined ? this.roots() : (candidate.allowedRoots ?? []);
+    await assertDaemonPathsAllowed({ ...config, allowedRoots: roots });
     for (const pool of pools)
       for (const slot of pool.slots) await this.checkedPath(slot.path, roots);
   }
@@ -131,7 +138,17 @@ export class WorkspaceManager {
               throw new Error("host inventory changed after this workspace was claimed");
             }
           }
-          const current = await this.checkedPath(slot.path);
+          let current: string;
+          try {
+            current = await this.checkedPath(slot.path);
+          } catch (error) {
+            if (generation !== this.generation) {
+              throw new Error("host inventory changed after this workspace was claimed", {
+                cause: error,
+              });
+            }
+            throw error;
+          }
           if (current !== cwd)
             throw new Error("host inventory changed after this workspace was claimed");
         },

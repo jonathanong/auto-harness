@@ -18,6 +18,7 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
+import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import {
   repositoryAdmissionFailure,
   repositoryAdmissionOpen,
@@ -111,6 +112,12 @@ export async function triggerScheduleDurable(
   }
   if (!schedule.principalId) {
     return { ok: false, error: "schedule must be claimed by an authenticated principal" };
+  }
+  if (
+    schedule.workspacePoolId &&
+    !(await getWorkspacePoolDurable(state, schedule.workspacePoolId))
+  ) {
+    return { ok: false, error: "workspace pool not found" };
   }
   const repository = schedule.repositoryId
     ? await getRepositoryDurable(state, schedule.repositoryId)
@@ -339,6 +346,12 @@ export async function tryClaimScheduleFireDurable(
     }
     return null;
   }
+  if (
+    schedule.workspacePoolId &&
+    !(await getWorkspacePoolDurable(state, schedule.workspacePoolId))
+  ) {
+    return null;
+  }
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return null;
@@ -511,11 +524,21 @@ function isValidPersistedCursor(value: string): boolean {
 function createScheduledSession(state: ControlPlaneState, schedule: ScheduleRecord): SessionRecord {
   const id = state.idFactory();
   const createdAt = state.now();
+  const workspacePool = schedule.workspacePoolId
+    ? state.workspacePools.get(schedule.workspacePoolId)
+    : undefined;
+  const setupProfileId = schedule.workspacePoolId
+    ? (schedule.setupProfileId ?? workspacePool?.defaultSetupProfileId)
+    : undefined;
+  const workspaceSetupScript = setupProfileId
+    ? workspacePool?.setupProfiles.find((profile) => profile.id === setupProfileId)?.script
+    : undefined;
   return {
     id,
     repositoryId: schedule.repositoryId,
     ...(schedule.workspacePoolId ? { workspacePoolId: schedule.workspacePoolId } : {}),
-    ...(schedule.setupProfileId ? { setupProfileId: schedule.setupProfileId } : {}),
+    ...(setupProfileId ? { setupProfileId } : {}),
+    ...(workspaceSetupScript ? { workspaceSetupScript } : {}),
     ...(schedule.workspacePoolId
       ? { destroyWorkspaceAfter: schedule.destroyWorkspaceAfter ?? false }
       : {}),

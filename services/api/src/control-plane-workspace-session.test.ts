@@ -143,4 +143,17 @@ describe("workspace sessions", () => {
       });
     }
   });
+
+  it("freezes trusted setup content at admission when the pool changes while queued", async () => {
+    const { plane, messages } = workspacePlane();
+    const session = createWorkspaceSession(plane);
+    plane.state.workspacePools.get("pool-1")!.setupProfiles[0]!.script = "pnpm install --changed";
+
+    await expect(assignWorkspaceQueuedDurable(plane.state)).resolves.toHaveLength(1);
+    expect(messages.at(-1)).toMatchObject({
+      setupProfileId: "node",
+      setupScript: "pnpm install",
+    });
+    expect(plane.getSession(session.id)).not.toHaveProperty("workspaceSetupScript");
+  });
 });

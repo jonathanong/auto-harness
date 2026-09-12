@@ -46,6 +46,7 @@ import {
 import {
   finishSessionOptsFromPlan,
   requeueUsageLimitedSessionOptsFromPlan,
+  requeueUsageLimitedWorkspaceSessionOptsFromPlan,
   suppressProviderlessUsageLimitOptsFromPlan,
 } from "./db/plane-storage-sessions.ts";
 import { hydrateAssignmentConnectionDurable } from "./control-plane-assignment-readiness.ts";
@@ -443,6 +444,7 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
+        ...(msg.workspacePools ? { workspacePools: msg.workspacePools } : {}),
         ...(msg.capabilities
           ? {
               capabilities: Array.isArray(msg.capabilities)
@@ -577,6 +579,7 @@ export async function handleHostMessageDurable(
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
+      ...(msg.workspacePools ? { workspacePools: msg.workspacePools } : {}),
       ...(msg.capabilities
         ? {
             capabilities: Array.isArray(msg.capabilities)
@@ -1212,17 +1215,29 @@ async function applySessionStatusDurable(
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
   }
-  if (cooldown && requeue && session.worktreeId) {
+  if (cooldown && requeue && (session.worktreeId || session.workspaceSlotId)) {
     const now = state.now();
-    const committed = await storage.requeueUsageLimitedSession(
-      requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
-    );
+    const committed = session.workspaceSlotId
+      ? await storage.requeueUsageLimitedWorkspaceSession(
+          requeueUsageLimitedWorkspaceSessionOptsFromPlan(session, plan, {
+            now,
+            attemptId: msg.attemptId,
+          }),
+        )
+      : await storage.requeueUsageLimitedSession(
+          requeueUsageLimitedSessionOptsFromPlan(session, plan, { now, attemptId: msg.attemptId }),
+        );
     if (!committed) return { ok: true };
     await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
     emitCooldown();
     releaseProviderAccountLease(state, session);
-    const wt = state.worktrees.get(session.worktreeId);
+    const wt = session.worktreeId ? state.worktrees.get(session.worktreeId) : undefined;
     if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
+    const slot = session.workspaceSlotId
+      ? state.workspaceSlots.get(session.workspaceSlotId)
+      : undefined;
+    if (slot)
+      state.workspaceSlots.set(slot.id, { ...slot, status: "idle", currentSessionId: null });
     if (loadedAccount) {
       state.providerAccounts.set(cooldown.providerAccountId, {
         ...loadedAccount,

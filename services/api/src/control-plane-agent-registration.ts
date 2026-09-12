@@ -3,6 +3,7 @@ import {
   validateHostRepositoryRegistrations,
   type HostRuntimeReport,
   type HostRepositoryRegistration,
+  type WorkspacePoolAttachment,
 } from "@auto-harness/shared";
 
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
@@ -185,6 +186,7 @@ export function buildRegisteredInventory(
   previous?: HostInventoryRecord,
   daemonIdentity?: RegisteredDaemonIdentity,
   runtime?: HostRuntimeReport,
+  workspacePools?: readonly WorkspacePoolAttachment[],
 ): HostInventoryRecord {
   const priorById = new Map(
     (previous?.repositories ?? []).map((repository) => [repository.id, repository]),
@@ -209,7 +211,14 @@ export function buildRegisteredInventory(
             slots: pool.slots.map((slot) => ({ ...slot })),
           })),
         }
-      : {}),
+      : workspacePools !== undefined
+        ? {
+            workspacePools: workspacePools.map((pool) => ({
+              workspacePoolId: pool.workspacePoolId,
+              slots: pool.slots.map((slot) => ({ ...slot })),
+            })),
+          }
+        : {}),
     // Advance the optimistic-concurrency counter rather than dropping it: a registration
     // is another whole-document replace, and leaving the attribute off would fail the
     // next conditional edit from the UI.

@@ -60,6 +60,32 @@ describe("createPlaneWsBridge", () => {
       commandProfiles: ["echo-prompt"],
     };
     expect(parseHostMessage(valid)).toEqual(valid);
+    expect(
+      parseHostMessage({
+        ...valid,
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "slot", path: "/srv/workspace" }],
+          },
+        ],
+      }),
+    ).toMatchObject({ workspacePools: [{ workspacePoolId: "pool-1" }] });
+    expect(
+      parseHostMessage({
+        ...valid,
+        workspacePools: [
+          {
+            workspacePoolId: "pool-1",
+            slots: [{ id: "slot-1", name: "slot", path: "/srv/workspace" }],
+          },
+          {
+            workspacePoolId: "pool-2",
+            slots: [{ id: "slot-1", name: "duplicate", path: "/srv/other" }],
+          },
+        ],
+      }),
+    ).toBeNull();
     expect(parseHostMessage({ ...valid, draining: true })).toEqual({ ...valid, draining: true });
     expect(parseHostMessage({ ...valid, draining: false })).toBe(null);
     expect(parseHostMessage({ ...valid, runtime: { gitReady: "nope" } })).toBe(null);

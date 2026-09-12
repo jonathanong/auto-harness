@@ -11,6 +11,7 @@ import type { HostRuntimeReport } from "./host-runtime.ts";
 import type { HostRunningAttempt, ProviderAccountReadiness } from "./host-registration.ts";
 import type { SessionUsage } from "./usage.ts";
 import type { SessionResult } from "./session-result.ts";
+import type { WorkspacePoolAttachment } from "./workspace.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
@@ -188,6 +189,8 @@ export type HostToServerMessage =
       }>;
       /** Explicit repository paths keep zero-worktree repositories dispatchable. */
       repositories?: import("./host-registration.ts").HostRepositoryRegistration[];
+      /** Host-local workspace slots in the daemon's initial inventory snapshot. */
+      workspacePools?: WorkspacePoolAttachment[];
       /**
        * Feature flags (legacy array) or `{ features, maxConcurrentAssignments }`.
        * parseHostMessage flattens this to a feature array plus a sibling cap.

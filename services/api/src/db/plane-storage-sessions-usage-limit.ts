@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- paired worktree/workspace transactions share release semantics. */
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
@@ -20,6 +21,22 @@ function idleClaimedWorktreeUpdate(
     Update: {
       TableName: ctx.tables.worktrees,
       Key: { id: opts.worktreeId },
+      UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+      ConditionExpression: "currentSessionId = :sid",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+    },
+  };
+}
+
+function idleClaimedWorkspaceSlotUpdate(
+  ctx: PlaneStorageCtx,
+  opts: { workspaceSlotId: string; sessionId: string },
+) {
+  return {
+    Update: {
+      TableName: ctx.tables.workspaceSlots,
+      Key: { id: opts.workspaceSlotId },
       UpdateExpression: "SET #s = :idle, currentSessionId = :null",
       ConditionExpression: "currentSessionId = :sid",
       ExpressionAttributeNames: { "#s": "status" },
@@ -118,6 +135,68 @@ export async function requeueUsageLimitedSession(
       queueOrder,
       errorMessage: opts.errorMessage ?? "provider usage limit; requeued",
     }),
+    ...providerAccountLeaseDeleteItems(
+      ctx.tables.concurrencyLocks,
+      opts.sessionId,
+      opts.providerAccountLease,
+    ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
+  ]);
+}
+
+/** Atomically pause the account, free its owned workspace slot, and requeue. */
+export async function requeueUsageLimitedWorkspaceSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+    providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+  },
+): Promise<boolean> {
+  const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
+  return commitUsageLimitRequeue(ctx, [
+    {
+      Update: {
+        TableName: ctx.tables.providerAccounts,
+        Key: { id: opts.providerAccountId },
+        UpdateExpression:
+          "SET usageLimitedUntil = :until, lastUsageLimitedAt = :now, updatedAt = :now",
+        ConditionExpression: "attribute_exists(id)",
+        ExpressionAttributeValues: { ":until": opts.usageLimitedUntil, ":now": opts.now },
+      },
+    },
+    idleClaimedWorkspaceSlotUpdate(ctx, opts),
+    {
+      Update: {
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
+          ", worktreeId = :null, workspaceSlotId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
+          " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, assignmentSentAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, workspaceSlotLease",
+        ConditionExpression:
+          "#s = :running AND workspaceSlotId = :workspaceSlotId AND attemptId = :attemptId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":queued": "queued",
+          ":running": "running",
+          ":statusShard": statusShardAttr("queued", opts.queueShard),
+          ":queueOrder": queueOrder,
+          ":null": null,
+          ":code": "usage_limit",
+          ":message": opts.errorMessage ?? "provider usage limit; requeued",
+          ":workspaceSlotId": opts.workspaceSlotId,
+          ":attemptId": opts.attemptId,
+        },
+      },
+    },
     ...providerAccountLeaseDeleteItems(
       ctx.tables.concurrencyLocks,
       opts.sessionId,

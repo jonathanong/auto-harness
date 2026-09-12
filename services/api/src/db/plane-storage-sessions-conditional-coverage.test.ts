@@ -7,6 +7,7 @@ import {
   failExpiredResumeSession,
   finishSession,
   requeueUsageLimitedSession,
+  requeueUsageLimitedWorkspaceSession,
   suppressProviderlessUsageLimit,
   tryAssignSession,
 } from "./plane-storage-sessions.ts";
@@ -148,6 +149,59 @@ describe("session storage conditional outcomes", () => {
     expect(sessionUpdate).toContain("REMOVE");
     expect(sessionUpdate).toContain("assignmentConnectionId");
     expect(sessionUpdate).toContain("assignmentSentAt");
+  });
+
+  it("atomically cools down an account, releases its workspace slot, and requeues", async () => {
+    const usageLimit = {
+      sessionId: "session",
+      workspaceSlotId: "slot",
+      attemptId: "attempt",
+      providerAccountId: "account",
+      queueShard: 0,
+      now: "now",
+      usageLimitedUntil: "later",
+    };
+    const lost = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Item: { id: "session", status: "running", createdAt: "now", priority: 0 },
+      })
+      .mockRejectedValueOnce(conditional);
+    await expect(requeueUsageLimitedWorkspaceSession(ctx(lost), usageLimit)).resolves.toBe(false);
+
+    const committed = vi.fn().mockResolvedValue({});
+    await expect(requeueUsageLimitedWorkspaceSession(ctx(committed), usageLimit)).resolves.toBe(
+      true,
+    );
+    const writes = committed.mock.calls[1]?.[0].input.TransactItems as Array<{
+      Update?: {
+        TableName: string;
+        Key: { id: string };
+        ConditionExpression?: string;
+        UpdateExpression?: string;
+        ExpressionAttributeValues?: Record<string, unknown>;
+      };
+    }>;
+    expect(writes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "WorkspaceSlots",
+            Key: { id: "slot" },
+            ConditionExpression: "currentSessionId = :sid",
+          }),
+        }),
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            TableName: "Sessions",
+            Key: { id: "session" },
+            ConditionExpression: expect.stringContaining("workspaceSlotId = :workspaceSlotId"),
+            UpdateExpression: expect.stringContaining("workspaceSlotLease"),
+            ExpressionAttributeValues: expect.objectContaining({ ":running": "running" }),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("retries only a sole provider-lease Put collision", async () => {

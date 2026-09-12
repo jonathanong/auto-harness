@@ -97,6 +97,22 @@ describe("workspace pool catalog", () => {
         setupProfiles: [{ id: "profile", name: "Profile", script: "x".repeat(65_537) }],
       }),
     ).toEqual({ ok: false, error: "setup profile script is too long: profile" });
+    expect(
+      plane.createWorkspacePool({
+        name: "long-unicode-script",
+        setupProfiles: [{ id: "profile", name: "Profile", script: "🫐".repeat(16_385) }],
+      }),
+    ).toEqual({ ok: false, error: "setup profile script is too long: profile" });
+    expect(
+      plane.createWorkspacePool({
+        name: "oversized-profiles",
+        setupProfiles: Array.from({ length: 6 }, (_, index) => ({
+          id: `profile-${index}`,
+          name: "Profile",
+          script: "x".repeat(60_000),
+        })),
+      }),
+    ).toEqual({ ok: false, error: "workspace pool setup profiles are too large" });
   });
 
   it("updates, sorts, rejects collisions, and enforces local deletion dependencies", async () => {

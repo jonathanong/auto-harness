@@ -77,7 +77,6 @@ it("covers durable missing rows, conditional create loss, and storage-backed upd
   });
 
   storage.listWorkspacePools.mockResolvedValue([record]);
-  storage.getWorkspacePool.mockResolvedValue(record);
   await expect(plane.updateWorkspacePoolDurable("pool-1", { name: "updated" })).resolves.toEqual({
     ok: true,
     workspacePool: expect.objectContaining({ name: "updated" }),
@@ -85,4 +84,29 @@ it("covers durable missing rows, conditional create loss, and storage-backed upd
   expect(storage.putWorkspacePool).toHaveBeenCalledWith(
     expect.objectContaining({ id: "pool-1", name: "updated" }),
   );
+});
+
+it("does not update a pool while its deletion marker is held", async () => {
+  const record = {
+    id: "pool-1",
+    name: "durable",
+    setupProfiles: [],
+    destroyWorkspaceAfter: false,
+    createdAt: "now",
+    updatedAt: "now",
+  };
+  const updateWorkspacePool = vi.fn(async () => true);
+  const storage = {
+    listWorkspacePools: vi.fn(async () => [record]),
+    acquireDeletionMarker: vi.fn(async () => false),
+    releaseDeletionMarker: vi.fn(async () => undefined),
+    updateWorkspacePool,
+  };
+  const plane = new ControlPlane({ storage: storage as never });
+  await expect(plane.updateWorkspacePoolDurable("pool-1", { name: "new-name" })).resolves.toEqual({
+    ok: false,
+    conflict: true,
+    error: "catalog deletion is busy; retry the request",
+  });
+  expect(updateWorkspacePool).not.toHaveBeenCalled();
 });

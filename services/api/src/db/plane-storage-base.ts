@@ -255,6 +255,10 @@ export class DynamoPlaneStorageBase {
     return workspaces.putWorkspacePool(this.ctx, record);
   }
 
+  updateWorkspacePool(record: WorkspacePoolRecord): Promise<boolean> {
+    return workspaces.updateWorkspacePool(this.ctx, record);
+  }
+
   createWorkspacePool(record: WorkspacePoolRecord): Promise<boolean> {
     return workspaces.createWorkspacePool(this.ctx, record);
   }
@@ -276,6 +280,14 @@ export class DynamoPlaneStorageBase {
 
   putWorkspaceSlot(slot: WorkspaceSlotRecord): Promise<void> {
     return workspaces.putWorkspaceSlot(this.ctx, slot);
+  }
+
+  putWorkspaceSlotFenced(
+    slot: WorkspaceSlotRecord,
+    connectionId: string,
+    expectedConnectionId?: string,
+  ): Promise<boolean> {
+    return workspaces.putWorkspaceSlotFenced(this.ctx, slot, connectionId, expectedConnectionId);
   }
 
   deleteWorkspaceSlot(id: string): Promise<void> {
@@ -694,6 +706,21 @@ export class DynamoPlaneStorageBase {
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.requeueUsageLimitedSession(this.ctx, opts);
+  }
+
+  requeueUsageLimitedWorkspaceSession(opts: {
+    sessionId: string;
+    workspaceSlotId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+    providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+  }): Promise<boolean> {
+    return sessions.requeueUsageLimitedWorkspaceSession(this.ctx, opts);
   }
 
   suppressProviderlessUsageLimit(opts: {

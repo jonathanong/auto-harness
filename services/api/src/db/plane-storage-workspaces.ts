@@ -18,6 +18,7 @@ import {
   type PlaneStorageCtx,
   type WorkspacePoolRecord,
 } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
 import { hostAssignmentAcquireItem } from "./plane-storage-host-assignment.ts";
 import type { SessionRecord, WorkspaceSlotRecord } from "./types.ts";
@@ -28,6 +29,26 @@ export async function putWorkspacePool(
   record: WorkspacePoolRecord,
 ): Promise<void> {
   await ctx.doc.send(new PutCommand({ TableName: ctx.tables.workspacePools, Item: record }));
+}
+
+/** Replace an existing pool without allowing a racing delete to be resurrected. */
+export async function updateWorkspacePool(
+  ctx: PlaneStorageCtx,
+  record: WorkspacePoolRecord,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.workspacePools,
+        Item: record,
+        ConditionExpression: "attribute_exists(id)",
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
 }
 
 export async function createWorkspacePool(
@@ -60,10 +81,20 @@ export async function getWorkspacePool(
 }
 
 export async function listWorkspacePools(ctx: PlaneStorageCtx): Promise<WorkspacePoolRecord[]> {
-  const result = await ctx.doc.send(
-    new ScanCommand({ TableName: ctx.tables.workspacePools, ConsistentRead: true }),
-  );
-  return (result.Items ?? []) as WorkspacePoolRecord[];
+  const records: WorkspacePoolRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.workspacePools,
+        ConsistentRead: true,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((result.Items ?? []) as WorkspacePoolRecord[]));
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey);
+  return records;
 }
 
 export async function deleteWorkspacePool(
@@ -99,6 +130,39 @@ export async function putWorkspaceSlot(
   await ctx.doc.send(new PutCommand({ TableName: ctx.tables.workspaceSlots, Item: slot }));
 }
 
+/** Publish a slot only while its host connection still owns the row. */
+export async function putWorkspaceSlotFenced(
+  ctx: PlaneStorageCtx,
+  slot: WorkspaceSlotRecord,
+  _connectionId: string,
+  expectedConnectionId?: string,
+): Promise<boolean> {
+  try {
+    const ownership = expectedConnectionId
+      ? "connectionId = :expectedConnectionId"
+      : "attribute_not_exists(connectionId)";
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.workspaceSlots,
+        Item: slot,
+        ConditionExpression:
+          `attribute_not_exists(id) OR (${ownership} AND #status = :expectedStatus` +
+          " AND (attribute_not_exists(currentSessionId) OR currentSessionId = :null))",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ...(expectedConnectionId ? { ":expectedConnectionId": expectedConnectionId } : {}),
+          ":expectedStatus": slot.status,
+          ":null": null,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
+  }
+}
+
 export async function deleteWorkspaceSlot(ctx: PlaneStorageCtx, id: string): Promise<void> {
   await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.workspaceSlots, Key: { id } }));
 }
@@ -114,10 +178,20 @@ export async function getWorkspaceSlot(
 }
 
 export async function listWorkspaceSlots(ctx: PlaneStorageCtx): Promise<WorkspaceSlotRecord[]> {
-  const result = await ctx.doc.send(
-    new ScanCommand({ TableName: ctx.tables.workspaceSlots, ConsistentRead: true }),
-  );
-  return (result.Items ?? []) as WorkspaceSlotRecord[];
+  const records: WorkspaceSlotRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.workspaceSlots,
+        ConsistentRead: true,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((result.Items ?? []) as WorkspaceSlotRecord[]));
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey);
+  return records;
 }
 
 async function querySlots(
@@ -126,16 +200,23 @@ async function querySlots(
   key: "workspacePoolId" | "hostId",
   value: string,
 ): Promise<WorkspaceSlotRecord[]> {
-  const result = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.workspaceSlots,
-      IndexName: indexName,
-      KeyConditionExpression: "#key = :value",
-      ExpressionAttributeNames: { "#key": key },
-      ExpressionAttributeValues: { ":value": value },
-    }),
-  );
-  return (result.Items ?? []) as WorkspaceSlotRecord[];
+  const records: WorkspaceSlotRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.workspaceSlots,
+        IndexName: indexName,
+        KeyConditionExpression: "#key = :value",
+        ExpressionAttributeNames: { "#key": key },
+        ExpressionAttributeValues: { ":value": value },
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((result.Items ?? []) as WorkspaceSlotRecord[]));
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey);
+  return records;
 }
 
 export const listWorkspaceSlotsByPool = (ctx: PlaneStorageCtx, workspacePoolId: string) =>

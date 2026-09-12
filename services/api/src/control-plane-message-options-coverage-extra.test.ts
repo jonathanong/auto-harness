@@ -633,6 +633,80 @@ describe("host message optional-field coverage", () => {
     expect(current.sessions.get("s")?.status).toBe("queued");
   });
 
+  it("requeues a usage-limited workspace session only after its slot transaction commits", async () => {
+    const account = {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+      usageLimitCooldownSeconds: 60,
+      maxConcurrentSessions: 1,
+    };
+    const row = session({
+      worktreeId: null,
+      workspaceSlotId: "slot",
+      workspaceSlotLease: true,
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: "cmd",
+        providerAccountId: "account",
+        hostId: "host",
+        worktreeId: null,
+        workspaceSlotId: "slot",
+        attemptId: "attempt",
+      },
+    });
+    const current = state(row);
+    current.workspaceSlots.set("slot", {
+      id: "slot",
+      workspacePoolId: "pool",
+      hostId: "host",
+      status: "busy",
+      currentSessionId: "s",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    let committed = true;
+    setDurableReadStorage(current, {
+      getSession: async () => row,
+      getProviderAccount: async () => account,
+      requeueUsageLimitedWorkspaceSession: async () => committed,
+      listConnections: async () => [],
+      listHostInventories: async () => [],
+    });
+
+    await expect(handleHostMessageDurable(current, status())).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")).toMatchObject({
+      status: "queued",
+      workspaceSlotId: null,
+    });
+    expect(current.sessions.get("s")).not.toHaveProperty("workspaceSlotLease");
+    expect(current.workspaceSlots.get("slot")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+    expect(current.providerAccounts.get("account")?.usageLimitedUntil).toBeTruthy();
+
+    committed = false;
+    current.sessions.set("s", row);
+    current.workspaceSlots.set("slot", {
+      id: "slot",
+      workspacePoolId: "pool",
+      hostId: "host",
+      status: "busy",
+      currentSessionId: "s",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    current.providerAccounts.clear();
+    await expect(handleHostMessageDurable(current, status())).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("s")).toMatchObject({ status: "running", workspaceSlotId: "slot" });
+    expect(current.workspaceSlots.get("slot")).toMatchObject({
+      status: "busy",
+      currentSessionId: "s",
+    });
+    expect(current.providerAccounts.has("account")).toBe(false);
+  });
+
   it("releases a cancelled local main-checkout lease from a late terminal report", () => {
     const current = state(
       session({
