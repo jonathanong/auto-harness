@@ -66,6 +66,15 @@ describe("parseHostMessage exhaustive wire validation", () => {
       }),
     ).toMatchObject({ type: "session:ack" });
     expect(parseHostMessage(status)).toEqual(status);
+    const resultStatus = {
+      ...status,
+      result: { summary: "done", summarySource: "agent", filesChanged: ["README.md"] },
+    };
+    expect(parseHostMessage(resultStatus, { protocolVersion: 2 })).toBeNull();
+    expect(parseHostMessage(resultStatus, { protocolVersion: 3 })).toEqual(resultStatus);
+    expect(
+      parseHostMessage({ ...resultStatus, status: "running" }, { protocolVersion: 3 }),
+    ).toBeNull();
     expect(parseHostMessage({ ...status, exitCode: undefined })).toMatchObject({
       ...status,
       exitCode: undefined,

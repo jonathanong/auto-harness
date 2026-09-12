@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import {
   KEEPALIVE_ACK_PROTOCOL_VERSION,
+  SESSION_RESULT_PROTOCOL_VERSION,
   thrownMessage,
   type HostRuntimeReport,
   type HostToServerMessage,
@@ -185,6 +186,8 @@ export class DaemonLoop {
    * (and a fresh `host:registered`) re-arm the stall timer.
    */
   private requireKeepaliveAck = false;
+  /** A result is only sent after the control plane has explicitly negotiated v3. */
+  private supportsSessionResult = false;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private readonly processRunner: ProcessRunner;
@@ -278,6 +281,7 @@ export class DaemonLoop {
         // the next keepalive tick.
         this.retryPendingTerminalStatuses();
         this.requireKeepaliveAck = (protocolVersion ?? 0) >= KEEPALIVE_ACK_PROTOCOL_VERSION;
+        this.supportsSessionResult = (protocolVersion ?? 0) >= SESSION_RESULT_PROTOCOL_VERSION;
         // A fresh registration is itself proof this connection is live —
         // reset the same deadline a successful keepalive would.
         this.armKeepaliveStallTimer();
@@ -815,6 +819,9 @@ export class DaemonLoop {
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
       ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
       ...(result.usage !== undefined ? { usage: result.usage } : {}),
+      ...(this.supportsSessionResult && result.result !== undefined
+        ? { result: result.result }
+        : {}),
     };
     // Record the completed result before waiting for the output queue. A
     // disconnected retained log can keep flush() pending beyond reconnect

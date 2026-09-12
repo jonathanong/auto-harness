@@ -66,6 +66,7 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
           assignmentConnectionId: opts.connectionId,
           mainCheckoutLease: true,
           attemptId: opts.attemptId,
+          result: { summary: "stale", summarySource: "harness" },
         },
       }),
     );
@@ -92,13 +93,12 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
         )
       ).Item?.mainCheckoutLeases,
     ).toEqual({});
-    expect(
-      (
-        await ctx.doc.send(
-          new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
-        )
-      ).Item,
-    ).toMatchObject({
+    const requeued = (
+      await ctx.doc.send(
+        new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+      )
+    ).Item;
+    expect(requeued).toMatchObject({
       status: "queued",
       statusShard: "queued#3",
       errorCode: "usage_limit",
@@ -107,6 +107,7 @@ describe("DynamoDB Local main-checkout usage-limit release", () => {
       worktreeId: null,
       queueOrder: queueOrderKeyForWrite({ id: opts.sessionId }, opts.sessionId),
     });
+    expect(requeued).not.toHaveProperty("result");
     expect(await requeueMainCheckoutUsageLimitedSession(ctx, opts)).toBe(false);
   });
 

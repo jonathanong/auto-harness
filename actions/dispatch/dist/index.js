@@ -504,6 +504,7 @@ function client(options) {
 }
 
 // actions/dispatch/src/io.ts
+import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 function input(name, required = false) {
   const value = process.env[`INPUT_${name.replaceAll(" ", "_").toUpperCase()}`]?.trim() ?? "";
@@ -546,7 +547,10 @@ function requestTimeoutMs() {
 function setOutput(name, value) {
   const output = process.env.GITHUB_OUTPUT;
   if (!output) throw new Error("GITHUB_OUTPUT is unavailable");
-  appendFileSync(output, `${name}=${value}
+  const delimiter = `auto-harness-${randomUUID()}`;
+  appendFileSync(output, `${name}<<${delimiter}
+${value}
+${delimiter}
 `, "utf8");
 }
 function escapeWorkflowCommand(value) {
@@ -705,6 +709,95 @@ async function drain(operation, options, repositoryId) {
 `);
 }
 
+// actions/dispatch/src/session-result.ts
+var sessionStatuses = /* @__PURE__ */ new Set([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out"
+]);
+var terminalSessionStatuses = /* @__PURE__ */ new Set(["completed", "failed", "cancelled", "timed_out"]);
+function record2(value, message) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
+  return value;
+}
+function nonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+function validateResult(value) {
+  const result = record2(value, "Auto Harness returned a malformed session result");
+  if (!nonEmptyString(result.summary)) {
+    throw new Error("Auto Harness returned a session result without a summary");
+  }
+  if (result.summarySource !== "agent" && result.summarySource !== "harness") {
+    throw new Error("Auto Harness returned a session result without a valid summarySource");
+  }
+  if (result.summaryTruncated !== void 0 && result.summaryTruncated !== true) {
+    throw new Error("Auto Harness returned a session result with invalid summaryTruncated");
+  }
+  if (result.branch !== void 0 && typeof result.branch !== "string") {
+    throw new Error("Auto Harness returned a session result with an invalid branch");
+  }
+  if (result.filesChanged !== void 0 && (!Array.isArray(result.filesChanged) || result.filesChanged.some((file) => typeof file !== "string"))) {
+    throw new Error("Auto Harness returned a session result with invalid filesChanged");
+  }
+  if (result.filesChangedTruncated !== void 0 && result.filesChangedTruncated !== true) {
+    throw new Error("Auto Harness returned a session result with invalid filesChangedTruncated");
+  }
+  if (result.pullRequestUrl !== void 0 && typeof result.pullRequestUrl !== "string") {
+    throw new Error("Auto Harness returned a session result with an invalid pullRequestUrl");
+  }
+  return {
+    summary: result.summary,
+    summarySource: result.summarySource,
+    ...result.summaryTruncated === void 0 ? {} : { summaryTruncated: result.summaryTruncated },
+    ...result.branch === void 0 ? {} : { branch: result.branch },
+    ...result.filesChanged === void 0 ? {} : { filesChanged: result.filesChanged },
+    ...result.filesChangedTruncated === void 0 ? {} : { filesChangedTruncated: result.filesChangedTruncated },
+    ...result.pullRequestUrl === void 0 ? {} : { pullRequestUrl: result.pullRequestUrl }
+  };
+}
+function validateSessionDetail(value) {
+  const result = record2(value, "Auto Harness returned a malformed session response");
+  if (!nonEmptyString(result.id) || /[\r\n]/.test(result.id)) {
+    throw new Error("Auto Harness returned a session without a valid id");
+  }
+  if (!nonEmptyString(result.url) || /[\r\n]/.test(result.url)) {
+    throw new Error("Auto Harness returned a session without a valid url");
+  }
+  const status = typeof result.status === "string" ? result.status : void 0;
+  if (!status || !sessionStatuses.has(status)) {
+    throw new Error("Auto Harness returned a session without a valid status");
+  }
+  return {
+    id: result.id,
+    url: result.url,
+    status,
+    ...result.result === void 0 ? {} : { result: validateResult(result.result) }
+  };
+}
+function isTerminalSessionStatus(status) {
+  return terminalSessionStatuses.has(status);
+}
+function setSessionResultOutputs(result) {
+  setOutput("session-result", result === void 0 ? "" : JSON.stringify(result));
+  setOutput("result-summary", result?.summary ?? "");
+  setOutput("result-summary-truncated", result?.summaryTruncated === true ? "true" : "");
+  setOutput("result-summary-source", result?.summarySource ?? "");
+  setOutput("result-branch", result?.branch ?? "");
+  setOutput(
+    "result-files-changed",
+    result?.filesChanged === void 0 ? "" : JSON.stringify(result.filesChanged)
+  );
+  setOutput(
+    "result-files-changed-truncated",
+    result?.filesChanged === void 0 ? "" : result.filesChangedTruncated === true ? "true" : "false"
+  );
+  setOutput("result-pull-request-url", result?.pullRequestUrl ?? "");
+}
+
 // actions/dispatch/src/index.ts
 var PRIORITY_MIN = -1e4;
 var PRIORITY_MAX = 1e4;
@@ -712,12 +805,20 @@ var QUEUE_TTL_MAX_SECONDS = 2592e3;
 var RESUME_TIMEOUT_MAX_SECONDS = 604800;
 function operationInput() {
   const operation = input("operation") || "dispatch";
-  if (operation !== "dispatch" && operation !== "resume" && operation !== "start-drain" && operation !== "get-drain" && operation !== "wait-for-drain" && operation !== "release-drain") {
+  if (operation !== "dispatch" && operation !== "resume" && operation !== "get-result" && operation !== "start-drain" && operation !== "get-drain" && operation !== "wait-for-drain" && operation !== "release-drain") {
     throw new Error(
-      `operation must be dispatch, resume, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`
+      `operation must be dispatch, resume, get-result, start-drain, get-drain, wait-for-drain, or release-drain; received ${operation}`
     );
   }
   return operation;
+}
+function resultUrl(baseUrl, sessionId) {
+  return new URL(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, `${baseUrl}/`).toString();
+}
+function setSessionReferenceOutputs(baseUrl, session) {
+  setOutput("session-id", session.id);
+  setOutput("session-url", session.url);
+  setOutput("result-url", resultUrl(baseUrl, session.id));
 }
 function sourceInput() {
   const source = input("source");
@@ -762,8 +863,7 @@ async function dispatch(options, repositoryId) {
     ...source ? { source } : {}
   };
   const session = validateSession(await client(options).createSession(request));
-  setOutput("session-id", session.id);
-  setOutput("session-url", session.url);
+  setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Dispatched Auto Harness session ${session.id}
 `);
@@ -794,11 +894,21 @@ async function resume(options) {
     ...fallbacksInput ? { fallbacks: parseHarnessFallbacks(fallbacksInput, "fallbacks") } : {}
   };
   const session = validateSession(await client(options).resumeSession(sessionId, request));
-  setOutput("session-id", session.id);
-  setOutput("session-url", session.url);
+  setSessionReferenceOutputs(options.baseUrl, session);
   setOutput("created", String(session.created));
   process.stdout.write(`Resumed Auto Harness session ${session.id}
 `);
+}
+async function getResult(options) {
+  const sessionId = input("session-id", true);
+  const session = validateSessionDetail(await client(options).getSession(sessionId));
+  if (session.id !== sessionId) {
+    throw new Error("Auto Harness returned a different session");
+  }
+  setSessionReferenceOutputs(options.baseUrl, session);
+  setOutput("session-status", session.status);
+  setOutput("session-terminal", String(isTerminalSessionStatus(session.status)));
+  setSessionResultOutputs(session.result);
 }
 async function main() {
   const baseUrl = parseApiOrigin(input("server-url", true), {
@@ -817,6 +927,7 @@ async function main() {
   try {
     if (operation === "dispatch") await dispatch(options, input("repository-id", true));
     else if (operation === "resume") await resume(options);
+    else if (operation === "get-result") await getResult(options);
     else await drain(operation, options, input("repository-id", true));
   } catch (error) {
     throw new Error(actionErrorMessage(error, baseUrl), { cause: error });

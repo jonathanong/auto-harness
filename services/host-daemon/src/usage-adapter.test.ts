@@ -127,6 +127,7 @@ describe("parseCliUsage", () => {
     expect(
       parseCliUsage({ argv: ["grok", "-p", "--output-format", "json"], output, observedAt }),
     ).toEqual({
+      agentSummary: "Here's a summary of the codebase...",
       usage: {
         kind: "cumulative",
         sequence: 0,
@@ -324,7 +325,7 @@ describe("parseCliUsage", () => {
         output: JSON.stringify({ response: "ok", usageMetadata: { inputTokens: -1 } }),
         observedAt,
       }),
-    ).toEqual({});
+    ).toEqual({ agentSummary: "ok" });
     expect(
       parseCliUsage({
         argv: ["gemini", "-p", "--output-format", "json"],
@@ -356,6 +357,13 @@ describe("parseCliUsage", () => {
     expect(
       parseCliUsage({
         argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ type: "error" }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
         output: JSON.stringify({ response: "ok", usage: { reasoningTokens: "8", totalTokens: 9 } }),
         observedAt,
       }),
@@ -373,14 +381,14 @@ describe("parseCliUsage", () => {
         output: JSON.stringify({ response: "ok" }),
         observedAt,
       }),
-    ).toEqual({});
+    ).toEqual({ agentSummary: "ok" });
     expect(
       parseCliUsage({
         argv: ["grok", "-p", "--output-format", "json"],
         output: JSON.stringify({ text: "ok" }),
         observedAt,
       }),
-    ).toEqual({});
+    ).toEqual({ agentSummary: "ok" });
   });
 
   it("detects grok/gemini CLI-authored usage-limit envelopes from first-party CLI source", () => {
@@ -599,16 +607,16 @@ describe("codex usage-limit detection", () => {
     ).toEqual({ usageLimit: true });
   });
 
-  it("never trusts model-authored item.* content repeating the trigger phrase", () => {
-    // Regression guard: an agent turn can be made to emit this exact sentence as ordinary
-    // assistant text. Only codex's own error envelope (`error`/`turn.failed`) is trusted.
+  it("retains the final codex agent message without treating it as a quota signal", () => {
+    // An agent can emit this exact sentence as ordinary assistant text. It is a result
+    // summary, never evidence of a quota failure.
     const modelEcho = JSON.stringify({
       type: "item.completed",
       item: { type: "agent_message", text: "You've hit your usage limit." },
     });
     expect(
       parseCliUsage({ argv: ["codex", "exec", "--json"], output: modelEcho, observedAt }),
-    ).toEqual({});
+    ).toEqual({ agentSummary: "You've hit your usage limit." });
   });
 
   it("does not flag a turn.failed error with no usage-limit signal", () => {

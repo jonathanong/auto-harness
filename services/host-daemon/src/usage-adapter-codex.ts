@@ -46,6 +46,12 @@ export function foldCodexRecord(
     const usage = record(value.usage);
     if (usage) next = { ...next, ...withUsage(usageFromRecord(usage, observedAt, "codex")) };
   }
+  if (value.type === "item.completed") {
+    const item = record(value.item);
+    if (item?.type === "agent_message" && typeof item.text === "string") {
+      next = { ...next, agentSummary: item.text };
+    }
+  }
   if (codexUsageLimit(value)) {
     next = { ...next, usageLimit: true };
   }

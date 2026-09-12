@@ -49,6 +49,7 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   errorCode?: string;
   errorMessage?: string;
   cliResumeRef?: string;
+  result?: import("@auto-harness/shared").SessionResult;
 } {
   const finish = transitionEffect(plan, "finish");
   const requeue = transitionEffect(plan, "requeue");
@@ -56,11 +57,13 @@ function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   const errorCode = firstDefined(finish?.errorCode, requeue?.errorCode);
   const errorMessage = firstDefined(finish?.errorMessage, requeue?.errorMessage);
   const cliResumeRef = firstDefined(finish?.cliResumeRef, requeue?.cliResumeRef);
+  const result = finish?.result;
   return {
     ...(exitCode !== undefined ? { exitCode } : {}),
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(errorMessage !== undefined ? { errorMessage } : {}),
     ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    ...(result !== undefined ? { result } : {}),
   };
 }
 

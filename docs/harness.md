@@ -16,7 +16,7 @@ once delivery ships, and GitHub/the UI today."
 
 For GitHub workflows,
 `jonathanong/auto-harness/actions/dispatch@<sha>` wraps the fire-and-forget session create and
-resume calls and returns `session-id`, `session-url`, and `created` outputs. Replace `<sha>` with a
+resume calls and returns `session-id`, `session-url`, `result-url`, and `created` outputs. Replace `<sha>` with a
 reviewed full commit SHA from `main`, and deliberately update it when adopting a newer revision; do
 not use the moving `main` ref. It accepts the control-plane URL and service-account key as secrets
 plus, for `operation: dispatch` (the default), repository,
@@ -28,6 +28,17 @@ inherited identity). Each request, including response-body consumption, has a co
 `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal session-drain
 modes start, poll, and release a durable drain for that same service account and repository; see
 [`actions/dispatch`](../actions/dispatch/README.md).
+
+To inspect an earlier dispatch without turning the original job into a poller, invoke the same
+action later with `operation: get-result` and `session-id`. It performs exactly one session-detail
+GET. `session-terminal` tells the caller whether the status is terminal; terminal failures still
+complete the action successfully so workflows can branch on `session-status`. The structured
+`session-result` JSON is also split into summary, summary-truncation, summary-source, branch,
+changed-files JSON, file-list truncation, and pull-request URL outputs. Active and
+result-unavailable sessions return empty result outputs. When changed files are available, the
+file-list truncation output is `true` for an incomplete list and `false` for a complete list.
+Callers choose their own later trigger or
+cadence; the action never polls.
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods
 cover session create/read/cancel/resume/list, principal session-drain start/read/release,

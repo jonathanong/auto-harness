@@ -367,6 +367,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
 async function registerGatewayHost(
   fixture: ReturnType<typeof runtimeFixture>,
   connectionId = "gateway-1",
+  protocolVersion?: number,
 ) {
   const runtime = await fixture.runtime;
   await runtime.websocket({
@@ -378,6 +379,7 @@ async function registerGatewayHost(
       hostId: "host-1",
       worktrees: [],
       commandProfiles: [],
+      ...(protocolVersion === undefined ? {} : { protocolVersion }),
     }),
     requestContext: { connectionId, routeKey: "$default" },
   });
@@ -1212,6 +1214,53 @@ describe("Lambda runtime adapters", () => {
       sessionId: "session-2",
       attemptId: "attempt-2",
     });
+  });
+
+  it("uses the authenticated durable protocol on a cold process cache", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture, "gateway-1", 3);
+    fixture.plane.state.connections.clear();
+    fixture.plane.state.hostConnection.clear();
+    fixture.mainCheckoutLeases.set("host-1#repository-1", "session-2");
+    fixture.sessions.set("session-2", {
+      id: "session-2",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: { commandId: "cmd" },
+      fallbacks: [],
+      targetDisplayNames: ["cmd"],
+      queueTtlSeconds: 3600,
+      queueExpiresAt: "2026-08-13T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      type: "scheduled",
+      source: "schedule",
+      principalId: "system",
+      hostId: "host-1",
+      worktreeId: null,
+      attemptId: "attempt-2",
+      mainCheckoutLease: true,
+      assignmentConnectionId: "gateway-1",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "session:status",
+          sessionId: "session-2",
+          worktreeId: null,
+          attemptId: "attempt-2",
+          status: "completed",
+          result: { summary: "done", summarySource: "harness" },
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
   });
 
   it("delivers session:status-acknowledged on the current connection even if this container's hostConnection cache missed it", async () => {

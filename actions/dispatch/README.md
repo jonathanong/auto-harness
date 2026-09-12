@@ -21,8 +21,10 @@ not use the moving `main` ref.
     priority: "10"
 ```
 
-The action returns as soon as the session is accepted. Use the `session-id`, `session-url`, and
-`created` outputs for annotations or later automation.
+The action returns as soon as the session is accepted. Use the `session-id`, `session-url`,
+`result-url`, and `created` outputs for annotations or later automation. `result-url` is the
+authenticated control-plane `GET /api/v1/sessions/:id` endpoint; it is provided on dispatch and
+resume so a later workflow step can retrieve the persisted outcome without guessing its URL.
 
 `target` and `fallbacks` accept `providerId`/`commandId` values or human-readable
 `providerName`/`commandName` values. The bundled client resolves each name through the control-plane
@@ -83,6 +85,38 @@ extending it:
     prompt: "Continue with the updated Command."
     target: '{"commandName":"claude-print-auto"}'
 ```
+
+## One-shot session result
+
+`get-result` performs exactly one bounded `GET /sessions/:id` request; it never polls and exits
+successfully for active, completed, failed, cancelled, and timed-out sessions. This lets a
+workflow choose its own wait/retry policy and branch on `session-terminal` or `session-status`.
+When a terminal session has a structured result, the action exposes it as `session-result` JSON
+and as the individual `result-summary`, `result-summary-source`, `result-branch`,
+`result-summary-truncated`, `result-files-changed` JSON, `result-files-changed-truncated`, and
+`result-pull-request-url`
+outputs. Active sessions and legacy sessions without a result leave those result outputs empty.
+When `result-files-changed` is available, its truncation output is `true` for an incomplete list or
+`false` for a complete list; it is empty only when the list is unavailable.
+
+```yaml
+- name: Read one session result
+  id: outcome
+  uses: jonathanong/auto-harness/actions/dispatch@<sha>
+  with:
+    operation: get-result
+    server-url: ${{ secrets.AUTO_HARNESS_URL }}
+    api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
+    session-id: ${{ steps.dispatch.outputs.session-id }}
+
+- name: Handle terminal failure
+  if: steps.outcome.outputs.session-terminal == 'true' && steps.outcome.outputs.session-status != 'completed'
+  run: exit 1
+```
+
+`get-result` also returns `session-id`, the UI `session-url`, and `result-url`. It fails only for
+input, request, or malformed-response errors; a terminal failure state is data, not an Action
+failure.
 
 ## Principal session drain
 

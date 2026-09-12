@@ -5,7 +5,7 @@ import {
   GetCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { providerAccountLeaseConcurrencyId } from "@auto-harness/shared";
+import { providerAccountLeaseConcurrencyId, type SessionResult } from "@auto-harness/shared";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -266,6 +266,7 @@ export async function releaseTimedOutProviderAccountLease(
     sessionId: string;
     attemptId: string;
     hostAssignmentLease?: HostAssignmentLease | undefined;
+    result?: SessionResult | undefined;
   },
 ): Promise<boolean> {
   try {
@@ -276,15 +277,20 @@ export async function releaseTimedOutProviderAccountLease(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
+              UpdateExpression: opts.result
+                ? "SET #result = if_not_exists(#result, :result) REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder"
+                : "REMOVE providerAccountLease, timedOutHostId, timedOutAssignmentConnectionId, hostAssignmentLease, activeHostId, activeHostOrder",
               ConditionExpression:
                 "#s = :timedOut AND providerAccountLease.concurrencyId = :concurrencyId AND providerAccountLease.attemptId = :attemptId",
-              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeNames: {
+                "#s": "status",
+                ...(opts.result ? { "#result": "result" } : {}),
+              },
               ExpressionAttributeValues: {
                 ":timedOut": "timed_out",
                 ":concurrencyId": opts.concurrencyId,
                 ":attemptId": opts.attemptId,
+                ...(opts.result ? { ":result": opts.result } : {}),
               },
             },
           },

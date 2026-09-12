@@ -75,12 +75,18 @@ const status = (
 describe("scheduled terminal and retry message branches", () => {
   it("persists a providerless usage-limit fallback for a leased run and clears its lease locally", async () => {
     const calls: Record<string, unknown>[] = [];
-    const state = durable(session({ fallbacks: [{ commandId: "fallback" }] }), {
-      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
-        calls.push(input);
-        return true;
+    const state = durable(
+      session({
+        fallbacks: [{ commandId: "fallback" }],
+        result: { summary: "old", summarySource: "agent" },
+      }),
+      {
+        releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+          calls.push(input);
+          return true;
+        },
       },
-    });
+    );
     await handleHostMessageDurable(
       state,
       status("s", "failed", {
@@ -97,6 +103,7 @@ describe("scheduled terminal and retry message branches", () => {
       exitCode: 9,
       cliResumeRef: "ref",
     });
+    expect(calls[0]).not.toHaveProperty("result");
     expect(state.sessions.get("s")).toMatchObject({
       status: "queued",
       hostId: null,
@@ -148,6 +155,21 @@ describe("scheduled terminal and retry message branches", () => {
       suppressedTargetIndexes: [0],
     });
     expect(state.sessions.get("s")).not.toHaveProperty("completedAt");
+    expect(state.sessions.get("s")).not.toHaveProperty("result");
+  });
+
+  it("persists a structured result for a scheduled main-checkout terminal", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const state = durable(session(), {
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return true;
+      },
+    });
+    const result = { summary: "implemented", summarySource: "agent" as const };
+    await handleHostMessageDurable(state, status("s", "completed", { result }));
+    expect(calls[0]).toMatchObject({ result });
+    expect(state.sessions.get("s")).toMatchObject({ status: "completed", result });
   });
 
   it("releases a cancelled leased run and carries late terminal metadata", async () => {
@@ -180,6 +202,7 @@ describe("scheduled terminal and retry message branches", () => {
         errorMessage: "late",
         exitCode: 2,
         cliResumeRef: "resume",
+        result: { summary: "cancelled after cleanup", summarySource: "harness" },
       }),
     );
     expect(calls[0]).toMatchObject({
@@ -195,6 +218,7 @@ describe("scheduled terminal and retry message branches", () => {
       errorMessage: "late",
       exitCode: 2,
       cliResumeRef: "resume",
+      result: { summary: "cancelled after cleanup", summarySource: "harness" },
       worktreeId: null,
     });
     expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");

@@ -18,6 +18,29 @@ one is dropped and resynced at the next newline. Claude, Gemini, and Grok still 
 result envelope up to a fixed cap, but on overflow they retain a trailing window of that buffer
 instead of discarding it and giving up on the rest of the run.
 
+## Structured session result
+
+The daemon snapshots the checkout's baseline `HEAD` after checkout and before setup, then builds a
+best-effort structured result after the primary command and terminal hook finish. Supported
+structured output adapters retain the final Claude `result`, Gemini `response`, Grok
+`response`/`text`, or Codex `item.completed` agent message as the summary. No adapter derives a
+summary from arbitrary transcript text. If no structured summary is available, the daemon emits a
+deterministic harness summary from the terminal status and observed git/PR facts.
+
+Git inspection records the final named branch and combines the baseline diff with untracked,
+non-ignored paths. Paths are NUL-delimited at the git boundary, sorted, and bounded. For a named
+branch only, the daemon may run trusted `gh pr list --head <branch> --state all --json url --limit 2`
+with a short timeout; it accepts a single valid HTTP(S) URL and otherwise omits the field. This is
+branch association, not proof the session created that pull request. All result probes share one
+five-second deadline. Every probe is best-effort: expiry or failure omits the affected field and
+never changes the session's terminal status. Terminal-status retries resend the identical result
+payload.
+
+The summary is bounded to 4 KiB; when a summary is shortened, the result includes
+`summaryTruncated: true`. Paths that individually exceed their 4 KiB bound are omitted and cause
+`filesChangedTruncated: true`, preserving the fact that the changed-file list is incomplete. An
+oversized branch is omitted rather than shortened into a different identifier.
+
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
 | Install / config / systemd | [setup.md](setup.md)                         |
@@ -221,14 +244,15 @@ Orchestrates a single session after `session:assign`:
 1. Validate payload (`sessionId`, `repositoryId`, `resolvedArgv`, `timeout`, optional `worktreeId`, `prompt`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`, and non-secret route metadata)
 2. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
 3. Send `session:ack`
-4. **Setup:**
+4. Capture the baseline checkout `HEAD`
+5. **Setup:**
    - Normal run: run the optional host setup, then the effective assignment/worktree/repository
      setup (may initialize the shell environment, reset a branch, or install dependencies)
    - **Resume** (`resume: true`): skip every host/repository/worktree setup script; the assigned worktree still checks out the session `ref` (or default branch) before the native CLI resume command starts
-5. Spawn primary command via Executor (resume-aware argv when `resume: true`)
-6. Pipe output to Log Streamer
-7. On exit / timeout / cancel → `session:status`, release claim/lock, emit worktree status
-8. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
+6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
+7. Pipe output to Log Streamer
+8. On exit / timeout / cancel, run the terminal hook, collect the structured result, then send `session:status`, release claim/lock, and emit worktree status
+9. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
 

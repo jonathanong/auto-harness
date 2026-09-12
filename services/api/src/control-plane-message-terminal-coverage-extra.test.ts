@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "../test-helpers/control-plane-durable-read-test-helpers.ts";
-import { handleHostMessageDurable } from "./control-plane-messages.ts";
+import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -56,6 +56,66 @@ const message = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe("durable terminal message residual coverage", () => {
+  it("keeps the first local result when a providerless timed-out attempt reports again", () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const first = { summary: "first result", summarySource: "harness" as const };
+    state.sessions.set(
+      "s",
+      row({
+        status: "timed_out",
+        hostId: null,
+        mainCheckoutLease: undefined,
+        timedOutHostId: "host",
+        result: first,
+      }),
+    );
+
+    expect(
+      handleHostMessage(
+        state,
+        message({
+          status: "completed",
+          errorCode: undefined,
+          result: { summary: "late replacement", summarySource: "agent" },
+        }),
+      ),
+    ).toEqual({ ok: true });
+    expect(state.sessions.get("s")?.result).toEqual(first);
+
+    const noResult = createControlPlaneState({ now: () => NOW });
+    noResult.sessions.set(
+      "s",
+      row({
+        status: "timed_out",
+        hostId: null,
+        mainCheckoutLease: undefined,
+        timedOutHostId: "host",
+      }),
+    );
+    expect(
+      handleHostMessage(noResult, message({ status: "completed", errorCode: undefined })),
+    ).toEqual({ ok: true });
+    expect(noResult.sessions.get("s")).not.toHaveProperty("result");
+
+    const firstReport = createControlPlaneState({ now: () => NOW });
+    firstReport.sessions.set(
+      "s",
+      row({
+        status: "timed_out",
+        hostId: null,
+        mainCheckoutLease: undefined,
+        timedOutHostId: "host",
+      }),
+    );
+    expect(
+      handleHostMessage(
+        firstReport,
+        message({ status: "completed", errorCode: undefined, result: first }),
+      ),
+    ).toEqual({ ok: true });
+    expect(firstReport.sessions.get("s")?.result).toEqual(first);
+  });
+
   it("strongly reads a late drain cancellation before choosing its release path", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const running = row();
@@ -104,17 +164,32 @@ describe("durable terminal message residual coverage", () => {
       providerAccountId: lease.providerAccountId,
     });
     let attempts = 0;
+    const result = { summary: "late timeout result", summarySource: "harness" as const };
+    const releases: Record<string, unknown>[] = [];
     setDurableReadStorage(state, {
-      releaseTimedOutProviderAccountLease: async () => {
+      releaseTimedOutProviderAccountLease: async (input: Record<string, unknown>) => {
+        releases.push(input);
         attempts += 1;
         return attempts > 1;
       },
     });
-    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    await handleHostMessageDurable(
+      state,
+      message({ status: "completed", errorCode: undefined, result }),
+    );
     expect(state.sessions.get("s")).toHaveProperty("providerAccountLease", lease);
+    expect(state.sessions.get("s")).not.toHaveProperty("result");
     expect(state.providerAccountLeases.has(lease.concurrencyId)).toBe(true);
-    await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
+    await handleHostMessageDurable(
+      state,
+      message({ status: "completed", errorCode: undefined, result }),
+    );
+    expect(releases).toEqual([
+      expect.objectContaining({ result }),
+      expect.objectContaining({ result }),
+    ]);
     expect(state.sessions.get("s")).not.toHaveProperty("providerAccountLease");
+    expect(state.sessions.get("s")?.result).toEqual(result);
     expect(state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
   });
 

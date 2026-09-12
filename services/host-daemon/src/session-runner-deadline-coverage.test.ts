@@ -37,6 +37,28 @@ describe("SessionRunner deadline branch coverage", () => {
     expect(released).toBe(true);
   });
 
+  it("reports a deadline that expires while resolving the claimed main checkout", async () => {
+    let released = false;
+    const worktrees = {
+      acquireMain: async () => true,
+      mainClaim: async () => {
+        await delay();
+        throw new Error("claim stopped");
+      },
+      releaseMain: () => {
+        released = true;
+      },
+    } as unknown as WorktreeManager;
+    const runner = new SessionRunner({ worktrees, processRunner });
+    await expect(
+      runner.run(baseAssign({ worktreeId: null, sessionType: "scheduled", timeout: 0.001 })),
+    ).resolves.toMatchObject({
+      status: "timed_out",
+      result: { summary: "Session timed_out", summarySource: "harness" },
+    });
+    expect(released).toBe(true);
+  });
+
   it("preserves timeout when checkout rejects after the deadline", async () => {
     const worktrees = regularWorktrees(async () => {
       await delay();

@@ -49,9 +49,9 @@ function usageLimitRequeueSessionUpdate(
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
         ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
         (opts.extraSet ?? "") +
-        " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, assignmentSentAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease",
+        " REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId, assignmentSentAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease, #result",
       ConditionExpression: "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
-      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeNames: { "#s": "status", "#result": "result" },
       ExpressionAttributeValues: {
         ":queued": "queued",
         ":running": "running",

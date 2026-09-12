@@ -5,6 +5,7 @@ import {
   providerAccountLeaseConcurrencyId,
   type ProviderAccountLeaseReleaseResult,
   type ProviderAccountLeaseState,
+  type SessionResult,
 } from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
@@ -576,6 +577,7 @@ export function releaseProviderAccountLease(
 export async function releaseTimedOutProviderAccountLease(
   state: ControlPlaneState,
   session: SessionRecord,
+  result?: SessionResult,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
   const attemptId = session.attemptId ?? lease?.attemptId;
@@ -605,6 +607,7 @@ export async function releaseTimedOutProviderAccountLease(
         ...(session.hostAssignmentLease
           ? { hostAssignmentLease: session.hostAssignmentLease }
           : {}),
+        ...(result ? { result } : {}),
       });
       if (!released) return false;
     }
@@ -614,6 +617,7 @@ export async function releaseTimedOutProviderAccountLease(
     delete session.timedOutAssignmentConnectionId;
     delete session.activeHostId;
     delete session.activeHostOrder;
+    if (result && session.result === undefined) session.result = result;
     return true;
   }
   if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
@@ -622,6 +626,7 @@ export async function releaseTimedOutProviderAccountLease(
     delete session.timedOutAssignmentConnectionId;
     delete session.activeHostId;
     delete session.activeHostOrder;
+    if (result && session.result === undefined) session.result = result;
     return true;
   }
   const released = await state.storage.releaseTimedOutProviderAccountLease({
@@ -629,6 +634,7 @@ export async function releaseTimedOutProviderAccountLease(
     sessionId: session.id,
     attemptId: lease.attemptId,
     ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    ...(result ? { result } : {}),
   });
   if (!released) return false;
   if (legacyHostAssignment) await releaseLegacyHostAssignment(state, legacyHostAssignment);
@@ -639,6 +645,7 @@ export async function releaseTimedOutProviderAccountLease(
   delete session.timedOutAssignmentConnectionId;
   delete session.activeHostId;
   delete session.activeHostOrder;
+  if (result && session.result === undefined) session.result = result;
   return true;
 }
 

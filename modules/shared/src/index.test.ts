@@ -17,7 +17,7 @@ describe("package exports", () => {
     expect(shared.USER_ROLES).toContain("admin");
     expect(shared.WORKTREE_STATUSES).toContain("idle");
     expect(shared.PACKAGE_SCOPE).toBe("@auto-harness");
-    expect(shared.HOST_PROTOCOL_VERSION).toBe(2);
+    expect(shared.HOST_PROTOCOL_VERSION).toBe(3);
     expect(shared.KEEPALIVE_ACK_PROTOCOL_VERSION).toBe(2);
     expect(typeof shared.isHostRunningAttempt).toBe("function");
     expect(typeof shared.validateCommandExecutable).toBe("function");

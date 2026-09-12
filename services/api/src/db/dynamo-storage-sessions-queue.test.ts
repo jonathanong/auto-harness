@@ -188,11 +188,16 @@ describe("DynamoDB Local queued session lifecycle", () => {
         attemptId: "attempt",
         online: true,
         cliResumeRef: "opaque",
+        result: { summary: "cancelled result", summarySource: "harness" },
         fence: { hostId: "host", connectionId: "connection" },
         concurrencyId: "none",
       }),
     ).toBe(true);
     expect((await getWorktree(ctx, "worktree"))?.status).toBe("idle");
+    expect((await getSession(ctx, "cancelled"))?.result).toEqual({
+      summary: "cancelled result",
+      summarySource: "harness",
+    });
     expect(
       await releaseCancelledSessionWorktree(ctx, {
         sessionId: "cancelled",

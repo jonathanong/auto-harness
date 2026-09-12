@@ -2,6 +2,8 @@
 import {
   formatLogSortKey,
   isTerminalSessionStatus,
+  normalizeSessionResult,
+  SESSION_RESULT_PROTOCOL_VERSION,
   type HostToServerMessage,
 } from "@auto-harness/shared";
 
@@ -205,6 +207,7 @@ function commitLogRecord(state: ControlPlaneState, rec: LogRecord): LogRecord[] 
 function hostStatusEvent(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): Extract<SessionTransitionEvent, { type: "status" }> {
+  const result = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   return {
     type: "status",
     worktreeId: msg.worktreeId,
@@ -214,6 +217,7 @@ function hostStatusEvent(
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+    ...(result !== undefined ? { result } : {}),
   };
 }
 
@@ -533,6 +537,8 @@ export async function handleHostMessageDurable(
   sourceConnectionId?: string,
   replaceExisting = false,
   consumePendingConnection = false,
+  /** Protocol from the transport's already-authenticated durable connection row. */
+  sourceProtocolVersion?: number,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -582,6 +588,15 @@ export async function handleHostMessageDurable(
     return result.ok
       ? { ok: true, connectionId: result.connectionId }
       : { ok: false, error: result.error };
+  }
+  if (
+    msg.type === "session:status" &&
+    msg.result !== undefined &&
+    sourceConnectionId !== undefined &&
+    (sourceProtocolVersion ?? state.connections.get(sourceConnectionId)?.protocolVersion ?? 0) <
+      SESSION_RESULT_PROTOCOL_VERSION
+  ) {
+    return { ok: false, error: "session result requires host protocol 3" };
   }
   if (!state.storage) {
     // The synchronous in-memory transition emits its own confirmation through
@@ -797,6 +812,7 @@ async function applySessionStatusDurable(
    */
   applied?: boolean;
 }> {
+  const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = await ingestUsageDurable(
       state,
@@ -832,7 +848,7 @@ async function applySessionStatusDurable(
     // storage is guaranteed non-null here (this function only runs on the
     // durable dispatch path), so releaseTimedOutProviderAccountLease's own
     // no-storage fallback is unreachable from this call site.
-    const released = await releaseTimedOutProviderAccountLease(state, session);
+    const released = await releaseTimedOutProviderAccountLease(state, session, reportedResult);
     if (typeof storage.releaseTimedOutProviderAccountLease !== "function") {
       persistSession(state, session);
     }
@@ -887,6 +903,7 @@ async function applySessionStatusDurable(
       worktreeId,
       online: true,
       cliResumeRef: msg.cliResumeRef,
+      ...(reportedResult ? { result: reportedResult } : {}),
       fence,
       attemptId: msg.attemptId,
       concurrencyId: session.concurrencyId,
@@ -908,6 +925,7 @@ async function applySessionStatusDurable(
         ...session,
         worktreeId: null,
         ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...(reportedResult ? { result: session.result ?? reportedResult } : {}),
       });
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
@@ -938,6 +956,7 @@ async function applySessionStatusDurable(
       errorCode: msg.errorCode,
       reason: msg.errorMessage,
       cliResumeRef: msg.cliResumeRef,
+      ...(reportedResult ? { result: reportedResult } : {}),
       concurrencyId: session.concurrencyId,
       ...providerAccountLeaseWriteOpts(session),
     });
@@ -952,6 +971,7 @@ async function applySessionStatusDurable(
         ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
         ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
         ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...(reportedResult ? { result: session.result ?? reportedResult } : {}),
       };
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
@@ -1086,6 +1106,7 @@ async function applySessionStatusDurable(
       delete next.ackReceivedAt;
       delete next.reconnectDeadlineAt;
       delete next.startedAt;
+      delete next.result;
       state.sessions.set(session.id, next);
       state.pendingAcks.delete(session.id);
       await requestAssignmentAfterHostEvent(state, fence?.connectionId);
@@ -1104,6 +1125,7 @@ async function applySessionStatusDurable(
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      ...(reportedResult ? { result: reportedResult } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
       ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       ...providerAccountLeaseWriteOpts(session),
@@ -1121,6 +1143,7 @@ async function applySessionStatusDurable(
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      ...(reportedResult ? { result: reportedResult } : {}),
     };
     delete next.assignmentConnectionId;
     delete next.assignmentSentAt;
@@ -1180,6 +1203,7 @@ async function applySessionStatusDurable(
     const queued = state.sessions.get(session.id)!;
     delete queued.activeHostId;
     delete queued.activeHostOrder;
+    delete queued.result;
     state.pendingAcks.delete(session.id);
     await requestAssignmentAfterHostEvent(state, fence?.connectionId);
     return { ok: true, applied: true };
@@ -1217,6 +1241,7 @@ async function applySessionStatusDurable(
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+    ...(reportedResult !== undefined && !shouldSuppressTarget ? { result: reportedResult } : {}),
     ...(shouldSuppressTarget && suppress
       ? {
           suppressedTargetIndexes: [
@@ -1240,6 +1265,7 @@ function applySessionStatus(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): { ok: boolean; error?: string } {
+  const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {
     const usageResult = ingestUsage(state, {
       type: "session:usage",
@@ -1255,9 +1281,18 @@ function applySessionStatus(
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
-    session.providerAccountLease?.attemptId === msg.attemptId
+    (session.providerAccountLease?.attemptId === msg.attemptId ||
+      (!session.providerAccountLease &&
+        session.timedOutHostId !== undefined &&
+        session.attemptId === msg.attemptId))
   ) {
     releaseProviderAccountLease(state, session);
+    if (reportedResult && session.result === undefined) session.result = reportedResult;
+    delete session.timedOutHostId;
+    delete session.timedOutAssignmentConnectionId;
+    delete session.hostAssignmentLease;
+    delete session.activeHostId;
+    delete session.activeHostOrder;
     persistSession(state, session);
     return { ok: true };
   }
@@ -1292,6 +1327,7 @@ function applySessionStatus(
       session.worktreeId = null;
     }
     if (patch?.cliResumeRef !== undefined) session.cliResumeRef = patch.cliResumeRef;
+    if (patch?.result !== undefined && session.result === undefined) session.result = patch.result;
     persistSession(state, session);
     return { ok: true };
   }
@@ -1319,6 +1355,9 @@ function applySessionStatus(
   }
   if (msg.cliResumeRef !== undefined) {
     session.cliResumeRef = msg.cliResumeRef;
+  }
+  if (reportedResult !== undefined && session.result === undefined) {
+    session.result = reportedResult;
   }
 
   if (terminal) {
@@ -1360,6 +1399,7 @@ function applySessionStatus(
       session.worktreeId = null;
       session.hostId = null;
       delete session.completedAt;
+      delete session.result;
       const reschedule = transitionEffect(plan, "reschedule");
       if (reschedule?.kind === "scheduled") {
         void assignScheduledQueuedDurable(state).catch(() => undefined);

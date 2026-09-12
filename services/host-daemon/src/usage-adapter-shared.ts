@@ -8,6 +8,8 @@ export type JsonRecord = Record<string, unknown>;
 export type ParsedCliUsage = {
   usage?: SessionUsage;
   usageLimit?: boolean;
+  /** Provider-authored terminal response from a recognized structured envelope only. */
+  agentSummary?: string;
 };
 
 export function record(value: unknown): JsonRecord | undefined {

@@ -89,7 +89,7 @@ export function listSessionsPage(
   const hasMore = rows.length > limit;
   const last = page[page.length - 1];
   return {
-    items: page.map((session) => toPublic(state, session)),
+    items: page.map((session) => toPublic(state, session, false)),
     nextCursor:
       hasMore && last
         ? encodeSessionCursor(state, {
@@ -103,5 +103,5 @@ export function listSessionsPage(
 export function listSessions(state: ControlPlaneState): PublicSession[] {
   return [...state.sessions.values()]
     .toSorted((a, b) => compareSessions(a, b, "latest"))
-    .map((session) => toPublic(state, session));
+    .map((session) => toPublic(state, session, false));
 }

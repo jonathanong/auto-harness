@@ -2,7 +2,7 @@ name: Auto Harness dispatch
 description: Dispatch or resume a session, or start/poll/release a principal session drain that cancels this principal's own queued and running sessions for one repository
 inputs:
   operation:
-    description: dispatch (default) creates a session; resume continues a prior session on its pinned host; start-drain/get-drain/wait-for-drain/release-drain manage a principal session drain, which cancels this principal's queued and running sessions for one repository (not a repository-wide or host drain)
+    description: dispatch (default) creates a session; resume continues a prior session on its pinned host; get-result reads one session result without polling; start-drain/get-drain/wait-for-drain/release-drain manage a principal session drain, which cancels this principal's queued and running sessions for one repository (not a repository-wide or host drain)
     required: false
     default: dispatch
   server-url:
@@ -19,7 +19,7 @@ inputs:
     description: Auto Harness repository ID (required for dispatch and the drain operations; unused by resume)
     required: false
   session-id:
-    description: Session ID to resume (required for resume)
+    description: Session ID to resume or read with get-result (required for resume and get-result)
     required: false
   prompt:
     description: Prompt for the session (required for dispatch; optional continuation instruction override for resume)
@@ -75,6 +75,28 @@ outputs:
     description: Control-plane URL for the session
   created:
     description: Whether this invocation created a new session
+  result-url:
+    description: API URL for one bounded GET of this session's result
+  session-status:
+    description: Session status returned by get-result
+  session-terminal:
+    description: Whether get-result returned a terminal session status
+  session-result:
+    description: JSON structured session result returned by get-result, when available
+  result-summary:
+    description: Structured session-result summary, when available
+  result-summary-truncated:
+    description: Whether the structured session-result summary was truncated
+  result-summary-source:
+    description: Whether the result summary came from the agent or harness, when available
+  result-branch:
+    description: Result branch, when available
+  result-files-changed:
+    description: JSON array of changed files, when available
+  result-files-changed-truncated:
+    description: Whether result-files-changed was truncated (true or false when available)
+  result-pull-request-url:
+    description: Pull request URL associated with the result, when available
   operation-id:
     description: Durable principal session-drain operation ID
   status-url:

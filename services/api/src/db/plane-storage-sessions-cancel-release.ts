@@ -1,4 +1,5 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import type { SessionResult } from "@auto-harness/shared";
 
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 import {
@@ -22,6 +23,7 @@ type ReleaseCancelledOpts = {
    * another assignment; only disconnect cleanup offlines it. */
   online: boolean;
   cliResumeRef?: string | undefined;
+  result?: SessionResult | undefined;
   fence?: { hostId: string; connectionId: string } | undefined;
   attemptId: string;
   concurrencyId?: string | undefined;
@@ -53,19 +55,23 @@ function releaseSessionUpdate(
       TableName: ctx.tables.sessions,
       Key: { id: opts.sessionId },
       UpdateExpression:
-        `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
+        `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""}${opts.result ? ", #result = if_not_exists(#result, :result)" : ""} ` +
         "REMOVE assignmentConnectionId, reconnectDeadlineAt, activeHostId, activeHostOrder, providerAccountLease, hostAssignmentLease",
       ConditionExpression:
         "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId" +
         (requireNoDrainCancellation
           ? " AND attribute_not_exists(cancelledByDrainOperationId)"
           : ""),
-      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeNames: {
+        "#s": "status",
+        ...(opts.result ? { "#result": "result" } : {}),
+      },
       ExpressionAttributeValues: {
         ":cancelled": "cancelled",
         ":null": null,
         ":worktreeId": opts.worktreeId,
         ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
+        ...(opts.result ? { ":result": opts.result } : {}),
         ":attemptId": opts.attemptId,
       },
     },

@@ -64,5 +64,11 @@ describe("composed control-plane services", () => {
     expect(
       sessionForPersistence({ ...session, status: "completed", completedAt: session.createdAt }),
     ).not.toHaveProperty("activeHostOrder");
+    const withResult = {
+      ...session,
+      result: { summary: "done", summarySource: "harness" as const },
+    };
+    expect(toPublic(state, withResult)).toHaveProperty("result.summary", "done");
+    expect(toPublic(state, withResult, false)).not.toHaveProperty("result");
   });
 });

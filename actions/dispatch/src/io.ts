@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
 export function input(name: string, required = false): string {
@@ -64,7 +65,11 @@ export function requestTimeoutMs(): number {
 export function setOutput(name: string, value: string): void {
   const output = process.env.GITHUB_OUTPUT;
   if (!output) throw new Error("GITHUB_OUTPUT is unavailable");
-  appendFileSync(output, `${name}=${value}\n`, "utf8");
+  // `name=value` treats newlines in a value as new output records. Use GitHub's documented
+  // heredoc form with an unpredictable delimiter so untrusted session summaries cannot inject
+  // workflow outputs or corrupt JSON-valued outputs.
+  const delimiter = `auto-harness-${randomUUID()}`;
+  appendFileSync(output, `${name}<<${delimiter}\n${value}\n${delimiter}\n`, "utf8");
 }
 
 export function escapeWorkflowCommand(value: string): string {

@@ -1,4 +1,5 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import type { SessionResult } from "@auto-harness/shared";
 
 import { statusShardAttr } from "./dynamo.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -27,6 +28,7 @@ type FinishSessionOpts = {
   errorMessage?: string;
   exitCode?: number | null;
   cliResumeRef?: string;
+  result?: SessionResult;
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
@@ -85,10 +87,17 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
   setOptional(sets, values, "errorMessage", opts.errorMessage);
   setOptional(sets, values, "exitCode", opts.exitCode);
   setOptional(sets, values, "cliResumeRef", opts.cliResumeRef);
+  if (opts.result !== undefined) {
+    sets.push("#result = if_not_exists(#result, :result)");
+    values[":result"] = opts.result;
+  }
   setOptional(sets, values, "timedOutHostId", opts.timedOutHostId);
   setOptional(sets, values, "timedOutAssignmentConnectionId", opts.timedOutAssignmentConnectionId);
   return {
-    names: { "#s": "status" },
+    names: {
+      "#s": "status",
+      ...(opts.result !== undefined ? { "#result": "result" } : {}),
+    },
     values,
     sets,
     removes: [
