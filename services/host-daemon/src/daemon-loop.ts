@@ -160,10 +160,27 @@ const DEFAULT_STATUS_RETRIES_PER_TICK = 20;
 function inflightKey(sessionId: string, attemptId: string): string {
   return `${sessionId}\0${attemptId}`;
 }
+
+function assignmentTargetKey(msg: Extract<HostWireMessage, { type: "session:assign" }>): string {
+  // Worktree ids are currently host inventory identifiers, but repository
+  // scope avoids coupling this daemon-side fence to that representation. Main
+  // checkout assignments are serialized by their repository lock as well.
+  return msg.worktreeId === null
+    ? `main\0${msg.repositoryId}`
+    : `worktree\0${msg.repositoryId}\0${msg.worktreeId}`;
+}
+
 export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
   private readonly inflight = new Map<string, InflightSession>();
+  /**
+   * Assignment completion fences by physical execution target. A checkout
+   * claim may intentionally outlive `SessionRunner.run()` while protocol 4
+   * waits for its durable retry disposition, so a different logical session
+   * must not start on that same worktree in the meantime.
+   */
+  private readonly worktreeAssignmentTails = new Map<string, Promise<void>>();
   private readonly pendingTerminalStatus = new Map<string, PendingTerminalStatus>();
   private readonly pendingCommandStarts = new Map<string, PendingCommandStart>();
   private readonly pendingStatusMaxAgeMs: number;
@@ -902,9 +919,35 @@ export class DaemonLoop {
     }
 
     this.abortSupersededAttempts(msg.sessionId, msg.attemptId);
-    const live = [...this.inflight.values()].filter((entry) => !entry.controller.signal.aborted);
+    // A terminal result has already stopped executing, even though its
+    // `runAssign` remains in-flight while its status is delivered. It must not
+    // consume the bounded CLI capacity during that acknowledgement interval;
+    // `worktreeAssignmentTails` below still serializes a retained checkout
+    // claim before another session may use the same physical worktree.
+    const live = [...this.inflight.values()].filter(
+      (entry) =>
+        !entry.controller.signal.aborted &&
+        !this.pendingTerminalStatus.has(inflightKey(entry.sessionId, entry.attemptId)),
+    );
     if (live.length >= this.executionProfiles.maxConcurrentAssignments) {
       this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
+      return;
+    }
+    // Protocol-v4 checkout failures must retain their terminal status even
+    // when the ordinary retry buffer is full, because its durable disposition
+    // decides whether the terminal hook runs. Reserve at most one exceptional
+    // slot per execution slot so those mandatory entries remain bounded. A
+    // replacement for the same session will discard its older entries below,
+    // so they do not consume its reservation.
+    const retainedForOtherSessions = [...this.pendingTerminalStatus.values()].filter(
+      (pending) => pending.message.sessionId !== msg.sessionId,
+    ).length;
+    if (
+      this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION &&
+      retainedForOtherSessions + live.length >=
+        this.pendingStatusMaxCount + this.executionProfiles.maxConcurrentAssignments
+    ) {
+      this.onLog?.(`terminal status retry capacity reached: refused assign ${msg.sessionId}`);
       return;
     }
 
@@ -920,9 +963,31 @@ export class DaemonLoop {
     };
     this.inflight.set(key, entry);
     const settleSuperseded = this.discardSupersededTerminalStatuses(msg.sessionId);
-    const work = settleSuperseded
-      ? settleSuperseded.then(() => this.runAssign(msg, controller.signal))
-      : this.runAssign(msg, controller.signal);
+    const targetKey = assignmentTargetKey(msg);
+    const previousTargetWork = this.worktreeAssignmentTails.get(targetKey);
+    let resolveTargetWork!: () => void;
+    const targetWork = new Promise<void>((resolve) => {
+      resolveTargetWork = resolve;
+    });
+    this.worktreeAssignmentTails.set(targetKey, targetWork);
+    const work = (async () => {
+      try {
+        // A replacement for this logical session must first settle its old
+        // retry disposition. That releases the preceding retained claim and
+        // prevents a same-session retry from waiting on itself below.
+        if (settleSuperseded) await settleSuperseded;
+        // A different logical session on this target waits until all work for
+        // the preceding assignment has returned. `runAssign` includes its v4
+        // disposition wait, so this fence covers retained checkout claims.
+        if (previousTargetWork) await previousTargetWork;
+        if (!controller.signal.aborted) await this.runAssign(msg, controller.signal);
+      } finally {
+        resolveTargetWork();
+        if (this.worktreeAssignmentTails.get(targetKey) === targetWork) {
+          this.worktreeAssignmentTails.delete(targetKey);
+        }
+      }
+    })();
     entry.work = work;
     try {
       await work;
@@ -1002,8 +1067,7 @@ export class DaemonLoop {
       signal,
       initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
       deferCheckoutFetchFailureHook:
-        this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION &&
-        this.pendingTerminalStatus.size < this.pendingStatusMaxCount,
+        this.serverProtocolVersion >= COMMAND_START_AUTHORIZATION_PROTOCOL_VERSION,
     });
 
     if (result.logs.length > 0) {
@@ -1040,11 +1104,18 @@ export class DaemonLoop {
           resolveDeferredDisposition = resolve;
         })
       : undefined;
-    if (this.pendingTerminalStatus.size >= this.pendingStatusMaxCount) {
+    if (
+      this.pendingTerminalStatus.size >= this.pendingStatusMaxCount &&
+      !result.settleDeferredTerminalHook
+    ) {
       // A control plane that never sends session:status-acknowledged (e.g. not yet
       // upgraded to support it) would otherwise grow this set without bound until a
       // keepalive/registration is rejected as invalid for exceeding the wire limit.
-      // Degrade to the old fire-once behavior instead of retaining this one.
+      // Degrade ordinary terminal delivery to the old fire-once behavior
+      // instead of retaining this one. A v4 checkout failure is always
+      // retained even beyond this cap because its durable retry disposition
+      // owns whether the terminal hook runs. Those exceptional entries stay
+      // bounded by the admission reservation in handleAssign.
       this.onLog?.(
         `terminal status retry buffer full (${String(this.pendingStatusMaxCount)}); ` +
           `not retrying ${msg.sessionId} if this send is lost`,

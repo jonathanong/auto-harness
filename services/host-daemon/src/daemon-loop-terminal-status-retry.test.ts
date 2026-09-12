@@ -69,6 +69,101 @@ describe("DaemonLoop terminal status retry", () => {
     }
   });
 
+  it("serializes another session on the retained worktree until its retry disposition", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        executionProfiles: { maxConcurrentAssignments: 1, profiles: new Map() },
+      });
+      const started: string[] = [];
+      const dispositions: boolean[] = [];
+      (
+        loop as unknown as {
+          runner: {
+            run(assign: { sessionId: string }): Promise<{
+              status: "completed" | "failed";
+              exitCode: number | null;
+              logs: [];
+              errorCode?: string;
+              settleDeferredTerminalHook?: (runHook: boolean) => Promise<void>;
+            }>;
+          };
+        }
+      ).runner = {
+        async run(assign) {
+          started.push(assign.sessionId);
+          if (assign.sessionId === "checkout-failure") {
+            return {
+              status: "failed",
+              exitCode: null,
+              logs: [],
+              errorCode: "checkout_fetch_failed",
+              settleDeferredTerminalHook: async (runHook) => {
+                dispositions.push(runHook);
+              },
+            };
+          }
+          return { status: "completed", exitCode: 0, logs: [] };
+        },
+      };
+      await loop.start();
+      transport.deliver({ type: "host:registered", hostId: config.hostId, protocolVersion: 4 });
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "checkout-failure",
+        attemptId: "attempt-checkout-failure",
+        repositoryId: "demo",
+        prompt: "first",
+        resolvedArgv: ["printf", "%s", "first"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+      await flushMacrotask();
+      expect(started).toEqual(["checkout-failure"]);
+      expect(
+        sent.some(
+          (message) =>
+            message.type === "session:status" && message.sessionId === "checkout-failure",
+        ),
+      ).toBe(true);
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "other-session",
+        attemptId: "attempt-other-session",
+        repositoryId: "demo",
+        prompt: "second",
+        resolvedArgv: ["printf", "%s", "second"],
+        timeout: 30,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+      await flushMacrotask();
+      expect(started).toEqual(["checkout-failure"]);
+
+      transport.deliver({
+        type: "session:status-acknowledged",
+        sessionId: "checkout-failure",
+        attemptId: "attempt-checkout-failure",
+        retryAccepted: true,
+      });
+      await loop.waitForIdle();
+      expect(dispositions).toEqual([false]);
+      expect(started).toEqual(["checkout-failure", "other-session"]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("reports a session with an unacknowledged terminal status as still owned, resends it on keepalive, and stops once acked", async () => {
     const { config, cleanup } = await makeRepo();
     try {
