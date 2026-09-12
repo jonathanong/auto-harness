@@ -84,12 +84,12 @@ remains supported; all dispatch forms return after acceptance and never wait for
 | Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh, including when the pinned Command has been deleted   |
 | Cancel, timeout, agent drain-on-update       | Ops                                                                                                                                            |
 
-### Repo harness owns (out of scope for Auto Harness)
+### Repo harness owns (except App-mediated comment triggers)
 
 | Concern                              | Typical home in the product repo                                                               |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Event triggers                       | `workflow_run`, `issue_comment`, cron                                                          |
-| Policy before create                 | Transient CI triage, dedup, comment authz                                                      |
+| Event triggers                       | `workflow_run`, workflow-based `issue_comment`, cron                                           |
+| Policy before create                 | Transient CI triage and non-App dedup/comment authz                                            |
 | Prompt content                       | `docs/prompts/…`, render actions                                                               |
 | Trusted publish / write-token policy | If any — not the fire-and-forget create path                                                   |
 | Usage-limit policy                   | Auto Harness pauses the account and tries ordered fallbacks; callers may still resume manually |
@@ -110,6 +110,11 @@ remains supported; all dispatch forms return after acceptance and never wait for
 | ---------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
 | **Repo harness** | Product repo (`.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
 | **Auto Harness** | Shared control plane + VPS agents                    | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+
+The narrow exception is an App-mediated `issue_comment` or `pull_request_review_comment` mention.
+For that path, Auto Harness centrally owns author authorization, deduplication, and
+repository-to-command routing; it passes the comment suffix as the prompt verbatim. Prompt templates,
+CI triage, and all non-App trigger policy remain in the product repository.
 
 ```mermaid
 flowchart TB
@@ -264,6 +269,9 @@ flowchart LR
 | `/codex-plan` | Plan-only prompt; outcome often issue comment or plan artifact via tools |
 
 Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `timeout`) changes.
+This workflow-based pattern remains supported. The GitHub App mention path is the deliberate
+exception: `@auto-harness <instructions>` is centrally authorized and deduplicated without a target
+repository workflow, and `<instructions>` is forwarded verbatim rather than rendered.
 
 ---
 
@@ -446,7 +454,9 @@ flowchart LR
 ```
 
 What **leaves** the long-running Actions runner: Codex process, multi-hour job, log babysitting in GHA.  
-What **stays** in the product repo: event filters, triage, dedup, prompt files, comment gates—anything that finishes in minutes before the `curl`.
+What **stays** in the product repo: event filters, triage, dedup, prompt files, and comment gates for
+non-App paths—anything that finishes in minutes before the `curl`. App-mediated mention
+authorization and deduplication are the narrow centralized exception described above.
 
 ---
 
