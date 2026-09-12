@@ -632,13 +632,27 @@ export async function createLambdaRuntime(
           // trackDelivery's getHostConnectionId lookup misses on a warm
           // container that never saw this host's register and the protocol-2
           // daemon would stall-reconnect after a successfully committed beat.
-          track(
-            postToConnection(created.plane, management, authenticated.hostId, connectionId, {
+          const keepaliveDelivery = async (): Promise<void> => {
+            await postToConnection(created.plane, management, authenticated.hostId, connectionId, {
               type: "host:keepalive-ack",
               hostId: message.hostId,
               at: message.at,
-            }).catch(() => undefined),
-          );
+            });
+            // Keepalive reconciliation can discover a terminal session while
+            // this daemon is still connected. Use the exact inbound
+            // connection, not the warm container's hostId cache, so a
+            // replacement registration cannot receive or lose this handoff.
+            for (const handoff of result.terminalHookHandoffs ?? []) {
+              await postToConnection(
+                created.plane,
+                management,
+                authenticated.hostId,
+                connectionId,
+                handoff,
+              );
+            }
+          };
+          track(keepaliveDelivery().catch(() => undefined));
         } else if (result.sessionAcknowledged && message.type === "session:ack") {
           // An ACK confirmation permits execution, so it must reach the
           // connection that submitted this exact ACK. A warm Lambda that did

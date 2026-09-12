@@ -533,6 +533,65 @@ describe("createPlaneWsBridge", () => {
     await opened.close();
   });
 
+  it("delivers a terminal-hook handoff created by keepalive reconciliation", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane({ idFactory: () => "handoff" });
+    const opened = await openRegisteredHost({
+      bridge,
+      plane,
+      registration: hostRegistration("a1", HOST_PROTOCOL_VERSION),
+    });
+    plane.state.sessions.set("sess-1", {
+      id: "sess-1",
+      repositoryId: "r1",
+      hostId: "a1",
+      activeHostId: "a1",
+      activeHostOrder: "2026-01-01T00:00:00.000Z#sess-1",
+      worktreeId: "wt-1",
+      status: "running",
+      attemptId: "attempt-1",
+      ackReceivedAt: "2026-01-01T00:00:00.000Z",
+      primaryCommandStartState: "authorized",
+    } as never);
+    plane.state.worktrees.set("wt-1", {
+      ...plane.state.worktrees.get("wt-1")!,
+      status: "busy",
+      currentSessionId: "sess-1",
+    });
+
+    const messages = await new Promise<unknown[]>((resolve, reject) => {
+      const received: unknown[] = [];
+      const timer = setTimeout(() => reject(new Error("keepalive handoff timeout")), 3000);
+      opened.ws.on("message", (raw) => {
+        received.push(JSON.parse(String(raw)));
+        if ((received.at(-1) as { type?: string }).type !== "session:terminal-hook") return;
+        clearTimeout(timer);
+        resolve(received);
+      });
+      opened.ws.send(
+        JSON.stringify({
+          type: "host:keepalive",
+          hostId: "a1",
+          at: "2026-01-01T00:00:20.000Z",
+          runningSessions: [],
+        }),
+      );
+    });
+    expect(messages).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "a1",
+        at: "2026-01-01T00:00:20.000Z",
+      },
+      expect.objectContaining({
+        type: "session:terminal-hook",
+        sessionId: "sess-1",
+        handoffId: "handoff",
+      }),
+    ]);
+    await opened.close();
+  });
+
   it("rejects a log for a session that is not in the control plane", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane();

@@ -13,20 +13,37 @@ export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
 export async function pendingTerminalHookHandoffs(
   state: ControlPlaneState,
   hostId: string,
+  options: {
+    connectionId?: string;
+    protocolVersion?: number;
+    sessionIds?: readonly string[];
+  } = {},
 ): Promise<Array<Extract<HostWireMessage, { type: "session:terminal-hook" }>>> {
-  const connectionId = state.hostConnection.get(hostId);
+  const connectionId = options.connectionId ?? state.hostConnection.get(hostId);
   if (
-    (connectionId === undefined ? 0 : (state.connections.get(connectionId)?.protocolVersion ?? 0)) <
+    (options.protocolVersion ??
+      (connectionId === undefined
+        ? 0
+        : (state.connections.get(connectionId)?.protocolVersion ?? 0))) <
     TERMINAL_HOOK_HANDOFF_PROTOCOL_VERSION
   ) {
     return [];
   }
-  const sessions = state.storage
-    ? await state.storage.listActiveSessionsByHost(hostId)
-    : [...state.sessions.values()].filter((session) => session.activeHostId === hostId);
+  const sessions =
+    options.sessionIds && state.storage
+      ? (
+          await Promise.all(
+            options.sessionIds.map((sessionId) => state.storage!.getSession(sessionId, true)),
+          )
+        ).filter((session): session is NonNullable<typeof session> => session !== null)
+      : state.storage
+        ? await state.storage.listActiveSessionsByHost(hostId)
+        : [...state.sessions.values()].filter((session) => session.activeHostId === hostId);
   const pending: Array<Extract<HostWireMessage, { type: "session:terminal-hook" }>> = [];
+  const sessionIds = options.sessionIds ? new Set(options.sessionIds) : undefined;
   const nowMs = Date.parse(state.now());
   for (const session of sessions) {
+    if (sessionIds && !sessionIds.has(session.id)) continue;
     const handoff = session.terminalHookHandoff;
     if (!handoff || handoff.hostId !== hostId) continue;
     if (Date.parse(handoff.expiresAt) <= nowMs) {

@@ -935,6 +935,8 @@ export async function heartbeatDurable(
    * ack). Undefined means a pre-reconciliation daemon; omit reconciliation
    * rather than requeue every session on this host on legacy silence. */
   reportedRunningSessions?: readonly string[],
+  /** Filled with terminal-hook handoffs created by this reconciliation pass. */
+  terminalHookHandoffSessionIds?: string[],
 ): Promise<boolean> {
   if (!state.storage) {
     return heartbeat(state, hostId, at);
@@ -979,6 +981,7 @@ export async function heartbeatDurable(
       connectionId,
       new Set(reportedRunningSessions),
       "daemon no longer reports session as running; requeued",
+      terminalHookHandoffSessionIds,
     );
     // Otherwise a recovered session sits queued until the next cron sweep or
     // an unrelated scheduling event, defeating the point of a fast recovery.

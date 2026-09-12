@@ -153,6 +153,10 @@ type PendingTerminalHookHandoff = {
   complete: boolean;
   executing: boolean;
   sending: boolean;
+  /** Active recovery work; shutdown must retain the transport until it settles. */
+  work?: Promise<void> | undefined;
+  /** A completion write in progress; successful local delivery is the shutdown fence. */
+  completionSend?: Promise<void> | undefined;
   result?: import("@auto-harness/shared").SessionResult;
 };
 
@@ -515,7 +519,23 @@ export class DaemonLoop {
   }
 
   async waitForIdle(): Promise<void> {
-    await Promise.all([...this.inflight.values()].map((entry) => entry.work));
+    // Handoff hooks can be the sole remaining work after an assignment has
+    // already stopped.  Keep the transport alive through both the hook and
+    // its current completion write; an unacknowledged completion remains
+    // retriable after a later restart and must not make graceful shutdown wait
+    // for the server's 24-hour retention window.
+    while (true) {
+      this.startPendingTerminalHookHandoffs();
+      const activeWork = [
+        ...[...this.inflight.values()].map((entry) => entry.work),
+        ...[...this.pendingTerminalHookHandoffs.values()].flatMap((pending) => [
+          pending.work,
+          pending.completionSend,
+        ]),
+      ].filter((work): work is Promise<void> => work !== undefined);
+      if (activeWork.length === 0) return;
+      await Promise.all(activeWork);
+    }
   }
 
   /**
@@ -1016,10 +1036,13 @@ export class DaemonLoop {
       return;
     pending.executing = true;
     this.activeTerminalHookHandoffs += 1;
-    void this.runTerminalHookHandoff(pending).finally(() => {
+    const work = this.runTerminalHookHandoff(pending).finally(() => {
       pending.executing = false;
+      pending.work = undefined;
       this.activeTerminalHookHandoffs -= 1;
     });
+    pending.work = work;
+    void work;
   }
 
   private async runTerminalHookHandoff(pending: PendingTerminalHookHandoff): Promise<void> {
@@ -1110,7 +1133,7 @@ export class DaemonLoop {
     )
       return;
     pending.sending = true;
-    void this.outbound
+    const completionSend = this.outbound
       .send({
         type: "session:terminal-hook-complete",
         sessionId: pending.message.sessionId,
@@ -1127,14 +1150,23 @@ export class DaemonLoop {
       })
       .finally(() => {
         pending.sending = false;
+        pending.completionSend = undefined;
       });
+    pending.completionSend = completionSend;
+    void completionSend;
   }
 
   private retryPendingTerminalHookHandoffs(): void {
     this.expirePendingTerminalHookHandoffs(Date.now());
     for (const pending of this.pendingTerminalHookHandoffs.values()) {
       if (pending.complete) this.sendTerminalHookHandoffCompletion(pending);
-      else this.startTerminalHookHandoff(pending);
+    }
+    this.startPendingTerminalHookHandoffs();
+  }
+
+  private startPendingTerminalHookHandoffs(): void {
+    for (const pending of this.pendingTerminalHookHandoffs.values()) {
+      if (!pending.complete) this.startTerminalHookHandoff(pending);
     }
   }
 

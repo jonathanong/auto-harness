@@ -109,4 +109,40 @@ describe("keepalive-driven session reconciliation", () => {
     // sessions, that is the common case on every 20s keepalive.
     expect(worktreeReads).toBe(0);
   });
+
+  it("returns a terminal-hook handoff created by keepalive reconciliation", async () => {
+    const state = createControlPlaneState({ now: () => NOW, idFactory: () => "handoff" });
+    seedConnectedHost(state);
+    state.connections.set("c", { ...state.connections.get("c")!, protocolVersion: 6 });
+    const session = {
+      ...runningSessionFixture(),
+      ackReceivedAt: NOW,
+      primaryCommandStartState: "authorized" as const,
+      activeHostId: "h",
+      activeHostOrder: `${NOW}#s`,
+    };
+    state.sessions.set("s", session as never);
+    state.worktrees.set("w", {
+      ...busyWorktreeFixture(),
+      online: true,
+    } as never);
+
+    await expect(
+      handleHostMessageDurable(state, {
+        type: "host:keepalive",
+        hostId: "h",
+        at: NOW,
+        runningSessions: [],
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      terminalHookHandoffs: [
+        expect.objectContaining({
+          type: "session:terminal-hook",
+          handoffId: "handoff",
+          sessionId: "s",
+        }),
+      ],
+    });
+  });
 });

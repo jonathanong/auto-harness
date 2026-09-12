@@ -30,6 +30,7 @@ async function requeueOmittedWorktreeSessions(
   reason: string,
   requeued: string[],
   activeSessions: readonly import("./db/types.ts").SessionRecord[],
+  terminalHookHandoffSessionIds?: string[],
 ): Promise<void> {
   for (const session of activeSessions) {
     if (session.status !== "running" || !session.worktreeId) continue;
@@ -52,16 +53,18 @@ async function requeueOmittedWorktreeSessions(
     const terminalHostLoss = Boolean(session.ackReceivedAt) && !canRetryHostLoss(session);
     if (!state.storage) {
       releaseProviderAccountLease(state, session);
+      const handoff = terminalHostLoss ? hostLostTerminalHookHandoff(state, session) : undefined;
       state.sessions.set(
         session.id,
         retryableHostLoss
           ? queueHostLossRetry(session)
           : terminalHostLoss
-            ? finishHostLostSession(state, session)
+            ? finishHostLostSession(state, session, handoff)
             : queueReconnectSession(session, reason),
       );
       releaseWorktree(state, worktree.id);
       state.pendingAcks.delete(session.id);
+      if (handoff) terminalHookHandoffSessionIds?.push(session.id);
       if (!terminalHostLoss) requeued.push(session.id);
     } else if (
       retryableHostLoss &&
@@ -114,6 +117,7 @@ async function requeueOmittedWorktreeSessions(
       await releaseLegacyHostAssignmentAfterDurableTransition(state, session);
       releaseProviderAccountLease(state, session);
       state.sessions.set(session.id, finishHostLostSession(state, session, handoff));
+      if (handoff) terminalHookHandoffSessionIds?.push(session.id);
       state.worktrees.set(worktree.id, {
         ...worktree,
         status: "idle",
@@ -166,6 +170,7 @@ export async function reconcileHostOwnedSessions(
   connectionId: string | undefined,
   running: ReadonlySet<string>,
   reason: string,
+  terminalHookHandoffSessionIds?: string[],
 ): Promise<string[]> {
   const requeued: string[] = [];
   const activeSessions = state.storage
@@ -181,6 +186,7 @@ export async function reconcileHostOwnedSessions(
     reason,
     requeued,
     activeSessions,
+    terminalHookHandoffSessionIds,
   );
   await requeueOmittedScheduled(state, hostId, new Set(running), requeued, reason, activeSessions);
   return requeued;

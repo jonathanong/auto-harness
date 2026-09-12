@@ -755,14 +755,22 @@ export async function handleHostMessageDurable(
       // timestamp; run the same keepalive-time reconciliation the durable
       // path gets via `heartbeatDurable`, so a non-durable control plane also
       // bounds a lost/orphaned session to one keepalive interval.
+      const terminalHookHandoffSessionIds: string[] = [];
       const requeued = await reconcileHostOwnedSessions(
         state,
         msg.hostId,
         state.hostConnection.get(msg.hostId),
         new Set(msg.runningSessions),
         "daemon no longer reports session as running; requeued",
+        terminalHookHandoffSessionIds,
       );
       if (requeued.length > 0) await requestAssignment(state);
+      if (terminalHookHandoffSessionIds.length > 0) {
+        const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+          sessionIds: terminalHookHandoffSessionIds,
+        });
+        return { ...result, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
+      }
     }
     return result;
   }
@@ -886,15 +894,23 @@ export async function handleHostMessageDurable(
     fence = { hostId, connectionId: sourceConnectionId };
   }
   if (msg.type === "host:keepalive") {
-    return (await heartbeatDurable(
+    const terminalHookHandoffSessionIds: string[] = [];
+    const heartbeatAccepted = await heartbeatDurable(
       state,
       msg.hostId,
       msg.at,
       fence?.connectionId,
       msg.runningSessions,
-    ))
-      ? { ok: true }
-      : { ok: false, error: "agent not connected" };
+      terminalHookHandoffSessionIds,
+    );
+    if (!heartbeatAccepted) return { ok: false, error: "agent not connected" };
+    if (terminalHookHandoffSessionIds.length === 0) return { ok: true };
+    const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
+      ...(fence?.connectionId ? { connectionId: fence.connectionId } : {}),
+      ...(sourceProtocolVersion !== undefined ? { protocolVersion: sourceProtocolVersion } : {}),
+      sessionIds: terminalHookHandoffSessionIds,
+    });
+    return { ok: true, ...(handoffs.length > 0 ? { terminalHookHandoffs: handoffs } : {}) };
   }
   if (msg.type === "host:status") {
     const result = await drainHostDurable(state, msg.hostId, sourceConnectionId);

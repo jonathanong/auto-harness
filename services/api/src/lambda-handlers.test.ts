@@ -864,6 +864,71 @@ describe("Lambda runtime adapters", () => {
     });
   });
 
+  it("delivers a reconciliation terminal-hook handoff after the keepalive ack", async () => {
+    const fixture = runtimeFixture();
+    const runtime = await registerGatewayHost(fixture, "gateway-1", HOST_PROTOCOL_VERSION);
+    fixture.sessions.set("lost", {
+      ...schedulerSession("lost", "prompt"),
+      status: "running",
+      hostId: "host-1",
+      activeHostId: "host-1",
+      activeHostOrder: "2026-08-12T00:00:00.000Z#lost",
+      worktreeId: "worktree-1",
+      attemptId: "attempt-1",
+      ackReceivedAt: "2026-08-12T00:00:00.000Z",
+      primaryCommandStartState: "authorized",
+    });
+    fixture.worktrees.set("worktree-1", {
+      id: "worktree-1",
+      repositoryId: "repo-active",
+      hostId: "host-1",
+      status: "busy",
+      currentSessionId: "lost",
+    });
+    (
+      fixture.storage as typeof fixture.storage & {
+        finishSession(input: Record<string, unknown>): Promise<boolean>;
+      }
+    ).finishSession = async (input) => {
+      const session = fixture.sessions.get(String(input.sessionId));
+      if (!session) return false;
+      fixture.sessions.set(String(input.sessionId), {
+        ...session,
+        status: input.status,
+        hostId: null,
+        worktreeId: null,
+        terminalHookHandoff: input.terminalHookHandoff,
+      });
+      return true;
+    };
+    fixture.management.send.mockClear();
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({
+          type: "host:keepalive",
+          hostId: "host-1",
+          at: "2026-08-12T00:00:20.000Z",
+          runningSessions: [],
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toEqual([
+      {
+        type: "host:keepalive-ack",
+        hostId: "host-1",
+        at: "2026-08-12T00:00:20.000Z",
+      },
+      expect.objectContaining({
+        type: "session:terminal-hook",
+        sessionId: "lost",
+      }),
+    ]);
+  });
+
   it("swallows a failed host:keepalive-ack delivery instead of failing the invocation", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);

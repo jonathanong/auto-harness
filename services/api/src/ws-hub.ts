@@ -258,6 +258,19 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
                 at: msg.at,
               }),
             );
+            // Keepalive reconciliation can discover a terminal session while
+            // this daemon is still connected. Deliver that handoff on the
+            // exact fenced socket that submitted the keepalive; a hostId-only
+            // lookup could race a replacement registration.
+            if (
+              boundConnectionId &&
+              plane.state.hostConnection.get(msg.hostId) === boundConnectionId
+            ) {
+              for (const handoff of result.terminalHookHandoffs ?? []) {
+                if (socket.readyState !== socket.OPEN) break;
+                socket.send(JSON.stringify(handoff));
+              }
+            }
           }
         };
         type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
