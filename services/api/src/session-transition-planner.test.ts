@@ -146,7 +146,7 @@ describe("session-transition planner", () => {
     const first = planSessionTransition(
       session(),
       status({ status: "failed", errorCode: "checkout_fetch_failed" }),
-      ctx(),
+      ctx({ deferTerminalHookResult: true }),
     );
     expect(first.effects.map((effect) => effect.type)).toEqual([
       "release_worktree",
@@ -166,7 +166,7 @@ describe("session-transition planner", () => {
         cliResumeRef: "resume-after-checkout-failure",
         result: { summary: "checkout failed", summarySource: "harness" },
       }),
-      ctx(),
+      ctx({ deferTerminalHookResult: true }),
     );
     expect(transitionEffect(exhaustedCheckout, "finish")).toMatchObject({
       status: "failed",
@@ -229,11 +229,14 @@ describe("session-transition planner", () => {
     ).toEqual(["ignore"]);
   });
 
-  it("does not replay a checkout failure after a legacy peer already ran its hook", () => {
+  it("does not replay a checkout failure unless its reporting assignment deferred the hook", () => {
     const plan = planSessionTransition(
       session(),
       status({ status: "failed", errorCode: "checkout_fetch_failed" }),
-      ctx({ protocolVersion: 5 }),
+      // A v3-plane assignment can be reported after this host reconnects at
+      // v7. Its current connection protocol is not proof the old assignment
+      // deferred the hook, so it must still terminalize.
+      ctx({ protocolVersion: 7 }),
     );
 
     expect(plan.effects.map((effect) => effect.type)).toEqual([
@@ -244,17 +247,16 @@ describe("session-transition planner", () => {
     expect(transitionEffect(plan, "finish")).toMatchObject({
       status: "failed",
       errorCode: "checkout_fetch_failed",
-      errorMessage:
-        "checkout fetch failed; terminal hook already completed on legacy host protocol",
+      errorMessage: "checkout fetch failed; terminal hook was not durably deferred",
     });
   });
 
-  it("keeps checkout failure replay enabled for peers that can defer the hook", () => {
+  it("keeps checkout failure replay enabled only with durable deferral proof", () => {
     expect(
       types(
         status({ status: "failed", errorCode: "checkout_fetch_failed" }),
         session(),
-        ctx({ protocolVersion: 6 }),
+        ctx({ protocolVersion: 6, deferTerminalHookResult: true }),
       ),
     ).toEqual(["release_worktree", "requeue", "reschedule"]);
   });

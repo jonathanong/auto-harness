@@ -1,6 +1,5 @@
 /* eslint-disable max-lines -- one policy table covers every host and lifecycle event. */
 import {
-  DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION,
   isTerminalSessionStatus,
   type SessionResult,
   type SessionStatus,
@@ -81,6 +80,8 @@ export type SessionTransitionContext = {
   source: "local" | "durable";
   /** Host protocol used for this report; absent for legacy/local callers. */
   protocolVersion?: number;
+  /** The reporting daemon retained its terminal hook pending this decision. */
+  deferTerminalHookResult?: boolean;
   providerAccount?: { usageLimitCooldownSeconds: number } | null;
   reconnectGraceMs?: number;
 };
@@ -175,15 +176,13 @@ function planInfrastructureFailure(
     (code === "checkout_fetch_failed"
       ? "checkout fetch failed"
       : "host was lost before command launch");
-  // Pre-v6 daemons run the terminal hook before reporting checkout failures and
-  // cannot defer that hook until the control plane decides whether to retry.
-  // Requeueing those reports would run the hook a second time on the retry.
-  const legacyCheckoutHookCompleted =
-    code === "checkout_fetch_failed" &&
-    ctx.protocolVersion !== undefined &&
-    ctx.protocolVersion < DEFERRED_TERMINAL_RESULT_PROTOCOL_VERSION;
+  // A reconnect may negotiate a newer protocol than the one that delivered
+  // this assignment. Only the reporting attempt's explicit deferral proof
+  // makes a checkout replay safe; a connection version cannot prove it.
+  const checkoutHookWasDeferred =
+    code !== "checkout_fetch_failed" || ctx.deferTerminalHookResult === true;
   const replaySafe =
-    !legacyCheckoutHookCompleted &&
+    checkoutHookWasDeferred &&
     (code !== "host_lost" || session.primaryCommandStartState === "pending");
   if (replaySafe && (session.infrastructureRetryCount ?? 0) < MAX_INFRASTRUCTURE_RETRIES) {
     return planOf(
@@ -205,8 +204,8 @@ function planInfrastructureFailure(
       completedAt: ctx.now,
       ...fields,
       errorCode: code,
-      errorMessage: legacyCheckoutHookCompleted
-        ? `${baseMessage}; terminal hook already completed on legacy host protocol`
+      errorMessage: !checkoutHookWasDeferred
+        ? `${baseMessage}; terminal hook was not durably deferred`
         : replaySafe
           ? `${baseMessage}; automatic retry exhausted`
           : "host lost after command authorization or without a replay-safe checkpoint",

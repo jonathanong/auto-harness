@@ -332,11 +332,13 @@ function plannerContext(
   source: SessionTransitionContext["source"],
   providerAccount?: SessionTransitionContext["providerAccount"],
   protocolVersion?: number,
+  deferTerminalHookResult?: boolean,
 ): SessionTransitionContext {
   return {
     now: state.now(),
     source,
     ...(protocolVersion !== undefined ? { protocolVersion } : {}),
+    ...(deferTerminalHookResult === true ? { deferTerminalHookResult: true } : {}),
     ...(providerAccount !== undefined ? { providerAccount } : {}),
   };
 }
@@ -1214,8 +1216,9 @@ async function applySessionStatusDurable(
   terminalHookHandoffExpiresAt?: string | undefined;
 }> {
   // An absent source connection is a direct/internal durable transition, not
-  // evidence of a legacy daemon. Only an actual registered protocol version
-  // below the deferred-hook boundary must suppress the safe checkout retry.
+  // evidence about whether the reporting assignment deferred its hook. The
+  // planner uses the report's durable deferral proof rather than this current
+  // connection's protocol version to decide whether checkout may be replayed.
   const knownProtocolVersion =
     sourceProtocolVersion ??
     (fence && state.connections.has(fence.connectionId)
@@ -1325,7 +1328,13 @@ async function applySessionStatusDurable(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "durable", providerAccount, knownProtocolVersion),
+    plannerContext(
+      state,
+      "durable",
+      providerAccount,
+      knownProtocolVersion,
+      msg.deferTerminalHookResult,
+    ),
   );
   const rejected = transitionEffect(plan, "reject");
   if (rejected) return { ok: false, error: rejected.error };
@@ -2022,7 +2031,13 @@ function applySessionStatus(
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),
-    plannerContext(state, "local", cachedProviderAccount(state, session)),
+    plannerContext(
+      state,
+      "local",
+      cachedProviderAccount(state, session),
+      undefined,
+      msg.deferTerminalHookResult,
+    ),
   );
   if (transitionEffect(plan, "ignore")) return { ok: true };
 

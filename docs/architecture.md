@@ -82,9 +82,10 @@ rules.
 4. **Assume duplicate delivery and uncertain execution.** Fence messages by attempt identity and
    make processing idempotent. After ambiguous host loss, require an explicit retry; do not promise
    exactly-once effects in GitHub or another external system.
-   The one automatic infrastructure retry is limited to checkout-fetch failure or a host loss
-   proven to precede the v4 command-start acknowledgement; post-launch and ambiguous loss is
-   terminal (D10). Before command authorization, a terminal hook is deferred until the control
+   The one automatic infrastructure retry is limited to a checkout-fetch failure whose reporting
+   attempt proves its terminal hook was deferred, or a host loss proven to precede the v4
+   command-start acknowledgement; post-launch and ambiguous loss is terminal (D10). Before
+   command authorization, a terminal hook is deferred until the control
    plane durably decides the attempt's disposition, so a lost status cannot replay an already-run
    escalation hook.
 5. **Operational work scales with active work and new bytes.** Heartbeats, scheduling, recovery,

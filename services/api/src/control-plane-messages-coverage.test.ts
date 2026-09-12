@@ -58,6 +58,7 @@ function status(
     worktreeId: "worktree",
     attemptId: "attempt",
     status: value,
+    ...(extra.errorCode === "checkout_fetch_failed" ? { deferTerminalHookResult: true } : {}),
     ...extra,
   };
 }
@@ -226,6 +227,7 @@ describe("control-plane host message coverage paths", () => {
         status: "failed",
         errorCode: "checkout_fetch_failed",
         errorMessage: "checkout failed",
+        deferTerminalHookResult: true,
       }),
     ).toEqual({ ok: true });
     const retriedPrompt = promptPlane.getSession(promptCreated.session.id);
@@ -280,6 +282,7 @@ describe("control-plane host message coverage paths", () => {
         attemptId: scheduledAttempt,
         status: "failed",
         errorCode: "checkout_fetch_failed",
+        deferTerminalHookResult: true,
       }),
     ).toEqual({ ok: true });
     await vi.waitFor(() => {
@@ -497,6 +500,33 @@ describe("control-plane host message coverage paths", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(lost.sessions.get(lostRun.id)).toMatchObject({ status: "running" });
+  });
+
+  it("does not replay a buffered checkout failure merely because the host reconnected at v7", async () => {
+    const session = running({ id: "upgraded-host" });
+    const state = durable(session, { getHostLock: async () => "reconnected-v7" });
+
+    await expect(
+      handleHostMessageDurable(
+        state,
+        status(session.id, "failed", {
+          errorCode: "checkout_fetch_failed",
+          deferTerminalHookResult: false,
+        }),
+        "reconnected-v7",
+        false,
+        false,
+        7,
+      ),
+    ).resolves.toMatchObject({
+      sessionStatusAcknowledged: { sessionId: session.id, retryAccepted: false },
+    });
+    expect(state.sessions.get(session.id)).toMatchObject({
+      status: "failed",
+      errorCode: "checkout_fetch_failed",
+      errorMessage: "checkout fetch failed; terminal hook was not durably deferred",
+    });
+    expect(state.sessions.get(session.id)).not.toHaveProperty("infrastructureRetryCount");
   });
 
   it("keeps a providerless terminal report queued when no worktree remains to release", async () => {

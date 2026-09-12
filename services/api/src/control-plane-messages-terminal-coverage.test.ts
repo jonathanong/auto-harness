@@ -699,6 +699,7 @@ describe("control-plane terminal message coverage", () => {
         attemptId: "attempt",
         status: "failed",
         errorCode: "checkout_fetch_failed",
+        deferTerminalHookResult: true,
       }),
     ).resolves.toMatchObject({ ok: true, sessionStatusAcknowledged: { sessionId: "session" } });
     expect(releaseMainCheckoutSession).toHaveBeenCalledWith(
@@ -767,6 +768,7 @@ describe("control-plane terminal message coverage", () => {
         attemptId: "attempt",
         status: "failed",
         errorCode: "checkout_fetch_failed",
+        deferTerminalHookResult: true,
       }),
     ).toEqual({ ok: true });
     expect(state.sessions.get(session.id)).toMatchObject({
