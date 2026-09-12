@@ -735,6 +735,25 @@ describe("session-transition planner", () => {
         attemptId: "attempt",
       }),
     ).not.toHaveProperty("hostAssignmentLease");
+    expect(
+      requeueUsageLimitedSessionOptsFromPlan(
+        session({
+          hostAssignmentLease: {
+            hostId: "host",
+            connectionId: "connection",
+            attemptId: "attempt",
+          },
+        }),
+        cooldownPlan,
+        { now: NOW, attemptId: "attempt" },
+      ),
+    ).toMatchObject({
+      hostAssignmentLease: {
+        hostId: "host",
+        connectionId: "connection",
+        attemptId: "attempt",
+      },
+    });
 
     const suppressPlan: SessionTransitionPlan = {
       effects: [

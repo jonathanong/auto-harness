@@ -57,6 +57,37 @@ const terminal = (sessionId: string, status: "completed" | "failed" | "timed_out
 });
 
 describe("durable worktree terminal branches", () => {
+  it("accepts structured results only from protocol-v3 host connections", async () => {
+    const connection = {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host" as const,
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      commandProfiles: [],
+      capabilities: [],
+      repositoryIds: ["repo"],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 2,
+      providerAccountReadiness: [],
+    };
+    const result = { summary: "done", summarySource: "agent" as const };
+
+    const legacy = run(row("legacy"));
+    legacy.connections.set("connection", connection);
+    await expect(
+      handleHostMessageDurable(legacy, terminal("legacy", "completed", { result }), "connection"),
+    ).resolves.toEqual({ ok: false, error: "session result requires host protocol 3" });
+    expect(legacy.sessions.get("legacy")?.status).toBe("running");
+
+    const current = run(row("current"), { getHostLock: async () => "connection" });
+    current.connections.set("connection", { ...connection, protocolVersion: 3 });
+    await expect(
+      handleHostMessageDurable(current, terminal("current", "completed", { result }), "connection"),
+    ).resolves.toMatchObject({ ok: true });
+    expect(current.sessions.get("current")?.result).toEqual(result);
+  });
+
   it("finishes completion, usage-limit retry, and cancelled late release", async () => {
     const worktree: WorktreeRecord = {
       id: "w",

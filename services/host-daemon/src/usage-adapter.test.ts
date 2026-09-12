@@ -357,6 +357,13 @@ describe("parseCliUsage", () => {
     expect(
       parseCliUsage({
         argv: ["grok", "-p", "--output-format", "json"],
+        output: JSON.stringify({ type: "error" }),
+        observedAt,
+      }),
+    ).toEqual({});
+    expect(
+      parseCliUsage({
+        argv: ["grok", "-p", "--output-format", "json"],
         output: JSON.stringify({ response: "ok", usage: { reasoningTokens: "8", totalTokens: 9 } }),
         observedAt,
       }),

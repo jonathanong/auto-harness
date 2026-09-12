@@ -218,8 +218,10 @@ export class SessionRunner {
       clearTimeout(timeoutTimer);
       if (mainClaimed) {
         this.deps.worktrees.releaseMain(assign.repositoryId);
-      } else if (assign.worktreeId) {
-        this.deps.worktrees.release(assign.worktreeId);
+      } else {
+        // Reaching execution without the main lock means the worktree claim
+        // above succeeded, so a worktree id is guaranteed here.
+        this.deps.worktrees.release(assign.worktreeId!);
       }
     }
   }
