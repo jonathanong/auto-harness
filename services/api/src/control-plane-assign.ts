@@ -23,6 +23,7 @@ import {
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import { planPromptPlacement } from "./queue-placement-planner.ts";
 import { releaseLegacyHostAssignmentAfterDurableTransition } from "./control-plane-legacy-host-assignment.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
@@ -110,7 +111,9 @@ export function assignQueued(
       };
       session.attemptId = attemptId;
       session.primaryCommandStartState = commandStartStateForProtocol(
-        state.connections.get(state.hostConnection.get(candidate.hostId) ?? "")?.protocolVersion,
+        connectionProtocolVersion(
+          state.connections.get(state.hostConnection.get(candidate.hostId) ?? ""),
+        ),
       );
       if (apiKey) session.sessionApiKeyHash = apiKey.hash;
       else delete session.sessionApiKeyHash;
@@ -293,7 +296,7 @@ export async function assignQueuedDurable(
             : {}),
           queueShard: session.queueShard,
           primaryCommandStartState: commandStartStateForProtocol(
-            state.connections.get(connectionId)?.protocolVersion,
+            connectionProtocolVersion(state.connections.get(connectionId)),
           ),
           ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         });
@@ -323,7 +326,7 @@ export async function assignQueuedDurable(
         },
         attemptId,
         primaryCommandStartState: commandStartStateForProtocol(
-          state.connections.get(connectionId)?.protocolVersion,
+          connectionProtocolVersion(state.connections.get(connectionId)),
         ),
         ...(apiKey ? { sessionApiKeyHash: apiKey.hash } : {}),
         ...(lease ? { providerAccountLease: lease } : {}),

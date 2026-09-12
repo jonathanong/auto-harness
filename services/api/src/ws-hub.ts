@@ -28,6 +28,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import { emitWsMessagesDiscarded } from "./operational-metrics.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
@@ -393,7 +394,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           }
           const protocolVersion =
             boundConnectionId !== null
-              ? (plane.state.connections.get(boundConnectionId)?.protocolVersion ?? 0)
+              ? connectionProtocolVersion(plane.state.connections.get(boundConnectionId))
               : ATTEMPT_FENCED_PROTOCOL_VERSION;
           const msg = parseHostMessage(raw, { protocolVersion });
           if (!msg) {

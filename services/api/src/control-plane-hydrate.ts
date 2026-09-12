@@ -12,6 +12,7 @@ import type {
 import type { SessionRecord, WorkspaceSlotRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
 import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import type {
   ArchiveMetadata,
   ConnectionRecord,
@@ -184,6 +185,11 @@ export async function hydrateFromStorage(
     if (record.registered === false || record.type !== "host") continue;
     const connection = {
       ...record,
+      // Old control planes persisted only the daemon advertisement. On a
+      // rolling upgrade that value might exceed what the old peer negotiated;
+      // keep the connection in the legacy lane until it registers again.
+      negotiatedProtocolVersion:
+        record.negotiatedProtocolVersion === undefined ? 0 : connectionProtocolVersion(record),
       capabilities: normalizeHostCapabilities(record.capabilities),
       runtime: record.runtime ?? {
         daemonVersion: "legacy/unknown",

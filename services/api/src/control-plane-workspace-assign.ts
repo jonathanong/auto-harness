@@ -8,6 +8,7 @@ import type { SessionRecord, WorkspaceSlotRecord } from "./db/types.ts";
 import { buildProviderCatalog } from "./control-plane-session-target.ts";
 import { orderedQueuedSessions } from "./control-plane-ordering.ts";
 import { planWorkspacePlacement } from "./queue-placement-planner.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   accountHasLeaseCapacity,
   hostAssignmentOccupancyCount,
@@ -258,7 +259,7 @@ export async function assignWorkspaceQueuedDurable(
               : {}),
             queueShard: session.queueShard,
             primaryCommandStartState: commandStartStateForProtocol(
-              state.connections.get(connectionId)?.protocolVersion,
+              connectionProtocolVersion(state.connections.get(connectionId)),
             ),
           });
         } else {
@@ -277,7 +278,7 @@ export async function assignWorkspaceQueuedDurable(
         attemptId,
         now,
         lease,
-        state.connections.get(connectionId)?.protocolVersion,
+        connectionProtocolVersion(state.connections.get(connectionId)),
       );
       const updatedSlot: WorkspaceSlotRecord = {
         ...slot,

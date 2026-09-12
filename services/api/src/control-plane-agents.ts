@@ -33,6 +33,7 @@ import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 import { getWorkspacePoolDurable } from "./control-plane-workspace-pools.ts";
 import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
+import { negotiateHostProtocolVersion } from "./control-plane-protocol.ts";
 import {
   releaseProviderAccountLease,
   releaseTimedOutProviderAccountLeasesForHost,
@@ -671,6 +672,7 @@ export function registerHost(
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
+    negotiatedProtocolVersion: negotiateHostProtocolVersion(opts.protocolVersion),
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
@@ -840,6 +842,7 @@ export async function registerHostDurable(
       : {}),
     ...(opts.runtime ? { runtime: opts.runtime } : {}),
     ...(opts.protocolVersion !== undefined ? { protocolVersion: opts.protocolVersion } : {}),
+    negotiatedProtocolVersion: negotiateHostProtocolVersion(opts.protocolVersion),
   };
   const won = await state.storage.tryRegisterHost({
     hostId: opts.hostId,

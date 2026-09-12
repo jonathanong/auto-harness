@@ -30,6 +30,7 @@ import {
 } from "./operational-metrics.ts";
 import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
+import { durableConnectionProtocolVersion } from "./control-plane-protocol.ts";
 import { assignQueuedAndScheduledDurable } from "./request-assignment.ts";
 import { listQueuedSessionsDurableForMetric } from "./control-plane-durable-read-catalog.ts";
 
@@ -637,7 +638,7 @@ export async function createLambdaRuntime(
           return { statusCode: 403 };
         }
         const message = parseHostMessage(event.body ?? "", {
-          protocolVersion: authenticated.protocolVersion ?? 0,
+          protocolVersion: durableConnectionProtocolVersion(authenticated),
         });
         // A parse failure or a hostId that doesn't match this connection's own
         // authenticated lease means the *sender* is misbehaving (or misconfigured
@@ -658,7 +659,7 @@ export async function createLambdaRuntime(
                 message,
                 connectionId,
                 message.type === "host:register",
-                authenticated.protocolVersion ?? 0,
+                durableConnectionProtocolVersion(authenticated),
               );
         const sessionCommandStartAcknowledged = result.sessionCommandStartAcknowledged;
         if (result.ok && message.type === "host:register") {

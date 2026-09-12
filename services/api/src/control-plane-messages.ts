@@ -18,6 +18,7 @@ import {
   trackLogPersist,
 } from "./control-plane-state.ts";
 import { sessionLogsTtlEpochSeconds } from "./db/dynamo.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 import {
   heartbeat,
   heartbeatDurable,
@@ -567,7 +568,7 @@ export function handleHostMessage(
         ...(msg.draining ? { draining: true } : {}),
       });
       if (!r.ok) return { ok: false, error: r.error };
-      for (const session of (msg.protocolVersion ?? 0) >=
+      for (const session of connectionProtocolVersion(state.connections.get(r.connectionId)) >=
       TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
         ? state.sessions.values()
         : []) {
@@ -789,7 +790,7 @@ export async function handleHostMessageDurable(
     if (!result.ok) return { ok: false, error: result.error };
     const handoffs = await pendingTerminalHookHandoffs(state, msg.hostId, {
       connectionId: result.connectionId,
-      ...(msg.protocolVersion !== undefined ? { protocolVersion: msg.protocolVersion } : {}),
+      protocolVersion: connectionProtocolVersion(state.connections.get(result.connectionId)),
     });
     return {
       ok: true,
@@ -801,7 +802,8 @@ export async function handleHostMessageDurable(
     msg.type === "session:status" &&
     msg.result !== undefined &&
     sourceConnectionId !== undefined &&
-    (sourceProtocolVersion ?? state.connections.get(sourceConnectionId)?.protocolVersion ?? 0) <
+    (sourceProtocolVersion ??
+      connectionProtocolVersion(state.connections.get(sourceConnectionId))) <
       SESSION_RESULT_PROTOCOL_VERSION
   ) {
     return { ok: false, error: "session result requires host protocol 3" };
@@ -1168,7 +1170,7 @@ async function applySessionStatusDurable(
 }> {
   const protocolVersion =
     sourceProtocolVersion ??
-    (fence ? state.connections.get(fence.connectionId)?.protocolVersion : 0) ??
+    (fence ? connectionProtocolVersion(state.connections.get(fence.connectionId)) : 0) ??
     0;
   const reportedResult = msg.result === undefined ? undefined : normalizeSessionResult(msg.result);
   if (msg.usage) {

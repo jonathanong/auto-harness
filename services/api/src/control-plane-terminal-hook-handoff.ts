@@ -8,6 +8,7 @@ import { queueSessionArchive } from "./control-plane-archive.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata } from "./db/plane-storage-types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { connectionProtocolVersion } from "./control-plane-protocol.ts";
 
 export const TERMINAL_HOOK_HANDOFF_DELIVERY_LIMIT = 500;
 
@@ -63,7 +64,7 @@ export async function pendingTerminalHookHandoffs(
     (options.protocolVersion ??
       (connectionId === undefined
         ? 0
-        : (state.connections.get(connectionId)?.protocolVersion ?? 0))) <
+        : connectionProtocolVersion(state.connections.get(connectionId)))) <
     TERMINAL_HOOK_HANDOFF_EXPIRY_PROTOCOL_VERSION
   ) {
     return [];
